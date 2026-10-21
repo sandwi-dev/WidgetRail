@@ -6,9 +6,11 @@ notification center. A notification does not start a stopped widget in the backg
 
 ## Read or dismiss
 
-Open the **bell beside the clock**, or the tray menu's **Notifications** command.
+Focus the **bell beside the clock** to show the panel, or use the tray menu's
+**Notifications** command. Press **Up** to enter its list.
 The bell counts pending entries. **A** opens an actionable entry, **X** dismisses
-the focused entry, and **B** closes the panel without clearing it. **Clear all**
+the focused entry, and **B** returns to the bell while leaving the panel visible.
+B from the bell follows the usual radial-chooser Back behavior. **Clear all**
 removes pending entries. New arrivals preserve your current selection.
 
 Some notices, such as song changes, are informational banners only. They expire

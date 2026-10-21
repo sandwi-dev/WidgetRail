@@ -33,11 +33,14 @@ internal sealed partial class OverlayShellPage
             if (hostChoicePin is not null)
                 shell = (ControllerGuideHint[])[.. shell, new(ControllerPrompt.View, "Leave pin", ControllerButton.View)];
         }
-        else if (!interactive && notificationBell.FocusState != FocusState.Unfocused)
+        else if (!interactive && (UtilityIconFocused || UtilityListFocused))
         {
-            shell = (ControllerGuideHint[])[new(ControllerPrompt.A, "Notifications", ControllerButton.A),
-                new(ControllerPrompt.B, "Hide overlay", ControllerButton.B, Required: true)];
-            shellContext = "notification-bell";
+            shell = UtilityListFocused
+                ? (ControllerGuideHint[])[.. (utilityPanel?.FocusedActionable == true || utilityPanel?.FocusedId is null ? new ControllerGuideHint[] { new(ControllerPrompt.A, utilityPanel?.FocusedId is null ? "Select" : shownUtility == ShellUtility.Tasks ? "Switch" : "Open", ControllerButton.A) } : []),
+                    .. (utilityPanel?.FocusedId is not null ? new ControllerGuideHint[] { new(ControllerPrompt.X, shownUtility == ShellUtility.Tasks ? "Close window" : "Dismiss", ControllerButton.X) } : []),
+                    new(ControllerPrompt.B, "Back to icon", ControllerButton.B, Required: true), new(ControllerPrompt.RightStickMove, "Scroll")]
+                : (ControllerGuideHint[])[new(ControllerPrompt.DPadUp, "Enter list"), new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true)];
+            shellContext = ("shell-utility", shownUtility, UtilityListFocused);
         }
         else if (SystemFilePickerOpen)
         { shell = Array.Empty<ControllerGuideHint>(); shellContext = "system-file-picker"; }

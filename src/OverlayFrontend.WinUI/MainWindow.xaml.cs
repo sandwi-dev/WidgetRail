@@ -209,6 +209,7 @@ public sealed partial class MainWindow : Window
         var taskActivation = new WidgetRail.WindowsWindowActivation.TaskWindowActivation(
             new WidgetRail.WindowsWindowActivation.WindowsTaskWindowActivation());
         page.TaskWindowActivationRequested += effect => _ = RunTaskHandoffAsync(page, effect, taskActivation);
+        page.HostTaskActivationRequested = request => RunHostTaskHandoffAsync(page, request);
         page.OpenExternalWebPageRequested = (uri, token) => OpenExternalWebPageAsync(page, uri, token);
         page.OpenCaptureFolderRequested = (path, current, token) => OpenCaptureFolderAsync(page,path,current,token);
         page.AppearanceLoaded += ApplyOverlayPlacement;

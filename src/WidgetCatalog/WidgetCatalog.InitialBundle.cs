@@ -13,6 +13,7 @@ public sealed partial class WidgetCatalog
     internal async Task<bool> SeedInitialPackageAsync(Stream packageStream, string expectedPackageId,
         CancellationToken cancellationToken = default)
     {
+        if (HostUtilityPackages.IsRetired(expectedPackageId)) return false;
         if (!WidgetManifestValidator.IsValidPackageIdentity(expectedPackageId) ||
             expectedPackageId is "widgetrail.firstparty.settings" or "widgetrail.firstparty.marketplace")
             throw new WidgetPackageException("invalid_initial_widget", "Initial widget identity is invalid.");

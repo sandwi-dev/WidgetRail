@@ -92,6 +92,7 @@ internal sealed partial class OverlayShellPage
                     (int)Math.Ceiling(rect.Width * dpi), (int)Math.Ceiling(rect.Height * dpi)));
             }
             Avoid(WidgetSurface); Avoid(RailRegion); Avoid(TrayHelp);
+            if (utilityPanel is not null) Avoid(utilityPanel);
             if (radialView is not null) Avoid(radialView);
             foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot))
                 if (popup.Child is FrameworkElement child) Avoid(child);

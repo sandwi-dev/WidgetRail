@@ -61,7 +61,7 @@ internal sealed partial class OverlayShellPage
         return null;
     }
 
-    private object? TrayGestureIdentity => !retired && visible && foreground && !interactive && trayMenu is null &&
+    private object? TrayGestureIdentity => UtilityIconFocused && visible && foreground ? ("utility", shownUtility) : !retired && visible && foreground && !interactive && trayMenu is null &&
         FocusedTrayWidget() is { } widget ? (widget.Id, widget.InstanceId, widget.RuntimeGeneration,
             widget.PresentationGeneration, selectionVersion) : null;
 
@@ -111,11 +111,12 @@ internal sealed partial class OverlayShellPage
         RequestTrayFocus(widget);
     }
 
-    private async Task RunTrayHoldAsync(TrayHoldAction action)
+    private Task RunTrayHoldAsync(TrayHoldAction action)
     {
         if (action == TrayHoldAction.ToggleReorder) ToggleTrayReorder();
-        else if (action == TrayHoldAction.Notifications)
-            await ShowNotificationsAsync();
+        else if (action == TrayHoldAction.TaskSwitcher)
+            FocusUtility(ShellUtility.Tasks);
+        return Task.CompletedTask;
     }
 
     private bool TrayOwnerCurrent(BridgeWidgetDescriptor captured, long selection) =>
@@ -242,8 +243,9 @@ internal sealed partial class OverlayShellPage
             if (browserOwner is { } notificationOwner)
             {
                 menu.Flyout.Items.Add(new MenuFlyoutSeparator());
-                Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync, ControllerButton.Y, hold: true);
+                Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync);
             }
+            Add("Task Switcher", "Shell.TaskSwitcher", () => { FocusUtility(ShellUtility.Tasks); return Task.CompletedTask; }, ControllerButton.Y, hold: true);
             if (descriptor.CanStop && !descriptor.IsStopped)
                 Add("Stop widget", "Widget.Stop", () => StopWidgetAsync(descriptor));
             menu.Navigation = new(menu.Flyout, () => ReferenceEquals(trayMenu, menu) && TrayOwnerCurrent(menu.Owner, menu.Selection));
@@ -375,9 +377,18 @@ internal sealed partial class OverlayShellPage
             else if (button == ControllerButton.A && TrayOwnerCurrent(menu.Owner, menu.Selection) && menu.Navigation is { } navigation) await navigation.ActivateAsync();
             return;
         }
-        if (notificationBell.FocusState != FocusState.Unfocused)
+        if (UtilityListFocused)
         {
-            if (button == ControllerButton.A) await ShowNotificationsAsync();
+            if (button == ControllerButton.B) ReturnToUtilityIcon();
+            else if (button == ControllerButton.A && utilityPanel is { } panel && shownUtility is { } kind)
+            { if (panel.FocusedId is { } id) await ActivateUtilityItemAsync(panel, kind, id); else panel.Activate(); }
+            else if (button == ControllerButton.X && utilityPanel is { FocusedId: { } dismissId } target && shownUtility is { } dismissKind)
+                await DismissUtilityItemAsync(target, dismissKind, dismissId);
+            return;
+        }
+        if (UtilityIconFocused && button != ControllerButton.Y)
+        {
+            if (button == ControllerButton.A) utilityPanel?.Enter();
             else if (button == ControllerButton.B) await BackFromTrayAsync();
             return;
         }

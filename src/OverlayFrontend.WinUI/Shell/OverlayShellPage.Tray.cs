@@ -60,6 +60,7 @@ internal sealed partial class OverlayShellPage
         // completion of the previous entry is not a fresh tray selection intent.
         if (switching && nativeTrayFocusSelection != selectionVersion) return;
         RecordFocusTransfer("tray");
+        CloseUtilityPanel();
         SetInteractive(false);
         if (FocusedTrayWidget() is not { } descriptor) return;
         if (descriptor.Id != requestedWidget) { trayHold.Cancel(); FinishTrayReorder(); CloseTrayMenu(false); }

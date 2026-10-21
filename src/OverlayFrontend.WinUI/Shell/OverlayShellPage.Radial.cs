@@ -53,6 +53,7 @@ internal sealed partial class OverlayShellPage
 
     private async Task BackFromTrayAsync()
     {
+        CloseUtilityPanel();
         if (RadialOpen)
         {
             if (!await ReturnFromRadialAsync()) HideRequested?.Invoke();

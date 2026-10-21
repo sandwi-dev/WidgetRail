@@ -112,6 +112,11 @@ internal sealed partial class OverlayShellPage
         }
         // Images own right-stick panning only while their canvas has focus.
         // Left-stick/D-pad navigation remains available even when zoomed in.
+        if (UtilityListFocused)
+        {
+            var delta = rightStick.Sample(frame.State.RightThumbX, frame.State.RightThumbY, Environment.TickCount64);
+            if (delta.Y != 0) utilityPanel?.Scroll(delta.Y);
+        }
         var imagePan = !radialNavigation && radialInput.AllowScroll && (IsMediaFullscreen
             ? fullscreenLayer.MoveAnalog(frame.State.RightThumbX, frame.State.RightThumbY)
             : pointerPresenter?.PanMediaImage(frame.State.RightThumbX, frame.State.RightThumbY) == true);
@@ -128,7 +133,7 @@ internal sealed partial class OverlayShellPage
             if (delta.X != 0 || delta.Y != 0) current.ScrollBy(delta.X, delta.Y);
             else if (rightStick.ShouldSettle(now) && current.SettleScrollFocus()) rightStick.Reset();
         }
-        else rightStick.Reset();
+        else if (!UtilityListFocused) rightStick.Reset();
         foreach (var (mask, button) in Buttons)
         {
             if ((frame.PressedButtons & mask) != 0) _ = RouteButtonAsync(button, ControllerEventPhase.Pressed);

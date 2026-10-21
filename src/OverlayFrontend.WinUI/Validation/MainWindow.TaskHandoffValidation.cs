@@ -70,7 +70,14 @@ public sealed partial class MainWindow
         {
             if (input is not null) input.HandoffValidationButtons = null;
             if (original is not null) page.ApplyOverlayMotionValidationAppearance(original);
-        }, expectCancellation: cancel is "reopen" or "expiry");
+        }, expectCancellation: cancel is "reopen" or "expiry", afterSuccess: async checks =>
+        {
+            ShowOverlay();
+            await Until(() => AppWindow.IsVisible && input!.IsForeground && input.IsActive && page.OverlayMotionValidationVisible, 3000);
+            checks.Add("Reopening reacquires real native foreground and controller-read ownership");
+            await page.VerifyUtilityReentryAsync();
+            checks.Add("Reopened host utility accepts navigation and Back without a stale gesture");
+        });
         static async Task Until(Func<bool> condition, int timeout = 1500)
         {
             var deadline = Environment.TickCount64 + timeout;

@@ -37,9 +37,9 @@ internal static class ProductionShellGeometry
         var viewport = Math.Min(inner, visible * (tile + 14));
         var spare = width - viewport - (overflow ? 84 : 0);
         var statusSpace = Math.Max(0, spare - 28) / (centered ? 2 : 1);
-        // Preserve the clock/connectivity budget beside the 48-DIP bell and gap.
-        // At narrow widths retain the bell; its tray-menu route also remains.
-        var status = statusSpace >= 240 ? 240d : statusSpace >= 152 ? 152d : statusSpace >= 52 ? 52d : 0;
+        // Two 48-DIP utility buttons plus their gap remain together. Only the
+        // clock/connectivity content disappears at compact widths.
+        var status = statusSpace >= 288 ? 288d : statusSpace >= 200 ? 200d : statusSpace >= 100 ? 100d : 0;
         var railEnvelope = viewport + (overflow ? 84 : 0) + (status > 0 ? status * (centered ? 2 : 1) + 28 : 0);
         return new(tile, visible, viewport, status, Math.Min(width, Math.Max(880, railEnvelope)), overflow);
     }

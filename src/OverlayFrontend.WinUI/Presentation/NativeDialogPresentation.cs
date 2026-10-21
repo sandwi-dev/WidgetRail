@@ -54,7 +54,7 @@ internal sealed class NativeDialogPresentation : IDisposable
     {
         if (disposed || updating || !dialog.IsLoaded || dialog.XamlRoot is not { } root || !origin.IsLoaded || !ReferenceEquals(origin.XamlRoot, root)) return;
         // Floating keyboards and notification inboxes own their native placement.
-        if (dialog is WidgetTextEntryDialog { IsFloating: true } || dialog is Shell.HostChoiceDialog { HasCustomPlacement: true }) return;
+        if (dialog is WidgetTextEntryDialog { IsFloating: true }) return;
         panel ??= FindPart<FrameworkElement>(dialog, "BackgroundElement");
         if (panel is null || root.Size.Width <= 0 || root.Size.Height <= 0) return;
         updating = true;

@@ -24,19 +24,7 @@ internal sealed partial class OverlayShellPage
         notificationBadge.Child = notificationCount;
         content.Children.Add(notificationBadge); notificationBell.Content = content;
         AutomationProperties.SetAutomationId(notificationBell, "Overlay.Notifications");
-        notificationBell.Click += async (_, _) => { SetInteractive(false); await ShowNotificationsAsync(); };
-        notificationBell.GettingFocus += (_, args) =>
-        {
-            // Share the rail's ownership boundary. Native removal can carry a
-            // Pointer focus state even though no pointer input occurred.
-            if (!retired && !AllowsNativeShellFocusTransfer(args))
-            { args.TryCancel(); return; }
-            if (visible && !switching && !HostChoiceActive &&
-                (args.FocusState == FocusState.Pointer || args.Direction != FocusNavigationDirection.None))
-            { ClearTrayFocus(); SetInteractive(false); }
-        };
-        notificationBell.GotFocus += (_, _) => PublishControllerGuide();
-        notificationBell.LostFocus += (_, _) => PublishControllerGuide();
+        InitializeUtilities();
         RefreshNotificationBell(); PaintNotificationBell();
     }
     private void RefreshNotificationBell()
@@ -51,11 +39,15 @@ internal sealed partial class OverlayShellPage
     private void PaintNotificationBell()
     {
         var palette = ShellChromePalette.Resolve(ShellPalette, Appearance);
-        notificationBell.Foreground = new SolidColorBrush(palette.Text);
-        notificationBell.Background = new SolidColorBrush(palette.Surface);
-        notificationBell.BorderBrush = new SolidColorBrush(palette.HighContrast ? palette.Focus :
-            ShellChromePalette.Blend(palette.Surface, palette.Text, .18));
-        notificationBell.FocusVisualPrimaryBrush = new SolidColorBrush(palette.Focus);
+        foreach (var icon in new[] { notificationBell, taskSwitcherButton })
+        {
+            icon.Foreground = new SolidColorBrush(palette.Text);
+            icon.Background = new SolidColorBrush(palette.Surface);
+            icon.BorderBrush = new SolidColorBrush(palette.HighContrast ? palette.Focus : ShellChromePalette.Blend(palette.Surface, palette.Text, .18));
+            icon.FocusVisualPrimaryBrush = new SolidColorBrush(palette.Focus);
+        }
+        utilityPlacement = null;
+        PositionUtilityPanel();
         notificationBadge.Background = new SolidColorBrush(palette.Selected);
         notificationCount.Foreground = new SolidColorBrush(palette.SelectedText);
     }
@@ -63,14 +55,29 @@ internal sealed partial class OverlayShellPage
     {
         if (RailStatusHost.Visibility != Visibility.Visible) return false;
         var left = Appearance.OverlayPosition == OverlayPosition.BottomLeft;
-        if (notificationBell.FocusState != FocusState.Unfocused)
+        if (UtilityListFocused)
         {
-            if (direction == (left ? FocusNavigationDirection.Right : FocusNavigationDirection.Left)) FocusTray();
+            if (direction is FocusNavigationDirection.Up or FocusNavigationDirection.Down)
+                utilityPanel?.Move(direction == FocusNavigationDirection.Up ? -1 : 1);
+            return true;
+        }
+        if (UtilityIconFocused)
+        {
+            if (direction == FocusNavigationDirection.Up) utilityPanel?.Enter();
+            else if (direction is FocusNavigationDirection.Left or FocusNavigationDirection.Right)
+            {
+                var next = taskSwitcherButton.FocusState != FocusState.Unfocused ?
+                    (direction == FocusNavigationDirection.Left ? notificationBell : null) :
+                    (direction == FocusNavigationDirection.Right ? taskSwitcherButton : null);
+                if (next is not null) FocusUtility(ReferenceEquals(next, taskSwitcherButton) ? ShellUtility.Tasks : ShellUtility.Notifications);
+                else if (direction == (left ? FocusNavigationDirection.Right : FocusNavigationDirection.Left))
+                { CloseUtilityPanel(); FocusTray(); }
+            }
             return true;
         }
         if (direction == (left ? FocusNavigationDirection.Left : FocusNavigationDirection.Right) &&
             FocusedTrayWidget() is { } widget && catalogItems.IndexOf(widget) == (left ? 0 : catalogItems.Count - 1))
-        { notificationBell.Focus(FocusState.Keyboard); return true; }
+        { (left ? taskSwitcherButton : notificationBell).Focus(FocusState.Keyboard); return true; }
         return false;
     }
 }

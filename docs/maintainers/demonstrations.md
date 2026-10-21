@@ -12,8 +12,10 @@ Do not label a mockup, a set of stills or a standalone game clip as that workflo
 
 ## Capture coverage
 
-The set contains 32 screenshots covering 19 marketplace widgets plus Settings and
-Catalogue. Discord and Recent Apps were intentionally skipped. Playnite titles,
+The set contains 32 screenshots captured when 19 marketplace widgets plus Settings
+and Catalogue were available. Task Switcher has since become a host utility; its
+earlier thumbnail screenshot is labeled historical in the gallery. Discord and
+Recent Apps were intentionally skipped. Playnite titles,
 play history and achievement progress are approved for inclusion; account
 identifiers remain excluded. Task Switcher was captured after the other
 applications were minimized, so their contents are not visible.

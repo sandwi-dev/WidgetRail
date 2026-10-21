@@ -117,9 +117,15 @@ A public soundtrack search and its playback controls, including the pinned playe
 
 ## Task Switcher
 
-A live game thumbnail beside minimized applications; no conversation or terminal contents are visible.
+Task Switcher now opens as a compact host-owned list beside Notifications.
+[Controls and switching behavior](../reference/task-switcher.md).
 
-![Task switcher in WidgetRail](../images/widgets/task-switcher.png)
+<details>
+<summary>Earlier widget screenshot (before the host utility)</summary>
+
+![Earlier Task Switcher widget with live thumbnails](../images/widgets/task-switcher.png)
+
+</details>
 
 ## Twitch
 

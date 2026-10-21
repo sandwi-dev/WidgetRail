@@ -10,6 +10,7 @@ var allTests = new (string Name, Func<Task> Run)[]
 {
     ("Initial bundle seeds ordinary enabled widgets once and respects removals", InitialBundleLifecycle),
     ("Initial bundle preserves existing selections and rejects wrong identities", InitialBundleSafety),
+    ("Host utilities retire only replaced packages and cannot be seeded again", RetiredHostUtilities),
     ("Reviewed updates reuse retained bytes after rollback and reject conflicting archives", RetainedUpdateReuse),
     ("Malformed retention receipts cannot delete packages or block catalog use", RetentionMalformedReceipts),
     ("Updates retain current and previous versions across repeated publication", RetentionUpdates),
@@ -140,6 +141,27 @@ static async Task InitialBundleSafety()
     var results = await Task.WhenAll(SeedPackage(other, archive, id), SeedPackage(new WidgetCatalog(other.Root), archive, id));
     Assert.Equal(1, results.Count(installed => installed));
     Assert.Equal(1, (await other.DiscoverAsync()).Widgets.Count);
+}
+
+static async Task RetiredHostUtilities()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = new WidgetCatalog(Path.Combine(temp.Path, "catalog"));
+    foreach (var id in new[] { "widgetrail.firstparty.task-switcher", "widgetrail.firstparty.recent-apps" })
+    {
+        await catalog.InstallAsync(CreatePackage(temp.Path, id, "widgetrail.firstparty", "1.0.0"));
+        await catalog.SetEnabledAsync(id, true);
+    }
+    const string retained = "dev.test.keep";
+    await catalog.InstallAsync(CreatePackage(temp.Path, retained, "dev.test", "1.0.0"));
+    var warnings = new List<string>();
+    await catalog.RetireHostUtilityPackagesAsync(warnings.Add, CancellationToken.None);
+    Assert.Equal(0, warnings.Count);
+    Assert.Equal(retained, (await catalog.DiscoverAsync()).Widgets.Single().Id);
+    await catalog.RetireHostUtilityPackagesAsync(warnings.Add, CancellationToken.None);
+    Assert.True(!await SeedPackage(catalog, CreatePackage(temp.Path, "widgetrail.firstparty.task-switcher", "widgetrail.firstparty", "2.0.0"),
+        "widgetrail.firstparty.task-switcher"), "An old initial bundle resurrected the retired widget");
+    Assert.Equal(retained, (await catalog.DiscoverAsync()).Widgets.Single().Id);
 }
 
 static async Task<InstalledWidgetVersion> RetentionUpdate(WidgetCatalog catalog, string package,

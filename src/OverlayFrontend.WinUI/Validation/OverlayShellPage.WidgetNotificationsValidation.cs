@@ -48,8 +48,8 @@ internal sealed partial class OverlayShellPage
         await WebAppUntil(() => center.Inbox.Entries.Count == 1);
         check(center.Inbox.Entries[0].Interactive, "Ordinary widget can independently request pending retention and open-widget interaction");
         var pending = OpenNotificationListForValidation();
-        await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
-        var list = FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!;
+        await WebAppUntil(() => utilityPanel is { IsLoaded: true });
+        var list = FindControl<ListView>(utilityPanel!, "Overlay.Utility.List")!;
         list.SelectedIndex = 0; ((Control)list.Items[0]).Focus(FocusState.Keyboard);
         Receive(new WidgetRail.OverlayPlatformClient.ControllerFrame { Connected = 1 });
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Pressed);
@@ -62,14 +62,14 @@ internal sealed partial class OverlayShellPage
         center.Publish("webapp-a", new object(), new("information", new("information", "Informational fixture")
         { Interaction = WidgetNotificationInteraction.Informational }), () => true);
         pending = OpenNotificationListForValidation();
-        await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
-        list = FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!;
+        await WebAppUntil(() => utilityPanel is { IsLoaded: true });
+        list = FindControl<ListView>(utilityPanel!, "Overlay.Utility.List")!;
         list.SelectedIndex = 0; ((Control)list.Items[0]).Focus(FocusState.Keyboard);
-        check(!hostChoiceDialog!.FocusedChoiceIsActionable, "Informational pending entries do not advertise an Open action");
+        check(!utilityPanel!.FocusedActionable, "Informational pending entries do not advertise an Open action");
         Receive(new WidgetRail.OverlayPlatformClient.ControllerFrame { Connected = 1 });
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Pressed);
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
-        check(HostChoiceActive && center.Inbox.Entries.Count == 1, "A on an informational entry does not activate or dismiss it");
+        check(utilityPanel is not null && center.Inbox.Entries.Count == 1, "A on an informational entry does not activate or dismiss it");
         await RouteButtonAsync(ControllerButton.X, ControllerEventPhase.Pressed);
         await RouteButtonAsync(ControllerButton.X, ControllerEventPhase.Released);
         await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);

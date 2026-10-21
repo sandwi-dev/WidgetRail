@@ -18,9 +18,10 @@ self-contained WinUI frontend and private service runtimes. No application MSIX,
 identity-package registration or certificate trust is required. See the
 [installer contract](../../eng/installer/README.md).
 
-Bare contains Settings and WidgetRail Catalogue. Production adds the initial
+Bare contains Settings and WidgetRail Catalogue. Task Switcher and Notifications
+are host utilities available in both bundles. Production adds the initial
 optional-widget selection in `eng/release-content.json`: Capture Library,
-Performance Monitor, Now Playing, Games & Apps, Task Switcher, Audio Mixer,
+Performance Monitor, Now Playing, Games & Apps, Audio Mixer,
 Network Controls, Power and Browser. Both bundles have the same host capabilities,
 runtimes and CLI. Developer edition is retired. SDK Gallery, Clock, Embedded Media
 Sample and Full Application Reference remain buildable source examples; they are

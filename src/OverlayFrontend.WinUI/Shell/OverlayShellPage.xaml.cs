@@ -69,6 +69,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         preferencesStore = new(options.SettingsRoot);
         interactionAdmission = new(transitions);
         InitializeComponent();
+        InitializeNotificationBell();
         InitializeSystemStatus(startService);
         InitializeTrayCommands();
         InitializePinnedPlacement();
@@ -505,7 +506,11 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (retired || visible == value) return;
         retainingExitPresentation = !value && retainExitPresentation;
         ProductionRoot.IsHitTestVisible = value;
-        if (!value) { localInstallCancellation?.Cancel(); webAppEditor?.Close(); }
+        if (!value)
+        {
+            if (retainExitPresentation) SuspendUtilityPanel(); else CloseUtilityPanel(cancelSwitch: false);
+            localInstallCancellation?.Cancel(); webAppEditor?.Close();
+        }
         if (!value) intentCancellation?.Cancel();
         if (!value) CancelPinnedAdjustment(restoreFocus: false);
         if (!value) ExitPinnedInteraction(restoreMain: false);
@@ -523,7 +528,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             retained.Visibility = Visibility.Visible;
             if (interactive) retained.RestoreRetainedFocusPresentation();
         }
-        if (value) EnsureStarted();
+        if (value) { ResumeUtilityPanel(); EnsureStarted(); }
         if (!value)
         {
             switchCancellation?.Cancel();
@@ -549,6 +554,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         if (!retainingExitPresentation) return;
         retainingExitPresentation = false;
+        CloseUtilityPanel(cancelSwitch: false);
         if (retired || visible) return;
         openingIndicator?.Clear();
         ReconcilePreviewVisibility();
@@ -561,7 +567,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (interactive == value || retired) return;
         if (!value) interactionAdmission.Invalidate();
         interactive = value;
-        if (value) ResetTrayInteraction();
+        if (value) { CloseUtilityPanel(); ResetTrayInteraction(); }
         UpdateTrayHelp();
         surface?.SetAutomaticFocusEnabled(MainFocusEnabled);
         ReconcileMediaHostState();
@@ -644,6 +650,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private void FocusTray()
     {
+        if (utilityPanel is not null)
+        { if (!UtilityListFocused && !UtilityIconFocused) UtilityIcon.Focus(FocusState.Keyboard); return; }
         var index = Math.Max(0, Tray.SelectedIndex);
         if (Tray.Items.Count == 0) return;
         RequestTrayFocus(Tray.Items[index]);
@@ -875,6 +883,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         interactionAdmission.Invalidate();
         retired = true;
+        CloseUtilityPanel();
+        await utilityRefresh;
         DisposeNotificationBanner();
         if (owner is not null) owner.Session.NotificationReceived -= ReceiveWidgetNotification;
         if (owner is not null) owner.Session.ActivityReceived -= ReceiveWidgetActivity;

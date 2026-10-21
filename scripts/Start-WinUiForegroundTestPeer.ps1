@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$ReadyPath, [Parameter(Mandatory)][string]$StopPath, [string]$PeerName = 'peer')
+param([Parameter(Mandatory)][string]$ReadyPath, [Parameter(Mandatory)][string]$StopPath, [string]$PeerName = 'peer', [switch]$StartMinimized, [switch]$OwnedPopup)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -TypeDefinition @'
@@ -30,6 +30,16 @@ $peerLabel.Dock = [System.Windows.Forms.DockStyle]::Fill
 $peerLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
 $peerForm.Controls.Add($peerLabel)
 $script:peerPublished = $false
+$script:popupArmed = $false
+$script:ownedPeerPopup = $null
+$peerForm.Add_Activated({
+    if ($script:popupArmed -and $null -eq $script:ownedPeerPopup) {
+        $script:ownedPeerPopup = [System.Windows.Forms.Form]::new()
+        $script:ownedPeerPopup.Text = 'Owned fixture dialog'
+        $script:ownedPeerPopup.ClientSize = [System.Drawing.Size]::new(240, 80)
+        $script:ownedPeerPopup.Show($peerForm)
+    }
+})
 function Publish-VisiblePeer {
     # Hide the PowerShell console, not the test HWND. Startup SW_HIDE can override
     # WinForms' first Show, so make this explicit after the message loop starts.
@@ -39,8 +49,10 @@ function Publish-VisiblePeer {
     [void][ForegroundTestPeerIdentity]::GetClassNameW($peerForm.Handle, $peerClass, 256)
     $peerIdentity = @{ Handle = [uint64]$peerForm.Handle.ToInt64(); ProcessId = [uint32]$PID;
         ProcessCreated = [uint64][System.Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().ToFileTimeUtc(); ClassName = $peerClass.ToString() }
+    if ($StartMinimized) { [void][ForegroundTestPeerIdentity]::ShowWindow($peerForm.Handle, 6) }
     @{ processId = $PID; window = $peerForm.Handle.ToInt64(); target = $peerIdentity } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ReadyPath
     $script:peerPublished = $true
+    $script:popupArmed = [bool]$OwnedPopup
 }
 $peerTimer = [System.Windows.Forms.Timer]::new()
 $peerTimer.Interval = 100
@@ -50,4 +62,4 @@ $peerTimer.Add_Tick({
 })
 $peerTimer.Start()
 try { [System.Windows.Forms.Application]::Run($peerForm) }
-finally { $peerTimer.Dispose(); $peerForm.Dispose() }
+finally { $peerTimer.Dispose(); if ($script:ownedPeerPopup) { $script:ownedPeerPopup.Dispose() }; $peerForm.Dispose() }

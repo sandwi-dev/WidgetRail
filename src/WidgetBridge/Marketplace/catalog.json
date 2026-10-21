@@ -101,14 +101,6 @@
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/games-apps.png"]
   },
   {
-    "id": "widgetrail.firstparty.task-switcher",
-    "publisher": "widgetrail.firstparty",
-    "name": "Task Switcher",
-    "description": "Switch between open windows and close or restart applications with your controller.",
-    "setupRequirements": [],
-    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/d7fecbcb0cd5af92b465d015d284c5ce7fc89145/docs/images/widgets/task-switcher.png"]
-  },
-  {
     "id": "widgetrail.firstparty.network-controls",
     "publisher": "widgetrail.firstparty",
     "name": "Network Controls",
@@ -125,14 +117,6 @@
     "description": "Sleep, restart or shut down your PC from the overlay.",
     "setupRequirements": [],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/power.png"]
-  },
-  {
-    "id": "widgetrail.firstparty.recent-apps",
-    "publisher": "widgetrail.firstparty",
-    "name": "Recent Apps",
-    "description": "Reopen recently used applications from a compact list.",
-    "setupRequirements": [],
-    "screenshots": []
   },
   {
     "id": "widgetrail.samples.browser",

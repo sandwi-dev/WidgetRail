@@ -20,8 +20,8 @@ internal sealed partial class OverlayShellPage
         check(center.Inbox.Entries.Count(entry => ReferenceEquals(entry.Owner, appUpdateNotificationOwner)) == 1,
             "Repeated startup request and event do not duplicate the pending update");
         var pending = OpenNotificationListForValidation();
-        await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
-        var list = FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!;
+        await WebAppUntil(() => utilityPanel is { IsLoaded: true });
+        var list = FindControl<ListView>(utilityPanel!, "Overlay.Utility.List")!;
         list.SelectedIndex = 0; ((Control)list.Items[0]).Focus(FocusState.Keyboard);
         Receive(new WidgetRail.OverlayPlatformClient.ControllerFrame { Connected = 1 });
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Pressed);

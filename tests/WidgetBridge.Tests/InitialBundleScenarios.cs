@@ -61,6 +61,17 @@ internal static class InitialBundleScenarios
             await BridgeInitialWidgetSeeder.SeedAsync(app, store, warnings.Add, default);
             Check(warnings.Count == 3 && !(await catalog.DiscoverAsync()).Widgets.Any(widget=>widget.Id==full),
                 "Bundle bypassed full-access consent");
+
+            foreach (var retired in new[] { "widgetrail.firstparty.task-switcher", "widgetrail.firstparty.recent-apps" })
+            {
+                archive = WritePackage(app, retired, false);
+                await catalog.InstallAsync(archive);
+                await Index(app, retired, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(archive))));
+                File.Delete(archive);
+                await BridgeInitialWidgetSeeder.SeedAsync(app, store, warnings.Add, default);
+                Check(warnings.Count == 3 && !(await catalog.DiscoverAsync()).Widgets.Any(widget => widget.Id == retired),
+                    "Retired host utility survived startup or its obsolete seed archive was accessed");
+            }
         }
         finally { Directory.Delete(root, true); }
     }

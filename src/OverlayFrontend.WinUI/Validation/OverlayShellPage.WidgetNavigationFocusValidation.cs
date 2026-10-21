@@ -20,7 +20,6 @@ internal sealed partial class OverlayShellPage
         var descriptor = new BridgeWidgetDescriptor { Id = "focus.fixture", Name = "Synthetic music", Icon = WidgetGlyph.Music,
             InstanceId = "focus.instance", RuntimeGeneration = "runtime", PresentationGeneration = "presentation", PackageContentDigest = "", NotificationCategories = (WidgetNotificationCategory[])[new("songs", "Song changes", "Brief banners with artwork, artist and duration.", false, Retention: WidgetNotificationRetention.BannerOnly)] };
         long sequence = 0;
-        InitializeNotificationBell();
         notificationBell.GettingFocus += (_, args) => trace.Add($"bell direction={args.Direction} state={args.FocusState} applying={surface?.IsApplyingPresentation} interactive={interactive}");
         visible = foreground = true;
         Render("library");

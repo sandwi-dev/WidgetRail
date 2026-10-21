@@ -15,11 +15,13 @@ internal sealed partial class OverlayShellPage
         var statusRow = new Grid { ColumnSpacing = 4 };
         statusRow.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
         statusRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        statusRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         statusRow.Children.Add(systemStatus);
         statusRow.Children.Add(notificationBell); Grid.SetColumn(notificationBell, 1);
+        statusRow.Children.Add(taskSwitcherButton); Grid.SetColumn(taskSwitcherButton, 2);
         statusRow.SizeChanged += (_, _) =>
         {
-            if (systemStatus is { } status) status.Visibility = statusRow.ActualWidth >= 152
+            if (systemStatus is { } status) status.Visibility = statusRow.ActualWidth >= 200
                 ? Visibility.Visible : Visibility.Collapsed;
         };
         RailStatusHost.Content = statusRow;

@@ -19,6 +19,7 @@ internal sealed partial class OverlayShellPage
         Func<WidgetPresentationFrame, CancellationToken, Task>? beforeReveal = null, CancellationToken selectionCancellation = default)
     {
         if (retired || owner is null) return;
+        if (enterWidget || id != activeWidget) CloseUtilityPanel();
         if (!preserveIntent) intentCancellation?.Cancel();
         // Closing focused switcher chrome can synchronously give XAML focus to
         // the preview's first control. Capture/revoke before that happens so a

@@ -62,7 +62,7 @@ internal sealed partial class OverlayShellPage
         await page.EvaluateFixtureAsync("window.notificationEvents=[];window.n=new Notification('Controller notification',{body:'Synthetic list action'});n.onshow=()=>notificationEvents.push('shown');n.onclick=()=>notificationEvents.push('clicked');n.onclose=()=>notificationEvents.push('closed');");
         await WebAppUntil(() => inbox.Entries.Count == 1);
         var pending = OpenNotificationListForValidation();
-        await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
+        await WebAppUntil(() => utilityPanel is { IsLoaded: true });
         await WebAppUntil(() => inbox.Entries[0].WasShown);
         check(notificationBadge.Visibility == Visibility.Visible && notificationCount.Text == "1", "Bell counts pending entries rather than unread entries");
         foreach (var count in new[] { "1", "8", "99+" })
@@ -71,15 +71,14 @@ internal sealed partial class OverlayShellPage
             await CapturePopupDecisionAsync(notificationBell, "notification-badge-" + count.Replace("+", "plus"));
         }
         RefreshNotificationBell();
-        await CapturePopupDecisionAsync(hostChoiceDialog!, "notifications");
-        var panelBounds = hostChoiceDialog!.PendingPanelBounds;
+        await CapturePopupDecisionAsync(utilityPanel!, "notifications");
+        var panelBounds = utilityPanel!.TransformToVisual(null).TransformBounds(new(0, 0, utilityPanel.ActualWidth, utilityPanel.ActualHeight));
         var bellBounds = notificationBell.TransformToVisual(null).TransformBounds(new(0, 0, notificationBell.ActualWidth, notificationBell.ActualHeight));
         check(panelBounds.Width > 0 && panelBounds.Bottom <= bellBounds.Y &&
             panelBounds.X <= bellBounds.X + bellBounds.Width && panelBounds.Right >= bellBounds.X,
             $"Pending panel is anchored above the bell and stays within the native root: panel={panelBounds}, bell={bellBounds}");
-        FindControl<Button>(hostChoiceDialog!, "Host.Choice.Close")!.Focus(FocusState.Keyboard);
-        await WebAppUntil(() => FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!.SelectedIndex == -1);
-        check(true, "Notification footer focus clears the previous entry highlight");
+        ReturnToUtilityIcon();
+        check(UtilityIconFocused, "Returning to the icon leaves the panel visible");
         Receive(new ControllerFrame { Connected = 1 });
         await Press(ControllerButton.X);
         check(inbox.Entries.Count == 1, "X on the notification dialog Close control does not dismiss an unfocused entry");
@@ -90,7 +89,7 @@ internal sealed partial class OverlayShellPage
         await page.EvaluateFixtureAsync("n.onclose=()=>{notificationEvents.push('closed');window.n=new Notification('New while open');n.onclick=()=>notificationEvents.push('clicked');};");
         pending = OpenNotificationListForValidation();
         await FocusEntry(); await Press(ControllerButton.X);
-        check(HostChoiceActive, "X dismisses the focused notification and keeps the list open");
+        check(utilityPanel is not null, "X dismisses the focused notification and keeps the list open");
         await WebAppUntil(() => inbox.Entries.Count == 1 && inbox.Entries[0].Title == "New while open");
         await FocusEntry(); await Press(ControllerButton.A); await pending;
         await WebAppUntilScript(page, "notificationEvents.includes('closed') && notificationEvents.includes('clicked')");
@@ -124,8 +123,8 @@ internal sealed partial class OverlayShellPage
 
         async Task FocusEntry()
         {
-            await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
-            var list = FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!;
+            await WebAppUntil(() => utilityPanel is { IsLoaded: true });
+            var list = FindControl<ListView>(utilityPanel!, "Overlay.Utility.List")!;
             await WebAppUntil(() => list.Items.Count > 0);
             // The next A/X can arrive before the queued selection repaint.
             list.SelectedIndex = -1;
@@ -143,16 +142,16 @@ internal sealed partial class OverlayShellPage
             () => throw new InvalidOperationException("Stale click"), () => { }, () => { });
         var missing = inbox.Add("removed-widget", "default", "https://fixture.invalid", "", "Old notification", "Its widget was removed", new object(), callbacks, NotificationPresentation.ListOnly)!;
         var pending = OpenNotificationListForValidation();
-        await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
-        var dialog = hostChoiceDialog!;
-        var list = FindControl<ListView>(dialog, "Host.Choice.Options")!;
+        await WebAppUntil(() => utilityPanel is { IsLoaded: true });
+        var dialog = utilityPanel!;
+        var list = FindControl<ListView>(dialog, "Overlay.Utility.List")!;
         list.SelectedIndex = 0; ((Control)list.Items[0]).Focus(FocusState.Keyboard);
         Receive(new ControllerFrame { Connected = 1 });
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Pressed);
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
-        check(ReferenceEquals(hostChoiceDialog, dialog) && inbox.Find(missing.Id) is null,
+        check(ReferenceEquals(utilityPanel, dialog) && inbox.Find(missing.Id) is null,
             "Missing widget notification is dismissed inside the same panel without a warning dialog");
-        check(FindControl<TextBlock>(dialog, "Overlay.NotificationStatus")!.Text == "This notification is no longer available.",
+        check(FindControl<TextBlock>(dialog, "Overlay.Utility.Status")!.Text == "This notification is no longer available.",
             "Unavailable notification explains itself inline with no extra action");
         await CapturePopupDecisionAsync(dialog, "notifications-unavailable");
         await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
@@ -160,12 +159,12 @@ internal sealed partial class OverlayShellPage
 
         var stale = inbox.Add("webapp-a", "default", "https://fixture.invalid", "", "Session ended", "Open the webapp normally", new object(), callbacks, NotificationPresentation.ListOnly)!;
         pending = OpenNotificationListForValidation();
-        await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
-        dialog = hostChoiceDialog!; list = FindControl<ListView>(dialog, "Host.Choice.Options")!;
+        await WebAppUntil(() => utilityPanel is { IsLoaded: true });
+        dialog = utilityPanel!; list = FindControl<ListView>(dialog, "Overlay.Utility.List")!;
         list.SelectedIndex = 0; ((Control)list.Items[0]).Focus(FocusState.Keyboard);
         var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot);
         var arriving = inbox.Add("webapp-a", "default", "https://fixture.invalid", "", "New arrival", "Keep selection stable", new object(), callbacks, NotificationPresentation.ListOnly)!;
-        check(ReferenceEquals(focused, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot)) && list.SelectedIndex == 0,
+        check(ReferenceEquals(focused, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot)) && utilityPanel!.FocusedId == stale.Id.ToString(),
             "New arrivals preserve the user's selected notification and native focus");
         await WebAppUntil(() => list.Items.Count == 2 && ((Control)list.Items[1]).IsLoaded && ((Control)list.Items[1]).ActualHeight > 0);
         check(((ListViewItem)list.Items[1]).Content is NotificationCard { TitleText.Text: "New arrival" },
@@ -174,28 +173,25 @@ internal sealed partial class OverlayShellPage
         Receive(new ControllerFrame { Connected = 1 });
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Pressed);
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released); await pending;
-        check(activeWidget == "webapp-a" && inbox.Find(stale.Id) is null && !HostChoiceActive,
+        check(activeWidget == "webapp-a" && inbox.Find(stale.Id) is null && utilityPanel is null,
             "A on a stale notification opens its widget and removes the entry without requiring confirmation");
         inbox.Clear();
         SetInteractive(false); RefreshRadialChooser();
         check(notificationBell.Focus(FocusState.Keyboard), "Notification bell receives native controller focus beside the clock");
         pending = OpenNotificationListForValidation();
-        await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
+        await WebAppUntil(() => utilityPanel is { IsLoaded: true });
         check(notificationBadge.Visibility == Visibility.Collapsed && notificationBell.Visibility == Visibility.Visible,
             "Empty notifications hide the badge while retaining the bell");
-        await CapturePopupDecisionAsync(hostChoiceDialog!, "notifications-empty");
+        await CapturePopupDecisionAsync(utilityPanel!, "notifications-empty");
         inbox.Add("webapp-a", "default", "https://fixture.invalid", "", "After empty", "Clear all footer", new object(), callbacks, NotificationPresentation.ListOnly);
-        var footerDialog = hostChoiceDialog!;
-        check(FindControl<Button>(footerDialog, "Host.Choice.Secondary")!.Focus(FocusState.Keyboard), "Clear all is a focusable secondary footer action");
+        var footerDialog = utilityPanel!;
+        check(FindControl<Button>(footerDialog, "Overlay.Utility.Command")!.Focus(FocusState.Keyboard), "Clear all is a focusable secondary footer action");
         Receive(new ControllerFrame { Connected = 1 });
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Pressed);
         await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
-        check(ReferenceEquals(hostChoiceDialog, footerDialog) && inbox.Entries.Count == 0,
+        check(ReferenceEquals(utilityPanel, footerDialog) && inbox.Entries.Count == 0,
             "Controller Clear all empties the pending panel without closing it");
-        Receive(new ControllerFrame { Connected = 1 });
-        await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
-        await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released); await pending;
-        check(notificationBell.FocusState != FocusState.Unfocused, "Closing the pending panel restores focus to its bell");
+        check(notificationBell.FocusState != FocusState.Unfocused, "Clearing the last entries returns focus to the bell");
         await SelectAsync("webapp-a", enterWidget: true);
     }
 
@@ -223,8 +219,8 @@ internal sealed partial class OverlayShellPage
         ExitPinnedInteraction(restoreMain: true);
         await WebAppUntil(() => foreground && !PinnedInputActive);
         var pending = OpenNotificationListForValidation();
-        await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
-        var list = FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!;
+        await WebAppUntil(() => utilityPanel is { IsLoaded: true });
+        var list = FindControl<ListView>(utilityPanel!, "Overlay.Utility.List")!;
         list.SelectedIndex = 0;
         ((Control)list.Items[0]).Focus(FocusState.Keyboard);
         Receive(new ControllerFrame { Connected = 1 });

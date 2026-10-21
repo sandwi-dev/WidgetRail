@@ -85,7 +85,7 @@ internal static class Program
                     // catalog lane; watch-triggered reload cancellation must not
                     // abandon an in-progress package publication.
                     initialWidgetSeeding ??= BridgeInitialWidgetSeeder.SeedAsync(
-                        installationRoot, installedCatalogRoot, Console.Error.WriteLine, shutdown.Token);
+                        installationRoot, installedCatalogRoot, Console.Error.WriteLine, shutdown.Token, settingsPaths.RootDirectory);
                     await initialWidgetSeeding.WaitAsync(cancellationToken).ConfigureAwait(false);
                     var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(false);
                     var apps = await userWebApps.ReadAsync(cancellationToken).ConfigureAwait(false);

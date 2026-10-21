@@ -82,10 +82,6 @@ internal static class FocusSelectionThemeTests
             Equal(Resolve(network, "button", ["network-secondary-action"]).Get("color")?.Text,
                 Resolve(network, "button", ["network-secondary-action"], WrssPseudoState.Focused).Get("color")?.Text,
                 "Network secondary action keeps neutral ink on focus");
-            var recent = Fixture("RecentApps");
-            Equal(Resolve(shared, "panel", []).Get("background")?.Text,
-                Resolve(recent, "stack", ["recent-apps-widget"]).Get("background")?.Text,
-                "Recent Apps follows the selected surface palette");
             var gallery = Fixture("SdkGallery");
             foreach (var tone in new[] { "info", "success", "warning", "danger" })
                 Equal(Resolve(shared, "text", ["wrail-badge__label", "wrail-badge__label--" + tone]).Get("color")?.Text,

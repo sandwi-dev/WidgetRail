@@ -56,7 +56,7 @@ under **Accessibility**. More setup can wait until after your first useful actio
 | --- | --- |
 | Turn down a loud app or change audio devices | Audio Mixer |
 | Launch a game or application | Games & Apps |
-| Switch to another window | Task Switcher |
+| Switch to another window | Task Switcher beside the notification bell |
 | Pause or skip media reported by Windows | Now Playing |
 | Adjust network connections or put the PC to sleep | Network Controls or Power |
 | Browse a page, or keep supported content visible while playing | Browser and widget pinning |

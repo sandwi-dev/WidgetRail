@@ -1,14 +1,14 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidateSet('Discord','GameHelp','DisplayProfiles','Twitch','MapGenie','Browser',
-        'AudioMixer','CaptureLibrary','PerformanceMonitor','MediaSessions','GamesApps','TaskSwitcher','NetworkControls','Power','RecentApps')][string]$Widget,
+        'AudioMixer','CaptureLibrary','PerformanceMonitor','MediaSessions','GamesApps','NetworkControls','Power')][string]$Widget,
     [ValidateSet('Debug','Release')][string]$Configuration = 'Release',
     [string]$OutputDirectory
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$firstParty = $Widget -in @('AudioMixer','CaptureLibrary','PerformanceMonitor','MediaSessions','GamesApps','TaskSwitcher','NetworkControls','Power','RecentApps')
+$firstParty = $Widget -in @('AudioMixer','CaptureLibrary','PerformanceMonitor','MediaSessions','GamesApps','NetworkControls','Power')
 $source = Join-Path $repository $(if ($firstParty) { "src/FirstPartyWidgets/${Widget}Widget" } else { "samples/${Widget}Widget" })
 $manifest = Get-Content -LiteralPath (Join-Path $source 'manifest.json') -Raw | ConvertFrom-Json
 $output = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $repository "artifacts/catalogue-addons/$Widget" }

@@ -16,9 +16,11 @@ internal static class BridgeInitialWidgetSeeder
     { UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow };
 
     internal static async Task SeedAsync(string installationRoot, string installedRoot,
-        Action<string> warning, CancellationToken token)
+        Action<string> warning, CancellationToken token, string? settingsRoot = null)
     {
         var root = Path.GetFullPath(installationRoot);
+        await new CatalogService(installedRoot, null, TimeProvider.System, null, settingsRoot)
+            .RetireHostUtilityPackagesAsync(warning, token).ConfigureAwait(false);
         var indexPath = Path.Combine(root, "initial-widgets.json");
         if (!File.Exists(indexPath)) return;
         try
@@ -36,7 +38,7 @@ internal static class BridgeInitialWidgetSeeder
                 throw new InvalidDataException("Initial widget index is invalid.");
             var catalog = new CatalogService(installedRoot);
             var receipts = (await catalog.InitialPackageReceiptsAsync(token).ConfigureAwait(false)).ToHashSet(StringComparer.Ordinal);
-            foreach (var entry in index.Widgets.Where(entry => !receipts.Contains(entry.Id)))
+            foreach (var entry in index.Widgets.Where(entry => !receipts.Contains(entry.Id) && !HostUtilityPackages.IsRetired(entry.Id)))
             {
                 token.ThrowIfCancellationRequested();
                 try

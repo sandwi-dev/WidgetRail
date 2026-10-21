@@ -521,7 +521,7 @@ public sealed class BridgeCatalog
         var known = combined.Select(widget => widget.Id).ToHashSet(StringComparer.Ordinal);
         var knownPackages = combined.Select(widget => widget.PackageId)
             .ToHashSet(StringComparer.Ordinal);
-        foreach (var widget in widgets.Where(item => item.Enabled))
+        foreach (var widget in widgets.Where(item => item.Enabled && !HostUtilityPackages.IsRetired(item.Id)))
         {
             if (combined.Count == 256)
             {

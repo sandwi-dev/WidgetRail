@@ -67,14 +67,6 @@
       "quickActions": []
     },
     {
-      "id": "task-switcher",
-      "packageId": "widgetrail.firstparty.task-switcher",
-      "instanceId": "task-switcher.default",
-      "packageRoot": "runtime/TaskSwitcher",
-      "icon": "fullscreen",
-      "quickActions": []
-    },
-    {
       "id": "audio-mixer",
       "packageId": "widgetrail.firstparty.audio-mixer",
       "instanceId": "audio-mixer.default",

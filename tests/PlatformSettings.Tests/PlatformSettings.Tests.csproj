@@ -23,9 +23,7 @@
     <None Include="..\..\src\FirstPartyWidgets\GamesAppsWidget\styles\default.wrss" Link="ThemeFixtures\GamesApps.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\FirstPartyWidgets\NetworkControlsWidget\styles\default.wrss" Link="ThemeFixtures\NetworkControls.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\FirstPartyWidgets\PowerWidget\styles\default.wrss" Link="ThemeFixtures\Power.wrss" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\src\FirstPartyWidgets\RecentAppsWidget\styles\default.wrss" Link="ThemeFixtures\RecentApps.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SdkGalleryWidget\styles\default.wrss" Link="ThemeFixtures\SdkGallery.wrss" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\src\FirstPartyWidgets\TaskSwitcherWidget\styles\default.wrss" Link="ThemeFixtures\TaskSwitcher.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\YouTubeWidget\styles\default.wrss" Link="ThemeFixtures\YouTubeVideo.wrss" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

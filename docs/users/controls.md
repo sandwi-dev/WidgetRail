@@ -11,7 +11,7 @@ current focus. A widget can provide its own shortcuts.
 | B | Go back; at a widget's top level, return to the tray |
 | Right stick | Scroll a scrollable area |
 | Menu on the tray | Open widget/pinning options |
-| Y on the tray | Reorder widgets; hold to reload the selected widget |
+| Y on the tray | Reorder widgets; hold to focus Task Switcher |
 
 With a keyboard, use arrows, Enter and Escape to navigate. To toggle the overlay
 with F1, enable **Settings → Controllers → F1 keyboard shortcut**. This is off by
@@ -22,6 +22,19 @@ Text fields can use the built-in controller keyboard.
 overlay restarts. Settings is always available and does not offer Stop widget;
 its Restart widget action remains available. Old saved stop choices for Settings
 are ignored. Settings still suspends when hidden.
+
+## Task Switcher and Notifications
+
+Focus either icon beside the clock to show its panel immediately. **Up** enters
+the list. **B** returns to its icon without clearing notifications or opening the
+widget wheel; B again follows the usual radial-chooser Back behavior. Left/Right
+moves between the icons and rail.
+
+**Hold Y** in the rail or radial chooser to focus Task Switcher, or choose
+**Task Switcher** in the tray menu. **A** switches to a selected window and hides
+the overlay; **X** asks the application to close that window normally. Task
+Switcher is built into the host and has no live thumbnails or widget permissions.
+[Switching details and Windows limitations](../reference/task-switcher.md).
 
 ## Audio Mixer
 

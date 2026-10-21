@@ -1,3 +1,5 @@
+using WidgetRail.PlatformBroker;
+using Microsoft.UI.Xaml;
 using System.Text.Json;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetPresentationSession;
@@ -8,18 +10,18 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     internal void EnableTaskActivationValidation(string resultPath, string peerPath,
-        Func<Task>? beforeInvoke = null, Func<List<string>, Task>? verifyHandoff = null, Action? cleanup = null, bool expectCancellation = false)
+        Func<Task>? beforeInvoke = null, Func<List<string>, Task>? verifyHandoff = null, Action? cleanup = null, bool expectCancellation = false,
+        Func<List<string>, Task>? afterSuccess = null)
     {
         Loaded += async (_, _) =>
         {
             var checks = new List<string>();
-            WidgetPresentationHostEffect? issued = null;
+            bool issued = false;
             object? observed = null;
             string? error = null;
             var trace = new List<string>();
             var originalDiagnostic = WindowActivationDiagnostic;
             WindowActivationDiagnostic = message => { trace.Add(message); originalDiagnostic?.Invoke(message); };
-            void OnEffect(WidgetPresentationHostEffect effect) => issued = effect;
             try
             {
                 using var peer = JsonDocument.Parse(File.ReadAllText(peerPath));
@@ -28,51 +30,67 @@ internal sealed partial class OverlayShellPage
                 Check(native.IsCurrent(target) && WindowsTaskWindowActivation.Observe((nint)(nuint)target.Handle).TargetVisible,
                     "Disposable peer is live and visible with exact identity");
                 if (startup is not null) await startup;
-                await SelectAsync("task-switcher", true);
-                WidgetPresentationFrame? frame = null;
-                ViewNode? button = null;
+                FocusUtility(ShellUtility.Tasks);
                 var deadline = Environment.TickCount64 + 15000;
+                TaskWindowSummary? window;
                 do
                 {
-                    frame = retainedSurfaces.GetValueOrDefault("task-switcher")?.Frame;
-                    var windowId = frame?.WindowPreviews.FirstOrDefault(pair => pair.Value.Handle == target.Handle &&
-                        pair.Value.ProcessId == target.ProcessId && pair.Value.ProcessCreated == target.ProcessCreated).Key;
-                    button = frame is null || windowId is null ? null : Walk(frame.Snapshot.Root)
-                        .FirstOrDefault(node => node.ActionId == "switch." + windowId && node.IsBusy != true);
-                    if (button is not null && !switching) break;
+                    window = utilityWindows.FirstOrDefault(item => item.PreviewTarget is { } value &&
+                        value.ProcessId == target.ProcessId && value.Handle == target.Handle.ToString("X"));
+                    if (window is not null) break;
                     await Task.Delay(50);
                 } while (Environment.TickCount64 < deadline);
-                Check(frame is not null && button is not null, "Real Task Switcher publishes exact disposable target");
-                Check(native.IsOverlayForeground && visible, "Frontend owns foreground before permission handoff");
-                TaskWindowActivationRequested += OnEffect;
+                Check(window is not null, "Host window observer publishes exact disposable target without a widget");
+                Check(native.IsOverlayForeground && visible, "Frontend owns foreground before direct handoff");
+                if (Environment.GetCommandLineArgs().Contains("--task-close-only"))
+                {
+                    var list = FindControl<Microsoft.UI.Xaml.Controls.ListView>(utilityPanel!, "Overlay.Utility.List")!;
+                    var row = list.Items.Cast<Microsoft.UI.Xaml.Controls.ListViewItem>().Single(item => (string)item.Tag == window!.WindowId);
+                    list.ScrollIntoView(row);
+                    await Task.Delay(100);
+                    Check(row.Focus(FocusState.Keyboard), "Disposable target receives focus before close");
+                    await RouteButtonAsync(ControllerButton.X, ControllerEventPhase.Pressed);
+                    await RouteButtonAsync(ControllerButton.X, ControllerEventPhase.Released);
+                    deadline = Environment.TickCount64 + 3000;
+                    while (native.IsCurrent(target) && Environment.TickCount64 < deadline) await Task.Delay(20);
+                    Check(!native.IsCurrent(target), "X closes only the disposable target through normal WM_CLOSE");
+                    await RefreshUtilityTasksAsync(utilityPanel!, lifetime.Token);
+                    await Task.Delay(100);
+                    Check(visible && native.IsOverlayForeground && (UtilityListFocused || UtilityIconFocused),
+                        "Removing the closed target keeps overlay focus and input usable");
+                    return;
+                }
                 if (beforeInvoke is not null) await beforeInvoke();
-                await InvokeAsync(new(frame!, new(button!.ActionId!, button.Id, InputScopeId: frame!.Authority.ActiveInputScopeId)));
+                var operation = ActivateUtilityItemAsync(utilityPanel!, ShellUtility.Tasks, window!.WindowId);
+                issued = pendingHostTask is not null;
                 if (verifyHandoff is not null) await verifyHandoff(checks);
                 if (expectCancellation)
                 {
+                    await operation;
                     await Task.Delay(200);
-                    Check(issued is not null && visible && native.IsOverlayForeground,
+                    Check(issued && visible && native.IsOverlayForeground,
                         "Cancelled handoff preserves the current overlay and foreground");
                     Check(!trace.Any(line => line.Contains("phase=request-activation", StringComparison.Ordinal)),
-                        "Cancelled handoff never submits activation to the broker");
+                        "Cancelled handoff never submits activation to Windows");
+                    await VerifyUtilityReentryAsync();
+                    Check(utilityPanel is { Busy: false } && utilityCancellation?.IsCancellationRequested == false,
+                        "Cancelled handoff leaves utility navigation and refresh usable");
                     return;
                 }
+                await operation;
                 deadline = Environment.TickCount64 + 3000;
-                while (Environment.TickCount64 < deadline && (visible || WindowsTaskWindowActivation.Observe(0).Foreground != (long)target.Handle))
+                while (Environment.TickCount64 < deadline && (visible || !native.IsTargetForeground(target)))
                     await Task.Delay(20);
                 await Task.Delay(200);
                 var observation = WindowsTaskWindowActivation.Observe((nint)(nuint)target.Handle);
                 observed = observation;
-                Check(issued is not null && !visible, "Real worker effect hides the overlay before completion");
-                Check(observation.Foreground == (long)target.Handle, "Exact target owns foreground after broker completion and settles for 200ms");
-                var replay = await owner!.Session.CompleteTaskActivationAsync(issued!);
-                Check(replay.Result == "Rejected" && replay.Code == "missing-expired-or-consumed-effect" && replay.ProcessId != Environment.ProcessId,
-                    "Real broker consumes ticket once and rejects replay");
+                Check(issued && !visible, "Host handoff hides the overlay before completion");
+                Check(native.IsTargetForeground(target), "Exact target or its owned dialog owns foreground after direct activation and settles for 200ms");
+                if (afterSuccess is not null) await afterSuccess(checks);
             }
             catch (Exception exception) { error = exception.ToString(); }
             finally
             {
-                TaskWindowActivationRequested -= OnEffect;
                 WindowActivationDiagnostic = originalDiagnostic;
                 cleanup?.Invoke();
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(resultPath))!);
@@ -80,10 +98,5 @@ internal sealed partial class OverlayShellPage
             }
             void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); checks.Add(message); }
         };
-        static IEnumerable<ViewNode> Walk(ViewNode node)
-        {
-            yield return node;
-            foreach (var child in node.Children ?? []) foreach (var nested in Walk(child)) yield return nested;
-        }
     }
 }

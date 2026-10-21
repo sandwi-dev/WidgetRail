@@ -12,7 +12,6 @@ internal sealed partial class OverlayShellPage
     private NotificationCenter? notificationCenter;
     private void InitializeNotifications()
     {
-        InitializeNotificationBell();
         owner!.Session.NotificationReceived += ReceiveWidgetNotification;
         owner.Session.ActivityReceived += ReceiveWidgetActivity;
         owner.Session.AppUpdateChanged += ReceiveAppUpdate;
@@ -116,62 +115,16 @@ internal sealed partial class OverlayShellPage
 
     private Task ShowNotificationsAsync() => ShowNotificationsAsync(null);
 
-    private async Task ShowNotificationsAsync(string? status)
+    private Task ShowNotificationsAsync(string? status)
     {
-        if (browserOwner is not { } browsers || HostChoiceActive) return;
+        FocusUtility(ShellUtility.Notifications);
+        if (status is not null) utilityPanel?.SetStatus(status);
+        return Task.CompletedTask;
+    }
+    private async Task OpenUtilityNotificationAsync(string selected)
+    {
+        if (browserOwner is not { } browsers) return;
         var inbox = browsers.Notifications;
-        var snapshot = inbox.Entries.ToArray();
-        var ids = snapshot.Select(entry => entry.Id).ToHashSet();
-        var choices = snapshot.Select(NotificationChoice).ToArray();
-        var selected = await ShowHostChoiceAsync("Notifications", "", choices, lifetime.Token, configure: dialog =>
-        {
-            dialog.ConfigurePendingPanel(notificationBell, Appearance.InterfaceScale);
-            dialog.SetChoiceContent(choice =>
-            {
-                if (!long.TryParse(choice.Id, out var number) || inbox.Find(number) is not { } entry) return new TextBlock { Text = choice.Label };
-                var card = new NotificationCard(ResolveTrayIconAsync);
-                card.Update(entry, catalogItems.FirstOrDefault(widget => widget.Id == entry.Widget), Appearance.TextScale * Appearance.InterfaceScale);
-                return card;
-            });
-            dialog.SecondaryButtonText = "Clear all";
-            dialog.ChoiceIsActionable = id => long.TryParse(id, out var number) && inbox.Find(number)?.Interactive == true;
-            dialog.SelectionContextChanged += PublishControllerGuide;
-            dialog.Closed += (_, _) => dialog.SelectionContextChanged -= PublishControllerGuide;
-            dialog.SecondaryButtonClick += (_, args) => { args.Cancel = true; inbox.Clear(); HideNotificationBanner(); };
-            dialog.DismissChoiceRequested += id => { if (long.TryParse(id, out var number)) inbox.Dismiss(number); };
-            dialog.ChoiceShown += id => { if (long.TryParse(id, out var number)) inbox.MarkShown(number); };
-            dialog.KeepOpenOnChoice = id =>
-            {
-                if (!long.TryParse(id, out var number)) return true;
-                if (inbox.Find(number) is { } entry)
-                {
-                    if (!entry.Interactive) return true;
-                    if (catalogItems.Any(widget => widget.Id == entry.Widget)) return false;
-                }
-                inbox.Dismiss(number);
-                dialog.ShowBriefStatus("This notification is no longer available.");
-                return true;
-            };
-            void Update()
-            {
-                foreach (var id in ids.ToArray())
-                    if (inbox.Find(id) is null) { dialog.RemoveChoice(id.ToString(CultureInfo.InvariantCulture)); ids.Remove(id); }
-                foreach (var entry in inbox.Entries)
-                {
-                    if (ids.Add(entry.Id)) dialog.AppendChoice(NotificationChoice(entry));
-                    else dialog.UpdateChoice(NotificationChoice(entry));
-                }
-                dialog.Title = inbox.Entries.Count == 0 ? "Notifications" : $"Notifications · {inbox.Entries.Count}";
-                dialog.IsSecondaryButtonEnabled = inbox.Entries.Count > 0 || inbox.OverflowCount > 0;
-                dialog.SetPendingStatus(inbox.Entries.Count == 0, inbox.OverflowCount == 0 ? null :
-                    $"{inbox.OverflowCount} additional notifications. Open the webapp for its full history.");
-                if (notificationBannerState.EntryId is { } banner && inbox.Find(banner) is null) HideNotificationBanner();
-            }
-            inbox.Changed += Update;
-            dialog.Closed += (_, _) => inbox.Changed -= Update;
-            Update();
-            if (status is not null) dialog.ShowBriefStatus(status);
-        });
         if (!long.TryParse(selected, out var id) || retired) return;
         var opened = await inbox.OpenAsync(id, async entry =>
         {

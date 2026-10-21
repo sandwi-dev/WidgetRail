@@ -1,76 +1,67 @@
 # Task Switcher
 
-The bundled Task Switcher shows up to 64 switchable application windows, with
-an application name, window title and minimized state. Windows of the same app
-remain separate. It reuses the running-window eligibility and hosted packaged
-app resolution used by Games & Apps.
+Task Switcher is a host-owned utility beside Notifications. It is available in
+both Bare and Production without installing a widget or approving widget
+permissions. Recent Apps and the separate Task Switcher widget are retired.
 
-A selects an existing window; X or the Close button posts a normal close request.
-Y refreshes, and unhandled root B returns to the tray. Close does not terminate a
-process or suppress save prompts. The card remains until observation reports
-that the window has gone. Failures use an expiring, themed toast.
+## Controls
 
-The initial order follows Windows' front-to-back window enumeration, an
-approximation of recently active order. Two-second refreshes run only during
-the active widget lifetime and retain the existing order and stable identities,
-adding new windows at the end. Reopening or explicit Refresh recalculates order.
-There is no browser-tab enumeration or virtual-desktop integration. Live previews
-use the reusable SDK content described below.
+Focus the Task Switcher icon to show its compact window list. **Up** enters the
+list; **A** switches to the selected window, and **X** requests a normal close.
+**B** returns from the list to its icon, keeping the panel visible. B on the icon
+uses the same radial-chooser Back behavior as the notification bell. Left/Right
+moves between utility icons and the rail.
 
-## Host and SDK contract
+In the rail or radial chooser, **hold Y** to focus Task Switcher. Tapping Y still
+enters reorder mode. This is a shell shortcut, not a global override of widget
+or keyboard actions. The tray menu also offers **Task Switcher** beside
+**Notifications**. Notifications follows the same focus/Up/Back flow.
 
-WidgetHostServices.TaskSwitcher exposes GetWindowsAsync, SwitchAsync and
-CloseAsync. Dedicated capabilities are system.apps.windows.read.v1,
-system.apps.windows.switch.v1, system.apps.windows.close.v1 and the optional
-system.apps.windows.preview.v1. Settings labels
-describe window titles, switching, and normal close. First-party status never
-auto-grants consent. Mutation operations require Interactive lifecycle; an
-already admitted switch may finish across foreground-driven deactivation.
+The list shows up to 64 windows with application name, window title and minimized
+state. Separate windows of one app stay separate. There are no live captures or
+thumbnail permissions. Two-second refreshes run only while its panel is open;
+existing rows retain their order and identity so refresh does not move focus.
+Closing a window does not kill its process or suppress save prompts.
 
-The SDK receives bounded text, minimized state and broker-session-scoped opaque
-WindowIds. Raw HWNDs, process IDs, process-lifetime evidence and executable
-identity remain in the trusted provider/host path. The broker translates only IDs
-from its latest list. The provider serializes observation/control, re-enumerates
-eligibility and checks window handle, owning process, window class, process
-lifetime evidence and application identity before dispatch. Native control
-rechecks immediately before the OS call. Removed or replaced targets fail safely.
+## Direct host activation
 
-The foreground overlay delegates foreground activation to its live trusted
-bridge before a user action is dispatched. Provider switching restores minimized
-windows, issues one SetForegroundWindow request and observes confirmation for
-at most 250 ms. It uses no simulated input or foreground-stealing retry.
-The existing native foreground-change path remembers the selected application
-and closes the overlay. No extra host close effect or HideOverlay change is used.
+`WindowsTaskWindowCatalog` reuses the existing running-window eligibility,
+packaged-app resolution and close policy without initializing the game/app
+library. No bridge or widget worker is involved in the host list or its actions.
 
-Close posts WM_CLOSE and acknowledges only that the request was queued. Windows
-may deny cross-integrity requests, and applications may prompt or refuse to
-close. No force-close or process-kill path exists.
+Switching uses the existing `TaskWindowActivation` admission and `MainWindow`
+handoff sequence. It verifies foreground ownership and the exact window,
+process lifetime and class; waits for controller release; completes closing
+motion; rechecks authority and identity; hides/releases the overlay; then asks
+Windows to restore and activate the target. The host observes foreground for up
+to 250 ms, accepting that target or its owned dialog, rather than treating the
+API return or an unrelated window in the same process as proof. A canceled
+handoff cannot later hide a reopened overlay.
+
+A failure before commitment restores the still-owned overlay. After commitment,
+the host does not steal focus back if Windows denies activation; the failure is
+reported when Task Switcher is next opened. Windows can still reject activation
+or cross-integrity close requests. No simulated-input workaround, retry loop or
+force-close path is used.
+
+## Upgrade and SDK compatibility
+
+Startup retires the old `widgetrail.firstparty.task-switcher` and
+`widgetrail.firstparty.recent-apps` packages through the normal disable/uninstall
+transaction. Live launch leases remain protected; deferred cleanup retries at
+startup. The old packages are no longer listed or seeded. Other widgets and their
+data/permissions are untouched.
+
+The SDK's `WidgetHostServices.TaskSwitcher` and its read/switch/close capabilities
+remain supported for third-party widgets. Those calls still require the normal
+widget permissions and lifecycle authority. Raw HWNDs and process-lifetime
+identity are host-private. The separate [window preview API](window-previews.md)
+also remains available for other features.
 
 ## Verification
 
-- TaskSwitcherWidget.Tests: 6 tests, covering root B, per-window routing, normal
-  close acknowledgement, retained rows, themed failures, ordering, lifecycle
-  refresh and malformed SDK responses.
-- WindowsAppLibraryProvider.Tests: 95 tests, including distinct windows sharing
-  one process, stable IDs, stale/reused-process rejection and cancellation.
-- PlatformBroker.Tests: 58 tests, including permission/lifecycle gating,
-  cross-session token rejection and retirement of removed windows.
-- SettingsWidget.Tests: 67 tests.
-- SDK compatibility: 14 tests; public API changes are additive (34 symbols).
-- WidgetBridge.Tests: all 129 covered by the suite plus the two corrected package
-  admission checks. New runtime inventory includes TaskSwitcher.
-- Complete Release native/managed build and sealed-package CLI validation passed.
-- Read-only live provider observation returned six distinct windows, including
-  DTS Sound Unbound with its own title. Automated checks did not close or switch
-  the user's applications.
-
-Physical acceptance is pending: enable this widget's permissions, then test
-switching, minimized-window restoration, normal close/save prompts and root B.
-
-## Live preview cards
-
-Task Switcher uses a responsive grid of landscape preview posters. The app name,
-window title and state remain visible when capture is unavailable. The new
-optional `system.apps.windows.preview.v1` permission must be enabled by the user;
-it is independent of reading window titles, switching and closing. X still
-requests a normal close from the focused poster. See [live window previews](window-previews.md).
+Focused coverage includes shell hold gestures, native utility focus and Back
+navigation, stable window identities, package retirement, and the existing
+foreground/held-input handoff policies. Native fixture results and exact tested
+scope belong with the candidate evidence; passing unit tests alone do not prove
+controller ownership or every Windows application will accept activation.

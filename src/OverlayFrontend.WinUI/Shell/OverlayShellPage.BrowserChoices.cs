@@ -24,6 +24,7 @@ internal sealed partial class OverlayShellPage
     {
         if (retired) return;
         RefreshNotificationBell();
+        RefreshUtilityNotifications();
         QueueWidgetStatusRefresh();
     }
 

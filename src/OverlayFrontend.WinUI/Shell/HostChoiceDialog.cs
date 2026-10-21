@@ -347,7 +347,6 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     protected override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
-        if (panelAnchor is not null) PositionPendingPanel();
         // Theme application can replace the button after Opened. Keep the ID
         // on the current template instance rather than the discarded control.
         foreach (var (part, id, property) in new[] {
@@ -383,7 +382,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     private void InitialFocusLayoutUpdated(object? sender, object args) => QueueInitialFocus();
     private void QueueInitialFocus()
     {
-        if (!opened || closing || HasCustomPlacement || initialFocusQueued) return;
+        if (!opened || closing || initialFocusQueued) return;
         LayoutUpdated -= InitialFocusLayoutUpdated;
         LayoutUpdated += InitialFocusLayoutUpdated;
         // Opened can precede native template layout and its own focus pass.
@@ -391,7 +390,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         initialFocusQueued = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
             initialFocusQueued = false;
-            if (!opened || closing || HasCustomPlacement) return;
+            if (!opened || closing) return;
             if (InitialFocusTarget() is not Control { IsLoaded: true, ActualWidth: > 0 } target) return;
             var alreadyInside = IsWithinFocused(content) || new[] { "PrimaryButton", "SecondaryButton", "CloseButton" }
                 .Any(name => GetTemplateChild(name) is DependencyObject button && IsWithinFocused(button));

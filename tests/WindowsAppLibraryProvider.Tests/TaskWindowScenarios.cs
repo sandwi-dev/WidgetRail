@@ -5,6 +5,7 @@ internal static class TaskWindowScenarios
 {
     internal static async Task Run()
     {
+        await HostCatalog();
         var observer = new Observer();
         var first = new WindowsRunningAppObservation("app", "process-creation-1", "Editor")
             { Window = new(101, 101, 0, 11, "EditorWindow", Title: "Document A") };
@@ -50,6 +51,34 @@ internal static class TaskWindowScenarios
         Assert.Equal((nint)0, control.Switched);
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             provider.CloseTaskWindowAsync(list[1].WindowId, canceled.Token));
+    }
+
+    private static async Task HostCatalog()
+    {
+        var observer = new Observer();
+        var control = new Control();
+        var first = new WindowsRunningAppObservation("app", "process-1", "Editor")
+            { Window = new(101, 101, 0, 11, "Editor", Title: "Document A") };
+        var second = first with { Window = first.Window! with { Handle = 102, Root = 102, Title = "Document B" } };
+        observer.Items = [first, second];
+        var catalog = new WindowsTaskWindowCatalog(observer, control, RunningAppScenarios.ImmediateSta.Instance,
+            item => new(item.Window!.Handle.ToString("X"), item.Window.ProcessId, "1", item.Window.ClassName));
+        var initial = await catalog.GetWindowsAsync(default);
+        Assert.Equal(2, initial.Count);
+        Assert.False(initial[0].WindowId == initial[1].WindowId);
+        var refreshed = await catalog.GetWindowsAsync(default);
+        Assert.Equal(initial[0].WindowId, refreshed[0].WindowId);
+        await catalog.CloseAsync(initial[1].WindowId, default);
+        Assert.Equal((nint)102, control.Closed);
+        observer.Items = [first with { InstanceEvidence = "process-reused" }];
+        var changed = await catalog.GetWindowsAsync(default);
+        Assert.False(initial[0].WindowId == changed[0].WindowId);
+        control.Closed = 0;
+        await Assert.ThrowsAsync<BrokerException>(() => catalog.CloseAsync(initial[0].WindowId, default));
+        Assert.Equal((nint)0, control.Closed);
+        observer.Items = [];
+        Assert.Equal(0, (await catalog.GetWindowsAsync(default)).Count);
+        await Assert.ThrowsAsync<BrokerException>(() => catalog.CloseAsync(changed[0].WindowId, default));
     }
 
     private sealed class Observer : IWindowsRunningAppObserver

@@ -1,6 +1,6 @@
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
-internal enum TrayHoldAction { None, ToggleReorder, Notifications }
+internal enum TrayHoldAction { None, ToggleReorder, TaskSwitcher }
 
 /// <summary>Host gesture policy only. The shared platform adapter owns physical input.</summary>
 internal sealed class TrayHoldGesture
@@ -26,7 +26,7 @@ internal sealed class TrayHoldGesture
         { Cancel(); return TrayHoldAction.None; }
         if (phase != Phase.Hold || now < started || now - started < HoldMilliseconds) return TrayHoldAction.None;
         phase = Phase.Won;
-        return TrayHoldAction.Notifications;
+        return TrayHoldAction.TaskSwitcher;
     }
 
     internal TrayHoldAction Release(object? identity, bool holdAllowed, long now)

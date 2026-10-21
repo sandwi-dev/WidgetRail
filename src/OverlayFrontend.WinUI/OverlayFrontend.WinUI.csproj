@@ -81,6 +81,7 @@
     <Manifest Include="$(ApplicationManifest)" />
     <ProjectReference Include="..\OverlayPlatformClient\OverlayPlatformClient.csproj" />
     <ProjectReference Include="..\WindowsWindowActivation\WindowsWindowActivation.csproj" />
+    <ProjectReference Include="..\WindowsAppLibraryProvider\WindowsAppLibraryProvider.csproj" />
     <ProjectReference Include="..\WidgetUi.State\WidgetUi.State.csproj" />
     <ProjectReference Include="..\PlatformSettings\PlatformSettings.csproj" />
     <ProjectReference Include="..\WindowsDisplayProvider\WindowsDisplayProvider.csproj" />

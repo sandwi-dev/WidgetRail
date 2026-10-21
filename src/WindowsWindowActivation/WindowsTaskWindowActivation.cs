@@ -45,6 +45,34 @@ public sealed partial class WindowsTaskWindowActivation(Action<string>? diagnost
         return activated;
     }
 
+    public bool IsTargetForeground(TaskWindowTarget target)
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == 0 || !IsCurrent(target)) return false;
+        _ = GetWindowThreadProcessId(foreground, out var process);
+        if (process != target.ProcessId) return false;
+        var expected = (nint)(nuint)target.Handle;
+        if (foreground == expected) return true;
+        // Activation may surface an owned dialog. A different independent
+        // document window in the same process must not count as success.
+        var owner = RootOwner(expected);
+        return owner != 0 && RootOwner(foreground) == owner;
+    }
+
+    private static nint RootOwner(nint window)
+    {
+        // Walk explicit ownership. GA_ROOTOWNER can stop at a top-level popup
+        // even when GW_OWNER identifies its owner (including WinForms dialogs).
+        for (var depth = 0; depth < 32; depth++)
+        {
+            var owner = GetWindow(window, 4 /* GW_OWNER */);
+            if (owner == 0) return window;
+            if (owner == window) return 0;
+            window = owner;
+        }
+        return 0;
+    }
+
     private void Trace(string message, TaskWindowTarget target)
     {
         if (diagnostic is null) return;
@@ -64,6 +92,9 @@ public sealed partial class WindowsTaskWindowActivation(Action<string>? diagnost
     [LibraryImport("user32.dll")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static partial nint GetAncestor(nint window, uint flags);
+    [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial nint GetWindow(nint window, uint command);
     [LibraryImport("user32.dll")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static unsafe partial int GetClassNameW(nint window, char* buffer, int capacity);
