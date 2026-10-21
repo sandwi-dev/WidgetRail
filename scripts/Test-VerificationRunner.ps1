@@ -23,10 +23,35 @@ $missingProjects = @($testProjects | Where-Object { $_ -notin $manifestProjects 
 if ($missingProjects.Count -ne 0) {
     throw "Verification manifest omits test project: $($missingProjects[0])"
 }
-$duplicateProjects = @($manifestProjectReferences | Group-Object |
-    Where-Object Count -ne 1)
-if ($duplicateProjects.Count -ne 0) {
-    throw "Verification manifest repeats project: $($duplicateProjects[0].Name)"
+# Repeated projects are allowed only as explicit, distinct default partitions.
+# The unpartitioned local command remains available as a manual-only selector.
+$defaultProjectSteps = @($manifest.steps | Where-Object {
+    ($_.PSObject.Properties.Name -notcontains 'runByDefault' -or $_.runByDefault)
+} | ForEach-Object {
+    $step = $_
+    $projects = @()
+    if ($step.arguments[0] -in @('run', 'test')) {
+        $projects += @($step.arguments | Where-Object { $_ -like '*.csproj' })
+    }
+    if ($step.PSObject.Properties.Name -contains 'testProject') {
+        $projects += $step.testProject
+    }
+    foreach ($project in $projects) {
+        [pscustomobject]@{ Project=$project.Replace('\', '/'); Step=$step }
+    }
+})
+foreach ($group in @($defaultProjectSteps | Group-Object Project | Where-Object Count -gt 1)) {
+    $partitions = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($reference in $group.Group) {
+        $step = $reference.Step
+        $partition = $step.PSObject.Properties['testPartition']
+        $index = [Array]::IndexOf(@($step.arguments), '--group')
+        if ($null -eq $partition -or $partition.Value -cnotmatch '^[a-z][a-z0-9-]{1,31}$' -or
+            !$partitions.Add([string]$partition.Value) -or $index -lt 0 -or
+            $index + 1 -ge $step.arguments.Count -or $step.arguments[$index + 1] -cne $partition.Value) {
+            throw "Verification manifest repeats project without distinct test partitions: $($group.Name)"
+        }
+    }
 }
 $duplicateIds = @($manifest.steps | Group-Object id | Where-Object Count -ne 1)
 if ($manifest.schemaVersion -ne 1 -or $duplicateIds.Count -ne 0) {
@@ -52,7 +77,9 @@ $expectedDefaultStepIds = @(
     'widget-runtime-tests',
     'widget-presentation-session-tests',
     'worker-host-tests',
-    'wrail-cli-tests',
+    'wrail-cli-authoring-tests',
+    'wrail-cli-development-tests',
+    'wrail-cli-packages-tests',
     'widget-styling-tests',
     'platform-settings-tests',
     'widget-configuration-tests',

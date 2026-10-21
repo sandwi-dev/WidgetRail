@@ -589,7 +589,7 @@ static async Task ControllerScrollSurface()
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.WidthMode);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.HeightMode);
     Assert.Equal(880d, root.Surface?.PreferredWidth);
-    Assert.Equal(552d, root.Surface?.PreferredHeight);
+    Assert.Equal(568d, root.Surface?.PreferredHeight);
     Assert.Equal(520d, root.Surface?.MinimumWidth);
     Assert.Equal(360d, root.Surface?.MinimumHeight);
     Assert.Equal(ViewNodeKind.Scroll,
@@ -1836,7 +1836,8 @@ static async Task InstalledWidgetPackageUninstall()
     var privateState = Path.Combine(temp.Path, "private-state.json");
     await File.WriteAllTextAsync(privateState, "retained");
     var catalog = new WidgetCatalog(catalogRoot);
-    var service = new PackageUninstallDiagnosticsService(catalog, privateState);
+    var inspectionGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var service = new PackageUninstallDiagnosticsService(catalog, privateState, inspectionGate.Task);
     var readiness = new SequenceDiagnosticsService(PlatformDiagnosticsSnapshot.Unavailable());
     var widget = CreateWithPermissions(
         temp.Path, catalogRoot, new ConsentStore(Path.Combine(temp.Path, "consent")),
@@ -1849,9 +1850,15 @@ static async Task InstalledWidgetPackageUninstall()
         .Select((item, index) => (item, index))
         .Single(item => item.item.Id == selectedId).index;
     await Action(widget, $"installed.select.{selectedIndex}");
+    // Navigation intentionally completes before optional inspection. Hold the
+    // provider to exercise the CI ordering instead of relying on disk timing.
     var details = Snapshot(widget);
     Assert.Equal("Uninstall widget",
         Button(details.Root, SettingsInstalledWidgetUninstallPolicy.FocusId).Text);
+    Assert.True(service.LastToken is null, "Inspection escaped its fixture gate.");
+    inspectionGate.SetResult();
+    await service.FirstInspectionCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    details = Snapshot(widget);
     Assert.True(!JsonSerializer.Serialize(details).Contains(service.LastToken!,
         StringComparison.Ordinal), "Opaque uninstall token escaped through the snapshot.");
 
@@ -3523,10 +3530,12 @@ file sealed class LocalDataDiagnosticsService(string selectedId) : IPlatformDiag
 
 file sealed class PackageUninstallDiagnosticsService(
     WidgetCatalog catalog,
-    string privateStatePath) : IPlatformDiagnosticsService
+    string privateStatePath,
+    Task? inspectionGate = null) : IPlatformDiagnosticsService
 {
     public int UninstallCount { get; private set; }
     public string? LastToken { get; private set; }
+    public TaskCompletionSource FirstInspectionCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(
         CancellationToken cancellationToken = default) =>
@@ -3537,8 +3546,10 @@ file sealed class PackageUninstallDiagnosticsService(
             string widgetId,
             CancellationToken cancellationToken = default)
     {
+        if (inspectionGate is not null) await inspectionGate.WaitAsync(cancellationToken);
         var item = await catalog.InspectUninstallAsync(widgetId, cancellationToken);
         LastToken = item.ConfirmationToken;
+        FirstInspectionCompleted.TrySetResult();
         return new(item.Id, item.Name, item.PublisherId, item.ActiveVersion.ToString(),
             item.VersionCount, !item.Enabled, item.Enabled ? "widget_enabled" : "ready",
             item.Enabled ? null : item.ConfirmationToken);

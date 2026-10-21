@@ -232,19 +232,19 @@ static async Task ShippedPackageIconContracts()
         new IconContract("src/FirstPartyWidgets/MediaSessionsWidget",
             WidgetGlyph.Music, "media-sessions.mark", "assets/icons/media-sessions.svg"),
         new IconContract("src/FirstPartyWidgets/GamesAppsWidget",
-            WidgetGlyph.Play, "games-apps.mark", "assets/icons/games-apps.svg"),
+            WidgetGlyph.Play, "games-apps.mark", "assets/icons/games-apps.svg", 7),
         new IconContract("src/FirstPartyWidgets/AudioMixerWidget",
-            WidgetGlyph.Volume, "audio-mixer.mark", "assets/icons/audio-mixer.svg"),
+            WidgetGlyph.Volume, "audio-mixer.mark", "assets/icons/audio-mixer.svg", 2),
         new IconContract("src/FirstPartyWidgets/NetworkControlsWidget",
-            WidgetGlyph.Wifi, "network-controls.mark", "assets/icons/network-controls.svg"),
+            WidgetGlyph.Wifi, "network-controls.mark", "assets/icons/network-controls.svg", 3),
         new IconContract("samples/EmbeddedMediaWidget",
             WidgetGlyph.Play, "embedded-media.mark", "assets/icons/embedded-media.svg"),
         new IconContract("samples/YouTubeWidget",
-            WidgetGlyph.Play, "youtube.brand.red", "assets/icons/youtube-red.svg"),
+            WidgetGlyph.Play, "youtube.brand.red", "assets/icons/youtube-red.svg", 2),
         new IconContract("samples/YtMusicWidget",
-            WidgetGlyph.Music, "ytmusic.mark", "assets/icons/yt-music.svg"),
+            WidgetGlyph.Music, "ytmusic.mark", "assets/icons/yt-music.svg", 7),
         new IconContract("samples/PlayniteLibraryWidget",
-            WidgetGlyph.Play, "playnite-library.mark", "assets/icons/playnite-library.svg"),
+            WidgetGlyph.Play, "playnite-library.mark", "assets/icons/playnite-library.svg", 14),
         new IconContract("samples/ClockWidget",
             WidgetGlyph.Connection, "clock.mark", "assets/icons/clock.svg"),
         new IconContract("samples/FullApplicationWidget",
@@ -264,19 +264,20 @@ static async Task ShippedPackageIconContracts()
         Assert.Equal(contract.AssetId, manifest.Presentation.PackageIcon?.AssetId);
         Assert.Equal(WidgetPackageIconColorMode.OriginalColor,
             manifest.Presentation.PackageIcon?.ColorMode);
-        Assert.Equal(1, manifest.IconAssets.Count);
+        Assert.Equal(contract.AssetCount, manifest.IconAssets.Count);
         Assert.Equal(contract.AssetPath, manifest.IconAssets[contract.AssetId].Path);
-        var sourceAsset = Path.Combine(packageRoot,
-            contract.AssetPath.Replace('/', Path.DirectorySeparatorChar));
-        Assert.True(File.Exists(sourceAsset), $"{manifest.Id} package icon source is missing.");
-
         var staging = Path.Combine(temporary.Path, manifest.Id);
         Directory.CreateDirectory(staging);
         await File.WriteAllBytesAsync(Path.Combine(staging, "manifest.json"), manifestBytes);
-        var stagedAsset = Path.Combine(staging,
-            contract.AssetPath.Replace('/', Path.DirectorySeparatorChar));
-        Directory.CreateDirectory(Path.GetDirectoryName(stagedAsset)!);
-        File.Copy(sourceAsset, stagedAsset);
+        foreach (var (assetId, asset) in manifest.IconAssets)
+        {
+            var relativePath = asset.Path.Replace('/', Path.DirectorySeparatorChar);
+            var sourceAsset = Path.Combine(packageRoot, relativePath);
+            Assert.True(File.Exists(sourceAsset), $"{manifest.Id} icon {assetId} source is missing.");
+            var stagedAsset = Path.Combine(staging, relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(stagedAsset)!);
+            File.Copy(sourceAsset, stagedAsset);
+        }
         var entrypoint = manifest.Entrypoint.Assembly ?? manifest.Entrypoint.Executable ??
             throw new InvalidOperationException($"{manifest.Id} has no package entrypoint.");
         var stagedEntrypoint = Path.Combine(staging,
@@ -2892,7 +2893,8 @@ file sealed record IconContract(
     string ProjectRoot,
     WidgetGlyph Fallback,
     string AssetId,
-    string AssetPath);
+    string AssetPath,
+    int AssetCount = 1);
 
 file sealed record PackageFixture(
     string ShellId,

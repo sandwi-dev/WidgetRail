@@ -108,98 +108,108 @@ if (args.Contains("--embedded-media-template", StringComparer.Ordinal))
     return 0;
 }
 
-var tests = new (string Name, Func<Task> Run)[]
+var tests = new (string Name, Func<Task> Run, string Group)[]
 {
-    ("Sample installation helper selects updates and restores enabled state after failure", SampleInstallWorkflow),
-    ("Repeated local and remote CLI updates retain only the current and previous versions", CliRetentionWorkflow),
-    ("Local reviewed updates keep widget settings without inheriting authority", LocalReviewedSettingsUpdate),
-    ("Help describes the complete workflow", HelpWorks),
-    ("Inspector startup requires exact host capability acknowledgement", InspectorHandshake),
-    ("GitHub discovery and published checksums install exact assets", GitHubDiscoveryWorkflow),
-    ("GitHub release listings group packages and provide install commands", GitHubReleaseListing),
-    ("GitHub widget updates require review and retain rollback versions", GitHubWidgetUpdateWorkflow),
-    ("GitHub theme updates retain the current appearance selection", GitHubThemeUpdateWorkflow),
-    ("GitHub metadata failures are bounded and actionable", GitHubMetadataSafety),
-    ("GitHub source metadata failure does not undo installation", GitHubSourceFailure),
-    ("Doctor reports selected SDK and host failures without mutations", DoctorWorkflow),
-    ("Doctor cancels and reclaims a stalled SDK probe", DoctorCancelsProbe),
-    ("Widget inspection validates bytes without installing or executing", InspectWorkflow),
-    ("Development host discovery supports installed CLI layout", InstalledDevHostDiscovery),
-    ("Development activation owns an exact named job and rejects reuse", DevNamedJobOwnership),
-    ("Development arguments preserve isolated profiles and exact readiness", DevLaunchArguments),
-    ("Development ownership rejects identity mismatch and never kills an unowned process", DevOwnershipFailures),
-    ("Development transcripts are bounded and preserve console output", DevTranscriptWorkflow),
-    ("Authority recovery is exact, stale-safe, and sanitized", AuthorityRecoveryWorkflow),
-    ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow),
-    ("New scaffolds a token-free controller widget", NewScaffolds),
-    ("New ships seven deterministic template profiles", AdvancedTemplateProfiles),
-    ("Webapp scaffolding rejects unsafe URLs before publishing", WebAppScaffoldRejectsUnsafeUrls),
-    ("Media template authors typed pinned layouts end to end", MediaTemplatePinnedLayouts),
-    ("Embedded media template closes its lifecycle and adapter contract", EmbeddedMediaTemplateEndToEnd),
-    ("New validates a bounded versioned template transaction", ScaffoldTransactionScenarios.Run),
-    ("CLI template and WidgetSdk form one release unit", WidgetSdkReleaseUnitScenarios.Run),
-    ("Built wrail artifacts support an isolated external SDK consumer", ExternalVersionedSdkConsumer),
-    ("External repository completes full application onboarding and author loop", ExternalFullApplicationOnboarding),
-    ("Generated widget completes the offline external package journey", NewScaffoldsOutsideCheckout),
-    ("New rejects invalid package identity before writing", NewRejectsIdentity),
-    ("Theme commands provide a deterministic end-to-end author workflow", ThemeWorkflow),
-    ("Theme validation rejects unsafe content and unreachable styles", ThemeValidationSafety),
-    ("Theme archives reject traversal collisions and executable content", ThemeArchiveSafety),
-    ("Theme installation is immutable and catalog-compatible", ThemeInstallIsImmutable),
-    ("Theme removal is exact protected and shares catalog policy", ThemeRemovalIsExact),
-    ("Remote theme installation requires and verifies a pinned release asset", ThemeRemoteInstall),
-    ("Validate accepts a scaffolded widget", ValidateScaffold),
-    ("Validate rejects unsafe WRSS", ValidateRejectsUnsafeWrss),
-    ("Validate reports WinUI layout guidance including imported styles", ValidateWinUiLayoutGuidance),
-    ("Validate rejects malformed manifest", ValidateRejectsManifest),
-    ("Dev discovers only bounded declared source files", DevSourceDiscoveryIsScoped),
-    ("Dev package watching matches bounded pack inputs and new directories", DevPackageWatchingIsComplete),
-    ("Dev builds a scaffold into a catalog-valid package", DevBuildsIsolatedPackage),
-    ("Dev builds isolate transitive project restore and compiler outputs", DevBuildsProjectGraph),
-    ("Dev builds cannot leave persistent compiler or build servers", DevBuildDisablesPersistentServers),
-    ("Dev diagnostics are bounded and single-line", DevDiagnosticsAreSanitized),
-    ("Dev rejects absent or forged readiness without replacing last good", DevReadinessFailsClosed),
-    ("Dev rejects a broken worker entrypoint without replacing last good", DevBrokenEntrypointRetainsLastGood),
-    ("Dev Job Object reclaims persistent child and grandchild processes", DevJobReclaimsDescendants),
-    ("Dev retains last good and cleans its process tree on cancellation", DevRetainsAndCleans),
-    ("Render previews a valid snapshot", RenderSnapshot),
-    ("Render rejects unsupported WinUI declarations before writing output", RenderRejectsLegacyPresentation),
-    ("Render rejects assembly execution and unbounded snapshot inputs", RenderFailsClosed),
-    ("Scenario manifests are bounded and isolated execution is declared", ScenarioPreviewTests.Run),
-    ("Controller replay follows focus and shortcuts", ReplayFocusAndActions),
-    ("Snapshot preview exposes cursor anchors without artwork authority", CursorPreviewIsOpaque),
-    ("Pack produces reproducible catalog-valid archives", PackIsReproducible),
-    ("Pack preserves declared package SVG icon bytes and rejects unsafe assets",
-        PackagedSvgIconsAreExact),
-    ("Source pack failures identify the required author action", SourcePackFailureIsActionable),
-    ("Pack and install reject unlaunchable directory shapes before publication", DirectoryShapeLimitsAreEnforced),
-    ("Install list disable and enable form a local distribution workflow", LocalDistributionWorkflow),
-    ("Full-trust install and enable require explicit disclosed approval", FullTrustCliConsent),
-    ("Uninstall is explicit disabled-only and cleans every package version", UninstallWorkflow),
-    ("Catalog repair lists and removes only inactive excess versions", CatalogRepairWorkflow),
-    ("Pack rejects invalid identity without publishing an archive", PackRejectsInvalidManifest),
-    ("Pack rejects source reparse points", PackRejectsReparsePoints),
-    ("Install rejects traversal archives through the CLI", InstallRejectsTraversal),
-    ("Remote install verifies a pinned package and leaves it disabled", RemoteDistributionWorkflow),
-    ("Remote updates require explicit disable and preserve enabled versions on failure", RemoteUpdateRequiresDisable),
-    ("Version selection and rollback are explicit disabled-only operations", VersionSelectionAndRollback),
-    ("GitHub shorthand resolves directly to a release asset", GitHubShorthandResolves),
-    ("Remote install requires a valid SHA-256 pin before network access", RemoteRequiresHash),
-    ("Remote sources reject unsafe schemes authorities and literals", RemoteRejectsUnsafeSources),
-    ("Remote downloader follows bounded HTTPS redirects", RemoteRedirectsAreBounded),
-    ("Remote downloader enforces declared and streamed byte limits", RemoteDownloadIsBounded),
-    ("Remote downloader rejects encoded payloads", RemoteRejectsContentEncoding),
-    ("Remote installer reports malformed archives without crashing", RemoteRejectsMalformedArchive),
-    ("Remote downloader removes temporary files after integrity failure", RemoteHashMismatchCleansUp),
-    ("Remote package remains write-locked until installation completes", RemotePackageHasIntegrityGuard),
-    ("Remote downloader enforces response and overall timeouts", RemoteTimeoutsAreBounded),
-    ("Remote request failures redact signed URL secrets", RemoteFailuresRedactSecrets),
-    ("Caller cancellation stops remote installation", RemoteCancellationIsBounded),
-    ("Catalog state commands report missing widgets", StateCommandRejectsMissingWidget),
-    ("Unknown commands return usage errors", UnknownCommand),
+    ("Sample installation helper selects updates and restores enabled state after failure", SampleInstallWorkflow, "packages"),
+    ("Repeated local and remote CLI updates retain only the current and previous versions", CliRetentionWorkflow, "packages"),
+    ("Local reviewed updates keep widget settings without inheriting authority", LocalReviewedSettingsUpdate, "packages"),
+    ("Help describes the complete workflow", HelpWorks, "packages"),
+    ("Inspector startup requires exact host capability acknowledgement", InspectorHandshake, "development"),
+    ("GitHub discovery and published checksums install exact assets", GitHubDiscoveryWorkflow, "packages"),
+    ("GitHub release listings group packages and provide install commands", GitHubReleaseListing, "packages"),
+    ("GitHub widget updates require review and retain rollback versions", GitHubWidgetUpdateWorkflow, "packages"),
+    ("GitHub theme updates retain the current appearance selection", GitHubThemeUpdateWorkflow, "packages"),
+    ("GitHub metadata failures are bounded and actionable", GitHubMetadataSafety, "packages"),
+    ("GitHub source metadata failure does not undo installation", GitHubSourceFailure, "packages"),
+    ("Doctor reports selected SDK and host failures without mutations", DoctorWorkflow, "development"),
+    ("Doctor cancels and reclaims a stalled SDK probe", DoctorCancelsProbe, "development"),
+    ("Widget inspection validates bytes without installing or executing", InspectWorkflow, "packages"),
+    ("Development host discovery supports installed CLI layout", InstalledDevHostDiscovery, "development"),
+    ("Development activation owns an exact named job and rejects reuse", DevNamedJobOwnership, "development"),
+    ("Development arguments preserve isolated profiles and exact readiness", DevLaunchArguments, "development"),
+    ("Development ownership rejects identity mismatch and never kills an unowned process", DevOwnershipFailures, "development"),
+    ("Development transcripts are bounded and preserve console output", DevTranscriptWorkflow, "development"),
+    ("Authority recovery is exact, stale-safe, and sanitized", AuthorityRecoveryWorkflow, "development"),
+    ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow, "development"),
+    ("New scaffolds a token-free controller widget", NewScaffolds, "authoring"),
+    ("New ships seven deterministic template profiles", AdvancedTemplateProfiles, "authoring"),
+    ("Webapp scaffolding rejects unsafe URLs before publishing", WebAppScaffoldRejectsUnsafeUrls, "authoring"),
+    ("Media template authors typed pinned layouts end to end", MediaTemplatePinnedLayouts, "authoring"),
+    ("Embedded media template closes its lifecycle and adapter contract", EmbeddedMediaTemplateEndToEnd, "authoring"),
+    ("New validates a bounded versioned template transaction", ScaffoldTransactionScenarios.Run, "authoring"),
+    ("CLI template and WidgetSdk form one release unit", WidgetSdkReleaseUnitScenarios.Run, "authoring"),
+    ("Built wrail artifacts support an isolated external SDK consumer", ExternalVersionedSdkConsumer, "authoring"),
+    ("External repository completes full application onboarding and author loop", ExternalFullApplicationOnboarding, "authoring"),
+    ("Generated widget completes the offline external package journey", NewScaffoldsOutsideCheckout, "authoring"),
+    ("New rejects invalid package identity before writing", NewRejectsIdentity, "authoring"),
+    ("Theme commands provide a deterministic end-to-end author workflow", ThemeWorkflow, "packages"),
+    ("Theme validation rejects unsafe content and unreachable styles", ThemeValidationSafety, "packages"),
+    ("Theme archives reject traversal collisions and executable content", ThemeArchiveSafety, "packages"),
+    ("Theme installation is immutable and catalog-compatible", ThemeInstallIsImmutable, "packages"),
+    ("Theme removal is exact protected and shares catalog policy", ThemeRemovalIsExact, "packages"),
+    ("Remote theme installation requires and verifies a pinned release asset", ThemeRemoteInstall, "packages"),
+    ("Validate accepts a scaffolded widget", ValidateScaffold, "development"),
+    ("Validate rejects unsafe WRSS", ValidateRejectsUnsafeWrss, "development"),
+    ("Validate reports WinUI layout guidance including imported styles", ValidateWinUiLayoutGuidance, "development"),
+    ("Validate rejects malformed manifest", ValidateRejectsManifest, "development"),
+    ("Dev discovers only bounded declared source files", DevSourceDiscoveryIsScoped, "development"),
+    ("Dev package watching matches bounded pack inputs and new directories", DevPackageWatchingIsComplete, "development"),
+    ("Dev builds a scaffold into a catalog-valid package", DevBuildsIsolatedPackage, "development"),
+    ("Dev builds isolate transitive project restore and compiler outputs", DevBuildsProjectGraph, "development"),
+    ("Dev builds cannot leave persistent compiler or build servers", DevBuildDisablesPersistentServers, "development"),
+    ("Dev diagnostics are bounded and single-line", DevDiagnosticsAreSanitized, "development"),
+    ("Dev rejects absent or forged readiness without replacing last good", DevReadinessFailsClosed, "development"),
+    ("Dev rejects a broken worker entrypoint without replacing last good", DevBrokenEntrypointRetainsLastGood, "development"),
+    ("Dev Job Object reclaims persistent child and grandchild processes", DevJobReclaimsDescendants, "development"),
+    ("Dev retains last good and cleans its process tree on cancellation", DevRetainsAndCleans, "development"),
+    ("Render previews a valid snapshot", RenderSnapshot, "development"),
+    ("Render rejects unsupported WinUI declarations before writing output", RenderRejectsLegacyPresentation, "development"),
+    ("Render rejects assembly execution and unbounded snapshot inputs", RenderFailsClosed, "development"),
+    ("Scenario manifests are bounded and isolated execution is declared", ScenarioPreviewTests.Run, "development"),
+    ("Controller replay follows focus and shortcuts", ReplayFocusAndActions, "development"),
+    ("Snapshot preview exposes cursor anchors without artwork authority", CursorPreviewIsOpaque, "development"),
+    ("Pack produces reproducible catalog-valid archives", PackIsReproducible, "packages"),
+    ("Pack preserves declared package SVG icon bytes and rejects unsafe assets", PackagedSvgIconsAreExact, "packages"),
+    ("Source pack failures identify the required author action", SourcePackFailureIsActionable, "packages"),
+    ("Pack and install reject unlaunchable directory shapes before publication", DirectoryShapeLimitsAreEnforced, "packages"),
+    ("Install list disable and enable form a local distribution workflow", LocalDistributionWorkflow, "packages"),
+    ("Full-trust install and enable require explicit disclosed approval", FullTrustCliConsent, "packages"),
+    ("Uninstall is explicit disabled-only and cleans every package version", UninstallWorkflow, "packages"),
+    ("Catalog repair lists and removes only inactive excess versions", CatalogRepairWorkflow, "packages"),
+    ("Pack rejects invalid identity without publishing an archive", PackRejectsInvalidManifest, "packages"),
+    ("Pack rejects source reparse points", PackRejectsReparsePoints, "packages"),
+    ("Install rejects traversal archives through the CLI", InstallRejectsTraversal, "packages"),
+    ("Remote install verifies a pinned package and leaves it disabled", RemoteDistributionWorkflow, "packages"),
+    ("Remote updates require explicit disable and preserve enabled versions on failure", RemoteUpdateRequiresDisable, "packages"),
+    ("Version selection and rollback are explicit disabled-only operations", VersionSelectionAndRollback, "packages"),
+    ("GitHub shorthand resolves directly to a release asset", GitHubShorthandResolves, "packages"),
+    ("Remote install requires a valid SHA-256 pin before network access", RemoteRequiresHash, "packages"),
+    ("Remote sources reject unsafe schemes authorities and literals", RemoteRejectsUnsafeSources, "packages"),
+    ("Remote downloader follows bounded HTTPS redirects", RemoteRedirectsAreBounded, "packages"),
+    ("Remote downloader enforces declared and streamed byte limits", RemoteDownloadIsBounded, "packages"),
+    ("Remote downloader rejects encoded payloads", RemoteRejectsContentEncoding, "packages"),
+    ("Remote installer reports malformed archives without crashing", RemoteRejectsMalformedArchive, "packages"),
+    ("Remote downloader removes temporary files after integrity failure", RemoteHashMismatchCleansUp, "packages"),
+    ("Remote package remains write-locked until installation completes", RemotePackageHasIntegrityGuard, "packages"),
+    ("Remote downloader enforces response and overall timeouts", RemoteTimeoutsAreBounded, "packages"),
+    ("Remote request failures redact signed URL secrets", RemoteFailuresRedactSecrets, "packages"),
+    ("Caller cancellation stops remote installation", RemoteCancellationIsBounded, "packages"),
+    ("Catalog state commands report missing widgets", StateCommandRejectsMissingWidget, "packages"),
+    ("Unknown commands return usage errors", UnknownCommand, "packages"),
 };
 
-if (args is ["--test", var exactName])
+string[] groups = ["authoring", "development", "packages"];
+if (tests.Any(test => !groups.Contains(test.Group, StringComparer.Ordinal)) ||
+    groups.Any(group => !tests.Any(test => test.Group == group)) ||
+    tests.Select(test => test.Name).Distinct(StringComparer.Ordinal).Count() != tests.Length)
+    throw new InvalidOperationException("CLI test groups must partition every named case exactly once.");
+
+if (args is ["--group", var groupName])
+{
+    tests = tests.Where(test => test.Group == groupName).ToArray();
+    if (tests.Length == 0) { Console.Error.WriteLine($"Unknown Wrail CLI test group: {groupName}"); return 2; }
+}
+else if (args is ["--test", var exactName])
 {
     tests = tests.Where(test => string.Equals(
         test.Name, exactName, StringComparison.Ordinal)).ToArray();
@@ -211,7 +221,7 @@ if (args is ["--test", var exactName])
 }
 else if (args.Length != 0)
 {
-    Console.Error.WriteLine("Usage: WrailCli.Tests [--test <exact-name>]");
+    Console.Error.WriteLine("Usage: WrailCli.Tests [--test <exact-name> | --group <authoring|development|packages>]");
     return 2;
 }
 
@@ -220,8 +230,10 @@ foreach (var test in tests)
 {
     try
     {
+        var elapsed = Stopwatch.StartNew();
         await test.Run();
         Console.WriteLine($"PASS {test.Name}");
+        Console.WriteLine($"METRIC cli_case={test.Name} milliseconds={elapsed.ElapsedMilliseconds}");
     }
     catch (Exception exception)
     {
