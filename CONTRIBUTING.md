@@ -41,7 +41,7 @@ From the repository root:
 .\scripts\Verify.ps1 -Configuration Release -Lane managed
 ```
 
-CI runs the same managed steps in eleven parallel groups. Their assignments live
+CI runs the same managed steps in twelve parallel groups. Their assignments live
 in `scripts/verification-steps.json`; the matrix validates that every default
 managed step belongs to one group and that build prerequisites stay with their
 tests. One failing group does not cancel the others. Each group retains its own

@@ -132,7 +132,7 @@ var tests = new (string Name, Func<Task> Run, string Group)[]
     ("Authority recovery is exact, stale-safe, and sanitized", AuthorityRecoveryWorkflow, "development"),
     ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow, "development"),
     ("New scaffolds a token-free controller widget", NewScaffolds, "authoring"),
-    ("New ships seven deterministic template profiles", AdvancedTemplateProfiles, "authoring"),
+    ("New ships seven deterministic template profiles", AdvancedTemplateProfiles, "templates"),
     ("Webapp scaffolding rejects unsafe URLs before publishing", WebAppScaffoldRejectsUnsafeUrls, "authoring"),
     ("Media template authors typed pinned layouts end to end", MediaTemplatePinnedLayouts, "authoring"),
     ("Embedded media template closes its lifecycle and adapter contract", EmbeddedMediaTemplateEndToEnd, "authoring"),
@@ -198,7 +198,7 @@ var tests = new (string Name, Func<Task> Run, string Group)[]
     ("Unknown commands return usage errors", UnknownCommand, "packages"),
 };
 
-string[] groups = ["authoring", "development", "packages"];
+string[] groups = ["authoring", "templates", "development", "packages"];
 if (tests.Any(test => !groups.Contains(test.Group, StringComparer.Ordinal)) ||
     groups.Any(group => !tests.Any(test => test.Group == group)) ||
     tests.Select(test => test.Name).Distinct(StringComparer.Ordinal).Count() != tests.Length)
@@ -221,7 +221,7 @@ else if (args is ["--test", var exactName])
 }
 else if (args.Length != 0)
 {
-    Console.Error.WriteLine("Usage: WrailCli.Tests [--test <exact-name> | --group <authoring|development|packages>]");
+    Console.Error.WriteLine("Usage: WrailCli.Tests [--test <exact-name> | --group <authoring|templates|development|packages>]");
     return 2;
 }
 

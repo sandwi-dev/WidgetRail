@@ -78,6 +78,7 @@ $expectedDefaultStepIds = @(
     'widget-presentation-session-tests',
     'worker-host-tests',
     'wrail-cli-authoring-tests',
+    'wrail-cli-templates-tests',
     'wrail-cli-development-tests',
     'wrail-cli-packages-tests',
     'widget-styling-tests',
