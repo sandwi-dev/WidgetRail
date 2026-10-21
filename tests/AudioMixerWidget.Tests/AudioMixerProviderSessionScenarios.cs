@@ -307,7 +307,8 @@ internal static class AudioMixerProviderSessionScenarios
     {
         var widgetFields = typeof(AudioMixerWidget).GetFields(
             BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.True(!widgetFields.Any(field => field.FieldType == typeof(SemaphoreSlim)),
+        // Private preference writes may serialize independently of provider ownership.
+        Assert.True(!widgetFields.Any(field => field.FieldType == typeof(SemaphoreSlim) && field.Name != "_starsGate"),
             "The widget still owns a provider retry semaphore.");
         Assert.True(!widgetFields.Any(field =>
                 field.FieldType == typeof(CancellationTokenSource)),

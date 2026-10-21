@@ -17,7 +17,8 @@ internal sealed record AudioMixerSessionPresentation(
     WidgetAudioSession Session,
     AudioMixerSessionControlIds Controls,
     bool VolumePending,
-    bool MutePending);
+    bool MutePending,
+    bool Starred = false);
 
 internal sealed record AudioMixerPresentationState(
     AudioMixerViewState ViewState,
@@ -83,7 +84,9 @@ internal static class AudioMixerPresentation
             state.Output is null)
             return RenderNonSessionState(header, state.ViewState);
 
-        var sessionControls = state.Sessions.Select(session => session.Controls).ToArray();
+        var starredSessions = state.Sessions.Where(session => session.Starred).ToArray();
+        var ordinarySessions = state.Sessions.Where(session => !session.Starred).ToArray();
+        var sessionControls = ordinarySessions.Select(session => session.Controls).ToArray();
         var controlsBySessionId = state.Sessions.ToDictionary(
             item => item.Session.SessionId,
             item => item.Controls,
@@ -102,7 +105,8 @@ internal static class AudioMixerPresentation
         var spatial = state.Spatial?.DeviceId == currentOutputId ? state.Spatial : null;
         var spatialId = outputDeviceId is null ? null : spatial is not null ? "audio.spatial.select" : "audio.spatial.retry";
         var lastDeviceId = inputDeviceId ?? spatialId ?? outputDeviceId ?? deviceRetryId;
-        var firstFocusAfterMaster = outputDeviceId ?? inputDeviceId ?? deviceRetryId ?? inputFocusId ?? firstSessionFocusId ?? "audio.retry";
+        var emptyRetryId = state.Sessions.Count == 0 ? "audio.retry" : null;
+        var firstFocusAfterMaster = outputDeviceId ?? inputDeviceId ?? deviceRetryId ?? inputFocusId ?? firstSessionFocusId ?? emptyRetryId;
         var initialFocusId = state.PreferredFocusTarget switch
         {
             AudioMixerPreferredFocusTarget.Spatial when spatialId is not null => spatialId,
@@ -133,8 +137,8 @@ internal static class AudioMixerPresentation
                 accessibilityValue: $"{masterPercent}%",
                 activationAction: "output.mute.toggle")
             .Busy(state.DeviceSwitchPending)
-            .Classes("audio-volume-slider", "audio-master-slider")
-            .FocusDown(firstFocusAfterMaster);
+            .Classes("audio-volume-slider", "audio-master-slider") with
+            { FocusNeighbors = new() { Up = starredSessions.LastOrDefault()?.Controls.VolumeSlider, Down = firstFocusAfterMaster } };
         var masterCard = UI.Stack("audio.master.card",
                 UI.Row("audio.master.heading",
                     UI.Text("MASTER OUTPUT", "audio.master.label", "Master output").Classes("audio-master-label"),
@@ -156,11 +160,11 @@ internal static class AudioMixerPresentation
         {
             supplemental.Add(UI.Stack("audio.devices.card",
                     DeviceSelector(state, WidgetAudioDeviceDirection.Output, "Output device",
-                        "audio.master.volume.slider", spatialId ?? inputDeviceId ?? inputFocusId ?? firstSessionFocusId ?? "audio.retry"),
+                        "audio.master.volume.slider", spatialId ?? inputDeviceId ?? inputFocusId ?? firstSessionFocusId ?? emptyRetryId),
                     SpatialControl(state, spatial, outputDeviceId,
-                        inputDeviceId ?? inputFocusId ?? firstSessionFocusId ?? "audio.retry"),
+                        inputDeviceId ?? inputFocusId ?? firstSessionFocusId ?? emptyRetryId),
                     DeviceSelector(state, WidgetAudioDeviceDirection.Input, "Microphone",
-                        spatialId ?? outputDeviceId ?? "audio.master.volume.slider", inputFocusId ?? firstSessionFocusId ?? "audio.retry"))
+                        spatialId ?? outputDeviceId ?? "audio.master.volume.slider", inputFocusId ?? firstSessionFocusId ?? emptyRetryId))
                 .Classes("audio-device-card"));
         }
         else if (IsRetryable(state.DeviceState))
@@ -168,7 +172,7 @@ internal static class AudioMixerPresentation
             supplemental.Add(RenderOptionalState(
                 "devices", "DEVICE NAMES", OptionalStateCopy(state.DeviceState, "device names"),
                 "devices.retry", "Retry device names", "audio.master.volume.slider",
-                inputFocusId ?? firstSessionFocusId ?? "audio.retry"));
+                inputFocusId ?? firstSessionFocusId ?? emptyRetryId));
         }
         else if (state.DeviceState is AudioOptionalSectionState.Loading or AudioOptionalSectionState.Empty)
         {
@@ -186,9 +190,8 @@ internal static class AudioMixerPresentation
                     accessibilityValue: $"{inputPercent}%",
                     activationAction: "input.mute.toggle")
                 .Busy(state.DeviceSwitchPending)
-                .FocusUp(lastDeviceId ?? "audio.master.volume.slider")
                 .Classes("audio-volume-slider", "audio-input-slider")
-                .FocusDown(firstControls?.VolumeSlider ?? "audio.retry");
+                with { FocusNeighbors = new() { Up = lastDeviceId ?? "audio.master.volume.slider", Down = firstSessionFocusId ?? emptyRetryId } };
             supplemental.Add(UI.Stack("audio.input.card",
                     UI.Row("audio.input.heading",
                         UI.Text("MICROPHONE LEVEL", "audio.input.label", "Microphone input level")
@@ -212,7 +215,7 @@ internal static class AudioMixerPresentation
             supplemental.Add(RenderOptionalState(
                 "input", "MICROPHONE", OptionalStateCopy(state.InputState, "microphone controls"),
                 "input.retry", "Retry microphone", lastDeviceId ?? "audio.master.volume.slider",
-                firstSessionFocusId ?? "audio.retry"));
+                firstSessionFocusId ?? emptyRetryId));
         }
         else if (state.InputState is AudioOptionalSectionState.Loading or AudioOptionalSectionState.Empty)
         {
@@ -241,26 +244,38 @@ internal static class AudioMixerPresentation
                 QuickActions: quickActions, Surface: CompactSurface);
         }
 
-        var sessionRows = new WidgetElement[state.Sessions.Count];
-        for (var index = 0; index < state.Sessions.Count; index++)
+        var sessionRows = new WidgetElement[ordinarySessions.Length];
+        for (var index = 0; index < ordinarySessions.Length; index++)
         {
             var previous = index == 0 ? null : sessionControls[index - 1];
-            var next = index + 1 == state.Sessions.Count ? null : sessionControls[index + 1];
+            var next = index + 1 == ordinarySessions.Length ? null : sessionControls[index + 1];
             sessionRows[index] = RenderSessionRow(
-                state.Sessions[index], previous, next,
+                ordinarySessions[index], previous?.VolumeSlider, next?.VolumeSlider,
                 inputFocusId ?? lastDeviceId ?? "audio.master.volume.slider");
         }
 
-        var rootChildren = new List<WidgetElement> { header, masterCard };
+        var rootChildren = new List<WidgetElement> { header };
+        if (starredSessions.Length > 0)
+        {
+            rootChildren.Add(UI.Row("audio.starred.heading",
+                UI.Text("STARRED", "audio.starred.label", "Starred applications").Classes("audio-sessions-label"),
+                UI.Text($"{starredSessions.Length} apps", "audio.starred.count").Classes("audio-sessions-count"))
+                .Classes("audio-sessions-heading"));
+            rootChildren.Add(UI.Stack("audio.starred.list", starredSessions.Select((item, index) => RenderSessionRow(item,
+                index == 0 ? null : starredSessions[index - 1].Controls.VolumeSlider,
+                index + 1 < starredSessions.Length ? starredSessions[index + 1].Controls.VolumeSlider : "audio.master.volume.slider",
+                null)).ToArray()).Classes("audio-session-list"));
+        }
+        rootChildren.Add(masterCard);
         rootChildren.AddRange(supplemental);
-        rootChildren.Add(UI.Row("audio.sessions.heading",
+        if (ordinarySessions.Length > 0) rootChildren.Add(UI.Row("audio.sessions.heading",
                     UI.Text("APPLICATIONS", "audio.sessions.label", "Application volume mixer")
                         .Classes("audio-sessions-label"),
-                    UI.Text($"{state.Sessions.Count} apps", "audio.sessions.count",
-                            $"{state.Sessions.Count} application audio sessions")
+                    UI.Text($"{ordinarySessions.Length} apps", "audio.sessions.count",
+                            $"{ordinarySessions.Length} application audio sessions")
                         .Classes("audio-sessions-count"))
                     .Classes("audio-sessions-heading"));
-        rootChildren.Add(UI.Stack("audio.sessions.list", sessionRows)
+        if (ordinarySessions.Length > 0) rootChildren.Add(UI.Stack("audio.sessions.list", sessionRows)
             .Classes("audio-session-list"));
         var root = UI.VerticalScroll("audio.root", rootChildren.ToArray())
             .Classes("audio-mixer-widget", "has-sessions") with { ShowScrollbar = false };
@@ -299,9 +314,9 @@ internal static class AudioMixerPresentation
 
     private static StackElement RenderSessionRow(
         AudioMixerSessionPresentation item,
-        AudioMixerSessionControlIds? previous,
-        AudioMixerSessionControlIds? next,
-        string firstFocusUp)
+        string? previous,
+        string? next,
+        string? firstFocusUp)
     {
         var session = item.Session;
         var controls = item.Controls;
@@ -320,17 +335,20 @@ internal static class AudioMixerPresentation
                 $"{session.DisplayName} volume, {(session.IsMuted ? "muted" : "audible")}. Select to {(session.IsMuted ? "unmute" : "mute")}",
                 accessibilityValue: $"{percent}%",
                 activationAction: controls.Mute)
-            .FocusUp(previous?.VolumeSlider ?? firstFocusUp)
-            .Classes("audio-volume-slider", "audio-session-slider");
-        if (next is not null) slider = slider.FocusDown(next.VolumeSlider);
+            .Classes("audio-volume-slider", "audio-session-slider") with
+            { FocusNeighbors = new() { Up = previous ?? firstFocusUp, Down = next } };
 
         return UI.Stack(controls.Row,
-                UI.Row(controls.Heading,
+                UI.Row(controls.Heading, [
+                    .. (item.Starred ? new WidgetElement[] {
+                        UI.Text("★", controls.Row + ".star", $"{session.DisplayName} starred")
+                            .Classes("audio-star")
+                    } : []),
                     UI.Text(session.DisplayName, controls.Name, session.DisplayName)
                         .Classes("audio-session-name"),
                     UI.Text(session.IsActive ? "ACTIVE" : "IDLE", controls.State,
                             session.IsActive ? $"{session.DisplayName} audio is active" : $"{session.DisplayName} audio is idle")
-                        .Classes("audio-session-state", session.IsActive ? "is-active" : "is-idle"))
+                        .Classes("audio-session-state", session.IsActive ? "is-active" : "is-idle")])
                     .Classes("audio-session-heading"),
                 UI.Row(controls.Controls,
                     mute,
@@ -338,11 +356,12 @@ internal static class AudioMixerPresentation
                     UI.Text($"{percent}%", controls.Value, $"{session.DisplayName} volume {percent} percent")
                         .Classes("audio-volume-value"))
                     .Classes("audio-volume-control-row", "audio-session-controls"))
+            .Shortcut(ControllerButton.Y, controls.Star, item.Starred ? "Unstar" : "Star")
             .Classes("audio-session-card", isPending ? "is-pending" : "is-ready");
     }
 
     private static WidgetElement SpatialControl(AudioMixerPresentationState state, WidgetAudioSpatial? spatial,
-        string? outputId, string down)
+        string? outputId, string? down)
     {
         if (outputId is null) return UI.Text("Connect an output device to configure spatial sound.", "audio.spatial.unavailable").Classes("audio-help");
         var children = new List<WidgetElement>();
@@ -353,7 +372,7 @@ internal static class AudioMixerPresentation
                 IsSelected: format.FormatId == spatial.SelectedFormatId,
                 IsDisabled: format.FormatId == "other" || (!spatial.IsSupported && format.FormatId != "off"),
                 IsBusy: state.SpatialPending || state.DeviceSwitchPending)).ToArray(), "audio.spatial.select")
-                .FocusUp(outputId).FocusDown(down).Classes("audio-device-selector"));
+                .Classes("audio-device-selector") with { FocusNeighbors = new() { Up = outputId, Down = down } });
             if (spatial.ActiveFormatId != spatial.SelectedFormatId)
             {
                 var active = spatial.Formats.FirstOrDefault(format => format.FormatId == spatial.ActiveFormatId)?.DisplayName ?? "another format";
@@ -370,13 +389,13 @@ internal static class AudioMixerPresentation
                     : "Spatial sound information is unavailable. Other audio controls still work.";
             children.Add(UI.Text(copy, "audio.spatial.help").Classes("audio-help"));
             children.Add(UI.Button("Check spatial sound", "spatial.retry", "audio.spatial.retry")
-                .FocusUp(outputId).FocusDown(down).Classes("audio-retry-action"));
+                .Classes("audio-retry-action") with { FocusNeighbors = new() { Up = outputId, Down = down } });
         }
         return UI.Stack("audio.spatial.card", children.ToArray()).Classes("audio-device-copy");
     }
 
     private static WidgetElement DeviceSelector(AudioMixerPresentationState state,
-        WidgetAudioDeviceDirection direction, string label, string up, string down)
+        WidgetAudioDeviceDirection direction, string label, string up, string? down)
     {
         var suffix = direction == WidgetAudioDeviceDirection.Output ? "output" : "input";
         var devices = state.Devices.Where(device => device.Direction == direction).ToArray();
@@ -388,21 +407,19 @@ internal static class AudioMixerPresentation
             options.Insert(0, new SelectOption($"device.{suffix}.none", devices.Length == 0 ? "No device connected" : "Choose a device",
                 $"device.{suffix}.none", IsSelected: true, IsDisabled: true));
         return UI.Select(label, options, $"audio.devices.{suffix}.select", label)
-            .Disabled(devices.Length == 0).FocusUp(up).FocusDown(down)
-            .Classes("audio-device-selector");
+            .Disabled(devices.Length == 0)
+            .Classes("audio-device-selector") with { FocusNeighbors = new() { Up = up, Down = down } };
     }
 
     private static StackElement RenderOptionalState(
         string suffix, string label, string copy, string action, string buttonLabel,
-        string focusUp, string focusDown) =>
+        string focusUp, string? focusDown) =>
         UI.Stack($"audio.{suffix}.state.card",
                 UI.Text(label, $"audio.{suffix}.state.label", label).Classes("audio-device-label"),
                 UI.Text(copy, $"audio.{suffix}.state.help", copy).Classes("audio-help", "is-neutral"),
                 UI.Button(buttonLabel, action, $"audio.{suffix}.retry")
                     .Icon(WidgetGlyph.Refresh, buttonLabel)
-                    .FocusUp(focusUp)
-                    .FocusDown(focusDown)
-                    .Classes("audio-retry-action"))
+                    .Classes("audio-retry-action") with { FocusNeighbors = new() { Up = focusUp, Down = focusDown } })
             .Classes("audio-state-card", $"audio-{suffix}-state");
 
     private static StackElement RenderOptionalInfo(string suffix, string label, string copy) =>

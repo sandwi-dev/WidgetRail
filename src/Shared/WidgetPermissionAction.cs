@@ -8,7 +8,7 @@ internal static class WidgetPermissionAction
 {
     internal static async ValueTask RunAsync(WidgetPermissionService permissions, WidgetOperations operations,
         string[] capabilities, Func<CancellationToken, ValueTask> action, Action<string> feedback,
-        CancellationToken cancellationToken, Action? granted = null)
+        CancellationToken cancellationToken, Action? granted = null, string[]? requestCapabilities = null)
     {
         if (capabilities.Length == 0) { await action(cancellationToken); return; }
         if (operations.IsBusy("permissions.action")) return;
@@ -26,7 +26,7 @@ internal static class WidgetPermissionAction
         {
             try
             {
-                var outcome = await permissions.RequestAsync(capabilities, context.CancellationToken);
+                var outcome = await permissions.RequestAsync(requestCapabilities ?? capabilities, context.CancellationToken);
                 context.CancellationToken.ThrowIfCancellationRequested();
                 if (outcome == WidgetPermissionOutcome.Granted) { granted?.Invoke(); await action(context.CancellationToken); }
                 else feedback(outcome switch

@@ -23,6 +23,23 @@ overlay restarts. Settings is always available and does not offer Stop widget;
 its Restart widget action remains available. Old saved stop choices for Settings
 are ignored. Settings still suspends when hidden.
 
+## Audio Mixer
+
+Focus an application's volume slider and press **Y/Triangle** to star or unstar
+it. Starred applications show a star beside their name in a separate **Starred**
+section above Master Output. Other applications remain below the device and
+microphone controls. **A/Cross** still toggles mute, and Left/Right adjusts volume.
+The same slider keeps focus when its row moves.
+
+Stars are saved across widget and app restarts. They match application display
+names because audio session IDs are temporary; sessions with the same name share
+a star. Closed applications appear again when they create an audio session.
+
+When a mixer action needs permission, one review covers application/master audio,
+device switching and microphone-level controls. Spatial sound has its own optional
+review. Already-approved controls work without requesting unrelated permissions;
+starring applications requires no audio-control permission.
+
 ## Controller keyboard
 
 The D-pad and left stick wrap around the keyboard's rows and top/bottom edges.

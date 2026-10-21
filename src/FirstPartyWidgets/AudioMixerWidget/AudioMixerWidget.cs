@@ -173,12 +173,13 @@ public sealed partial class AudioMixerWidget : Widget
                     session,
                     _sessionControls[session.SessionId],
                     pending?.VolumeIsPending ?? false,
-                    pending?.MuteIsPending ?? false);
+                    pending?.MuteIsPending ?? false,
+                    _starredApplications.Contains(session.DisplayName));
             }
 
             state = new AudioMixerPresentationState(
                 _viewState,
-                sessions,
+                sessions.OrderByDescending(session => session.Starred).ToArray(),
                 _output,
                 _devices.ToArray(),
                 _input,
@@ -197,6 +198,7 @@ public sealed partial class AudioMixerWidget : Widget
     protected override async ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
         Interlocked.Increment(ref _activationCount);
+        await LoadStarsAsync(activeLifetime).ConfigureAwait(false);
         await StartActiveRunAsync(activeLifetime).ConfigureAwait(false);
     }
 
@@ -212,7 +214,9 @@ public sealed partial class AudioMixerWidget : Widget
 
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default) =>
         WidgetRail.Widgets.WidgetPermissionAction.RunAsync(HostServices.Permissions, Operations, ActionPermissions(action),
-            token => OnAuthorizedActionAsync(action, token), PermissionFeedback, cancellationToken);
+            token => OnAuthorizedActionAsync(action, token), PermissionFeedback, cancellationToken,
+            granted: RefreshApprovedAudioSections,
+            requestCapabilities: action.ActionId.StartsWith("spatial.", StringComparison.Ordinal) ? SpatialPermissions : MixerPermissions);
 
     private async ValueTask OnAuthorizedActionAsync(
         WidgetActionEvent action,
@@ -249,6 +253,9 @@ public sealed partial class AudioMixerWidget : Widget
         {
             switch (sessionAction)
             {
+                case SessionAction.ToggleStar:
+                    await ToggleStarAsync(sessionId, cancellationToken).ConfigureAwait(false);
+                    break;
                 case SessionAction.SetVolume when action.RequestedValue is { } requestedVolume:
                     await SetVolumeAsync(sessionId, requestedVolume, cancellationToken).ConfigureAwait(false);
                     break;
@@ -947,6 +954,7 @@ public sealed partial class AudioMixerWidget : Widget
             controls.Add(session.SessionId, ids);
             actions.Add(ids.VolumeSet, new SessionActionTarget(session.SessionId, SessionAction.SetVolume));
             actions.Add(ids.Mute, new SessionActionTarget(session.SessionId, SessionAction.ToggleMute));
+            actions.Add(ids.Star, new SessionActionTarget(session.SessionId, SessionAction.ToggleStar));
         }
         return (controls, actions);
     }
@@ -1976,6 +1984,7 @@ public sealed partial class AudioMixerWidget : Widget
     {
         SetVolume,
         ToggleMute,
+        ToggleStar,
     }
 
     private sealed record SessionActionTarget(string SessionId, SessionAction Action);

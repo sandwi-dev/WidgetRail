@@ -16,6 +16,10 @@ if (args is ["--export-renderer-fixture", var rendererFixturePath])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Slider stars persist across session identities and preserve focus and mute", StarredApplications),
+    ("Failed star saves retain ordering and slider focus", FailedStarSave),
+    ("Starred section precedes master with connected focus and no duplicate rows", StarredSectionNavigation),
+    ("Mixer permission review groups core access and keeps approved controls independent", GroupedMixerPermissions),
     ("Snapshot-only presentation is repeatable and preserves the focus contract", PresentationIsRepeatable),
     ("Provider session subscribes before every snapshot and closes the fetch gap", AudioMixerProviderSessionScenarios.SubscriptionPrecedesEverySnapshot),
     ("Provider session retries one optional section without replacing healthy streams", AudioMixerProviderSessionScenarios.OptionalRetryIsIsolated),
@@ -83,6 +87,143 @@ foreach (var test in tests)
 
 Console.WriteLine($"{tests.Length - failures.Count}/{tests.Length} tests passed.");
 return failures.Count == 0 ? 0 : 1;
+
+static async Task StarredApplications()
+{
+    var fake = new FakeCapabilityClient { Sessions = [Session("game", "Game", 0.5), Session("chat", "Chat", 0.6)] };
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    try
+    {
+        var chat = AudioMixerSessionControlIds.For(fake.Sessions[1]);
+        var initial = widget.RenderSnapshot("audio.test", 42);
+        Assert.True(!await Route(widget, initial, ControllerButton.Y, "audio.master.volume.slider"), "Star escaped its application slider.");
+        Assert.True(await Route(widget, initial, ControllerButton.Y, chat.VolumeSlider), "Y did not star the focused slider.");
+        await WaitUntil(() => Nodes(widget.Render().CreateSnapshot("audio.test", 1).Root).Any(node => node.Id == chat.Row + ".star"));
+        var starred = widget.RenderSnapshot("audio.test", 43);
+        Assert.Equal(chat.VolumeSlider, starred.InitialFocusId);
+        Assert.Equal(chat.Row, Nodes(starred.Root).Single(node => node.Id == "audio.starred.list").Children[0].Id);
+        Assert.True(Nodes(starred.Root).Any(node => node.Id == chat.Row + ".star"), "Star marker missing.");
+        Assert.True(fake.PrivateState.Json?.Contains("Chat") == true, "Star was not persisted.");
+        Assert.True(!widget.Sessions.Single(s => s.SessionId == "chat").IsMuted, "Starring changed audio.");
+        Assert.True(await Route(widget, starred, ControllerButton.A, chat.VolumeSlider), "Slider mute stopped working.");
+        await WaitUntil(() => fake.MuteRequests.Count == 1);
+        await widget.DrainCommandWorkersAsync();
+        Assert.Equal("chat", fake.MuteRequests[0].SessionId);
+        Assert.True(fake.MuteRequests[0].IsMuted, "Mute did not target the starred application.");
+        fake.Emit([Session("game", "Game", 0.4), Session("chat", "Chat", 0.2)]);
+        await WaitUntil(() => widget.Sessions.Any(s => s.SessionId == "chat" && Math.Abs(s.Volume - 0.2) < 0.001));
+        Assert.Equal(chat.Row, Nodes(widget.RenderSnapshot("audio.test", 44).Root).Single(node => node.Id == "audio.starred.list").Children[0].Id);
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+
+    var reopenedFake = new FakeCapabilityClient { PrivateState = fake.PrivateState,
+        Sessions = [Session("new-game", "Game", 0.5), Session("new-chat", "Chat", 0.6)] };
+    var reopened = Create(reopenedFake);
+    await ActivateReady(reopened);
+    try
+    {
+        var chat = AudioMixerSessionControlIds.For(reopenedFake.Sessions[1]);
+        var restored = reopened.RenderSnapshot("audio.test", 44);
+        Assert.Equal(chat.Row, Nodes(restored.Root).Single(node => node.Id == "audio.starred.list").Children[0].Id);
+        Assert.True(await Route(reopened, restored, ControllerButton.Y, chat.VolumeSlider), "Unstar was not handled.");
+        await WaitUntil(() => fake.PrivateState.Json?.Contains("Chat") == false);
+        var cleared = reopened.RenderSnapshot("audio.test", 45);
+        Assert.Equal(chat.VolumeSlider, cleared.InitialFocusId);
+        Assert.Equal(AudioMixerSessionControlIds.For(reopenedFake.Sessions[0]).Row,
+            Nodes(cleared.Root).Single(node => node.Id == "audio.sessions.list").Children[0].Id);
+        Assert.True(!Nodes(cleared.Root).Any(node => node.Id == chat.Row + ".star"), "Unstar left its marker.");
+        Assert.True(fake.PrivateState.Json?.Contains("Chat") == false, "Unstar was not persisted.");
+    }
+    finally { await WidgetTestHost.DestroyAsync(reopened); }
+}
+
+static async Task FailedStarSave()
+{
+    var fake = new FakeCapabilityClient { PrivateState = new(initialRevision: long.MaxValue),
+        Sessions = [Session("game", "Game", 0.5), Session("chat", "Chat", 0.6)] };
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    try
+    {
+        var chat = AudioMixerSessionControlIds.For(fake.Sessions[1]);
+        await widget.OnActionAsync(new(chat.Star, chat.VolumeSlider));
+        var snapshot = widget.RenderSnapshot("audio.test", 1);
+        Assert.Equal(chat.VolumeSlider, snapshot.InitialFocusId);
+        Assert.Equal(AudioMixerSessionControlIds.For(fake.Sessions[0]).Row,
+            Nodes(snapshot.Root).Single(node => node.Id == "audio.sessions.list").Children[0].Id);
+        Assert.True(!Nodes(snapshot.Root).Any(node => node.Id == chat.Row + ".star"), "Failed write displayed a saved star.");
+        Assert.True(Nodes(snapshot.Root).Any(node => node.Text == "Could not save starred applications. Try again."), "Save failure was hidden.");
+        Assert.Equal(long.MaxValue, fake.PrivateState.Revision);
+        Assert.Equal(0, fake.MuteRequests.Count);
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
+
+static Task StarredSectionNavigation()
+{
+    foreach (var allStarred in new[] { false, true })
+    foreach (var microphone in new[] { false, true })
+    {
+        var sessions = new[] { Session("game", "Game", 0.5), Session("chat", "Chat", 0.6) };
+        var state = new AudioMixerPresentationState(AudioMixerViewState.Ready,
+            sessions.Select((s, i) => new AudioMixerSessionPresentation(s, AudioMixerSessionControlIds.For(s), false, false, allStarred || i == 1)).ToArray(),
+            new(0.6, false), [], microphone ? new(0.5, false) : null,
+            AudioOptionalSectionState.Empty, microphone ? AudioOptionalSectionState.Healthy : AudioOptionalSectionState.Empty,
+            AudioMixerPreferredFocusTarget.MasterOutput, null, "Ready", false);
+        var snapshot = AudioMixerPresentation.Render(state).CreateSnapshot("audio.test", 1);
+        var nodes = Nodes(snapshot.Root).ToArray();
+        var root = nodes.Single(n => n.Id == "audio.root");
+        var ids = root.Children.Select(n => n.Id).ToArray();
+        Assert.True(Array.IndexOf(ids, "audio.starred.list") < Array.IndexOf(ids, "audio.master.card"), "Stars are below master.");
+        var starred = nodes.Single(n => n.Id == "audio.starred.list");
+        var lastStar = Nodes(starred).Last(n => n.Kind == ViewNodeKind.Slider);
+        Assert.Equal("audio.master.volume.slider", lastStar.Focus!.Down);
+        Assert.Equal(lastStar.Id, nodes.Single(n => n.Id == "audio.master.volume.slider").Focus!.Up);
+        Assert.Equal(allStarred ? 2 : 1, starred.Children.Count);
+        Assert.Equal(allStarred ? 0 : 1, nodes.Count(n => n.Id == "audio.sessions.list"));
+        foreach (var session in sessions)
+            Assert.Equal(1, nodes.Count(n => n.Id == AudioMixerSessionControlIds.For(session).VolumeSlider));
+        foreach (var node in nodes)
+            foreach (var target in new[] { node.Focus?.Up, node.Focus?.Down }.Where(id => id is not null))
+                Assert.True(nodes.Any(n => n.Id == target), "Navigation references an absent control: " + target);
+        Assert.Equal(0, WidgetTestHost.ValidateWinUiPresentation(snapshot).Count);
+    }
+    return Task.CompletedTask;
+}
+
+static async Task GroupedMixerPermissions()
+{
+    var fake = new FakeCapabilityClient { CheckPermissionGrants = true, Sessions = [Session("game", "Game", 0.5)] };
+    var widget = Create(fake);
+    await ActivateReady(widget);
+    try
+    {
+        await widget.OnActionAsync(new("output.mute.toggle", "audio.master.volume.slider"));
+        await WaitUntil(() => fake.OutputMuteRequests.Count == 1);
+        Assert.Equal(1, fake.PermissionRequests.Count);
+        var requested = fake.PermissionRequests[0];
+        Assert.Equal(8, requested.Length);
+        Assert.True(requested.Contains("system.audio.input.control.v1") && requested.Contains("system.audio.devices.control.v1") &&
+            requested.Contains("system.audio.sessions.control.v1"), "Core mixer access was not bundled.");
+        Assert.True(!requested.Any(id => id.Contains("spatial")), "Spatial sound was requested without its action.");
+        await widget.DrainCommandWorkersAsync();
+        var game = AudioMixerSessionControlIds.For(fake.Sessions[0]);
+        await widget.OnActionAsync(new(game.Mute, game.VolumeSlider));
+        await WaitUntil(() => fake.MuteRequests.Count == 1);
+        Assert.Equal(1, fake.PermissionRequests.Count);
+        fake.GrantedPermissions.Remove("system.audio.input.control.v1");
+        await widget.OnActionAsync(new(game.Star, game.VolumeSlider));
+        Assert.Equal(1, fake.PermissionRequests.Count);
+        await widget.OnActionAsync(new("output.volume.set", "audio.master.volume.slider", RequestedValue: 0.4));
+        await WaitUntil(() => fake.OutputVolumeRequests.Count > 0);
+        Assert.Equal(1, fake.PermissionRequests.Count);
+        await widget.OnActionAsync(new("spatial.retry", "audio.spatial.retry"));
+        await WaitUntil(() => fake.PermissionRequests.Count == 2);
+        Assert.SequenceEqual(new[] { "system.audio.spatial.read.v1", "system.audio.spatial.control.v1" }, fake.PermissionRequests[1]);
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
+}
 
 static Task PresentationIsRepeatable()
 {
@@ -1914,9 +2055,21 @@ file sealed class FakeCapabilityClient
         lock (_gate) _inputMutePlans.Enqueue(new ControlPlan(gate, failure));
     }
 
+    public WidgetTestPrivateState PrivateState { get; set; } = new();
+    public bool CheckPermissionGrants { get; set; }
+    public HashSet<string> GrantedPermissions { get; } = new(StringComparer.Ordinal);
+    public List<string[]> PermissionRequests { get; } = [];
     public WidgetHostServices BuildServices() => new WidgetTestHostServicesBuilder()
-            .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
-                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
+        .WithPrivateState(PrivateState)
+        .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(new WidgetPermissionStatuses(
+            query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, !CheckPermissionGrants || GrantedPermissions.Contains(id)
+                ? WidgetPermissionState.Granted : WidgetPermissionState.NotDecided)).ToArray())))
+        .WithHandler(WidgetPermissionCapabilities.Request, (query, _) =>
+        {
+            GrantedPermissions.UnionWith(query.CapabilityIds);
+            PermissionRequests.Add(query.CapabilityIds.ToArray());
+            return ValueTask.FromResult(new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted));
+        })
         .WithHandler(WidgetAudioCapabilities.GetSpatial, (request, token) =>
         {
             if (SpatialReadFailure is not null) throw SpatialReadFailure;

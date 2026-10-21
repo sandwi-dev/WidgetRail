@@ -330,6 +330,7 @@ internal sealed class AudioMixerSessionControlIds
         VolumeSet = $"{prefix}.volume.set";
         Mute = $"{prefix}.mute";
         MuteIcon = $"{prefix}.mute.icon";
+        Star = $"{prefix}.star.toggle";
     }
 
     internal string Row { get; }
@@ -344,6 +345,7 @@ internal sealed class AudioMixerSessionControlIds
     internal string VolumeSet { get; }
     internal string Mute { get; }
     internal string MuteIcon { get; }
+    internal string Star { get; }
 
     internal static AudioMixerSessionControlIds For(WidgetAudioSession session)
     {
