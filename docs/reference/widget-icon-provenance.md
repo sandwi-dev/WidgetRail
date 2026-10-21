@@ -31,6 +31,24 @@ The upstream ISC license and Feather MIT attribution are shipped in
 `samples/PlayniteLibraryWidget/assets/icons/Lucide-LICENSE.txt` and included in
 the widget package. The package's Playnite mark remains project-authored.
 
+The same Lucide version and stroke-to-path conversion are used for these
+theme-tinted controls. Each affected package includes `assets/icons/Lucide-LICENSE.txt`:
+
+| Package | Lucide source icons |
+| --- | --- |
+| YouTube Music | `house`, `search`, `library-big`, `list-end` |
+| Spotify | `monitor-speaker`, `search`, `list-end`, `list-music`, `log-in` |
+| YouTube Video | `search` |
+| Games & Apps | `library-big`, `plus`, `app-window`, `chevron-left`, `chevron-right` |
+| Network Controls | `arrow-left`, `bluetooth` |
+| Audio Mixer | `mic-off` |
+| Recent Apps | `history` |
+
+Spotify's filled stop-square is a project-authored geometric SVG. Playback
+repeat-one uses the existing native glyph rather than another image asset.
+Games & Apps also reuses Task Switcher's project-authored overlapping-window
+artwork for its Running section.
+
 YouTube Music uses `ytmusic.mark` from
 `samples/YtMusicWidget/assets/icons/yt-music.svg`: a project-authored geometric
 rendering of the YouTube Music red disc, white ring and play triangle. It replaces

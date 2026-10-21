@@ -1,3 +1,4 @@
+using WidgetRail.PlatformBroker;
 using WidgetRail.PlatformDiagnostics;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -19,6 +20,7 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
     private readonly Func<BridgeLocalWidgetPackageInstallCompleted, Task> _completed;
     private readonly Func<string, Stream> _openPackage;
     private readonly string _stateRoot;
+    private readonly ConsentStore _consent;
     private readonly BridgeClientRegistry? _registry;
     private ActiveInstall? _active;
     private (string Runtime, PlatformWidgetPackageNotification Value, DateTimeOffset Expires)? _notification;
@@ -29,14 +31,14 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
         WidgetCatalog.WidgetCatalog catalog,
         BridgeCatalogMonitor monitor,
         Func<BridgeLocalWidgetPackageInstallCompleted, Task> completed,
-        Func<string, Stream>? openPackage = null, string? stateRoot = null)
+        Func<string, Stream>? openPackage = null, string? stateRoot = null, ConsentStore? consent = null)
         : this(
             catalog,
             origin => registry.AdmitLocalWidgetPackageImport(origin),
             cancellationToken => monitor.ReloadNowAsync(cancellationToken),
             completed,
             openPackage,
-            beforePublish: null, stateRoot: stateRoot, registry: registry)
+            beforePublish: null, stateRoot: stateRoot, registry: registry, consent: consent)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(monitor);
@@ -48,10 +50,11 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
         Func<CancellationToken, Task> reload,
         Func<BridgeLocalWidgetPackageInstallCompleted, Task> completed,
         Func<string, Stream>? openPackage,
-        Func<CancellationToken, Task>? beforePublish, string? stateRoot = null, BridgeClientRegistry? registry = null)
+        Func<CancellationToken, Task>? beforePublish, string? stateRoot = null, BridgeClientRegistry? registry = null, ConsentStore? consent = null)
     {
         _stateRoot = stateRoot ?? Path.Combine(catalog.Root, "widget-state");
         _registry = registry;
+        _consent = consent ?? new ConsentStore(Path.Combine(Path.GetDirectoryName(_stateRoot)!, "consent"));
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _admit = admit ?? throw new ArgumentNullException(nameof(admit));
         _reload = reload ?? throw new ArgumentNullException(nameof(reload));
@@ -158,7 +161,7 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
                 await _completed(new(active.Request.OperationId, "approval-required", inspection.Id,
                     inspection.Version.ToString(),
                     (fullTrust ? "This widget can access your files, network, and other apps with your Windows account’s permissions. It is not sandboxed, and its publisher is not verified. Only continue if you trust where you downloaded it." : "This widget runs in WidgetRail’s sandbox.") +
-                    (updating ? "\n\nYour widget settings will be kept. Permissions are requested again when needed." : "\n\nNew widgets will be enabled. Permissions are requested when needed."))).ConfigureAwait(false);
+                    (updating ? "\n\nYour widget settings will be kept. Existing permission decisions are kept for matching permissions; new permissions need approval." : "\n\nNew widgets will be enabled. Permissions are requested when needed."))).ConfigureAwait(false);
                 bool approved;
                 try { approved = await decision.Task.WaitAsync(TimeSpan.FromMinutes(2), active.Cancellation.Token).ConfigureAwait(false); }
                 catch (TimeoutException) { throw new WidgetPackageException("approval_expired", "Widget review expired. Choose the package again."); }
@@ -171,7 +174,7 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
                 await _beforePublish(token).ConfigureAwait(false);
                 using var admission = _admit(active.Request.Origin);
             }
-            await using var settings = new BridgeWidgetSettingsTransfer(_stateRoot, _registry, _reload);
+            await using var settings = new BridgeWidgetSettingsTransfer(_stateRoot, _consent, _registry, _reload);
             async Task KeepReviewedSettings(InstalledWidgetVersion previous, InstalledWidgetVersion replacement, CancellationToken token)
             {
                 if (reviewedSource is null || previous.ContentDigest != reviewedSource)

@@ -9,6 +9,9 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
     private const int MaximumTraversalPages = 160;
     private readonly IPlatformBrokerBackend _backend;
     private readonly BrokerWidgetIdentity _identity;
+    private BrokerWidgetIdentity _dataIdentity;
+    private readonly AppLibraryContinuityStore? _continuity;
+    private bool _scopeResolved;
     private readonly IAppLibrarySavedIdIssuer _savedIdIssuer;
     private readonly AppLibraryArtworkRegistry.AppLibraryArtworkSession? _artwork;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -25,18 +28,39 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
         IPlatformBrokerBackend backend,
         BrokerWidgetIdentity identity,
         IAppLibrarySavedIdIssuer savedIdIssuer,
-        AppLibraryArtworkRegistry.AppLibraryArtworkSession? artwork = null)
+        AppLibraryArtworkRegistry.AppLibraryArtworkSession? artwork = null,
+        AppLibraryContinuityStore? continuity = null)
     {
         _backend = backend;
         _identity = identity;
+        _dataIdentity = identity;
         _savedIdIssuer = savedIdIssuer;
         _artwork = artwork;
+        _continuity = continuity;
     }
 
     internal async Task<JsonElement> ExecuteAsync(
         string operation,
         JsonElement payload,
-        CancellationToken cancellationToken) => operation switch
+        CancellationToken cancellationToken)
+    {
+        // Resolve once per broker generation, before creating any saved IDs or
+        // launch registrations. Permission checks remain on the current broker.
+        if (operation is not (PlatformCapabilities.TaskWindowsList or PlatformCapabilities.TaskWindowsSwitch or PlatformCapabilities.TaskWindowsClose) &&
+            _continuity is not null && !Volatile.Read(ref _scopeResolved))
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (!_scopeResolved)
+                {
+                    _dataIdentity = await _continuity.ResolveAsync(_dataIdentity, cancellationToken).ConfigureAwait(false);
+                    Volatile.Write(ref _scopeResolved, true);
+                }
+            }
+            finally { _gate.Release(); }
+        }
+        return operation switch
         {
             PlatformCapabilities.TaskWindowsList or PlatformCapabilities.TaskWindowsSwitch or
                 PlatformCapabilities.TaskWindowsClose =>
@@ -62,6 +86,7 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
             _ => throw new BrokerException(
                 "unsupported_operation", "App-library operation is unsupported."),
         };
+    }
 
     private async Task<RunningAppObservationSummary> ObserveRunningAsync(
         JsonElement payload,
@@ -75,7 +100,7 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
             new Dictionary<string, string>(StringComparer.Ordinal);
         return new RunningAppObservationSummary(observed.Items.Select(item =>
             new RunningAppCandidateSummary(
-                _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
+                _savedIdIssuer.Issue(_dataIdentity, item.StableProviderIdentity),
                 item.DisplayName, item.Kind, item.SourceAttribution)
             {
                 Artwork = item.ArtworkItem is { } artwork && artworkHandles.TryGetValue(artwork.ProviderAppId, out var handle)
@@ -102,7 +127,7 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
             if (!string.Equals(request.Revision, observed.Revision, StringComparison.Ordinal))
                 return new ConfirmRunningAppSummary(null);
             var match = observed.Items.SingleOrDefault(item => string.Equals(
-                _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
+                _savedIdIssuer.Issue(_dataIdentity, item.StableProviderIdentity),
                 request.SavedId, StringComparison.Ordinal));
             if (match is null) return new ConfirmRunningAppSummary(null);
             var page = ValidatePage(await _backend.QueryAppLibraryAsync(
@@ -166,13 +191,13 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
                 throw new BrokerException(
                     "stale_observation", "The running-app observation is stale.");
             var match = observed.Items.SingleOrDefault(item => string.Equals(
-                _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
+                _savedIdIssuer.Issue(_dataIdentity, item.StableProviderIdentity),
                 request.SavedId, StringComparison.Ordinal));
             if (match is null)
                 throw new BrokerException(
                     "app_not_found", "The selected running app is no longer available.");
             var registered = await _backend.RegisterRunningAppAsync(
-                _identity,
+                _dataIdentity,
                 new RegisterRunningAppBackendRequest(
                     request.SavedId, match.StableProviderIdentity,
                     match.InstanceEvidence, observed.Revision),
@@ -182,7 +207,7 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
             var validated = ValidatePage(new AppLibraryBackendCursorPage(
                 [registered.Item], null, null, "registered"), 1).Items.Single();
             if (!string.Equals(
-                    _savedIdIssuer.Issue(_identity, validated.StableProviderIdentity),
+                    _savedIdIssuer.Issue(_dataIdentity, validated.StableProviderIdentity),
                     request.SavedId, StringComparison.Ordinal))
                 throw InvalidItem();
             var projected = ProjectItem(validated, []);
@@ -206,7 +231,7 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
         try
         {
             await _backend.ForgetRunningAppAsync(
-                _identity, request.SavedId, cancellationToken).ConfigureAwait(false);
+                _dataIdentity, request.SavedId, cancellationToken).ConfigureAwait(false);
             _launchByPublicId.Clear();
             _publicIdsByBackendId.Clear();
             _launchRecency.Clear();
@@ -277,7 +302,7 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
                     "invalid_backend_data", "App-library revision changed during query filtering.");
             foreach (var item in page.Items)
                 if (requested.Contains(_savedIdIssuer.Issue(
-                        _identity, item.StableProviderIdentity)))
+                        _dataIdentity, item.StableProviderIdentity)))
                     matches.Add(item.StableProviderIdentity);
             if (matches.Count == requested.Count || page.After is null) break;
             if (!seenCursors.Add(page.After))
@@ -326,7 +351,7 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
                 foreach (var item in page.Items)
                 {
                     var savedId = _savedIdIssuer.Issue(
-                        _identity, item.StableProviderIdentity);
+                        _dataIdentity, item.StableProviderIdentity);
                     if (requested.Contains(savedId)) matches[savedId] = item;
                 }
                 if (page.After is null) break;
@@ -341,7 +366,7 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
             if (unresolved.Length != 0)
             {
                 var registered = await _backend.ResolveRegisteredRunningAppsAsync(
-                    _identity, unresolved, cancellationToken).ConfigureAwait(false);
+                    _dataIdentity, unresolved, cancellationToken).ConfigureAwait(false);
                 if (registered is null || registered.Count > unresolved.Length)
                     throw InvalidItem();
                 var validated = ValidatePage(new AppLibraryBackendCursorPage(
@@ -349,7 +374,7 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
                 foreach (var item in validated.Items)
                 {
                     var savedId = _savedIdIssuer.Issue(
-                        _identity, item.StableProviderIdentity);
+                        _dataIdentity, item.StableProviderIdentity);
                     if (!unresolved.Contains(savedId, StringComparer.Ordinal) ||
                         matches.ContainsKey(savedId))
                         throw InvalidItem();
@@ -385,12 +410,12 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
             if (!observed)
             {
                 await _backend.LaunchAppLibraryItemAsync(
-                    _identity, registration.BackendAppId, cancellationToken)
+                    _dataIdentity, registration.BackendAppId, cancellationToken)
                     .ConfigureAwait(false);
                 return BrokerCapabilityDomains.Acknowledged();
             }
             var result = await _backend.LaunchAppLibraryItemObservedAsync(
-                _identity, registration.BackendAppId, cancellationToken)
+                _dataIdentity, registration.BackendAppId, cancellationToken)
                 .ConfigureAwait(false);
             if (!Enum.IsDefined(result.State) ||
                 result.State == AppLibraryLaunchObservationState.Running &&
@@ -438,7 +463,7 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
         if (item.IsLaunchable) TouchLaunch(publicId, item.ProviderAppId);
         return new AppLibraryItemSummary(
             publicId,
-            _savedIdIssuer.Issue(_identity, item.StableProviderIdentity),
+            _savedIdIssuer.Issue(_dataIdentity, item.StableProviderIdentity),
             CreatePresentation(item, artworkHandle, sources));
     }
 

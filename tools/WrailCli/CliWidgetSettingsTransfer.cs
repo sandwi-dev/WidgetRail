@@ -1,4 +1,5 @@
 using WidgetRail.WidgetCatalog;
+using WidgetRail.PlatformBroker;
 
 namespace WidgetRail.WrailCli;
 
@@ -20,6 +21,7 @@ internal sealed class CliWidgetSettingsTransfer(string stateRoot) : IDisposable
         {
             throw new CliOperationException("The widget is still in use. Close WidgetRail and retry the update. The current version is still selected.", exception);
         }
-        await new WidgetSettingsTransfer(stateRoot).CopyAsync(previous, replacement, token).ConfigureAwait(false);
+        var consent = new ConsentStore(Path.Combine(Path.GetDirectoryName(stateRoot)!, "consent"));
+        await new WidgetSettingsTransfer(stateRoot, consent).CopyAsync(previous, replacement, token).ConfigureAwait(false);
     }
 }

@@ -94,6 +94,29 @@ if (args is ["--export-layout", var directory])
 
 var tests = new List<(string, Func<Task>)>
 {
+    ("Navigation icons identify their destinations and repeat-one is distinct", async () =>
+    {
+        var (widget, service) = await Start();
+        try
+        {
+            service.SetPlayback(true);
+            foreach (var repeat in new[] { "off", "all", "one" })
+            {
+                service.SetRepeat(repeat);
+                var snapshot = widget.Render().CreateSnapshot("icons", 1);
+                var nodes = Nodes(snapshot.Root).ToArray();
+                Check(nodes.Single(node => node.Id == "player.main.repeat").Glyph ==
+                    (repeat == "one" ? WidgetGlyph.RepeatOne : WidgetGlyph.Repeat), "Repeat state glyph");
+                foreach (var tab in new[] { "home", "search", "library", "queue" })
+                {
+                    var navigation = nodes.Where(node => node.ActionId == "tab." + tab).ToArray();
+                    Check(navigation.Length > 0 && navigation.All(node => node.PackageIcon?.AssetId == "ytmusic." + tab),
+                        "Distinct navigation glyph for " + tab);
+                }
+            }
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }),
     ("Song banners opt in during setup and publish only track changes", MusicNotificationTests.Run),
     ("Playback recovery refreshes, skips, stops and rejects stale events", PlaybackRecoveryTests.Run),
     ("Volume preference survives restart and rejects provider defaults", VolumePreferenceTests.Run),
@@ -1028,6 +1051,7 @@ sealed class FakeService : IMusicService
     public void SetPlayerError(string? error) { State = State with { Player = State.Player with { Error = error } }; Changed?.Invoke(); }
     public void ReplaceQueue(IReadOnlyList<MusicItem> queue) { State = State with { Queue = queue, Index = 0 }; Changed?.Invoke(); }
     public void SelectCurrent(int index) { State = State with { Index = index }; Changed?.Invoke(); }
+    public void SetRepeat(string repeat) { State = State with { Repeat = repeat }; Changed?.Invoke(); }
     public void SetPlayback(bool playing, string trackId = "test")
     {
         State = playing ? new(true, [new(trackId, "song", "A song title", "Artist name", "https://example.invalid/fixture.png")], 0, false, "off", new(trackId, true, Position: 15, Duration: 196))

@@ -127,7 +127,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         _authorityRecovery = new BridgeAuthorityRecoveryProjection(
             AppContainerAuthorityRecoveryService.Default);
         _localData = new BridgeWidgetLocalDataService(
-            _registry, _platformBackend, _catalogMonitor, _platformBackend, _settingsRoot);
+            _registry, _platformBackend, _catalogMonitor, _platformBackend, _settingsRoot, _consentStore);
         var packageCatalog = _catalogMonitor is null
             ? null
             : _platformBackend is null
@@ -142,7 +142,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         _marketplace = packageCatalog is null || _catalogMonitor is null ? null :
             new BridgeWidgetMarketplace(packageCatalog, async token => { await _catalogMonitor.ReloadNowAsync(token).ConfigureAwait(false); },
                 definitions: marketplaceSources?.Definitions, http: marketplaceSources?.Http, clock: marketplaceSources?.Clock,
-                stateRoot: Path.Combine(_settingsRoot ?? Path.GetDirectoryName(packageCatalog.Root)!, "widget-state"), registry: _registry);
+                stateRoot: Path.Combine(_settingsRoot ?? Path.GetDirectoryName(packageCatalog.Root)!, "widget-state"), registry: _registry, consent: _consentStore);
         _localPackageImport = _catalogMonitor is null
             ? null
             : new BridgeLocalWidgetPackageImportService(
@@ -152,7 +152,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 result => SendEventAsync(
                     BridgeMessageTypes.LocalWidgetPackageInstallCompleted,
                     result),
-                stateRoot: Path.Combine(_settingsRoot ?? Path.GetDirectoryName(packageCatalog!.Root)!, "widget-state"));
+                stateRoot: Path.Combine(_settingsRoot ?? Path.GetDirectoryName(packageCatalog!.Root)!, "widget-state"), consent: _consentStore);
         _diagnostics = new BridgeDiagnosticsProjection(
             new WidgetBridgeDiagnosticsSource(
                 _registry,

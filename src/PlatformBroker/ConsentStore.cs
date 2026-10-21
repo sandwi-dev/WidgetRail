@@ -101,6 +101,41 @@ public sealed class ConsentStore
         CancellationToken cancellationToken = default) =>
         WriteDecisionsAsync(identity, capabilityIds, ConsentDecision.Grant, onlyMissing: true, cancellationToken);
 
+    // Trusted reviewed-update flow only. A matching manifest label alone is not
+    // authority to call this; the updater admits both exact package digests.
+    internal async Task CopyUpdateDecisionsAsync(
+        BrokerWidgetIdentity source, BrokerWidgetIdentity destination,
+        IReadOnlyCollection<string> retainedCapabilities, CancellationToken cancellationToken)
+    {
+        source.Validate();
+        destination.Validate();
+        if (source.PackageId != destination.PackageId)
+            throw new BrokerException("invalid_consent", "Permissions can only be kept for the same widget.");
+        if (retainedCapabilities.Count > 256 || retainedCapabilities.Any(id => !PlatformCapabilities.IsManifestDeclarable(id)))
+            throw new BrokerException("unsupported_capability", "Capability is unsupported.");
+        if (source.PublisherId == destination.PublisherId || retainedCapabilities.Count == 0) return;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            Directory.CreateDirectory(_root);
+            EnsureSafeExistingPath(_root);
+            await using var crossProcess = await AcquireLockAsync(cancellationToken).ConfigureAwait(false);
+            var current = await LoadAsync(cancellationToken).ConfigureAwait(false);
+            var missing = retainedCapabilities.ToHashSet(StringComparer.Ordinal);
+            missing.ExceptWith(current.Entries.Where(entry => entry.PackageId == destination.PackageId &&
+                entry.PublisherId == destination.PublisherId).Select(entry => entry.CapabilityId));
+            var additions = current.Entries.Where(entry => entry.PackageId == source.PackageId &&
+                entry.PublisherId == source.PublisherId && missing.Contains(entry.CapabilityId))
+                .Select(entry => entry with { PublisherId = destination.PublisherId }).ToArray();
+            if (additions.Length == 0) return;
+            var entries = current.Entries.Concat(additions).ToList();
+            entries.Sort(CompareEntries);
+            var updated = ValidateAndMigrate(new ConsentDocument(1, checked(current.Revision + 1), entries));
+            await SaveAtomicAsync(updated, cancellationToken).ConfigureAwait(false);
+        }
+        finally { _gate.Release(); }
+    }
+
     private async Task<ConsentDocument> WriteDecisionsAsync(
         BrokerWidgetIdentity identity,
         IReadOnlyCollection<string> capabilityIds,

@@ -3620,7 +3620,10 @@ static async Task InstalledWorkerLocalDataClearIsExact()
     var neighborIdentity = new BrokerWidgetIdentity(
         neighborConfigured.PackageId, neighborConfigured.PublisherId,
         neighborConfigured.InstanceId);
-    registrations.Seed(selectedIdentity);
+    var originalDataIdentity = selectedIdentity with { PublisherId = "unsigned." + new string('c', 64) };
+    await new AppLibraryContinuityStore(Path.Combine(temporary.Path, "consent"))
+        .KeepAsync(originalDataIdentity, selectedIdentity, default);
+    registrations.Seed(originalDataIdentity);
     registrations.Seed(neighborIdentity);
     await using var composite = new CompositePlatformBrokerBackend(
         simulator, simulator, appLibrary: registrations, privateState: backend);
@@ -3634,8 +3637,9 @@ static async Task InstalledWorkerLocalDataClearIsExact()
     await using var monitor = new BridgeCatalogMonitor(
         trusted.Path, catalogRoot, Environment.ProcessPath!, load.Catalog);
     await using var server = new WidgetBridgeServer(
-        pipeName, load.Catalog, 64 * 1024, platformBackend: composite,
-        catalogMonitor: monitor);
+        pipeName, load.Catalog, 64 * 1024, appearance: null, consentStore: null, platformBackend: composite,
+        catalogMonitor: monitor, residencyBudget: null, capabilityDiagnosticSink: null,
+        settingsStore: new PlatformSettingsStore(new PlatformSettingsPaths(temporary.Path)));
     var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
     await using var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
     try
@@ -3677,7 +3681,7 @@ static async Task InstalledWorkerLocalDataClearIsExact()
             selectedIdentity, CancellationToken.None)).Exists,
             "Selected installed state survived clear.");
         Assert.False((await registrations.GetRunningAppRegistrationStateAsync(
-            selectedIdentity, CancellationToken.None)).Exists,
+            originalDataIdentity, CancellationToken.None)).Exists,
             "Selected portable registrations survived local-data clear.");
         Assert.True((await backend.ReadPrivateStateAsync(
             neighborIdentity, CancellationToken.None)).Exists,
@@ -4749,7 +4753,11 @@ static async Task LocalPackageUpdateFlow()
     using var root = new TemporaryDirectory("wrail-update-flow");
     const string id = "dev.example.update";
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(Path.Combine(root.Path, "catalog"));
-    await catalog.InstallAsync(await CreateWidgetPackageAsync(root.Path, id, "1.0.0"));
+    var first = await catalog.InstallAsync(await CreateWidgetPackageAsync(root.Path, id, "1.0.0",
+        permissions: [PlatformCapabilities.AudioOutputReadV1]));
+    var consent = new ConsentStore(Path.Combine(root.Path, "reviewed-consent"));
+    await consent.SetDecisionAsync(new(id, InstalledWidgetAuthority.PublisherId(first), "old"),
+        PlatformCapabilities.AudioOutputReadV1, ConsentDecision.Grant);
     await catalog.SetEnabledAsync(id, true);
     var origin = new BridgeLocalWidgetPackageOrigin("settings", "widgetrail.firstparty.settings", "widgetrail.firstparty",
         "settings.default", new string('a', 64), new string('b', 64), Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(id))));
@@ -4758,7 +4766,7 @@ static async Task LocalPackageUpdateFlow()
         var review = new TaskCompletionSource<BridgeLocalWidgetPackageInstallCompleted>(TaskCreationOptions.RunContinuationsAsynchronously);
         var done = new TaskCompletionSource<BridgeLocalWidgetPackageInstallCompleted>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var service = new BridgeLocalWidgetPackageImportService(catalog, _ => NoopDisposable.Instance,
-            _ => Task.CompletedTask, result => { if (result.Status == "approval-required") review.TrySetResult(result); else done.TrySetResult(result); return Task.CompletedTask; }, null, beforePublish);
+            _ => Task.CompletedTask, result => { if (result.Status == "approval-required") review.TrySetResult(result); else done.TrySetResult(result); return Task.CompletedTask; }, null, beforePublish, consent: consent);
         var operation = Guid.NewGuid().ToString();
         service.Start(new(operation, path, origin), CancellationToken.None);
         if (await Task.WhenAny(review.Task, done.Task).WaitAsync(TimeSpan.FromSeconds(10)) == review.Task)
@@ -4777,7 +4785,7 @@ static async Task LocalPackageUpdateFlow()
         var current = (await catalog.DiscoverAsync()).Widgets.Single();
         Assert.True(current.Enabled && current.ActiveVersion.Version.ToString() == "1.0.0", "Rejected update changed the current widget.");
     }
-    var update = await CreateWidgetPackageAsync(root.Path, id, "2.0.0");
+    var update = await CreateWidgetPackageAsync(root.Path, id, "2.0.0", permissions: [PlatformCapabilities.AudioOutputReadV1]);
     Assert.Equal("failed", (await Run(update, _ => throw new IOException("fixture failure"))).Status);
     Assert.True((await catalog.DiscoverAsync()).Widgets.Single().Enabled, "Failed prepublication stopped the widget.");
     var result = await Run(update);
@@ -4786,6 +4794,8 @@ static async Task LocalPackageUpdateFlow()
     Assert.True(updated.Enabled, "Update lost the existing enabled state.");
     Assert.Equal("2.0.0", updated.ActiveVersion.Version.ToString());
     Assert.Equal(2, updated.Versions.Count);
+    Assert.Equal<ConsentDecision?>(ConsentDecision.Grant, await consent.GetDecisionAsync(
+        new(id, InstalledWidgetAuthority.PublisherId(updated.ActiveVersion), "new"), PlatformCapabilities.AudioOutputReadV1));
     Assert.True(result.Message.Contains("settings and enabled state were kept"), "Update did not explain that preferences are preserved.");
     await catalog.SetEnabledAsync(id, false);
     await catalog.RollbackAsync(id);

@@ -158,7 +158,7 @@ internal static class SpotifyPresentation
                     "Connect your account to show playback here.",
                     UI.Button("Connect", "spotify.connect",
                             $"spotify.{mode}.connect")
-                        .Icon(WidgetGlyph.Play, "Connect Spotify account")
+                        .Icon(SpotifyIcons.SignIn, "Connect Spotify account")
                         .Classes("spotify-primary")),
                 $"spotify.{mode}.connect"),
             SpotifyWidgetViewState.PermissionDenied => (
@@ -288,7 +288,7 @@ internal static class SpotifyPresentation
                     UI.Row("spotify.connect-actions",
                             UI.Button(reconnect ? "Reconnect" : "Connect", "spotify.connect",
                                     "spotify.connect")
-                                .Icon(WidgetGlyph.Play, "Connect Spotify account")
+                                .Icon(SpotifyIcons.SignIn, "Connect Spotify account")
                                 .FocusRight("spotify.setup.open")
                                 .Classes("spotify-primary", "spotify-responsive-action"),
                             UI.Button("Setup", "spotify.setup.open", "spotify.setup.open")
@@ -459,13 +459,13 @@ internal static class SpotifyPresentation
         NavigationShellDestination[] destinations =
         [
             new("devices", "Devices", "spotify.nav.devices", WidgetGlyph.Connection,
-                IsDisabled: setup),
+                IsDisabled: setup) { Icon = SpotifyIcons.Devices },
             new("search", "Search", "spotify.nav.search", WidgetGlyph.Music,
-                IsDisabled: setup),
+                IsDisabled: setup) { Icon = SpotifyIcons.Search },
             new("queue", "Queue", "spotify.nav.queue", WidgetGlyph.Next,
-                IsDisabled: setup),
+                IsDisabled: setup) { Icon = SpotifyIcons.Queue },
             new("playlists", "Playlists", "spotify.nav.playlists", WidgetGlyph.Music,
-                IsDisabled: setup),
+                IsDisabled: setup) { Icon = SpotifyIcons.Playlists },
         ];
         var parts = UI.NavigationShellParts(
             "spotify.nav",
@@ -726,7 +726,7 @@ internal static class SpotifyPresentation
             .PersistFocusAs("spotify.transport.shuffle")
             .FocusUp(seekSliderId).FocusRight(previousId)
             .Classes("spotify-secondary-action");
-        var repeat = UI.IconButton(WidgetGlyph.Repeat, "spotify.repeat",
+        var repeat = UI.IconButton(playback.RepeatState == SpotifyRepeatState.Track ? WidgetGlyph.RepeatOne : WidgetGlyph.Repeat, "spotify.repeat",
                 repeatId, $"Repeat {playback.RepeatState.ToString().ToLowerInvariant()}",
                 size: IconButtonSize.Small)
             .Selected(playback.RepeatState != SpotifyRepeatState.Off)
@@ -948,7 +948,7 @@ internal static class SpotifyPresentation
                         localActive ? "spotify.local.stop" : localNeedsReconnect
                             ? "spotify.connect.features" : "spotify.local.start",
                         localActive ? WidgetGlyph.Pause : localNeedsReconnect
-                            ? WidgetGlyph.Refresh : WidgetGlyph.Play),
+                            ? WidgetGlyph.Refresh : WidgetGlyph.Play) { Icon = localActive ? SpotifyIcons.Stop : null },
                     $"spotify.local.{mode}",
                     local.DisplayMessage ?? "Web Playback SDK audio stays in the trusted host.",
                     local.DeviceName,

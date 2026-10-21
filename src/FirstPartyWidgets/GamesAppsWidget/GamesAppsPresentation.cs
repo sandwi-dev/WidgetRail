@@ -196,13 +196,12 @@ internal static class GamesAppsPresentation
             .Select(savedId => byId[savedId]).ToArray();
         if (curated.Length == 0)
             return ConfigureStateAction(
-                UI.EmptyState(
+                UI.EmptyState(GamesAppsIcons.Library,
                     "Build your library",
                     "Trusted games appear automatically. Use Add apps for anything else.",
                     "games.state",
                     new ComponentAction(
-                        "Add apps", "games.open-catalog", WidgetGlyph.Play),
-                    WidgetGlyph.Play),
+                        "Add apps", "games.open-catalog") { Icon = GamesAppsIcons.Add }),
                 state.LibraryMutationBusy ||
                 state.LifecycleState != WidgetLifecycleState.Interactive);
 
@@ -215,15 +214,14 @@ internal static class GamesAppsPresentation
     {
         if (state.Items.Count == 0)
             return ConfigureStateAction(
-                UI.EmptyState(
+                UI.EmptyState(GamesAppsIcons.Application,
                     running ? "No matching running apps" : "No applications found",
                     running
                         ? "Only visible applications that exactly match the installed library can be added."
                         : "Refresh this section to check the installed application catalog again.",
                     running ? "games.running.empty" : "games.catalog.empty",
                     new ComponentAction(
-                        "Check again", RefreshActionId, WidgetGlyph.Refresh),
-                    WidgetGlyph.Play),
+                        "Check again", RefreshActionId, WidgetGlyph.Refresh)),
                 state.LifecycleState != WidgetLifecycleState.Interactive);
 
         if (running)
@@ -236,7 +234,7 @@ internal static class GamesAppsPresentation
             children.Add(PageButton(
                 "Previous page",
                 "games.previous-page",
-                WidgetGlyph.Previous,
+                GamesAppsIcons.PreviousPage,
                 "Load the previous application page",
                 state));
         children.Add(UI.ResponsiveGrid(
@@ -248,7 +246,7 @@ internal static class GamesAppsPresentation
             children.Add(PageButton(
                 "Next page",
                 "games.load-more",
-                WidgetGlyph.Refresh,
+                GamesAppsIcons.NextPage,
                 "Load the next application page",
                 state));
         return UI.VerticalScroll(
@@ -335,13 +333,12 @@ internal static class GamesAppsPresentation
     {
         var name = GamesAppsAppLibraryPresentation.DisplayName(item);
         var source = SourceLabel(item);
-        var copy = new List<WidgetElement>
+        var metadata = new List<WidgetElement>
         {
-            UI.Text(name, id + ".title", name).Classes("games-app-tile-title"),
             UI.Text(source, id + ".subtitle", source).Classes("games-app-tile-subtitle"),
         };
         if (visibleState is not null)
-            copy.Add(UI.Text(
+            metadata.Add(UI.Text(
                     visibleState,
                     id + ".state",
                     $"State: {visibleState}")
@@ -352,7 +349,9 @@ internal static class GamesAppsPresentation
                 $"{name}, {source}, {semanticState}",
                 ActionSurfaceOrientation.Horizontal,
                 AppArtwork(item, id + ".artwork", $"{name} icon"),
-                UI.Stack(id + ".content", copy.ToArray())
+                UI.Stack(id + ".content",
+                    UI.Text(name, id + ".title", name).Classes("games-app-tile-title"),
+                    UI.Row(id + ".metadata", metadata.ToArray()).Classes("games-app-tile-metadata"))
                     .Classes("games-app-tile-content"))
             .Disabled(disabled)
             .Busy(busy)
@@ -363,11 +362,11 @@ internal static class GamesAppsPresentation
     private static ButtonElement PageButton(
         string label,
         string actionId,
-        WidgetGlyph glyph,
+        WidgetIcon icon,
         string accessibilityLabel,
         GamesAppsPresentationState state) =>
         UI.Button(label, actionId, actionId)
-            .Icon(glyph, accessibilityLabel)
+            .Icon(icon, accessibilityLabel)
             .Busy(state.LoadingMore)
             .Disabled(state.LoadingMore ||
                 state.LifecycleState != WidgetLifecycleState.Interactive)
@@ -403,7 +402,7 @@ internal static class GamesAppsPresentation
                                 "Loading saved applications")
                             .Classes("games-state-loading")
                         : UI.Icon(
-                                WidgetGlyph.Play,
+                                GamesAppsIcons.Library,
                                 "games.state.icon",
                                 "Application library")
                             .Classes("games-state-icon"),
@@ -414,12 +413,11 @@ internal static class GamesAppsPresentation
         }
         else if (state.ViewState == GamesAppsViewState.Empty)
         {
-            stateSurface = ConfigureStateAction(UI.EmptyState(
+            stateSurface = ConfigureStateAction(UI.EmptyState(GamesAppsIcons.Application,
                     title,
                     help,
                     "games.state",
-                    new ComponentAction("Try again", RetryActionId, WidgetGlyph.Refresh),
-                    WidgetGlyph.Play),
+                    new ComponentAction("Try again", RetryActionId, WidgetGlyph.Refresh)),
                 state.LifecycleState == WidgetLifecycleState.Background);
             initialFocus = "games.state.action";
         }
@@ -468,11 +466,11 @@ internal static class GamesAppsPresentation
         return
         [
             new("games.section.library", "Library", "games.open-library",
-                WidgetGlyph.Play, IsDisabled: disabled),
+                WidgetGlyph.Play, IsDisabled: disabled) { Icon = GamesAppsIcons.Library },
             new("games.section.catalog", "Add apps", "games.open-catalog",
-                WidgetGlyph.Connection, IsDisabled: disabled),
+                WidgetGlyph.Connection, IsDisabled: disabled) { Icon = GamesAppsIcons.Add },
             new("games.section.running", "Running", "games.open-running",
-                WidgetGlyph.Refresh, IsDisabled: disabled),
+                WidgetGlyph.Refresh, IsDisabled: disabled) { Icon = GamesAppsIcons.Running },
         ];
     }
 
@@ -589,6 +587,6 @@ internal static class GamesAppsPresentation
                     accessibilityLabel,
                     ImageFit.Contain)
                 .Classes("games-app-tile-artwork")
-            : UI.Icon(WidgetGlyph.Play, id, accessibilityLabel)
+            : UI.Icon(GamesAppsIcons.Application, id, accessibilityLabel)
                 .Classes("games-app-tile-artwork", "is-fallback");
 }

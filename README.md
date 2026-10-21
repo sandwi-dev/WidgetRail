@@ -140,6 +140,22 @@ working controls and layouts.
 Connect widgets through [intents](docs/reference/widget-intents.md), or integrate
 an external application through [local companion services](docs/reference/community-companion-services.md).
 
+## Third-party content and integrations
+
+WidgetRail is an independent project, not affiliated with, sponsored by, or
+endorsed by the companies or projects whose products it integrates. Product
+names and trademarks belong to their respective owners.
+
+Game artwork, screenshots, logos, music metadata and other third-party content
+displayed by widgets or shown in this documentation remain subject to their
+owners' rights, applicable licenses and service terms. WidgetRail's MIT license
+does not grant permission to reuse that content or those trademarks.
+
+For WidgetRail-specific integration problems, start with our
+[issue tracker](https://github.com/sandwi-dev/WidgetRail/issues). If you are a
+rights holder requesting a credit correction or removal, include the affected
+file, page or widget and enough detail to identify the content.
+
 ## License and contributions
 
 The platform, SDK, first-party widgets and templates are **MIT-licensed**.

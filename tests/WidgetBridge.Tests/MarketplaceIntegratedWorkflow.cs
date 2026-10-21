@@ -46,6 +46,9 @@ internal static class MarketplaceIntegratedWorkflow
             }
             Check((await f.Consent.LoadAsync()).Entries.Count == 0, "Package approval silently granted runtime permission");
             await PermissionRoundTrip(f);
+            var originalSecond = (await f.Catalog.DiscoverAsync()).Widgets.Single(w => w.Id == Second).ActiveVersion;
+            var originalIdentity = new BrokerWidgetIdentity(Second,
+                WidgetRail.WidgetCatalog.InstalledWidgetAuthority.PublisherId(originalSecond), "original");
             f.Http.Version = "2.0.0";
             f.Clock.Now += TimeSpan.FromMinutes(16);
             await f.Act("marketplace.refresh");
@@ -71,6 +74,11 @@ internal static class MarketplaceIntegratedWorkflow
             await f.Act("marketplace.batch.install");
             await f.WaitOperation("completed");
             Check(f.Http.DownloadCounts.GetValueOrDefault(First) == firstDownloads, "Retry downloaded successful work");
+            var updatedSecond = (await f.Catalog.DiscoverAsync()).Widgets.Single(w => w.Id == Second).ActiveVersion;
+            var updatedIdentity = new BrokerWidgetIdentity(Second,
+                WidgetRail.WidgetCatalog.InstalledWidgetAuthority.PublisherId(updatedSecond), "updated");
+            Check(await f.Consent.GetDecisionAsync(updatedIdentity, Permission) == ConsentDecision.Grant,
+                "Catalogue update lost an approved matching permission");
             // Same catalog API used by Settings; no payload is ever launched.
             await f.Catalog.SetEnabledAsync(First, false);
             await f.Catalog.RollbackAsync(First);
@@ -85,15 +93,16 @@ internal static class MarketplaceIntegratedWorkflow
             var installed = (await f.Catalog.DiscoverAsync()).Widgets;
             Check(installed.All(w => w.ActiveVersion.Version == new Version(2, 0, 0) && w.Versions.Count == 2), "Re-update did not select retained newer content");
             Check(!installed.Single(w => w.Id == First).Enabled, "Re-update changed disabled preference");
-            Check(await f.Consent.GetDecisionAsync(new(Second, Publisher, "installed-permission"), Permission) == ConsentDecision.Grant, "Update erased consent");
+            Check(await f.Consent.GetDecisionAsync(originalIdentity, Permission) == ConsentDecision.Grant, "Update erased consent");
             Check(f.Http.MetadataRequests == 2, "Unexpected metadata refresh outside deliberate expiration");
         }
         finally { Directory.Delete(root, true); }
     }
     private static async Task PermissionRoundTrip(Workflow f)
     {
-        var manifest = (await f.Catalog.DiscoverAsync()).Widgets.Single(w => w.Id == Second).ActiveVersion.Manifest;
-        var identity = new BrokerWidgetIdentity(manifest.Id, manifest.Publisher, "installed-permission");
+        var installed = (await f.Catalog.DiscoverAsync()).Widgets.Single(w => w.Id == Second).ActiveVersion;
+        var manifest = installed.Manifest;
+        var identity = new BrokerWidgetIdentity(manifest.Id, WidgetRail.WidgetCatalog.InstalledWidgetAuthority.PublisherId(installed), "installed-permission");
         await using var broker = new PlatformCapabilityBroker(identity, manifest.OptionalPermissions, f.Consent,
             new SimulatedPlatformBrokerBackend(), [PlatformCapabilities.WidgetPermissionsV1]);
         broker.SetLifecycle(BrokerLifecycleState.Interactive);
@@ -150,7 +159,7 @@ internal static class MarketplaceIntegratedWorkflow
         internal Workflow(string root)
         {
             Catalog = new(Path.Combine(root, "widgets")); Consent = new(Path.Combine(root, "consent"));
-            Service = new(Catalog, _ => Task.CompletedTask, new[] { First, Second }.Select(id => new CuratedWidget(id, Publisher, id, "Inert integrated fixture", [])).ToArray(), Http, Clock);
+            Service = new(Catalog, _ => Task.CompletedTask, new[] { First, Second }.Select(id => new CuratedWidget(id, Publisher, id, "Inert integrated fixture", [])).ToArray(), Http, Clock, consent: Consent);
             broker = new(manager, [], Consent, new SimulatedPlatformBrokerBackend(), [PlatformCapabilities.WidgetMarketplaceV1], AppLibrarySavedIdIssuer.Shared, marketplace: Service.HandleAsync);
             broker.SetLifecycle(BrokerLifecycleState.Interactive);
             var builder = new WidgetTestHostServicesBuilder();

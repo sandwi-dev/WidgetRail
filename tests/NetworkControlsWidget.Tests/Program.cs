@@ -187,6 +187,7 @@ static async Task ConnectionDetailsAreOptionalAndStaleSafe()
     await widget.OnActionAsync(new("network.details.open", "network.details.open"));
     var opened = Snapshot(widget, 2);
     Assert.Equal("network.details.back", opened.InitialFocusId);
+    Assert.Equal("network-controls.back", Button(opened.Root, "network.details.back").PackageIcon?.AssetId);
     Assert.Contains("192.0.2.10", Text(opened.Root, "network.details.addresses.value").Text!);
 
     var stale = new TaskCompletionSource<WidgetNetworkConnectionDetails>(
@@ -848,8 +849,9 @@ static async Task BluetoothDeviceListing()
     Assert.Equal("Wireless controller", devices[0].Text);
     Assert.True(devices.All(device => device.IsSelected is not true),
         "Remembered Bluetooth focus was exposed as a connected checkmark.");
-    Assert.True(devices.All(device => device.Glyph == WidgetGlyph.Connection),
+    Assert.True(devices.All(device => device.PackageIcon?.AssetId == "network-controls.bluetooth"),
         "Bluetooth focus or activation was visually confused with authoritative connection state.");
+    Assert.Equal("network-controls.bluetooth", radio.PackageIcon?.AssetId);
     Assert.Equal("network.bluetooth.scan", radio.Focus!.Down);
     Assert.Equal(devices[0].Id, Button(snapshot.Root, "network.bluetooth.scan").Focus!.Down);
     Assert.Equal("network.bluetooth.scan", devices[0].Focus!.Up);
@@ -909,8 +911,8 @@ static async Task BluetoothDeviceListing()
     Assert.Equal("bluetooth-c", fake.LastBluetoothDeviceId);
     Assert.Contains("needs Windows confirmation · press X",
         Text(guidance.Root, "network.bluetooth.summary").Text!);
-    Assert.Equal(WidgetGlyph.Connection,
-        Buttons(guidance.Root).Single(button => button.Text == "Nearby keyboard").Glyph);
+    Assert.Equal("network-controls.bluetooth",
+        Buttons(guidance.Root).Single(button => button.Text == "Nearby keyboard").PackageIcon?.AssetId);
     Assert.True(widget.Bluetooth!.Devices.Single(device =>
         device.DisplayName == "Wireless controller").IsConnected,
         "A read-only details action disconnected an authoritative Bluetooth device.");
@@ -1552,14 +1554,16 @@ static ViewSnapshot Snapshot(NetworkControlsWidget widget, long sequence)
         Assert.True(transitions.All(node => node.Transition!.Key == selectedTab.Transition.Key),
             "Provider updates must not change the selected tab's transition identity.");
     }
-    Assert.Equal(
+    var expectedProtocol =
         Nodes(snapshot.Root).Any(node => node.Transition is not null) ? ProtocolConstants.WidgetTransitionVersion :
         Nodes(snapshot.Root).Any(node => node.Shortcuts?.Any(shortcut => shortcut.Label is not null) == true)
             ? ProtocolConstants.ControllerShortcutLabelVersion
             : Nodes(snapshot.Root).Any(node => node.Kind == ViewNodeKind.TextEntry)
                 ? ProtocolConstants.TextEntryVersion
-                : ProtocolConstants.ScrollContainerVersion,
-        snapshot.ProtocolVersion);
+                : ProtocolConstants.ScrollContainerVersion;
+    if (Nodes(snapshot.Root).Any(node => node.PackageIcon is not null))
+        expectedProtocol = Math.Max(expectedProtocol, ProtocolConstants.PackageSvgIconVersion);
+    Assert.Equal(expectedProtocol, snapshot.ProtocolVersion);
     Assert.Equal(WidgetSurfaceMode.Compact, snapshot.Surface!.Mode);
     Assert.Equal(560D, snapshot.Surface.PreferredWidth);
     Assert.Equal(700D, snapshot.Surface.PreferredHeight);

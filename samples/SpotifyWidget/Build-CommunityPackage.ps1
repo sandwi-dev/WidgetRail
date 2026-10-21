@@ -163,7 +163,8 @@ foreach ($iconName in @(
     'spotify-black.svg',
     'spotify-full-green.svg',
     'spotify-green.svg',
-    'spotify-white.svg', 'heart-outline.svg', 'heart-filled.svg')) {
+    'spotify-white.svg', 'heart-outline.svg', 'heart-filled.svg',
+    'monitor-speaker.svg', 'search.svg', 'list-end.svg', 'list-music.svg', 'log-in.svg', 'stop.svg', 'Lucide-LICENSE.txt')) {
     Copy-Item -LiteralPath (Join-Path $sampleRoot "assets\icons\$iconName") `
         -Destination (Join-Path $stagingRoot "assets\icons\$iconName") -Force
 }
@@ -186,6 +187,7 @@ $requiredFiles = @(
     'assets\icons\spotify-white.svg',
     'assets\icons\heart-outline.svg',
     'assets\icons\heart-filled.svg',
+    'assets\icons\Lucide-LICENSE.txt',
     'payload\SpotifyApplication.exe',
     'payload\SpotifyApplication.dll',
     'payload\SpotifyApplicationBackend.dll',

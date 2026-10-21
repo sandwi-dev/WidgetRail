@@ -5,7 +5,7 @@ namespace WidgetRail.WidgetCatalog;
 
 // Trusted updater helper, not a public widget capability. Both inputs come from
 // verified catalog/staging trees under the catalog update lock, after review.
-internal sealed class WidgetSettingsTransfer(string stateRoot)
+internal sealed class WidgetSettingsTransfer(string stateRoot, ConsentStore consent)
 {
     internal async Task CopyAsync(InstalledWidgetVersion previous, InstalledWidgetVersion replacement,
         CancellationToken cancellationToken)
@@ -17,18 +17,26 @@ internal sealed class WidgetSettingsTransfer(string stateRoot)
         deadline.CancelAfter(TimeSpan.FromSeconds(5));
         try
         {
-            await new PrivateStateStore(stateRoot).CopyIfAbsentAsync(
-                Identity(previous), Identity(replacement), deadline.Token).ConfigureAwait(false);
+            var state = new PrivateStateStore(stateRoot);
+            var destination = await state.ReadAsync(Identity(replacement), deadline.Token).ConfigureAwait(false);
+            await new AppLibraryContinuityStore(consent.RootDirectory).KeepAsync(
+                Identity(previous), Identity(replacement), deadline.Token, destinationHasState: destination.Revision != 0).ConfigureAwait(false);
+            await state.CopyIfAbsentAsync(Identity(previous), Identity(replacement), deadline.Token).ConfigureAwait(false);
+            var retained = previous.Manifest.Permissions.Concat(previous.Manifest.OptionalPermissions)
+                .Intersect(replacement.Manifest.Permissions.Concat(replacement.Manifest.OptionalPermissions), StringComparer.Ordinal)
+                .Where(PlatformCapabilities.IsManifestDeclarable).ToArray();
+            await consent.CopyUpdateDecisionsAsync(Identity(previous), Identity(replacement),
+                retained, deadline.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
             throw new WidgetPackageException("settings_transfer_busy",
-                "Widget settings are busy. The current version is still selected. Try again shortly.", exception);
+                "Widget update data is busy. The current version is still selected. Try again shortly.", exception);
         }
         catch (Exception exception) when (exception is BrokerException or IOException or UnauthorizedAccessException)
         {
             throw new WidgetPackageException("settings_transfer_failed",
-                "Widget settings could not be kept. The current version is still selected. Try the update again after resolving the local-data error.", exception);
+                "Widget settings or permissions could not be kept. The current version is still selected. Resolve the local-data error and retry.", exception);
         }
     }
 

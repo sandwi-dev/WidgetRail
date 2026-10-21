@@ -63,7 +63,7 @@ internal static class NetworkManagementPresentation
             "bluetooth.details.close",
             [new ActionSheetItem("network.bluetooth.options.back", "Back", "bluetooth.details.close", null, "Back to Bluetooth devices"),
              new ActionSheetItem(NetworkControlsElementIds.Bluetooth(device.DeviceId), "Manage in Windows Settings",
-                 "bluetooth.device.manage", WidgetGlyph.Connection, "Open Windows Bluetooth Settings", IsDisabled: !interactive || busy),
+                 "bluetooth.device.manage", WidgetGlyph.Settings, "Open Windows Bluetooth Settings", IsDisabled: !interactive || busy),
              new ActionSheetItem(NetworkControlsElementIds.Bluetooth(device.DeviceId) + ".remove", "Remove device…", "bluetooth.device.unpair.open",
                  WidgetGlyph.Warning, "Remove this pairing", ActionSheetItemTone.Danger, IsDisabled: !interactive || busy || !device.IsPaired)],
             device.IsConnected ? "Connected" : device.IsPresent ? "Paired and nearby" : "Paired, not currently nearby");

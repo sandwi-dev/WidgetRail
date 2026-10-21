@@ -169,6 +169,12 @@
   text-overflow: ellipsis;
 }
 
+.games-app-tile-metadata {
+  min-width: 0px;
+  gap: 6px;
+  align: center;
+}
+
 .games-app-tile-subtitle {
   min-width: 0px;
   color: var(--text-muted);
@@ -177,6 +183,7 @@
   line-height: 1.25;
   max-lines: 1;
   text-overflow: ellipsis;
+  flex-grow: 1;
 }
 
 .games-app-tile-state {
@@ -186,6 +193,7 @@
   font-weight: 500;
   max-lines: 1;
   text-overflow: ellipsis;
+  flex-grow: 0;
 }
 
 .games-page-action {

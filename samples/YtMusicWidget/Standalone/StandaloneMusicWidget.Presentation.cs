@@ -24,7 +24,8 @@ public sealed partial class StandaloneMusicWidget
             else
             {
                 var parts = UI.NavigationShellParts("music.nav", _tab, entry, group,
-                    Tabs.Select(tab => new NavigationShellDestination(tab, Title(tab), "tab." + tab, WidgetGlyph.Music)).ToArray(),
+                    Tabs.Select(tab => new NavigationShellDestination(tab, Title(tab), "tab." + tab, WidgetGlyph.Music)
+                        { Icon = MusicIcons.ForTab(tab) }).ToArray(),
                     compactLeadingAdornment: CompactControllerKey(ControllerButton.LeftTrigger, "Left trigger, previous section", "tabs.previous"),
                     compactTrailingAdornment: CompactControllerKey(ControllerButton.RightTrigger, "Right trigger, next section", "tabs.next")).WithTransitions();
                 children.Add(UI.Row("music.navigation.header",
@@ -263,7 +264,7 @@ public sealed partial class StandaloneMusicWidget
         var toggle = UI.IconButton(p.Playing ? WidgetGlyph.Pause : WidgetGlyph.Play, "player.toggle", prefix + ".toggle",
                 p.Playing ? "Pause" : "Play", IconButtonVariant.Primary, IconButtonSize.Large)
             .FocusLeft(prefix + ".previous").FocusRight(prefix + ".next").FocusUp(prefix + ".seek.slider").Classes("music-play");
-        var repeat = UI.IconButton(WidgetGlyph.Repeat, "player.repeat", prefix + ".repeat", "Repeat: " + state.Repeat,
+        var repeat = UI.IconButton(state.Repeat == "one" ? WidgetGlyph.RepeatOne : WidgetGlyph.Repeat, "player.repeat", prefix + ".repeat", "Repeat: " + state.Repeat,
                 size: IconButtonSize.Small).Selected(state.Repeat != "off")
             .FocusLeft(prefix + ".next").FocusUp(prefix + ".seek.slider").Classes("music-secondary-action");
         if (adjacentFocus is not null) repeat = repeat.FocusRight(adjacentFocus);

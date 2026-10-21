@@ -27,6 +27,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
     private readonly object _gate = new();
     private readonly CatalogService _catalog;
     private readonly string _stateRoot;
+    private readonly ConsentStore _consent;
     private readonly BridgeClientRegistry? _registry;
     private readonly Func<CancellationToken, Task> _reload;
     private readonly IReadOnlyList<CuratedWidget> _definitions;
@@ -42,10 +43,11 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
     private bool _disposed;
 
     internal BridgeWidgetMarketplace(CatalogService catalog, Func<CancellationToken, Task> reload,
-        IReadOnlyList<CuratedWidget>? definitions = null, HttpMessageHandler? http = null, TimeProvider? clock = null, string? stateRoot = null, BridgeClientRegistry? registry = null)
+        IReadOnlyList<CuratedWidget>? definitions = null, HttpMessageHandler? http = null, TimeProvider? clock = null, string? stateRoot = null, BridgeClientRegistry? registry = null, ConsentStore? consent = null)
     {
         _stateRoot = stateRoot ?? Path.Combine(catalog.Root, "widget-state");
         _registry = registry;
+        _consent = consent ?? new ConsentStore(Path.Combine(Path.GetDirectoryName(_stateRoot)!, "consent"));
         _catalog = catalog; _reload = reload; _http = http; _clock = clock ?? TimeProvider.System;
         if (definitions is null)
         {
@@ -311,7 +313,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
                 current?.ActiveVersion.ContentDigest != package.InstalledDigest)
                 throw new WidgetPackageException("marketplace_review_changed", "The reviewed installation changed.");
         }
-        await using var settings = new BridgeWidgetSettingsTransfer(_stateRoot, _registry, _reload);
+        await using var settings = new BridgeWidgetSettingsTransfer(_stateRoot, _consent, _registry, _reload);
         InstalledWidgetVersion installed;
         if (package.Review.InstalledVersion is not null)
         {

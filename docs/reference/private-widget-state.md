@@ -145,8 +145,14 @@ state wins, including a clear-local-data tombstone. Source state remains intact
 for rollback. Failure to transfer stops publication and leaves the old version
 selected; a busy store has a bounded timeout.
 
-Permissions, credentials, cookies, AppContainer files, and arbitrary application
-files are not copied. Preference documents may contain personal data, so this
+The same reviewed update preserves Allow and Deny decisions for capability IDs
+declared by both versions. Existing destination decisions win; new permissions
+still need approval. A host-only app-library data scope also carries forward
+saved app IDs and registered apps, without reusing the old security identity.
+The scope is flattened across successive updates and survives rollback and
+Clear local data so later discovery cannot reinterpret saved IDs.
+
+Credentials, cookies, AppContainer files, and arbitrary application files are not copied. Preference documents may contain personal data, so this
 is approval to share settings with the reviewed replacement, not a claim that
 all preferences are nonsensitive. The transfer is a host-only operation, never a
 widget capability or an identity selected through widget IPC.

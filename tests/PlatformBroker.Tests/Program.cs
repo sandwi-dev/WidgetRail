@@ -60,6 +60,7 @@ var allTests = new (string Name, Func<Task> Run)[]
         AppLibraryCursorBounds),
     ("App artwork handles are generation-bound lazy and bounded", AppLibraryIconsAreBounded),
     ("Durable app IDs persist and remain authority scoped", AppLibrarySavedIdsAreDurableAndScoped),
+    ("Reviewed update app identities persist without bypassing current permissions", AppLibraryReviewedContinuity),
     ("Pipe host effects publish only after requested successful app launch", AppLaunchHostEffectIsSuccessBound),
     ("Media session read and transport controls are sanitized granular and lifecycle-gated", MediaSessionContracts),
     ("Media session artwork is canonical bounded and snapshot-limited", MediaSessionArtworkIsBounded),
@@ -1969,6 +1970,54 @@ static async Task AppLaunchHostEffectIsSuccessBound()
 
     await client.DisposeAsync();
     await serverTask.WaitAsync(TimeSpan.FromSeconds(2));
+}
+
+static async Task AppLibraryReviewedContinuity()
+{
+    using var temp = new TemporaryDirectory();
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    var continuity = new AppLibraryContinuityStore(consent.RootDirectory);
+    var source = Identity() with { PublisherId = "unsigned." + new string('a', 64) };
+    var target = source with { PublisherId = "unsigned." + new string('b', 64) };
+    var capability = PlatformCapabilities.AppLibraryReadV1;
+    var backend = new SimulatedPlatformBrokerBackend();
+    backend.SetAppLibraryBackend([new AppLibraryBackendItemSummary("launch-game", "steam:42", "Fixture Game", AppLibraryKind.Game)]);
+    var issuer = new AppLibrarySavedIdIssuer(new byte[32]);
+    var original = issuer.Issue(source, "steam:42");
+    var portable = issuer.Issue(source, "portable:42");
+    backend.SetRunningAppBackend([new("portable:42", "process-fixture", "Portable App", AppLibraryKind.Application, "fixture")]);
+    var observed = await backend.ObserveRunningAppsAsync(default);
+    await backend.RegisterRunningAppAsync(source, new(portable, "portable:42", "process-fixture", observed.Revision), default);
+    await consent.SetDecisionAsync(source, capability, ConsentDecision.Grant);
+    await continuity.KeepAsync(source, target, default);
+    await using var broker = new PlatformCapabilityBroker(target, [capability], consent, backend, null, issuer);
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    var denied = await broker.HandleAsync(Request(target, capability, PlatformCapabilities.AppLibraryList, AppQuery(64)));
+    Assert.True(!denied.Succeeded);
+    await consent.CopyUpdateDecisionsAsync(source, target, [capability], default);
+    await broker.RefreshConsentAsync();
+    var page = await broker.HandleAsync(Request(target, capability, PlatformCapabilities.AppLibraryList, AppQuery(64)));
+    Assert.True(page.Succeeded);
+    Assert.Equal(original, page.Payload!.Value.GetProperty("items")[0].GetProperty("savedId").GetString());
+    var resolved = await broker.HandleAsync(Request(target, capability, PlatformCapabilities.AppLibraryResolveSaved,
+        new { savedIds = new[] { original, portable } }));
+    Assert.True(resolved.Succeeded);
+    Assert.Equal(2, resolved.Payload!.Value.GetProperty("items").GetArrayLength());
+    await consent.SetDecisionAsync(target, capability, ConsentDecision.Deny);
+    await broker.RefreshConsentAsync();
+    Assert.True(!(await broker.HandleAsync(Request(target, capability, PlatformCapabilities.AppLibraryList, AppQuery(64)))).Succeeded);
+    Assert.Equal<ConsentDecision?>(ConsentDecision.Grant, await consent.GetDecisionAsync(source, capability));
+    var raw = target with { PublisherId = "unsigned." + new string('c', 64) };
+    await consent.SetDecisionAsync(raw, capability, ConsentDecision.Grant);
+    await using var rawBroker = new PlatformCapabilityBroker(raw, [capability], consent, backend, null, issuer);
+    rawBroker.SetLifecycle(BrokerLifecycleState.Visible);
+    var rawPage = await rawBroker.HandleAsync(Request(raw, capability, PlatformCapabilities.AppLibraryList, AppQuery(64)));
+    Assert.True(rawPage.Succeeded);
+    Assert.True(original != rawPage.Payload!.Value.GetProperty("items")[0].GetProperty("savedId").GetString());
+    var rawResolved = await rawBroker.HandleAsync(Request(raw, capability, PlatformCapabilities.AppLibraryResolveSaved,
+        new { savedIds = new[] { original, portable } }));
+    Assert.True(rawResolved.Succeeded);
+    Assert.Equal(0, rawResolved.Payload!.Value.GetProperty("items").GetArrayLength());
 }
 
 static async Task AppLibrarySavedIdsAreDurableAndScoped()

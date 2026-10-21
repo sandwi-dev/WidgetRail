@@ -1168,7 +1168,7 @@ static async Task DeviceAndInputControls()
     await WaitUntil(() => fake.InputMuteRequests.Count == 1);
     Assert.Equal(true, widget.Input!.IsMuted);
     fake.EmitInput(new WidgetAudioInput(0.6, true));
-    await WaitUntil(() => Node(Snapshot(widget, 2).Root, "audio.input.mute.icon").Glyph == WidgetGlyph.Muted);
+    await WaitUntil(() => Node(Snapshot(widget, 2).Root, "audio.input.mute.icon").PackageIcon?.AssetId == "audio-mixer.microphone-off");
 
     fake.EmitDevices([
         new("safe-output", "Headphones", WidgetAudioDeviceDirection.Output, true),
@@ -1331,7 +1331,7 @@ static async Task OptionalRevocationPreservesSemanticFocus()
                           VolumesNear(widget.Input!.Volume, 0.62));
     var recovered = Snapshot(widget, 12);
     Assert.Equal("audio.input.volume.slider", recovered.InitialFocusId);
-    Assert.Equal(WidgetGlyph.Muted, Node(recovered.Root, "audio.input.mute.icon").Glyph);
+    Assert.Equal("audio-mixer.microphone-off", Node(recovered.Root, "audio.input.mute.icon").PackageIcon?.AssetId);
     Assert.Equal(2, widget.Sessions.Count);
     Assert.Valid(recovered);
 

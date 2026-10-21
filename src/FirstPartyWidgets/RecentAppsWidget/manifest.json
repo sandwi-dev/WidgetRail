@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.recent-apps",
   "publisher": "widgetrail.firstparty",
   "name": "Recent Apps",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -13,7 +13,13 @@
     "assembly": "payload/RecentAppsWidget.dll",
     "type": "WidgetRail.FirstPartyWidgets.RecentApps.RecentAppsWidget"
   },
-  "presentation": { "icon": "play" },
+  "presentation": {
+    "icon": "play",
+    "packageIcon": { "assetId": "recent-apps.mark", "colorMode": "themeTint" }
+  },
+  "iconAssets": {
+    "recent-apps.mark": { "path": "assets/icons/history.svg" }
+  },
   "permissions": [
     "system.activity.recent.read.v1"
   ],

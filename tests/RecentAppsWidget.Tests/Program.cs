@@ -163,6 +163,7 @@ static Task PackageValidates()
     var root = ProjectDirectory();
     var manifest = ManifestJson.Deserialize(File.ReadAllBytes(Path.Combine(root, "manifest.json")));
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
+    Assert.Equal("recent-apps.mark", manifest.Presentation.PackageIcon?.AssetId);
     Assert.True(manifest.Permissions.Contains("system.activity.recent.read.v1"));
     Assert.Equal(0, manifest.OptionalPermissions.Count);
     var package = WrssPackageLoader.Load("styles/default.wrss", new WrssFileSourceProvider(root));

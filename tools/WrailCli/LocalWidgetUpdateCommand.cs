@@ -33,7 +33,7 @@ internal static class LocalWidgetUpdateCommand
         var fullTrust = WidgetManifestTrust.Resolve(next.Manifest) == WidgetExecutionTrust.FullTrustCurrentUser;
         await output.WriteLineAsync($"{id}: {current.ActiveVersion.Version} -> {next.Version}\nSHA-256: {Convert.ToHexString(digest).ToLowerInvariant()}");
         await output.WriteLineAsync($"Execution: {WidgetManifestTrust.Resolve(next.Manifest)}\nRequired permissions: {string.Join(", ", next.Manifest.Permissions)}\nOptional permissions: {string.Join(", ", next.Manifest.OptionalPermissions)}");
-        await output.WriteLineAsync("Widget settings will be kept. Permissions and credentials are not transferred to the new package.");
+        await output.WriteLineAsync("Widget settings will be kept, including saved app references. Existing permission decisions are kept for matching permissions; new permissions need approval. Credentials are not transferred.");
         if (!parsed.HasFlag("--apply"))
         {
             static string Quote(string value) => "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";

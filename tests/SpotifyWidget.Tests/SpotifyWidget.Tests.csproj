@@ -7,6 +7,12 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="..\..\samples\SpotifyWidget\assets\icons\monitor-speaker.svg" Link="assets\icons\monitor-speaker.svg" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SpotifyWidget\assets\icons\search.svg" Link="assets\icons\search.svg" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SpotifyWidget\assets\icons\list-end.svg" Link="assets\icons\list-end.svg" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SpotifyWidget\assets\icons\list-music.svg" Link="assets\icons\list-music.svg" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SpotifyWidget\assets\icons\log-in.svg" Link="assets\icons\log-in.svg" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SpotifyWidget\assets\icons\stop.svg" Link="assets\icons\stop.svg" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\..\samples\SpotifyWidget\SpotifyWidget.csproj" />
     <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />

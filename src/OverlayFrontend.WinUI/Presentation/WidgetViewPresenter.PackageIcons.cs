@@ -46,6 +46,34 @@ internal sealed partial class WidgetViewPresenter
         }
     }
     private void UpdateNativeIcon(WidgetPackageIconView icon, ViewNode node) => icon.Update(node, IconResolver(), PackageGeneration, IconDiagnostic);
+    private void RetainPackageIconPaint(Dictionary<string, Binding> nextBindings, Dictionary<string, Declaration> plan)
+    {
+        foreach (var (id, incoming) in nextBindings)
+        {
+            if (!bindings.TryGetValue(id, out var previous) || ReferenceEquals(previous, incoming) ||
+                incoming.Identity.Kind != previous.Identity.Kind || incoming.Identity.ItemPath != previous.Identity.ItemPath ||
+                plan[id].Node.PackageIcon is not { } asset || asset != declarations[id].Node.PackageIcon) continue;
+            var previousIcon = previous.Element as WidgetPackageIconView ?? buttonIcons.GetValueOrDefault(previous);
+            if (previousIcon is null || previousIcon.XamlRoot != XamlRoot) continue;
+            var nextIcon = incoming.Element as WidgetPackageIconView;
+            if (nextIcon is null && incoming.Element is Button button)
+                nextIcon = EnsureButtonIcon(incoming, button);
+            nextIcon?.InheritPreparedIcon(previousIcon);
+        }
+    }
+
+    private WidgetPackageIconView EnsureButtonIcon(Binding binding, Button button)
+    {
+        if (buttonIcons.TryGetValue(binding, out var existing)) return existing;
+        var icon = new WidgetPackageIconView();
+        buttonIcons.Add(binding, icon);
+        var label = new TextBlock();
+        Grid.SetColumn(label, 1);
+        button.Content = new Grid { ColumnSpacing = 8,
+            ColumnDefinitions = { new() { Width = GridLength.Auto }, new() { Width = new(1, GridUnitType.Star) } },
+            Children = { icon, label } };
+        return icon;
+    }
     private void UpdateButtonContent(Binding binding, Button button, ViewNode node)
     {
         NativePopupTheme.SetToolTip(button, node.Glyph is not null && string.IsNullOrEmpty(node.Text)
@@ -55,15 +83,7 @@ internal sealed partial class WidgetViewPresenter
             if (buttonIcons.Remove(binding, out var previous)) previous.Dispose();
             UpdateButtonLabel(button, node.Text ?? string.Empty); return;
         }
-        if (!buttonIcons.TryGetValue(binding, out var icon))
-        {
-            icon = new(); buttonIcons.Add(binding, icon);
-            var label = new TextBlock();
-            Grid.SetColumn(label, 1);
-            button.Content = new Grid { ColumnSpacing = 8,
-                ColumnDefinitions = { new() { Width = GridLength.Auto }, new() { Width = new(1, GridUnitType.Star) } },
-                Children = { icon, label } };
-        }
+        var icon = EnsureButtonIcon(binding, button);
         var panel = (Grid)button.Content;
         var labelPresent = !string.IsNullOrEmpty(node.Text);
         var currentLabel = (TextBlock)panel.Children[1];

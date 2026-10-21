@@ -40,7 +40,7 @@ internal static class MarketplaceReviewPresentation
                     content.Add(UI.Text(string.Join("\n", names), id + "." + group.Item1 + "." + chunk++).Classes("diagnostic-line"));
             }
         }
-        content.Add(UI.Text("Your widget settings will be kept, along with enabled/disabled and stopped state. Permissions are requested again when needed. Failed downloads are excluded and can be retried separately.",
+        content.Add(UI.Text("Your widget settings will be kept, along with enabled/disabled and stopped state. Existing permission decisions are kept; new permissions need approval. Failed downloads are excluded and can be retried separately.",
             "marketplace.batch.review.help").Classes("page-help"));
         return new("marketplace.batch.review", "Review updates", UI.Stack("marketplace.batch.review.content", content.ToArray()),
             "marketplace.batch.review.cancel", "marketplace.review.cancel");
@@ -79,7 +79,7 @@ internal static class MarketplaceReviewPresentation
         }
         content.Add(UI.Text(review.InstalledVersion is null
             ? "The widget will be enabled after installation. Permissions are requested when a feature needs them."
-            : "Your widget settings will be kept, along with enabled/disabled and stopped state. Permissions are requested again when a feature needs them. The previous version remains available.",
+            : "Your widget settings will be kept, along with enabled/disabled and stopped state. Existing permission decisions are kept; new permissions need approval. The previous version remains available.",
             "marketplace.review.help").Classes("page-help"));
         return new("marketplace.review", "Review installation", UI.Stack("marketplace.review.content", content.ToArray()),
             "marketplace.review.cancel", "marketplace.review.cancel");

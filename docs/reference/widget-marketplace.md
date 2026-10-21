@@ -60,8 +60,9 @@ and request permissions when a feature needs them. **Manage in Settings** opens
 the exact widget details directly through a destination loading state. Updates
 preserve enabled/disabled and stopped state. The review explains that ordinary
 widget settings will be kept. Approval copies only the bounded private-settings
-document into the exact replacement package namespace; permissions and credentials
-are not transferred. Existing destination settings and cleared state are respected.
+document into the exact replacement package namespace. Allow and Deny decisions
+for permissions declared by both versions are kept; new permissions need approval.
+Saved app references remain stable. Credentials are not transferred. Existing destination settings and cleared state are respected.
 Ordinary updates retain the active version and one backup, cleaning older
 versions automatically. Locked files can remain until a later cleanup retry. To revert, disable the widget and open
 its **Technical details** in Settings, then choose **Revert to previous version**.

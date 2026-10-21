@@ -161,8 +161,9 @@ execution models are rejected. Full-trust widgets still require explicit
 
 Reviewed widget updates also keep the bounded `HostServices.PrivateState`
 settings document. The review states this explicitly; the apply command approves
-the settings transfer along with that exact package. Permissions and credentials
-are not copied. Existing settings for the destination package, including cleared
+the settings transfer along with that exact package. Matching permission decisions
+(Allow and Deny) and saved app references are preserved. New permissions still
+need approval; credentials are not copied. Existing settings for the destination package, including cleared
 state, remain intact. If the old worker still holds its package files, close
 WidgetRail and retry; the CLI will not copy a potentially stale snapshot.
 Catalogue and Settings handle worker retirement automatically without disabling

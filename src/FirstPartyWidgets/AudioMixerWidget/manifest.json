@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.audio-mixer",
   "publisher": "widgetrail.firstparty",
   "name": "Audio Mixer",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -18,7 +18,8 @@
     "packageIcon": { "assetId": "audio-mixer.mark", "colorMode": "originalColor" }
   },
   "iconAssets": {
-    "audio-mixer.mark": { "path": "assets/icons/audio-mixer.svg" }
+    "audio-mixer.mark": { "path": "assets/icons/audio-mixer.svg" },
+    "audio-mixer.microphone-off": { "path": "assets/icons/mic-off.svg" }
   },
   "permissions": [
     "system.audio.sessions.read.v1",

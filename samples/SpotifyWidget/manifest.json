@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.spotify",
   "publisher": "widgetrail.samples",
   "name": "Spotify",
-  "version": "0.3.91",
+  "version": "0.3.93",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -21,6 +21,12 @@
     }
   },
   "iconAssets": {
+    "spotify.devices": { "path": "assets/icons/monitor-speaker.svg" },
+    "spotify.search": { "path": "assets/icons/search.svg" },
+    "spotify.queue": { "path": "assets/icons/list-end.svg" },
+    "spotify.playlists": { "path": "assets/icons/list-music.svg" },
+    "spotify.sign-in": { "path": "assets/icons/log-in.svg" },
+    "spotify.stop": { "path": "assets/icons/stop.svg" },
     "spotify.saved.outline": { "path": "assets/icons/heart-outline.svg" },
     "spotify.saved.filled": { "path": "assets/icons/heart-filled.svg" },
     "spotify.brand.black": { "path": "assets/icons/spotify-black.svg" },

@@ -191,6 +191,7 @@ static async Task DisconnectedLayoutContract()
         "Spotify opens a browser and uses PKCE. Your credentials stay in the trusted host.",
         detail.Text);
     Assert.Equal("Connect", Find(snapshot.Root, "spotify.connect").Text);
+    Assert.Equal("spotify.sign-in", Find(snapshot.Root, "spotify.connect").PackageIcon?.AssetId);
     Assert.Equal("Setup", Find(snapshot.Root, "spotify.setup.open").Text);
     Assert.Equal("spotify.connect", snapshot.InitialFocusId);
     Assert.Equal(620d, snapshot.Surface?.MinimumWidth);
@@ -688,6 +689,8 @@ static async Task ResponsiveNavigation()
     var compact = FindClass(snapshot.Root, "wrail-navigation-shell__compact");
     Assert.Equal(ResponsiveVisibility.Always, compact.VisibleWhen);
     Assert.Equal(6, compact.Children.Count);
+    Assert.SequenceEqual(new[] { "spotify.devices", "spotify.search", "spotify.queue", "spotify.playlists" },
+        compact.Children.Where(child => child.ActionId is not null).Select(child => child.PackageIcon?.AssetId!));
     Assert.SequenceEqual(new[]
     {
         "spotify.nav.devices", "spotify.nav.search", "spotify.nav.queue", "spotify.nav.playlists",
@@ -1306,6 +1309,7 @@ static async Task LocalDeviceBusyKeepsFocus()
             var readySnapshot = widget.RenderSnapshot("local-ready", 1);
             WidgetRail.Tests.RendererFixtureExporter.WriteCollectionFixture($"Spotify-DeviceBusy-{stop}-ready", readySnapshot);
             var ready = Find(readySnapshot.Root, id);
+            Assert.Equal(stop ? "spotify.stop" : null, ready.PackageIcon?.AssetId);
             var action = stop ? "spotify.local.stop" : "spotify.local.start";
             Assert.Equal(action, ready.ActionId);
             await widget.OnActionAsync(new(action, id));
@@ -1909,6 +1913,7 @@ static async Task RepeatIsBinaryAndPreciselyAvailable()
             $"spotify.repeat.{initial}.before", 1).Root, "spotify.repeat");
         Assert.True(before.IsDisabled is not true,
             $"Repeat {initial} incorrectly blocked its one-press binary transition.");
+        Assert.Equal(initial == SpotifyRepeatState.Track ? WidgetGlyph.RepeatOne : WidgetGlyph.Repeat, before.Glyph);
         await widget.OnActionAsync(new WidgetActionEvent(
             "spotify.repeat", "spotify.repeat"));
         Assert.Equal(expected, harness.Commands.Single().RepeatState);
@@ -2126,7 +2131,10 @@ static Task ManifestContract()
         ["spotify.brand.white"] = ("assets/icons/spotify-white.svg", 1252,
             "8929D148F54CEDE78F0F36CE90DF815E5EA5E5559E7FAECCAD3669302EF2DAA1"),
     };
-    Assert.Equal(expectedAssets.Count + 2, manifest.IconAssets.Count);
+    Assert.Equal(expectedAssets.Count + 8, manifest.IconAssets.Count);
+    foreach (var name in new[] { "devices", "search", "queue", "playlists", "sign-in", "stop" })
+        Assert.True(File.Exists(Path.Combine(AppContext.BaseDirectory, manifest.IconAssets["spotify." + name].Path)),
+            "Semantic icon missing from package fixture: " + name);
     foreach (var variant in new[] { "outline", "filled" })
     {
         var path = "assets/icons/heart-" + variant + ".svg";

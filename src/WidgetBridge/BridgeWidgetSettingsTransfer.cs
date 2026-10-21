@@ -1,9 +1,10 @@
 using WidgetRail.WidgetCatalog;
+using WidgetRail.PlatformBroker;
 
 namespace WidgetRail.WidgetBridge;
 
 internal sealed class BridgeWidgetSettingsTransfer(
-    string stateRoot, BridgeClientRegistry? registry, Func<CancellationToken, Task> reload) : IAsyncDisposable
+    string stateRoot, ConsentStore consent, BridgeClientRegistry? registry, Func<CancellationToken, Task> reload) : IAsyncDisposable
 {
     private IDisposable? lease;
 
@@ -12,7 +13,7 @@ internal sealed class BridgeWidgetSettingsTransfer(
     {
         if (registry is not null)
             lease = await registry.AcquirePackageUpdateAsync(previous.Id, token).ConfigureAwait(false);
-        await new WidgetSettingsTransfer(stateRoot).CopyAsync(previous, replacement, token).ConfigureAwait(false);
+        await new WidgetSettingsTransfer(stateRoot, consent).CopyAsync(previous, replacement, token).ConfigureAwait(false);
     }
 
     internal async Task ReloadAsync()

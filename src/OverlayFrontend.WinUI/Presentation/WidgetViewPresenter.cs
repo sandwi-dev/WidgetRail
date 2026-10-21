@@ -171,6 +171,11 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     ? retained : Create(declaration, IsModalDialog(declaration, plan), IsInlineLink(declaration, plan)));
             var currentRoot = nextBindings[root.Kind == ViewNodeKind.ModalLayer ? root.Children[0].Id : root.Id].LayoutElement;
             if (sameOwner) RetainBackgroundPaint(nextBindings, plan);
+            // Keep package paint separate from input identity. Recreated buttons
+            // retain only matching admitted images, never old controls/actions.
+            // Duplicate resources so outgoing animations can still use theirs.
+            if (sameOwner && frame!.Descriptor.PackageContentDigest == next.Descriptor.PackageContentDigest)
+                RetainPackageIconPaint(nextBindings, plan);
             var currentModal = root.Kind == ViewNodeKind.ModalLayer ? nextBindings[root.Id].LayoutElement : null;
             // Detach only changed parentage before any insert. In-place property
             // updates and adjacent insertions never clear surviving child controls.

@@ -103,8 +103,9 @@ installer manually.
 Use **Catalogue → Updates** for individual updates or **Update all**. For a
 local add-on, open its details in **Settings → Widgets → Update from file**.
 Choose the newer `.wrwidget` package and approve full access if requested. Updates
-preserve enabled state and ordinary widget settings. Permissions and credentials
-are scoped to the package; a changed package can require approval or sign-in again. See
+preserve enabled state, ordinary widget settings, saved app references, and existing
+permission decisions. New permissions need approval. Credentials remain scoped to
+the package, so an update can require sign-in again. See
 [Managing widgets](customization.md#manage-widgets).
 
 ## Uninstall

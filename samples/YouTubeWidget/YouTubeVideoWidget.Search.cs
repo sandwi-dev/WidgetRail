@@ -670,7 +670,8 @@ public sealed partial class YouTubeVideoWidget
         NavigationShellDestination[] destinations =
         [
             new("youtube.section.discover", "Discover", SearchRouteActionId,
-                WidgetGlyph.Connection, IsDisabled: !configured),
+                WidgetGlyph.Connection, IsDisabled: !configured)
+                { Icon = WidgetIcon.PackageSvg("youtube.search", WidgetPackageIconColorMode.ThemeTint, WidgetGlyph.Connection) },
             new("youtube.section.player", "Player", LinkRouteActionId,
                 WidgetGlyph.Play),
         ];

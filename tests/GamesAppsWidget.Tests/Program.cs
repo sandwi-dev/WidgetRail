@@ -1447,6 +1447,9 @@ static async Task EmptyCatalogRemainsSelected()
 
     var snapshot = Snapshot(widget, 2);
     Assert.Equal("games-apps", snapshot.ActiveInputScopeId);
+    Assert.Equal("games-apps.library", CompactDestination(snapshot, "games.open-library").PackageIcon?.AssetId);
+    Assert.Equal("games-apps.add", CompactDestination(snapshot, "games.open-catalog").PackageIcon?.AssetId);
+    Assert.Equal("games-apps.running", CompactDestination(snapshot, "games.open-running").PackageIcon?.AssetId);
     Assert.True(Buttons(snapshot.Root).Any(button =>
         button.ActionId == "games.refresh-catalog"));
     Assert.True(Nodes(snapshot.Root).Any(node => node.Id == "games.catalog.empty"));

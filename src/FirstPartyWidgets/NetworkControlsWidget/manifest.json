@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.network-controls",
   "publisher": "widgetrail.firstparty",
   "name": "Network Controls",
-  "version": "0.1.5",
+  "version": "0.1.8",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -18,7 +18,9 @@
     "packageIcon": { "assetId": "network-controls.mark", "colorMode": "originalColor" }
   },
   "iconAssets": {
-    "network-controls.mark": { "path": "assets/icons/network-controls.svg" }
+    "network-controls.mark": { "path": "assets/icons/network-controls.svg" },
+    "network-controls.back": { "path": "assets/icons/arrow-left.svg" },
+    "network-controls.bluetooth": { "path": "assets/icons/bluetooth.svg" }
   },
   "permissions": [
     "system.network.read.v1",

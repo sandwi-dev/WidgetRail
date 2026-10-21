@@ -90,10 +90,14 @@ Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\WidgetSdk\EmbeddedMediaAd
     -Destination (Join-Path $mediaRoot 'adapter-runtime.js') -Force
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'assets\icons\youtube-red.svg') `
     -Destination (Join-Path $stagingRoot 'assets\icons\youtube-red.svg') -Force
+Copy-Item -LiteralPath (Join-Path $sampleRoot 'assets\icons\search.svg'), (Join-Path $sampleRoot 'assets\icons\Lucide-LICENSE.txt') `
+    -Destination (Join-Path $stagingRoot 'assets\icons') -Force
 
 $requiredFiles = @(
     'manifest.json',
     'assets\icons\youtube-red.svg',
+    'assets\icons\search.svg',
+    'assets\icons\Lucide-LICENSE.txt',
     'payload\YouTubeApplication.exe',
     'payload\YouTubeApplication.dll',
     'payload\YouTubeWidget.dll',

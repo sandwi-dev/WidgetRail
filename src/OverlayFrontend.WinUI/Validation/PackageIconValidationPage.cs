@@ -73,6 +73,7 @@ internal sealed partial class PackageIconValidationPage : Page, IAsyncDisposable
     {
         try
         {
+            await PresentationContinuityAsync();
             await CatalogSourcesAsync();
             await OriginalColorSizingAsync();
             Apply();

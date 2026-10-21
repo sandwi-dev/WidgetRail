@@ -201,7 +201,9 @@ internal static class AudioMixerPresentation
                             .Classes("audio-master-state", input.IsMuted ? "is-muted" : "is-live"))
                         .Classes("audio-master-heading"),
                     UI.Row("audio.input.controls",
-                        UI.Icon(input.IsMuted ? WidgetGlyph.Muted : WidgetGlyph.Microphone,
+                        UI.Icon(input.IsMuted
+                                ? WidgetIcon.PackageSvg("audio-mixer.microphone-off", WidgetPackageIconColorMode.ThemeTint, WidgetGlyph.Microphone)
+                                : WidgetIcon.Glyph(WidgetGlyph.Microphone),
                                 "audio.input.mute.icon", input.IsMuted ? "Microphone muted" : "Microphone live")
                             .Classes("audio-mute-icon", input.IsMuted ? "is-muted" : "is-audible"),
                         inputSlider,

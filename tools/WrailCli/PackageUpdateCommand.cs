@@ -109,7 +109,7 @@ internal static class PackageUpdateCommand
         if (oldTrust != newTrust) throw new CliOperationException("Updates cannot change the widget's execution model. Review it as a separate installation.");
         if (!WidgetHostCompatibility.Evaluate(nextManifest).IsSupported)
             throw new CliOperationException("This package is not compatible with this WidgetRail host API.");
-        await output.WriteLineAsync("Widget settings will be kept. Permissions and credentials are not transferred to the new package.");
+        await output.WriteLineAsync("Widget settings will be kept, including saved app references. Existing permission decisions are kept for matching permissions; new permissions need approval. Credentials are not transferred.");
         if (!apply) return await ReviewAsync(parsed, source, hash, output, theme, root, version, newTrust == WidgetExecutionTrust.FullTrustCurrentUser);
         if (widget.Enabled) throw new CliOperationException($"Disable {id} before applying this update. The current version has not been changed.");
         var trust = WidgetPackageTrustApproval.None;

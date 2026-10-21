@@ -239,7 +239,7 @@ internal static class NetworkControlsPresentation
         string message)
     {
         var back = UI.Button("Back", "network.details.close", "network.details.back")
-            .Icon(WidgetGlyph.Previous, "Back to Network Controls")
+            .Icon(NetworkControlsIcons.Back, "Back to Network Controls")
             .FocusUp("network.details.back")
             .FocusLeft("network.details.back")
             .FocusRight("network.details.back")
@@ -493,7 +493,7 @@ internal static class NetworkControlsPresentation
             ? null : NetworkControlsElementIds.Bluetooth(devices[0].DeviceId);
         var toggle = UI.Switch(
                 radioLabel, isOn, "bluetooth.radio.toggle", "network.bluetooth.radio")
-            .Icon(WidgetGlyph.Connection, radioLabel)
+            .Icon(NetworkControlsIcons.Bluetooth, radioLabel)
             .Busy(state.BluetoothBusy)
             .Disabled(!state.Interactive || snapshot?.CanControlRadio != true)
             .FocusUp("network.tab.bluetooth")
@@ -570,7 +570,7 @@ internal static class NetworkControlsPresentation
                 ? "Select for device options. Use the Windows settings shortcut to manage this device"
                 : device.IsPresent ? "Select to pair. Use the Windows settings shortcut if pairing needs additional steps" : "Scan again to find this device";
             var button = UI.Button(device.DisplayName, actionId, id)
-                .Icon(WidgetGlyph.Connection,
+                .Icon(NetworkControlsIcons.Bluetooth,
                     $"{device.DisplayName}. {deviceState}. {detail}. {actionLabel}")
                 .Shortcut(ControllerButton.X, actionId: "bluetooth.device.manage", label: "Manage device")
                 .Busy(isPending)

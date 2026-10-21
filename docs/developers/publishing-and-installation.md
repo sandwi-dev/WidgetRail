@@ -47,7 +47,8 @@ without copying a hash manually. Use stable asset names or
 Increase the widget manifest version before distributing changed bytes. Users
 choose **Update from file** in the widget details, or use **Marketplace → Updates**
 for curated packages. Updates preserve enabled/stopped state and carry ordinary widget settings after
-review. Security permissions and credentials are not transferred to changed
+review. Matching permission decisions and saved app references are preserved;
+new permissions still need approval. Credentials are not transferred to changed
 unsigned package identities. Full-access updates require approval. Keep a useful description of changes and
 any new permissions, which should be requested when a feature needs them.
 CLI users can run `wrail update <widget-id>` to review a GitHub update, then

@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.ytmusic",
   "publisher": "widgetrail.samples",
   "name": "YouTube Music",
-  "version": "0.3.44",
+  "version": "0.3.46",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -18,6 +18,10 @@
     "packageIcon": { "assetId": "ytmusic.mark", "colorMode": "originalColor" }
   },
   "iconAssets": {
+    "ytmusic.home": { "path": "assets/icons/house.svg" },
+    "ytmusic.search": { "path": "assets/icons/search.svg" },
+    "ytmusic.library": { "path": "assets/icons/library-big.svg" },
+    "ytmusic.queue": { "path": "assets/icons/list-end.svg" },
     "ytmusic.mark": { "path": "assets/icons/yt-music.svg" },
     "ytmusic.liked.outline": { "path": "assets/icons/heart-outline.svg" },
     "ytmusic.liked.filled": { "path": "assets/icons/heart-filled.svg" }

@@ -513,12 +513,14 @@ static async Task LocalReviewedSettingsUpdate()
     var root = Path.Combine(temp.Path, "catalog");
     var profile = Path.Combine(temp.Path, "profile");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(root);
-    var firstFile = await CreatePackedPackageAsync(temp.Path, id, "1.0.0");
+    var firstFile = await CreatePackedPackageAsync(temp.Path, id, "1.0.0", [PlatformCapabilities.AudioOutputReadV1]);
     var first = await catalog.InstallAsync(firstFile);
+    var consent = new ConsentStore(Path.Combine(profile, "consent"));
+    await consent.SetDecisionAsync(new(id, InstalledWidgetAuthority.PublisherId(first), "old"), PlatformCapabilities.AudioOutputReadV1, ConsentDecision.Grant);
     var state = new PrivateStateStore(Path.Combine(profile, "widget-state"));
     var json = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"banners\":true}"));
     await state.WriteAsync(new(id, InstalledWidgetAuthority.PublisherId(first), "old"), new(json, 0), default);
-    var file = await CreatePackedPackageAsync(temp.Path, id, "2.0.0");
+    var file = await CreatePackedPackageAsync(temp.Path, id, "2.0.0", [PlatformCapabilities.AudioOutputReadV1]);
     var sha = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(file)));
     var options = new[] { "update", id, "--file", file, "--catalog", root, "--settings-root", profile };
     var review = await RunCli(options);
@@ -539,6 +541,8 @@ static async Task LocalReviewedSettingsUpdate()
     var result = await RunCli(apply);
     Assert.Equal(0, result.Code);
     var next = (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion;
+    Assert.Equal<ConsentDecision?>(ConsentDecision.Grant, await consent.GetDecisionAsync(
+        new(id, InstalledWidgetAuthority.PublisherId(next), "new"), PlatformCapabilities.AudioOutputReadV1));
     Assert.True(InstalledWidgetAuthority.PublisherId(first) != InstalledWidgetAuthority.PublisherId(next), "CLI reused security authority.");
     Assert.Equal(json, (await state.ReadAsync(new(id, InstalledWidgetAuthority.PublisherId(next), "new"), default)).CanonicalJsonBase64);
 }
@@ -3810,9 +3814,11 @@ static byte[] ThemeManifestBytes(string id, string publisher, string version) =>
         EntryFile = "theme.wrss",
     }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 
-static async Task<string> CreatePackedPackageAsync(string root, string id, string version)
+static async Task<string> CreatePackedPackageAsync(string root, string id, string version, IReadOnlyList<string>? permissions = null)
 {
     var source = CreatePackageSource(root, id, "dev.test", version);
+    if (permissions is not null)
+        File.WriteAllBytes(Path.Combine(source, "manifest.json"), ManifestJson.Serialize(BuildManifest(id, "dev.test", version) with { Permissions = permissions }));
     var package = Path.Combine(root, $"{id}-{version}-{Guid.NewGuid():N}.wrwidget");
     var result = await RunCli("pack", source, "--output", package);
     Assert.Equal(0, result.Code);

@@ -68,7 +68,9 @@ contract or the explicitly approved full-trust application contract.
 host-computed authority ID bound to the asserted publisher, package ID, and
 exact immutable version, then supplies that version root through
 `ReadOnlyPaths`. A different unsigned version receives a different profile and
-cannot inherit the prior version's broker consent.
+does not inherit broker consent by identity alone. A reviewed Catalogue, Settings,
+or CLI update explicitly carries matching permission decisions to the new authority;
+new permissions still require approval.
 `HostTrustedJobOnly` remains a temporary platform-owned exception for bundled
 Settings, which needs desktop-user resources. The ordinary
 installed-worker path selects `RequireAppContainer`. A

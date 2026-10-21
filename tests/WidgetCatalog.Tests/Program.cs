@@ -19,7 +19,9 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Startup admission rejects changed selections and cancelled enumeration", StartupSelectionRaces),
     ("Package SVG icons normalize a bounded static subset and reject active content",
         PackageSvgIconCatalogTests.Run),
-    ("Reviewed updates keep only settings across exact package authorities", ReviewedSettingsContinuity),
+    ("Reviewed updates preserve settings across exact package authorities", ReviewedSettingsContinuity),
+    ("Reviewed updates preserve permission decisions and app-library identities", ReviewedPermissionContinuity),
+    ("Update continuity preserves destination decisions and isolates other packages", UpdateContinuitySafety),
     ("Settings transfer preserves existing values and clear markers and fails closed", SettingsTransferSafety),
     ("Install and discovery are deterministic across IDs and versions", InstallAndDiscover),
     ("Enable and order state persists atomically", StatePersists),
@@ -358,7 +360,7 @@ static async Task ReviewedSettingsContinuity()
     await using (var rejected = File.OpenRead(package))
         await Assert.ThrowsAsync<InvalidOperationException>(() => catalog.UpdateFromFileAsync(rejected, target,
             WidgetPackageTrustApproval.None, (_, _) => throw new InvalidOperationException("not approved"),
-            default, new WidgetSettingsTransfer(stateRoot).CopyAsync));
+            default, new WidgetSettingsTransfer(stateRoot, new ConsentStore(Path.Combine(temp.Path, "consent"))).CopyAsync));
     Assert.Equal(1, Directory.GetFiles(stateRoot, "*.json").Length);
     await using (var failedSettings = File.OpenRead(package))
         await Assert.ThrowsAsync<WidgetPackageException>(() => catalog.UpdateFromFileAsync(failedSettings, target,
@@ -368,7 +370,7 @@ static async Task ReviewedSettingsContinuity()
     Assert.True((await catalog.DiscoverAsync()).Widgets.Single().Enabled, "Failed settings preparation disabled the widget.");
     await using var input = File.OpenRead(package);
     var next = await catalog.UpdateFromFileAsync(input, target, WidgetPackageTrustApproval.None,
-        (_, _) => Task.CompletedTask, default, new WidgetSettingsTransfer(stateRoot).CopyAsync);
+        (_, _) => Task.CompletedTask, default, new WidgetSettingsTransfer(stateRoot, new ConsentStore(Path.Combine(temp.Path, "consent"))).CopyAsync);
     var nextIdentity = new BrokerWidgetIdentity(id, InstalledWidgetAuthority.PublisherId(next), "new");
     Assert.True(nextIdentity.PublisherId != oldIdentity.PublisherId, "Update reused security authority.");
     Assert.Equal(json, (await store.ReadAsync(nextIdentity, default)).CanonicalJsonBase64);
@@ -379,6 +381,91 @@ static async Task ReviewedSettingsContinuity()
     var raw = await catalog.InstallAsync(CreatePackage(temp.Path, id, "dev.test", "3.0.0"));
     Assert.True(!(await store.ReadAsync(new(id, InstalledWidgetAuthority.PublisherId(raw), "raw"), default)).Exists,
         "Unreviewed install inherited settings.");
+}
+
+static async Task ReviewedPermissionContinuity()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = new WidgetCatalog(Path.Combine(temp.Path, "catalog"));
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    var stateRoot = Path.Combine(temp.Path, "state");
+    var continuity = new AppLibraryContinuityStore(consent.RootDirectory);
+    var transfer = new WidgetSettingsTransfer(stateRoot, consent);
+    const string id = "dev.test.continuity";
+    var read = PlatformCapabilities.AppLibraryReadV1;
+    var launch = PlatformCapabilities.AppLibraryLaunchV1;
+    var added = PlatformCapabilities.AppRunningReadV1;
+    var old = await catalog.InstallAsync(CreatePackage(temp.Path, id, "dev.test", "1.0.0", permissions: [read, launch]));
+    var source = new BrokerWidgetIdentity(id, InstalledWidgetAuthority.PublisherId(old), "source");
+    await consent.SetDecisionAsync(source, read, ConsentDecision.Grant);
+    await consent.SetDecisionAsync(source, launch, ConsentDecision.Deny);
+    var json = Convert.ToBase64String(Encoding.UTF8.GetBytes("{\"selected\":\"saved-fixture\"}"));
+    await new PrivateStateStore(stateRoot).WriteAsync(source, new(json, 0), default);
+    var issuer = new AppLibrarySavedIdIssuer(new byte[32]);
+    var savedId = issuer.Issue(source, "steam:123");
+    var previous = old;
+    for (var version = 2; version <= 4; version++)
+    {
+        var archive = CreatePackage(temp.Path, id, "dev.test", $"{version}.0.0", permissions: [read, launch, added]);
+        await using var input = File.OpenRead(archive);
+        var next = await catalog.UpdateFromFileAsync(input, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id))),
+            WidgetPackageTrustApproval.None, (_, _) => Task.CompletedTask, default, transfer.CopyAsync);
+        var target = new BrokerWidgetIdentity(id, InstalledWidgetAuthority.PublisherId(next), "target");
+        Assert.Equal<ConsentDecision?>(ConsentDecision.Grant, await consent.GetDecisionAsync(target, read));
+        Assert.Equal<ConsentDecision?>(ConsentDecision.Deny, await consent.GetDecisionAsync(target, launch));
+        Assert.Equal<ConsentDecision?>(null, await consent.GetDecisionAsync(target, added));
+        Assert.Equal(savedId, issuer.Issue(await continuity.ResolveAsync(target, default), "steam:123"));
+        Assert.Equal(json, (await new PrivateStateStore(stateRoot).ReadAsync(target, default)).CanonicalJsonBase64);
+        Assert.True(target.PublisherId != InstalledWidgetAuthority.PublisherId(previous), "Update reused security identity.");
+        previous = next;
+    }
+    // Raw installation and an unapproved update cannot inherit this relationship.
+    var raw = await catalog.InstallAsync(CreatePackage(temp.Path, id, "dev.test", "5.0.0", permissions: [read]));
+    var rawIdentity = new BrokerWidgetIdentity(id, InstalledWidgetAuthority.PublisherId(raw), "raw");
+    Assert.Equal<ConsentDecision?>(null, await consent.GetDecisionAsync(rawIdentity, read));
+    Assert.Equal(rawIdentity, await continuity.ResolveAsync(rawIdentity, default));
+    // Failure to read consent blocks publication without selecting the replacement.
+    await File.WriteAllTextAsync(consent.DocumentFile, "{broken");
+    await using var failed = File.OpenRead(CreatePackage(temp.Path, id, "dev.test", "6.0.0", permissions: [read]));
+    await Assert.ThrowsAsync<WidgetPackageException>(() => catalog.UpdateFromFileAsync(failed,
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id))), WidgetPackageTrustApproval.None,
+        (_, _) => Task.CompletedTask, default, transfer.CopyAsync));
+    Assert.Equal(previous.Version, (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version);
+}
+
+static async Task UpdateContinuitySafety()
+{
+    using var temp = new TemporaryDirectory();
+    var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+    var source = new BrokerWidgetIdentity("dev.test.continuity", "unsigned." + new string('a', 64), "source");
+    var target = source with { PublisherId = "unsigned." + new string('b', 64) };
+    var read = PlatformCapabilities.AppLibraryReadV1;
+    var launch = PlatformCapabilities.AppLibraryLaunchV1;
+    await consent.SetDecisionsAsync(source, [read, launch], ConsentDecision.Grant);
+    await consent.SetDecisionAsync(target, read, ConsentDecision.Deny);
+    await consent.CopyUpdateDecisionsAsync(source, target, [read], default);
+    Assert.Equal<ConsentDecision?>(ConsentDecision.Deny, await consent.GetDecisionAsync(target, read));
+    Assert.Equal<ConsentDecision?>(null, await consent.GetDecisionAsync(target, launch));
+    Assert.Equal<ConsentDecision?>(ConsentDecision.Grant, await consent.GetDecisionAsync(source, read));
+    var other = target with { PackageId = "dev.test.other" };
+    await Assert.ThrowsAsync<BrokerException>(() => consent.CopyUpdateDecisionsAsync(source, other, [read], default));
+    var scopes = new AppLibraryContinuityStore(consent.RootDirectory);
+    await Assert.ThrowsAsync<BrokerException>(() => scopes.KeepAsync(source, other, default));
+    // A retained destination with its own settings predates continuity metadata.
+    await scopes.KeepAsync(source, target, default, destinationHasState: true);
+    Assert.Equal(target, await scopes.ResolveAsync(target, default));
+    await scopes.KeepAsync(source, target, default);
+    Assert.Equal(target, await scopes.ResolveAsync(target, default));
+    var fresh = target with { PublisherId = "unsigned." + new string('c', 64) };
+    using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
+    await Assert.ThrowsAsync<OperationCanceledException>(() => consent.CopyUpdateDecisionsAsync(source, fresh, [read], cancellation.Token));
+    await Assert.ThrowsAsync<OperationCanceledException>(() => scopes.KeepAsync(source, fresh, cancellation.Token));
+    Assert.Equal<ConsentDecision?>(null, await consent.GetDecisionAsync(fresh, read));
+    Assert.Equal(fresh, await scopes.ResolveAsync(fresh, default));
+    // Independent store instances must respect a destination denial racing the update.
+    await Task.WhenAll(consent.CopyUpdateDecisionsAsync(source, fresh, [read], default),
+        new ConsentStore(consent.RootDirectory).SetDecisionAsync(fresh, read, ConsentDecision.Deny));
+    Assert.Equal<ConsentDecision?>(ConsentDecision.Deny, await consent.GetDecisionAsync(fresh, read));
 }
 
 static async Task SettingsTransferSafety()
@@ -1600,7 +1687,8 @@ static string CreatePackage(
     string version,
     IReadOnlyList<ExtraEntry>? extras = null,
     Action<ZipArchive>? configure = null,
-    bool includeEntrypoint = true)
+    bool includeEntrypoint = true,
+    IReadOnlyList<string>? permissions = null)
 {
     var path = Path.Combine(root, $"{id}-{version}-{Guid.NewGuid():N}.wrwidget");
     using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
@@ -1612,7 +1700,7 @@ static string CreatePackage(
         Version = version,
         HostApi = new HostApiRange("1.0", 1),
         Entrypoint = new WidgetEntrypoint("dotnet-worker", "payload/Widget.dll", "Example.Widget"),
-        Permissions = [],
+        Permissions = permissions ?? [],
     };
     WriteEntry(archive, "manifest.json", Encoding.UTF8.GetString(ManifestJson.Serialize(manifest)));
     if (includeEntrypoint) WriteEntry(archive, "payload/Widget.dll", "not-a-real-assembly");

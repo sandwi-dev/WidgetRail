@@ -191,7 +191,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         _audioDomain = new AudioCapabilityDomain(_backend);
         _networkDomain = new NetworkCapabilityDomain(_backend);
         _appLibraryDomain = new AppLibraryCapabilityDomain(
-            _backend, _identity, appLibrarySavedIdIssuer, appLibraryArtwork);
+            _backend, _identity, appLibrarySavedIdIssuer, appLibraryArtwork,
+            new AppLibraryContinuityStore(_consentStore.RootDirectory));
         _powerDomain = new PowerCapabilityDomain(_backend);
         _performanceDomain = new PerformanceCapabilityDomain(_backend);
         _displayProfilesDomain = new DisplayProfilesCapabilityDomain(_backend);

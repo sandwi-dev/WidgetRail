@@ -17,7 +17,8 @@ internal sealed class BridgeWidgetLocalDataService(
     IPrivateStatePlatformBrokerBackend? backend,
     BridgeCatalogMonitor? catalogMonitor = null,
     IAppLibraryPlatformBrokerBackend? appLibrary = null,
-    string? settingsRoot = null)
+    string? settingsRoot = null,
+    ConsentStore? consentStore = null)
 {
     internal ValueTask<PlatformWidgetLocalDataInspection> InspectAsync(string widgetId, CancellationToken cancellationToken) =>
         InspectCoreAsync(widgetId, false, cancellationToken);
@@ -261,7 +262,7 @@ internal sealed class BridgeWidgetLocalDataService(
         var registrations = appLibrary is null
             ? new AppLibraryRegistrationStateSummary(false, 0)
             : await appLibrary.GetRunningAppRegistrationStateAsync(
-                identity, cancellationToken).ConfigureAwait(false);
+                await AppLibraryIdentityAsync(identity, cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
         var browser = settingsRoot is null ? null : new BrowserProfileLifecycleStore(settingsRoot);
         var browserOwner = browser is null ? null : await browser.ReadAsync(widgetId, cancellationToken).ConfigureAwait(false);
         var browserExists = browser is not null && await browser.HasDataAsync(widgetId, cancellationToken).ConfigureAwait(false);
@@ -284,7 +285,7 @@ internal sealed class BridgeWidgetLocalDataService(
     {
         if (state.AppRegistrationsExist && appLibrary is not null)
             await appLibrary.ClearRunningAppRegistrationsAsync(
-                identity, state.AppRegistrationRevision, cancellationToken)
+                await AppLibraryIdentityAsync(identity, cancellationToken).ConfigureAwait(false), state.AppRegistrationRevision, cancellationToken)
                 .ConfigureAwait(false);
         if (state.PrivateStateExists)
             await backend!.ClearPrivateStateAsync(
@@ -297,6 +298,13 @@ internal sealed class BridgeWidgetLocalDataService(
             await new BrowserProfileLifecycleStore(settingsRoot).ResetAsync(state.WidgetId, Guid.NewGuid().ToString("N"),
                 removed: false, CancellationToken.None).ConfigureAwait(false);
         }
+    }
+
+    private Task<BrokerWidgetIdentity> AppLibraryIdentityAsync(BrokerWidgetIdentity identity, CancellationToken token)
+    {
+        var consentRoot = consentStore?.RootDirectory ?? (settingsRoot is null ? null : Path.Combine(settingsRoot, "consent"));
+        return consentRoot is null ? Task.FromResult(identity) :
+            new AppLibraryContinuityStore(consentRoot).ResolveAsync(identity, token);
     }
 
     private static string ConfirmationToken(

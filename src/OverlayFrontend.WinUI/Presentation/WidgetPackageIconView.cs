@@ -168,6 +168,13 @@ internal sealed partial class WidgetPackageIconView : ContentControl, IDisposabl
         UpdateSizing();
     }
     internal void RetryTransientFailure() => icon.RetryTransientFailure();
+    internal void InheritPreparedIcon(WidgetPackageIconView previous)
+    {
+        // User webapp imagery has a separate authority/lifetime and must not be
+        // mistaken for the package visual underneath it.
+        if (!disposed && !previous.disposed && previous.userIconKey is null)
+            icon.InheritPreparedIcon(previous.icon);
+    }
     public void Dispose() { disposed = true; DetachRasterObservers(); icon.Dispose(); }
 }
 
@@ -194,6 +201,35 @@ internal sealed class WidgetNativePackageIcon : IDisposable
     internal double AspectRatio { get; private set; } = 1;
     internal WidgetNativePackageIcon(Action<IconElement> publish, Func<XamlRoot?> rasterRoot)
     { this.publish = publish; this.rasterRoot = rasterRoot; }
+    internal void InheritPreparedIcon(WidgetNativePackageIcon previous)
+    {
+        if (disposed || identity is not null || previous.disposed || !previous.succeeded ||
+            previous.displayed is not ImageIcon source) return;
+        var image = new ImageIcon { Width = 20, Height = 20, IsHitTestVisible = false };
+        lifetime = new();
+        try
+        {
+            if (previous.tint is { } tinted) tint = tinted.CopyTo(image);
+            else if (previous.original is { } colored)
+            {
+                image.Source = source.Source;
+                original = colored.CopyTo(image, lifetime.Token);
+            }
+            else { lifetime.Dispose(); lifetime = null; return; }
+            identity = previous.identity;
+            AspectRatio = previous.AspectRatio;
+            succeeded = true;
+            displayed = image;
+            publish(image);
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException)
+        {
+            // A retiring native root can reject duplication. Normal Update
+            // then uses the existing bounded load/fallback path.
+            tint?.Dispose(); tint = null; original?.Dispose(); original = null;
+            lifetime?.Dispose(); lifetime = null; identity = null; succeeded = false; displayed = null;
+        }
+    }
     internal void Update(WidgetGlyph fallback, WidgetPackageIcon? asset, string? name,
         Func<WidgetPackageIcon, CancellationToken, Task<WidgetPresentationPackageIcon>>? resolver, string generation, Action<string>? diagnostic)
     {
@@ -339,10 +375,15 @@ internal sealed class WidgetNativePackageIcon : IDisposable
 
 /// <summary>One SVG demand, one visible raster and at most one bounded upgrade.</summary>
 internal sealed class OriginalPackageIconRaster(ImageIcon image, byte[] bytes, double aspect,
-    CancellationToken token, Action<string>? diagnostic) : IDisposable
+    CancellationToken token, Action<string>? diagnostic, double initialPixels = 64) : IDisposable
 {
-    private double requested = 64, prepared = 64;
+    private double requested = initialPixels, prepared = initialPixels;
     private bool preparing, disposed;
+    internal OriginalPackageIconRaster CopyTo(ImageIcon destination, CancellationToken cancellation)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        return new(destination, bytes, aspect, cancellation, diagnostic, prepared);
+    }
     internal void Request(double pixels)
     {
         if (disposed) return;

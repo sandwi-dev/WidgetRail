@@ -32,6 +32,17 @@ internal sealed class NativePackageIconTint : IDisposable
     private long colorToken, opacityToken;
     private bool disposed;
     internal Color CurrentColor => color.Color;
+    internal NativePackageIconTint CopyTo(ImageIcon destination)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        var retained = lease.Duplicate();
+        try
+        {
+            return new(destination, retained, cache, payload, root)
+                { rasterPixels = rasterPixels, requestedExtent = requestedExtent };
+        }
+        catch { retained.Dispose(); throw; }
+    }
     internal NativePackageIconTint(ImageIcon icon, NativePackageIconTintCache.Lease lease, NativePackageIconTintCache cache, WidgetPresentationPackageIcon payload, XamlRoot root)
     {
         this.icon = icon; this.lease = lease; this.cache = cache; this.payload = payload; this.root = root; Owners.Add(icon, this);

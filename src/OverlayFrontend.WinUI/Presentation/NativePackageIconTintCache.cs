@@ -75,6 +75,14 @@ internal sealed class NativePackageIconTintCache : IDisposable, IAsyncDisposable
     {
         private NativePackageIconTintCache? cache = owner;
         internal LoadedImageSurface Surface => entry.Surface ?? throw new ObjectDisposedException(nameof(Lease));
+        internal Lease Duplicate()
+        {
+            var current = cache ?? throw new ObjectDisposedException(nameof(Lease));
+            ObjectDisposedException.ThrowIf(current.disposed, current);
+            _ = Surface;
+            ++entry.References;
+            return new(current, entry);
+        }
         public void Dispose() { var current = Interlocked.Exchange(ref cache, null); if (current is not null) { --entry.References; entry.LastUse = ++current.useSequence; } }
     }
     private NativePackageIconTintCache(XamlRoot root)
