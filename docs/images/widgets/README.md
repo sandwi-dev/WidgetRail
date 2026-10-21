@@ -2,7 +2,7 @@
 
 [View the gallery](../../users/widget-gallery.md).
 
-These are real, unaltered 3840 × 2160 (16:9) Windows captures made on **21 October 2026**. No UI controls, values, artwork or backgrounds were composited into them. The original PNG pixels are retained.
+These are real, unaltered 3840 Ã— 2160 (16:9) Windows captures made on **21 October 2026**. No UI controls, values, artwork or backgrounds were composited into them. The original PNG pixels are retained.
 
 ## Captured configuration
 
@@ -27,10 +27,12 @@ These are real, unaltered 3840 × 2160 (16:9) Windows captures made on **21 Octo
 | Network Controls | 0.1.7 |
 | Now Playing | 0.1.2 |
 | Performance Monitor | 0.1.2 |
+| Playnite Library | 0.2.144 |
 | PoE1 Path of Building | 0.1.4.37 |
 | PoE2 Path of Building | 0.1.4.37 |
 | Power | 0.1.0 |
 | Spotify | 0.3.92 |
+| Task Switcher | 0.2.2 |
 | Twitch | 0.1.1 |
 | YouTube Music | 0.3.45 |
 | YouTube Video | 0.3.44 |
@@ -43,14 +45,14 @@ Performance Monitor 0.1.2 includes the target-selection correction at source com
 
 - **Hollow Knight and Hollow Knight: Silksong**, game scenes, artwork and the release trailer: Team Cherry. [Trailer source](https://www.youtube.com/watch?v=6XGeJwsUP9c).
 - **Greenpath** soundtrack: Christopher Larkin; the YouTube Music example is the piano-collections recording credited in the player to Christopher Larkin, David Peacock and Augustine Mayuga Gonzales. Music and album artwork remain the property of their respective owners.
-- Browser article: [Wikipedia contributors, Hollow Knight: Silksong](https://en.wikipedia.org/wiki/Hollow_Knight:_Silksong), available under the article’s stated licenses, including CC BY-SA for text.
-- Interactive map: [MapGenie’s Silksong map](https://mapgenie.io/hollow-knight-silksong/maps/pharloom). Map and game artwork belong to their respective owners.
-- Twitch capture shows the public, logged-out Silksong category. Channel names and thumbnails are public website content, not the user’s account or private messages.
-- PoE1 and PoE2 use separate example builds loaded for these captures. Their values are not build advice or a current-league recommendation. Path of Exile content belongs to Grinding Gear Games; calculation/editing functionality comes from Path of Building Community. The [earlier walkthrough’s attribution](../../../samples/PobCompanion/screenshots/README.md) applies to those earlier images, not these separate captures.
+- Browser article: [Wikipedia contributors, Hollow Knight: Silksong](https://en.wikipedia.org/wiki/Hollow_Knight:_Silksong), available under the articleâ€™s stated licenses, including CC BY-SA for text.
+- Interactive map: [MapGenieâ€™s Silksong map](https://mapgenie.io/hollow-knight-silksong/maps/pharloom). Map and game artwork belong to their respective owners.
+- Twitch capture shows the public, logged-out Silksong category. Channel names and thumbnails are public website content, not the userâ€™s account or private messages.
+- PoE1 and PoE2 use separate example builds loaded for these captures. Their values are not build advice or a current-league recommendation. Path of Exile content belongs to Grinding Gear Games; calculation/editing functionality comes from Path of Building Community. The [earlier walkthroughâ€™s attribution](../../../samples/PobCompanion/screenshots/README.md) applies to those earlier images, not these separate captures.
 - Service logos, game covers and other third-party content remain the property of their respective owners. Their appearance does not imply endorsement or affiliation.
 
 ## Review boundaries
 
 Reviewed images exclude account names, credentials, personal messages, network identities, local paths and unrelated window contents. Network Controls is shown before scanning. Game Help shows its starting screen without sending a question or game context to a provider. Now Playing honestly shows the generic metadata supplied by its WebView source.
 
-Images of additional widgets are added only after the same privacy review. Do not substitute fabricated data or paint over UI to make a capture appear complete.
+Playnite game titles, playtime, last-played dates and achievement progress are included with approval. Task Switcher shows minimized applications without their contents. Discord and Recent Apps were intentionally skipped. Additional images require the same privacy review. Do not substitute fabricated data or paint over UI to make a capture appear complete.

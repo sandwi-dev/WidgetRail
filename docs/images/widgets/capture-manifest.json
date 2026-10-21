@@ -360,6 +360,57 @@
           "sha256": "844f424ee2416fa1dbf5668b9b956c1096bf1c14e7597855b5283bc71ae8d454"
         }
       ]
+    },
+    {
+      "id": "widgetrail.samples.playnite-library",
+      "name": "Playnite Library",
+      "version": "0.2.144",
+      "caption": "Home, library, game details and achievement progress from the connected Playnite library.",
+      "images": [
+        {
+          "file": "playnite-home.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 5932745,
+          "sha256": "5bc714d9f540ee62b4543f7c023f5b500f20e4ed2881123b73d26c5192d63e6c"
+        },
+        {
+          "file": "playnite-library.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 6515550,
+          "sha256": "832982efe1dd396b39b2458ceebcf3e9af3288b4bab9cd999811375d1e9d313f"
+        },
+        {
+          "file": "playnite-details.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 4440614,
+          "sha256": "1a55d4018a2c9da645623d86bf979c6500dd9f5d3b60f416dd2023c9b1b95279"
+        },
+        {
+          "file": "playnite-achievements.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 3704599,
+          "sha256": "2f14d8654e1ba81fb2eb22c0b6c9e1ef07abd6711718af0b5b61384ffee98788"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.firstparty.task-switcher",
+      "name": "Task Switcher",
+      "version": "0.2.2",
+      "caption": "A live game thumbnail beside minimized applications; no conversation or terminal contents are visible.",
+      "images": [
+        {
+          "file": "task-switcher.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 2046401,
+          "sha256": "318bc56f48a5ff9d904e25a705478cb744fec0a347437548a6d2a3968cbfab16"
+        }
+      ]
     }
   ]
 }
