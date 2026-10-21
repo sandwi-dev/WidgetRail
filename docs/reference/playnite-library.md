@@ -1,56 +1,30 @@
-# Playnite Library
+# Playnite Library integration
 
-The Playnite add-on brings a Playnite library into WidgetRail. It is installed
-separately and connects to a user-configured Playnite Bridge. Read the
-[package README](../../samples/PlayniteLibraryWidget/README.md) for setup and
-the supported companion configuration.
+Use the [package user guide](../../samples/PlayniteLibraryWidget/README.md) for
+installation, guided connection setup, controls, achievements and recovery.
+The [setup decision matrix](../../samples/PlayniteLibraryWidget/SETUP-DECISIONS.md)
+is the maintained contract for running/stopped profiles, portable installations,
+Bridge availability, ambiguity and safe replacement.
 
-## Home
+## Runtime and data ownership
 
-Home shows installed games in a poster rail. Its ordering is favorites, recency,
-name, then a stable game ID. Loading more pages continues that ordering; it does
-not re-sort only the currently visible posters.
+Playnite Library is a full-access application widget. It owns its bounded local
+Bridge client, credentials, guided setup and provider parsing. Playnite remains a
+separate application. The widget's Windows Credential Manager entry is separate
+from host-owned widget state; uninstalling the widget does not uninstall Bridge.
 
-The Home and Library header destinations switch between the installed-game rail
-and Browse. Y refreshes; Menu opens Categories, Hidden games, and connection
-settings. X opens options for the focused game, including Favorite. The controller
-hints remain separate from focusable navigation and posters.
+Home and Library publish immutable indexed queries. The frontend requests ranges
+and owns virtualization, focus and scrolling. Provider pagination is internal;
+rendered rows are not a moving cursor window. Opening/closing details preserves
+the originating game; B at either main tab returns to the host tray.
 
-Selecting Home or Library enters its game list. B from Library also returns to
-Home's game list. Each list remembers its own game focus; header and filter
-buttons cannot replace it. If that game is no longer available, focus falls back
-to an available result. Loading completes before this focus entry is requested.
+Artwork can use local Playnite files through the framework's file-artwork
+contract, with provider fallback. The widget resolves authority for requested
+artwork; it does not embed every library image in its UI snapshot.
 
-Panels, controls, text, and focus follow the selected global theme. The Home
-summary separates game metadata from status badges, with a compact presentation
-on smaller surfaces. Posters without covers show readable titles.
-
-## Browse
-
-Browse includes installed and uninstalled games. Favorites and Installed filters
-can be combined. An uninstalled game has a visible badge; activating it explains
-that it must first be installed through Playnite.
-
-The responsive grid loads pages as the user scrolls or moves focus. The displayed
-count describes the matching query, not just the pages currently held in memory.
-There are no LB/RB page-jump shortcuts.
-
-## Refresh and remembered position
-
-Home refreshes once when its route becomes active. A refresh starts at the beginning.
-Browse can reuse loaded pages and position when reopened without refreshing.
-An explicit refresh or a changed query starts a fresh collection.
-
-The cursor and host manage loading indicators, viewport filling, focus, and
-scroll-offset compensation. These behaviors are shared with other cursor-based
-widgets; they are not a separate Playnite navigation engine.
-
-## Runtime and data
-
-This is a full-access application widget. Its companion connection and credentials
-belong to the package. The host's ordinary sandbox capability model is not a
-substitute for reviewing this application before enabling it.
-
-Its implementation is a useful example of the SDK, but the generated basic and
-data templates are smaller starting points. See [Data and lifecycle](../developers/data-and-lifecycle.md)
-for the cursor concepts before reading the complete sample.
+Achievements read PlayniteAchievements on demand per game, with SuccessStory
+fallback. Activity uses GameActivity. Optional data can be absent even when the
+games API works. Searching/filtering loaded achievements does not call the
+provider. See [development documentation](../../samples/PlayniteLibraryWidget/DEVELOPMENT.md)
+for eval cost, caching, artwork and state ownership, and
+[indexed collections](../developers/indexed-collections.md) for SDK authoring.

@@ -1,6 +1,26 @@
 # Game Help
 
-Install from **Catalogue**. Game Help is a community widget and is not bundled in either installer. It requires your own Gemini API key. The widget owns Gemini requests and protected key storage; the host provides generic capture, media, document and intent services.
+Install from **Catalogue**. Game Help is an optional widget and is not bundled in either installer. It requires your own Gemini API key. The widget owns Gemini requests and protected key storage; the host provides generic capture, media, document and intent services.
+
+## Set up and verify
+
+1. Install **Game Help** from Catalogue and review its full-access request.
+2. Open it and enter your own Gemini API key on setup. Provider quotas and
+   charges apply; adding a key does not grant unlimited use.
+3. Ask a short text question and confirm that an answer arrives. Capture access
+   is only needed when adding a screenshot or clip. Sending context is explicit.
+4. Open **Chat options** to change spoiler preferences, optional live web search,
+   or **Replace API key**. B returns to the conversation.
+
+Without a key, setup remains available but questions cannot be sent. If a key is
+rejected, check its provider restrictions/quota and replace it in Chat options.
+**Remove saved key** deletes the local protected key after confirmation; it does
+not revoke the key at Google. Disabling keeps it. The key is an add-on-owned file
+at `%LOCALAPPDATA%\WidgetRail\applications\game-help\gemini-key.dat`, separate
+from generic host cleanup. Remove it in the widget before uninstalling if wanted.
+Chat is session-only. Saved Capture Library files remain separate from this widget.
+
+## Capture and provider access
 
 Capture access is requested when taking a screenshot or clip. Opening saved captures requests library read access. Sending a question with live web search enabled requests provider-document access for the required attribution. Denial or cancellation does not perform the protected action.
 

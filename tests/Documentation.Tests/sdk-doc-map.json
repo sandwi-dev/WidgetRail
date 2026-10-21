@@ -67,5 +67,9 @@
   "src/WidgetSdk/Permissions.cs": "docs/reference/widget-permissions.md",
   "src/WidgetSdk/Activity.cs": "docs/reference/widget-activity.md",
   "src/WidgetSdk/WebSessions.cs": "docs/developers/hosted-web-sessions.md",
-  "src/WidgetSdk/LineGraphElement.cs": "docs/reference/line-graphs.md"
+  "src/WidgetSdk/LineGraphElement.cs": "docs/reference/line-graphs.md",
+  "src/WidgetSdk/DisplayControls.cs": "docs/reference/display-profiles.md",
+  "src/WidgetSdk/TextSuggestions.cs": "docs/reference/text-suggestions.md",
+  "src/WidgetSdk/WidgetArtworkSource.cs": "docs/reference/collections.md",
+  "src/WidgetSdk/WidgetFocusPreviewSource.cs": "docs/developers/presentation-retention.md"
 }

@@ -1,5 +1,8 @@
 # Widget notifications
 
+For delivery preferences and the notification panel, start with the
+[user guide](../users/notifications.md).
+
 `HostServices.Notifications` is an intrinsic host service for ordinary sandboxed
 workers and full-trust application widgets. No manifest permission is required.
 User notification preferences remain authoritative. A resident widget may publish

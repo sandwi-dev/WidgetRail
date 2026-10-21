@@ -21,6 +21,21 @@ restore the pinned selection or its playback state; placement preferences remain
 Returning from move/resize or opacity restores the pin controls instead of
 forcing focus back to the tray.
 
+## Switch focus and return
+
+With the overlay open, **View** switches focus to the pin; **B** returns to the
+overlay. Follow the pin's controller guide for its available actions. A passive
+pin can remain visible while you use something else without taking input.
+
+For Browser and hosted webapps, pinning transfers the existing live page. The
+main widget shows that the page is pinned; it does not create another page or
+sign-in. **Unpin** returns the page to its widget. A hosted pop-out can instead
+use **Pin pop-out** and **Return pop-out to widget** through LS controls.
+
+Unpinning is not a general stop-playback action. Use **Stop widget** to end that
+widget's sessions and current pin. [Lifecycle and saved data](lifecycle.md) explains
+what is kept, and [browsing](browsing.md#pages-pop-outs-and-pins) covers new-window choices.
+
 ## Why layouts differ
 
 The widget author decides which views can be pinned. A video widget may offer a

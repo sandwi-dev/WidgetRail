@@ -25,8 +25,7 @@ foreach (var (source, topic) in sdkDocMap)
 var markdownLink = new Regex(
     @"!?\[[^\]]*\]\((?<target>[^)\r\n]+)\)",
     RegexOptions.CultureInvariant);
-var markdownFiles = Directory.EnumerateFiles(repository, "*.md", SearchOption.AllDirectories)
-    .Where(path => !HasIgnoredSegment(repository, path))
+var markdownFiles = EnumerateMarkdown(repository)
     .Order(StringComparer.OrdinalIgnoreCase)
     .ToArray();
 
@@ -129,7 +128,7 @@ string[] requiredAuthorityRecoveryContracts =
     "wrail authority-recovery retry <confirmation-token-from-list>",
     "It does not accept a journal path, content path, security",
     "force option",
-    "Settings → Diagnostics",
+    "Settings → About & troubleshooting → Diagnostics",
     "initial focus is **Cancel**",
     "never renders or speaks the opaque confirmation token",
     "Community widgets cannot request this channel",
@@ -278,9 +277,33 @@ foreach (var removed in new[] { "archive", "history" })
     if (Directory.Exists(Path.Combine(repository, "docs", removed)) &&
         Directory.EnumerateFiles(Path.Combine(repository, "docs", removed), "*", SearchOption.AllDirectories).Any())
         failures.Add($"Retired notes remain: {removed}");
-foreach (var screenshot in new[] { "overview-rail", "overview-games-apps-radial", "pinned-video", "themes" })
+foreach (var screenshot in new[] { "overview-rail", "pinned-video" })
     RequireLink(Path.Combine(repository, "README.md"), $"docs/images/{screenshot}.png");
+RequireLink(Path.Combine(repository, "docs", "users", "controls.md"), "../images/overview-games-apps-radial.png");
+RequireLink(Path.Combine(repository, "docs", "users", "customization.md"), "../images/themes.png");
 RequireLink(Path.Combine(repository, "docs", "developers", "widget-authoring-guide.md"), "../images/sdk-gallery.png");
+
+foreach (var topic in new[] { "everyday-workflows", "browsing", "webapps", "notifications",
+    "extensions", "connected-widgets", "lifecycle", "integrations" })
+    RequireLink(Path.Combine(repository, "docs", "README.md"), $"users/{topic}.md");
+RequireLink(Path.Combine(repository, "docs", "maintainers", "release-checklist.md"), "documentation.md#run-the-check");
+
+// Guard the drift-prone source-version summary without running the application.
+var protocolSource = File.ReadAllText(Path.Combine(repository, "src", "WidgetProtocol", "ProtocolConstants.cs"));
+var protocol = Regex.Match(protocolSource, @"public const int CurrentVersion = (\d+);").Groups[1].Value;
+var status = File.ReadAllText(Path.Combine(repository, "docs", "maintainers", "current-platform-status.md"));
+if (protocol.Length == 0 || !status.Contains($"protocol {protocol}", StringComparison.Ordinal))
+    failures.Add("Current platform status must match the source presentation protocol.");
+
+foreach (var (source, label) in new[]
+{
+    ("src/FirstPartyWidgets/SettingsWidget/SettingsPresentation.cs", "About & troubleshooting"),
+    ("src/FirstPartyWidgets/SettingsWidget/SettingsInstalledWidgetPresentation.cs", "Install local widget"),
+    ("src/FirstPartyWidgets/SettingsWidget/SettingsInstalledWidgetPresentation.cs", "Add webapp"),
+    ("src/FirstPartyWidgets/SettingsWidget/SettingsInstalledWidgetPresentation.cs", "Manage webapps"),
+})
+    if (!File.ReadAllText(Path.Combine(repository, source)).Contains($"\"{label}\"", StringComparison.Ordinal))
+        failures.Add($"Documented Settings label changed: {label}. Review the user guides.");
 
 if (failures.Count != 0)
 {
@@ -300,6 +323,19 @@ void RequireLink(string file, string target)
 }
 
 string Relative(string path) => Path.GetRelativePath(repository, path).Replace('\\', '/');
+
+IEnumerable<string> EnumerateMarkdown(string directory)
+{
+    foreach (var file in Directory.EnumerateFiles(directory, "*.md"))
+        if (!HasIgnoredSegment(repository, file)) yield return file;
+    foreach (var child in Directory.EnumerateDirectories(directory))
+    {
+        // Skip generated trees before enumeration; a public-doc check should not
+        // walk gigabytes of candidate payloads, package caches or linked folders.
+        if (HasIgnoredSegment(repository, child) || (File.GetAttributes(child) & FileAttributes.ReparsePoint) != 0) continue;
+        foreach (var file in EnumerateMarkdown(child)) yield return file;
+    }
+}
 
 static string FindRepositoryRoot(string start)
 {

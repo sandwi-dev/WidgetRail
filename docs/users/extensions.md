@@ -1,7 +1,7 @@
 # Browser extensions
 
-WidgetRail supports user-installed **Manifest V3 (MV3) extensions for Microsoft
-Edge and other Chromium-based browsers** through WebView2. Extension compatibility
+WidgetRail can import user-supplied **Manifest V3 (MV3) browser extensions** through
+WebView2. Open **Settings → Extensions** to get started. Extension compatibility
 depends on the installed WebView2 runtime and the APIs that each extension uses.
 Extensions are supplied by the user.
 
@@ -54,52 +54,20 @@ package and enable preferences; it does not launch another widget's options page
 - Package files are shared. Website cookies, sign-ins and extension settings
   remain isolated per widget/account profile. Same-profile hosted windows and
   pins share that profile's state.
-- Private profiles remain private. Installation is unavailable there: native
-  functional extension checks did not pass in InPrivate on runtime
-  **155.0.4283.45**. WidgetRail does not silently change
-  private profiles to persistent.
-- Packaged background web sessions (including music playback adapters) use a
-  separate `pkg-` profile namespace. Provider media already has its own namespace.
-  Neither is offered in the extension manager. Enabling the environment's
-  extension service does not install extensions into those profiles.
-- This is a host/user feature, not a new widget permission or JavaScript bridge.
-  Widget authors choose their existing `BrowserStorage.Persistent` option; they
-  cannot install extensions or inspect their data through the SDK.
+- Private browser profiles are not offered for installation. WidgetRail does
+  not change them to persistent profiles to enable extensions.
+- Background music players and provider media surfaces are not offered in the
+  extension manager. Enabling an extension for Browser does not add it to those players.
 
 ## Compatibility boundaries
 
-Validated on WebView2 **155.0.4283.45** using MV3 extension packages and synthetic
-websites. Checks cover installation, request rules, content scripts, options
-pages, storage, profile isolation, enable/disable, update, restart and removal.
-These checks do not establish compatibility with every feature of every
-Edge or Chromium extension.
-
-Browser toolbar/action popups are **not exposed**. Navigating directly to a
-popup's HTML does not reproduce browser-toolbar context: the active-tab query
-in the probe selected the extension's own page, not the website. Options pages
-are supported because they are designed as ordinary extension pages.
+Browser toolbar/action popups are **not exposed**. Extensions that require those
+popups may not be usable here. Options pages are supported through the extension's
+profile controls.
 
 There is no extension-store browser, automatic extension updater, store signature
 verification, or Windows notification UI. Extensions that depend on toolbar UI,
 unsupported runtime APIs or native companion applications may not work.
 
-## Storage and validation
 
-Imports are copied to `BrowserExtensions/packages/<slot>/files` below the chosen
-WidgetRail settings root. WebView2 references that stable directory; deleting the
-original downloaded ZIP/folder is safe after a successful import. Each library
-entry uses one stable package directory across all profiles. Catalog metadata
-stores defaults, explicit overrides and applied revisions; WebView2 owns each
-profile's extension data. Interrupted updates restore the prior package and
-profile policies; interrupted removals finish on the next initialization.
-
-The importer rejects path traversal, absolute/alternate-stream/device paths,
-archive links, folder reparse points, duplicate files, nested source archives,
-and packages over 256 MB or 25,000 entries. Filesystem work runs away from the
-UI thread; native WebView2 calls stay on their creating thread. Update journals
-restore the previous package after an interrupted replacement. Native runtime
-extensions such as Edge's PDF viewer are not exposed as user-managed installs.
-
-Validation artifacts live in ignored `artifacts/browser-extensions`. Functional
-checks use isolated profiles and synthetic websites. Extension performance
-benchmarking is intentionally outside this change's scope.
+Developers and maintainers: see [extension storage and profile contracts](../reference/browser-extensions.md).

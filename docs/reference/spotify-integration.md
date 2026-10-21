@@ -12,7 +12,8 @@ completed results can survive closing and reopening the overlay. Changing the
 query or result type starts a new collection. Late results must not replace a
 newer query.
 
-Playlists and search results use shared cursor behavior. Page loads retain stable
+Playlists and search results use shared indexed presentation backed by provider
+pages. Page loads retain stable
 item identities and loading/error states. Searching is not a reason to reset
 unrelated playlist data.
 

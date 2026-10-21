@@ -1,5 +1,8 @@
 # Widget intents
 
+For supported cross-widget actions and return navigation, start with
+[Connected widgets](../users/connected-widgets.md).
+
 Button/card actions, pinned controls and virtualized row actions are implemented
 through contracts, manifests, Bridge dispatch, worker delivery, native frontend
 activation and passive delivery into existing full-widget or authored-layout pins.

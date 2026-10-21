@@ -37,11 +37,12 @@ Windows display scaling makes the overlay too large. The size is saved per displ
 Accessibility settings can adjust text and contrast, motion, and transparency.
 Try changes in a widget you use often so you can see how they affect real content.
 
-**Settings → Appearance → Section animation** controls page changes inside widgets:
+**Settings → Appearance → Section animation** controls tab changes inside widgets:
 **Slide** (default) moves pages horizontally; **Paging** raises the next page
 while the previous page recedes; **Vertical slide** moves pages up or down;
 **Reveal** uncovers stationary content; **Cover slide** moves the new page over
 the previous page; **None** changes pages immediately.
+**Page animation** separately controls opening detail pages and going back.
 **Animate widget dialogs** independently controls opening and closing motion.
 **Focus animation** offers **Settle** (default), **Fade**, and **None**.
 Settle expands the outline from up to 6 DIPs inside the control over 220 ms,
@@ -162,3 +163,7 @@ Disable removes a widget from the chooser. Stop remains remembered if it is
 disabled and enabled again. The single Stop widget command replaces Stop webapp
 session; website controls continue to manage permissions, new-window behavior
 and profile data.
+
+![Illustrative themes from an earlier WidgetRail build](../images/themes.png)
+
+*Earlier-build illustration; the current theme list and settings above are authoritative.*

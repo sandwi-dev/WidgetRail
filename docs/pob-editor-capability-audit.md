@@ -37,8 +37,9 @@ implementation and its tests. Adapter tests alone cannot establish feature parit
 | General item text editing | `EditDisplayItemText` | Manual item import exists, but there is no unrestricted in-widget raw-text editor. The new name control uses this callback narrowly. |
 
 These are recorded gaps, not implemented features. No new gameplay rules or
-parallel engines were introduced to fill them. Existing exclusions in the
-[active plan](pob-next-improvements-plan.md) remain in force.
+parallel engines were introduced to fill them. See the [user guide](../samples/PobCompanion/USER_GUIDE.md) for the maintained
+workflow and limitations. This inventory is a source audit of the revisions above,
+not an active implementation plan.
 
 ## Render assumptions reviewed
 

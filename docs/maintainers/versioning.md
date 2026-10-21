@@ -51,7 +51,7 @@ version numbers alone do not establish compatibility.
 
 | Version | Meaning |
 |---|---|
-| Presentation protocol (currently 1–92) | The UI data features supported between a widget and host |
+| Presentation protocol (currently 1–98) | The UI data features supported between a widget and host |
 | Capability suffix, such as `.v1` | A particular Windows-service contract |
 | Manifest version | The package schema |
 | Template format (currently 2) | The format understood by the scaffold tooling |

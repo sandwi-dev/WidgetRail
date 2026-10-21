@@ -29,14 +29,21 @@ the screenshot buttons change the preview. YouTube Music has no screenshots in
 the initial catalog. Screenshot URLs are pinned to a repository commit so they
 do not change underneath a published app.
 
+Focusing or hovering a listing with setup requirements opens a read-only rich
+preview of those requirements. Listings with no setup requirements have no
+redundant preview; descriptions remain on the card/details page.
+
 Setup requirements appear before download, separately from package permissions.
-For example, Playnite needs its separate bridge and token; Spotify needs your own
+For example, Playnite needs its separate Bridge integration (guided widget setup
+installs/connects it and saves the token); Spotify needs your own
 developer app and Premium for playback; Game Help needs a Gemini API key; YouTube
 Video search needs a YouTube Data API key. Conditional account requirements are
 labelled for the features that need them. Credentials are entered in each widget's
 setup flow, never in Catalogue.
 
-**Y** checks for updates; **X** opens Updates. The three tabs remain available while a job runs.
+**LB/RB** switches Browse, Installed and Updates. **L3** returns focus to search.
+Search applies when its text is committed; **Clear** resets it. **Check for updates**
+is beside the search field. **Y** checks for updates; **X** opens Updates. The three tabs remain available while a job runs.
 **B** returns from details to the previously selected card. From the catalog, B
 keeps its ordinary tray behavior. Navigation remains available while a download
 runs, and its progress/cancel action remains visible even when viewing another listing.

@@ -16,8 +16,8 @@ or pin the video beside your game with controller controls still available.
 
 ## Get started
 
-1. Install the YouTube Video `.wrwidget` from [WidgetRail releases](https://github.com/sandwi-dev/WidgetRail/releases) through **Settings → Widgets**.
-2. Review the full-trust application prompt and enable the widget.
+1. Install YouTube Video from **Catalogue**, or its published `.wrwidget` through **Settings → Widgets**.
+2. Review the full-access prompt. A fresh interactive installation starts enabled; updates preserve enabled state.
 3. Choose **Play a link** on the setup screen, or open **Player**, to play a public video link. Configure search below when you're ready.
 
 ### Enable search
@@ -49,6 +49,19 @@ In pinned-video focus and fullscreen, **X** toggles play/pause. Follow the on-sc
 guide for the actions available on the current page.
 
 ![YouTube video pinned in the corner while the player controls remain accessible](screenshots/pinned-video.png)
+
+## Verify and remove the search key
+
+To check playback, enter a supported public video link and press **Play**. To
+check search, save the key in **Y → Settings** and submit a query in **Discover**.
+Successful link playback does not verify the search key or its quota.
+
+Replace a rejected key in Settings after checking its Google API restrictions.
+**Delete saved API key** removes the local Windows Credential Manager entry;
+link playback remains available. This does not delete or revoke the key at Google.
+Disabling keeps the connection. Uninstalling removes host-owned widget state and
+browser data, but does not generically delete that separate credential. Remove
+it through the widget before uninstalling if wanted.
 
 ## Common questions
 

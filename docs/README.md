@@ -6,9 +6,23 @@ process architecture to use WidgetRail or write your first widget.
 ## Use WidgetRail
 
 1. [Install and get started](users/getting-started.md)
-2. [Learn the controls](users/controls.md)
-3. [Pin video and compact widgets](users/pinning.md)
+2. [Try everyday workflows](users/everyday-workflows.md)
+3. [Learn the controls](users/controls.md)
 4. [Customization and widget management](users/customization.md)
+
+| Explore | Guide |
+| --- | --- |
+| Websites and text entry | [Browse with a controller](users/browsing.md) |
+| Your own website shortcuts and sign-ins | [Personal webapps](users/webapps.md) |
+| Content beside your game | [Pin video and compact widgets](users/pinning.md) |
+| Actions between widgets | [Connected widgets](users/connected-widgets.md) |
+| Banners and pending updates | [Notifications](users/notifications.md) |
+| Add browser capabilities per profile | [Browser extensions](users/extensions.md) |
+| Accounts, keys and companions | [Integration setup and recovery](users/integrations.md) |
+| What survives hiding, stopping or removal | [Lifecycle and saved data](users/lifecycle.md) |
+
+These guides describe current source behavior. Downloaded releases can lag behind;
+check their release notes before expecting a newly documented feature.
 
 Need help? Read [Troubleshooting](users/troubleshooting.md) or
 [Compatibility and limitations](users/known-limitations.md).
@@ -55,6 +69,9 @@ Start with [Current platform status](maintainers/current-platform-status.md),
 [Architecture](maintainers/platform-architecture.md).
 Use [Build execution and diagnostics](maintainers/build-execution.md) for restore
 requirements and build-log guidance.
+
+Use [documentation maintenance](maintainers/documentation.md) for focused checks
+and [demonstrations](maintainers/demonstrations.md) for media provenance.
 
 Maintainers can find [versioning](maintainers/versioning.md),
 [release preparation](maintainers/release-checklist.md), and

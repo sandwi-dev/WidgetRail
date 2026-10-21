@@ -51,6 +51,21 @@ on another device is refreshed periodically through Spotify.
 
 ![Spotify with its compact player pinned in the corner](screenshots/pinned-player.png)
 
+## Verify and disconnect
+
+After connecting, open **Devices**, choose a playback device and try one track.
+For WidgetRail playback, use **This overlay → Play here**. A saved Client ID or
+successful installation alone does not verify streaming eligibility.
+
+Use **Y → Settings** to reconnect or change the Client ID. **Disconnect account**
+removes the saved authorization; authorize again to reconnect. You can also
+revoke the developer app's access through your Spotify account.
+
+Disabling keeps settings and the saved connection. Uninstalling removes
+host-owned widget data, but the widget's Windows Credential Manager authorization
+is separately stored. Disconnect before uninstalling if you want it removed.
+Stopping WidgetRail's local player does not necessarily stop another Spotify device.
+
 ## Common questions
 
 **Play here does not start.** Update WidgetRail as well as the Spotify widget.

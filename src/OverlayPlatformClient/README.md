@@ -57,7 +57,8 @@ Polling cadence and right-stick scroll behavior remain frontend responsibilities
 
 `ReadNativeShortcut` exposes ABI v5's supplemental/native-only sample; it is not
 the complete multi-controller View+Menu recognizer. See
-`docs/maintainers/winui-platform-binding.md` for the remaining native extraction.
+[controller input](../../docs/reference/controller-input.md) for current shortcut
+and polling ownership.
 
 Build and deploy an ABI-matching OverlayPlatformInterop.dll beside the application.
 The binding uses restricted application/system DLL search paths. The library

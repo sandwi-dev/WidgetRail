@@ -40,7 +40,7 @@ identity every time its title/artwork changes.
 
 The focused tests establish semantic policy only. Host-level proof still needs
 actual WinUI focus, image completion, nested slots, widget-local dialogs and
-visible-frame verification; see `docs/maintainers/winui-feature-contracts.md`.
+visible-frame verification; see [WinUI authoring](../../docs/reference/winui-authoring.md).
 
 ## Observable keyed collections
 

@@ -28,7 +28,7 @@ fresh directory under `artifacts/winui-verification`. Its receipt verifies that
 the published native DLLs match those just built. A metadata-only check also
 rejects the known linker regression that removes async session lock cleanup.
 The targeted optimizer workaround and removal criteria are documented in
-[Release readiness](winui-release-readiness.md). It does not launch the overlay.
+[Release readiness](release-checklist.md). It does not launch the overlay.
 Rust, Taffy, and the retired native renderer are not in this build graph.
 
 Managed widget services have their own coherent installation check:

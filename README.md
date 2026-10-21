@@ -4,9 +4,11 @@
 
 **Your PC, ready for a controller.**
 
-WidgetRail brings controller-friendly controls to your Windows desktop and games.
-Launch an app, adjust audio, switch windows, control music, or keep a video pinned
-while you play—without switching to a separate fullscreen launcher.
+WidgetRail brings controller-friendly controls to your existing Windows setup,
+working alongside your desktop and games without entering a separate fullscreen
+launcher. Control your PC's audio, applications, windows, connectivity and power.
+Bring your services through native widgets, websites and personal webapps. Stay
+in your activity with pinned content, connected widget actions and quiet notifications.
 
 Start WidgetRail once, or enable startup at sign-in. Press **View + Menu** whenever
 you need it, then hide the overlay to carry on. Keyboard and mouse work too.
@@ -15,12 +17,9 @@ Free and open source, with a C# framework for building additional widgets.
 
 [Download](https://github.com/sandwi-dev/WidgetRail/releases) · [Installation](docs/users/getting-started.md) · [Documentation](docs/README.md) · [Build a widget](docs/developers/widget-quickstart.md)
 
-> **Demo recording — owner contribution needed:** replace this placeholder with one
-> uninterrupted recording: desktop or game → open WidgetRail → adjust app audio →
-> switch an app or pin content → hide WidgetRail. Keep the **View + Menu** shortcut
-> visible and use a supported windowed or borderless setup.
-
 ![WidgetRail over the Windows desktop, with Games & Apps and controller hints](docs/images/overview-rail.png)
+
+*Illustrative screenshot from an earlier build; current controls may differ.*
 
 ## Quick start
 
@@ -61,13 +60,28 @@ under **Accessibility**. More setup can wait until after your first useful actio
 | Pause or skip media reported by Windows | Now Playing |
 | Adjust network connections or put the PC to sleep | Network Controls or Power |
 | Browse a page, or keep supported content visible while playing | Browser and widget pinning |
-| Capture a screenshot or short silent clip | Capture Library |
+| Save a screenshot or short clip, with optional supported application audio | Capture Library |
 
 Pin a supported video or compact widget, then hide the main overlay. Move, resize
 and adjust the pin with the controller. Available pinned views depend on the
 widget. [Pinning guide](docs/users/pinning.md).
 
 ![Pinned YouTube playback above the overlay's video controls](docs/images/pinned-video.png)
+
+*Illustrative screenshot from an earlier build.*
+
+## More than quick controls
+
+| Capability | What you can do |
+| --- | --- |
+| [Connected widgets](docs/users/connected-widgets.md) | Open supported content and actions in another widget or an eligible existing pin. |
+| [Controller-ready browser](docs/users/browsing.md) | Navigate webpage controls, point, scroll, drag, zoom and type. |
+| [Personal webapps](docs/users/webapps.md) | Add websites to the rail with their own persistent sign-ins and preferences. |
+| [Notifications](docs/users/notifications.md) | Receive supported updates without losing controller focus; choose banners, list entries or silence. |
+| [Live pinned surfaces](docs/users/pinning.md) | Keep supported pages, video and compact controls visible while using something else. |
+| [Browser extensions](docs/users/extensions.md) | Enable supported extensions only in the profiles where you want them. |
+
+[Try the everyday workflows](docs/users/everyday-workflows.md) · [What keeps running and what is saved](docs/users/lifecycle.md)
 
 ## Add widgets
 
@@ -78,10 +92,10 @@ Service integrations may need a separate account, key or companion before use.
 | Widget | Setup to know about |
 | --- | --- |
 | [PoE1 / PoE2 Path of Building](samples/PobCompanion/README.md) | Build planning works locally; trade features use sign-in on the official trade website. |
-| [Playnite Library](samples/PlayniteLibraryWidget/README.md) | Playnite plus the separate Playnite Bridge and its connection token. |
+| [Playnite Library](samples/PlayniteLibraryWidget/README.md) | Playnite; guided setup installs/connects the separate Bridge integration and saves its token. Setup may restart Playnite. |
 | [Spotify](samples/SpotifyWidget/README.md) | Your Spotify developer app; Premium for streaming and playback control. |
 | [YouTube Video](samples/YouTubeWidget/README.md) | Google API key for search; public video links work without a search key. |
-| [YouTube Music](samples/YtMusicWidget/README.md) | Account sign-in through Chrome or Edge; unofficial integration. |
+| [YouTube Music](samples/YtMusicWidget/README.md) | Chrome/Edge sign-in for your personal library; supported public search/playback can work without it. Unofficial integration. |
 | [Game Help](samples/GameHelpWidget/README.md) | Your Gemini API key; provider quotas and charges apply. |
 | [Discord](samples/DiscordWidget/README.md) / [Twitch](samples/TwitchWidget/README.md) | Website sign-in for account features; website compatibility varies. |
 | [Display Controls](samples/DisplayProfilesWidget/README.md) | Supported display hardware and permission for display controls. |
@@ -89,6 +103,8 @@ Service integrations may need a separate account, key or companion before use.
 Full-access packages require explicit approval because they run with your Windows
 account's permissions. Read the widget's requirements before installing.
 [Catalogue and installation guide](docs/reference/widget-marketplace.md).
+See [integration setup and recovery](docs/users/integrations.md) for verification,
+reconnection and credential cleanup.
 
 **Updates:** automatic app-update checks can notify you, but downloading and
 installing remain your choice. Open **Settings → About & troubleshooting → App
@@ -119,6 +135,9 @@ The CLI includes templates, validation, previews and packaging. Explore
 [SDK Gallery](samples/SdkGalleryWidget/README.md) for working controls and layouts.
 
 [Your first widget](docs/developers/widget-quickstart.md) · [Authoring guide](docs/developers/widget-authoring-guide.md) · [CLI reference](docs/reference/cli-workflows.md) · [Build the app from source](docs/maintainers/building.md)
+
+Connect widgets through [intents](docs/reference/widget-intents.md), or integrate
+an external application through [local companion services](docs/reference/community-companion-services.md).
 
 ## License and contributions
 

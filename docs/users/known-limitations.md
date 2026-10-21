@@ -36,8 +36,9 @@ and playback policies. Pinning a view does not bypass them.
 
 ## Distribution and trust
 
-Updates are manual. There is no automatic widget catalogue or publisher-signing
-service. A package checksum verifies bytes, not the publisher's identity.
+App update checks can be automatic; download and installation are explicit.
+Catalogue provides widget discovery and explicit installation/updates. There is
+no publisher-signing service. A package checksum verifies bytes, not the publisher's identity.
 Treat full-access widgets as you would any other Windows application.
 
 The project has locally tested installers. That does not imply certification on

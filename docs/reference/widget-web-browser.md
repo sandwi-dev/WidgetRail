@@ -1,5 +1,8 @@
 # Hosted browser
 
+For controller actions, sign-ins, background behavior and website limitations,
+start with [Browse with a controller](../users/browsing.md).
+
 The protocol, SDK declaration, Browser intent receiver and host-owned WebView2
 surface are implemented. Browser is preinstalled in Production and available through Catalogue in Bare.
 It is also a reusable SDK element; widgets do not implement their own WebView.

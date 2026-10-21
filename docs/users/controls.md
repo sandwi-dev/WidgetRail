@@ -39,7 +39,9 @@ Use A/Cross to type the selected character or activate an action.
 | B/Circle | Cancel |
 | R3, for private text | Show/hide the password |
 
-Repeats begin after 400 ms and continue every 90 ms. Moving to another key or
+Character repeats begin after 400 ms and continue every 90 ms. After at least
+four repeated character steps and one second held, deletion/caret movement can
+advance by words every 250 ms. Private fields keep character steps. Moving to another key or
 changing the character layer cancels a held character. Actions such as Clear,
 Done, Cancel, Shift, Paste and Show/Hide never repeat.
 
@@ -69,54 +71,12 @@ the explicit action for sending an Enter key to the website. Existing password t
 is represented only by masks. Widget fields, browser addresses and website text
 prompts keep the draft/confirm behavior described above.
 
-## Webapps and notifications
+## Websites and notifications
 
-In a webapp, **D-pad** jumps the circle between nearby webpage controls. **Left
-stick** remains free pointer movement, **A** clicks, and **right stick** scrolls.
-D-pad scrolls by list rows, including text-only chat messages. Long rows advance
-in smaller steps. With no clickable target, the circle stays near the advancing
-edge of the list. Holding D-pad defers new hover until release; the circle glides
-between targets. Left-stick movement is immediate, without a trail.
-System reduced motion disables the glide. D-pad never clicks automatically
-and does not move the pointer while A is held for dragging. Use the free pointer
-for canvas controls or elements a page does not expose as interactive.
-LS opens Website controls; its actions have direct labels. Website permissions can
-also be changed from the widget's tray menu, including restoring a blocked microphone.
-
-On a link, **Page actions → New window** offers **Open in pinned surface** and
-**Open over current page** directly. The latter keeps the current page alive
-underneath; B returns to it. These actions do not change your saved preference.
-
-Website-triggered windows show **Open new window**, with **Open in pinned surface**,
-**Open over current page**, and **Cancel**. **Remember for this website** saves the
-choice for the current widget/account. Change it through **Website settings →
-New windows → Ask each time / Pinned surface / Over current page**.
-Replacing an existing page or pin still requires confirmation; a direct action
-uses one **Replace / Cancel** confirmation without asking for placement again.
-
-Pop-outs have no permanent toolbar, in either placement; press **LS** to reveal
-their controls. An existing pop-out also offers **Pin pop-out** there and in the tray. This keeps
-the existing live page pinned while its parent remains usable. View switches to the
-pin; B returns to the overlay. **Return pop-out to widget** moves it back. Stopping
-the parent session also closes its pop-out.
-
-Replacing a pin always asks for confirmation. Replacing an additional page with
-its own full widget closes that additional page; use **Return page to widget**
-instead to keep it. Replacing it with a different widget returns the live page to
-its original widget.
-
-After granting a website notification permission, select **Notification preferences**
-in its widget tray menu to choose Banner + list, List only, or Off. Quiet banners
-fade away after four seconds. The bell beside the clock shows the number of pending
-notifications and opens their panel; the tray-menu **Notifications** command also
-remains available. From the last tray/radial widget, D-pad right moves to the bell;
-D-pad left returns. For a left-aligned rail, use left at its first widget instead.
-A opens the originating page, X dismisses the focused entry, and B closes the panel
-without clearing it. Clear all is a secondary action. New arrivals keep your selection.
-A **Session ended** entry opens its widget normally; if the widget was removed, the
-entry disappears with a brief inline message. No extra warning needs dismissing.
-Windows notification UI is not used.
-Pending entries last for the current WidgetRail session; the preference survives restarts.
+Use [Browse with a controller](browsing.md) for pointer, D-pad, toolbar, live
+website typing and new-window controls. [Webapps](webapps.md) explains adding
+and managing your sites. [Notifications](notifications.md) covers the bell,
+opening/dismissing entries and per-widget delivery choices.
 
 ## Switch widgets with the radial chooser and rail
 
@@ -166,9 +126,14 @@ automatically a pin option.
 
 ## Review permissions
 
-Built-in widgets and sandboxed community widgets request specific permissions
-for Windows operations. Review them under Widgets.
+Optional sandboxed widgets request specific permissions for Windows operations,
+including packages preinstalled by Production. Review them under Settings → Widgets.
+Settings and Catalogue have host-managed defaults; explicit denials are preserved.
 
 A **full-trust application** widget is different: it runs with your ordinary
 Windows user access. Only enable one from a source you trust. See
 [Security and trust](../maintainers/security-and-trust.md).
+
+![Illustrative radial chooser from an earlier build](../images/overview-games-apps-radial.png)
+
+*Earlier-build illustration; follow the current on-screen guide for available actions.*

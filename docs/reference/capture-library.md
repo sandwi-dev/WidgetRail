@@ -1,6 +1,7 @@
 # Capture Library
 
-Capture Library is included in both installer editions. It keeps screenshots and
+Capture Library is preinstalled in Production and available through Catalogue in
+Bare. It keeps screenshots and
 configurable clips only when you explicitly save them. There is no automatic game
 recording, upload, or eviction of saved media.
 
@@ -172,8 +173,8 @@ it includes no microphone or other applications. It uses 48 kHz stereo AAC at
 default, and its saved preference is retained if temporarily unsupported. Review
 shows actual frame rate, encoder and audio mode, and reports missed frames. Clips
 with audio start unmuted when the user plays their preview; they do not autoplay.
-See `docs/platform-feature-improvements.md` for
-remaining work and physical acceptance.
+Use the [release checklist](../maintainers/release-checklist.md) to qualify capture
+against the exact release, hardware and audio mode being shipped.
 
 Synthetic animated 4K-window validation delivered all requested output slots for
 hardware 720p15, 1080p30, 1080p60 and 4K30. Encoder-only tests also decoded every

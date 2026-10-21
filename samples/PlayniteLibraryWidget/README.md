@@ -7,7 +7,7 @@ to play, and launch it with your controller without leaving the overlay.
 
 ## What you can do
 
-- Browse installed games on Home, or search your wider library in Browse.
+- Browse installed games on Home, or search your wider library in Library.
 - Filter by favorites, installed status, source, and collections.
 - Open game details over the current page, then launch installed games through Playnite Bridge.
 - Read descriptions, metadata, achievements, and play-session history in game details.
@@ -21,7 +21,7 @@ by [rollacode](https://github.com/rollacode), a Playnite plugin that provides a
 local API. Guided setup includes a tested integration package and connects it
 without requiring you to download a plugin or copy a token.
 
-1. Install Playnite Library's `.wrwidget` from [WidgetRail releases](https://github.com/sandwi-dev/WidgetRail/releases) through **Settings → Widgets**. Review the full-trust prompt and enable it.
+1. Install Playnite Library from **Catalogue**, or its published `.wrwidget` through **Settings → Widgets**. Review the full-access prompt. A fresh interactive install starts enabled; an update preserves the existing enabled state.
 2. Install [Playnite](https://playnite.link/) if you do not already have it.
 3. Open the widget and choose **Set up connection**. Setup detects Playnite and its data profile; choose a profile if more than one is found.
 4. Select the displayed connection action. When installation or repair is needed, the button explains that Playnite will restart. Setup preserves its library and integration preferences, connects, and returns to your library.
@@ -40,7 +40,13 @@ button and reports connection failures in the same dialog. It starts
 Playnite with the selected data profile and normal library-update settings, suppresses
 the splash screen, and requests a tray start. Playnite can still briefly show its
 main window and take focus; its fullscreen startup preference is also respected.
+The progress panel shows the current step and keeps the launch button focused.
 Setup continues if the overlay hides. Reopen WidgetRail to see its result.
+
+Launch uses the existing Windows desktop shell so Playnite keeps running when
+the widget stops or WidgetRail exits. No File Explorer window needs to be open.
+If the desktop shell is unavailable, start Playnite manually and retry; the
+widget does not fall back to a process that would close with it.
 
 Healthy existing Bridge builds are reused. Setup only replaces the specifically
 recognized older build; unfamiliar or newer integrations remain under your control.
@@ -129,20 +135,50 @@ the row; game covers retain their original artwork colors.
 
 ## Common questions
 
-**The widget asks me to set up the bridge.** No token has been saved yet. Select
-**Set up connection** to enter the token from Playnite Bridge settings.
+**The widget asks me to set up the connection.** It may have found a stopped
+Playnite profile, missing integration, or credentials that do not match that
+profile. Open **Set up connection**, check the displayed profile and use the
+offered action. A stopped portable installation that has never been detected
+needs to be started once or selected under Advanced.
 
-**The saved token was rejected.** Select **Update token** and enter the current
-token from Playnite Bridge settings.
+**The saved token was rejected.** Open **Menu → Playnite connection** and check
+that the intended Playnite profile is selected. Guided setup can save its current
+token. **Advanced** also provides manual token entry and **Test connection**.
 
 **The bridge is unavailable.** Start Playnite and its bridge, then open
 **Playnite connection → Test connection**. An incompatible bridge API needs a compatible bridge version.
 
-**A game is missing.** Home only shows installed games. Check Browse, clear its
+**A game is missing.** Home only shows installed games. Check Library, clear its
 filters, and refresh after changing your library in Playnite.
 
 **Does closing the overlay close Playnite?** No. The widget unloads after five
 minutes hidden to release memory; Playnite and its bridge keep running.
+
+## Verify, reconnect and remove the connection
+
+After setup, confirm that Home/Library shows your games. Use **Playnite connection
+→ Advanced → Test connection** to check API access. A game list does not prove
+that optional achievement/activity plugins have data; open a game's tab to check
+those separately. Achievements read Playnite's locally synced data, not a new
+provider sync.
+
+To reconnect, reopen **Menu → Playnite connection**. Check the displayed program
+and data profile before choosing the offered install/start/repair action. The
+widget never force-kills Playnite. Setup can briefly show Playnite or take focus;
+reopen WidgetRail to see the result.
+
+Use **Advanced → Remove saved token** to delete WidgetRail's connection token from
+Windows Credential Manager. This does not revoke the token inside Bridge, remove
+the plugin or stop Playnite. Disabling the widget keeps its settings/credentials;
+uninstalling removes host-owned widget state and browser data but does not remove
+Playnite, Bridge, its library, or that separately stored credential. Remove the
+saved token before uninstalling if you want it cleared.
+
+Bridge setup preserves existing preferences, authentication and network setup.
+Suppressing its optional network prompt does not add/remove firewall rules or
+HTTP reservations, or turn off an existing LAN configuration. WidgetRail itself
+connects through localhost. See the [setup decision matrix](SETUP-DECISIONS.md)
+for maintainers' exact discovery and replacement rules.
 
 ## Build or customize
 
@@ -154,17 +190,3 @@ pwsh -NoProfile -File .\samples\PlayniteLibraryWidget\Build-CommunityPackage.ps1
 
 The package is written to `artifacts/community-addons/playnite-library/` without installing it.
 See [development notes](DEVELOPMENT.md) for the bridge contract, state ownership, caching, and package structure.
-
-### Indexed Home and Browse declarations
-
-Home and Browse publish separate frozen indexed queries. The native frontend
-owns realization, scrolling and remembered item focus; requesting a range never
-walks or paginates the provider again. Home keeps manual entries first, followed
-by title matches, the provider's installed-game order, and referenced unavailable
-entries. Artwork and actions retain the exact query item, not a position in a
-moving cursor window. Content-only changes keep query identity; changes in
-membership or order publish a new query. Closing details requests the exact
-logical occurrence that opened it, if that query still exists.
-
-These declarations require an indexed-collection frontend. Do not install this
-migration package into the older cursor-only native frontend.

@@ -7,11 +7,6 @@ Search, your Library, a local Queue, and a compact pinned player.
 Collections scroll continuously as you browse.
 Your selected playback volume is remembered across widget and application restarts.
 
-In the WinUI frontend, each returned service page is an exact-count
-indexed collection. Home uses grouped native grids; lists request only needed
-rows. This does not add remote continuation beyond the service's bounded result.
-Row actions retain captured occurrences, including repeated songs; playback ticks
-do not replace the query. See [indexed authoring](../../docs/developers/indexed-collections.md).
 Switching tabs or Library filters remembers your highlighted item while the widget
 is running. Use **Refresh** to reload a collection from the beginning.
 **YTMDesktop is not required.**
@@ -20,7 +15,7 @@ is running. Use **Refresh** to reload a collection from the beginning.
 
 ## Get started
 
-1. Install YouTube Music from **Catalogue**, or install its `.wrwidget` through **Settings → Widgets → Install from local file**.
+1. Install YouTube Music from **Catalogue**, or install its `.wrwidget` through **Settings → Widgets → Install local widget**.
 2. Review the **full-access** prompt. A fresh reviewed installation starts enabled; updating an existing installation preserves its enabled state.
 3. Press **Y** for Settings and choose **Sign in with Google**. Complete sign-in in the separate Chrome window (Edge is the fallback).
 4. Return to the overlay and open **Library**, or search for a song.
@@ -35,7 +30,8 @@ integration; available content, account restrictions and service changes can aff
 ## Song-change banners
 
 Setup introduces **Manage song notifications**. Open it there or through
-**Y → Settings** to enable the host-owned Song changes category, initially off. A new track shows its thumbnail, title, artist
+**Y → Settings** to manage the host-owned Song changes category. It starts enabled
+for new installations and preserves existing saved choices. A new track shows its thumbnail, title, artist
 and total duration in a quiet, non-interactive banner, including while the overlay
 is open. It disappears after four seconds and never adds to the notification list
 or bell count. Rapid changes update the current banner without extending it;
@@ -80,6 +76,20 @@ service is unavailable or has no suggestions.
 <!-- Screenshot: add screenshots/song-radio.png showing Start radio and its resulting queue. -->
 <!-- Screenshot: add screenshots/pinned-player.png showing the compact player beside a game. -->
 
+## Verify and disconnect
+
+After signing in, open **Library** to verify personal access, then play one song.
+Public search working by itself does not verify your saved account session.
+Use **Y → Settings** to sign in again or **Disconnect** to remove the saved session
+and stream-URL cache. This is local disconnection, not deletion of your Google account.
+
+Disabling keeps settings and credentials. Uninstalling removes host-owned widget
+state/browser data, but the full-access widget owns separate encrypted files under
+`%LOCALAPPDATA%\WidgetRail\applications\widgetrail.samples.ytmusic`.
+Disconnect before uninstalling to clear the account session. After quitting
+WidgetRail, that specific directory can be removed for complete widget-owned
+local cleanup. It contains no downloaded music library.
+
 ## Common questions
 
 **I used the old YT Music widget.** This version replaces its companion connection
@@ -122,7 +132,7 @@ encrypted for your Windows account. **Settings → Disconnect** removes it. To r
 manually, quit WidgetRail and delete only that application's directory.
 
 **Why is my very large library incomplete?** This version loads up to 500 entries
-per collection. Cursor scrolling keeps only a bounded window in the UI. Search can reach
+per collection. The native list/grid creates rows as needed while scrolling. Search can reach
 music outside that loaded collection.
 Radio queues are finite; when they finish, playback stops unless repeat is enabled.
 
@@ -136,14 +146,3 @@ See [development notes](DEVELOPMENT.md) for architecture, tests and packaging, a
 [third-party notices](NOTICE.md) for dependencies and credit to LoZazaMastro's Now Playing.
 The former companion integration remains only as a [regression fixture](../../tests/YtMusicCompanionFixture/README.md)
 for the SDK's [local companion service](../../docs/reference/community-companion-services.md).
-
-Song banners now use the host-owned **Song changes** notification category.
-**Manage song notifications** appears in Setup and opens the same delivery/opacity
-controls as tray Notification preferences. The category starts enabled for new installations; existing host choices are
-preserved. Previous widget-local banner enable/opacity values are not imported. Setup completion still
-uses PrivateState and survives approved package updates. Track observations stay
-active while the player is resident; metadata-only updates never replay a banner.
-
-The Song changes category declares banner-only retention. Its preferences offer
-On/Off and banner opacity; there is no pending-list setting for song changes.
-Value pickers focus the current setting, and B returns without changing it.

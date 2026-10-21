@@ -41,6 +41,21 @@ Each PoE widget remembers its last main tab across reloads. Pending comparisons 
 
 For a build on **poe.ninja** or **pob.cool**, copy its PoB code and use **Paste build from clipboard**. Direct poe.ninja profile-link import is unavailable, and pob.cool requires a mouse and keyboard.
 
+## Verify and manage saved data
+
+Create or import a build and check that its skills and calculations load. Local
+planning needs no service key or account. Trade and remote imports require
+network access; sign in on the official trade page when prompted. Website
+permissions and data use WidgetRail's hosted-browser controls.
+
+Disabling keeps saved builds and settings. The widget owns working copies under
+`%LOCALAPPDATA%\WidgetRail\applications\pob1` and `pob2`, outside generic host
+widget-state cleanup. Uninstalling or Clear local data does not delete those build
+folders or exported files. Export anything you need before deliberately deleting
+a build folder. The [storage reference](DEVELOPMENT.md#engine-lifecycle-and-storage)
+also describes the shared engine cache. Removing local
+website data signs out that profile but does not delete your Path of Exile account.
+
 ## Learn more
 
 These widgets cover build planning and comparison, with some desktop PoB features still unavailable. Choose the correct game when importing; older engines may not understand builds exported by a newer beta.

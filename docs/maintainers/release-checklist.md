@@ -16,6 +16,25 @@ branding. Publishing those artifacts is a separate step.
 - Establish the reporting channel described in [SECURITY.md](../../SECURITY.md).
 - Run CI on the exact proposed main commit after an authorized push.
 
+## Check documentation for this build
+
+- Run the focused [documentation check](documentation.md#run-the-check). It checks
+  relative links/images, public learning paths and selected source contracts;
+  it does not require running the application suite.
+- Review changed user flows alongside their implementation: exact Settings labels,
+  default opening shortcut, startup behavior, permission prompts and installation
+  enablement. Check Bare/Production against `eng/release-content.json`.
+- Reconcile app-update behavior with the initiating release as well as the target
+  installer. An older installed updater does not acquire the new flow in advance.
+- Check each listed integration's actual setup, connection verification and
+  credential-removal action. A packaged add-on is not proof of service access.
+- Review the screenshot/demo [inventory](demonstrations.md) against the candidate.
+  Record exact app/widget versions, commit and tested configuration for new media;
+  identify older illustrative captures rather than implying current validation.
+- Keep one detailed explanation per topic, and update its summary links. Retire
+  completed plans and superseded candidate logs to Git history after preserving
+  current contracts, reusable fixture commands and relevant acceptance coverage.
+
 The repository retains three operating and ownership documents:
 `docs/delivery-plan.md`, `docs/review-planner-goal.md`, and
 `docs/implementation-agent-goal.md`. They are not user guides or the public API
@@ -59,6 +78,15 @@ startup ownership, uninstall behavior, and the supported GameInput minimum.
 - Widget installation, permission review, manual update, and removal.
 - Uninstall with data kept and with explicit data deletion.
 - Representative controllers, display scales, media, window previews, and games.
+
+Include browser page/pin transfers, permission cancellation, webapp removal and
+clear-data/update preservation; notification suppression and stale entries;
+capture with optional application audio; and representative performance-monitor
+providers (unavailable readings must not look like zero). For service integrations,
+verify each account/profile separately, including PoE1/PoE2 trade sign-in and
+Playnite's installed/portable, running/stopped and missing-Bridge cases. Exercise
+multiple display scales and actual controllers on the exact release candidate.
+Historical implementation checklists do not qualify a new release automatically.
 
 Full-access add-ons may save data outside the host's directories, including
 credentials in Windows Credential Manager. The host uninstaller does not

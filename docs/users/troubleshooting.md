@@ -10,7 +10,7 @@ after reconnecting a controller before trying the shortcut again.
 If WidgetRail is not running, open WidgetRail from the Start menu. For a source build, follow
 [Building from source](../maintainers/building.md).
 
-## The overlay cannot take foreground focus
+## The overlay is visible but not focused
 
 Windows sometimes keeps another app in the foreground even when WidgetRail is
 visible. This can happen with Task Manager, Windows Settings, some games, and
@@ -39,6 +39,11 @@ example, the device may have disconnected or Windows may prevent a window switch
 Use the message shown by the widget to decide whether to retry.
 
 ## Controller input behaves strangely in a game
+
+If the game also responds while WidgetRail is open, first check for **Focus
+blocked** and follow the foreground steps above. Receiving controller input in
+WidgetRail does not prove that the game has stopped receiving it. Check Windows
+Game Bar and shortcut conflicts in [Getting started](getting-started.md#recommended-windows-settings).
 
 Turn **Exclusive control off** in Settings first. It is optional and is not
 needed for ordinary overlay navigation. Close and reopen affected applications
@@ -79,6 +84,45 @@ A cancelled or expired review does not install the package. If an older build on
 Network artwork can be unavailable while offline or while a service is
 unreachable. A protected, elevated or minimized window may not provide a
 current preview. Web media may require the WebView2 runtime and provider setup.
+
+## A website field or control is difficult to select
+
+Use the left stick to point directly and A to click. D-pad navigation depends on
+the page exposing usable controls; canvas/custom widgets may need free pointing.
+For an editable field, A opens the keyboard even if the field was already focused.
+LS opens website controls or Browser's toolbar. Use Open externally for a native
+dialog or authentication flow that does not work inside WidgetRail.
+See [browsing](browsing.md); avoid resetting all website data just to retry a click.
+
+## I did not get a notification
+
+Check the source widget's **Notification preferences**, including its master and
+category choices. Website notifications also need website permission and a running
+page session. List only intentionally hides banners; banner-only song changes
+never appear in the bell. Quiet periods, visibility rules or occupied screen
+space can suppress a banner even when delivery is otherwise enabled.
+See [Notifications](notifications.md). A stopped widget cannot publish new events.
+
+## An installed integration rejects its token or has no data
+
+Successful installation only verifies/adopts the package. Use the widget's setup
+or connection page to verify its service. For Playnite, check the detected data
+profile and **Advanced → Test connection**; a working game list does not prove
+optional achievements are installed or synced. For Spotify/YouTube/Game Help,
+check the account, API restrictions and quota before reconnecting.
+
+Follow the [integration's recovery instructions](integrations.md), preserving
+existing settings rather than clearing everything. Never include tokens or keys
+in a support report or screenshot.
+
+## An app update was interrupted
+
+Reopen the installed WidgetRail from Start and check **Settings → About &
+troubleshooting → App updates** for the recorded result. Failed/cancelled setup
+tries to reopen a verified usable installation; if none can be verified, use the
+official installer manually. Follow a restart-required message before retrying.
+There is no app-profile rollback UI. Do not confuse a widget's **Revert to previous
+version** with app recovery. See [App updates](../reference/app-updates.md).
 
 ## Report a reproducible problem
 

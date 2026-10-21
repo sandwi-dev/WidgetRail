@@ -31,14 +31,15 @@ start with [Your first widget](../developers/widget-quickstart.md) and
 - [Widget package format](widget-packaging.md)
 - [Widget catalogue and updates](widget-marketplace.md)
 - [User-created webapps](user-webapps.md)
+- [Browser extension profiles and storage](browser-extensions.md)
 - [Icon provenance](widget-icon-provenance.md)
 - [Live window previews](window-previews.md)
 - [Artwork cache](artwork-disk-cache.md)
 
-## Built-in widgets and examples
+## Core settings and optional widgets
 
 - [Settings and themes](settings-and-themes.md)
-- [Browser](widget-web-browser.md) and [Game Help](widget-capture-and-game-help.md) (both installer editions)
+- [Browser](widget-web-browser.md) (preinstalled in Production) and [Game Help](widget-capture-and-game-help.md) (Catalogue add-on)
 - [Audio device selection](audio-device-selection.md) and [spatial sound](spatial-audio-controls.md)
 - [Games & Apps](games-and-apps.md), [Task Switcher](task-switcher.md), and [Power](power-widget.md)
 - [Network Controls](network-controls.md) and [tray status](tray-status.md)
@@ -47,6 +48,6 @@ start with [Your first widget](../developers/widget-quickstart.md) and
 - [Settings support reports](support-reports.md)
 - [Playnite](playnite-library.md) and [Spotify](spotify-integration.md)
 
-- [App updates](app-updates.md): verified downloads, graceful shutdown and normal interactive Inno installation.
+- [App updates](app-updates.md): verified downloads, unattended routine Inno installation and explicit interactive fallback.
 
 - [Capture Library and full-resolution screenshots](capture-library.md)

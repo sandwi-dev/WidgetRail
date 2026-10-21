@@ -75,6 +75,6 @@ update-check choices without changing the normal installation.
 
 This does not establish unmodified production-registration, clean-machine
 prerequisite/UAC, Windows execution-policy, or real restart/failure-recovery
-acceptance. Current evidence and remaining native/controller checks are recorded
-in the [verification ledger](../pob-improvements-verification.md). Temporary native
-candidates cannot install app updates.
+acceptance. Requalify those cases against the exact release using the
+[release checklist](../maintainers/release-checklist.md). Historical run evidence
+is retained in Git history. Temporary native candidates cannot install app updates.

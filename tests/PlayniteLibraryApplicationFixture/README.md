@@ -25,5 +25,5 @@ a fixture-owned `performance.json` with a bounded game count, generated local
 JPEGs, and a simulated provider delay. This mode still uses the production
 widget, application, bridge, indexed leases, and WinUI artwork pipeline.
 It never contacts Playnite or edits the user's library. See
-[the performance analysis](../../docs/playnite-performance-analysis.md) for
+[the performance fixture guide](../../docs/maintainers/playnite-performance.md) for
 build settings, reproduction commands, and measurement limitations.

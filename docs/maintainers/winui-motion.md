@@ -128,9 +128,8 @@ those still require integrated desktop evidence.
 
 Grounded samples: `winapp find-ui --id gallery-xamlcompinterop-1`,
 `gallery-xamlcompinterop-3`, `gallery-implicittransition-1` (WinUI Gallery).
-Historical native-renderer behavior references: `OverlayHost/WidgetAnimationPolicy.h`,
-`WidgetInteractionMotion.h`, `WidgetProtocol/WidgetTransition.cs` and
-`winui-feature-contracts.md`.
+Current layout and navigation ownership is documented in
+[WinUI authoring](../reference/winui-authoring.md).
 
 Integration validation: --validate-motion executed 18 checks on actual XAML/compositor
 objects, including all section recipes, batch completion, interruption, cross-thread
