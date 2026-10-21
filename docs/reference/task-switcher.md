@@ -23,18 +23,20 @@ thumbnail permissions. Two-second refreshes run only while its panel is open;
 existing rows retain their order and identity so refresh does not move focus.
 Closing a window does not kill its process or suppress save prompts.
 
-## Direct host activation
+## Host-owned list and broker activation
 
 `WindowsTaskWindowCatalog` reuses the existing running-window eligibility,
 packaged-app resolution and close policy without initializing the game/app
-library. No bridge or widget worker is involved in the host list or its actions.
+library. Listing, icons and close requests stay in the host. Only the final
+foreground activation uses the existing trusted WidgetRail broker.
 
 Switching uses the existing `TaskWindowActivation` admission and `MainWindow`
 handoff sequence. It verifies foreground ownership and the exact window,
 process lifetime and class; waits for controller release; completes closing
-motion; rechecks authority and identity; releases controller capture; and asks
-Windows to restore and activate the target while the host HWND still owns foreground.
-Only accepted activation hides the host HWND. The host observes foreground for up
+motion; grants foreground permission to its exact owned broker process; rechecks
+authority and identity; releases controller capture; and hides the overlay.
+The broker revalidates the target and asks Windows to restore and activate it.
+The host observes foreground for up
 to 250 ms, accepting that target or its owned dialog, rather than treating the
 API return or an unrelated window in the same process as proof. A canceled
 handoff cannot later hide a reopened overlay.

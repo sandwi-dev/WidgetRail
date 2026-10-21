@@ -156,6 +156,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Intent bridge receiver rejection offers only explicit browser fallback", BridgeIntentScenarios.FailureOffersFallback),
     ("Dashboard input tolerates compatible publications without changing command", BridgeClientRegistryScenarios.DashboardRevalidatesCompatiblePublication),
     ("Task activation tickets are single-use bounded and owner-scoped", TaskActivationScenarios.TicketsAndWire),
+    ("Task activation host pipe rejects expiry replay and stale identity", TaskActivationScenarios.HostRejectionsThroughPipe),
     ("Task activation completion survives hiding but rejects retired workers", BridgeClientRegistryScenarios.TaskActivationSurvivesHideButNotWorkerReplacement),
     ("Worker run input rejects colliding sequences from retired processes", WorkerRunInputScenarios.CollidingSequencesRejectRetiredWorker),
     ("Worker run input never starts a replacement during exact dispatch", WorkerRunInputScenarios.ExactInputNeverStartsWorker),

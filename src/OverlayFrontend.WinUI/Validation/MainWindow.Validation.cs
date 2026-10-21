@@ -261,6 +261,9 @@ public sealed partial class MainWindow
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-task-cycle") is { } taskCycle &&
+            Shell.FrontendArguments.Value(arguments, "--task-cycle-targets") is { } cycleTargets)
+            EnableTaskCycleValidation(page, taskCycle, cycleTargets);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-host-utilities") is { } utilitiesResult)
             page.EnableHostUtilitiesValidation(utilitiesResult);
         if(arguments.Contains("--shell-no-controller")&&Shell.FrontendArguments.Value(arguments,"--validate-pob-tree") is {} treeProbe)

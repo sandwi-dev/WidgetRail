@@ -11,6 +11,7 @@ internal enum BridgeRequestKind
     ControllerControl,
     ApplicationControl,
     CompleteTaskActivation,
+    ActivateHostTaskWindow,
     WindowPreviewPermissions,
     Capture,
     WebSessions,
@@ -163,6 +164,7 @@ internal static class BridgeRequestClassifier
             {
                 BridgeMessageTypes.TakeWebSessions or BridgeMessageTypes.CompleteWebSession or BridgeMessageTypes.WebSessionMessages or BridgeMessageTypes.CheckWebSessionView => BridgeRequestKey.Global(BridgeRequestKind.WebSessions),
                 BridgeMessageTypes.CompleteTaskActivation => TaskActivation(request.Payload),
+                BridgeMessageTypes.ActivateHostTaskWindow => HostTaskActivation(request.Payload),
                 BridgeMessageTypes.ListWidgets => Empty(
                     request.Payload, BridgeRequestKind.ListWidgets),
                 BridgeMessageTypes.GetPlatformAppearance => Appearance(request.Payload),
@@ -315,6 +317,12 @@ internal static class BridgeRequestClassifier
         if (request.Sequence <= 0 || !BridgeRequestKey.IsBoundedIdentifier(request.RuntimeGeneration))
             throw new BridgeProtocolException("Invalid task activation completion.");
         return BridgeRequestKey.Widget(BridgeRequestKind.CompleteTaskActivation, request.WidgetId);
+    }
+
+    private static BridgeRequestKey HostTaskActivation(JsonElement payload)
+    {
+        BridgeJson.FromElement<BridgeHostTaskActivationRequest>(payload).Validate();
+        return BridgeRequestKey.Global(BridgeRequestKind.ActivateHostTaskWindow);
     }
 
     private static BridgeRequestKey Empty(JsonElement payload, BridgeRequestKind kind) =>

@@ -371,6 +371,10 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
     {
         switch (request.Type)
         {
+        case BridgeMessageTypes.ActivateHostTaskWindow:
+            var hostActivation = ActivateHostTaskWindow(BridgeJson.FromElement<BridgeHostTaskActivationRequest>(request.Payload), cancellationToken);
+            await ReplyAsync(BridgeMessageTypes.ActivateHostTaskWindow, request.RequestId, hostActivation, cancellationToken).ConfigureAwait(false);
+            return;
         case BridgeMessageTypes.CompleteTaskActivation:
             var activationRequest = BridgeJson.FromElement<BridgeTaskActivationRequest>(request.Payload);
             var activationResponse = CompleteTaskActivation(activationRequest, cancellationToken);

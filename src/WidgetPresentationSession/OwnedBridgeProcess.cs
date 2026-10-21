@@ -173,19 +173,22 @@ public sealed class OwnedBridgeProcess : IAsyncDisposable
         }
     }
 
-    private void DelegateForegroundForInput(string requestType)
+    private void DelegateForegroundForInput(string requestType) => _ = TryDelegateForegroundForInput(requestType);
+
+    private bool TryDelegateForegroundForInput(string requestType)
     {
         string diagnostic;
+        var allowed = false;
         try
         {
             lock (disposalGate)
             {
                 // The Process object owns this exact child; never discover a
                 // broker by name or delegate to a widget-supplied process ID.
-                if (disposal is not null || process.HasExited) return;
+                if (disposal is not null || process.HasExited) return false;
                 var foreground = BridgeForegroundPermission.ForegroundProcess;
-                if (foreground != (uint)Environment.ProcessId) return;
-                var allowed = BridgeForegroundPermission.Allow((uint)process.Id, out var error);
+                if (foreground != (uint)Environment.ProcessId) return false;
+                allowed = BridgeForegroundPermission.Allow((uint)process.Id, out var error);
                 diagnostic = $"Foreground delegation request={requestType} brokerPid={process.Id} foregroundPid={foreground} allowed={allowed} error={error}";
             }
         }
@@ -198,10 +201,12 @@ public sealed class OwnedBridgeProcess : IAsyncDisposable
         Record(diagnostic);
         try { foregroundDiagnostic?.Invoke(diagnostic); }
         catch { /* Diagnostics do not control input dispatch. */ }
+        return allowed;
     }
 
     /// <summary>Refresh the owned broker's permission immediately before an admitted host handoff hides.</summary>
     public void RefreshForegroundPermissionForHandoff() => DelegateForegroundForInput("task-handoff");
+    public bool TryRefreshForegroundPermissionForHandoff() => TryDelegateForegroundForInput("host-task-handoff");
 
     private async Task DrainAsync(StreamReader reader)
     {

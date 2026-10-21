@@ -36,6 +36,7 @@ namespace WidgetRail.WidgetBridge;
 [JsonSerializable(typeof(WidgetRail.PlatformDiagnostics.ControllerControlStatus))]
 [JsonSerializable(typeof(WidgetRail.PlatformSettings.ControllerSettings))]
 [JsonSerializable(typeof(BridgeTaskActivationRequest))]
+[JsonSerializable(typeof(BridgeHostTaskActivationRequest))]
 [JsonSerializable(typeof(BridgeTaskActivationResponse))]
 [JsonSerializable(typeof(WidgetIdRequest))]
 [JsonSerializable(typeof(BridgeEmptyPayload))]

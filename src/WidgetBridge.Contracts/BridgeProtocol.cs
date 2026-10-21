@@ -43,6 +43,7 @@ internal static class BridgeMessageTypes
     public const string ResolveCaptureAttachment = "capture-attachment";
     public const string ApplicationControl = "application-control";
     public const string CompleteTaskActivation = "complete-task-activation";
+    public const string ActivateHostTaskWindow = "activate-host-task-window";
     public const string PlatformAppearance = "platform-appearance";
     public const string AppearanceChanged = "platform-appearance-changed";
     public const string CatalogChanged = "widget-catalog-changed";

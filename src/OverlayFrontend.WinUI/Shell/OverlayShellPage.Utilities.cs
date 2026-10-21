@@ -39,6 +39,13 @@ internal sealed partial class OverlayShellPage
     internal Func<HostTaskActivationRequest, Task<TaskWindowActivationResult>>? HostTaskActivationRequested { get; set; }
     internal void CancelPendingHostTaskActivation() => pendingHostTask = null;
     internal void CompleteControllerHandoffRelease() => shellGestures.Reset();
+    internal bool GrantHostTaskActivationPermission() => owner?.TryRefreshForegroundPermissionForHandoff() == true;
+    internal Task<WidgetRail.WidgetPresentationSession.WidgetTaskActivationResult> CompleteHostTaskActivationAsync(HostTaskActivationRequest request, CancellationToken token)
+    {
+        if (owner is null || !request.IsCurrent()) throw new OperationCanceledException(token);
+        var target = request.Target;
+        return owner.Session.ActivateHostTaskWindowAsync(new("host-task", target.Handle, target.ProcessId, target.ProcessCreated, target.ClassName), request.InitiatedAt, token);
+    }
     private bool UtilityIconFocused => notificationBell.FocusState != FocusState.Unfocused || taskSwitcherButton.FocusState != FocusState.Unfocused;
     private bool UtilityListFocused => utilityPanel is { } panel && (panel.ContainsFocus || panel.HasPendingFocus);
     private Button UtilityIcon => shownUtility == ShellUtility.Tasks ? taskSwitcherButton : notificationBell;

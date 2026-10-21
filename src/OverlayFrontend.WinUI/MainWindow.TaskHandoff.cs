@@ -27,15 +27,22 @@ public sealed partial class MainWindow
         var native = new WindowsTaskWindowActivation(Trace);
         try
         {
-            // Closing motion is complete, but the host HWND must remain foreground
-            // until activation: hiding first returns foreground to the previous app.
-            var result = await new TaskWindowActivation(native).ExecuteDirectAsync(request.Target, request.InitiatedAt,
+            // Preserve the established permission grant -> hide -> broker
+            // activation sequence. HWND ownership alone is not an activation grant.
+            var result = await new TaskWindowActivation(native).ExecuteAsync(request.Target, request.InitiatedAt,
                 request.VisibleSince, () => !cleanupStarted && !handoff.Cancellation.IsCancellationRequested && request.IsCurrent(),
-                () => input?.SetVisible(false), () =>
+                () =>
                 {
                     handoff.Committed = true;
+                    input?.SetVisible(false);
                     CompleteOverlayHide();
-                }, () => PrepareOverlayHandoffAsync(page, handoff), Trace);
+                }, async () =>
+                {
+                    var completed = await page.CompleteHostTaskActivationAsync(request, handoff.Cancellation.Token);
+                    Trace($"brokerPid={completed.ProcessId} code={completed.Code} {completed.NativeTrace}");
+                    return completed.Result switch { "Requested" => TaskWindowActivationResult.Requested,
+                        "Denied" => TaskWindowActivationResult.Denied, _ => TaskWindowActivationResult.Rejected };
+                }, Trace, async () => await PrepareOverlayHandoffAsync(page, handoff) && page.GrantHostTaskActivationPermission());
             if (result == TaskWindowActivationResult.Requested)
             {
                 // A successful API return is not proof that the target owns foreground.
