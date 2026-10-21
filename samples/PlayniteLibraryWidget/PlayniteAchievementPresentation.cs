@@ -22,7 +22,7 @@ internal static class PlayniteAchievementPresentation
             Prefix + "achievement.filter." + filter, IsSelected: state.AchievementFilter == filter)).ToArray();
         var sorts = Enum.GetValues<AchievementSort>().Where(sort => sort != AchievementSort.Progress || state.AchievementSort == sort ||
             query?.All.Any(entry => !entry.Secret && entry.Item.Progress is not null) == true).Select(sort =>
-            new SelectOption(sort.ToString(), sort switch { AchievementSort.Recent => "Recent unlocks", AchievementSort.Progress => "Closest to completion", _ => sort.ToString() },
+            new SelectOption(sort.ToString(), sort switch { AchievementSort.Progress => "Closest to completion", _ => sort.ToString() },
                 Prefix + "achievement.sort." + sort, IsSelected: state.AchievementSort == sort)).ToArray();
         var search = UI.TextEntry(state.AchievementSearch, "Search achievements", PlayniteAchievementBrowse.SearchId, PlayniteAchievementBrowse.SearchId, 128);
         if (query is not null) search = search.Suggest(query.SuggestionSource);
