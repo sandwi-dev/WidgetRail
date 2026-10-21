@@ -99,8 +99,8 @@ internal sealed partial class WidgetOpeningIndicator : ContentControl, IDisposab
         name.Text = "WidgetRail";
         status.MinWidth = 0;
         status.Text = "Starting…";
-        applicationIcon.Source ??= new Microsoft.UI.Xaml.Media.Imaging.SvgImageSource(
-            new Uri("ms-appx:///Assets/WidgetRail.svg")) { RasterizePixelWidth = 120, RasterizePixelHeight = 120 };
+        applicationIcon.Source ??= new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(
+            new Uri("ms-appx:///Assets/WidgetRail.png")) { DecodePixelWidth = 120, DecodePixelHeight = 120 };
         icon.Visibility = Visibility.Collapsed;
         applicationIcon.Visibility = Visibility.Visible;
         AutomationProperties.SetName(this, "Starting WidgetRail");

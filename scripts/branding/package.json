@@ -1,0 +1,9 @@
+{
+  "name": "widgetrail-branding-tools",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Development-only SVG renderer for WidgetRail application assets",
+  "dependencies": {
+    "@resvg/resvg-js": "2.6.2"
+  }
+}
