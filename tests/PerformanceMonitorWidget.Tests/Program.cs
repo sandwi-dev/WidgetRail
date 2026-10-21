@@ -12,6 +12,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Missing FPS access asks on action, and only approval starts the collector", PermissionContinuation),
     ("An older periodic read cannot undo a newly admitted FPS action", StaleRead),
     ("Correction uses opaque target IDs and automatic selection can be restored", Selection),
+    ("Manual application selection survives reopening before fresh readings", ReopenSelection),
+    ("Manual application selection survives read failures and reconciles a closed target", FailedReadSelection),
     ("Hidden monitor stops polling and stale lifecycle results are cancelled", Lifecycle),
     ("SDK rejects malformed and nonfinite metrics", Malformed),
     ("Broker scopes targets and gates FPS control behind interactive consent", BrokerAuthority),
@@ -96,6 +98,50 @@ static async Task Selection()
         Check(fake.Requested == "target-b", "Selected target not forwarded");
         await widget.OnActionAsync(new("performance.auto", "performance.target"));
         Check(fake.Requested is null, "Automatic mode not restored");
+    }
+    finally { await Hide(widget); }
+}
+static void SelectedApplication(PerformanceMonitorWidget widget, string expected)
+{
+    var snapshot = Snapshot(widget);
+    Check(ViewSnapshotValidator.Validate(snapshot).Count == 0 && WinUiPresentationContract.Validate(snapshot).Count == 0,
+        "Application selection produced an invalid presentation");
+    var options = Walk(snapshot.Root).Single(node => node.Id == "performance.target").SelectOptions;
+    Check(options.Single(option => option.IsSelected).Id == expected, "Application selection changed unexpectedly");
+}
+static async Task ReopenSelection()
+{
+    var fake = new Fake(); var widget = fake.Create(); await Activate(widget);
+    try
+    {
+        await widget.OnActionAsync(new("performance.target.target-b", "performance.target"));
+        await Hide(widget);
+        fake.ReadGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+        SelectedApplication(widget, "target-b");
+        Check(Node(widget, "performance.cpu.value").Text == "—", "Reopening displayed stale readings as current");
+        fake.ReadGate.TrySetResult();
+        await Until(() => Node(widget, "performance.cpu.value").Text != "—");
+        SelectedApplication(widget, "target-b");
+    }
+    finally { fake.ReadGate?.TrySetResult(); await Hide(widget); }
+}
+static async Task FailedReadSelection()
+{
+    var fake = new Fake(); var widget = fake.Create(); await Activate(widget);
+    try
+    {
+        await widget.OnActionAsync(new("performance.target.target-b", "performance.target"));
+        fake.FailRead = true;
+        await widget.OnActionAsync(new("performance.refresh", "performance.refresh"));
+        SelectedApplication(widget, "target-b");
+        Check(Node(widget, "performance.cpu.value").Text == "—", "Read failure retained stale readings");
+        fake.FailRead = false;
+        fake.Sample = fake.Sample with { Targets = [fake.Sample.Targets[0]] };
+        await widget.OnActionAsync(new("performance.refresh", "performance.refresh"));
+        SelectedApplication(widget, "auto");
+        Check(Node(widget, "performance.target").SelectOptions.All(option => option.Id != "target-b"),
+            "Closed application remained in the refreshed picker");
     }
     finally { await Hide(widget); }
 }
@@ -229,6 +275,7 @@ file sealed class Fake
 {
     public int Reads, Enables;
     public bool Granted = true;
+    public bool FailRead;
     public int PermissionRequests;
     public WidgetPermissionOutcome PermissionOutcome = WidgetPermissionOutcome.Denied;
     public string? Requested;
@@ -243,6 +290,7 @@ file sealed class Fake
         {
             Requested = request.TargetId; Interlocked.Increment(ref Reads);
             if (ReadGate is { } read) await read.Task.WaitAsync(token);
+            if (FailRead) throw new WidgetCapabilityException("unavailable", "Fixture read failed.");
             return Sample;
         })
         .WithHandler(WidgetPerformanceCapabilities.EnableFps, async (_, token) =>

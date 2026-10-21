@@ -11,6 +11,9 @@ public sealed partial class PerformanceMonitorWidget : Widget
     private readonly PinnedLayoutHandle _compact;
     private readonly PerformanceHistory _history = new();
     private WidgetPerformanceSnapshot? _snapshot;
+    // Picker identity outlives a reading: activation and transient errors clear
+    // metrics, but must not remove the user's currently selected option.
+    private IReadOnlyList<WidgetPerformanceTarget> _targets = [];
     private Task _loop = Task.CompletedTask;
     private string? _selection, _error;
     private bool _busy;
@@ -70,7 +73,7 @@ public sealed partial class PerformanceMonitorWidget : Widget
             lock (_gate)
             {
                 if (generation != _generation || revision != _revision || selection != _selection) return;
-                _snapshot = snapshot; _error = null;
+                _snapshot = snapshot; _targets = snapshot.Targets; _error = null;
                 _history.Observe(snapshot, DateTimeOffset.UtcNow);
                 if (_selection is not null && !snapshot.Targets.Any(t => t.Id == _selection)) _selection = null;
             }
@@ -108,7 +111,7 @@ public sealed partial class PerformanceMonitorWidget : Widget
             else if (action.ActionId.StartsWith("performance.target.", StringComparison.Ordinal))
             {
                 var id = action.ActionId["performance.target.".Length..];
-                if (_snapshot?.Targets.Any(t => t.Id == id) != true) return;
+                if (!_targets.Any(t => t.Id == id)) return;
                 _selection = id;
                 _history.ResetTarget();
             }
@@ -146,10 +149,12 @@ public sealed partial class PerformanceMonitorWidget : Widget
     public override WidgetView Render()
     {
         WidgetPerformanceSnapshot? snapshot; string? selection, error; bool busy;
+        IReadOnlyList<WidgetPerformanceTarget> targets;
         LineGraphDefinition fpsGraph, frameGraph, cpuGraph, gpuGraph, ramGraph, vramGraph;
         lock (_gate)
         {
             snapshot = _snapshot; selection = _selection; error = _error; busy = _busy;
+            targets = _targets;
             var now = DateTimeOffset.UtcNow;
             fpsGraph = _history.Graph(s => s.FramesPerSecond, now, "FPS", application: true);
             frameGraph = _history.Graph(s => s.FrameStatistics?.RecentWorstFrameMilliseconds is > 0 ? s.FrameStatistics.RecentWorstFrameMilliseconds : null,
@@ -162,7 +167,7 @@ public sealed partial class PerformanceMonitorWidget : Widget
         var statistics = snapshot?.FrameStatistics;
         var target = snapshot?.Targets.FirstOrDefault(t => t.Id == snapshot.SelectedTargetId);
         var choices = new List<SelectOption> { new("auto", "Automatic · top application", "performance.auto", IsSelected: selection is null) };
-        if (snapshot is not null) choices.AddRange(snapshot.Targets.Select(t =>
+        choices.AddRange(targets.Select(t =>
             new SelectOption(t.Id, t.ApplicationName + " · " + t.Title, "performance.target." + t.Id, IsSelected: selection == t.Id)));
         var items = new List<WidgetElement>
         {
@@ -173,9 +178,9 @@ public sealed partial class PerformanceMonitorWidget : Widget
             UI.Text(target?.ApplicationName ?? "No application selected", "performance.app").Classes("performance-subtitle"),
             UI.ResponsiveGrid("performance.frame-metrics", 170, 3,
                 Metric("FPS", Number(snapshot?.FramesPerSecond), "performance.fps.metric", "Application presents per second"),
-                Metric("Average FPS", Number(statistics?.AverageFramesPerSecond), "performance.average", "Available frame history · up to 60s"),
+                Metric("Average FPS", Number(statistics?.AverageFramesPerSecond), "performance.average", "Up to 60s"),
                 Metric("1% low", statistics?.OnePercentLowFramesPerSecond is { } low ? Number(low) : statistics is null ? "—" : "Collecting…", "performance.low",
-                    "Slowest 1% of frame intervals · at least 1,000 frames")),
+                    "Slowest 1% · 1,000+ frames")),
             UI.Text(statistics is null ? "Frame history is unavailable until FPS collection starts." :
                 $"{statistics.SampleCount:N0} frames · {statistics.WindowSeconds:0}s available · mean frame {statistics.AverageFrameMilliseconds:0.0} ms",
                 "performance.frame-window").Classes("performance-help"),
@@ -191,11 +196,10 @@ public sealed partial class PerformanceMonitorWidget : Widget
             UI.ResponsiveGrid("performance.system-graphs", 260, 2,
                 Chart("CPU", cpuGraph, "performance.cpu.graph"), Chart("GPU", gpuGraph, "performance.gpu.graph"),
                 Chart("RAM", ramGraph, "performance.ram.graph"), Chart("VRAM", vramGraph, "performance.vram.graph")),
-            UI.Text(error ?? Status(snapshot?.FpsState), "performance.status").Classes("performance-help"),
-            UI.Text("Enable FPS requests Windows approval for a separate collector. WidgetRail stays unelevated. " +
-                "Collection pauses when this widget is neither visible nor pinned. Unavailable readings show —.", "performance.permission-help").Classes("performance-help"),
-            UI.Button("Refresh", "performance.refresh", "performance.refresh").Busy(busy),
         };
+        if ((error ?? Status(snapshot?.FpsState)) is { } status)
+            items.Add(UI.Text(status, "performance.status").Classes("performance-help"));
+        items.Add(UI.Button("Refresh", "performance.refresh", "performance.refresh").Busy(busy));
         var root = UI.VerticalScroll("performance.page", items.ToArray()).InputScope("performance.page")
             .Shortcut(ControllerButton.Y, "performance.refresh", label: "Refresh").Classes("performance-widget");
         var pin = UI.Stack("performance.pin",
@@ -223,18 +227,19 @@ public sealed partial class PerformanceMonitorWidget : Widget
     private static string Percent(double? value) => value is null ? "—" : value.Value.ToString("0", CultureInfo.CurrentCulture) + "%";
     private static string Bytes(long? value) => value is null ? "—" : (value.Value / 1073741824d).ToString("0.0", CultureInfo.CurrentCulture) + " GiB";
     private static bool Enabled(string? state) => state is "collecting" or "idle" or "warming" or "no-frames" or "no-target" or "enabling";
-    private static string Status(string? state) => state switch
+    private static string? Status(string? state) => state switch
     {
         null => "Reading performance…",
         "enabling" => "Approve the Windows prompt to enable FPS collection.",
         "declined" => "Windows approval was cancelled. Other metrics remain available.",
-        "not-enabled" => "Enable FPS to measure the selected application's frame rate.",
+        "not-enabled" => "Enable FPS requests Windows approval for frame-rate collection. Collection pauses when hidden unless pinned.",
         "missing" => "The FPS collector is missing or failed its integrity check. Repair WidgetRail to restore it.",
         "permission-required" => "Windows did not allow frame-rate collection. Select Enable FPS to try again.",
         "failed" or "unavailable" => "FPS collection is unavailable. Other metrics remain available.",
         "no-target" => "Open a game or choose an application to monitor.",
         "no-frames" => "Waiting for frames. The application may be idle, minimized or unsupported.",
         "warming" or "idle" => "Warming up FPS collection…",
-        _ => "System metrics update once per second. FPS measures the selected application's busiest swap chain.",
+        "collecting" => null,
+        _ => "Reading performance…",
     };
 }
