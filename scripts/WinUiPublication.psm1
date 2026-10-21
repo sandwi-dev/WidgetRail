@@ -57,6 +57,18 @@ function Copy-Assets([string]$Source,[string]$Destination) {
             Copy-Item -LiteralPath $from -Destination $to
         }
     }
+    # Redistribution notices accompany the declared artwork even though they
+    # are not renderable icon assets and therefore have no manifest icon ID.
+    $assets=Join-Path $Source 'assets'
+    if(Test-Path -LiteralPath $assets){
+        foreach($relative in Get-ReleaseFiles $assets){
+            if($relative -notmatch '(?i)(^|/)[^/]*(license|notice)[^/]*\.txt$'){continue}
+            $from=Assert-ReleasePath (Join-Path $assets $relative) -Within $Source
+            $to=Assert-ReleasePath (Join-Path $Destination "assets/$relative") -Within $Destination
+            New-Item -ItemType Directory -Path (Split-Path $to) -Force | Out-Null
+            Copy-Item -LiteralPath $from -Destination $to
+        }
+    }
 }
 $platform=Join-Path $output 'native/platform';$preview=Join-Path $output 'native/preview'
 & (Join-Path $PSScriptRoot 'Build-OverlayPlatform.ps1') -Configuration Release -OutputDirectory $platform *> (Join-Path $logs 'native-platform.txt')
