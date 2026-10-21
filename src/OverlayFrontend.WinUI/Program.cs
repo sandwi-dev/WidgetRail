@@ -55,7 +55,7 @@ internal static partial class Program
                 // even if a diagnostic configuration file changes during startup.
                 _ = new App(arguments, options, configurationError);
             });
-            if (App.RestartRequested)
+            if (App.RestartMode is { } restartMode)
             {
                 // All windows, workers, media and native input are gone before
                 // reactivation. Release profile election before the replacement
@@ -64,7 +64,7 @@ internal static partial class Program
                 lifetime = null;
                 var start = new ProcessStartInfo(Environment.ProcessPath ?? throw new InvalidOperationException("Application executable is unavailable."))
                 { UseShellExecute = false, WorkingDirectory = AppContext.BaseDirectory };
-                foreach (var argument in arguments.Where(argument => argument != "--hidden")) start.ArgumentList.Add(argument);
+                foreach (var argument in ApplicationRestart.Arguments(arguments, restartMode)) start.ArgumentList.Add(argument);
                 using var replacement = Process.Start(start) ?? throw new InvalidOperationException("WidgetRail restart failed.");
             }
             return 0;

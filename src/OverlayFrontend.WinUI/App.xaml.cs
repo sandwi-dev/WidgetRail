@@ -19,7 +19,7 @@ public partial class App : Application
     private readonly Shell.OverlayShellOptions? launchOptions;
     private readonly Exception? configurationError;
     internal static string? ValidationFixturePath { get; private set; }
-    internal static bool RestartRequested { get; set; }
+    internal static ApplicationRestartMode? RestartMode { get; set; }
     /// <summary>
     /// The main application window. Use <c>App.Window</c> from any class that needs
     /// the window reference (for dialogs, pickers, interop, etc.).

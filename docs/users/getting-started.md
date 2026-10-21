@@ -40,6 +40,11 @@ You can choose **Guide** instead in **Settings → Controllers → Controller sh
 both the Xbox Guide button and PlayStation PS button are supported. For keyboard
 opening, enable **Settings → Controllers → F1 keyboard shortcut**. It is off by default.
 
+You can also click the WidgetRail icon in the Windows notification area to open
+the overlay. Right-click it for **Open WidgetRail**, **Restart**, **Restart
+silently**, and **Quit**. Restart opens the overlay again; Restart silently keeps
+it hidden until you open it. Windows may put the icon under **Show hidden icons**.
+
 The row of widget icons is the **tray**. Choose an icon to open its widget.
 Use the on-screen controller guide to discover the actions available at your
 current focus. [Learn the controls](controls.md).

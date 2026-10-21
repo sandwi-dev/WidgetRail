@@ -11,6 +11,7 @@ public sealed partial class MainWindow : Window
     private Input.NativeBrowserDialogController? nativeBrowserDialog;
     private Input.OverlayKeyboardShortcut? keyboardShortcut;
     private Input.OverlayMouseSession? mouseSession;
+    private SystemTrayIcon? systemTray;
     private int keyboardSettingsVersion;
     private readonly Input.ControllerInputTrace? controllerTrace;
     private readonly Input.GamepadKeyBoundary? gamepadKeys;
@@ -106,6 +107,7 @@ public sealed partial class MainWindow : Window
         };
         Closed += (_, _) =>
         {
+            systemTray?.Dispose(); systemTray = null;
             mouseSession?.Dispose(); mouseSession = null;
             themeSettings.Changed -= SystemThemeChanged;
             RetireOverlaySizing();
@@ -180,10 +182,29 @@ public sealed partial class MainWindow : Window
         };
         page.ApplicationControlRequested += action =>
         {
-            if (cleanupStarted) return;
-            App.RestartRequested = action == WidgetRail.WidgetPresentationSession.WidgetApplicationControl.Restart;
-            _ = CloseWithCleanupAsync();
+            RequestApplicationExit(action == WidgetRail.WidgetPresentationSession.WidgetApplicationControl.Restart
+                ? ApplicationRestartMode.Visible : null);
         };
+        // Probe/validation windows do not register a notification-area icon.
+        // Interactive development sessions retain their own launch contract.
+        if (options.Development is null)
+        {
+            try
+            {
+                systemTray = new(WinRT.Interop.WindowNative.GetWindowHandle(this), options.SettingsRoot,
+                    command => DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (command == SystemTrayCommand.Open) ShowOverlay();
+                        else RequestApplicationExit(command switch
+                        {
+                            SystemTrayCommand.Restart => ApplicationRestartMode.Visible,
+                            SystemTrayCommand.RestartSilently => ApplicationRestartMode.Hidden,
+                            _ => null,
+                        });
+                    }));
+            }
+            catch (Exception error) { Diagnostics.FrontendFailureLog.Current.Write("system-tray", error); }
+        }
         page.ReturnFromPinnedRequested += () => { Activate(); input?.AcquireForeground(); page.QueueEntryFocus(); };
         var taskActivation = new WidgetRail.WindowsWindowActivation.TaskWindowActivation(
             new WidgetRail.WindowsWindowActivation.WindowsTaskWindowActivation());
@@ -307,10 +328,18 @@ public sealed partial class MainWindow : Window
 
     private async void CloseClicked(object sender, RoutedEventArgs e) => await CloseWithCleanupAsync();
 
+    private void RequestApplicationExit(ApplicationRestartMode? restartMode)
+    {
+        if (cleanupStarted) return;
+        App.RestartMode = restartMode;
+        _ = CloseWithCleanupAsync();
+    }
+
     private async Task CloseWithCleanupAsync()
     {
         if (cleanupStarted) return;
         cleanupStarted = true;
+        systemTray?.Dispose(); systemTray = null;
         mouseSession?.Dispose(); mouseSession = null;
         nativeBrowserDialog?.Dispose(); nativeBrowserDialog = null;
         RetireDevelopment();
