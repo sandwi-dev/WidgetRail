@@ -41,7 +41,7 @@ internal sealed class NativePackageIconTintCache : IDisposable, IAsyncDisposable
     private readonly SemaphoreSlim preparation = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
     private readonly DispatcherLifetime dispatcherLifetime;
-    private readonly HashSet<Task> preparations = [];
+    private readonly HashSet<Preparation> preparations = [];
     private Task? disposal;
     private int nativeOperations;
     private int pending;
@@ -55,6 +55,14 @@ internal sealed class NativePackageIconTintCache : IDisposable, IAsyncDisposable
     internal int PendingNativeOperations => nativeOperations;
     internal bool StagingAttached => staging.Parent is not null;
     internal Action<string, bool>? NativeOperationStartedForTesting { get; set; }
+    internal Func<Task>? PreparationCheckpointForTesting { get; set; }
+    private sealed class Preparation
+    {
+        internal TaskCompletionSource<LoadedImageSurface> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The completion promise does not reference its producer. Keep the real
+        // async state machine (and its native image resources) alive until done.
+        internal Task? Work;
+    }
     internal sealed class Entry
     {
         internal Task<LoadedImageSurface> Ready = null!;
@@ -135,10 +143,10 @@ internal sealed class NativePackageIconTintCache : IDisposable, IAsyncDisposable
             entries.Add(key, entry);
             // Register ownership before native work can start or reenter shutdown.
             // A caller may abandon/evict its entry; the preparation still drains.
-            var completion = new TaskCompletionSource<LoadedImageSurface>(TaskCreationOptions.RunContinuationsAsynchronously);
-            entry.Ready = completion.Task;
-            preparations.Add(entry.Ready);
-            _ = RunPreparationAsync(payload, pixels, entry, completion);
+            var work = new Preparation();
+            entry.Ready = work.Completion.Task;
+            preparations.Add(work);
+            work.Work = RunPreparationAsync(payload, pixels, entry, work);
             _ = entry.Ready.ContinueWith(task => { _ = task.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
         }
         ++entry.References;
@@ -157,12 +165,13 @@ internal sealed class NativePackageIconTintCache : IDisposable, IAsyncDisposable
         }
     }
     private async Task RunPreparationAsync(WidgetPresentationPackageIcon payload, int pixels, Entry entry,
-        TaskCompletionSource<LoadedImageSurface> completion)
+        Preparation work)
     {
+        var completion = work.Completion;
         try { completion.TrySetResult(await PrepareAsync(payload, pixels, entry)); }
         catch (OperationCanceledException error) { completion.TrySetCanceled(error.CancellationToken); }
         catch (Exception error) { completion.TrySetException(error); }
-        finally { preparations.Remove(completion.Task); }
+        finally { preparations.Remove(work); }
     }
     private async Task<LoadedImageSurface> PrepareAsync(WidgetPresentationPackageIcon payload, int pixels, Entry entry)
     {
@@ -173,6 +182,7 @@ internal sealed class NativePackageIconTintCache : IDisposable, IAsyncDisposable
         try
         {
             await preparation.WaitAsync(token); admitted = true;
+            if (PreparationCheckpointForTesting is { } checkpoint) await checkpoint();
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
             deadline.CancelAfter(TimeSpan.FromSeconds(5)); token = deadline.Token;
             var scale = owner.XamlRoot.RasterizationScale;
@@ -268,7 +278,7 @@ internal sealed class NativePackageIconTintCache : IDisposable, IAsyncDisposable
         disposed = true;
         owner.Unloaded -= OwnerUnloaded;
         lifetime.Cancel(); // Stop queued admission; started native operations retain their real completion.
-        var pendingPreparations = preparations.ToArray();
+        var pendingPreparations = preparations.Select(work => work.Work ?? work.Completion.Task).ToArray();
         try
         {
             try { await Task.WhenAll(pendingPreparations); }

@@ -19,7 +19,7 @@ internal static class PlayniteLibraryHeroRailPresentation
 {
     internal static WidgetElement Fallback(string title, string detail) =>
         UI.Card("playnite-library.hero",
-                UI.Icon(WidgetGlyph.Play, "playnite-library.hero.artwork", title)
+                UI.Icon(PlayniteIcons.Game, "playnite-library.hero.artwork", title)
                     .Classes("playnite-library-hero-artwork"),
                 UI.Stack("playnite-library.hero.content",
                         UI.Text(title, "playnite-library.hero.title", title)

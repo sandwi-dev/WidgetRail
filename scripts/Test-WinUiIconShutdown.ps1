@@ -5,7 +5,7 @@ $root = Split-Path $PSScriptRoot
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
 $results = [Collections.Generic.List[object]]::new()
-foreach ($stage in @('render', 'pixels', 'surface')) {
+foreach ($stage in @('ownership', 'render', 'pixels', 'surface')) {
     $launch = winapp run (Join-Path $root 'src/OverlayFrontend.WinUI/OverlayFrontend.WinUI.csproj') --no-build --arch x64 -p Platform=x64 --detach --json `
         --args "--validate-package-icons --validate-icon-shutdown --icon-shutdown-stage=$stage $(if ($Hidden) { '--icon-shutdown-hidden' })" | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0 -or $launch.ProcessId -le 0) { throw "Could not launch $stage shutdown fixture." }

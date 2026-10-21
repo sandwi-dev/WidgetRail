@@ -109,6 +109,8 @@ Copy-Item -LiteralPath (Join-Path $widgetRoot 'styles\default.wrss') `
     -Destination (Join-Path $stagingRoot 'styles\default.wrss')
 Get-ChildItem -LiteralPath (Join-Path $widgetRoot 'assets\icons') -Filter '*.svg' -File |
     Copy-Item -Destination (Join-Path $stagingRoot 'assets\icons')
+Copy-Item -LiteralPath (Join-Path $widgetRoot 'assets\icons\Lucide-LICENSE.txt') `
+    -Destination (Join-Path $stagingRoot 'assets\icons')
 
 $stagingPrefix = $stagingRoot.TrimEnd(
     [System.IO.Path]::DirectorySeparatorChar) +
@@ -118,6 +120,7 @@ $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse |
 $required = @(
     'manifest.json',
     'assets\icons\playnite-library.svg',
+    'assets\icons\Lucide-LICENSE.txt',
     'payload\PlayniteLibraryApplication.exe',
     'payload\PlayniteLibraryApplication.dll',
     'payload\PlayniteLibraryWidget.dll',

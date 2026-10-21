@@ -55,7 +55,7 @@ internal static class PlayniteLibraryDetailsPresentation
         var artwork = presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile);
         WidgetElement poster = artwork is { Handle.Length: > 0 }
             ? UI.Artwork(new WidgetArtworkHandle(artwork.Handle), Prefix + "poster", presentation.DisplayName, ImageFit.Cover)
-            : UI.Icon(WidgetGlyph.Play, Prefix + "poster", presentation.DisplayName);
+            : UI.Icon(PlayniteIcons.Game, Prefix + "poster", presentation.DisplayName);
         poster = poster.Classes("playnite-library-details-poster");
         var completion = completionStatus ?? game?.CompletionStatus;
         var controlItems = new List<WidgetElement>
@@ -77,7 +77,18 @@ internal static class PlayniteLibraryDetailsPresentation
                     PlayniteDetailsTab.Achievements => WidgetGlyph.Check,
                     PlayniteDetailsTab.Activity => WidgetGlyph.Rewind,
                     _ => WidgetGlyph.Play,
-                })).ToArray();
+                })
+            {
+                Icon = tab switch
+                {
+                    PlayniteDetailsTab.Description => PlayniteIcons.Overview,
+                    PlayniteDetailsTab.Information => PlayniteIcons.Information,
+                    PlayniteDetailsTab.Achievements => PlayniteIcons.Achievements,
+                    PlayniteDetailsTab.Activity => PlayniteIcons.Activity,
+                    PlayniteDetailsTab.Links => PlayniteIcons.Links,
+                    _ => throw new ArgumentOutOfRangeException(nameof(tab)),
+                },
+            }).ToArray();
         var navigation = UI.NavigationShellParts(Prefix + "navigation", tabName, NavigationShellContentEntry.Unavailable,
             UI.Stack(Prefix + "navigation.unused"), tabs,
             compactLeadingAdornment: UI.ControllerGlyph(ControllerButton.LeftBumper, Prefix + "previous.key").Classes("playnite-library-tab-key"),

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Nodes;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
@@ -16,6 +17,11 @@ internal sealed partial class PackageIconValidationPage
         var hideDuringShutdown = Environment.GetCommandLineArgs().Contains("--icon-shutdown-hidden");
         result["hidden"] = hideDuringShutdown;
         var cache = NativePackageIconTintCache.For(XamlRoot);
+        if (requestedStage == "ownership")
+        {
+            await RunPreparationOwnershipAsync(cache, result);
+            return;
+        }
         using var callers = new CancellationTokenSource();
         var requests = new List<Task<NativePackageIconTintCache.Lease>>();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -82,5 +88,58 @@ internal sealed partial class PackageIconValidationPage
             Directory.CreateDirectory(directory);
             await File.WriteAllTextAsync(Path.Combine(directory, "package-icon-shutdown-result.json"), result.ToJsonString());
         }
+    }
+
+    private async Task RunPreparationOwnershipAsync(NativePackageIconTintCache cache, JsonObject result)
+    {
+        WeakReference<TaskCompletionSource>? checkpoint = null;
+        cache.PreparationCheckpointForTesting = () => CreateCheckpoint(out checkpoint);
+        try
+        {
+            var request = cache.AcquireAsync(Bytes("red"), 64, CancellationToken.None);
+            // Unwind the producer's stack before collection. No native callback,
+            // test promise or consumer should substitute for the cache's ownership.
+            await Task.Delay(50);
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+            Check(ReleaseCheckpoint(checkpoint), "cache retains the pending producer across collection");
+            using (var lease = await request.WaitAsync(TimeSpan.FromSeconds(10)))
+                Check(lease.Surface is not null, "retained preparation completes and supplies its surface");
+            await NativePackageIconTintCache.ShutdownAsync(DispatcherQueue).WaitAsync(TimeSpan.FromSeconds(10));
+            Check(cache.PendingPreparations == 0 && cache.PendingNativeOperations == 0 && !cache.StagingAttached,
+                "completed producer and native resources drain on shutdown");
+            result["passed"] = true;
+        }
+        catch (Exception error) { result["passed"] = false; result["error"] = error.ToString(); }
+        finally
+        {
+            cache.PreparationCheckpointForTesting = null;
+            result["pendingPreparations"] = cache.PendingPreparations;
+            result["pendingNativeOperations"] = cache.PendingNativeOperations;
+            result["checks"] = new JsonArray(checks.Select(value => (JsonNode?)JsonValue.Create(value)).ToArray());
+            var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "WinUI", "diagnostics");
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "package-icon-shutdown-result.json"), result.ToJsonString());
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static Task CreateCheckpoint(out WeakReference<TaskCompletionSource> checkpoint)
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        checkpoint = new(completion);
+        return HoldCheckpointAsync(completion);
+    }
+
+    private static async Task HoldCheckpointAsync(TaskCompletionSource completion)
+    {
+        await completion.Task;
+        GC.KeepAlive(completion);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool ReleaseCheckpoint(WeakReference<TaskCompletionSource>? checkpoint)
+    {
+        if (checkpoint is null || !checkpoint.TryGetTarget(out var completion)) return false;
+        return completion.TrySetResult();
     }
 }

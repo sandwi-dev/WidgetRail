@@ -58,15 +58,21 @@ internal static class PlayniteAchievementPresentation
         if (item.GamerScore is { } points) meta += $" · {points} points";
         var text = new List<WidgetElement>
         {
-            UI.Text(entry.Name, id + ".name").Classes("playnite-library-achievement-name"),
-            UI.Text(meta, id + ".meta").Classes("playnite-library-achievement-meta"),
+            UI.RichText(id + ".heading",
+                UI.Text(entry.Name, id + ".name").Classes("playnite-library-achievement-name"),
+                UI.Text(" · " + meta, id + ".meta").Classes("playnite-library-achievement-meta"))
+                .Classes("playnite-library-achievement-heading"),
             UI.Text(entry.Secret ? "Reveal this achievement to see its description and artwork." : item.Description, id + ".description")
                 .Classes("playnite-library-achievement-description"),
         };
         if (!entry.Secret && !item.Unlocked && item.Progress is { } progress)
         {
-            text.Add(UI.Text($"{progress.Current:N0} / {progress.Maximum:N0}", id + ".progress-label").Classes("playnite-library-achievement-progress-label"));
-            text.Add(UI.Progress(progress.Current, progress.Maximum, id + ".progress"));
+            text.Add(UI.Row(id + ".progress-row",
+                UI.Text($"{progress.Current:N0} / {progress.Maximum:N0}", id + ".progress-label")
+                    .Classes("playnite-library-achievement-progress-label"),
+                UI.Progress(progress.Current, progress.Maximum, id + ".progress")
+                    .Classes("playnite-library-achievement-total-progress"))
+                .Classes("playnite-library-achievement-summary-row"));
         }
         children.Add(UI.Stack(id + ".text", text.ToArray()).Classes("playnite-library-achievement-row-text"));
         if (item.Unlocked) children.Add(UI.Icon(WidgetGlyph.Check, id + ".check", "Unlocked").Classes("playnite-library-positive"));

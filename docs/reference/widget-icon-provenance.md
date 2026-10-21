@@ -21,6 +21,16 @@ not derive from an external icon library:
 | Browser | `browser.mark` | `samples/BrowserWidget/assets/icons/browser.svg` |
 | Game Help | `game-help.mark` | `samples/GameHelpWidget/assets/icons/game-help.svg` |
 
+Playnite Library's navigation and empty-state icons (`house`, `library-big`,
+`info`, `list`, `link`, `trophy`, `history`, `gamepad-2`, `arrow-left`, and
+`eye-off`) come from [Lucide 0.468.0](https://github.com/lucide-icons/lucide/tree/0.468.0/icons).
+They use theme tint and a consistent 24-unit view box. Their original 2-unit,
+round-ended strokes are expanded into filled paths for the host's static SVG
+subset; the appearance is preserved without adding a runtime library.
+The upstream ISC license and Feather MIT attribution are shipped in
+`samples/PlayniteLibraryWidget/assets/icons/Lucide-LICENSE.txt` and included in
+the widget package. The package's Playnite mark remains project-authored.
+
 YouTube Music uses `ytmusic.mark` from
 `samples/YtMusicWidget/assets/icons/yt-music.svg`: a project-authored geometric
 rendering of the YouTube Music red disc, white ring and play triangle. It replaces

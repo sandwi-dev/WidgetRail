@@ -309,14 +309,12 @@ internal static partial class PlayniteLibraryPresentation
                 .ToArray();
             if (rows.Length == 0)
             {
-                content = UI.EmptyState("No hidden games",
+                content = UI.EmptyState(PlayniteIcons.Hidden, "No hidden games",
                     state.Organization.ExcludedSavedIds.Count == 0
                         ? "Installed hidden games will appear here until you restore them."
                         : "No installed hidden games match the current filters.",
                     "playnite-library.hidden.empty",
-                    new ComponentAction("Back", "playnite-library.hidden.back",
-                        WidgetGlyph.Play),
-                    WidgetGlyph.Play);
+                    new ComponentAction("Back", "playnite-library.hidden.back") { Icon = PlayniteIcons.Back });
                 initialFocus = "playnite-library.hidden.empty.action";
             }
             else
@@ -449,12 +447,11 @@ internal static partial class PlayniteLibraryPresentation
                     PlayniteLibraryHeroRailPresentation.Fallback(
                         "No installed games",
                         "Your installed Playnite games will appear here."),
-                    UI.EmptyState("No installed games",
+                    UI.EmptyState(PlayniteIcons.Game, "No installed games",
                         "Install a game in Playnite, then refresh your library.",
                         "playnite-library.empty",
                         new ComponentAction("Refresh", "playnite-library.refresh",
-                            WidgetGlyph.Refresh),
-                        WidgetGlyph.Play))
+                            WidgetGlyph.Refresh)))
                 .Classes("playnite-library-content");
             initialFocus = "playnite-library.empty.action";
         }
@@ -939,8 +936,8 @@ internal static partial class PlayniteLibraryPresentation
         var parts = UI.NavigationShellParts("playnite-library.destinations",
             state.Route == PlayniteLibraryRoute.Library ? "home" : "library",
             NavigationShellContentEntry.Unavailable, UI.Stack("playnite-library.nav.unused"),
-            [new("home", "Home", PlayniteLibraryActions.HomeOpen, WidgetGlyph.Play),
-             new("library", "Library", PlayniteLibraryActions.BrowseOpen, WidgetGlyph.Fullscreen)],
+            [new("home", "Home", PlayniteLibraryActions.HomeOpen, WidgetGlyph.Play) { Icon = PlayniteIcons.Home },
+             new("library", "Library", PlayniteLibraryActions.BrowseOpen, WidgetGlyph.Fullscreen) { Icon = PlayniteIcons.Library }],
             compactLeadingAdornment: UI.ControllerGlyph(ControllerButton.LeftBumper,
                 "playnite-library.nav.previous", "Previous tab").Classes("playnite-library-tab-key"),
             compactTrailingAdornment: UI.ControllerGlyph(ControllerButton.RightBumper,
