@@ -17,10 +17,23 @@ public sealed partial class MainWindow
         if (!Path.IsPathFullyQualified(path) || !string.Equals(Path.GetFullPath(path),Path.GetFullPath(known),StringComparison.OrdinalIgnoreCase)) return Task.FromResult(false);
         return OpenExternalAsync(page,async()=>
         {
-            var folder=await Windows.Storage.StorageFolder.GetFolderFromPathAsync(path);
             if(!await current()) return false;
-            return await Windows.System.Launcher.LaunchFolderAsync(folder);
+            return LaunchCaptureFolderInExplorer(path);
         },token);
+    }
+    private static bool LaunchCaptureFolderInExplorer(string path)
+    {
+        if (!Directory.Exists(path)) return false;
+        // Hand the folder request to Explorer itself. LaunchFolderAsync can
+        // consume this process's foreground privilege; after later input revokes
+        // the broker grant, controller-driven switching then cannot refresh it.
+        // Use the system executable and one literal argument, never a shell command.
+        var start = new System.Diagnostics.ProcessStartInfo(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"))
+        { UseShellExecute = false, CreateNoWindow = true };
+        start.ArgumentList.Add(path);
+        using var opened = System.Diagnostics.Process.Start(start);
+        return opened is not null;
     }
     private async Task<bool> OpenExternalAsync(OverlayShellPage page,Func<Task<bool>> launch,CancellationToken cancellationToken)
     {

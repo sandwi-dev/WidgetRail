@@ -77,3 +77,10 @@ The persistent-host fixture's `--task-cycle-folder` option opens an empty fixtur
 folder through the real external-launch handoff before alternating two exact
 window targets. It uses no injected pointer/keyboard input between transfers;
 the trace records permission refresh failures separately from broker activation.
+
+`scripts/Test-WinUiFolderTaskSwitching.ps1` adds input and explicitly replaces the
+broker's previous grant after each switch, requiring six new successful grants
+and transfers. This catches failures hidden by startup or retained permission.
+Capture-folder opening dispatches a literal path to the system Explorer executable;
+it does not call `LaunchFolderAsync` in the frontend, which left the host unable
+to refresh foreground permission in this regression.
