@@ -39,7 +39,7 @@
       "id": "widgetrail.samples.browser",
       "name": "Browser",
       "version": "0.1.6",
-      "caption": "A public Wikipedia article, with a pinned page alongside the game.",
+      "caption": "A public Wikipedia article in the browser and a game guide pinned alongside Silksong.",
       "images": [
         {
           "file": "browser.png",
@@ -50,10 +50,11 @@
         },
         {
           "file": "browser-pinned.png",
-          "width": 3840,
-          "height": 2160,
-          "bytes": 5218475,
-          "sha256": "8dcf2dfcde8edf5d600ac0eea925ef28c70691c7d612ce0efb83a0c67e634160"
+          "width": 3838,
+          "height": 2157,
+          "bytes": 7694562,
+          "sha256": "7af16d1cdbdc813cf5da329d7a3eea405f952e32684f588014078b7d68254428",
+          "provenance": "User-supplied replacement, used without additional visual inspection as requested. The session-wide environment and input metadata are not independently verified for this image."
         }
       ]
     },

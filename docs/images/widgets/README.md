@@ -2,7 +2,9 @@
 
 [View the gallery](../../users/widget-gallery.md).
 
-These are real, unaltered 3840 Ã— 2160 (16:9) Windows captures made on **21 October 2026**. No UI controls, values, artwork or backgrounds were composited into them. The original PNG pixels are retained.
+These Windows screenshots were captured on **21 October 2026**. Session captures are 3840 × 2160 (16:9). The pinned Browser image is a user-supplied replacement at 3838 × 2157, used as provided without additional visual inspection. Original PNG files are retained without image editing; per-image dimensions and provenance are recorded in the manifest.
+
+The configuration below describes the agent capture session; it is not independently verified for the user-supplied replacement.
 
 ## Captured configuration
 
@@ -45,10 +47,11 @@ Performance Monitor 0.1.2 includes the target-selection correction at source com
 
 - **Hollow Knight and Hollow Knight: Silksong**, game scenes, artwork and the release trailer: Team Cherry. [Trailer source](https://www.youtube.com/watch?v=6XGeJwsUP9c).
 - **Greenpath** soundtrack: Christopher Larkin; the YouTube Music example is the piano-collections recording credited in the player to Christopher Larkin, David Peacock and Augustine Mayuga Gonzales. Music and album artwork remain the property of their respective owners.
-- Browser article: [Wikipedia contributors, Hollow Knight: Silksong](https://en.wikipedia.org/wiki/Hollow_Knight:_Silksong), available under the articleâ€™s stated licenses, including CC BY-SA for text.
-- Interactive map: [MapGenieâ€™s Silksong map](https://mapgenie.io/hollow-knight-silksong/maps/pharloom). Map and game artwork belong to their respective owners.
-- Twitch capture shows the public, logged-out Silksong category. Channel names and thumbnails are public website content, not the userâ€™s account or private messages.
-- PoE1 and PoE2 use separate example builds loaded for these captures. Their values are not build advice or a current-league recommendation. Path of Exile content belongs to Grinding Gear Games; calculation/editing functionality comes from Path of Building Community. The [earlier walkthroughâ€™s attribution](../../../samples/PobCompanion/screenshots/README.md) applies to those earlier images, not these separate captures.
+- Pinned Browser guide: user-provided game-guide capture; guide content belongs to its respective authors and publisher.
+- Browser article: [Wikipedia contributors, Hollow Knight: Silksong](https://en.wikipedia.org/wiki/Hollow_Knight:_Silksong), available under the article’s stated licenses, including CC BY-SA for text.
+- Interactive map: [MapGenie’s Silksong map](https://mapgenie.io/hollow-knight-silksong/maps/pharloom). Map and game artwork belong to their respective owners.
+- Twitch capture shows the public, logged-out Silksong category. Channel names and thumbnails are public website content, not the user’s account or private messages.
+- PoE1 and PoE2 use separate example builds loaded for these captures. Their values are not build advice or a current-league recommendation. Path of Exile content belongs to Grinding Gear Games; calculation/editing functionality comes from Path of Building Community. The [earlier walkthrough’s attribution](../../../samples/PobCompanion/screenshots/README.md) applies to those earlier images, not these separate captures.
 - Service logos, game covers and other third-party content remain the property of their respective owners. Their appearance does not imply endorsement or affiliation.
 
 ## Review boundaries
