@@ -266,10 +266,11 @@
         },
         {
           "file": "spotify-pinned.png",
-          "width": 3840,
-          "height": 2160,
-          "bytes": 6279532,
-          "sha256": "7f6ae0757fce3ca388c831f3da39b1419e5265253b6b2a31e36cd424cfcb7042"
+          "width": 3838,
+          "height": 2157,
+          "bytes": 7699683,
+          "sha256": "67e723b6665085d9f5e32a0da1f156fda5f54ab9c34a4b929f97030d004083d5",
+          "provenance": "User-supplied replacement, used as provided. The session-wide environment and input metadata are not independently verified for this image."
         }
       ]
     },

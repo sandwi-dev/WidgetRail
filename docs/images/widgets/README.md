@@ -2,9 +2,9 @@
 
 [View the gallery](../../users/widget-gallery.md).
 
-These Windows screenshots were captured on **21 October 2026**. Session captures are 3840 × 2160 (16:9). The pinned Browser image is a user-supplied replacement at 3838 × 2157, used as provided without additional visual inspection. Original PNG files are retained without image editing; per-image dimensions and provenance are recorded in the manifest.
+These Windows screenshots were captured on **21 October 2026**. Session captures are 3840 × 2160 (16:9). The pinned Browser and Spotify images are user-supplied replacements at 3838 × 2157, used as provided. The Browser replacement was used without additional visual inspection as requested. Original PNG files are retained without image editing; per-image dimensions and provenance are recorded in the manifest.
 
-The configuration below describes the agent capture session; it is not independently verified for the user-supplied replacement.
+The configuration below describes the agent capture session; it is not independently verified for the user-supplied replacements.
 
 ## Captured configuration
 
