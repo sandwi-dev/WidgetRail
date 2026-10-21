@@ -7,7 +7,7 @@ param(
     [string]$OutputDirectory,
     [string]$EngineLockPath = (Join-Path $PSScriptRoot 'engine-lock.json'),
     [string]$Python = 'python',
-    [string]$Version = '0.1.0'
+    [string]$Version = '0.1.1'
 )
 $ErrorActionPreference='Stop'
 $parsedVersion = $null

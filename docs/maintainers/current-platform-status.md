@@ -1,6 +1,6 @@
 # Current platform status
 
-Reviewed against source on 2026-10-20: application `0.1.0-preview.36`, SDK/CLI
+Reviewed against source on 2026-10-20: application `0.1.0-preview.37`, SDK/CLI
 `0.4.6-dev`, presentation protocol 98. These are source versions, not a claim that
 a corresponding release has been published or that every workflow is qualified.
 See [versioning](versioning.md) for the authoritative version files.
