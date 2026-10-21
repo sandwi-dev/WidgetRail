@@ -20,6 +20,7 @@ internal sealed record PlayniteSetupPlan(PlayniteSetupInstallation Installation,
     };
 }
 internal sealed record PlayniteSetupDiscovery(IReadOnlyList<PlayniteSetupInstallation> Installations, string? Message = null);
+internal sealed record PlayniteSetupOffer(PlayniteSetupDiscovery Discovery, PlayniteSetupPlan? Plan, bool NeedsAttention);
 internal sealed record PlayniteSetupResult(bool Connected, string Title, string Message);
 internal sealed record PlayniteSetupView
 {
@@ -35,7 +36,7 @@ internal sealed record PlayniteSetupView
 }
 internal interface IPlayniteSetupService
 {
-    ValueTask<PlayniteSetupInstallation?> StoppedInstallationAsync(CancellationToken token);
+    ValueTask<PlayniteSetupOffer> CheckSetupAsync(CancellationToken token);
     ValueTask<PlayniteSetupResult> StartAsync(PlayniteSetupInstallation installation, Action<string> progress, CancellationToken token);
     ValueTask<PlayniteSetupDiscovery> DiscoverAsync(string? programPath, string? dataPath, CancellationToken token);
     ValueTask<PlayniteSetupPlan> InspectAsync(PlayniteSetupInstallation installation, CancellationToken token);

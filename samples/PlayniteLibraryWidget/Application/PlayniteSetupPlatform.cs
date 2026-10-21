@@ -8,7 +8,6 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 internal sealed record PlayniteSetupProcess(int Id, string Executable, string? CommandLine, bool Fullscreen);
 internal interface IPlayniteSetupPlatform
 {
-    bool HasRunningProcess();
     ValueTask<IReadOnlyList<PlayniteSetupProcess>> ProcessesAsync(CancellationToken token);
     IEnumerable<string> InstallationFolders();
     ValueTask StopAsync(PlayniteSetupInstallation installation, CancellationToken token);
@@ -17,16 +16,6 @@ internal interface IPlayniteSetupPlatform
 
 internal sealed partial class PlayniteSetupPlatform : IPlayniteSetupPlatform
 {
-    public bool HasRunningProcess()
-    {
-        foreach (var name in new[] { "Playnite.DesktopApp", "Playnite.FullscreenApp" })
-        {
-            var processes = Process.GetProcessesByName(name);
-            try { if (processes.Length != 0) return true; }
-            finally { foreach (var process in processes) process.Dispose(); }
-        }
-        return false;
-    }
     public async ValueTask<IReadOnlyList<PlayniteSetupProcess>> ProcessesAsync(CancellationToken token) =>
         await Task.Run(() => ReadProcesses(), token).WaitAsync(token).ConfigureAwait(false);
 

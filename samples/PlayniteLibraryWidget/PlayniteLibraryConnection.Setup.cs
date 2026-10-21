@@ -6,31 +6,36 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal static partial class PlayniteLibraryConnectionPresentation
 {
-    internal static WidgetModal StoppedDialog(PlayniteSetupView setup)
+    internal static WidgetModal SetupDialog(PlayniteSetupView setup)
     {
         var prefix = PlayniteLibraryWidget.SetupPrefix;
-        var needsSetup = setup.Plan is { Action: not (PlayniteSetupAction.Start or PlayniteSetupAction.Connect) };
-        var primaryAction = needsSetup ? prefix + "apply" : PlayniteLibraryWidget.SetupStartAction;
-        var primaryLabel = setup.Plan?.Action == PlayniteSetupAction.Install ? "Install integration and start Playnite"
-            : needsSetup ? setup.Plan!.ActionLabel : "Start Playnite";
+        var plan = setup.Plan;
+        var canApply = plan?.CanApply == true;
+        var primaryAction = plan?.Action == PlayniteSetupAction.Start ? PlayniteLibraryWidget.SetupStartAction : prefix + "apply";
+        var primaryLabel = plan?.Action == PlayniteSetupAction.Install && !plan.Installation.Running ? "Install integration and start Playnite"
+            : plan?.ActionLabel ?? "Connect Playnite";
         var children = new List<WidgetElement>
         {
-            UI.Text(needsSetup ? setup.Plan!.Message : "Start Playnite to use your library. Your normal library updates will run.",
+            UI.Text(plan?.Message ?? setup.Message ?? "Choose your Playnite profile in connection settings.",
                 prefix + "stopped.message").Classes("playnite-library-setup-path"),
-            UI.Text("Playnite may open a window or switch focus during startup. Setup continues; reopen WidgetRail to return here.",
-                prefix + "stopped.visibility").Classes("playnite-library-setup-path"),
         };
+        if (plan is not null)
+            children.Add(UI.Text(plan.Installation.DataDirectory, prefix + "stopped.profile").Classes("playnite-library-setup-path"));
+        if (canApply && plan!.Action != PlayniteSetupAction.Connect)
+            children.Add(UI.Text("Playnite may open a window or switch focus during startup. Setup continues; reopen WidgetRail to return here.",
+                prefix + "stopped.visibility").Classes("playnite-library-setup-path"));
         if (setup.Progress is { } progress)
             children.Add(UI.Text(progress, prefix + "stopped.progress").Classes("playnite-library-setup-path"));
-        else if (setup.Message is { } message && !setup.Connected)
+        else if (setup.Message is { } message && !setup.Connected && plan is not null)
             children.Add(UI.Alert("Could not connect", message, AlertTone.Warning, prefix + "stopped.error"));
-        children.Add(UI.Button(primaryLabel, primaryAction, prefix + "stopped.primary")
-            .Busy(setup.Busy).Disabled(needsSetup && setup.Plan?.CanApply != true).Classes("playnite-library-setup-primary"));
+        if (canApply)
+            children.Add(UI.Button(primaryLabel, primaryAction, prefix + "stopped.primary")
+                .Busy(setup.Busy).Classes("playnite-library-setup-primary"));
         children.Add(UI.Button("Connection settings", PlayniteLibraryWidget.PlayniteOpenActionId, prefix + "stopped.settings")
             .Disabled(setup.Busy));
-        return new("playnite-start-dialog", "Playnite isn't running",
+        return new("playnite-start-dialog", plan?.Installation.Running == false ? "Playnite isn't running" : "Connect Playnite",
             UI.Stack(prefix + "stopped.content", children.ToArray()).Classes("playnite-library-setup-actions"),
-            needsSetup && setup.Plan?.CanApply != true ? prefix + "stopped.settings" : prefix + "stopped.primary", prefix + "dismiss");
+            canApply ? prefix + "stopped.primary" : prefix + "stopped.settings", prefix + "dismiss");
     }
 
     private static WidgetView RenderSetup(PlayniteLibraryConnectionState state)
@@ -43,9 +48,14 @@ internal static partial class PlayniteLibraryConnectionPresentation
             UI.Text("Your Playnite library, ready for your controller.", prefix + "intro").Classes("playnite-library-setup-intro"),
         };
         if (setup.Installations.Count > 1)
-            children.Add(UI.Select("Playnite profile", setup.Installations.Select(item => new SelectOption(item.Id, item.DisplayName,
-                prefix + "select." + item.Id, IsSelected: setup.Plan?.Installation.Id == item.Id)).ToArray(), prefix + "installation")
+        {
+            var options = setup.Installations.Select(item => new SelectOption(item.Id, item.DisplayName,
+                prefix + "select." + item.Id, IsSelected: setup.Plan?.Installation.Id == item.Id)).ToList();
+            if (!options.Any(option => option.IsSelected))
+                options.Insert(0, new("choose", "Choose a profile", prefix + "choose", IsSelected: true, IsDisabled: true));
+            children.Add(UI.Select("Playnite profile", options, prefix + "installation")
                 .Disabled(!enabled).Classes("playnite-library-control"));
+        }
         if (setup.Plan is { } plan)
         {
             children.Add(UI.Alert(plan.Title, plan.Message, plan.CanApply ? AlertTone.Info : AlertTone.Warning, prefix + "plan"));

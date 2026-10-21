@@ -198,7 +198,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             navigation.Route == PlayniteLibraryRoute.Library ? _indexedHome : null, favoritesSource:
             navigation.Route == PlayniteLibraryRoute.Library ? _indexedFavorites : null);
         var root = ScopePresentation(navigation, view.Root);
-        var initialFocusId = state.HomeWarmDisplayOnly || state.CanStartPlaynite || view.FocusGroupEntryRequest is not null ||
+        var initialFocusId = state.HomeWarmDisplayOnly || state.SetupRequired || view.FocusGroupEntryRequest is not null ||
             navigation.Route == PlayniteLibraryRoute.Categories ||
             navigation.Route == PlayniteLibraryRoute.Browse &&
             local.BrowseInitialFocusId is not null
@@ -208,7 +208,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             : navigation.InitialFocusId ?? view.InitialFocusId;
         initialFocusId = ResolveInitialFocus(
             root, initialFocusId, view.InitialFocusId, navigation.InputScopeId,
-            allowDisabledRequestedTarget: !state.HomeWarmDisplayOnly && !state.CanStartPlaynite &&
+            allowDisabledRequestedTarget: !state.HomeWarmDisplayOnly && !state.SetupRequired &&
                 navigation.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse);
         var page = view with
         {
@@ -217,14 +217,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
             ActiveInputScopeId = navigation.InputScopeId,
         };
         lock (_gate)
-            if (!state.CanStartPlaynite && navigation.Route == PlayniteLibraryRoute.Browse && local.DetailsItem is null &&
+            if (!state.SetupRequired && navigation.Route == PlayniteLibraryRoute.Browse && local.DetailsItem is null &&
                 local.ContentEntryScopeId == navigation.InputScopeId && local.ContentEntryRequestId > 0 &&
                 local.ContentEntryRequestId == BrowseState.ModalReturnRequestId &&
                 BrowseState.ModalReturn is { } returnTarget &&
                 returnTarget.QueryGeneration == _indexedBrowse.Descriptor.QueryGeneration)
                 page = page with { FocusGroupEntryRequest = _indexedBrowse.Enter(
                     PlayniteLibraryPresentation.ScrollId, local.ContentEntryRequestId, returnTarget) };
-        if (!state.CanStartPlaynite && !state.HomeWarmDisplayOnly &&
+        if (!state.SetupRequired && !state.HomeWarmDisplayOnly &&
             navigation.Route == PlayniteLibraryRoute.Library && local.DetailsItem is null &&
             local.ContentEntryScopeId == navigation.InputScopeId && local.ContentEntryRequestId > 0 &&
             local.ContentEntryRequestId == HomeState.ModalReturnRequestId && HomeState.ModalReturn is { } homeReturn)
@@ -233,9 +233,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
             if (homeReturn.QueryGeneration == source.Descriptor.QueryGeneration)
                 page = page with { FocusGroupEntryRequest = source.Enter(homeReturn.CollectionId, local.ContentEntryRequestId, homeReturn) };
         }
-        if (local.StoppedPlayniteDialogOpen && local.StoppedPlaynite is not null &&
+        if (local.SetupDialogOpen && local.SetupRequired &&
             navigation.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
-            return page.WithModal(PlayniteLibraryConnectionPresentation.StoppedDialog(local.Setup));
+            return page.WithModal(PlayniteLibraryConnectionPresentation.SetupDialog(local.Setup));
         if (local.FilterDraft is { } draft && navigation.Route == PlayniteLibraryRoute.Browse)
             return page.WithModal(PlayniteLibraryPresentation.Filters(state, draft));
         if (local.DetailsItem is { } details && navigation.Route is
@@ -315,7 +315,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
-        RefreshStoppedPlaynite();
+        RefreshSetupAvailability();
         ResumeDetails();
         var activation = _navigation.Value;
         var route = activation.Route;
@@ -359,7 +359,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         // Opening from the tray changes Visible to Interactive without another
         // OnActivated callback. Recheck the process/profile for that entry too.
         if (previous == WidgetLifecycleState.Visible && current == WidgetLifecycleState.Interactive)
-            RefreshStoppedPlaynite();
+            RefreshSetupAvailability();
         if (current != WidgetLifecycleState.Interactive)
         {
             ClearPendingBackFocus();
@@ -606,7 +606,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 return;
             case PlayniteOpenActionId:
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
-                _model.Update(state => state with { StoppedPlayniteDialogOpen = false });
+                _model.Update(state => state with { SetupDialogOpen = false });
                 if (_navigation.Push(PlayniteLibraryRoute.PlayniteConnection,
                         action.SourceElementId) == WidgetNavigationResult.Changed)
                 {
@@ -1915,7 +1915,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         local.SourceObservations)
     {
         ActiveCategoryId = local.ActiveCategoryId,
-        CanStartPlaynite = local.StoppedPlaynite is not null,
+        SetupRequired = local.SetupRequired,
         HomeWarmDisplayOnly = route == PlayniteLibraryRoute.Library && local.IndexedHome.Publication?.Query.IsWarmDisplayOnly == true,
         SearchFocusPending = local.SearchFocusPending,
         SearchExpanded = local.SearchExpanded,

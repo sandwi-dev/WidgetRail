@@ -21,7 +21,7 @@ internal sealed record PlayniteLibraryPresentationState(
 {
     internal string? ActiveCategoryId { get; init; }
     internal bool SearchFocusPending { get; init; }
-    internal bool CanStartPlaynite { get; init; }
+    internal bool SetupRequired { get; init; }
     internal bool HomeWarmDisplayOnly { get; init; }
     internal bool SearchExpanded { get; init; }
     internal string? BrowseInitialFocusId { get; init; }
@@ -239,15 +239,15 @@ internal static partial class PlayniteLibraryPresentation
             initialFocus = "playnite-library.connection-required.action";
         }
         else if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse &&
-                 (state.CanStartPlaynite || state.HomeWarmDisplayOnly && snapshot.Status == WidgetPagedResourceStatus.Error))
+                 (state.SetupRequired || state.HomeWarmDisplayOnly && snapshot.Status == WidgetPagedResourceStatus.Error))
         {
             var error = PlayniteLibraryAvailabilityPresentation.Error(snapshot.Error);
             content = UI.Stack("playnite-library.content",
-                UI.EmptyState(state.CanStartPlaynite ? "Playnite isn't running" : error.Title,
-                    state.CanStartPlaynite ? "Start Playnite to load your library." : error.Message,
+                UI.EmptyState(state.SetupRequired ? "Connect your Playnite library" : error.Title,
+                    state.SetupRequired ? "Open connection setup to continue with your Playnite profile." : error.Message,
                     "playnite-library.offline",
-                    new ComponentAction(state.CanStartPlaynite ? "Start Playnite…" : "Try again",
-                        state.CanStartPlaynite ? PlayniteLibraryWidget.SetupPrefix + "prompt" : "playnite-library.retry")))
+                    new ComponentAction(state.SetupRequired ? "Connect Playnite…" : "Try again",
+                        state.SetupRequired ? PlayniteLibraryWidget.SetupPrefix + "prompt" : "playnite-library.retry")))
                 .Classes("playnite-library-content");
             initialFocus = "playnite-library.offline.action";
         }
@@ -629,7 +629,7 @@ internal static partial class PlayniteLibraryPresentation
         }
         if (state.Route == PlayniteLibraryRoute.Browse &&
             state.BrowseInitialFocusId is null &&
-            !catalogPage && contentEntry is null && !state.CanStartPlaynite)
+            !catalogPage && contentEntry is null && !state.SetupRequired)
             initialFocus = "playnite-library.search";
         if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
         {

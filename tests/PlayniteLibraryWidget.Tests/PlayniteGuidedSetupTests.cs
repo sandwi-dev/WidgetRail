@@ -9,6 +9,100 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed partial class PlayniteLibraryTests
 {
     [TestMethod]
+    public async Task InspectionFailureShowsReachableSettingsInsteadOfSilentlySkippingSetup()
+    {
+        var host = new FakeHost(1);
+        var services = host.Services();
+        var setup = new SetupFixture { InspectionFailure = true };
+        var widget = WidgetTestHost.Attach(new LauncherWidget(new TestApplicationService(services, host),
+            new FakeConnectionClient(), setupService: setup), services);
+        await Interactive(widget);
+        try
+        {
+            await WaitFor(() => widget.RenderState.Value.SetupDialogOpen, "inspection failure guidance");
+            var snapshot = Snapshot(widget, 175_001);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+            var initial = Nodes(snapshot.Root).Single(node => node.Id == snapshot.InitialFocusId);
+            Assert.AreEqual(LauncherWidget.PlayniteOpenActionId, initial.ActionId);
+            Assert.IsFalse(initial.IsDisabled == true);
+            Assert.IsTrue(Nodes(snapshot.Root).Any(node => node.Text == "Fixture inspection failed."));
+        }
+        finally { await Background(widget); }
+    }
+
+    [TestMethod]
+    [DataRow("Install", true, false)]
+    [DataRow("Install", false, false)]
+    [DataRow("Start", false, false)]
+    [DataRow("Connect", true, false)]
+    [DataRow("Enable", true, false)]
+    [DataRow("Repair", true, false)]
+    [DataRow("Restart", true, false)]
+    [DataRow("Manual", true, false)]
+    [DataRow("Install", true, true)]
+    [DataRow("Start", false, true)]
+    public void AutomaticSetupDialogMatrixKeepsAnEnabledInitialControl(string action, bool running, bool busy)
+    {
+        var fixture = new SetupFixture();
+        var state = new PlayniteSetupView { Plan = fixture.Plan with
+            { Action = Enum.Parse<PlayniteSetupAction>(action), Installation = fixture.Installation with { Running = running } },
+            Busy = busy, Progress = busy ? "Connecting…" : null };
+        var snapshot = new WidgetView(UI.Stack("base"))
+            .WithModal(PlayniteLibraryConnectionPresentation.SetupDialog(state)).CreateSnapshot("matrix", 1);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        var initial = Nodes(snapshot.Root).Single(node => node.Id == snapshot.InitialFocusId);
+        Assert.IsFalse(initial.IsDisabled == true);
+        Assert.AreEqual(action == "Manual" ? LauncherWidget.PlayniteOpenActionId :
+            action == "Start" ? LauncherWidget.SetupStartAction : LauncherWidget.SetupPrefix + "apply", initial.ActionId);
+        Assert.AreEqual(busy, initial.IsBusy == true);
+    }
+
+    [TestMethod]
+    public async Task RunningPortableWithoutBridgeAutomaticallyOffersInstallAndRestart()
+    {
+        var host = new FakeHost(1);
+        var services = host.Services();
+        var setup = new SetupFixture { MissingIntegration = true, Running = true };
+        var widget = WidgetTestHost.Attach(new LauncherWidget(new TestApplicationService(services, host),
+            new FakeConnectionClient(), setupService: setup), services);
+        await Interactive(widget);
+        try
+        {
+            await WaitFor(() => widget.RenderState.Value.SetupDialogOpen, "running portable setup");
+            var snapshot = Snapshot(widget, 174_001);
+            var primary = Nodes(snapshot.Root).Single(node => node.Id == snapshot.InitialFocusId);
+            Assert.AreEqual("Install integration and restart Playnite", primary.Text);
+            Assert.AreEqual(LauncherWidget.SetupPrefix + "apply", primary.ActionId);
+            Assert.AreEqual(0, setup.ApplyCalls, "Discovery never installs without a chosen action.");
+        }
+        finally { await Background(widget); }
+    }
+
+    [TestMethod]
+    [DataRow(0, false)]
+    [DataRow(1, false)]
+    [DataRow(2, false)]
+    [DataRow(2, true)]
+    public void SetupProfileSelectionMatrixRendersBeforeAndAfterSelection(int count, bool selected)
+    {
+        var setup = new SetupFixture();
+        var installations = Enumerable.Range(0, count).Select(index => setup.Installation with { Id = "profile" + index }).ToArray();
+        var state = new PlayniteSetupView { Installations = installations,
+            Plan = selected ? setup.Plan with { Installation = installations[1] } : null };
+        var snapshot = PlayniteLibraryConnectionPresentation.Render(new(PlayniteBridgeConnectionKind.Unavailable,
+            false, "offline", true, null, state)).CreateSnapshot("profiles", 1);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        var picker = Nodes(snapshot.Root).SingleOrDefault(node => node.Id == LauncherWidget.SetupPrefix + "installation");
+        if (count > 1)
+        {
+            Assert.IsNotNull(picker);
+            Assert.AreEqual(1, picker.SelectOptions.Count(option => option.IsSelected));
+            Assert.AreEqual(!selected, picker.SelectOptions.Single(option => option.IsSelected).IsDisabled);
+        }
+        else Assert.IsNull(picker);
+    }
+
+    [TestMethod]
     public async Task EnteringFromPreviewRechecksStoppedPlayniteAndOffersMissingIntegrationSetup()
     {
         var host = new FakeHost(1);
@@ -23,7 +117,7 @@ public sealed partial class PlayniteLibraryTests
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
         try
         {
-            await WaitFor(() => widget.RenderState.Value.StoppedPlayniteDialogOpen, "preview entry detects stopped Playnite");
+            await WaitFor(() => widget.RenderState.Value.SetupDialogOpen, "preview entry detects stopped Playnite");
             var snapshot = Snapshot(widget, 173_001);
             var primary = Nodes(snapshot.Root).Single(node => node.Id == snapshot.InitialFocusId);
             Assert.AreEqual(LauncherWidget.SetupPrefix + "apply", primary.ActionId);
@@ -32,7 +126,7 @@ public sealed partial class PlayniteLibraryTests
             await widget.OnActionAsync(new(LauncherWidget.SetupPrefix + "dismiss", "playnite-start-dialog.close"));
             await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
             await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
-            await WaitFor(() => widget.RenderState.Value.StoppedPlayniteDialogOpen, "reopening rechecks");
+            await WaitFor(() => widget.RenderState.Value.SetupDialogOpen, "reopening rechecks");
             await widget.OnActionAsync(new(primary.ActionId!, primary.Id));
             await WaitFor(() => setup.ApplyCalls == 1 && !widget.RenderState.Value.Setup.Busy, "setup applied");
             Assert.AreEqual(0, setup.StartCalls, "A missing integration must use installation setup, not a launch that can never connect.");
@@ -55,7 +149,7 @@ public sealed partial class PlayniteLibraryTests
         try
         {
             await WaitFor(() => widget.Collection.Status == WidgetPagedResourceStatus.Error &&
-                widget.RenderState.Value.StoppedPlaynite is not null, "stopped cached library");
+                widget.RenderState.Value.SetupRequired, "stopped cached library");
             var modal = Snapshot(widget, 172_001);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(modal).Count);
             Assert.AreEqual("playnite-start-dialog.scope", modal.ActiveInputScopeId);
@@ -92,7 +186,7 @@ public sealed partial class PlayniteLibraryTests
             setup.Pending = null;
             host.FailAfterOffset = null;
             await widget.OnActionAsync(new(LauncherWidget.SetupStartAction, LauncherWidget.SetupStartAction));
-            await WaitFor(() => widget.RenderState.Value.StoppedPlaynite is null &&
+            await WaitFor(() => !widget.RenderState.Value.SetupRequired &&
                 widget.Collection.Status == WidgetPagedResourceStatus.Ready, "start recovery");
             Assert.IsFalse(Nodes(Snapshot(widget, 172_006).Root).Any(node => node.Kind == ViewNodeKind.ModalLayer));
         }
@@ -131,7 +225,7 @@ public sealed partial class PlayniteLibraryTests
         var widget = WidgetTestHost.Attach(new LauncherWidget(application, new FakeConnectionClient(), setupService: setup), services);
         await Interactive(widget);
         await Ready(widget, host);
-        await WaitFor(() => widget.RenderState.Value.StoppedPlaynite is not null, "stopped Playnite action");
+        await WaitFor(() => widget.RenderState.Value.SetupRequired, "stopped Playnite action");
         var before = Snapshot(widget, 170_001);
         Assert.IsTrue(Nodes(before.Root).Any(node => node.ActionId == LauncherWidget.SetupStartAction));
         await widget.OnActionAsync(new(LauncherWidget.SetupStartAction, LauncherWidget.SetupStartAction));
@@ -142,7 +236,7 @@ public sealed partial class PlayniteLibraryTests
         var busy = Snapshot(widget, 170_002);
         Assert.IsTrue(Nodes(busy.Root).Single(node => node.ActionId == LauncherWidget.SetupStartAction).IsBusy == true);
         setup.Pending.SetResult(new(true, "Connected", "Ready"));
-        await WaitFor(() => !widget.RenderState.Value.Setup.Busy && widget.RenderState.Value.StoppedPlaynite is null, "connected");
+        await WaitFor(() => !widget.RenderState.Value.Setup.Busy && !widget.RenderState.Value.SetupRequired, "connected");
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(Snapshot(widget, 170_003)).Count);
         await Background(widget);
     }
@@ -173,14 +267,18 @@ public sealed partial class PlayniteLibraryTests
     private sealed class SetupFixture : IPlayniteSetupService
     {
         internal readonly PlayniteSetupInstallation Installation = new("fixture", @"C:\Games\Playnite", @"D:\Profiles\Playnite", "Playnite profile", false, false);
-        internal PlayniteSetupPlan Plan => new(Installation, Stopped && !MissingIntegration ? PlayniteSetupAction.Start : PlayniteSetupAction.Install,
+        internal PlayniteSetupPlan Plan => new(Installation with { Running = Running }, Stopped && !MissingIntegration ? PlayniteSetupAction.Start : PlayniteSetupAction.Install,
             "Connect Playnite", "Install integration and connect.", null, null, null);
+        internal bool Running;
         internal bool MissingIntegration;
+        internal bool InspectionFailure;
         internal bool Stopped;
         internal int ApplyCalls;
         internal int StartCalls;
         internal TaskCompletionSource<PlayniteSetupResult>? Pending;
-        public ValueTask<PlayniteSetupInstallation?> StoppedInstallationAsync(CancellationToken token) => ValueTask.FromResult(Stopped ? Installation : null);
+        public ValueTask<PlayniteSetupOffer> CheckSetupAsync(CancellationToken token) => InspectionFailure
+            ? ValueTask.FromException<PlayniteSetupOffer>(new PlayniteSetupException("Fixture inspection failed."))
+            : ValueTask.FromResult(new PlayniteSetupOffer(new([Installation]), Plan, Stopped || MissingIntegration));
         public ValueTask<PlayniteSetupDiscovery> DiscoverAsync(string? programPath, string? dataPath, CancellationToken token) => ValueTask.FromResult(new PlayniteSetupDiscovery([Installation]));
         public ValueTask<PlayniteSetupPlan> InspectAsync(PlayniteSetupInstallation installation, CancellationToken token) => ValueTask.FromResult(Plan);
         public ValueTask<PlayniteSetupResult> StartAsync(PlayniteSetupInstallation installation, Action<string> progress, CancellationToken token)

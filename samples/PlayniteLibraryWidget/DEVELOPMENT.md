@@ -124,11 +124,14 @@ account operations.
 `Application/PlayniteSetup*` separates process discovery, bounded file/package
 handling, recovery, and connection checks from the declarative setup UI.
 Setup operations use widget lifetime so hiding the overlay does not interrupt a
-deployment; no automatic installation runs on activation. A cheap process-name
-check on activation suppresses the start action while Playnite is running.
-When stopped, a unique detected profile gets a focused launch/setup dialog, including
-profiles whose Bridge is missing. Inspection supplies the appropriate install, repair,
-or launch action. Entering Interactive from a Visible tray preview also rechecks.
+deployment; no automatic installation runs on activation. The
+[setup decision matrix](SETUP-DECISIONS.md) defines profile selection, Bridge health,
+and recovery behavior. A single identifiable running profile takes precedence over
+stopped copies. Inspection supplies the appropriate install, repair, connect, or
+launch action; only an already-working connection omits the dialog. Automatic
+inspection checks the local API without compiling eval scripts. Explicit setup
+performs the full script compatibility check. Entering Interactive from a Visible
+tray preview also rechecks.
 Launch uses argument lists with `--startclosedtotray`,
 `--hidesplashscreen`, and `--userdatadir`; it does
 not override normal library-update preferences. Do not add `--startdesktop`: Playnite

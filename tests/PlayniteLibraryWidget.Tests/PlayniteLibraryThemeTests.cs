@@ -228,7 +228,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             Items = [new("saved-offline-theme", "Cached game", "Steam")],
         };
         var state = State(Snapshot(WidgetPagedResourceStatus.Error, []), organization,
-            PlayniteLibraryRoute.Library, []) with { ContentEntryRequestId = 1, CanStartPlaynite = canStart };
+            PlayniteLibraryRoute.Library, []) with { ContentEntryRequestId = 1, SetupRequired = canStart };
         await using var fixture = new IndexedPresentationFixture(state, [], warmDisplayOnly: true);
         await fixture.StartAsync();
         using var host = WidgetTestHost.CreateIndexedCollectionHost(fixture, "playnite-library.offline-theme");

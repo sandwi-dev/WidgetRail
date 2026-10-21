@@ -12,20 +12,114 @@ public sealed class PlayniteSetupTests
 {
     [TestMethod]
     [TestCategory("LivePlaynite")]
+    public async Task LiveRunningPortableOffersSetupWithoutChangingEitherInstallation()
+    {
+        if (Environment.GetEnvironmentVariable("WRAIL_TEST_LIVE_PLAYNITE_PORTABLE") != "1")
+            Assert.Inconclusive("Read-only opt-in for the running portable test copy.");
+        var platform = new PlayniteSetupPlatform();
+        var running = await platform.ProcessesAsync(default);
+        Assert.AreEqual(1, running.Count);
+        var program = Path.GetDirectoryName(running[0].Executable)!;
+        Assert.IsFalse(File.Exists(Path.Combine(program, "unins000.exe")));
+        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "WidgetRail", "community-apps", "widgetrail.samples.playnite-library");
+        var service = new PlayniteSetupService(root, Environment.GetEnvironmentVariable("WRAIL_TEST_PLAYNITE_SETUP_BUNDLE")!, platform);
+        var offer = await service.CheckSetupAsync(default);
+        Assert.IsTrue(offer.NeedsAttention);
+        Assert.IsNotNull(offer.Plan);
+        Assert.AreEqual(program, offer.Plan.Installation.ProgramDirectory);
+        Assert.AreEqual(program, offer.Plan.Installation.DataDirectory);
+        Assert.IsTrue(offer.Plan.Installation.Running);
+        Assert.AreEqual(PlayniteSetupAction.Install, offer.Plan.Action);
+        Assert.AreEqual(running[0].Id, (await platform.ProcessesAsync(default)).Single().Id);
+    }
+
+    [TestMethod]
+    [DataRow(false, false, false, "Ready", false, "Install", true)]
+    [DataRow(true, false, false, "Ready", false, "Install", true)]
+    [DataRow(false, true, false, "Ready", false, "Start", true)]
+    [DataRow(true, true, true, "Ready", false, "Enable", true)]
+    [DataRow(true, true, false, "Ready", false, "Connect", true)]
+    [DataRow(true, true, false, "Ready", true, "Connect", false)]
+    [DataRow(true, true, false, "Offline", true, "Restart", true)]
+    [DataRow(true, true, false, "Authentication", true, "Manual", true)]
+    [DataRow(true, true, false, "WrongProfile", true, "Manual", true)]
+    [DataRow(true, true, false, "Incompatible", true, "Manual", true)]
+    public async Task SetupDecisionMatrix(bool running, bool installed, bool disabled, string health, bool savedToken, string action, bool attention)
+    {
+        using var fixture = new Fixture();
+        new PlayniteSetupDiscoveryService(fixture.Platform, fixture.State).Remember(fixture.Installation);
+        fixture.Platform.Running = running;
+        if (installed) fixture.Install(PlayniteSetupPackage.Version, Fixture.Replacement);
+        if (disabled) PlayniteSetupFiles.WriteObject(fixture.MainConfig, new() { ["DisabledPlugins"] = new JsonArray(PlayniteSetupFiles.ExtensionId) });
+        fixture.Connection.Status = Enum.Parse<PlayniteSetupConnectionKind>(health);
+        fixture.Credentials.Value = savedToken ? Fixture.Token : null;
+        var offer = await fixture.Service.CheckSetupAsync(default);
+        Assert.AreEqual(attention, offer.NeedsAttention);
+        Assert.AreEqual(Enum.Parse<PlayniteSetupAction>(action), offer.Plan!.Action);
+        Assert.AreEqual(0, fixture.Connection.ScriptChecks, "Opening the widget must not compile an eval script.");
+        Assert.AreEqual(savedToken ? Fixture.Token : null, fixture.Credentials.Value);
+        Assert.AreEqual(0, fixture.Platform.Starts + fixture.Platform.Stops, "Inspection cannot mutate runtime state.");
+    }
+
+    [TestMethod]
+    public async Task RunningPortableTakesPrecedenceOverRememberedStoppedCopy()
+    {
+        using var fixture = new Fixture();
+        var other = fixture.CreateProgram("other");
+        new PlayniteSetupDiscoveryService(fixture.Platform, fixture.State).Remember(
+            PlayniteSetupDiscoveryService.Candidate(other, other, false, false));
+        fixture.Platform.Folders = [fixture.Program, other];
+        fixture.Platform.Running = true;
+        var offer = await fixture.Service.CheckSetupAsync(default);
+        Assert.AreEqual(2, offer.Discovery.Installations.Count);
+        Assert.AreEqual(fixture.Program, offer.Plan!.Installation.ProgramDirectory);
+        Assert.AreEqual(fixture.Data, offer.Plan.Installation.DataDirectory);
+        Assert.AreEqual(PlayniteSetupAction.Install, offer.Plan.Action);
+        Assert.AreEqual(0, fixture.Platform.Stops);
+    }
+
+    [TestMethod]
+    public async Task UndiscoveredOrAmbiguousProcessesRequireSelectionWithoutSideEffects()
+    {
+        using var fixture = new Fixture();
+        fixture.Platform.Folders = [];
+        var missing = await fixture.Service.CheckSetupAsync(default);
+        Assert.IsTrue(missing.NeedsAttention);
+        Assert.IsNull(missing.Plan);
+        fixture.Platform.Running = true;
+        fixture.Platform.HideArguments = true;
+        var unreadable = await fixture.Service.CheckSetupAsync(default);
+        Assert.IsTrue(unreadable.NeedsAttention);
+        Assert.IsNull(unreadable.Plan);
+        var second = fixture.CreateProgram("second");
+        fixture.Platform.ProcessOverride = [
+            new(1, Path.Combine(fixture.Program, "Playnite.DesktopApp.exe"), $"\"Playnite.DesktopApp.exe\" --userdatadir \"{fixture.Data}\"", false),
+            new(2, Path.Combine(second, "Playnite.DesktopApp.exe"), $"\"{Path.Combine(second, "Playnite.DesktopApp.exe")}\"", false),
+        ];
+        var ambiguous = await fixture.Service.CheckSetupAsync(default);
+        Assert.IsTrue(ambiguous.NeedsAttention);
+        Assert.IsNull(ambiguous.Plan);
+        Assert.AreEqual(2, ambiguous.Discovery.Installations.Count);
+        Assert.AreEqual(0, fixture.Platform.Starts + fixture.Platform.Stops);
+    }
+
+    [TestMethod]
+    [TestCategory("LivePlaynite")]
     public async Task LiveStoppedDiscoveryFindsRememberedInstallationWithoutStartingIt()
     {
         if (Environment.GetEnvironmentVariable("WRAIL_TEST_LIVE_PLAYNITE_STOPPED") != "1")
             Assert.Inconclusive("Explicit opt-in required for read-only stopped installation discovery.");
         var platform = new PlayniteSetupPlatform();
-        Assert.IsFalse(platform.HasRunningProcess(), "Playnite must already be stopped.");
+        Assert.AreEqual(0, (await platform.ProcessesAsync(default)).Count, "Playnite must already be stopped.");
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "WidgetRail", "community-apps", "widgetrail.samples.playnite-library");
-        var service = new PlayniteSetupService(root, Path.Combine(root, "unused"), platform);
+        var service = new PlayniteSetupService(root, Environment.GetEnvironmentVariable("WRAIL_TEST_PLAYNITE_SETUP_BUNDLE")!, platform);
         var found = await service.DiscoverAsync(null, null, default);
         Assert.AreEqual(1, found.Installations.Count, found.Message);
         Assert.IsNull(found.Message);
-        Assert.IsNotNull(await service.StoppedInstallationAsync(default));
-        Assert.IsFalse(platform.HasRunningProcess());
+        Assert.IsNotNull((await service.CheckSetupAsync(default)).Plan);
+        Assert.AreEqual(0, (await platform.ProcessesAsync(default)).Count);
     }
 
     [TestMethod]
@@ -102,7 +196,7 @@ public sealed class PlayniteSetupTests
         var found = await fixture.Service.DiscoverAsync(null, null, default);
         Assert.AreEqual(0, found.Installations.Count);
         StringAssert.Contains(found.Message!, "saved Playnite data folder");
-        Assert.IsNull(await fixture.Service.StoppedInstallationAsync(default));
+        Assert.IsNull((await fixture.Service.CheckSetupAsync(default)).Plan);
         var result = await fixture.Service.StartAsync(selected, _ => { }, default);
         Assert.IsFalse(result.Connected);
         Assert.AreEqual(0, fixture.Platform.Starts);
@@ -113,7 +207,7 @@ public sealed class PlayniteSetupTests
     public async Task FreshSetupDeploysBundleAndConnectsWithoutCopyingToken()
     {
         using var fixture = new Fixture();
-        Assert.IsNotNull(await fixture.Service.StoppedInstallationAsync(default),
+        Assert.IsNotNull((await fixture.Service.CheckSetupAsync(default)).Plan,
             "A missing Bridge must still offer setup for the detected stopped installation.");
         var plan = await fixture.Service.InspectAsync(fixture.Installation, default);
         Assert.AreEqual(PlayniteSetupAction.Install, plan.Action);
@@ -258,7 +352,7 @@ public sealed class PlayniteSetupTests
         fixture.Platform.Folders = [fixture.Program, second];
         var discovery = await fixture.Service.DiscoverAsync(null, null, default);
         Assert.AreEqual(2, discovery.Installations.Count);
-        Assert.IsNull(await fixture.Service.StoppedInstallationAsync(default));
+        Assert.IsNull((await fixture.Service.CheckSetupAsync(default)).Plan);
         fixture.Platform.Folders = [fixture.Program];
         fixture.Platform.Running = true;
         fixture.Platform.HideArguments = true;
@@ -355,9 +449,9 @@ public sealed class PlayniteSetupTests
         internal int Stops;
         internal Action? OnStart;
         internal string[] Folders = [program];
-        public bool HasRunningProcess() => Running;
+        internal IReadOnlyList<PlayniteSetupProcess>? ProcessOverride;
         public ValueTask<IReadOnlyList<PlayniteSetupProcess>> ProcessesAsync(CancellationToken token) => ValueTask.FromResult<IReadOnlyList<PlayniteSetupProcess>>(
-            Running ? [new(1, Path.Combine(program, "Playnite.DesktopApp.exe"), HideArguments ? null : $"\"{Path.Combine(program, "Playnite.DesktopApp.exe")}\" --userdatadir \"{data}\"", false)] : []);
+            ProcessOverride ?? (Running ? [new(1, Path.Combine(program, "Playnite.DesktopApp.exe"), HideArguments ? null : $"\"{Path.Combine(program, "Playnite.DesktopApp.exe")}\" --userdatadir \"{data}\"", false)] : []));
         public IEnumerable<string> InstallationFolders() => Folders;
         public ValueTask StopAsync(PlayniteSetupInstallation installation, CancellationToken token)
         { Stops++; if (RefuseShutdown) throw new PlayniteSetupException("Fixture refuses shutdown."); Running = false; return ValueTask.CompletedTask; }
@@ -373,8 +467,9 @@ public sealed class PlayniteSetupTests
     {
         internal PlayniteSetupConnectionKind Status = PlayniteSetupConnectionKind.Ready;
         internal int Reads;
-        public ValueTask<PlayniteSetupConnectionKind> CheckAsync(PlayniteSetupInstallation installation, string credential, CancellationToken token)
-        { Reads++; return ValueTask.FromResult(Status); }
+        internal int ScriptChecks;
+        public ValueTask<PlayniteSetupConnectionKind> CheckAsync(PlayniteSetupInstallation installation, string credential, CancellationToken token, bool verifyScripts = true)
+        { Reads++; if (verifyScripts) ScriptChecks++; return ValueTask.FromResult(Status); }
     }
     private sealed class FakeCredentials : IPlayniteCredentialStore
     {

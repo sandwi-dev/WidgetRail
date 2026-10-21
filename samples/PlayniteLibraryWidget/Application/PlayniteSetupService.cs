@@ -25,16 +25,25 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
     public ValueTask<PlayniteSetupDiscovery> DiscoverAsync(string? programPath, string? dataPath, CancellationToken token) =>
         discovery.DiscoverAsync(programPath, dataPath, token);
 
-    public async ValueTask<PlayniteSetupInstallation?> StoppedInstallationAsync(CancellationToken token)
+    public async ValueTask<PlayniteSetupOffer> CheckSetupAsync(CancellationToken token)
     {
-        // A process-name check is enough to omit the launch action. Full profile
-        // discovery happens only when Playnite is stopped or setup is opened.
-        if (platform.HasRunningProcess()) return null;
         var found = await DiscoverAsync(null, null, token).ConfigureAwait(false);
-        return found.Message is null && found.Installations.Count == 1 ? found.Installations[0] : null;
+        var running = await platform.ProcessesAsync(token).ConfigureAwait(false);
+        var selected = running.Count == 1
+            ? found.Installations.SingleOrDefault(item => item.Running && PlayniteSetupPlatform.Matches(running[0], item))
+            : running.Count == 0 && found.Message is null && found.Installations.Count == 1 ? found.Installations[0] : null;
+        if (selected is null) return new(found, null, true);
+        var plan = await InspectCoreAsync(selected, token, verifyScripts: false).ConfigureAwait(false);
+        var savedToken = plan.Action == PlayniteSetupAction.Connect ? await credentials.ReadAsync(token).ConfigureAwait(false) : null;
+        var ready = plan.Action == PlayniteSetupAction.Connect && savedToken is not null &&
+            string.Equals(savedToken, ReadToken(selected.DataDirectory), StringComparison.Ordinal);
+        return new(found, plan, !ready);
     }
 
-    public async ValueTask<PlayniteSetupPlan> InspectAsync(PlayniteSetupInstallation installation, CancellationToken token)
+    public ValueTask<PlayniteSetupPlan> InspectAsync(PlayniteSetupInstallation installation, CancellationToken token) =>
+        InspectCoreAsync(installation, token, verifyScripts: true);
+
+    private async ValueTask<PlayniteSetupPlan> InspectCoreAsync(PlayniteSetupInstallation installation, CancellationToken token, bool verifyScripts)
     {
         var validated = PlayniteSetupDiscoveryService.Candidate(installation.ProgramDirectory, installation.DataDirectory, installation.Running, installation.Fullscreen);
         if (validated.Id != installation.Id) throw new PlayniteSetupException("The selected installation changed. Find Playnite again.");
@@ -51,7 +60,7 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
             var existingToken = ReadToken(installation.DataDirectory);
             if (installation.Running && existingToken is not null)
             {
-                var existingHealth = await connection.CheckAsync(installation, existingToken, token).ConfigureAwait(false);
+                var existingHealth = await connection.CheckAsync(installation, existingToken, token, verifyScripts).ConfigureAwait(false);
                 if (existingHealth == PlayniteSetupConnectionKind.Ready)
                     return Plan(PlayniteSetupAction.Connect, "Ready to connect", "Use the existing integration managed by this Playnite profile. No files need to be installed.", null, null, null);
                 if (existingHealth != PlayniteSetupConnectionKind.Offline)
@@ -77,11 +86,13 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
         var localToken = ReadToken(installation.DataDirectory);
         if (installation.Running && localToken is not null)
         {
-            var health = await connection.CheckAsync(installation, localToken, token).ConfigureAwait(false);
+            var health = await connection.CheckAsync(installation, localToken, token, verifyScripts).ConfigureAwait(false);
             if (health == PlayniteSetupConnectionKind.Ready)
                 return Plan(PlayniteSetupAction.Connect, "Ready to connect", "Use this installation's existing integration and save the connection securely. No restart is needed.", version, digest, extension);
             if (health is PlayniteSetupConnectionKind.WrongProfile or PlayniteSetupConnectionKind.Authentication)
                 return Plan(PlayniteSetupAction.Manual, "The local service belongs to another connection", "Close other Playnite profiles and check port 19821, then find Playnite again. Existing settings were not changed.", version, digest, extension);
+            if (health == PlayniteSetupConnectionKind.Incompatible)
+                return Plan(PlayniteSetupAction.Manual, "The local service is incompatible", "The service on port 19821 does not provide the expected Playnite API. Check the integration in Playnite before reconnecting.", version, digest, extension);
             if (health == PlayniteSetupConnectionKind.EvalUnavailable && !KnownRepair(version, digest))
                 return Plan(PlayniteSetupAction.Manual, "Integration compatibility check failed", "This Bridge build cannot compile the required read-only scripts. Update it manually; automatic setup will not replace an unfamiliar or newer build.", version, digest, extension);
         }

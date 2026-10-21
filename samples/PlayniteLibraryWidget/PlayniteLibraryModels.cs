@@ -80,7 +80,7 @@ internal sealed class PlayniteLibraryActionFeedback(
 
 internal sealed record PlayniteLibraryRenderState
 {
-    internal bool StoppedPlayniteDialogOpen { get; init; }
+    internal bool SetupDialogOpen { get; init; }
     internal long AchievementFocusSequence { get; init; }
     internal PlayniteLibraryFilterDraft? FilterDraft { get; init; }
     // Collection is the Home route's independent query/selection model.
@@ -125,7 +125,7 @@ internal sealed record PlayniteLibraryRenderState
     internal string PlayniteCode { get; init; } = "credential_missing";
     internal bool PlayniteBusy { get; init; }
     internal PlayniteSetupView Setup { get; init; } = new();
-    internal PlayniteSetupInstallation? StoppedPlaynite { get; init; }
+    internal bool SetupRequired { get; init; }
     internal PlayniteLibraryConnectionFeedback? PlayniteFeedback { get; init; }
 
     internal static PlayniteLibraryRenderState Initial(WidgetAppLibraryQuery query) => new()

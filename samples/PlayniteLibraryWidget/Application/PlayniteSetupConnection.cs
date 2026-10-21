@@ -8,11 +8,11 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 internal enum PlayniteSetupConnectionKind { Ready, Offline, Authentication, WrongProfile, Incompatible, EvalUnavailable }
 internal interface IPlayniteSetupConnection
 {
-    ValueTask<PlayniteSetupConnectionKind> CheckAsync(PlayniteSetupInstallation installation, string credential, CancellationToken token);
+    ValueTask<PlayniteSetupConnectionKind> CheckAsync(PlayniteSetupInstallation installation, string credential, CancellationToken token, bool verifyScripts = true);
 }
 internal sealed class PlayniteSetupConnection : IPlayniteSetupConnection
 {
-    public async ValueTask<PlayniteSetupConnectionKind> CheckAsync(PlayniteSetupInstallation installation, string credential, CancellationToken token)
+    public async ValueTask<PlayniteSetupConnectionKind> CheckAsync(PlayniteSetupInstallation installation, string credential, CancellationToken token, bool verifyScripts = true)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromSeconds(8));
@@ -37,6 +37,7 @@ internal sealed class PlayniteSetupConnection : IPlayniteSetupConnection
             using var page = await ReadAsync(games, timeout.Token).ConfigureAwait(false);
             if (page.RootElement.ValueKind != JsonValueKind.Object || !page.RootElement.TryGetProperty("games", out var items) || items.ValueKind != JsonValueKind.Array)
                 return PlayniteSetupConnectionKind.Incompatible;
+            if (!verifyScripts) return PlayniteSetupConnectionKind.Ready;
             using var request = new HttpRequestMessage(HttpMethod.Post, "api/eval")
             {
                 Content = new StringContent("{\"code\":\"1\",\"timeoutMs\":1000,\"onUiThread\":false}", Encoding.UTF8, "application/json"),
