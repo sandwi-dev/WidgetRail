@@ -4,9 +4,9 @@ Plan and compare Path of Exile builds from your controller, inside the WidgetRai
 
 Use **PoE1 Path of Building (Beta)** for Path of Exile or **PoE2 Path of Building (Beta)** for Path of Exile 2. Both use pinned Path of Building Community beta engines and their calculations.
 
-![PoE2 calculations and loadout controls in WidgetRail](screenshots/calculations.png)
+![PoE2 calculations and loadout controls in WidgetRail](../../docs/images/widgets/poe2-calculations.png)
 
-*An example planning build. [See more screenshots and their context](screenshots/README.md).*
+*An example planning build. [Current capture context](../../docs/images/widgets/README.md) · [Earlier walkthrough screenshots](screenshots/README.md).*
 
 ## What you can do
 
@@ -66,6 +66,6 @@ These widgets cover build planning and comparison, with some desktop PoB feature
 
 ## Credits
 
-Calculations and editing tools come from **Path of Building Community**, building on **Openarl's** original project. Path of Exile, its data, and its artwork belong to **Grinding Gear Games**. The planning screenshots use **Ghost Activity's** public Martial Artist guide. See [full credits and licensing](DEVELOPMENT.md#credits).
+Calculations and editing tools come from **Path of Building Community**, building on **Openarl's** original project. Path of Exile, its data, and its artwork belong to **Grinding Gear Games**. The earlier PoE2 walkthrough screenshots use **Ghost Activity's** public Martial Artist guide; the newer gallery shows separate example builds. See [full credits and licensing](DEVELOPMENT.md#credits).
 
 [PoB Redux](https://github.com/pobredux/pob-redux) inspired the gem-tag search, changed-configuration filtering, inline skill editing, unified search and build-comparison workflows. WidgetRail adapts those ideas for controller use; calculations and eligibility continue to come from PoB.

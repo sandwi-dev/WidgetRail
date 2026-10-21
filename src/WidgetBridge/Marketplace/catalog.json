@@ -3,23 +3,23 @@
     "id": "widgetrail.samples.poe1-companion", "publisher": "widgetrail.samples", "name": "PoE1 Path of Building (Beta)",
     "description": "Plan Path of Exile builds, edit skills and equipment, and compare trade upgrades using a pinned Path of Building Community beta engine. Full-access add-on.",
     "setupRequirements": ["Trade features require signing in to the official Path of Exile trade website. Build planning works without signing in."],
-    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/poe1-timeless.png"]
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/poe1-skills.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/poe1-tree-preview.png"]
   },
   {
     "id": "widgetrail.samples.poe2-companion", "publisher": "widgetrail.samples", "name": "PoE2 Path of Building (Beta)",
     "description": "Plan Path of Exile 2 builds, manage loadouts and skill groups, and rank trade upgrades using a pinned Path of Building Community beta engine. Full-access add-on.",
     "setupRequirements": ["Trade features require signing in to the official Path of Exile trade website. Build planning works without signing in."],
-    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/calculations.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/ccf2b1e5/samples/PobCompanion/screenshots/trade-ranking.png"]
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/poe2-items-preview.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/poe2-calculations.png"]
   },
   {
     "id": "widgetrail.samples.mapgenie", "publisher": "widgetrail.samples", "name": "MapGenie",
     "description": "Explore interactive game maps, find collectibles and track your progress.",
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/mapgenie.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/mapgenie-pinned.png"]
   },
   {
     "id": "widgetrail.samples.twitch", "publisher": "widgetrail.samples", "name": "Twitch",
     "description": "Watch Twitch streams with controller navigation and pinnable webapp windows.",
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/twitch.png"]
   },
   {
     "id": "widgetrail.samples.discord", "publisher": "widgetrail.samples", "name": "Discord",
@@ -30,12 +30,12 @@
     "id": "widgetrail.samples.game-help", "publisher": "widgetrail.samples", "name": "Game Help",
     "description": "Ask for game hints with screenshots and clips.",
     "setupRequirements": ["Requires your own Gemini API key. Google's API quotas and any usage charges apply."],
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/game-help.png"]
   },
   {
     "id": "widgetrail.samples.display-profiles", "publisher": "widgetrail.samples", "name": "Display Controls",
     "description": "Adjust supported resolutions, refresh rates and HDR, or save and restore monitor setups. Display changes use a timed confirmation with automatic rollback.",
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/display-controls.png"]
   },
   {
     "id": "widgetrail.samples.playnite-library", "publisher": "widgetrail.samples", "name": "Playnite Library",
@@ -47,19 +47,19 @@
     "id": "widgetrail.samples.spotify", "publisher": "widgetrail.samples", "name": "Spotify",
     "description": "Browse your Spotify library and control playback with your controller.",
     "setupRequirements": ["Requires your own Spotify developer app Client ID.", "Register http://127.0.0.1:43827/callback/ as the app's redirect URI. Spotify developer-mode access restrictions apply.", "Spotify Premium is required for playback controls and listening through WidgetRail."],
-    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/SpotifyWidget/screenshots/search-player.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/SpotifyWidget/screenshots/pinned-player.png"]
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/spotify.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/spotify-pinned.png"]
   },
   {
     "id": "widgetrail.samples.youtube-video", "publisher": "widgetrail.samples", "name": "YouTube Video",
     "description": "Search and watch YouTube with a pinnable player.",
     "setupRequirements": ["Search requires your own Google API key with YouTube Data API v3 enabled. Opening a video link does not require a search key."],
-    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/YouTubeWidget/screenshots/player.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/c661a62c83acbbf3f043c6312739243258754df4/samples/YouTubeWidget/screenshots/pinned-video.png"]
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/youtube-player.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/youtube-pinned.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/youtube-search.png"]
   },
   {
     "id": "widgetrail.samples.ytmusic", "publisher": "widgetrail.samples", "name": "YouTube Music",
     "description": "Browse music and keep playback controls pinned while playing.",
     "setupRequirements": ["Sign in with Google for your personal library and likes. Signing in requires Chrome or Edge.", "Supported public search and playback can work without signing in."],
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/youtube-music.png"]
   },
   {
     "id": "widgetrail.firstparty.audio-mixer",
@@ -67,7 +67,7 @@
     "name": "Audio Mixer",
     "description": "Adjust application volume, switch audio devices and control microphone levels without leaving your game.",
     "setupRequirements": [],
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/audio-mixer.png"]
   },
   {
     "id": "widgetrail.firstparty.capture-library",
@@ -75,7 +75,7 @@
     "name": "Capture Library",
     "description": "Take screenshots, record clips with optional supported application audio, and browse, preview or manage your saved captures.",
     "setupRequirements": [],
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/capture-library.png"]
   },
   {
     "id": "widgetrail.firstparty.performance-monitor",
@@ -83,14 +83,14 @@
     "name": "Performance Monitor",
     "description": "Check system and process performance and pin live statistics while playing.",
     "setupRequirements": [],
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/performance-monitor.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/performance-monitor-pinned.png"]
   },
   {
     "id": "widgetrail.firstparty.media-sessions",
     "publisher": "widgetrail.firstparty",
     "name": "Now Playing",
     "description": "Control playback in apps that expose Windows media sessions.",
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/now-playing.png"]
   },
   {
     "id": "widgetrail.firstparty.games-apps",
@@ -98,7 +98,7 @@
     "name": "Games & Apps",
     "description": "Find, pin and launch your installed games and applications.",
     "setupRequirements": [],
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/games-apps.png"]
   },
   {
     "id": "widgetrail.firstparty.task-switcher",
@@ -116,7 +116,7 @@
     "setupRequirements": [
       "Some network setup opens Windows dialogs that need a keyboard or mouse."
     ],
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/network-controls.png"]
   },
   {
     "id": "widgetrail.firstparty.power",
@@ -124,7 +124,7 @@
     "name": "Power",
     "description": "Sleep, restart or shut down your PC from the overlay.",
     "setupRequirements": [],
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/power.png"]
   },
   {
     "id": "widgetrail.firstparty.recent-apps",
@@ -139,6 +139,6 @@
     "publisher": "widgetrail.samples",
     "name": "Browser",
     "description": "Open websites in a controller-friendly browser and keep pages pinned while playing.",
-    "screenshots": []
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/browser.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/browser-pinned.png"]
   }
 ]

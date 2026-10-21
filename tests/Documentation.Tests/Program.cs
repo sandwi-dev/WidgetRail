@@ -277,14 +277,14 @@ foreach (var removed in new[] { "archive", "history" })
     if (Directory.Exists(Path.Combine(repository, "docs", removed)) &&
         Directory.EnumerateFiles(Path.Combine(repository, "docs", removed), "*", SearchOption.AllDirectories).Any())
         failures.Add($"Retired notes remain: {removed}");
-foreach (var screenshot in new[] { "overview-rail", "pinned-video" })
-    RequireLink(Path.Combine(repository, "README.md"), $"docs/images/{screenshot}.png");
+foreach (var screenshot in new[] { "audio-mixer", "youtube-pinned" })
+    RequireLink(Path.Combine(repository, "README.md"), $"docs/images/widgets/{screenshot}.png");
 RequireLink(Path.Combine(repository, "docs", "users", "controls.md"), "../images/overview-games-apps-radial.png");
 RequireLink(Path.Combine(repository, "docs", "users", "customization.md"), "../images/themes.png");
 RequireLink(Path.Combine(repository, "docs", "developers", "widget-authoring-guide.md"), "../images/sdk-gallery.png");
 
 foreach (var topic in new[] { "everyday-workflows", "browsing", "webapps", "notifications",
-    "extensions", "connected-widgets", "lifecycle", "integrations" })
+    "extensions", "connected-widgets", "lifecycle", "integrations", "widget-gallery" })
     RequireLink(Path.Combine(repository, "docs", "README.md"), $"users/{topic}.md");
 RequireLink(Path.Combine(repository, "docs", "maintainers", "release-checklist.md"), "documentation.md#run-the-check");
 

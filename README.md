@@ -17,9 +17,9 @@ Free and open source, with a C# framework for building additional widgets.
 
 [Download](https://github.com/sandwi-dev/WidgetRail/releases) · [Installation](docs/users/getting-started.md) · [Documentation](docs/README.md) · [Build a widget](docs/developers/widget-quickstart.md)
 
-![WidgetRail over the Windows desktop, with Games & Apps and controller hints](docs/images/overview-rail.png)
+![WidgetRail Audio Mixer over Hollow Knight Silksong, with starred game volume and controller hints](docs/images/widgets/audio-mixer.png)
 
-*Illustrative screenshot from an earlier build; current controls may differ.*
+*Adjust game audio, then return to play. [Explore the widget gallery](docs/users/widget-gallery.md).*
 
 ## Quick start
 
@@ -66,9 +66,9 @@ Pin a supported video or compact widget, then hide the main overlay. Move, resiz
 and adjust the pin with the controller. Available pinned views depend on the
 widget. [Pinning guide](docs/users/pinning.md).
 
-![Pinned YouTube playback above the overlay's video controls](docs/images/pinned-video.png)
+![A YouTube trailer pinned beside Hollow Knight Silksong while the main overlay is hidden](docs/images/widgets/youtube-pinned.png)
 
-*Illustrative screenshot from an earlier build.*
+*Keep a video visible while the main overlay is hidden. Captured from a local development candidate; [capture details and credits](docs/images/widgets/README.md).*
 
 ## More than quick controls
 

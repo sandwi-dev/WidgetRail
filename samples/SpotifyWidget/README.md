@@ -3,7 +3,9 @@
 Find your next track and control your music from the overlay. Browse playlists,
 manage playback on a Spotify device, or use **Play here** to listen through WidgetRail.
 
-![Spotify search results beside the now playing controls](screenshots/search-player.png)
+![Spotify search results beside the now playing controls](../../docs/images/widgets/spotify.png)
+
+[Screenshot context and credits](../../docs/images/widgets/README.md).
 
 ## What you can do
 
@@ -49,7 +51,7 @@ The current WidgetRail installer includes the runtime needed by the local player
 While playing here, Now Playing updates directly from the local player. Playback
 on another device is refreshed periodically through Spotify.
 
-![Spotify with its compact player pinned in the corner](screenshots/pinned-player.png)
+![Spotify player pinned over Hollow Knight Silksong](../../docs/images/widgets/spotify-pinned.png)
 
 ## Verify and disconnect
 

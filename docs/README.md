@@ -12,6 +12,7 @@ process architecture to use WidgetRail or write your first widget.
 
 | Explore | Guide |
 | --- | --- |
+| See widgets and pinned views | [Screenshot gallery](users/widget-gallery.md) |
 | Websites and text entry | [Browse with a controller](users/browsing.md) |
 | Your own website shortcuts and sign-ins | [Personal webapps](users/webapps.md) |
 | Content beside your game | [Pin video and compact widgets](users/pinning.md) |

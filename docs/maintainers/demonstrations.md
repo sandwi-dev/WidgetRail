@@ -1,15 +1,35 @@
 # Product demonstrations and screenshots
 
-There is no checked-in recording of the current desktop → WidgetRail → desktop
+The [widget gallery](../users/widget-gallery.md) contains native 16:9 screenshots
+captured on 21 October 2026 over Hollow Knight: Silksong. The README uses the
+Audio Mixer and pinned-video examples from that set. The [capture manifest and
+credits](../images/widgets/README.md) identify the actual candidate, installed
+widget versions, display configuration, input method and content sources.
+
+There is still no checked-in recording of the complete game → WidgetRail → game
 workflow. Sample MP4s in SDK/template assets are test media, not product demos.
-The public README uses existing illustrative screenshots and has no recording
-instructions or empty demo slot. Do not label a mockup as a working demonstration.
+Do not label a mockup, a set of stills or a standalone game clip as that workflow.
+
+## Remaining capture coverage
+
+The new set covers 17 marketplace widgets plus Settings and Catalogue. Playnite
+history and Task Switcher window previews are held out pending privacy review.
+Recent Apps needs its recent-activity permission approved before a useful capture.
+Discord is intentionally omitted from this capture session. Retain the existing
+Playnite listing images until replacements are reviewed; do not fill these gaps
+with unrelated screenshots or claim complete coverage.
+
+Catalogue image URLs should reference the commit containing the reviewed PNGs.
+Local URL edits are preparation only: the images become available remotely after
+that commit is published, and customers receive the changed listing through the
+app's catalogue distribution path. Check URL availability before release.
 
 ## Existing public images
 
 | Images | Verification context |
 | --- | --- |
-| `docs/images/overview-rail.png`, `pinned-video.png` | Existing README illustrations from an earlier build. Exact tested build/configuration was not recorded with these assets. They do not demonstrate current controls or release acceptance. |
+| `docs/images/widgets/` | Reviewed 21 October 2026 local-candidate captures; provenance and image hashes are beside the files. These are not release-acceptance evidence. |
+| `docs/images/overview-rail.png`, `pinned-video.png` | Earlier illustrations retained for historical references. Exact tested build/configuration was not recorded; the README now uses the new gallery images. |
 | `docs/images/overview-games-apps-radial.png`, `themes.png`, `sdk-gallery.png` | Existing supporting illustrations; likewise not evidence of the current build. |
 | Package `screenshots/` folders | Use each package's captions where available. Do not infer a current build from the file's timestamp or the commit adding it. |
 

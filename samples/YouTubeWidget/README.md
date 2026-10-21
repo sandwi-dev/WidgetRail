@@ -5,7 +5,9 @@ Your selected playback volume is remembered across restarts and applied when a v
 Watch a video without leaving your game. Search public YouTube videos, play a link,
 or pin the video beside your game with controller controls still available.
 
-![YouTube video playback with controller navigation and playback controls](screenshots/player.png)
+![YouTube video playback with controller navigation and playback controls](../../docs/images/widgets/youtube-player.png)
+
+[Screenshot context and credits](../../docs/images/widgets/README.md).
 
 ## What you can do
 
@@ -48,7 +50,7 @@ release and its close animation before launching the browser.
 In pinned-video focus and fullscreen, **X** toggles play/pause. Follow the on-screen
 guide for the actions available on the current page.
 
-![YouTube video pinned in the corner while the player controls remain accessible](screenshots/pinned-video.png)
+![YouTube video pinned over Hollow Knight Silksong with the main overlay hidden](../../docs/images/widgets/youtube-pinned.png)
 
 ## Verify and remove the search key
 
