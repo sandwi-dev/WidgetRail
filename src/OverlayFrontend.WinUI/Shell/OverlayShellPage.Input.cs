@@ -43,6 +43,9 @@ internal sealed partial class OverlayShellPage
         if (nativeBrowserPickerActive) { heldAction.Reset(); rightStick.Reset(); return; }
         if (ReceivePinnedPlacement(frame)) { heldAction.Reset(); return; }
         if (frame.Connected == 0) { trayHold.Reset(); shellGestures.Reset(); radialInput.Reset(); }
+        // Native focus/modal transitions can consume a release edge. Physical
+        // state is authoritative; retire released claims before routing new input.
+        else shellGestures.ReconcileReleasedState(frame.State);
         if (retired || !visible || frame.Connected == 0 || frame.Primed != 0) { heldAction.Reset(); rightStick.Reset(); return; }
         if (startupPresentationPending)
         {
@@ -177,6 +180,8 @@ internal sealed partial class OverlayShellPage
         // A host-owned gesture stays owned until release, even if it moved focus
         // between the pin and main window. A queued duplicate press must not
         // become a fresh Back/View action in the newly active surface.
+        if (button == ControllerButton.A && (UtilityListFocused || UtilityIconFocused))
+            WindowActivationDiagnostic?.Invoke($"Utility A phase={phase} owned={shellGestures.Owns(button)} icon={UtilityIconFocused} row={utilityPanel?.FocusedId is not null} pendingFocus={utilityPanel?.HasPendingFocus} busy={utilityPanel?.Busy} interactive={interactive}");
         if (phase == ControllerEventPhase.Pressed && shellGestures.Owns(button)) return;
         if (phase == ControllerEventPhase.Released && shellGestures.Release(button))
         {

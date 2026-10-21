@@ -51,6 +51,12 @@ internal sealed partial class OverlayShellPage
         // Collapsing the retained widget during hide makes XAML choose another
         // focusable control. That fallback is not a user transfer to the tray.
         if (retired || !visible) return;
+        if (utilityPanel is { } panel && !nativeTrayFocusTransferAllowed)
+        {
+            if (utilityEntered) panel.RestoreEntryFocus();
+            else UtilityIcon.Focus(FocusState.Keyboard);
+            return;
+        }
         // ItemClick can precede the native focus event from that same click.
         // Keep its explicit enter intent rather than converting it to a preview.
         // Native fallback during a widget publication is not a domain transfer,
@@ -76,7 +82,9 @@ internal sealed partial class OverlayShellPage
         // when a control unloads, a window activates, or a view is preparing.
         // Explicit host transfers set interactive=false first; pointer and
         // keyboard traversal remain valid user transfers.
-        nativeTrayFocusTransferAllowed = AllowsNativeShellFocusTransfer(args);
+        nativeTrayFocusTransferAllowed = AllowsNativeShellFocusTransfer(args) &&
+            (utilityPanel is null || !switching && surface?.IsApplyingPresentation != true &&
+                (args.Direction != FocusNavigationDirection.None || args.FocusState == FocusState.Pointer));
         if (!retired && !nativeTrayFocusTransferAllowed) args.TryCancel();
     }
 

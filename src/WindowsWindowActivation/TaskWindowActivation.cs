@@ -14,12 +14,32 @@ public interface ITaskWindowActivationPlatform
 public enum TaskWindowActivationResult { Rejected, Requested, Denied }
 
 /// <summary>
-/// Serialized owner-thread handoff. Closing releases overlay input before Windows
-/// activation; the identity and worker authority are checked again after closing.
-/// No retry or overlay reopen is permitted when Windows declines the request.
+/// Serialized owner-thread handoff. Input release precedes activation and exact
+/// identity/authority is revalidated at the commit boundary. Broker completion
+/// uses delegated permission after hide; direct host activation precedes hide.
 /// </summary>
 public sealed class TaskWindowActivation(ITaskWindowActivationPlatform platform)
 {
+    /// <summary>Direct activation keeps the host HWND foreground until Windows
+    /// accepts the target. Unlike the broker path, there is no other process with
+    /// a delegated foreground grant to complete activation after hiding.</summary>
+    public async Task<TaskWindowActivationResult> ExecuteDirectAsync(TaskWindowTarget target, long initiatedAt,
+        long visibleSince, Func<bool> authorityCurrent, Action releaseInput, Action hideOverlay,
+        Func<Task<bool>> prepareHandoff, Action<string>? diagnostic = null)
+    {
+        if (!Admit(target, initiatedAt, visibleSince, authorityCurrent, diagnostic) || !await prepareHandoff())
+            return TaskWindowActivationResult.Rejected;
+        if (!Admit(target, initiatedAt, visibleSince, authorityCurrent, diagnostic)) return TaskWindowActivationResult.Rejected;
+        releaseInput();
+        if (!Admit(target, initiatedAt, visibleSince, authorityCurrent, diagnostic)) return TaskWindowActivationResult.Rejected;
+        Trace(diagnostic, "phase=request-activation");
+        var accepted = platform.RequestActivation(target);
+        Trace(diagnostic, "phase=activation-returned accepted=" + accepted);
+        if (!accepted) return TaskWindowActivationResult.Denied;
+        hideOverlay();
+        return TaskWindowActivationResult.Requested;
+    }
+
     public TaskWindowActivationResult Execute(TaskWindowTarget target, long initiatedAt,
         long visibleSince, Func<bool> authorityCurrent, Action hideOverlay, Action<string>? diagnostic = null)
     {

@@ -27,16 +27,15 @@ public sealed partial class MainWindow
         var native = new WindowsTaskWindowActivation(Trace);
         try
         {
-            // The foreground-owning host performs the same admitted handoff itself.
-            // There is no broker foreground grant or asynchronous IPC completion.
-            var result = await new TaskWindowActivation(native).ExecuteAsync(request.Target, request.InitiatedAt,
-                request.VisibleSince, () => !cleanupStarted && !handoff.Cancellation.IsCancellationRequested && request.IsCurrent(), () =>
+            // Closing motion is complete, but the host HWND must remain foreground
+            // until activation: hiding first returns foreground to the previous app.
+            var result = await new TaskWindowActivation(native).ExecuteDirectAsync(request.Target, request.InitiatedAt,
+                request.VisibleSince, () => !cleanupStarted && !handoff.Cancellation.IsCancellationRequested && request.IsCurrent(),
+                () => input?.SetVisible(false), () =>
                 {
                     handoff.Committed = true;
-                    input?.SetVisible(false);
                     CompleteOverlayHide();
-                }, () => Task.FromResult(native.RequestActivation(request.Target) ? TaskWindowActivationResult.Requested : TaskWindowActivationResult.Denied),
-                Trace, () => PrepareOverlayHandoffAsync(page, handoff));
+                }, () => PrepareOverlayHandoffAsync(page, handoff), Trace);
             if (result == TaskWindowActivationResult.Requested)
             {
                 // A successful API return is not proof that the target owns foreground.
@@ -100,6 +99,9 @@ public sealed partial class MainWindow
         await handoff.MotionFinished.Task.WaitAsync(handoff.Cancellation.Token);
         if (input is not null && !await input.WaitForHandoffReleaseAsync().WaitAsync(handoff.Cancellation.Token)) return false;
         if (!HandoffCurrent(handoff)) return false;
+        // Both release waits have completed. The shell may have suppressed the
+        // release frame while retaining its closing presentation.
+        page.CompleteControllerHandoffRelease();
         input?.TraceInput("Task handoff motion and release ready");
         return true;
     }
@@ -122,6 +124,7 @@ public sealed partial class MainWindow
                 ++overlayVisibilityVersion;
                 overlayMotion?.Snap(true);
                 ShellRoot.IsHitTestVisible = true;
+                input?.SetVisible(true);
                 page.SetVisible(true);
             }
         }

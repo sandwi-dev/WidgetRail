@@ -651,7 +651,11 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private void FocusTray()
     {
         if (utilityPanel is not null)
-        { if (!UtilityListFocused && !UtilityIconFocused) UtilityIcon.Focus(FocusState.Keyboard); return; }
+        {
+            if (utilityEntered && !UtilityListFocused) utilityPanel.RestoreEntryFocus();
+            else if (!UtilityListFocused && !UtilityIconFocused) UtilityIcon.Focus(FocusState.Keyboard);
+            return;
+        }
         var index = Math.Max(0, Tray.SelectedIndex);
         if (Tray.Items.Count == 0) return;
         RequestTrayFocus(Tray.Items[index]);

@@ -22,7 +22,18 @@ internal sealed partial class OverlayShellPage
         { if (Environment.TickCount64 >= deadline) throw new TimeoutException("Reopened utility did not load."); await Task.Delay(20); }
         NavigateTray(FocusNavigationDirection.Up);
         while (utilityPanel?.ContainsFocus != true)
-        { if (Environment.TickCount64 >= deadline) throw new TimeoutException("Reopened utility did not receive focus."); await Task.Delay(20); }
+        { if (Environment.TickCount64 >= deadline) throw new TimeoutException($"Reopened utility did not receive focus: panel={utilityPanel is not null} pending={utilityPanel?.HasPendingFocus} icon={UtilityIconFocused} radial={RadialOpen} interactive={interactive} switching={switching} foreground={foreground} focused={FocusManager.GetFocusedElement(XamlRoot)?.GetType().Name}."); await Task.Delay(20); }
+        if (shellGestures.Owns(ControllerButton.A)) throw new InvalidOperationException("Released A remained owned after handoff and reentry.");
+        var activation = HostTaskActivationRequested;
+        var dispatched = 0;
+        try
+        {
+            HostTaskActivationRequested = _ => { dispatched++; return Task.FromResult(WidgetRail.WindowsWindowActivation.TaskWindowActivationResult.Requested); };
+            Receive(new() { Connected = 1, State = new() { Buttons = 0x1000 }, PressedButtons = 0x1000 });
+            Receive(new() { Connected = 1, ReleasedButtons = 0x1000 });
+            if (dispatched != 1) throw new InvalidOperationException("The first A press after reentry did not dispatch exactly once.");
+        }
+        finally { HostTaskActivationRequested = activation; }
         await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
         await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
         if (!UtilityIconFocused || RadialOpen) throw new InvalidOperationException("Reentry Back did not return to utility icon.");
@@ -37,6 +48,9 @@ internal sealed partial class OverlayShellPage
                 await Task.Delay(100);
                 if (startup is not null) await startup;
                 await Until(() => !switching && browserOwner is not null && taskSwitcherButton.IsLoaded);
+                shellGestures.Claim(ControllerButton.A);
+                Receive(new() { Connected = 1 });
+                Check(!shellGestures.Owns(ControllerButton.A), "Neutral controller state clears a missed A release before tray navigation");
                 FocusUtility(ShellUtility.Tasks);
                 await Until(() => utilityPanel is not null && utilityWindows.Count > 0);
                 Check(UtilityIconFocused && !UtilityListFocused, "Focusing Task Switcher opens its panel without entering it");
@@ -44,6 +58,12 @@ internal sealed partial class OverlayShellPage
                 NavigateTray(FocusNavigationDirection.Up);
                 await Task.Delay(50);
                 Check(UtilityListFocused, "Up enters Task Switcher without A");
+                taskSwitcherButton.Focus(FocusState.Programmatic);
+                await Until(() => utilityPanel?.ContainsFocus == true);
+                Check(UtilityListFocused, "Late native icon focus cannot undo the user's entry into the list");
+                ((Control)Tray.ContainerFromIndex(0)).Focus(FocusState.Programmatic);
+                await Until(() => utilityPanel?.ContainsFocus == true);
+                Check(ReferenceEquals(panel, utilityPanel), "Late tray focus cannot close or recreate an entered utility panel");
                 var selected = panel!.FocusedId;
                 await RefreshUtilityTasksAsync(panel, lifetime.Token);
                 Check(panel.FocusedId == selected, "Window refresh preserves focused identity");

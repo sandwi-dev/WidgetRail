@@ -388,7 +388,7 @@ internal sealed partial class OverlayShellPage
         }
         if (UtilityIconFocused && button != ControllerButton.Y)
         {
-            if (button == ControllerButton.A) utilityPanel?.Enter();
+            if (button == ControllerButton.A) EnterUtility();
             else if (button == ControllerButton.B) await BackFromTrayAsync();
             return;
         }

@@ -56,8 +56,8 @@ internal sealed class ControllerGestureOwnership
         if (frame.RightTriggerReleased != 0) Release(ControllerButton.RightTrigger);
     }
 
-    // Native pickers can omit release edges while they own input. Reconcile
-    // only releases, using their existing zero-trigger rule; never claim input.
+    // Native focus/modal transitions can omit release edges. Reconcile only
+    // releases from physical state; this never claims a fresh press.
     internal void ReconcileReleasedState(RawControllerState state)
     {
         foreach (var (mask, button) in digitalButtons)

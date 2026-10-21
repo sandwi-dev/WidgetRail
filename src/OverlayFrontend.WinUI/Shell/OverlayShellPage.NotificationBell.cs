@@ -34,7 +34,6 @@ internal sealed partial class OverlayShellPage
         notificationBadge.Visibility = count == 0 ? Visibility.Collapsed : Visibility.Visible;
         var label = count == 0 ? "Notifications. Nothing pending" : $"Notifications. {count} pending";
         AutomationProperties.SetName(notificationBell, label);
-        ToolTipService.SetToolTip(notificationBell, label);
     }
     private void PaintNotificationBell()
     {
@@ -42,8 +41,8 @@ internal sealed partial class OverlayShellPage
         foreach (var icon in new[] { notificationBell, taskSwitcherButton })
         {
             icon.Foreground = new SolidColorBrush(palette.Text);
-            icon.Background = new SolidColorBrush(palette.Surface);
-            icon.BorderBrush = new SolidColorBrush(palette.HighContrast ? palette.Focus : ShellChromePalette.Blend(palette.Surface, palette.Text, .18));
+            icon.Background = new SolidColorBrush(palette.HighContrast ? palette.Surface : ShellChromePalette.Blend(palette.Surface, palette.Text, .025));
+            icon.BorderBrush = new SolidColorBrush(palette.HighContrast ? palette.Text : ShellChromePalette.Blend(palette.Surface, palette.Text, .08));
             icon.FocusVisualPrimaryBrush = new SolidColorBrush(palette.Focus);
         }
         utilityPlacement = null;
@@ -53,6 +52,8 @@ internal sealed partial class OverlayShellPage
     }
     private bool NavigateNotificationBell(FocusNavigationDirection direction)
     {
+        if (direction == FocusNavigationDirection.Up && utilityPanel is not null)
+            WindowActivationDiagnostic?.Invoke($"Utility Up rail={RailStatusHost.Visibility} listFocus={UtilityListFocused} iconFocus={UtilityIconFocused} rows={utilityWindows.Count}");
         if (RailStatusHost.Visibility != Visibility.Visible) return false;
         var left = Appearance.OverlayPosition == OverlayPosition.BottomLeft;
         if (UtilityListFocused)
@@ -63,7 +64,7 @@ internal sealed partial class OverlayShellPage
         }
         if (UtilityIconFocused)
         {
-            if (direction == FocusNavigationDirection.Up) utilityPanel?.Enter();
+            if (direction == FocusNavigationDirection.Up) EnterUtility();
             else if (direction is FocusNavigationDirection.Left or FocusNavigationDirection.Right)
             {
                 var next = taskSwitcherButton.FocusState != FocusState.Unfocused ?

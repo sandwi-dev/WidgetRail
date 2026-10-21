@@ -9,6 +9,31 @@ public sealed class TaskWindowActivationTests
     private static readonly TaskWindowTarget Target = new(42, 51, 1234, "ExampleWindow");
 
     [TestMethod]
+    public async Task DirectHandoffActivatesWhileForegroundBeforeHiding()
+    {
+        var native = new Fake();
+        var result = await new TaskWindowActivation(native).ExecuteDirectAsync(Target, 1000, 900, () => true,
+            () => native.Calls.Add("release"), () => { native.Calls.Add("hide"); native.IsOverlayForeground = false; },
+            () => Task.FromResult(true));
+        Assert.AreEqual(TaskWindowActivationResult.Requested, result);
+        CollectionAssert.AreEqual(new[] { "validate", "validate", "release", "validate", "activate", "hide" }, native.Calls);
+    }
+
+    [TestMethod]
+    public async Task DirectDenialDoesNotHideAndRevalidatesAfterRelease()
+    {
+        for (var scenario = 0; scenario < 4; scenario++)
+        {
+            var native = new Fake { Accepted = false }; var authority = true;
+            var result = await new TaskWindowActivation(native).ExecuteDirectAsync(Target, 1000, 900, () => authority,
+                () => { if (scenario == 1) native.Current = false; if (scenario == 2) authority = false; if (scenario == 3) native.IsOverlayForeground = false; },
+                () => Assert.Fail("Denied or stale direct activation must not hide."), () => Task.FromResult(true));
+            Assert.AreEqual(scenario == 0 ? TaskWindowActivationResult.Denied : TaskWindowActivationResult.Rejected, result);
+            Assert.AreEqual(scenario == 0 ? 1 : 0, native.Calls.Count(value => value == "activate"));
+        }
+    }
+
+    [TestMethod]
     public async Task PreparedHandoffWaitsThenRevalidatesBeforeHideAndBroker()
     {
         var native = new Fake();

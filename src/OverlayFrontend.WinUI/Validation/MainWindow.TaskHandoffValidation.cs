@@ -49,6 +49,9 @@ public sealed partial class MainWindow
                 if (cancel == "reopen") ShowOverlay();
                 await Until(() => taskHandoff is null, 3000);
                 input!.HandoffValidationButtons = 0;
+                // Cancellation does not certify button release. Deliver the
+                // neutral physical frame separately, as the real controller does.
+                page.Receive(new WidgetRail.OverlayPlatformClient.ControllerFrame { Connected = 1, ReleasedButtons = 0x1000 });
                 Check(AppWindow.IsVisible && overlayRequestedVisible && page.OverlayMotionValidationVisible && ShellRoot.IsHitTestVisible,
                     cancel == "reopen" ? "Reopen cancels the old handoff without a later hide" : "Held gesture expiry restores the still-visible presentation");
                 return;

@@ -1,6 +1,9 @@
 using WidgetRail.PlatformBroker;
+using System.Diagnostics;
 
 namespace WidgetRail.WindowsAppLibraryProvider;
+
+public sealed record TaskWindowAppearance(string Identity, string ApplicationName, string? PngBase64);
 
 /// <summary>Host-owned window list. Uses the same admission and close policy as the
 /// broker provider without initializing game stores or exposing handles to widgets.</summary>
@@ -11,6 +14,8 @@ public sealed class WindowsTaskWindowCatalog
     private readonly IShellStaExecutor executor;
     private readonly Func<WindowsRunningAppObservation, NativeWindowPreviewTarget?> resolveTarget;
     private readonly Dictionary<string, WindowsRunningAppObservation> targets = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, TaskWindowAppearance> appearances = new(StringComparer.Ordinal);
+    private readonly WindowsAppIconSource icons = new();
 
     public WindowsTaskWindowCatalog() : this(new WindowsRunningAppObserver(), new WindowsTaskWindowControl(), ShellStaExecutor.Shared) { }
 
@@ -46,6 +51,36 @@ public sealed class WindowsTaskWindowCatalog
         if (!targets.TryGetValue(id, out var expected)) throw WindowsAppLibraryProvider.WindowUnavailable();
         control.Close(expected, cancellation);
         return true;
+    }, token);
+
+    public Task<TaskWindowAppearance?> GetAppearanceAsync(string id, CancellationToken token) => executor.RunAsync<TaskWindowAppearance?>(cancellation =>
+    {
+        if (!targets.TryGetValue(id, out var item) || resolveTarget(item) is not { } target) return null;
+        if (appearances.TryGetValue(item.InstanceEvidence, out var cached)) return cached;
+        var name = Clean(item.DisplayName);
+        string? png = null;
+        try
+        {
+            var path = item.PortableAuthority?.CanonicalPath;
+            if (path is null)
+            {
+                using var process = Process.GetProcessById(checked((int)target.ProcessId));
+                path = process.MainModule?.FileName;
+            }
+            if (path is not null)
+            {
+                var metadata = FileVersionInfo.GetVersionInfo(path);
+                var friendly = Clean(metadata.FileDescription ?? metadata.ProductName ?? "");
+                if (friendly.Length > 0) name = friendly;
+                png = icons.TryRasterizePngBase64(path, cancellation);
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or InvalidOperationException or ArgumentException) { }
+        cancellation.ThrowIfCancellationRequested();
+        var appearance = new TaskWindowAppearance(item.InstanceEvidence, name, png);
+        if (appearances.Count >= 128) appearances.Remove(appearances.Keys.First());
+        appearances[item.InstanceEvidence] = appearance;
+        return appearance;
     }, token);
 
     private static string Clean(string value)

@@ -32,13 +32,14 @@ library. No bridge or widget worker is involved in the host list or its actions.
 Switching uses the existing `TaskWindowActivation` admission and `MainWindow`
 handoff sequence. It verifies foreground ownership and the exact window,
 process lifetime and class; waits for controller release; completes closing
-motion; rechecks authority and identity; hides/releases the overlay; then asks
-Windows to restore and activate the target. The host observes foreground for up
+motion; rechecks authority and identity; releases controller capture; and asks
+Windows to restore and activate the target while the host HWND still owns foreground.
+Only accepted activation hides the host HWND. The host observes foreground for up
 to 250 ms, accepting that target or its owned dialog, rather than treating the
 API return or an unrelated window in the same process as proof. A canceled
 handoff cannot later hide a reopened overlay.
 
-A failure before commitment restores the still-owned overlay. After commitment,
+A denial before commitment restores the still-owned overlay and its input. After commitment,
 the host does not steal focus back if Windows denies activation; the failure is
 reported when Task Switcher is next opened. Windows can still reject activation
 or cross-integrity close requests. No simulated-input workaround, retry loop or

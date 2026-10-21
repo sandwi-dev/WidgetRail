@@ -12,7 +12,7 @@ internal sealed partial class OverlayShellPage
     {
         // Layout-only validation must not read real radios or connectivity.
         systemStatus = new(observeSystem ? null : _ => Task.FromResult(ShellStatusSnapshot.Unknown));
-        var statusRow = new Grid { ColumnSpacing = 4 };
+        var statusRow = new Grid { ColumnSpacing = 8 };
         statusRow.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
         statusRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         statusRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
@@ -21,7 +21,7 @@ internal sealed partial class OverlayShellPage
         statusRow.Children.Add(taskSwitcherButton); Grid.SetColumn(taskSwitcherButton, 2);
         statusRow.SizeChanged += (_, _) =>
         {
-            if (systemStatus is { } status) status.Visibility = statusRow.ActualWidth >= 200
+            if (systemStatus is { } status) status.Visibility = statusRow.ActualWidth >= 208
                 ? Visibility.Visible : Visibility.Collapsed;
         };
         RailStatusHost.Content = statusRow;

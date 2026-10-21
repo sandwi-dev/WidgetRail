@@ -17,6 +17,9 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
     private readonly TextBlock heading = new() { FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap };
     private readonly Button command = new() { MinWidth = 64 };
+    private readonly TextBlock count = new() { VerticalAlignment = VerticalAlignment.Center };
+    private readonly FontIcon emptyIcon = new() { Glyph = "\uE73E", FontFamily = new("Segoe Fluent Icons"), FontSize = 20 };
+    private readonly Grid message = new() { ColumnSpacing = 12 };
     private readonly ListView list = new()
     {
         SelectionMode = ListViewSelectionMode.None, IsItemClickEnabled = true,
@@ -28,6 +31,8 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
         clear = new(Microsoft.UI.Colors.Transparent);
     private (ShellChromePalette Palette, PreviewFrameStyle Style, double Scale, double Height)? appearance;
     private ListViewItem? pendingFocus;
+    private string? lastFocusedId;
+    private bool commandFocused;
     internal bool HasPendingFocus => pendingFocus is not null;
     internal event Action<string>? Activated;
     internal event Action? Command;
@@ -44,8 +49,12 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
         var header = new Grid { ColumnSpacing = 12 };
         header.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-        header.Children.Add(heading); header.Children.Add(command); Grid.SetColumn(command, 1);
-        Frame.Child = new StackPanel { Spacing = 12, Children = { header, status, list } };
+        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { heading, count } };
+        header.Children.Add(title); header.Children.Add(command); Grid.SetColumn(command, 1);
+        message.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        message.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+        message.Children.Add(emptyIcon); message.Children.Add(status); Grid.SetColumn(status, 1);
+        Frame.Child = new StackPanel { Spacing = 8, Children = { header, message, list } };
         Content = material;
         AutomationProperties.SetAutomationId(this, "Overlay.Utility.Panel");
         AutomationProperties.SetAutomationId(list, "Overlay.Utility.List");
@@ -61,7 +70,12 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
         }
         command.Click += (_, _) => { if (!Busy) Command?.Invoke(); };
         list.ItemClick += (_, e) => { if (!Busy && e.ClickedItem is ListViewItem { Tag: string id } && rows[id].Entry.Actionable) Activated?.Invoke(id); };
-        GotFocus += (_, _) => FocusChanged?.Invoke();
+        GotFocus += (_, _) =>
+        {
+            lastFocusedId = FocusedId;
+            commandFocused = command.FocusState != FocusState.Unfocused;
+            FocusChanged?.Invoke();
+        };
         list.LayoutUpdated += (_, _) => RestorePendingFocus();
         Unloaded += (_, _) => CancelPendingFocus();
         PreviewKeyDown += (_, e) =>
@@ -96,14 +110,28 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
             return null;
         }
     }
-    internal void Configure(string title, string action)
-    { heading.Text = title; command.Content = action; AutomationProperties.SetName(command, action); }
+    internal void Configure(string title, string action, bool iconCommand = false)
+    {
+        heading.Text = title;
+        command.Content = iconCommand ? new FontIcon { Glyph = "\uE72C", FontFamily = new("Segoe Fluent Icons"), FontSize = 18 } : action;
+        command.MinWidth = iconCommand ? 36 : 64;
+        command.Padding = new(8);
+        AutomationProperties.SetName(command, action);
+        ToolTipService.SetToolTip(command, iconCommand ? action : null);
+    }
+    internal void SetCount(int value) { count.Text = $"· {value}"; count.Visibility = value > 0 ? Visibility.Visible : Visibility.Collapsed; }
     internal void SetStatus(string text)
-    { status.Text = text; status.Visibility = text.Length == 0 ? Visibility.Collapsed : Visibility.Visible; }
+    {
+        status.Text = text; message.Visibility = text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        var empty = text == "You're all caught up";
+        emptyIcon.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+        message.Margin = empty ? new(4, 12, 4, 12) : new(0, 4, 0, 4);
+    }
     internal void SetCommandEnabled(bool value)
     {
         if (!value && command.FocusState != FocusState.Unfocused) Back?.Invoke();
         command.IsEnabled = value;
+        command.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
     }
 
     internal void Update(IReadOnlyList<ShellUtilityEntry> entries)
@@ -120,7 +148,9 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
             {
                 if (!Equals(existing.Entry.Revision, entry.Revision))
                 {
-                    existing.Row.Content = entry.Content();
+                    if (existing.Row.Content is ShellTaskWindowRow existingTask && entry.Revision is WidgetRail.PlatformBroker.TaskWindowSummary window)
+                        existingTask.UpdateWindow(window);
+                    else existing.Row.Content = entry.Content();
                     AutomationProperties.SetName(existing.Row, entry.Label);
                     rows[entry.Id] = (entry, existing.Row);
                 }
@@ -132,14 +162,22 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
                 AutomationProperties.SetName(row, entry.Label);
                 AutomationProperties.SetAutomationId(row, "Overlay.Utility.Item." + entry.Id);
                 row.Loaded += (_, _) => EntryShown?.Invoke(entry.Id);
+                row.GotFocus += (_, _) => row.Background = hover;
+                row.LostFocus += (_, _) => row.Background = clear;
                 rows.Add(entry.Id, (entry, row)); list.Items.Add(row);
                 if (appearance is { } current)
-                { row.Foreground = new SolidColorBrush(current.Palette.Text); row.FocusVisualPrimaryBrush = new SolidColorBrush(current.Palette.Focus); }
+                { row.Foreground = ink; row.FocusVisualPrimaryBrush = new SolidColorBrush(current.Palette.Focus); }
             }
+            if (appearance is { } style && rows[entry.Id].Row.Content is ShellTaskWindowRow task) task.Apply(style.Palette, style.Scale);
         }
         if (focused is not null && !rows.ContainsKey(focused)) FocusIndex(Math.Clamp(oldIndex, 0, Math.Max(0, list.Items.Count - 1)));
     }
     internal void Enter() => FocusIndex(0);
+    internal void RestoreEntryFocus()
+    {
+        if (commandFocused && command.IsEnabled) command.Focus(FocusState.Keyboard);
+        else FocusIndex(lastFocusedId is not null && rows.TryGetValue(lastFocusedId, out var row) ? list.Items.IndexOf(row.Row) : 0);
+    }
     internal void CancelPendingFocus() => pendingFocus = null;
     private void RestorePendingFocus()
     {
@@ -151,7 +189,7 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
     private void FocusIndex(int index)
     {
         pendingFocus = null;
-        if (list.Items.Count == 0) { command.Focus(FocusState.Keyboard); return; }
+        if (list.Items.Count == 0) { if (command.IsEnabled) command.Focus(FocusState.Keyboard); else Back?.Invoke(); return; }
         var row = (ListViewItem)list.Items[Math.Clamp(index, 0, list.Items.Count - 1)];
         pendingFocus = row;
         list.ScrollIntoView(row);
@@ -188,21 +226,28 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
     {
         if (appearance == (palette, style, scale, availableHeight)) return;
         appearance = (palette, style, scale, availableHeight);
-        material.Apply(style);
-        Frame.Padding = new(16 * scale);
+        material.Apply(style.HighContrast ? style : style with
+        {
+            Top = style.Top with { A = (byte)(style.Top.A * .65) },
+            Side = style.Side with { A = (byte)(style.Side.A * .65) },
+            Bottom = style.Bottom with { A = (byte)(style.Bottom.A * .65) },
+        });
+        Frame.Padding = new(12 * scale);
         list.MaxHeight = Math.Max(48, Math.Min(380 * scale, availableHeight - 120 * scale));
-        heading.FontSize = 22 * scale; status.FontSize = list.FontSize = command.FontSize = 16 * scale;
+        heading.FontSize = 20 * scale; status.FontSize = count.FontSize = 14 * scale; list.FontSize = 16 * scale; command.FontSize = 14 * scale;
         ink.Color = palette.Text; muted.Color = palette.Muted;
         hover.Color = palette.HighContrast ? palette.Selected : ShellChromePalette.Blend(palette.Surface, palette.Text, .08);
         pressed.Color = palette.Selected; pressedInk.Color = palette.SelectedText;
         if (palette.HighContrast) hover.Color = palette.Surface;
-        heading.Foreground = status.Foreground = list.Foreground = command.Foreground = ink;
+        heading.Foreground = list.Foreground = command.Foreground = ink;
+        status.Foreground = count.Foreground = emptyIcon.Foreground = muted;
         command.Background = new SolidColorBrush(palette.Item);
         command.FocusVisualPrimaryBrush = new SolidColorBrush(palette.Focus);
         foreach (var (_, row) in rows.Values)
         {
             row.Foreground = ink; row.FocusVisualPrimaryBrush = new SolidColorBrush(palette.Focus);
             if (row.Content is NotificationCard card) card.ApplyBannerPalette(palette);
+            if (row.Content is ShellTaskWindowRow task) task.Apply(palette, scale);
         }
     }
     public void Dispose() { CancelPendingFocus(); material.Dispose(); }

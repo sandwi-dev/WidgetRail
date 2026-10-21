@@ -39,7 +39,7 @@ internal static class ProductionShellGeometry
         var statusSpace = Math.Max(0, spare - 28) / (centered ? 2 : 1);
         // Two 48-DIP utility buttons plus their gap remain together. Only the
         // clock/connectivity content disappears at compact widths.
-        var status = statusSpace >= 288 ? 288d : statusSpace >= 200 ? 200d : statusSpace >= 100 ? 100d : 0;
+        var status = statusSpace >= 288 ? 288d : statusSpace >= 208 ? 208d : statusSpace >= 104 ? 104d : 0;
         var railEnvelope = viewport + (overflow ? 84 : 0) + (status > 0 ? status * (centered ? 2 : 1) + 28 : 0);
         return new(tile, visible, viewport, status, Math.Min(width, Math.Max(880, railEnvelope)), overflow);
     }

@@ -30,7 +30,15 @@ internal sealed partial class OverlayShellPage
                 Check(native.IsCurrent(target) && WindowsTaskWindowActivation.Observe((nint)(nuint)target.Handle).TargetVisible,
                     "Disposable peer is live and visible with exact identity");
                 if (startup is not null) await startup;
-                FocusUtility(ShellUtility.Tasks);
+                SetInteractive(false);
+                FocusDirectionalTray();
+                var trayDeadline = Environment.TickCount64 + 5000;
+                while (FocusedTrayWidget() is null || switching)
+                { if (Environment.TickCount64 >= trayDeadline) throw new TimeoutException("Initial tray focus did not settle."); await Task.Delay(20); }
+                await RouteButtonAsync(ControllerButton.Y, ControllerEventPhase.Pressed);
+                await RunTrayHoldAsync(trayHold.Tick(TrayGestureIdentity, true, Environment.TickCount64 + TrayHoldGesture.HoldMilliseconds));
+                await RouteButtonAsync(ControllerButton.Y, ControllerEventPhase.Released);
+                Check(shownUtility == ShellUtility.Tasks && UtilityIconFocused, "Hold Y opens Task Switcher from settled tray focus");
                 var deadline = Environment.TickCount64 + 15000;
                 TaskWindowSummary? window;
                 do
@@ -42,6 +50,12 @@ internal sealed partial class OverlayShellPage
                 } while (Environment.TickCount64 < deadline);
                 Check(window is not null, "Host window observer publishes exact disposable target without a widget");
                 Check(native.IsOverlayForeground && visible, "Frontend owns foreground before direct handoff");
+                var taskList = FindControl<Microsoft.UI.Xaml.Controls.ListView>(utilityPanel!, "Overlay.Utility.List")!;
+                var targetRow = taskList.Items.Cast<Microsoft.UI.Xaml.Controls.ListViewItem>().Single(item => (string)item.Tag == window!.WindowId);
+                NavigateTray(Microsoft.UI.Xaml.Input.FocusNavigationDirection.Up);
+                taskList.ScrollIntoView(targetRow);
+                await Task.Delay(100);
+                Check(targetRow.Focus(FocusState.Keyboard), "Selected target receives native focus before the first A press");
                 if (Environment.GetCommandLineArgs().Contains("--task-close-only"))
                 {
                     var list = FindControl<Microsoft.UI.Xaml.Controls.ListView>(utilityPanel!, "Overlay.Utility.List")!;
@@ -61,8 +75,9 @@ internal sealed partial class OverlayShellPage
                     return;
                 }
                 if (beforeInvoke is not null) await beforeInvoke();
-                var operation = ActivateUtilityItemAsync(utilityPanel!, ShellUtility.Tasks, window!.WindowId);
+                var operation = RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Pressed);
                 issued = pendingHostTask is not null;
+                Check(issued, "Tray, hold Y, Up, then one A press starts the selected window handoff");
                 if (verifyHandoff is not null) await verifyHandoff(checks);
                 if (expectCancellation)
                 {
