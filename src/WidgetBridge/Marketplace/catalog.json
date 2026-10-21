@@ -47,7 +47,7 @@
     "id": "widgetrail.samples.spotify", "publisher": "widgetrail.samples", "name": "Spotify",
     "description": "Browse your Spotify library and control playback with your controller.",
     "setupRequirements": ["Requires your own Spotify developer app Client ID.", "Register http://127.0.0.1:43827/callback/ as the app's redirect URI. Spotify developer-mode access restrictions apply.", "Spotify Premium is required for playback controls and listening through WidgetRail."],
-    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/spotify.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/spotify-pinned.png"]
+    "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/spotify.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/fe7e74d968b67dfd78c8385cc10a355d794474c8/docs/images/widgets/spotify-pinned.png"]
   },
   {
     "id": "widgetrail.samples.youtube-video", "publisher": "widgetrail.samples", "name": "YouTube Video",
