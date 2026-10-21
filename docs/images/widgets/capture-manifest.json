@@ -1,0 +1,365 @@
+{
+  "captured": "2026-10-21",
+  "captureType": "native Windows screenshots; unaltered pixels",
+  "display": {
+    "width": 3840,
+    "height": 2160,
+    "windowsScalePercent": 225,
+    "interfaceScalePercent": 100,
+    "theme": "Mono Ink",
+    "boldText": true,
+    "backdropDarknessPercent": 80
+  },
+  "input": "Mouse and keyboard; controller hints shown by the application. Not a controller acceptance recording.",
+  "environment": {
+    "windowsBuild": "10.0.26200",
+    "webView2": "155.0.4283.62",
+    "hostInformationalVersion": "0.1.0-preview.37+8130f8cc2d73a49c523b329b32282bc71544148c",
+    "hostSha256": "3603fb136bb9b03921be6243faa5b6cc460dcee6cfbe3ff8844a061b9cd730e2",
+    "bridgeSha256": "b56676c42c2fcc9e86107f8e73f8ac8d77b12f3f26f068552800c85f2c44cd5a",
+    "note": "Local development installation with independently updated widgets, not a pristine release bundle. Host build stamp and exact binary hashes identify the captured candidate. Performance Monitor includes source correction 6826b283."
+  },
+  "widgets": [
+    {
+      "id": "widgetrail.firstparty.audio-mixer",
+      "name": "Audio Mixer",
+      "version": "0.1.5",
+      "caption": "Starred game volume and output controls.",
+      "images": [
+        {
+          "file": "audio-mixer.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 2441282,
+          "sha256": "e4e2097a52c553631952c1657b892e61b1c60798d2edb8950bd5591ff83ee793"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.samples.browser",
+      "name": "Browser",
+      "version": "0.1.6",
+      "caption": "A public Wikipedia article, with a pinned page alongside the game.",
+      "images": [
+        {
+          "file": "browser.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 2606727,
+          "sha256": "6a11e49802040ce9db3715f5c853782b5ed678545c284714b9b7fb6de7c52caf"
+        },
+        {
+          "file": "browser-pinned.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 5218475,
+          "sha256": "8dcf2dfcde8edf5d600ac0eea925ef28c70691c7d612ce0efb83a0c67e634160"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.firstparty.capture-library",
+      "name": "Capture Library",
+      "version": "0.1.0",
+      "caption": "Screenshots and a short clip captured from Silksong.",
+      "images": [
+        {
+          "file": "capture-library.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 1297650,
+          "sha256": "a054bc35096138ee6fc3b80e7f5b1f6b9508a42f4a911f79a058eddbd2938a11"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.samples.display-profiles",
+      "name": "Display Controls",
+      "version": "0.1.1.1",
+      "caption": "Saved monitor setups and the current display configuration.",
+      "images": [
+        {
+          "file": "display-controls.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 2067003,
+          "sha256": "2c8af8dfff661b39cb8133134e0639573cf6a8d4a743415fa11ffe275c9b52a6"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.samples.game-help",
+      "name": "Game Help",
+      "version": "0.1.4",
+      "caption": "The starting screen for asking a question or attaching game context.",
+      "images": [
+        {
+          "file": "game-help.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 1555147,
+          "sha256": "13bcfb5f87ff1ae740f03edb8eab0abdf58e070ba45cb9af9c3ddfe722002174"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.firstparty.games-apps",
+      "name": "Games & Apps",
+      "version": "0.1.3",
+      "caption": "A saved application library with game icons.",
+      "images": [
+        {
+          "file": "games-apps.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 2429403,
+          "sha256": "62c1a8aa7f534e69089bc2832fc9f87fc7ba9813fad01d54da913dd2da9f8d23"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.samples.mapgenie",
+      "name": "MapGenie",
+      "version": "0.1.0",
+      "caption": "The public Silksong map with bench markers, including a pinned view.",
+      "images": [
+        {
+          "file": "mapgenie.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 2944752,
+          "sha256": "2932802126b3769041e98a07a756eb926e6283b3fb41312d076f9a90e3f1715b"
+        },
+        {
+          "file": "mapgenie-pinned.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 6826965,
+          "sha256": "fccdc0c5c1ca4732dc9c00fd28edadb381c5f3463361334b4f22b82405631a50"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.firstparty.network-controls",
+      "name": "Network Controls",
+      "version": "0.1.7",
+      "caption": "Connection controls before scanning; no network names or addresses are shown.",
+      "images": [
+        {
+          "file": "network-controls.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 2312813,
+          "sha256": "572ff50464d131e03885ee9825d2fadda541f7f5b90519616e0edda0cc1be71a"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.firstparty.media-sessions",
+      "name": "Now Playing",
+      "version": "0.1.2",
+      "caption": "Windows media-session transport controls. Track names and artwork depend on what the source application supplies.",
+      "images": [
+        {
+          "file": "now-playing.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 2650568,
+          "sha256": "fac9b323cc764e6cdc1d40c67d07e6ce7d91f563e530c0f2ba83ca34dd1d3f0a"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.firstparty.performance-monitor",
+      "name": "Performance Monitor",
+      "version": "0.1.2",
+      "caption": "Live game frame statistics and a compact pinned monitor. These readings illustrate the interface, not a benchmark.",
+      "images": [
+        {
+          "file": "performance-monitor.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 2154472,
+          "sha256": "f4c7b038a0ebfedcdc5777a576d7c4efcda46a1d39c4e2534c9f06953d4daef7"
+        },
+        {
+          "file": "performance-monitor-pinned.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 7161024,
+          "sha256": "5a48de3169aeb7d98f901ab82de0dff8cbd9c842269d61f9a7a5eca6904e2bbb"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.samples.poe1-companion",
+      "name": "PoE1 Path of Building",
+      "version": "0.1.4.37",
+      "caption": "Skill-group and passive rich previews in an example planning build.",
+      "images": [
+        {
+          "file": "poe1-skills.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 1665323,
+          "sha256": "1620d980bd0f139c0c0819a5f281ac4f917bcbd39c48046a1f3ccccff7f0cf85"
+        },
+        {
+          "file": "poe1-tree-preview.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 2107598,
+          "sha256": "4ce1372eaf74cce9e0c51f494ab1cdeb769976c1497a5be90eadd64a54fccb67"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.samples.poe2-companion",
+      "name": "PoE2 Path of Building",
+      "version": "0.1.4.37",
+      "caption": "Item modifiers and calculated statistics in an example planning build.",
+      "images": [
+        {
+          "file": "poe2-items-preview.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 1824075,
+          "sha256": "24ad9333320a5945684ca28291461521dbba9e97f72a00a0b9a38972238e0197"
+        },
+        {
+          "file": "poe2-calculations.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 1409734,
+          "sha256": "59b34c07339b143443781637b44d70b66190b5e28592c8292c9f07da08e4a93b"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.firstparty.power",
+      "name": "Power",
+      "version": "0.1.0",
+      "caption": "Sleep, restart and shutdown controls; no power action was performed.",
+      "images": [
+        {
+          "file": "power.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 964374,
+          "sha256": "315e15700ca5232e6b7be61bb1f3d5ae5bfdadfbb9a4c25a15896a673a14f305"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.samples.spotify",
+      "name": "Spotify",
+      "version": "0.3.92",
+      "caption": "A public soundtrack search and its playback controls, including the pinned player.",
+      "images": [
+        {
+          "file": "spotify.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 2383837,
+          "sha256": "7ee83a4ff35caf452e75b8dc3cf42d549f3560f70f608edd9f2dfd6b99004abf"
+        },
+        {
+          "file": "spotify-pinned.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 6279532,
+          "sha256": "7f6ae0757fce3ca388c831f3da39b1419e5265253b6b2a31e36cd424cfcb7042"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.samples.twitch",
+      "name": "Twitch",
+      "version": "0.1.1",
+      "caption": "Browsing the public Silksong category while logged out.",
+      "images": [
+        {
+          "file": "twitch.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 3099061,
+          "sha256": "067db062db90fb4fae82e7fdaac790a6b49f167882b2fe68072114b3aaaec355"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.samples.ytmusic",
+      "name": "YouTube Music",
+      "version": "0.3.45",
+      "caption": "Public soundtrack search results beside the player.",
+      "images": [
+        {
+          "file": "youtube-music.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 2393197,
+          "sha256": "cbe55bba6b77aa96d7d7eed516c55e92edf88ea799fc2881a6ebf2adbe407e34"
+        }
+      ]
+    },
+    {
+      "id": "widgetrail.samples.youtube-video",
+      "name": "YouTube Video",
+      "version": "0.3.44",
+      "caption": "Public trailer search and playback, including video pinned over the game.",
+      "images": [
+        {
+          "file": "youtube-search.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 1263717,
+          "sha256": "8a99e26959bb1db8e54eed0ab6b467724116f100b3dc361a8a1741564a8e1588"
+        },
+        {
+          "file": "youtube-player.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 1675006,
+          "sha256": "b419164457287f50699ac70930b34df71fce0b8a6d0c221fd0ec77c899de0438"
+        },
+        {
+          "file": "youtube-pinned.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 7056820,
+          "sha256": "7bdd6e8374bcbfb1479b82dde5568e3f7412d4c651c0ed95ef25d928fe27ab4d"
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "name": "Settings",
+      "version": "0.1.10",
+      "caption": "The settings categories.",
+      "images": [
+        {
+          "file": "settings.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 2081957,
+          "sha256": "86b87a7d9a59939562eadf4bdb6ae180b4c255c5bd0020080ad94c1c372c4b35"
+        }
+      ]
+    },
+    {
+      "id": "marketplace",
+      "name": "WidgetRail Catalogue",
+      "version": "0.1.0",
+      "caption": "Browsing add-ons and their setup requirements.",
+      "images": [
+        {
+          "file": "catalogue.png",
+          "width": 3840,
+          "height": 2160,
+          "bytes": 1826637,
+          "sha256": "844f424ee2416fa1dbf5668b9b956c1096bf1c14e7597855b5283bc71ae8d454"
+        }
+      ]
+    }
+  ]
+}
