@@ -151,7 +151,8 @@ public sealed class GameHelpTests
             Assert.AreEqual("boss guide", request.Payload.GetProperty("query").GetString());
             Assert.AreEqual(WidgetIntentContracts.OpenWebPage, request.Fallback!.ContractId);
             Assert.AreEqual(WidgetIntentRouting.WidgetPreferred, request.Fallback.Routing);
-            Assert.AreEqual(72, snapshot.ProtocolVersion);
+            Assert.AreEqual(TextEntryInputKind.Prose, Walk(snapshot.Root).Single(n => n.Id == "help.composer").TextEntryInputKind);
+            Assert.AreEqual(ProtocolConstants.TextEntryPurposeVersion, snapshot.ProtocolVersion);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
             await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
             foreach (var status in Enum.GetValues<WidgetIntentStatus>())
@@ -342,7 +343,7 @@ public sealed class GameHelpTests
             await widget.OnActionAsync(new("capture.image","help.capture-image"));
             await Until(()=>Snapshot(widget).Root.Kind==ViewNodeKind.ModalLayer);
             Assert.AreEqual(0,service.Requests.Count);
-            Assert.AreEqual(ProtocolConstants.ConfigurableCaptureVersion,Snapshot(widget).ProtocolVersion);
+            Assert.AreEqual(ProtocolConstants.TextEntryPurposeVersion,Snapshot(widget).ProtocolVersion);
             Assert.IsTrue(Walk(Snapshot(widget).Root).Any(n=>n.Kind==ViewNodeKind.MediaPlayer&&n.MediaPlayer!.Source.Attachment==attachment));
             Assert.AreEqual(ViewNodeKind.TextEntry, Walk(Snapshot(widget).Root).Single(n => n.Id == "help.preview-question").Kind);
             await widget.OnActionAsync(new("preview.question", "help.preview-question") { CommittedText = "How do I reach the office?" });

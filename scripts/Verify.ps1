@@ -5,6 +5,7 @@ param(
     [switch]$SkipNative,
     [ValidateSet('all', 'managed', 'native')]
     [string]$Lane = 'all',
+    [string]$ManagedShard,
     [string[]]$StepId = @(),
     [ValidateRange(60, 7200)]
     [int]$OverallTimeoutSeconds = 1800,
@@ -71,6 +72,10 @@ try {
         throw '-SkipNative cannot be combined with -Lane native.'
     }
     if ($SkipNative) { $Lane = 'managed' }
+    if ($PSBoundParameters.ContainsKey('ManagedShard') -and
+        ($Lane -ne 'managed' -or $stepSelectionExplicit -or [string]::IsNullOrWhiteSpace($ManagedShard))) {
+        throw '-ManagedShard requires -Lane managed and cannot be combined with -StepId.'
+    }
     $repositoryLease = Enter-RepositoryVerificationLease `
         -RepositoryRoot $repositoryRoot -RunId $runId -Configuration $Configuration `
         -StartedUtc $startedUtc -WaitSeconds ([Math]::Min($LeaseWaitSeconds, $OverallTimeoutSeconds))
@@ -111,6 +116,11 @@ try {
     }
     $eligibleSteps = @(Resolve-VerificationStepSelection -Steps $allSteps -Lane $Lane `
         -RequestedStepIds $StepId -ExplicitSelection:$stepSelectionExplicit)
+    if ($PSBoundParameters.ContainsKey('ManagedShard')) {
+        $shards = Get-ManagedVerificationShardMap -Steps $allSteps
+        if ($ManagedShard -cnotin @($shards.Keys)) { throw "Unknown managed verification shard: $ManagedShard" }
+        $eligibleSteps = @($shards[$ManagedShard])
+    }
     if ($stepSelectionExplicit) {
         $unavailable = @($eligibleSteps | Where-Object {
             $null -ne $_.PSObject.Properties['optionalPath'] -and
@@ -145,7 +155,7 @@ try {
     }
     $nativeToolchain = $nativeToolchainResult.text | ConvertFrom-Json
     $selectedStepIdsForProvenance = [Collections.Generic.List[string]]::new()
-    if ($stepSelectionExplicit) {
+    if ($stepSelectionExplicit -or $PSBoundParameters.ContainsKey('ManagedShard')) {
         foreach ($step in $eligibleSteps) {
             $selectedStepIdsForProvenance.Add([string]$step.id)
         }
@@ -155,6 +165,7 @@ try {
         runId = $runId
         configuration = $Configuration
         lane = $Lane
+        managedShard = $ManagedShard
         selectedStepIds = $selectedStepIdsForProvenance
         startedUtc = $startedUtc.ToString('O')
         repositoryCommit = $gitCommit.text

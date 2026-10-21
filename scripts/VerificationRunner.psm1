@@ -639,7 +639,40 @@ function Get-VerificationEvidenceEligibility {
     }
 }
 
+function Get-ManagedVerificationShardMap {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object[]]$Steps)
+
+    # Reuse the ordinary selector so default exclusions and prerequisite rules
+    # cannot drift between local aggregate verification and the CI matrix.
+    $defaults = @(Resolve-VerificationStepSelection -Steps $Steps -Lane managed)
+    $groups = [ordered]@{}
+    $owners = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+    foreach ($step in $defaults) {
+        $property = $step.PSObject.Properties['ciShard']
+        if ($null -eq $property -or $property.Value -isnot [string] -or
+            $property.Value -cnotmatch '^[a-z][a-z0-9-]{1,31}$') {
+            throw "Default managed step '$($step.id)' needs a valid ciShard."
+        }
+        $name = [string]$property.Value
+        if (!$groups.Contains($name)) { $groups[$name] = [Collections.Generic.List[object]]::new() }
+        $groups[$name].Add($step)
+        $owners.Add([string]$step.id, $name)
+    }
+    if ($groups.Count -lt 2 -or $groups.Count -gt 16) { throw 'Managed verification requires between 2 and 16 shards.' }
+    foreach ($step in $defaults) {
+        $requirements = $step.PSObject.Properties['requiresStepIds']
+        if ($null -eq $requirements) { continue }
+        foreach ($requirement in $requirements.Value) {
+            if (!$owners.ContainsKey($requirement) -or $owners[$requirement] -cne $owners[$step.id]) {
+                throw "Step '$($step.id)' and prerequisite '$requirement' must share a managed shard."
+            }
+        }
+    }
+    return $groups
+}
+
 Export-ModuleMember -Function Invoke-BoundedVerificationProcess, Write-VerificationJUnit, `
     Get-RemainingVerificationTimeout, Enter-RepositoryVerificationLease, `
     Exit-RepositoryVerificationLease, Get-VerificationEvidenceEligibility, `
-    Resolve-VerificationStepSelection
+    Resolve-VerificationStepSelection, Get-ManagedVerificationShardMap

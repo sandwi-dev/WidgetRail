@@ -41,6 +41,23 @@ From the repository root:
 .\scripts\Verify.ps1 -Configuration Release -Lane managed
 ```
 
+CI runs the same managed steps in nine parallel groups. Their assignments live
+in `scripts/verification-steps.json`; the matrix validates that every default
+managed step belongs to one group and that build prerequisites stay with their
+tests. One failing group does not cancel the others. Each group retains its own
+logs, JUnit results and build traces. The `managed` check summarizes all groups.
+
+To reproduce one CI group locally:
+
+```powershell
+.\scripts\Get-ManagedVerificationMatrix.ps1
+.\scripts\Verify.ps1 -Configuration Release -Lane managed -ManagedShard integrations
+```
+
+Groups run in separate CI checkouts. Do not run them concurrently in one local
+checkout; the runner's repository lease protects shared build outputs. New runs
+cancel older CI runs on the same branch so obsolete work does not delay feedback.
+
 The native lane requires C++ tools and builds the trimmed WinUI frontend:
 
 ```powershell

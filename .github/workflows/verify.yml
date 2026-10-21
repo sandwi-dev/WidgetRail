@@ -9,10 +9,34 @@ on:
 permissions:
   contents: read
 
+# Superseded runs on the same branch must not delay feedback on its newest commit.
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  managed:
+  managed-plan:
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.shards.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - id: shards
+        name: Validate managed coverage and generate parallel jobs
+        shell: pwsh
+        run: |
+          $matrix = ./scripts/Get-ManagedVerificationMatrix.ps1
+          "matrix=$matrix" >> $env:GITHUB_OUTPUT
+
+  managed-tests:
+    name: managed / ${{ matrix.shard }}
+    needs: managed-plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.managed-plan.outputs.matrix) }}
+    runs-on: windows-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -27,20 +51,35 @@ jobs:
             **/*.props
             **/*.targets
             **/NuGet.Config
-      - name: Run bounded managed verification
+      - name: Run bounded managed verification (${{ matrix.shard }})
         shell: pwsh
-        run: ./scripts/Verify.ps1 -Configuration Release -Lane managed -OverallTimeoutSeconds 1800
+        run: ./scripts/Verify.ps1 -Configuration Release -Lane managed -ManagedShard '${{ matrix.shard }}' -OverallTimeoutSeconds 900
       - name: Retain managed verification evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: verification-managed
+          name: verification-managed-${{ matrix.shard }}
           path: |
             artifacts/verification
             artifacts/winui-verification
             artifacts/bridge-verification
+            artifacts/*.binlog
+            logs/**/*.binlog
           if-no-files-found: warn
           retention-days: 30
+
+  # Keep the existing branch-protection check while exposing failures per group.
+  managed:
+    if: always()
+    needs: [managed-plan, managed-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all managed groups to pass
+        env:
+          PLAN_RESULT: ${{ needs.managed-plan.result }}
+          TEST_RESULT: ${{ needs.managed-tests.result }}
+        run: test "$PLAN_RESULT" = success && test "$TEST_RESULT" = success
 
   native:
     runs-on: windows-latest

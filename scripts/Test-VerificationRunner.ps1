@@ -116,6 +116,21 @@ if ($defaultIds.Count -ne $expectedDefaultStepIds.Count -or
     throw 'Focused selection changed the exact default aggregate identity or order.'
 }
 $nativeDefaults = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native)
+$shards = Get-ManagedVerificationShardMap -Steps @($manifest.steps)
+$shardSteps = @($shards.Values | ForEach-Object { $_.ToArray() })
+$managedDefaults = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane managed)
+if ($shardSteps.Count -ne $managedDefaults.Count -or
+    @($shardSteps | Group-Object id | Where-Object Count -ne 1).Count -ne 0 -or
+    @(Compare-Object @($managedDefaults.id | Sort-Object) @($shardSteps.id | Sort-Object)).Count -ne 0) {
+    throw 'Managed shards must cover each default managed step exactly once.'
+}
+foreach ($shard in $shards.Values) {
+    $expanded = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane managed `
+        -RequestedStepIds @($shard.id) -ExplicitSelection)
+    if (($expanded.id -join ',') -cne ($shard.id -join ',')) {
+        throw 'A managed shard changes prerequisite coverage or manifest execution order.'
+    }
+}
 if ([string]::Join("`n", @($nativeDefaults | ForEach-Object id)) -cne
     [string]::Join("`n", @(
         'winui-native-verification',
@@ -160,6 +175,22 @@ function Assert-SelectionRejected([scriptblock]$Action, [string]$ExpectedText) {
         throw "Focused selection did not reject '$ExpectedText'."
     }
 }
+
+$shardFixture = @(
+    [pscustomobject]@{ id='build'; lane='managed'; ciShard='one' },
+    [pscustomobject]@{ id='test'; lane='managed'; ciShard='one'; requiresStepIds=@('build') },
+    [pscustomobject]@{ id='other'; lane='managed'; ciShard='two' },
+    [pscustomobject]@{ id='manual'; lane='managed'; runByDefault=$false }
+)
+$fixtureGroups = Get-ManagedVerificationShardMap -Steps $shardFixture
+if ($fixtureGroups.Count -ne 2 -or $fixtureGroups['one'].Count -ne 2) { throw 'Shard grouping included a manual-only step.' }
+$shardFixture[1].ciShard = 'two'
+Assert-SelectionRejected { Get-ManagedVerificationShardMap -Steps $shardFixture } 'must share a managed shard'
+$shardFixture[1].ciShard = 'one'
+$shardFixture[2].ciShard = ''
+Assert-SelectionRejected { Get-ManagedVerificationShardMap -Steps $shardFixture } 'needs a valid ciShard'
+
+Write-Host "PASS managed CI shards cover $($managedDefaults.Count) default steps exactly once with their prerequisites"
 
 Assert-SelectionRejected {
     Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane all `
