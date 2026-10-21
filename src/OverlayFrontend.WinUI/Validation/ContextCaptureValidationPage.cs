@@ -134,8 +134,11 @@ internal sealed partial class ContextCaptureValidationPage : Page
                 var again = await NativeWindowCapture.RunAsync(request with { OutputPath = Path.Combine(directory, "after-cancel.png") }, deadline.Token);
                 Check(again.Frames == 1, "Native capture releases its owner and remains usable after cancellation");
                 indicator.Dispose();
-                using var preview = new MediaPlayerView();
-                Content = preview;
+                using var preview = new MediaPlayerView { Height = Math.Max(180, ActualHeight - 48), Margin = new(24), IsTabStop = true };
+                var previewRoot = new Grid();
+                previewRoot.Children.Add(preview);
+                new MediaFullscreenLayer().Attach(previewRoot);
+                Content = previewRoot;
                 await preview.ValidateCapturePlaybackAsync(request.OutputPath, videoRequest.OutputPath, checks);
 
             }

@@ -71,3 +71,4 @@ try {
     }
     & (Join-Path $compilerDirectory 'dumpbin.exe') /nologo /exports (Join-Path $OutputDirectory 'WinUiWindowPreviewNative.dll') | Set-Content (Join-Path $OutputDirectory 'exports.txt')
 } finally { $env:PATH = $oldPath }
+& (Join-Path $PSScriptRoot 'Assert-WinUiCaptureNativeExports.ps1') -DllPath (Join-Path $OutputDirectory 'WinUiWindowPreviewNative.dll')

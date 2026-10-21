@@ -11,6 +11,7 @@ $output=[IO.Path]::GetFullPath($OutputDirectory)
 if(Test-Path -LiteralPath $output){throw 'Choose a fresh smoke-test directory; existing profiles are never reset.'}
 $exe=Join-Path $frontend 'OverlayFrontend.WinUI.exe'
 if(!(Test-Path -LiteralPath $exe) -or !(Test-Path -LiteralPath (Join-Path $installation 'widget-catalog.json'))){throw 'A complete published payload is required.'}
+& (Join-Path $PSScriptRoot 'Assert-WinUiCaptureNativeExports.ps1') -DllPath (Join-Path $frontend 'WinUiWindowPreviewNative.dll')
 New-Item -ItemType Directory -Path "$output/profile" -Force | Out-Null
 @{InstallationRoot=$installation;SettingsRoot="$output/profile";InstalledCatalogRoot="$output/profile/widgets";
     InitialWidgetId='settings';SwitchDiagnosticsPath="$output/startup.log"} | ConvertTo-Json | Set-Content "$output/shell.json"

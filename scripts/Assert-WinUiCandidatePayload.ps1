@@ -10,6 +10,7 @@ $process = Get-Process -Id $AppPid
 if ($process.ProcessName -ne 'OverlayFrontend.WinUI') { throw 'The target is not the WinUI frontend.' }
 $created = $process.StartTime.ToUniversalTime()
 $deployed = Split-Path $process.Path
+& (Join-Path $PSScriptRoot 'Assert-WinUiCaptureNativeExports.ps1') -DllPath (Join-Path $deployed 'WinUiWindowPreviewNative.dll')
 $files = @(Get-ChildItem -LiteralPath $build -File -Filter '*.dll')
 if ($files.Name -notcontains 'OverlayFrontend.WinUI.dll' -or $files.Name -notcontains 'WidgetProtocol.dll') {
     throw 'The expected build must contain the frontend and its shared protocol.'
