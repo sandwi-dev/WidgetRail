@@ -250,7 +250,7 @@ static async Task Contracts()
         await Reject(() => service.HandleAsync(command, default).AsTask());
     foreach (var (id, required) in new (string, string[])[]
     {
-        ("playnite-library", ["Playnite Bridge", "token"]),
+        ("playnite-library", ["Playnite Bridge", "Guided setup", "connects automatically"]),
         ("spotify", ["Client ID", "redirect", "Premium"]),
         ("game-help", ["Gemini API key"]),
         ("youtube-video", ["YouTube Data API v3"])
