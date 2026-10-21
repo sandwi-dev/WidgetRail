@@ -27,7 +27,7 @@ public sealed partial class MainWindow
         var native = new WindowsTaskWindowActivation(Trace);
         try
         {
-            // Preserve the established permission grant -> hide -> broker
+            // Preserve the established permission refresh -> hide -> broker
             // activation sequence. HWND ownership alone is not an activation grant.
             var result = await new TaskWindowActivation(native).ExecuteAsync(request.Target, request.InitiatedAt,
                 request.VisibleSince, () => !cleanupStarted && !handoff.Cancellation.IsCancellationRequested && request.IsCurrent(),
@@ -42,7 +42,16 @@ public sealed partial class MainWindow
                     Trace($"brokerPid={completed.ProcessId} code={completed.Code} {completed.NativeTrace}");
                     return completed.Result switch { "Requested" => TaskWindowActivationResult.Requested,
                         "Denied" => TaskWindowActivationResult.Denied, _ => TaskWindowActivationResult.Rejected };
-                }, Trace, async () => await PrepareOverlayHandoffAsync(page, handoff) && page.GrantHostTaskActivationPermission());
+                }, Trace, async () =>
+                {
+                    if (!await PrepareOverlayHandoffAsync(page, handoff)) return false;
+                    // Match widget activation: refreshing the grant is best effort.
+                    // Its failure does not prove the broker lacks an existing grant.
+                    // Only the broker's activation result and observed foreground
+                    // determine success; all identity/expiry checks still apply.
+                    page.RefreshHostTaskActivationPermission();
+                    return true;
+                });
             if (result == TaskWindowActivationResult.Requested)
             {
                 // A successful API return is not proof that the target owns foreground.

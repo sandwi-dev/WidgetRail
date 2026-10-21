@@ -33,9 +33,13 @@ foreground activation uses the existing trusted WidgetRail broker.
 Switching uses the existing `TaskWindowActivation` admission and `MainWindow`
 handoff sequence. It verifies foreground ownership and the exact window,
 process lifetime and class; waits for controller release; completes closing
-motion; grants foreground permission to its exact owned broker process; rechecks
+motion; attempts to refresh foreground permission for its exact owned broker process; rechecks
 authority and identity; releases controller capture; and hides the overlay.
 The broker revalidates the target and asks Windows to restore and activate it.
+A failed permission refresh does not cancel the handoff: the broker can retain
+activation permission after the host loses the ability to grant it again, such
+as after opening a folder. The broker's activation result and the observed
+foreground window determine success, matching the original widget path.
 The host observes foreground for up
 to 250 ms, accepting that target or its owned dialog, rather than treating the
 API return or an unrelated window in the same process as proof. A canceled
@@ -68,3 +72,8 @@ navigation, stable window identities, package retirement, and the existing
 foreground/held-input handoff policies. Native fixture results and exact tested
 scope belong with the candidate evidence; passing unit tests alone do not prove
 controller ownership or every Windows application will accept activation.
+
+The persistent-host fixture's `--task-cycle-folder` option opens an empty fixture
+folder through the real external-launch handoff before alternating two exact
+window targets. It uses no injected pointer/keyboard input between transfers;
+the trace records permission refresh failures separately from broker activation.

@@ -39,7 +39,7 @@ internal sealed partial class OverlayShellPage
     internal Func<HostTaskActivationRequest, Task<TaskWindowActivationResult>>? HostTaskActivationRequested { get; set; }
     internal void CancelPendingHostTaskActivation() => pendingHostTask = null;
     internal void CompleteControllerHandoffRelease() => shellGestures.Reset();
-    internal bool GrantHostTaskActivationPermission() => owner?.TryRefreshForegroundPermissionForHandoff() == true;
+    internal void RefreshHostTaskActivationPermission() => owner?.RefreshForegroundPermissionForHandoff();
     internal Task<WidgetRail.WidgetPresentationSession.WidgetTaskActivationResult> CompleteHostTaskActivationAsync(HostTaskActivationRequest request, CancellationToken token)
     {
         if (owner is null || !request.IsCurrent()) throw new OperationCanceledException(token);

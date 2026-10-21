@@ -9,7 +9,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 internal sealed partial class OverlayShellPage
 {
-    internal void EnableTaskCycleValidation(string path, string targetsPath, Func<Task> reopen, Func<Task> externalInput)
+    internal void EnableTaskCycleValidation(string path, string targetsPath, Func<Task> reopen, Func<Task>? externalInput, Func<Task>? beforeCycles = null)
     {
         Loaded += async (_, _) =>
         {
@@ -21,6 +21,12 @@ internal sealed partial class OverlayShellPage
                 var targets = JsonSerializer.Deserialize<TaskWindowTarget[]>(File.ReadAllText(targetsPath))!;
                 if (targets.Length != 2) throw new InvalidDataException("Two exact live targets are required.");
                 if (startup is not null) await startup;
+                await Until(() => visible && foreground && !switching);
+                if (beforeCycles is not null)
+                {
+                    await beforeCycles();
+                    checks.Add("Opened a fixture folder through the real external-launch handoff, then reopened the same host");
+                }
                 var native = new WindowsTaskWindowActivation();
                 for (var cycle = 0; cycle < 6; cycle++)
                 {
@@ -39,8 +45,11 @@ internal sealed partial class OverlayShellPage
                     await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
                     await Until(() => !visible && native.IsTargetForeground(target));
                     checks.Add($"Switch {cycle + 1} activated HWND {target.Handle} in the same host process");
-                    await externalInput();
-                    checks.Add($"Switch {cycle + 1} received pointer input outside the hidden host without clicking or moving the pointer");
+                    if (externalInput is not null)
+                    {
+                        await externalInput();
+                        checks.Add($"Switch {cycle + 1} received pointer input outside the hidden host without clicking or moving the pointer");
+                    }
                 }
                 await reopen();
             }

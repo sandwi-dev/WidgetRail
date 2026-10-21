@@ -8,13 +8,29 @@ public sealed partial class MainWindow
     private void EnableTaskCycleValidation(OverlayShellPage page, string path, string targets)
     {
         var sequence = 0;
-        page.EnableTaskCycleValidation(path, targets, async () =>
+        var folderScenario = Environment.GetCommandLineArgs().Contains("--task-cycle-folder");
+        async Task Reopen()
         {
             ShowOverlay();
             var until = Environment.TickCount64 + 4000;
             while (input?.IsForeground != true || input.IsActive != true)
             { if (Environment.TickCount64 >= until) throw new TimeoutException("Host foreground reentry failed."); await Task.Delay(20); }
-        }, async () =>
+        }
+        async Task OpenFolder()
+        {
+            var folderPath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, "empty-folder-fixture");
+            Directory.CreateDirectory(folderPath);
+            // The widget input path refreshes the broker before the host's OS launch.
+            page.RefreshHostTaskActivationPermission();
+            if (!await OpenExternalAsync(page, async () => await Windows.System.Launcher.LaunchFolderAsync(
+                await Windows.Storage.StorageFolder.GetFolderFromPathAsync(folderPath)), CancellationToken.None))
+                throw new InvalidOperationException("Fixture folder launch failed.");
+            await Task.Delay(500);
+            if (WindowsTaskWindowActivation.Observe(0).ForegroundProcess == Environment.ProcessId)
+                throw new InvalidOperationException("Folder launch did not leave the host.");
+            await Reopen();
+        }
+        page.EnableTaskCycleValidation(path, targets, Reopen, folderScenario ? null : async () =>
         {
             if (AppWindow.IsVisible || WindowsTaskWindowActivation.Observe(0).ForegroundProcess == Environment.ProcessId)
                 throw new InvalidOperationException("External-input fixture requires the host to be hidden.");
@@ -29,6 +45,6 @@ public sealed partial class MainWindow
             { if (Environment.TickCount64 >= until) throw new TimeoutException("External input helper did not respond."); await Task.Delay(20); }
             if (WindowsTaskWindowActivation.Observe(0).LastInputTick == previous)
                 throw new InvalidOperationException("External input did not update the Windows input timestamp.");
-        });
+        }, folderScenario ? OpenFolder : null);
     }
 }
