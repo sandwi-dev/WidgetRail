@@ -125,7 +125,12 @@
 .playnite-library-setup-path { font-size: 14px; color: var(--text-muted); max-lines: 3; overflow-wrap: anywhere; }
 .playnite-library-setup-primary { width: 100%; min-height: 44px; background: var(--surface-raised); color: var(--text); }
 .playnite-library-setup-actions { min-width: 0; gap: 12px; }
-.playnite-library-setup-secondary, .playnite-library-setup-progress { min-width: 0; align: center; gap: 12px; }
+.playnite-library-setup-secondary { min-width: 0; align: center; gap: 12px; }
+.playnite-library-setup-progress { width: 100%; min-width: 0; padding: 16px; background: var(--surface-raised); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; }
+.playnite-library-setup-spinner { width: 32px; height: 32px; color: var(--accent); }
+.playnite-library-setup-progress-copy { min-width: 0; gap: 8px; }
+.playnite-library-setup-stage { font-size: 18px; font-weight: 600; color: var(--text); max-lines: 3; }
+.playnite-library-setup-hint { font-size: 14px; color: var(--text-muted); max-lines: 4; }
 .playnite-library-hidden-shell { width: 100%; height: 100%; max-width: 900px; max-height: 620px; min-width: 0px; min-height: 0px; flex-grow: 1; gap: 14px; padding: 16px; background: var(--surface); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 14px; overflow: clip; }
 .playnite-library-hidden-header { width: 100%; min-width: 0px; flex-grow: 0; align: center; justify: space-between; gap: 12px; background: rgba(0, 0, 0, 0); overflow: visible; }
 .playnite-library-hidden-heading { min-width: 0px; flex-grow: 1; gap: 2px; overflow: visible; }

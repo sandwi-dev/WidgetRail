@@ -16,26 +16,39 @@ internal static partial class PlayniteLibraryConnectionPresentation
             : plan?.ActionLabel ?? "Connect Playnite";
         var children = new List<WidgetElement>
         {
-            UI.Text(plan?.Message ?? setup.Message ?? "Choose your Playnite profile in connection settings.",
-                prefix + "stopped.message").Classes("playnite-library-setup-path"),
+            setup.Busy ? SetupProgress(setup, prefix + "stopped.progress") :
+                UI.Text(plan?.Message ?? setup.Message ?? "Choose your Playnite profile in connection settings.",
+                    prefix + "stopped.message").Classes("playnite-library-setup-path"),
         };
         if (plan is not null)
             children.Add(UI.Text(plan.Installation.DataDirectory, prefix + "stopped.profile").Classes("playnite-library-setup-path"));
-        if (canApply && plan!.Action != PlayniteSetupAction.Connect)
+        if (!setup.Busy && canApply && plan!.Action != PlayniteSetupAction.Connect)
             children.Add(UI.Text("Playnite may open a window or switch focus during startup. Setup continues; reopen WidgetRail to return here.",
                 prefix + "stopped.visibility").Classes("playnite-library-setup-path"));
-        if (setup.Progress is { } progress)
-            children.Add(UI.Text(progress, prefix + "stopped.progress").Classes("playnite-library-setup-path"));
-        else if (setup.Message is { } message && !setup.Connected && plan is not null)
+        if (!setup.Busy && setup.Message is { } message && !setup.Connected && plan is not null)
             children.Add(UI.Alert("Could not connect", message, AlertTone.Warning, prefix + "stopped.error"));
         if (canApply)
             children.Add(UI.Button(primaryLabel, primaryAction, prefix + "stopped.primary")
                 .Busy(setup.Busy).Classes("playnite-library-setup-primary"));
         children.Add(UI.Button("Connection settings", PlayniteLibraryWidget.PlayniteOpenActionId, prefix + "stopped.settings")
             .Disabled(setup.Busy));
-        return new("playnite-start-dialog", plan?.Installation.Running == false ? "Playnite isn't running" : "Connect Playnite",
+        return new("playnite-start-dialog", setup.Busy ? "Getting Playnite ready" :
+                plan?.Installation.Running == false ? "Playnite isn't running" : "Connect Playnite",
             UI.Stack(prefix + "stopped.content", children.ToArray()).Classes("playnite-library-setup-actions"),
             canApply ? prefix + "stopped.primary" : prefix + "stopped.settings", prefix + "dismiss");
+    }
+
+    private static WidgetElement SetupProgress(PlayniteSetupView setup, string id)
+    {
+        var stage = setup.Progress ?? "Checking Playnite…";
+        return UI.Grid(id, [GridTrack.Auto()], [GridTrack.Auto(), GridTrack.Star()],
+            UI.LoadingIndicator(id + ".spinner", stage).Classes("playnite-library-setup-spinner"),
+            UI.Stack(id + ".copy",
+                UI.Text(stage, id + ".stage").Classes("playnite-library-setup-stage"),
+                UI.Text("Setup continues if you hide WidgetRail. If Playnite takes focus, reopen the overlay to return here.", id + ".hint")
+                    .Classes("playnite-library-setup-hint"))
+                .Classes("playnite-library-setup-progress-copy").InGrid(0, 1))
+            .Spacing(0, 16).Classes("playnite-library-setup-progress");
     }
 
     private static WidgetView RenderSetup(PlayniteLibraryConnectionState state)
@@ -64,9 +77,8 @@ internal static partial class PlayniteLibraryConnectionPresentation
         }
         else if (!setup.Busy)
             children.Add(UI.Alert("Find your Playnite installation", setup.Message ?? "Find Playnite to check its integration and connect without copying a token.", AlertTone.Info, prefix + "plan"));
-        if (setup.Progress is { } progress)
-            children.Add(UI.Row(prefix + "progress", UI.LoadingIndicator(prefix + "spinner", progress),
-                UI.Text(progress, prefix + "progress.text")).Classes("playnite-library-setup-progress"));
+        if (setup.Busy)
+            children.Add(SetupProgress(setup, prefix + "progress"));
         else if (setup.Message is { } message && setup.Plan is not null)
             children.Add(UI.Alert(setup.Connected ? "Connected" : "Setup status", message,
                 setup.Connected ? AlertTone.Success : AlertTone.Warning, prefix + "result"));

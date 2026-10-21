@@ -171,6 +171,15 @@ public sealed partial class PlayniteLibraryTests
             var busy = Snapshot(widget, 172_004);
             Assert.AreEqual(LauncherWidget.SetupPrefix + "stopped.primary", busy.InitialFocusId);
             Assert.IsTrue(Nodes(busy.Root).Single(node => node.Id == busy.InitialFocusId).IsBusy == true);
+            var spinner = Nodes(busy.Root).Single(node => node.Kind == ViewNodeKind.LoadingIndicator);
+            var stage = Nodes(busy.Root).Single(node => node.Id == LauncherWidget.SetupPrefix + "stopped.progress.stage");
+            setup.ReportProgress!("Waiting for Playnite and checking the connection…");
+            var waiting = Snapshot(widget, 172_008);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(waiting).Count);
+            Assert.AreEqual(busy.InitialFocusId, waiting.InitialFocusId);
+            Assert.IsFalse(Nodes(waiting.Root).Single(node => node.Id == waiting.InitialFocusId).IsDisabled == true);
+            Assert.AreEqual(spinner.Id, Nodes(waiting.Root).Single(node => node.Kind == ViewNodeKind.LoadingIndicator).Id);
+            Assert.AreEqual("Waiting for Playnite and checking the connection…", Nodes(waiting.Root).Single(node => node.Id == stage.Id).Text);
             setup.Pending.SetResult(new(false, "Not ready", "Finish the Playnite startup dialog, then retry."));
             await WaitFor(() => !widget.RenderState.Value.Setup.Busy, "failed start");
             Assert.AreEqual("playnite-start-dialog.scope", Snapshot(widget, 172_005).ActiveInputScopeId);
@@ -276,13 +285,14 @@ public sealed partial class PlayniteLibraryTests
         internal int ApplyCalls;
         internal int StartCalls;
         internal TaskCompletionSource<PlayniteSetupResult>? Pending;
+        internal Action<string>? ReportProgress;
         public ValueTask<PlayniteSetupOffer> CheckSetupAsync(CancellationToken token) => InspectionFailure
             ? ValueTask.FromException<PlayniteSetupOffer>(new PlayniteSetupException("Fixture inspection failed."))
             : ValueTask.FromResult(new PlayniteSetupOffer(new([Installation]), Plan, Stopped || MissingIntegration));
         public ValueTask<PlayniteSetupDiscovery> DiscoverAsync(string? programPath, string? dataPath, CancellationToken token) => ValueTask.FromResult(new PlayniteSetupDiscovery([Installation]));
         public ValueTask<PlayniteSetupPlan> InspectAsync(PlayniteSetupInstallation installation, CancellationToken token) => ValueTask.FromResult(Plan);
         public ValueTask<PlayniteSetupResult> StartAsync(PlayniteSetupInstallation installation, Action<string> progress, CancellationToken token)
-        { StartCalls++; return Pending is null ? ValueTask.FromResult(new PlayniteSetupResult(true, "Connected", "Ready")) : new(Pending.Task.WaitAsync(token)); }
+        { ReportProgress = progress; StartCalls++; return Pending is null ? ValueTask.FromResult(new PlayniteSetupResult(true, "Connected", "Ready")) : new(Pending.Task.WaitAsync(token)); }
         public ValueTask<PlayniteSetupResult> ApplyAsync(PlayniteSetupPlan plan, Action<string> progress, CancellationToken token)
         { ApplyCalls++; return ValueTask.FromResult(new PlayniteSetupResult(true, "Connected", "Ready")); }
     }
