@@ -8,6 +8,9 @@ public static class HostUtilityPackages
 
 public sealed partial class WidgetCatalog
 {
+    // TODO: Remove this migration and its startup call once upgrades from releases
+    // that shipped these widgets are no longer supported. Review the retired-ID
+    // guards at the same time so older bundles cannot reinstall them accidentally.
     // Use the ordinary uninstall transaction: launch leases, consent cleanup,
     // per-widget data removal and pending-file recovery remain authoritative.
     internal async Task RetireHostUtilityPackagesAsync(Action<string> warning, CancellationToken token)
