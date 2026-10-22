@@ -2,7 +2,7 @@
 
 Date: 2026-10-22  
 Audit baseline: `adb696ac` (`codex/playnite-achievement-focus`)  
-Status: This implementation pass is complete on `codex/sdk-authoring-improvements`, with deliberately narrowed/deferred proposals listed in the final disposition matrix. Changes are local commits, not merged, pushed, packaged, or installed.
+Status: Completion audit reopened F5/F6/F9 on `codex/sdk-authoring-improvements`: the first-pass deferrals below are provisional until a bounded prototype or concrete rejection evidence resolves them. Implemented changes remain locally committed; nothing is merged, pushed, packaged, or installed.
 
 Move generic focus, navigation, collection, and asynchronous presentation bookkeeping out of Playnite, shared PoB, YouTube Music, Spotify, and Settings into reusable SDK and host facilities. Widget authors should declare intent and domain data without maintaining competing request counters or reconstructing framework lifecycle rules.
 
@@ -692,3 +692,54 @@ green or silently fixed here. Earlier engine-backed PoB results are recorded abo
 All owned validation processes were closed; the user's existing overlay instance
 was not replaced. All changes are local commits on the isolated implementation
 branch. The primary checkout's unrelated Catalogue and plan edits remain intact.
+
+
+### Goal completion audit follow-up
+
+The previous turn made implementation progress, but did not prove full goal
+completion. F5/F6/F9 first-pass deferrals lack either a concrete external blocker
+or enough representative evidence to reject the proposed bounded contracts. They
+are reopened for focused evaluation. An explicit-key proposal must not be rejected
+solely because implicit identity inference would be wrong. Existing implementation
+and validation evidence above remains valid within its stated scope.
+
+
+### Nested YouTube Music return identity
+
+The completion audit identified a residual F3 risk that the retained-query test
+had not covered. A new home → artist → album → Back fixture refetched the artist
+page in a different order. It failed: the stored `item.<index>` selected another
+album. History now retains the captured occurrence key plus provider kind/ID,
+not an index or full item/page. A retained query resolves the exact occurrence;
+a refetched detail resolves only a unique kind/ID match. Missing or ambiguous
+matches leave ordinary collection entry in charge. Setup return uses captured
+collection metadata instead of parsing a rendered row ID.
+
+Shipping YTM suite: 44/44, including reordered, removed, and duplicate-identity
+return cases and the existing retained deep-query/queue/pin cases. Evidence:
+`f3-ytm-return-repro.log`, `f3-ytm-return-fixed.log`, `f3-ytm-return-final.log`.
+No native targeting semantics changed; the result is the existing current-query
+indexed focus request. End-to-end YTM nested-return native acceptance remains to
+be evaluated with the remaining interaction evidence.
+
+The completion audit also requires the following before closure:
+- F5: a representative single-current-key resource implementation replacing its
+  redundant data/status/error fields, or concrete evidence that this bounded
+  design is worse. The reset/reload correction alone does not settle the proposal.
+- F6: an explicit-query-identity loaded-list adapter pilot, with measured
+  publication/allocation cost. Rejecting implicit key-based identity is not a
+  rejection of this explicit-identity contract.
+- F9: an ordinary controlled disclosure with explicit expand/collapse actions,
+  lazy children, UIA state, and collapse focus recovery. Missing protocol support
+  is work to implement, not an external blocker. Passive virtual groups can remain
+  a different consumer.
+- F2: hidden→visible same-request and coalesced-frame coverage for the public
+  unavailable-target guarantee.
+- Relevant comparative resource/collection allocation and restoration evidence;
+  existing bounds/laziness assertions are useful but not a before/after measurement.
+
+F7's redundant registry, F8's automatic whole-frame budgeting, F12's general lease
+graph, F13's generalized polling machinery, F15's blanket cache removal, and F16's
+mechanical model conversion can be rejected with the consumer-specific evidence
+above. Their useful narrow improvements remain implemented; no external decision
+is currently blocking the remaining work.

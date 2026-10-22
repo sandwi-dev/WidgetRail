@@ -35,8 +35,9 @@ public sealed partial class StandaloneMusicWidget : Widget
     private FocusGroupEntryRequest? _focusRequest;
     private ScrollRevealRequest? _queueReveal;
     private string? _panel;
-    private string? _panelReturnFocus;
-    private readonly Stack<(string Kind, string Value, string Focus)> _history = new();
+    private sealed record BrowseReturn(WidgetCollectionItemKey Key, string Kind, string Id);
+    private BrowseReturn? _panelReturnItem;
+    private readonly Stack<(string Kind, string Value, BrowseReturn Item)> _history = new();
     private static readonly string[] Tabs = ["home", "search", "library", "queue"];
 
     public StandaloneMusicWidget(IMusicService service)
@@ -181,17 +182,30 @@ public sealed partial class StandaloneMusicWidget : Widget
         var request = CreateFocusRequest();
         if (_panel is null && _browse.Items.Length > 0 && !(_tab == "library" && !_service.State.Connected))
         {
-            var index = _panelReturnFocus is { } id && id.StartsWith("item.", StringComparison.Ordinal) && int.TryParse(id.AsSpan(5), out var parsed)
-                ? Math.Clamp(parsed, 0, _browse.Items.Length - 1) : -1;
+            var index = ReturnIndex(_panelReturnItem);
             _focusRequest = request.EnterCollection(_browse.Collection, _browse.ScrollId, index < 0 ? null :
                 _browse.Collection.FocusTarget(_browse.ScrollId, _browse.Items[index].Key, index));
-            _panelReturnFocus = null;
+            _panelReturnItem = null;
             return;
         }
         _focusRequest = request.EnterGroup(ContentGroupId);
     }
 
-    private void LoadPage(string? returnFocus = null, bool refresh = true)
+    private int ReturnIndex(BrowseReturn? target)
+    {
+        if (target is null) return -1;
+        var exact = Array.FindIndex(_browse.Items, entry => entry.Key == target.Key);
+        if (exact >= 0) return exact;
+        // Nested provider pages share one bounded detail slot. After refetch the
+        // occurrence key is retired; remap only an unambiguous domain identity.
+        // An old row index (or display title) is not a return identity.
+        var matches = _browse.Items.Where(entry => entry.Item.Kind == target.Kind && entry.Item.Id == target.Id).Take(2).ToArray();
+        return matches.Length == 1 ? matches[0].Index : -1;
+    }
+
+    private static BrowseReturn CaptureReturn(BrowseEntry entry) => new(entry.Key, entry.Item.Kind, entry.Item.Id);
+
+    private void LoadPage(BrowseReturn? returnItem = null, bool refresh = true)
     {
         string kind, value;
         long generation;
@@ -200,7 +214,7 @@ public sealed partial class StandaloneMusicWidget : Widget
             kind = _kind; value = _value; generation = ++_pageGeneration;
             _browse = GetBrowseState(kind, value);
             _focusRequest = null;
-            _panelReturnFocus = returnFocus;
+            _panelReturnItem = returnItem;
             if (!refresh && _browse.Loaded && _browse.Kind == kind && _browse.Value == value)
             {
                 _loading = false; _status = "";
@@ -265,7 +279,7 @@ public sealed partial class StandaloneMusicWidget : Widget
             enteringQueue = tab == "queue" && _tab != "queue";
             if (tab != "queue") _queueReveal = null;
             _panel = null;
-            _panelReturnFocus = null;
+            _panelReturnItem = null;
             _tab = _kind = tab; _value = tab == "library" ? _libraryFilter : tab == "search" ? _query : "";
             _history.Clear();
         }
@@ -296,7 +310,13 @@ public sealed partial class StandaloneMusicWidget : Widget
         if (saveSetup) lock (_gate) notificationSettings = notificationSettings with { SetupSeen = true };
         if (id == "tab.setup")
         {
-            lock (_gate) { _panelReturnFocus = action.FocusedElementId; _panel = "setup"; EnterContent(); }
+            lock (_gate)
+            {
+                var entry = action.FocusedCollectionItem is { } item
+                    ? _browse.Items.FirstOrDefault(entry => entry.Key.Value == item.ItemKey) : null;
+                _panelReturnItem = entry is null ? null : CaptureReturn(entry);
+                _panel = "setup"; EnterContent();
+            }
             Invalidate();
         }
         else if (id == "panel.back")
@@ -332,13 +352,13 @@ public sealed partial class StandaloneMusicWidget : Widget
         }
         else if (id == "back")
         {
-            (string Kind, string Value, string Focus) previous;
+            (string Kind, string Value, BrowseReturn Item) previous;
             lock (_gate)
             {
                 if (!_history.TryPop(out previous)) return ValueTask.CompletedTask;
                 _kind = previous.Kind; _value = previous.Value;
             }
-            LoadPage(previous.Focus, refresh: false);
+            LoadPage(previous.Item, refresh: false);
         }
         else if (id == "refresh") LoadPage();
         else if (id == "song.like" && _service.State.Current is { } current) ChangeSongLike(current, _service.State.LikeFor(current) != true);
@@ -455,7 +475,7 @@ public sealed partial class StandaloneMusicWidget : Widget
             }
             else
             {
-                lock (_gate) { _history.Push((_kind, _value, "item." + index)); _kind = item.Kind; _value = item.Id; }
+                lock (_gate) { _history.Push((_kind, _value, CaptureReturn(entry))); _kind = item.Kind; _value = item.Id; }
                 LoadPage();
             }
         }

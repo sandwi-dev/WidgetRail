@@ -165,6 +165,7 @@ var tests = new List<(string, Func<Task>)>
     ("Browsing uses four horizontal tabs and one focus target per song", ControllerRows),
     ("Controller Y opens settings, B returns, and X works from a song", ControllerRouting),
     ("Indexed browsing reads deep items directly and restores exact occurrence", CursorTraversal),
+    ("Nested detail Back restores the opener after provider reorder", NestedDetailReturn),
     ("Sections retain indexed query identity and focus groups until an explicit refresh", RetainedSections),
     ("Library filters wait on the selected filter then enter results without remembering toolbar focus", LibraryFilterFocus),
     ("New searches reset results while a late search cannot replace a retained section", RetainedSearch),
@@ -648,6 +649,39 @@ static async Task CursorTraversal()
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }
 
+static async Task NestedDetailReturn()
+{
+    foreach (var mode in new[] { "reordered", "removed", "ambiguous" })
+    {
+        var (widget, service) = await Start();
+        try
+        {
+            var artistReads = 0;
+            service.BrowseHandler = (kind, value, _) => Task.FromResult(kind switch
+            {
+                "home" => new MusicPage("Artists", [new("artist", "artist", "Artist")]),
+                "artist" => new MusicPage("Artist albums", ++artistReads == 1
+                    ? [new("other", "album", "Other"), new("selected", "album", "Selected"), new("last", "album", "Last")]
+                    : [new(mode == "ambiguous" ? "selected" : "last", "album", "Last"), new("other", "album", "Other"),
+                        new(mode == "removed" ? "replacement" : "selected", "album", "Selected updated")]),
+                _ => new MusicPage("Album songs", [new("song", "song", "Song")]),
+            });
+            await widget.OnActionAsync(new("refresh", "refresh"));
+            await Until(() => BrowseScroll(widget).IndexedCollection is { Count: 1 } && widget.Render().FocusGroupEntryRequest is not null);
+            await RowAction(widget, "item.0");
+            await Until(() => artistReads == 1 && BrowseScroll(widget).IndexedCollection is { Count: 3 } && widget.Render().FocusGroupEntryRequest is not null);
+            await RowAction(widget, "item.1");
+            await Until(() => service.BrowseCalls.Contains("album:selected") && BrowseScroll(widget).IndexedCollection is { Count: 1 } && widget.Render().FocusGroupEntryRequest is not null);
+            await widget.OnActionAsync(new("back", "back"));
+            await Until(() => artistReads == 2 && BrowseScroll(widget).IndexedCollection is { Count: 3 } && widget.Render().FocusGroupEntryRequest is not null);
+            var target = widget.Render().FocusGroupEntryRequest?.IndexedItem;
+            Check(mode == "reordered" ? target is { Index: 2 } : target is null,
+                "Back reused a stale or ambiguous row identity: " + mode);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+}
+
 static ViewNode BrowseScroll(StandaloneMusicWidget widget) => Nodes(widget.Render().CreateSnapshot("focus", 1).Root)
     .Single(n => n.Id.StartsWith("music.scroll.", StringComparison.Ordinal));
 
@@ -1097,6 +1131,7 @@ sealed class FakeService : IMusicService
     public bool Disposed;
     public double? LastValue;
     public MusicPage? PageOverride;
+    public Func<string, string, CancellationToken, Task<MusicPage>>? BrowseHandler;
     public readonly System.Collections.Concurrent.ConcurrentBag<string> Commands = [];
     public readonly System.Collections.Concurrent.ConcurrentBag<MusicItem> NextSongs = [];
     public Task InitializeAsync(CancellationToken token) => Task.CompletedTask;
@@ -1109,6 +1144,7 @@ sealed class FakeService : IMusicService
     public async Task<MusicPage> BrowseAsync(string kind, string value, CancellationToken token)
     {
         BrowseCalls.Add(kind + ":" + value);
+        if (BrowseHandler is not null) return await BrowseHandler(kind, value, token);
         if (PageOverride is not null) return PageOverride;
         if (kind == "search")
         {
