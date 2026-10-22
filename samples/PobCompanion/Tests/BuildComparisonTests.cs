@@ -208,11 +208,20 @@ internal static class BuildComparisonTests
                     Nodes(View().Root).Single(node => node.Id == "pob.build-comparison.detail.other.title").Text == otherHeading,
                     "Detail headings preserve the same snapshot identities as the result columns");
                 await widget.OnActionAsync(new("back", "test"));
-                check(View().FocusGroupEntryRequest?.GroupId == "pob.build-comparison.rows", "Back explicitly restores the inspected indexed occurrence");
+                var returned = View();
+                var returnFocus = returned.FocusGroupEntryRequest;
+                check(returnFocus is { GroupId: "pob.build-comparison.rows", RestoreViewport: true } &&
+                    returnFocus.IndexedItem is { } returnItem && returnItem.ItemKey == row.Key && returnItem.QueryGeneration == declaration.QueryGeneration &&
+                    Nodes(returned.Root).Single(node => node.Id == "pob.build-comparison.rows").IndexedCollection!.QueryGeneration == declaration.QueryGeneration,
+                    "Back restores the inspected occurrence and requests its viewport without replacing the comparison query");
+                check(View().FocusGroupEntryRequest == returnFocus, "Repeated renders reuse the comparison return intent");
                 if (Environment.GetEnvironmentVariable("POB_BUILD_COMPARISON_FIXTURES") is { Length: > 0 } rowFixtures)
                 { Directory.CreateDirectory(rowFixtures); File.WriteAllText(Path.Combine(rowFixtures, $"poe{game}-build-comparison-row.json"), JsonSerializer.Serialize(row.Root)); }
                 await widget.OnActionAsync(new("build-comparison-filter", "test") { CommittedText = "no matching comparison entry" });
                 host.PublishSnapshot();
+                check(View().FocusGroupEntryRequest?.RestoreViewport != true &&
+                    Nodes(View().Root).Single(node => node.Id == "pob.build-comparison.rows").IndexedCollection!.QueryGeneration != declaration.QueryGeneration,
+                    "Filtering replaces the comparison query and clears return viewport intent");
                 check(lease.RouteAction(row.Key, ControllerButton.A) != WidgetOperationAdmission.Enqueued, "Replaced comparison query rejects old row callbacks");
                 await widget.OnActionAsync(new("build-comparison-filter", "test") { CommittedText = "" });
             }

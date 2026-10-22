@@ -24,7 +24,7 @@ public sealed partial class PobWidget
     private int? unifiedMapNode;
     private int? unifiedReadOnlyConfig;
     private string? unifiedSearchDocument,unifiedSelectedResult;
-    private long unifiedSearchReturnRequest;
+    private WidgetFocusRequest? unifiedSearchReturnRequest;
 
 
     private string UnifiedSavedSignature()=>string.Join("\n",savedBuilds.Select(b=>b.Id+":"+b.Name));
@@ -49,7 +49,8 @@ public sealed partial class PobWidget
             if(category is not null){unifiedCategory=category;unifiedSearchText="";unifiedSelectedResult=null;}
             if(unifiedCategory!="All"&&!cache.Index.Categories.Contains(unifiedCategory)){unifiedCategory="All";unifiedSelectedResult=null;}
             unifiedCache=cache;unifiedSearchOpen=true;unifiedNotice="";
-            unifiedSearchReturnRequest=unifiedSelectedResult is null?0:(lastFocusRequestId = CreateFocusRequest().Id);
+            unifiedSearchReturnRequest=unifiedSelectedResult is null?null:CreateFocusRequest();
+            if(unifiedSearchReturnRequest is {} returnRequest)lastFocusRequestId=returnRequest.Id;
             unifiedSuggestionSource="pob.unified."+Guid.NewGuid().ToString("N");
             unifiedSuggestions=new(cache.Index.Entries.Select(e=>(e.Title,e.SearchText,e.Category+" · "+e.Context)),160);
             Invalidate();
@@ -139,8 +140,8 @@ public sealed partial class PobWidget
             UI.CollectionList("pob.unified.results",unifiedCollection,88,"Build search results").Classes("pob-scroll"));
         var modal=view.WithModal(new("pob.unified","Search build",UI.Stack("pob.unified.content",rows.ToArray()).Classes("pob-workspace"),
             "pob.unified.search",busy?"cancel-operation":"unified-search-close"){ScrollContent=false,AnchoredPresentation=new(new("pob.unified-search"),Width:900,Height:700)});
-        if(!busy&&unifiedSearchReturnRequest>0&&unifiedSelectedResult is {} selectedKey&&Array.FindIndex(matches,e=>e.Key==selectedKey) is var selectedIndex&&selectedIndex>=0)
-            modal=modal with{FocusGroupEntryRequest=unifiedCollection.Enter("pob.unified.results",unifiedSearchReturnRequest,
+        if(!busy&&unifiedSearchReturnRequest is {} returnRequest&&unifiedSelectedResult is {} selectedKey&&Array.FindIndex(matches,e=>e.Key==selectedKey) is var selectedIndex&&selectedIndex>=0)
+            modal=modal with{FocusGroupEntryRequest=returnRequest.ReturnToCollection(unifiedCollection,"pob.unified.results",
                 unifiedCollection.FocusTarget("pob.unified.results",new(selectedKey),selectedIndex))};
         return modal;
     }

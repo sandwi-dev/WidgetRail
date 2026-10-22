@@ -33,7 +33,8 @@ public sealed partial class SettingsWidget
     private IReadOnlyList<string> stoppedWidgetIds = [];
     private bool installedListWasShown;
     private string? installedReturnKey;
-    private long installedEntryRevision;
+    private WidgetFocusRequest? installedEntryRequest;
+    private bool restoreInstalledViewport;
     private static string InstalledListId(SettingsWidgetFilter filter) => "installed.list." + filter.ToString().ToLowerInvariant();
 
     private void InitializeInstalledList()
@@ -89,9 +90,10 @@ public sealed partial class SettingsWidget
                 {
                     var selectedId = _installedState.SelectedBuiltInId ?? _installedState.SelectedInstalledId;
                     installedReturnKey = selectedId is null ? null : SettingsInstalledRow.KeyFor(selectedId, _installedState.SelectedBuiltInId is not null);
-                    installedEntryRevision = CreateFocusRequest().Id;
+                    installedEntryRequest = CreateFocusRequest();
                 }
                 installedListWasShown = _page == SettingsPage.InstalledWidgets;
+                if (!installedListWasShown) restoreInstalledViewport = false;
             }
         }
         Invalidate();
@@ -105,8 +107,10 @@ public sealed partial class SettingsWidget
         if (installedReturnKey is not null)
             for (var candidate = 0; candidate < installedRows.Count; candidate++)
                 if (installedRows[candidate].Key == installedReturnKey) { index = candidate; break; }
-        var entry = index < 0 ? null : installedList.Enter(id, installedEntryRevision,
-            installedList.FocusTarget(id, new(installedRows[index].Key), index));
+        var target = index < 0 ? null : installedList.FocusTarget(id, new(installedRows[index].Key), index);
+        var entry = target is null || installedEntryRequest is null ? null : restoreInstalledViewport
+            ? installedEntryRequest.ReturnToCollection(installedList, id, target)
+            : installedEntryRequest.EnterCollection(installedList, id, target);
         return new(UI.CollectionList(id, installedList, 72, "Installed widgets").Classes("installed-widget-list"), id, installedRows.Count, entry);
     }
 

@@ -124,11 +124,11 @@ internal static class UnifiedSearchTests
             check((string)Get("section")! == "Configuration"&&focus.TargetId is {} configTarget&&configTarget.StartsWith("pob.condition.",StringComparison.Ordinal)&&Nodes(config.Root).Any(n=>n.Id==configTarget&&n.IsFocusable),
                 "Configuration result reaches its actual control without invoking it");
             await Select(PobSearchTargetKind.Calculation);
-            check((string)Get("detailKind")! == "calculations"&&View().FocusGroupEntryRequest?.IndexedItem?.CollectionId=="pob.calculation.cells",
+            check((string)Get("detailKind")! == "calculations"&&View().FocusGroupEntryRequest is { RestoreViewport:false } calculationEntry&&calculationEntry.IndexedItem?.CollectionId=="pob.calculation.cells",
                 "Calculation result opens upstream details and targets its exact indexed cell");
             await Jump("pob.buildtools");await Jump("pob.body");
             await Select(PobSearchTargetKind.InventoryItem);
-            check((string)Get("detailKind")! == "inventory"&&View().FocusGroupEntryRequest?.IndexedItem?.ItemKey==Get("inventoryId")!.ToString(),
+            check((string)Get("detailKind")! == "inventory"&&View().FocusGroupEntryRequest is { RestoreViewport:false } inventoryEntry&&inventoryEntry.IndexedItem?.ItemKey==Get("inventoryId")!.ToString(),
                 "Inventory result selects the correct item and restores an exact indexed focus target without equipping");
             await Jump("pob.buildtools");await Jump("pob.body");
             await Select(PobSearchTargetKind.Passive);
@@ -136,7 +136,7 @@ internal static class UnifiedSearchTests
             var passiveId=Get("detailId");await Jump("pob.buildtools");await Jump("pob.body");
             check(Equals(passiveId,Get("detailId")),"Tree RS round trip retains the selected passive");
             await Select(PobSearchTargetKind.SavedBuild);
-            check((string)Get("detailKind")! == "library"&&(string)Get("documentId")! == build&&View().FocusGroupEntryRequest?.IndexedItem?.ItemKey==build,
+            check((string)Get("detailKind")! == "library"&&(string)Get("documentId")! == build&&View().FocusGroupEntryRequest is { RestoreViewport:false } libraryEntry&&libraryEntry.IndexedItem?.ItemKey==build,
                 "Saved-build result selects the library entry without replacing the currently open build");
             // Choose a filtered result through the real deferred action route,
             // then reopen repeatedly with a fresh lease but unchanged list identity.
@@ -155,6 +155,8 @@ internal static class UnifiedSearchTests
                 await Until(()=>!(bool)Get("unifiedSearchOpen")!);await Idle();
                 await Action("unified-search");host.PublishSnapshot();
                 var reopened=View();var restored=reopened.FocusGroupEntryRequest?.IndexedItem;
+                check(reopened.FocusGroupEntryRequest?.RestoreViewport==true&&View().FocusGroupEntryRequest==reopened.FocusGroupEntryRequest,
+                    "Reopening search requests viewport restoration with one stable intent "+pass);
                 check((string)Get("unifiedSearchText")! == retained.Title&&(string)Get("unifiedCategory")! == retained.Category&&restored is not null&&restored.ItemKey==retained.Key&&restored.Index==position,
                     "Search retains query, category and exact selected result on round trip "+pass);
                 check(Nodes(reopened.Root).Single(n=>n.Id=="pob.unified.results").IndexedCollection!.QueryGeneration==descriptor.QueryGeneration,

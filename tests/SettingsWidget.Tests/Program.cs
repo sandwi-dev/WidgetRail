@@ -1484,6 +1484,12 @@ static async Task InstalledListFilters()
     var key = SettingsInstalledRow.KeyFor("dev.list.widget2",false);
     Assert.Equal(key,returned.FocusGroupEntryRequest!.IndexedItem!.ItemKey);
     Assert.Equal(3,returned.FocusGroupEntryRequest.IndexedItem.Index);
+    Assert.True(returned.FocusGroupEntryRequest.RestoreViewport, "Details Back must declare collection return intent.");
+    Assert.Equal(returned.FocusGroupEntryRequest, Snapshot(widget).FocusGroupEntryRequest);
+    await Action(widget,"back");
+    await Action(widget,"open.installed-widgets");
+    Assert.True(Snapshot(widget).FocusGroupEntryRequest?.RestoreViewport == false,
+        "Ordinary Settings navigation must not replay old viewport-return intent.");
     var catalog = new WidgetCatalog(root);
     await catalog.SetOrderAsync(["dev.list.widget2"]);
     await Action(widget,"refresh");

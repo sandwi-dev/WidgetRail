@@ -1075,6 +1075,7 @@ public sealed partial class SettingsWidget : Widget
         {
             var previousPage = _page;
             _page = page;
+            restoreInstalledViewport = page == SettingsPage.InstalledWidgets && previousPage == SettingsPage.InstalledWidgetDetails;
             if (page != SettingsPage.MarketplaceDetails) _marketplaceState = _marketplaceState with { ReviewOpen = false };
             if (page == SettingsPage.Permissions &&
                 previousPage != SettingsPage.PermissionDiagnostics)

@@ -15,6 +15,7 @@ public sealed partial class PobWidget
     private long buildComparisonRequest;
     private int buildComparisonDetail = -1;
     private string? buildComparisonReturnRow;
+    private WidgetFocusRequest? buildComparisonReturnRequest;
     private BuildComparisonRow? buildComparisonReading;
     private readonly PobDisclosureState buildComparisonContextDisclosure = new();
     private sealed record BuildComparisonRow(string Key, string Label, string Summary, int DifferenceIndex, string? ImpactText = null,
@@ -54,9 +55,15 @@ public sealed partial class PobWidget
         if (id is "back" or "build-comparison-cancel")
         {
             ++buildComparisonRequest; Operations.Cancel("pob.build-comparison"); buildComparisonRunning = false;
-            if (buildComparisonDetail >= 0 || buildComparisonReading is not null) { buildComparisonDetail = -1; buildComparisonReading = null; }
+            var request = CreateFocusRequest();
+            buildComparisonReturnRequest = null;
+            if (buildComparisonDetail >= 0 || buildComparisonReading is not null)
+            {
+                buildComparisonDetail = -1; buildComparisonReading = null;
+                buildComparisonReturnRequest = request;
+            }
             else detailKind = buildComparisonReturn;
-            lastFocusRequestId = CreateFocusRequest().Id; return true;
+            lastFocusRequestId = request.Id; return true;
         }
         if (id.StartsWith("build-comparison-target.", StringComparison.Ordinal))
         {
@@ -253,8 +260,13 @@ public sealed partial class PobWidget
         if (buildComparisonDetail < 0 && buildComparisonReading is null && BuildComparisonCurrent && buildComparisonReturnRow is { } key && buildComparisonCollection is not null)
         {
             var index = Array.FindIndex(buildComparisonQuery.Rows, row => row.Key == key);
-            if (index >= 0) return buildComparisonCollection.Enter("pob.build-comparison.rows", lastFocusRequestId,
-                buildComparisonCollection.FocusTarget("pob.build-comparison.rows", new(key), index));
+            if (index >= 0)
+            {
+                var target = buildComparisonCollection.FocusTarget("pob.build-comparison.rows", new(key), index);
+                return buildComparisonReturnRequest is { } request && request.Id == lastFocusRequestId
+                    ? request.ReturnToCollection(buildComparisonCollection, "pob.build-comparison.rows", target)
+                    : buildComparisonCollection.Enter("pob.build-comparison.rows", lastFocusRequestId, target);
+            }
         }
         return new() { RequestId = lastFocusRequestId, GroupId = "pob.build-comparison.tools" };
     }
