@@ -147,9 +147,11 @@ internal sealed partial class OverlayShellPage
         }
         var selected = await ShowHostChoiceAsync("Replace pin", closesOwnPage
                 ? "Replacing this pin will close its additional page. To keep that page, cancel and choose Return page to widget."
-                : $"Replace the current pin with {descriptor.Name}. Choose a pin layout.",
+                  : $"Choose a layout for {descriptor.Name}.",
                 choices.Select(choice => new HostDialogChoice(choice.AutomationId, choice.Label)).ToArray(),
-                lifetime.Token, primaryButtonText: "Replace pin");
+                  lifetime.Token,
+                  configure: choices.Length > 1 ? dialog => dialog.ConfigurePreferenceList(closeLabel: "Cancel") : null,
+                  primaryButtonText: choices.Length == 1 ? "Replace pin" : null);
         if (selected is null || !Current()) return;
         // Layouts and media readiness can change while the chooser is open.
         var choice = GetPinChoices(descriptor).FirstOrDefault(choice => choice.AutomationId == selected);
@@ -194,7 +196,7 @@ internal sealed partial class OverlayShellPage
                         return;
                     }
                     var hints = projection.Snapshot.Surface;
-                    var saved = pinnedPreferences.Placements.GetValueOrDefault(widgetId);
+                    var saved = pinnedPreferences.Find(widgetId, layoutId);
                     window = new(frame.Descriptor.Name, (nint)hostWindow);
                     var prepared = await PreparePinnedPlacementAsync(window, hints, saved);
                     if (retired || intent != pinIntent || !selection.IsCurrent)
@@ -479,11 +481,8 @@ internal sealed partial class OverlayShellPage
 
     private async Task SavePinnedAsync(PinnedSurface current, bool required = false)
     {
-        var values = new Dictionary<string, PinnedPlacement>(pinnedPreferences.Placements);
-        if (values.Count >= ShellPreferences.MaximumWidgets && !values.ContainsKey(current.WidgetId)) values.Remove(values.Keys.First());
-        values[current.WidgetId] = PinnedPlacementPolicy.Capture(current.Window.Bounds, current.Monitor, current.Limits,
-            current.LayoutId, current.Window.OpacityPercent);
-        var next = new PinnedPreferences(1, values);
+        var next = pinnedPreferences.WithPlacement(current.WidgetId, PinnedPlacementPolicy.Capture(
+            current.Window.Bounds, current.Monitor, current.Limits, current.LayoutId, current.Window.OpacityPercent));
         if (required && pinnedStore is null) throw new InvalidOperationException("Pinned placement storage is unavailable.");
         if (pinnedStore is not null)
         {

@@ -80,13 +80,13 @@ internal sealed partial class OverlayShellPage
                     await first.PinnablePopup!.EvaluateFixtureAsync("window.canvas=document.createElement('canvas');canvas.width=160;canvas.height=90;document.body.append(canvas);window.syntheticStream=canvas.captureStream(5)");
                     await PinAsync("webapp-a", WidgetPinnedProjection.FullWidgetLayoutId);
                     await WebAppUntil(() => pinned?.WidgetId == "webapp-a");
-                    var savedPlacement = pinnedPreferences.Placements["webapp-a"];
+                    var savedPlacement = pinnedPreferences.Find("webapp-a", WidgetPinnedProjection.FullWidgetLayoutId);
                     var stopping = StopWidgetAsync(catalogItems.Single(item => item.Id == "webapp-a"));
                     await Choose(0); await stopping;
                     await WebAppUntil(() => pinned is null && browserOwner!.PermissionTargets("webapp-a").Length == 0);
                     Check(owner!.Session.GetTarget("webapp-a").Descriptor.IsStopped && surface is null && showingStoppedWidget,
                         "Stop retires the full widget pin, hosted pop-out and live synthetic media with its worker");
-                    Check(pinnedPreferences.Placements["webapp-a"] == savedPlacement, "Stop preserves remembered pin geometry");
+                    Check(pinnedPreferences.Find("webapp-a", WidgetPinnedProjection.FullWidgetLayoutId) == savedPlacement, "Stop preserves remembered pin geometry");
                     await SelectAsync("webapp-b");
                     Check(ReferenceEquals(await CurrentBrowser(), neighbor) && await neighbor.EvaluateFixtureAsync("neighborStopMarker==='preserved'") == "true",
                         "Stopping one webapp preserves its neighbor's live page and state");

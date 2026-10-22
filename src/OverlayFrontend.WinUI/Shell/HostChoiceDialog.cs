@@ -32,7 +32,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     private readonly List<HostDialogChoice> entries;
     private readonly HashSet<string> reportedChoices = [];
     private bool opened, closing, reportingQueued, choiceFocusQueued;
-    // Action menus opt in. Permission/replacement decisions keep safe Cancel.
+    // Action lists opt in. Permission and destructive confirmations keep safe Cancel.
     private bool focusFirstOptionOnOpen;
     internal bool FocusFirstOptionOnOpen
     {

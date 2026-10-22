@@ -62,7 +62,7 @@ internal sealed partial class OverlayShellPage
                 await Until(() => !savingPinnedAdjustment && pinnedAdjustment is null);
                 var persisted = await new PinnedPreferencesStore(options.SettingsRoot).LoadAsync(lifetime.Token);
                 var expected = PinnedPlacementPolicy.Capture(committed, tested.Monitor, tested.Limits, tested.LayoutId, tested.Window.OpacityPercent);
-                Check(persisted.Placements.GetValueOrDefault(tested.WidgetId) == expected && tested.Window.Bounds == committed,
+                Check(persisted.Find(tested.WidgetId, tested.LayoutId) == expected && tested.Window.Bounds == committed,
                     "A saves the visible preview into the actual profile's atomic DIP/anchor placement file");
                 Check(ReferenceEquals(pinned?.Selection, selection) && selection!.IsCurrent && !PinnedInputActive &&
                     tested.Window.FocusIndicator.Visibility == Visibility.Collapsed,
@@ -88,7 +88,7 @@ internal sealed partial class OverlayShellPage
                 Receive(Sample(0x1000, pressed: 0x1000)); Receive(Sample(released: 0x1000));
                 await Until(() => !savingPinnedAdjustment && pinnedAdjustment is null);
                 persisted = await new PinnedPreferencesStore(options.SettingsRoot).LoadAsync(lifetime.Token);
-                Check(persisted.Placements[tested.WidgetId].OpacityPercent == expectedOpacity,
+                Check(persisted.Find(tested.WidgetId, tested.LayoutId)?.OpacityPercent == expectedOpacity,
                     "opacity Save persists the native preview percentage in the existing pin preferences");
                 await BeginPinnedAdjustmentAsync(opacityOnly: true);
                 Receive(Sample(opacityDirection, pressed: opacityDirection)); Receive(Sample());

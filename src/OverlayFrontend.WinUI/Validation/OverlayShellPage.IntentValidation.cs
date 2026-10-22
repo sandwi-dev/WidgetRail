@@ -163,7 +163,10 @@ internal sealed partial class OverlayShellPage
                     .All(command => command.Id != "Pin.Replace"), "A nonpinnable widget offers no replacement");
                 var replacing = pinCommands[0].Action();
                 await Until(() => hostChoiceDialog is { IsLoaded: true });
-                Check(hostChoiceDialog!.PrimaryButtonText == "Replace pin", "Multiple layouts use a clearly labelled replacement chooser");
+                await Until(() => FocusManager.GetFocusedElement(XamlRoot) is ListViewItem { Tag: "Pin.links-pin" });
+                Check(string.IsNullOrEmpty(hostChoiceDialog!.PrimaryButtonText) && hostChoiceDialog.CloseButtonText == "Cancel",
+                    "Multiple layouts use an action list with Cancel and no redundant Replace footer");
+                Check(hostChoiceDialog.FocusFirstOptionOnOpen, "Replacement picker initially focuses its first layout");
                 hostChoiceDialog.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
                 hostChoiceDialog.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
                 await replacing;
@@ -172,12 +175,14 @@ internal sealed partial class OverlayShellPage
                     "Replacement chooser returns to tray mode without enabling widget input");
                 replacing = PinCommands(sourceDescriptor)[0].Action();
                 await Until(() => hostChoiceDialog is { IsLoaded: true });
+                await Until(() => FocusManager.GetFocusedElement(XamlRoot) is ListViewItem { Tag: "Pin.links-pin" });
                 ++pinIntent;
                 ChooseFirstPinLayout();
                 await replacing;
                 Check(ReferenceEquals(pinned, oldPin), "An intervening pin operation invalidates the open chooser");
                 replacing = PinCommands(sourceDescriptor)[0].Action();
                 await Until(() => hostChoiceDialog is { IsLoaded: true });
+                await Until(() => FocusManager.GetFocusedElement(XamlRoot) is ListViewItem { Tag: "Pin.links-pin" });
                 ChooseFirstPinLayout();
                 await replacing;
                 Check(pinned is { WidgetId: "intent-source", LayoutId: "links-pin", IsCurrent: true } && !oldPin.IsCurrent,
@@ -193,6 +198,28 @@ internal sealed partial class OverlayShellPage
                 await singleReplacement;
                 Check(pinned is { WidgetId: "intent-target", IsCurrent: true } && !HostChoiceActive && !replacement!.IsCurrent,
                     "Direct single-layout replacement revokes the prior pin and leaves the replacement current");
+                await UnpinAsync(save: true);
+                await SelectAsync("intent-source", enterWidget: false);
+                await PinAsync("intent-source", "links-pin");
+                var compactPin = pinned!;
+                compactPin.Window.Place(PinnedPlacementPolicy.Constrain(new(compactPin.Window.Bounds.X, compactPin.Window.Bounds.Y, 480, 270), compactPin.Monitor, compactPin.Limits));
+                await SavePinnedAsync(compactPin, required: true);
+                var compactGeometry = pinnedPreferences.Find("intent-source", "links-pin")!;
+                await PinAsync("intent-source", WidgetPresentationSession.WidgetPinnedProjection.FullWidgetLayoutId, compactPin);
+                var fullPin = pinned!;
+                fullPin.Window.Place(PinnedPlacementPolicy.Constrain(new(fullPin.Window.Bounds.X, fullPin.Window.Bounds.Y, 720, 500), fullPin.Monitor, fullPin.Limits));
+                await SavePinnedAsync(fullPin, required: true);
+                var fullGeometry = pinnedPreferences.Find("intent-source", fullPin.LayoutId)!;
+                Check(compactGeometry.WidthDip != fullGeometry.WidthDip || compactGeometry.HeightDip != fullGeometry.HeightDip,
+                    "Fixture saves distinct dimensions for two layouts of one widget");
+                await UnpinAsync(save: true);
+                pinnedPreferences = await pinnedStore!.LoadAsync(lifetime.Token);
+                await PinAsync("intent-source", "links-pin");
+                Check(pinned!.Window.Bounds == PinnedPlacementPolicy.Resolve(PinnedDisplayAreas.Read(), compactGeometry, pinned.Limits)!.Bounds,
+                    "Authored layout restores its own geometry after replacing and reloading preferences");
+                await PinAsync("intent-source", WidgetPresentationSession.WidgetPinnedProjection.FullWidgetLayoutId, pinned);
+                Check(pinned!.Window.Bounds == PinnedPlacementPolicy.Resolve(PinnedDisplayAreas.Read(), fullGeometry, pinned.Limits)!.Bounds,
+                    "Full layout independently restores its geometry after returning from the authored layout");
                 await UnpinAsync(save: true);
                 if (verifyWebHandoff is not null) checks.AddRange(await verifyWebHandoff());
 
@@ -237,8 +264,8 @@ internal sealed partial class OverlayShellPage
                 {
                     var picker = hostChoiceDialog!;
                     var items = Walk(picker).OfType<ListView>().Single();
-                    items.SelectedIndex = 0;
-                    ((ListViewItem)items.Items[0]).Focus(FocusState.Keyboard);
+                    Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), items.Items[0]),
+                        "First replacement layout is ready for A without a manual focus transfer");
                     picker.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
                     picker.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
                 }

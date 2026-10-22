@@ -45,7 +45,7 @@ internal sealed partial class OverlayShellPage
                 // XamlRoot. A different popup lease must first return home so
                 // the owner retains its single borrowed-child contract.
                 if (pinned?.Popup is not null) await RemovePinnedCoreAsync();
-                var saved = pinnedPreferences.Placements.GetValueOrDefault(widgetId);
+                var saved = pinnedPreferences.Find(widgetId, PopupPinLayout);
                 var window = new PinnedWidgetWindow(frame.Descriptor.Name + " additional page", (nint)hostWindow);
                 var slot = new BrowserSlot { Active = true, AcceptsInput = false, IsTabStop = true };
                 AutomationProperties.SetAutomationId(slot, "Browser.PinnedPopup");
