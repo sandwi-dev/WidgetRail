@@ -40,6 +40,8 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--disclosure-output") is { } disclosureOutput)
+        { await DisclosuresAsync(disclosureOutput); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--resize-navigation-output") is { } resizeOutput)
         {
             Exception? failure = null;

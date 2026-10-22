@@ -273,3 +273,18 @@ was blank; the PNG mask and solid control painted green. A non-null mask brush
 alone is not a passing rendering assertion. The comparison screenshot is retained
 in local `artifacts/winui-shell/native-svg-mask-baselines.png`. This records the
 observed capability boundary, not a claim about every future WinUI version.
+
+
+## Controlled disclosure validation
+
+`--validate-styles --disclosure-output=<absolute-json-path>` runs the native
+controlled-disclosure fixture. It covers explicit UIA transitions, delayed
+publication, nested collapse focus recovery, surviving/reparented focus, current
+action authority, leading icons, interactive previews, built-in theme foregrounds,
+and high contrast. It leaves the final specimen available for pointer checks and
+screenshots. Use the normal isolated validation launch, not a production profile.
+
+`scripts/Test-WinUiDisclosureEvents.ps1 -AppPid <fixture-pid> -OutputPath <json-path>`
+runs under Windows PowerShell and observes actual UIA property-change events from
+a separate MTA client. It verifies Collapsed/Expanded events and an idempotent
+repeated Expand. It neither installs a package nor changes the system theme.
