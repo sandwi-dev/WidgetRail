@@ -7,6 +7,32 @@ public sealed partial class PlayniteLibraryWidget
 {
     private const string DetailsPrefix = "playnite-library.details.";
 
+    private readonly record struct DetailsQuery(string SavedId, long Opening);
+    private readonly WidgetQueryResource<DetailsQuery, PlayniteAchievements> _detailsAchievements;
+    private readonly WidgetQueryResource<DetailsQuery, PlayniteActivity> _detailsActivity;
+
+    private static DetailsQuery DetailsKey(PlayniteLibraryRenderState state) =>
+        new(state.DetailsItem!.Value.SavedId, state.DetailsOpening);
+
+    // Resource snapshots own all read state. The model only owns navigation and
+    // domain mutations; presentation receives one composed immutable projection.
+    private PlayniteLibraryRenderState WithDetailsResources(PlayniteLibraryRenderState state)
+    {
+        if (state.DetailsItem is null) return state;
+        var key = DetailsKey(state);
+        var achievements = _detailsAchievements.GetSnapshot(key);
+        var activity = _detailsActivity.GetSnapshot(key);
+        return state with { DetailsExtras = state.DetailsExtras with
+        {
+            Achievements = achievements.Value,
+            AchievementsLoading = achievements.Status is WidgetResourceStatus.Loading or WidgetResourceStatus.Refreshing,
+            AchievementsError = achievements.Error?.Message,
+            Activity = activity.Value,
+            ActivityLoading = activity.Status is WidgetResourceStatus.Loading or WidgetResourceStatus.Refreshing,
+            ActivityError = activity.Error?.Message,
+        } };
+    }
+
     private void SuspendDetails()
     {
         // Fence late results even if a provider ignores cancellation. Keep the opening
@@ -17,8 +43,6 @@ public sealed partial class PlayniteLibraryWidget
             DetailsLoading = false,
             DetailsExtras = state.DetailsExtras with
             {
-                AchievementsLoading = false,
-                ActivityLoading = false,
                 CompletionStatusesLoading = false,
                 AchievementSearchRequest = 0,
                 OperationBusy = false,
@@ -28,7 +52,7 @@ public sealed partial class PlayniteLibraryWidget
                     : state.DetailsExtras.OperationMessage,
             },
         });
-        CancelDetailsOperations();
+        CancelDetailsOperations(retainReadValues: true);
     }
 
     private void ResumeDetails()
@@ -44,10 +68,11 @@ public sealed partial class PlayniteLibraryWidget
         LoadDetailsSection(state.DetailsExtras.Tab);
     }
 
-    private void CancelDetailsOperations()
+    private void CancelDetailsOperations(bool retainReadValues = false)
     {
-        foreach (var key in new[] { "playnite-library.details", "playnite-library.details.achievements",
-                     "playnite-library.details.activity", "playnite-library.details.operation", "playnite-library.details.statuses" }) Operations.Cancel(key);
+        if (retainReadValues) { _detailsAchievements.Cancel(); _detailsActivity.Cancel(); }
+        else { _detailsAchievements.Reset(); _detailsActivity.Reset(); }
+        foreach (var key in new[] { "playnite-library.details", "playnite-library.details.operation", "playnite-library.details.statuses" }) Operations.Cancel(key);
     }
 
     private void UpdateDetails(long generation, Func<PlayniteDetailsExtras, PlayniteDetailsExtras> update) =>
@@ -95,52 +120,20 @@ public sealed partial class PlayniteLibraryWidget
     private void LoadDetailsSection(PlayniteDetailsTab tab, bool refresh = false)
     {
         var state = _model.Value;
-        if (state.DetailsItem is not { } game || tab is not (PlayniteDetailsTab.Achievements or PlayniteDetailsTab.Activity)) return;
-        var achievements = tab == PlayniteDetailsTab.Achievements;
-        if (achievements ? !refresh && state.DetailsExtras.Achievements is not null || state.DetailsExtras.AchievementsLoading
-            : !refresh && state.DetailsExtras.Activity is not null || state.DetailsExtras.ActivityLoading) return;
-        var generation = state.DetailsGeneration;
-        UpdateDetails(generation, value => achievements
-            ? value with { AchievementsLoading = true, AchievementsError = null }
-            : value with { ActivityLoading = true, ActivityError = null });
+        if (state.DetailsItem is null) return;
+        var key = DetailsKey(state);
         var route = _navigation.Value.RouteCancellationToken;
-        var operation = Operations.RunLatest(DetailsPrefix + (achievements ? "achievements" : "activity"), async context =>
-        {
-            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, route);
-            try
-            {
-                if (achievements)
-                {
-                    var result = await _application.GetAchievementsAsync(game.Value.SavedId, lifetime.Token).ConfigureAwait(false);
-                    lifetime.Token.ThrowIfCancellationRequested();
-                    UpdateDetails(generation, value => value with { Achievements = result, AchievementsLoading = false });
-                }
-                else
-                {
-                    var result = await _application.GetActivityAsync(game.Value.SavedId, lifetime.Token).ConfigureAwait(false);
-                    lifetime.Token.ThrowIfCancellationRequested();
-                    UpdateDetails(generation, value => value with { Activity = result, ActivityLoading = false });
-                }
-            }
-            catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-            catch (Exception)
-            {
-                UpdateDetails(generation, value => achievements
-                    ? value with { AchievementsLoading = false, AchievementsError = "Achievements could not be loaded. Press Refresh to retry." }
-                    : value with { ActivityLoading = false, ActivityError = "Activity could not be loaded. Press Refresh to retry." });
-            }
-        }, WidgetOperationLifetime.Active);
-        if (!operation.IsAccepted)
-            UpdateDetails(generation, value => achievements
-                ? value with { AchievementsLoading = false, AchievementsError = "Achievements could not be loaded. Press Refresh to retry." }
-                : value with { ActivityLoading = false, ActivityError = "Activity could not be loaded. Press Refresh to retry." });
+        if (tab == PlayniteDetailsTab.Achievements)
+            _detailsAchievements.EnsureLoaded(key, route, refresh);
+        else if (tab == PlayniteDetailsTab.Activity)
+            _detailsActivity.EnsureLoaded(key, route, refresh);
     }
 
     private async ValueTask<bool> TryHandleDetailsActionAsync(WidgetActionEvent action, CancellationToken token)
     {
         if (!action.ActionId.StartsWith(DetailsPrefix, StringComparison.Ordinal) ||
             action.ActionId is PlayniteLibraryActions.DetailsOpen or PlayniteLibraryActions.DetailsClose) return false;
-        var state = _model.Value;
+        var state = WithDetailsResources(_model.Value);
         if (LifecycleState != WidgetLifecycleState.Interactive || state.DetailsItem is not { } item) return true;
         var name = action.ActionId[DetailsPrefix.Length..];
         if (action.ActionId != PlayniteAchievementBrowse.SearchFocusAction && state.DetailsExtras.AchievementSearchRequest != 0)

@@ -554,7 +554,7 @@ stuck-loading assertion. Final tests restore full destruction cleanup.
 Playnite 216/216; YouTube Music 43/43. Logs: `playnite-final.log`,
 `f10-playnite-repro.log`, `f10-playnite-fixed.log`, and `f10-ytm-*.log`.
 
-### Resource reassessment and reset/reload correction
+### Resource reassessment and reset/reload correction (first pass; superseded below)
 
 F5 is narrowed to correcting the existing resource facility, rather than adding
 a second state owner to the audited widgets. A new noncooperative-provider test
@@ -624,7 +624,7 @@ or weakens behavior. No existing widget feature was intentionally removed.
 | F2 | Implemented exact target protocol/host/SDK and admission-race fix | PoB search and native fixture |
 | F3 | Implemented narrow indexed navigation return intent | Spotify and Full Application; semantic/modal routing retained elsewhere |
 | F4 | Implemented action-focused Back default | SDK and Playnite |
-| F5 | Open keyed-resource pilot; existing reset/reload and teardown fixes implemented | WidgetResource and Playnite; domain owners retained |
+| F5 | Implemented single-current-query resource and Playnite read-section migration; validated below | Existing state machine, bounded scheduler, explicit caller scope; domain mutations retained |
 | F6 | Implemented explicit-identity loaded-list adapter | Settings, Games & Apps, Playnite achievements, PoB loaded lists, Spotify queue, YTM snapshots; specialized sources retained |
 | F7 | Corrected audit: shared ownership/lifetime facilities already exist | Preserve widget domain guards |
 | F8 | Implemented shared lossless chunk boundaries | PoB and Settings; whole-frame document owner deferred |
@@ -844,3 +844,86 @@ F6 final consumer regression: Spotify 88/88 after removing the initial force res
 YTM 44/44; Games & Apps 94/94; Playnite 216/216; Settings 94/94. SDK 172/172,
 compatibility 17/17, and native loaded-list interaction 6/6. The remaining
 keyed-resource/disclosure/hidden-target work stays open; this closes F6 only.
+
+
+### F5 single-current-query resource and Playnite validation
+
+The first-pass deferral above is superseded. The implementation demonstrates that
+Playnite's readonly sections can use a resource without retaining duplicate
+writable data/loading/error state in the model. `WidgetQueryResource<TQuery,TValue>`
+wraps the existing `WidgetResource<TValue>` state machine; it owns only an immutable
+selected query and its captured loader. `GetSnapshot(query)` guards mismatched
+queries without taking a selection lock. Admission shares the existing resource
+lock rather than adding another lock order. The same operation lane retains at
+most one running and one latest pending read; an uncooperative provider must drain
+before the successor begins. No provider, account, build, or permission identity
+is inferred by the SDK.
+
+The base resource now captures each loader at admission, registers caller-scope
+cancellation before provider execution, supports cancel-with-last-good retention,
+settles capacity rejection as a bounded safe error, and releases scope callbacks
+without blocking on their execution. Error mapping runs outside the snapshot
+lock. Snapshot presence is explicit so a successful zero is distinguishable from
+an unloaded value type. Existing plain-resource entry points remain compatible.
+
+Review found and corrected two prototype defects before commit: an independent
+query lock could invert with cancellation and synchronous invalidation; registering
+after execution could classify synchronous scope cancellation as provider failure.
+Coverage now includes concurrent cancellation/render reads and synchronous
+cancellation before the first await. A weak-reference check keeps the caller scope
+alive while proving a completed/reset query is no longer retained by its callback.
+
+Playnite achievements and activity now use `(SavedId, DetailsOpening)` keys and
+navigation cancellation scopes. Rendering and action handlers compose their
+resource snapshots with model-owned navigation and confirmed mutations. No second
+writable copy of section values/loading/errors is maintained. Hide/resume keeps
+completed data and retries interrupted reads; close resets read resources. Refresh
+keeps last-good achievements, and preserves the previous policy of invalidating
+activity even when another tab is selected. Overview, completion confirmation,
+installation, and game authority remain in their existing domain owners.
+
+Consumer applicability was checked across shipping samples, first-party widgets,
+and examples, including equivalent manual patterns:
+
+| Consumer | Disposition and concrete reason |
+|---|---|
+| Playnite achievements/activity | Migrated; ordinary lazy reads with one selected game/opening. |
+| Playnite hidden rows/connection | Already use plain resources; no query changes to model. Existing API retained and regression-tested. |
+| Playnite overview/status/install | Retain domain flow: confirmed completion mutates overview, status selection has bounded choice admission, installation is an external command. |
+| PoB inline skill options | Reject mechanical replacement: `PobWidget.SkillOptions.cs` retains one-build/32-group cache and intentionally lets an admitted engine command finish after selection change. The new single-key cancel policy is different. |
+| PoB build comparison | Retain explicit command transaction: `StartBuildComparison` is single-flight, re-reads committed XML to detect external changes, publishes under document/result authority, and reports command failure through feedback. A cached latest-query read would still require these owners and change error/admission behavior. |
+| Spotify | Retain discovered/cursor resources, page-or-pin queue demand, provider observation and saved/rating projections. A single selected key cannot replace these policies. |
+| Shipping YTM | Retain `LoadPage` typed section caches plus a shared nested detail slot, account reset, occurrence return identity, and live queue substitution. Wrapping the transport read would retain that state and add a second result owner. |
+| Settings | Retain reads serialized with writes/package actions by `_operationGate`; initialization, polling and authority recovery publish related settings projections. Independent cancel-on-selection resources would not replace that transaction boundary. |
+| Other samples/templates | Direct `CreateResource` consumers are only the existing Playnite reads. Remaining operations are commands, provider pagination, subscriptions or explicit lifecycle work; no equivalent single-current-key loading owner was identified for migration. |
+
+Validation:
+- SDK **173/173**, including ten scoped-resource scenarios (the executable reports
+  the scenario suite as one test): latest A→B→C coalescing/no overlap, duplicate
+  joining, scope replacement, cancellation retention, retry, inactive/capacity
+  rejection, synchronous cancellation, concurrent snapshots, callback retirement,
+  and value-type presence/non-retaining failure.
+- Playnite **219/219**, including added same-game/different-game close/reopen with
+  a noncooperative old read, failed-refresh retention/retry, and existing
+  hide/resume, lazy loading, completion confirmation and secret-achievement tests.
+- Public API baseline updated to **3866 symbols**; compatibility **17/17**.
+  Documentation contract covers **231 Markdown files** after adding the new SDK
+  file to the documentation ownership map.
+- No host, protocol, installer, running instance, or physical input path changed
+  in F5. Native focus/scroll work remains in F2/F9 validation.
+
+The diagnostic comparison is reproducible through the SDK executable's
+`--query-resource-probe <json>` option. `f5-query-resource-probe-final.json` measures
+10,000 in-process calls after warmup, comparing a plain resource against the keyed
+resource with a real caller scope. Snapshot reads and cache hits allocate **0 B**
+in both. Cache hits measured approximately **0.031 µs plain / 0.069 µs keyed**;
+refresh **0.92 / 1.17 µs**, **1128 / 1416 B**; replacement **0.99 / 1.16 µs**,
+**1176 / 1592 B**. The extra per-read cost is query/scope ownership, not duplicated
+provider data. These are diagnostic observations, not timing gates or claims about
+native scrolling, process working set, provider IO, or user-visible latency.
+
+Evidence under `artifacts/authoring`: `f5-sdk-verification.log`,
+`f5-sdk-scopes.log`, `f5-playnite-final.log`, `f5-query-resource-probe-final.json`,
+`f5-compat.log`, and `f5-docs-final.log`.
+F9, hidden-target native coverage, and the final restoration/completion audit
+remain active work; this closes the bounded F5 pilot and applicability decision.

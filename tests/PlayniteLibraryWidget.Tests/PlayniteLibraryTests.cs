@@ -2615,7 +2615,7 @@ public sealed partial class PlayniteLibraryTests
             "_livePlayniteAuthority", "_presentationAuthority", "_homeQueryAuthorityGeneration",
             "_browseQueryAuthorityGeneration",
             "_authorityRevision", "_hasLivePlayniteAuthority", "_playniteClient",
-            "_playniteConnection",
+            "_playniteConnection", "_detailsAchievements", "_detailsActivity",
             "_stateGate", "_stateRevision",
         }, fields.Select(field => field.Name).ToArray(),
             "A mutable presentation owner was added outside the model boundary.");

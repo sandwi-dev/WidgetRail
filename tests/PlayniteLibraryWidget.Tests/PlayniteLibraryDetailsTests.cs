@@ -495,6 +495,91 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task NewOpeningWaitsForOldAchievementReadWithoutReusingItsResult(bool sameGame)
+    {
+        var host = new FakeHost(3);
+        var widget = Create(host, out TestApplicationService application);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<PlayniteAchievements>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reads = 0;
+        var active = 0;
+        var peak = 0;
+        var current = new PlayniteAchievements(true, 2, 1, []);
+        application.AchievementsHandler = async (_, _) =>
+        {
+            peak = Math.Max(peak, Interlocked.Increment(ref active));
+            try
+            {
+                if (Interlocked.Increment(ref reads) == 1)
+                { entered.SetResult(); return await release.Task; }
+                return current;
+            }
+            finally { Interlocked.Decrement(ref active); }
+        };
+        await Interactive(widget);
+        try
+        {
+            await Ready(widget, host);
+            var games = PageNodes(widget, Snapshot(widget, 191_001).Root)
+                .Where(node => node.ActionId == PlayniteLibraryActions.DetailsOpen).Take(2).ToArray();
+            await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, games[0].Id));
+            await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
+            await Bounded(entered.Task, "first achievement read");
+            var opening = widget.RenderState.Value.DetailsOpening;
+            await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsClose, "close"));
+            await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, games[sameGame ? 0 : 1].Id));
+            await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
+            Assert.AreNotEqual(opening, widget.RenderState.Value.DetailsOpening);
+            Assert.IsTrue(widget.RenderState.Value.DetailsExtras.AchievementsLoading);
+            Assert.IsNull(widget.RenderState.Value.DetailsExtras.Achievements);
+            release.SetResult(new(true, 99, 99, []));
+            await Bounded(widget.WhenDetailsIdleAsync(), "replacement achievement read");
+            Assert.AreSame(current, widget.RenderState.Value.DetailsExtras.Achievements);
+            Assert.AreEqual(2, reads);
+            Assert.AreEqual(1, peak);
+        }
+        finally { release.TrySetResult(PlayniteAchievements.Unavailable); await WidgetTestHost.DestroyAsync(widget); }
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task FailedAchievementRefreshKeepsLastGoodValueAndRetries()
+    {
+        var host = new FakeHost(1);
+        var widget = Create(host, out TestApplicationService application);
+        var original = new PlayniteAchievements(true, 2, 1, []);
+        var refreshed = original with { Unlocked = 2 };
+        var reads = 0;
+        application.AchievementsHandler = (_, _) => ++reads switch
+        {
+            1 => ValueTask.FromResult(original),
+            2 => ValueTask.FromException<PlayniteAchievements>(new Exception("private provider detail")),
+            _ => ValueTask.FromResult(refreshed),
+        };
+        await Interactive(widget);
+        try
+        {
+            await Ready(widget, host);
+            var game = PageNodes(widget, Snapshot(widget, 192_001).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
+            await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
+            await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
+            await Bounded(widget.WhenDetailsIdleAsync(), "first achievements");
+            await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
+            await Bounded(widget.WhenDetailsIdleAsync(), "failed refresh");
+            Assert.AreSame(original, widget.RenderState.Value.DetailsExtras.Achievements);
+            Assert.IsFalse(widget.RenderState.Value.DetailsExtras.AchievementsLoading);
+            Assert.IsNotNull(widget.RenderState.Value.DetailsExtras.AchievementsError);
+            Assert.IsFalse(widget.RenderState.Value.DetailsExtras.AchievementsError!.Contains("private"));
+            await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
+            await Bounded(widget.WhenDetailsIdleAsync(), "retry achievements");
+            Assert.AreSame(refreshed, widget.RenderState.Value.DetailsExtras.Achievements);
+            Assert.IsNull(widget.RenderState.Value.DetailsExtras.AchievementsError);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task SecretAchievementsRequireRevealAndUninstallRequiresConfirmation()
     {
         var host = new FakeHost(3);

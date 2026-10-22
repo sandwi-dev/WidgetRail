@@ -71,14 +71,14 @@ public sealed partial class PlayniteLibraryWidget
             captured = achievementBrowse;
             if (LifecycleState != WidgetLifecycleState.Interactive || _model.Value.DetailsItem is null ||
                 _model.Value.DetailsExtras.Tab != PlayniteDetailsTab.Achievements || captured is null ||
-                !ReferenceEquals(captured.State.Achievements, _model.Value.DetailsExtras.Achievements) ||
+                !ReferenceEquals(captured.State.Achievements, WithDetailsResources(_model.Value).DetailsExtras.Achievements) ||
                 query.SourceKey != captured.SuggestionSource)
                 return ValueTask.FromResult(TextSuggestionResult.NotAvailable);
         }
         var result = captured.Suggestions.Search(query, token);
         lock (_gate)
             return ValueTask.FromResult(LifecycleState == WidgetLifecycleState.Interactive && ReferenceEquals(captured, achievementBrowse) &&
-                ReferenceEquals(captured.State.Achievements, _model.Value.DetailsExtras.Achievements) && _model.Value.DetailsItem is not null &&
+                ReferenceEquals(captured.State.Achievements, WithDetailsResources(_model.Value).DetailsExtras.Achievements) && _model.Value.DetailsItem is not null &&
                 _model.Value.DetailsExtras.Tab == PlayniteDetailsTab.Achievements ? result : TextSuggestionResult.NotAvailable);
     }
 }

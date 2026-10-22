@@ -82,6 +82,20 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 Lifetime = WidgetOperationLifetime.Active,
                 RetainLastGoodValue = true,
             });
+        _detailsAchievements = CreateQueryResource<DetailsQuery, PlayniteAchievements>(
+            DetailsPrefix + "achievements", new()
+            {
+                Load = (query, token) => _application.GetAchievementsAsync(query.SavedId, token),
+                MapError = _ => new("achievements_unavailable", "Achievements could not be loaded. Press Refresh to retry."),
+                CacheDuration = TimeSpan.MaxValue,
+            });
+        _detailsActivity = CreateQueryResource<DetailsQuery, PlayniteActivity>(
+            DetailsPrefix + "activity", new()
+            {
+                Load = (query, token) => _application.GetActivityAsync(query.SavedId, token),
+                MapError = _ => new("activity_unavailable", "Activity could not be loaded. Press Refresh to retry."),
+                CacheDuration = TimeSpan.MaxValue,
+            });
         _playniteConnection = CreateResource<PlayniteBridgeConnectionResult>(
             "playnite-library.playnite.connection", new()
             {
@@ -137,7 +151,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
     {
         get { lock (_gate) return _launchStates.Count; }
     }
-    internal WidgetModelSnapshot<PlayniteLibraryRenderState> RenderState => _model.Snapshot;
+    internal (PlayniteLibraryRenderState Value, long Revision) RenderState =>
+        (WithDetailsResources(_model.Value), Revision);
     internal Task WhenLibraryIdleAsync(CancellationToken cancellationToken = default) =>
         Task.WhenAll(
             Operations.WhenIdleAsync(IndexedHomeOperation, cancellationToken),
@@ -161,7 +176,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private WidgetView RenderCore()
     {
         var navigation = _navigation.Value;
-        var local = _model.Value;
+        var local = WithDetailsResources(_model.Value);
         PinRenderedArtwork(navigation.Route, local);
         if (navigation.Route == PlayniteLibraryRoute.PlayniteConnection)
         {
@@ -1889,7 +1904,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private void OpenDetails(PlayniteLibraryItem item, bool preserveTab = false,
         PlayniteLibraryGameTarget? capturedTarget = null)
     {
-        CancelDetailsOperations();
+        CancelDetailsOperations(retainReadValues: preserveTab);
+        // Explicit refresh previously invalidated activity even on another tab.
+        if (preserveTab) _detailsActivity.Reset();
         var tab = preserveTab ? _model.Value.DetailsExtras.Tab : PlayniteDetailsTab.Description;
         var generation = _model.Value.DetailsGeneration + 1;
         _model.Update(state => state with
@@ -1899,8 +1916,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             DetailsOpening = preserveTab ? state.DetailsOpening : state.DetailsOpening + 1,
             DetailsLoading = true, DetailsError = null, DetailsExtras = preserveTab ? state.DetailsExtras with
             {
-                Full = null, Activity = null, CompletionStatuses = null, CompletionStatusesLoading = false,
-                ActivityLoading = false, AchievementsLoading = false, ActivityError = null, AchievementsError = null,
+                Full = null, CompletionStatuses = null, CompletionStatusesLoading = false,
                 CompletionStatusesError = null, OperationMessage = null, ConfirmedCompletionStatus = null,
                 AchievementSearchRequest = 0,
             } : new() { Tab = tab },
