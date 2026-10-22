@@ -28,7 +28,13 @@ internal sealed partial class OverlayShellPage
                 Check(introduction.Step == "welcome", "First-run welcome is reachable");
                 await Press(ControllerButton.A);
                 await Until(() => introduction.Step == "guide" && !interactive);
-                Check(FocusedTrayWidget() is not null, "Starting the tour returns normal controller focus to the tray");
+                Check(introductionCard!.Focused, "Show me around keeps focus in the tutorial after the button release");
+                await Press(ControllerButton.A);
+                await Until(() => introduction.Step == "commands");
+                Check(introductionCard.Focused, "Next advances the tour and retains tutorial focus");
+                await Press(ControllerButton.B);
+                await Until(() => !introductionCard.Focused && FocusedTrayWidget() is not null);
+                Check(introduction.Step == "commands", "B explicitly returns to the rail without advancing the tour");
                 await Press(ControllerButton.A);
                 await Until(() => interactive && !switching && introduction.Step == "commands");
                 Check(introductionCard?.Visibility == Visibility.Collapsed, "Entering a widget suspends the tip without consuming its opening action");

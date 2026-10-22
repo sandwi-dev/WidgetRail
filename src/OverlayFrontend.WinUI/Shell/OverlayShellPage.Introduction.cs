@@ -217,10 +217,9 @@ internal sealed partial class OverlayShellPage
         if (action == "skip") { SetIntroduction(introduction with { Step = "complete", Paused = false }); LeaveIntroduction(); return; }
         if (action == "next")
         {
-            var fromWelcome = introduction.Step == "welcome";
             SetIntroduction(introduction.Step == "appearance" ? introduction with { Step = "complete" } : introduction.Next());
             RefreshIntroduction();
-            if (introduction.Finished || fromWelcome) LeaveIntroduction(); else introductionCard?.FocusPrimary();
+            if (introduction.Finished) LeaveIntroduction(); else introductionCard?.FocusPrimary();
             PublishControllerGuide();
             return;
         }
