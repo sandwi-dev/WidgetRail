@@ -2,7 +2,7 @@
 
 Date: 2026-10-22  
 Audit baseline: `adb696ac` (`codex/playnite-achievement-focus`)  
-Status: Active completion audit on `codex/sdk-authoring-improvements`. F5 scoped resources, F6 loaded lists, and F9 controlled disclosures are implemented and validated. Comparative YTM performance evidence is recorded below. F3 explicit viewport-return implementation passes its delayed-return fixture; broader native regression and recreation qualification remain in progress. Historical first-pass outcomes below are superseded where later sections say so. Nothing is merged, pushed, published, or installed. The current user authorization permits launching a separate candidate for validation.
+Status: Complete for local review on `codex/sdk-authoring-improvements`. Every finding has an implemented/validated or explicitly narrowed/rejected disposition. F3 now includes explicit host-owned viewport returns. The [review report](widget-authoring-review.md) summarizes current outcomes, validation, and reproduced baseline limitations. Historical first-pass outcomes below are superseded by the completion sections. Nothing is merged, pushed, published, or installed.
 
 Move generic focus, navigation, collection, and asynchronous presentation bookkeeping out of Playnite, shared PoB, YouTube Music, Spotify, and Settings into reusable SDK and host facilities. Widget authors should declare intent and domain data without maintaining competing request counters or reconstructing framework lifecycle rules.
 
@@ -616,13 +616,13 @@ These decisions supersede the initial proposed migrations. They follow the user'
 instruction to retain working designs when the proposed abstraction adds coupling
 or weakens behavior. No existing widget feature was intentionally removed.
 
-### Final disposition matrix
+### Disposition matrix
 
 | Finding | Outcome of this pass | Consumer scope |
 | --- | --- | --- |
 | F1 | Implemented shared focus allocation | All matching shipping widgets, SDK navigators and examples |
 | F2 | Implemented exact target protocol/host/SDK and admission-race fix | PoB search and native fixture |
-| F3 | Implemented narrow indexed navigation return intent | Spotify and Full Application; semantic/modal routing retained elsewhere |
+| F3 | Implemented captured indexed return intent and explicit host-owned viewport restoration | Spotify, Full Application, YTM, Settings details Back, and two PoB return paths; semantic/modal routing retained where distinct |
 | F4 | Implemented action-focused Back default | SDK and Playnite |
 | F5 | Implemented single-current-query resource and Playnite read-section migration; validated below | Existing state machine, bounded scheduler, explicit caller scope; domain mutations retained |
 | F6 | Implemented explicit-identity loaded-list adapter | Settings, Games & Apps, Playnite achievements, PoB loaded lists, Spotify queue, YTM snapshots; specialized sources retained |
@@ -637,8 +637,9 @@ or weakens behavior. No existing widget feature was intentionally removed.
 | F15 | Retained activity caches | They suppress scheduling, while SDK coalescing suppresses transport |
 | F16 | Retained provider reconciliation; fixed failed-command rollback | Spotify observations and exact command ownership |
 
-This table is a progress record, not completion evidence. Later F5/F6/F9 sections
-supersede the original deferrals. The final verification audit remains active.
+The completion sections provide evidence for this matrix. Later F5/F6/F9
+implementations supersede the original deferrals; the final F3 section records
+native return coverage and separate pre-existing regression-fixture failures.
 
 ### First-pass validation and limits (historical checkpoint)
 
@@ -1186,3 +1187,107 @@ The larger F3 protocol/viewport changes are still uncommitted at this checkpoint
 The existing memento and broad indexed-widget fixtures have additional failures
 under the current viewport, and a separate checkout of `223ffc16` is being used
 to establish their baseline. They are not counted as green or assumed pre-existing.
+
+### F3 completion: explicit returns, consumer coverage, and limits
+
+Protocol 101 adds an optional `RestoreViewport` intent to an exact indexed
+focus request. Ordinary requests omit the field from JSON. The SDK's
+`WidgetFocusRequest.ReturnToCollection` expresses the intent, and captured
+navigator returns use it automatically. Existing indexed parents still advertise
+the SDK's current protocol for deferred templates; feature requirement inference
+and older serialized requests remain independently checked. API baseline:
+**3876 symbols**, three additions and no removals; native contract: **186 constants**.
+
+The host records at most 64 value-only return anchors, keyed by owner, element,
+source, query, index, and occurrence. The existing memory-restoration mechanism
+waits for successful exact focus, restores layout geometry, clamps resized
+viewports, cancels on later input/native focus departure, and preserves unfinished
+intent across retained hide/show or recreation. Repeated suspension coalesces to
+one pending viewport. No polling timer, provider cache, eager realization, or
+widget-owned pixel offset was introduced.
+
+Native evidence corrected two geometry issues. A completed `ChangeView` can end
+at a different offset after layout/BringIntoView; final native view notifications
+now clear the pending request so actual geometry is reconciled. Focus/press scale
+is excluded by measuring the arranged row through its parent, avoiding cumulative
+Back drift. Cold horizontal entry waits for its real native viewport. Exact
+disabled rows retire before offscreen realization; native focus waits for the
+container to adopt the current slot and enabled state.
+
+| Consumer | Final viewport-return disposition |
+| --- | --- |
+| Spotify / Full Application | Captured navigator returns use the shared behavior automatically; route/provider selection remains local. |
+| Shipping YTM | Resolved saved occurrences use return intent; missing/ambiguous identities keep ordinary entry. Real worker/native reordered, removed, and ambiguous scenarios each pass **14/14**, including Settings Back and recreation. |
+| Settings installed list | Details-to-list Back uses return intent. Ordinary navigation, recovery, and changed selection retain ordinary entry. Request identity is retained as a `WidgetFocusRequest`, not a separate numeric allocator. |
+| PoB build-comparison details / reopened unified search | Migrated using one retained request per action. Same-query/key guards and forward search targeting remain intact. Comparison **62/62 for each game**; search **95/95 PoE1**, **166/166 PoE2**, with current locked engines. |
+| Playnite details | Existing modal backgrounds keep their native collection and validated modal-return/query guards. No additional viewport flag was forced into its separate modal model without demonstrated benefit. |
+| PoB passives / YouTube Video search | Retain existing mixed reveal/expansion/return paths. Blanket return classification would also affect forward selection or changed membership; adding parallel flags solely for uniformity is not justified. |
+| Games & Apps / forward PoB search destinations / other widgets | Keep ordinary entry for changed selection and deliberate jumps. No matching removed-page return consumer found in remaining shipping widgets/templates. |
+
+Final native evidence under `artifacts/authoring`:
+- `return-adoption-final`: **51/51**, including **29** nested source lifetime/
+  reentrancy checks, delayed reads, native/UIA departure, query replacement,
+  disabled targets, recreation, horizontal/changed-height/resized returns,
+  repeated suspension, actual wheel delivery, and no late viewport rewind.
+- `return-ytm-final-{reordered,removed,ambiguous}`: **14/14 each**. Earlier
+  repeated runs also pass. One earlier uninstrumented recreation run timed out;
+  its exact trigger was not established. The final fixture adopts the session's
+  latest frame and publication watermark together, rather than allowing queued
+  older lifecycle notifications to replay after manual recreation. Final and
+  repeated results are retained rather than treating that timeout as a pass.
+- `return-regression-entry`: **44/44**; `return-regression-reveal`: **10/10**;
+  `return-regression-continuity`: **16/16**.
+- The wheel assertion compares the first visible row's identity and screen
+  position, not raw pixel offset. Trace evidence shows a legitimate native
+  3379-to-3327 offset adjustment as 48px placeholders become 44px rows, while
+  item 70 remains at exactly Y=-7 and focus stays outside the collection.
+  The smaller-viewport assertion likewise uses the content viewport's actual
+  coordinate system, including its native inset. Tolerances were not widened.
+
+The broader legacy fixtures are **not green**. A separately compiled `223ffc16`
+checkout, with byte-identical assertion sources and matching fixture dimensions,
+reproduces both failures:
+- Generic preview-first memento recreation fails after nine checks: anchor 69
+  clipped fraction .688 to .583, offset 4460 to 4636. This remains a pre-existing
+  generic preview-memory limitation; explicit navigation-return recreation above
+  passes its separate checks.
+- The broad widget script passes its first eleven checks, including right-stick
+  settlement, then exceeds its fixed grid realization threshold. Baseline and
+  final code both realize 84 rows at 960x600 DIP (four columns, 197.6-DIP viewport);
+  both realize 100 at 960x720. Later assertions in that script did not run. This
+  comparison does not establish a new virtualization regression or a fully green
+  broad widget sweep.
+Evidence, screenshots, hashes and binlogs were copied to `return-baseline-evidence`.
+The baseline checkout remains protected by the task; no forced removal was used.
+Some native captures are black and the diagnostic return surface is minimally
+styled, so those images are not product visual acceptance. A readable shipping
+YTM capture was inspected at `return-ytm-layout-reordered/final.png`.
+
+Final 10,000-item shipping YTM measurements compare the same workload against
+`223ffc16` with no concurrent builds (`return-performance-baseline-final`,
+`return-performance-final`, `return-performance-confirmation`):
+
+| Measurement | Baseline host | Final host, two runs |
+| --- | --- | --- |
+| Maximum native rows | 34 | 34 |
+| Per-pass composition p95 | 9.93–10.82 ms | 9.39–11.32 ms |
+| Intervals over 50 ms per three passes | 1 | 1 each |
+| Retained-view reopen readiness | 12.71–19.40 ms | 12.87–18.74 ms |
+| Diagnostic retained managed memory | 72.45 MiB | 40.58–70.55 MiB |
+| Diagnostic retained private memory | 288.19 MiB | 256.87–281.22 MiB |
+| Allocations during measured workload | 3154.92 MiB | 2988.22–3195.94 MiB |
+
+The overlapping timing/allocation observations and unchanged realization bound
+show no clear regression in this fixture. They do not establish a memory or speed
+improvement, statistical equivalence, or behavior with artwork/network/playback.
+GC remains diagnostic-only; no product trimming/collection policy changed.
+
+Managed final gates: SDK **174/174**, compatibility **17/17**, Playnite **219/219**,
+Spotify **88/88**, Settings **94/94**, YTM **44/44**, Full Application **5/5**.
+Native Release also builds with validation code disabled, with zero warnings or
+errors (`return-production-build.log`).
+Earlier PoB constrained-layout, management/history, and calculation baseline
+limitations remain as documented; no assertions were removed to make them green.
+All owned fixtures exited; the user's running instance and primary checkout were
+preserved. Local commits only; no merge, push, release, installation or permission
+change was performed.
