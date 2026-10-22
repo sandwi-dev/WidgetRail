@@ -5,7 +5,7 @@ internal enum TrayHoldAction { None, ToggleReorder, TaskSwitcher }
 /// <summary>Host gesture policy only. The shared platform adapter owns physical input.</summary>
 internal sealed class TrayHoldGesture
 {
-    internal const long HoldMilliseconds = 500;
+    internal const long HoldMilliseconds = 300;
     private enum Phase { Idle, Tap, Hold, Won, Cancelled }
     private Phase phase;
     private object? target;

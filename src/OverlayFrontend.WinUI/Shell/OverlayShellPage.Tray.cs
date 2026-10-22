@@ -50,7 +50,7 @@ internal sealed partial class OverlayShellPage
     {
         // Collapsing the retained widget during hide makes XAML choose another
         // focusable control. That fallback is not a user transfer to the tray.
-        if (retired || !visible) return;
+        if (retired || !visible || FocusedTrayWidget() is not { } descriptor) return;
         if (utilityPanel is { } panel && !nativeTrayFocusTransferAllowed)
         {
             if (utilityEntered) panel.RestoreEntryFocus();
@@ -68,7 +68,6 @@ internal sealed partial class OverlayShellPage
         RecordFocusTransfer("tray");
         CloseUtilityPanel();
         SetInteractive(false);
-        if (FocusedTrayWidget() is not { } descriptor) return;
         if (descriptor.Id != requestedWidget) { trayHold.Cancel(); FinishTrayReorder(); CloseTrayMenu(false); }
         Tray.SelectedItem = descriptor;
         if (descriptor.Id != requestedWidget) _ = SelectAsync(descriptor.Id, enterWidget: false);

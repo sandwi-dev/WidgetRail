@@ -169,6 +169,7 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
                 { row.Foreground = ink; row.FocusVisualPrimaryBrush = new SolidColorBrush(current.Palette.Focus); }
             }
             if (appearance is { } style && rows[entry.Id].Row.Content is ShellTaskWindowRow task) task.Apply(style.Palette, style.Scale);
+            if (appearance is { } actionStyle && rows[entry.Id].Row.Content is ShellUtilityActionRow action) action.Apply(actionStyle.Palette, actionStyle.Scale);
         }
         if (focused is not null && !rows.ContainsKey(focused)) FocusIndex(Math.Clamp(oldIndex, 0, Math.Max(0, list.Items.Count - 1)));
     }
@@ -248,6 +249,7 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
             row.Foreground = ink; row.FocusVisualPrimaryBrush = new SolidColorBrush(palette.Focus);
             if (row.Content is NotificationCard card) card.ApplyBannerPalette(palette);
             if (row.Content is ShellTaskWindowRow task) task.Apply(palette, scale);
+            if (row.Content is ShellUtilityActionRow action) action.Apply(palette, scale);
         }
     }
     public void Dispose() { CancelPendingFocus(); material.Dispose(); }

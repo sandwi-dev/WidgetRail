@@ -24,6 +24,9 @@ internal sealed partial class OverlayShellPage
         while (utilityPanel?.ContainsFocus != true)
         { if (Environment.TickCount64 >= deadline) throw new TimeoutException($"Reopened utility did not receive focus: panel={utilityPanel is not null} pending={utilityPanel?.HasPendingFocus} icon={UtilityIconFocused} radial={RadialOpen} interactive={interactive} switching={switching} foreground={foreground} focused={FocusManager.GetFocusedElement(XamlRoot)?.GetType().Name}."); await Task.Delay(20); }
         if (shellGestures.Owns(ControllerButton.A)) throw new InvalidOperationException("Released A remained owned after handoff and reentry.");
+        utilityPanel!.Move(1); // The first row opens Windows Task View; exercise an app row here.
+        while (utilityPanel.HasPendingFocus || utilityPanel.FocusedId is null || SystemTaskViewFocused)
+        { if (Environment.TickCount64 >= deadline) throw new TimeoutException("App row focus did not settle after reentry."); await Task.Delay(20); }
         var activation = HostTaskActivationRequested;
         var dispatched = 0;
         try
@@ -58,7 +61,22 @@ internal sealed partial class OverlayShellPage
                 NavigateTray(FocusNavigationDirection.Up);
                 await Task.Delay(50);
                 Check(UtilityListFocused, "Up enters Task Switcher without A");
-                taskSwitcherButton.Focus(FocusState.Programmatic);
+                Check(SystemTaskViewFocused, "Windows Task View is the first focusable entry");
+                var taskView = SystemTaskViewRequested;
+                var requested = 0;
+                try
+                {
+                    SystemTaskViewRequested = () => { requested++; return Task.FromResult(Input.WindowsTaskViewResult.KeyboardBusy); };
+                    await Button(ControllerButton.X);
+                    Check(requested == 0 && SystemTaskViewFocused, "X cannot close the Windows Task View action");
+                    await Button(ControllerButton.A);
+                    Check(requested == 1 && panel!.ContainsFocus, "A requests Windows Task View once and a rejected request retains list focus");
+                    taskStatus = null;
+                }
+                finally { SystemTaskViewRequested = taskView; }
+                // Programmatic can retain WinUI's last Pointer state, which is a
+                // legitimate mouse transfer. Exercise keyboard/controller restoration.
+                taskSwitcherButton.Focus(FocusState.Keyboard);
                 await Until(() => utilityPanel?.ContainsFocus == true);
                 Check(UtilityListFocused, "Late native icon focus cannot undo the user's entry into the list");
                 ((Control)Tray.ContainerFromIndex(0)).Focus(FocusState.Programmatic);

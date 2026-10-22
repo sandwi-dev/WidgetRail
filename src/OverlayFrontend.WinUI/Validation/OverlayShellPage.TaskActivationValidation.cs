@@ -49,6 +49,8 @@ internal sealed partial class OverlayShellPage
                     await Task.Delay(50);
                 } while (Environment.TickCount64 < deadline);
                 Check(window is not null, "Host window observer publishes exact disposable target without a widget");
+                while (utilityPanel?.IsLoaded != true)
+                { if (Environment.TickCount64 >= deadline) throw new TimeoutException("Task list did not finish loading."); await Task.Delay(20); }
                 Check(native.IsOverlayForeground && visible, "Frontend owns foreground before direct handoff");
                 var taskList = FindControl<Microsoft.UI.Xaml.Controls.ListView>(utilityPanel!, "Overlay.Utility.List")!;
                 var targetRow = taskList.Items.Cast<Microsoft.UI.Xaml.Controls.ListViewItem>().Single(item => (string)item.Tag == window!.WindowId);

@@ -261,6 +261,8 @@ public sealed partial class MainWindow
 
     partial void ConfigureProductionValidation(Shell.OverlayShellPage page, IReadOnlyList<string> arguments)
     {
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-system-task-view") is { } systemTaskView)
+            EnableSystemTaskViewValidation(page, systemTaskView);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-task-cycle") is { } taskCycle &&
             Shell.FrontendArguments.Value(arguments, "--task-cycle-targets") is { } cycleTargets)
             EnableTaskCycleValidation(page, taskCycle, cycleTargets);

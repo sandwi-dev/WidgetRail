@@ -3,8 +3,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\WindowsTaskView.cs" Link="WindowsTaskView.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\ApplicationRestart.cs" Link="ApplicationRestart.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ArtworkFileStream.cs" Link="ArtworkFileStream.cs" />
     <EmbeddedResource Include="..\..\src\OverlayFrontend.WinUI\Assets\Words\english.txt" LogicalName="WidgetRail.EnglishWords" />

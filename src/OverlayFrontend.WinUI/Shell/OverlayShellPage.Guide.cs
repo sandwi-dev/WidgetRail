@@ -36,11 +36,11 @@ internal sealed partial class OverlayShellPage
         else if (!interactive && (UtilityIconFocused || UtilityListFocused))
         {
             shell = UtilityListFocused
-                ? (ControllerGuideHint[])[.. (utilityPanel?.FocusedActionable == true || utilityPanel?.FocusedId is null ? new ControllerGuideHint[] { new(ControllerPrompt.A, utilityPanel?.FocusedId is null ? "Select" : shownUtility == ShellUtility.Tasks ? "Switch" : "Open", ControllerButton.A) } : []),
-                    .. (utilityPanel?.FocusedId is not null ? new ControllerGuideHint[] { new(ControllerPrompt.X, shownUtility == ShellUtility.Tasks ? "Close window" : "Dismiss", ControllerButton.X) } : []),
+                ? (ControllerGuideHint[])[.. (utilityPanel?.FocusedActionable == true || utilityPanel?.FocusedId is null ? new ControllerGuideHint[] { new(ControllerPrompt.A, utilityPanel?.FocusedId is null ? "Select" : shownUtility == ShellUtility.Tasks && !SystemTaskViewFocused ? "Switch" : "Open", ControllerButton.A) } : []),
+                    .. (utilityPanel?.FocusedId is not null && !SystemTaskViewFocused ? new ControllerGuideHint[] { new(ControllerPrompt.X, shownUtility == ShellUtility.Tasks ? "Close window" : "Dismiss", ControllerButton.X) } : []),
                     new(ControllerPrompt.B, "Back to icon", ControllerButton.B, Required: true), new(ControllerPrompt.RightStickMove, "Scroll")]
                 : (ControllerGuideHint[])[new(ControllerPrompt.DPadUp, "Enter list"), new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true)];
-            shellContext = ("shell-utility", shownUtility, UtilityListFocused);
+            shellContext = ("shell-utility", shownUtility, UtilityListFocused, SystemTaskViewFocused);
         }
         else if (SystemFilePickerOpen)
         { shell = Array.Empty<ControllerGuideHint>(); shellContext = "system-file-picker"; }

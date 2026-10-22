@@ -12,6 +12,7 @@ using WidgetRail.WidgetProtocol;
 using WidgetRail.WindowsAppLibraryProvider;
 using WidgetRail.WindowsWindowActivation;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
+using WidgetRail.OverlayFrontend.WinUI.Input;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
@@ -19,6 +20,11 @@ internal sealed record HostTaskActivationRequest(TaskWindowTarget Target, long I
 
 internal sealed partial class OverlayShellPage
 {
+    private const string SystemTaskViewId = "system-task-view";
+    internal Func<Task<WindowsTaskViewResult>>? SystemTaskViewRequested { get; set; }
+    private bool SystemTaskViewFocused => shownUtility == ShellUtility.Tasks && utilityPanel?.FocusedId == SystemTaskViewId;
+    private static ShellUtilityEntry SystemTaskViewEntry() => new(SystemTaskViewId, "Windows Task View. Open Windows' app switcher.", SystemTaskViewId,
+        () => new ShellUtilityActionRow("Windows Task View", "Open Windows’ app switcher", "\uE7C4"));
     private enum ShellUtility { Notifications, Tasks }
     private readonly Button taskSwitcherButton = new() { Width = 48, Height = 48, Padding = new(4),
         CornerRadius = new(12), VerticalAlignment = VerticalAlignment.Center };
@@ -70,7 +76,7 @@ internal sealed partial class OverlayShellPage
         icon.GotFocus += (_, _) =>
         {
             WindowActivationDiagnostic?.Invoke($"Utility icon focus kind={kind} visible={visible} switching={switching} radial={RadialOpen} entered={utilityEntered} directional={directionalFocus} state={icon.FocusState}");
-            if (retired || !visible || !foreground || HostChoiceActive || switching || utilityClosing) return;
+            if (retired || !visible || !foreground || HostChoiceActive || switching || utilityClosing || icon.FocusState == FocusState.Unfocused) return;
             // Native reactivation can restore the old icon after Up has already
             // entered the list. Only a user transfer or Back may leave that scope.
             if (utilityEntered && shownUtility == kind && !directionalFocus && icon.FocusState != FocusState.Pointer)
@@ -127,6 +133,7 @@ internal sealed partial class OverlayShellPage
         else
         {
             utilityWindows = [];
+            panel.Update((ShellUtilityEntry[])[SystemTaskViewEntry()]);
             panel.SetStatus(taskStatus ?? "Finding open windows…");
             utilityRefresh = RunUtilityTasksAsync(panel, utilityCancellation.Token);
         }
@@ -234,9 +241,9 @@ internal sealed partial class OverlayShellPage
                 if (!ReferenceEquals(utilityPanel, panel) || token.IsCancellationRequested) return;
                 utilityWindows = windows;
                 panel.SetCount(windows.Count);
-                panel.Update(windows.Select(window => new ShellUtilityEntry(window.WindowId,
+                panel.Update((ShellUtilityEntry[])[SystemTaskViewEntry(), .. windows.Select(window => new ShellUtilityEntry(window.WindowId,
                     $"{window.ApplicationName}. {window.Title}. {(window.IsMinimized ? "Minimized" : "Open")}", window,
-                    () => TaskWindowRow(window))).ToArray());
+                    () => TaskWindowRow(window)))]);
                 panel.SetStatus(taskStatus ?? (windows.Count == 0 ? "No other application windows are open." : ""));
             }
             finally { utilityRefreshGate.Release(); }
@@ -296,6 +303,25 @@ internal sealed partial class OverlayShellPage
             { browsers.Notifications.Dismiss(notificationId); panel.SetStatus("This notification is no longer available."); return; }
             CloseUtilityPanel(); await OpenUtilityNotificationAsync(id); return;
         }
+        if (id == SystemTaskViewId)
+        {
+            if (SystemTaskViewRequested is null) return;
+            panel.Busy = true; taskStatus = null;
+            try
+            {
+                var result = await SystemTaskViewRequested();
+                if (result is WindowsTaskViewResult.KeyboardBusy or WindowsTaskViewResult.InputRejected)
+                    taskStatus = result == WindowsTaskViewResult.KeyboardBusy ? "Release keyboard modifiers and try again." : "Couldn't open Windows Task View. Try again.";
+            }
+            catch (Exception error)
+            { Diagnostics.FrontendFailureLog.Current.Write("system-task-view", error); taskStatus = "Couldn't open Windows Task View. Try again."; }
+            finally
+            {
+                panel.Busy = false;
+                if (visible && taskStatus is not null) utilityPanel?.SetStatus(taskStatus);
+            }
+            return;
+        }
         if (utilityWindows.FirstOrDefault(window => window.WindowId == id)?.PreviewTarget is not { } target || HostTaskActivationRequested is null) return;
         if (!ulong.TryParse(target.Handle, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var handle) ||
             !ulong.TryParse(target.ProcessCreated, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var created)) return;
@@ -328,6 +354,7 @@ internal sealed partial class OverlayShellPage
     private async Task DismissUtilityItemAsync(ShellUtilityPanel panel, ShellUtility kind, string id)
     {
         if (!ReferenceEquals(panel, utilityPanel) || panel.Busy || !visible || !foreground) return;
+        if (kind == ShellUtility.Tasks && id == SystemTaskViewId) return;
         if (kind == ShellUtility.Notifications)
         { if (long.TryParse(id, out var notification)) browserOwner?.Notifications.Dismiss(notification); return; }
         panel.Busy = true;

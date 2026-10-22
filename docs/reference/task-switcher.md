@@ -8,11 +8,14 @@ permissions. Recent Apps and the separate Task Switcher widget are retired.
 
 Focus the Task Switcher icon to show its compact window list. **Up** enters the
 list; **A** switches to the selected window, and **X** requests a normal close.
+The first entry, **Windows Task View**, instead opens Windows' own app switcher
+using Win+Tab after releasing the selecting gesture and hiding the overlay. It
+has no close action. The existing window list remains available underneath.
 **B** returns from the list to its icon, keeping the panel visible. B on the icon
 uses the same radial-chooser Back behavior as the notification bell. Left/Right
 moves between utility icons and the rail.
 
-In the rail or radial chooser, **hold Y** to focus Task Switcher. Tapping Y still
+In the rail or radial chooser, **hold Y for 300 ms** to focus Task Switcher. Tapping Y still
 enters reorder mode. This is a shell shortcut, not a global override of widget
 or keyboard actions. The tray menu also offers **Task Switcher** beside
 **Notifications**. Notifications follows the same focus/Up/Back flow.
