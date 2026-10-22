@@ -9,6 +9,64 @@ public sealed partial class PlayniteLibraryTests
 {
     private const string DetailAction = "playnite-library.details.";
 
+    [TestMethod, Timeout(30_000)]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task DestructionUsesSdkRetirementAndDisposesTheApplication(bool fromBackground)
+    {
+        var host = new FakeHost(1);
+        var widget = Create(host, out TestApplicationService application);
+        await Interactive(widget);
+        await Ready(widget, host);
+        if (fromBackground) await Background(widget);
+        await WidgetTestHost.DestroyAsync(widget);
+        Assert.AreEqual(1, application.DisposeCalls);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task RejectedDetailOperationsDoNotLeaveLoadingOrBusyState()
+    {
+        var host = new FakeHost(1);
+        var widget = Create(host);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await Interactive(widget);
+        try
+        {
+            await Ready(widget, host);
+            var game = PageNodes(widget, Snapshot(widget, 190_001).Root)
+                .First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
+            var operations = (WidgetOperations)typeof(Widget).GetProperty("Operations",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(widget)!;
+            var held = new List<WidgetOperationHandle>();
+            for (var index = 0; index <= WidgetOperations.MaximumTrackedKeys; ++index)
+            {
+                var handle = operations.RunLatest("test.capacity." + index,
+                    async context => await release.Task.WaitAsync(context.CancellationToken), WidgetOperationLifetime.Widget);
+                if (!handle.IsAccepted) break;
+                held.Add(handle);
+            }
+            Assert.IsTrue(held.Count > 0);
+            await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
+            await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
+            await widget.OnActionAsync(new(DetailAction + "tab.activity", "tab"));
+            await widget.OnActionAsync(new(DetailAction + "uninstall", "uninstall"));
+            await widget.OnActionAsync(new(DetailAction + "uninstall.confirm", "confirm"));
+            var state = widget.RenderState.Value;
+            Assert.IsFalse(state.DetailsLoading, "Rejected overview remained loading.");
+            Assert.IsFalse(state.DetailsExtras.CompletionStatusesLoading, "Rejected statuses remained loading.");
+            Assert.IsFalse(state.DetailsExtras.AchievementsLoading, "Rejected achievements remained loading.");
+            Assert.IsFalse(state.DetailsExtras.ActivityLoading, "Rejected activity remained loading.");
+            Assert.IsFalse(state.DetailsExtras.OperationBusy, "Rejected installation request remained busy.");
+            release.SetResult();
+            await Task.WhenAll(held.Select(handle => handle.Completion));
+            await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
+            await Bounded(widget.WhenDetailsIdleAsync(), "recovered detail operations");
+            Assert.IsNull(widget.RenderState.Value.DetailsError);
+            Assert.IsFalse(widget.RenderState.Value.DetailsExtras.ActivityLoading);
+        }
+        finally { release.TrySetResult(); await WidgetTestHost.DestroyAsync(widget); }
+    }
+
     [TestMethod]
     public void DetailsLinkManifestDeclaresStandardWebIntent()
     {

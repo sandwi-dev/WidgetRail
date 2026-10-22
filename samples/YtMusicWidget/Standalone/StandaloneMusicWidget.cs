@@ -217,7 +217,7 @@ public sealed partial class StandaloneMusicWidget : Widget
             _status = "Loading…";
         }
         Invalidate();
-        Operations.RunLatest("music.page", async context =>
+        var operation = Operations.RunLatest("music.page", async context =>
         {
             try
             {
@@ -245,6 +245,16 @@ public sealed partial class StandaloneMusicWidget : Widget
                 Invalidate();
             }
         }, WidgetOperationLifetime.Active);
+        if (!operation.IsAccepted)
+        {
+            lock (_gate)
+            {
+                if (generation != _pageGeneration) return;
+                _loading = false;
+                _status = "This page could not load. Retry, or reconnect in Setup.";
+            }
+            Invalidate();
+        }
     }
 
     private void SelectTab(string tab)

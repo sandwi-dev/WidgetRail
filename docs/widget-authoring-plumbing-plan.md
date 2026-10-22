@@ -532,3 +532,24 @@ anchor/captured-action targets, Settings package-selection recovery, and YTM's
 provider/cache history remain local. They are not mechanically equivalent to an
 indexed route return, and the new API is not a replacement modal framework.
 Evidence: `artifacts/authoring/f3-*.log`, `f3-native/result.json`.
+
+### Operation admission and SDK lifecycle follow-up
+
+F10 consumer checks found the same pre-admission loading hazard in Playnite details
+and shipping YouTube Music page reads. Capacity-exhaustion regressions fail before
+and pass after handling rejected admission, settling their loading/error state,
+and permitting retry. Playnite covers overview, statuses, achievements, activity,
+and installation operation busy state. Spotify starts its page loading state
+inside admitted execution; Settings intent navigation already handles rejection;
+PoB skill-option reads already retire rejected requests.
+
+Playnite destruction also reproduced an SDK-ownership error: OnDestroying tried
+to publish an empty indexed query after WidgetLifetime had been canceled, throwing
+before application disposal. Removed the redundant query retirement; SDK already
+retires leases and drains lifetime operations. Added active/background destruction
+coverage proving service disposal. The initial capacity test's destruction threw
+and masked its assertion; a second pre-fix run using Background exposed the exact
+stuck-loading assertion. Final tests restore full destruction cleanup.
+
+Playnite 216/216; YouTube Music 43/43. Logs: `playnite-final.log`,
+`f10-playnite-repro.log`, `f10-playnite-fixed.log`, and `f10-ytm-*.log`.

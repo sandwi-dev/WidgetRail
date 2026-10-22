@@ -392,8 +392,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     protected override ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
-        RetireIndexedHome();
-        RetireIndexedBrowse();
+        // The SDK has already retired leases and drained widget-owned operations.
+        // Publishing a replacement query here would use a canceled widget lifetime.
         _playniteClient?.Dispose();
         return _application.DisposeAsync();
     }
@@ -1913,7 +1913,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private void LoadDetailsOverview(PlayniteLibraryItem item, long generation)
     {
         var routeLifetime = _navigation.Value.RouteCancellationToken;
-        _ = Operations.RunLatest("playnite-library.details", async context =>
+        var operation = Operations.RunLatest("playnite-library.details", async context =>
         {
             using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
                 context.CancellationToken, routeLifetime);
@@ -1938,6 +1938,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
                     ? state : state with { DetailsLoading = false, DetailsError = "Game details could not be loaded. Refresh to retry." });
             }
         }, WidgetOperationLifetime.Active);
+        if (!operation.IsAccepted)
+            _model.Update(state => state.DetailsGeneration != generation || state.DetailsItem is null
+                ? state : state with { DetailsLoading = false, DetailsError = "Game details could not be loaded. Refresh to retry." });
     }
 
     internal Task WhenDetailsIdleAsync(CancellationToken cancellationToken = default) =>

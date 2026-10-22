@@ -156,6 +156,7 @@ var tests = new List<(string, Func<Task>)>
     ("All pages and pinned layout produce valid bounded snapshots", Snapshots),
     ("Radio selection acknowledges immediately and leaves transport enabled", RadioDoesNotBlock),
     ("A late search response cannot replace a newer page", StalePage),
+    ("Rejected page reads settle loading and can retry", RejectedPageRead),
     ("Sign-in survives closing the overlay", AuthLifetime),
     ("Background actions cannot start playback", BackgroundInput),
     ("Protocol rejects oversized and incomplete messages", BoundedProtocol),
@@ -451,6 +452,33 @@ static async Task StalePage()
         Check(!Nodes(widget.Render().CreateSnapshot("test", 2).Root).Any(n => n.Text?.Contains("Stale search", StringComparison.Ordinal) == true), "Late result overwrote library");
     }
     finally { service.PendingSearch?.TrySetResult(new("Canceled", [])); await WidgetTestHost.DestroyAsync(widget); }
+}
+static async Task RejectedPageRead()
+{
+    var (widget, _) = await Start();
+    var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    try
+    {
+        var operations = (WidgetOperations)typeof(Widget).GetProperty("Operations",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(widget)!;
+        var held = new List<WidgetOperationHandle>();
+        for (var index = 0; index <= WidgetOperations.MaximumTrackedKeys; ++index)
+        {
+            var handle = operations.RunLatest("test.capacity." + index,
+                async context => await release.Task.WaitAsync(context.CancellationToken), WidgetOperationLifetime.Widget);
+            if (!handle.IsAccepted) break;
+            held.Add(handle);
+        }
+        await widget.OnActionAsync(new("tab.library", "test"));
+        var snapshot = widget.Render().CreateSnapshot("test", 1);
+        Check(Nodes(snapshot.Root).Any(node => node.Text == "This page could not load. Retry, or reconnect in Setup."),
+            "Rejected page read left its loading presentation active.");
+        release.SetResult();
+        await Task.WhenAll(held.Select(handle => handle.Completion));
+        await widget.OnActionAsync(new("refresh", "refresh"));
+        await Until(() => Nodes(widget.Render().CreateSnapshot("test", 2).Root).Any(node => node.Text == "Library result"));
+    }
+    finally { release.TrySetResult(); await WidgetTestHost.DestroyAsync(widget); }
 }
 static async Task AuthLifetime()
 {

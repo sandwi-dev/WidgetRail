@@ -62,7 +62,7 @@ public sealed partial class PlayniteLibraryWidget
         var generation = state.DetailsGeneration;
         UpdateDetails(generation, value => value with { CompletionStatusesLoading = true, CompletionStatusesError = null });
         var route = _navigation.Value.RouteCancellationToken;
-        _ = Operations.RunLatest(DetailsPrefix + "statuses", async context =>
+        var operation = Operations.RunLatest(DetailsPrefix + "statuses", async context =>
         {
             using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, route);
             try
@@ -87,6 +87,9 @@ public sealed partial class PlayniteLibraryWidget
                     CompletionStatusesError = "Completion statuses could not be loaded. Refresh to retry." });
             }
         }, WidgetOperationLifetime.Active);
+        if (!operation.IsAccepted)
+            UpdateDetails(generation, value => value with { CompletionStatusesLoading = false,
+                CompletionStatusesError = "Completion statuses could not be loaded. Refresh to retry." });
     }
 
     private void LoadDetailsSection(PlayniteDetailsTab tab, bool refresh = false)
@@ -101,7 +104,7 @@ public sealed partial class PlayniteLibraryWidget
             ? value with { AchievementsLoading = true, AchievementsError = null }
             : value with { ActivityLoading = true, ActivityError = null });
         var route = _navigation.Value.RouteCancellationToken;
-        _ = Operations.RunLatest(DetailsPrefix + (achievements ? "achievements" : "activity"), async context =>
+        var operation = Operations.RunLatest(DetailsPrefix + (achievements ? "achievements" : "activity"), async context =>
         {
             using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, route);
             try
@@ -127,6 +130,10 @@ public sealed partial class PlayniteLibraryWidget
                     : value with { ActivityLoading = false, ActivityError = "Activity could not be loaded. Press Refresh to retry." });
             }
         }, WidgetOperationLifetime.Active);
+        if (!operation.IsAccepted)
+            UpdateDetails(generation, value => achievements
+                ? value with { AchievementsLoading = false, AchievementsError = "Achievements could not be loaded. Press Refresh to retry." }
+                : value with { ActivityLoading = false, ActivityError = "Activity could not be loaded. Press Refresh to retry." });
     }
 
     private async ValueTask<bool> TryHandleDetailsActionAsync(WidgetActionEvent action, CancellationToken token)
@@ -235,7 +242,7 @@ public sealed partial class PlayniteLibraryWidget
         var generation = state.DetailsGeneration;
         UpdateDetails(generation, value => value with { OperationBusy = true, ConfirmUninstall = false, OperationMessage = null });
         var routeLifetime = _navigation.Value.RouteCancellationToken;
-        _ = Operations.RunLatest(DetailsPrefix + "operation", async context =>
+        var operation = Operations.RunLatest(DetailsPrefix + "operation", async context =>
         {
             using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, routeLifetime);
             try
@@ -257,6 +264,9 @@ public sealed partial class PlayniteLibraryWidget
                     OperationMessage = "The request could not complete. Check Playnite and try again." });
             }
         }, WidgetOperationLifetime.Active);
+        if (!operation.IsAccepted)
+            UpdateDetails(generation, value => value with { OperationBusy = false,
+                OperationMessage = "The request could not start. Try again." });
         return true;
     }
 }

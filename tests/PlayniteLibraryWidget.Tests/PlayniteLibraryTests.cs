@@ -4571,7 +4571,8 @@ public sealed partial class PlayniteLibraryTests
             CancellationToken cancellationToken) => services.PrivateState.WriteAsync(
                 state, expectedRevision, cancellationToken: cancellationToken);
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        internal int DisposeCalls { get; private set; }
+        public ValueTask DisposeAsync() { DisposeCalls++; return ValueTask.CompletedTask; }
     }
 
     private sealed class FakeHost
