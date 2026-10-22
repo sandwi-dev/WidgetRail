@@ -37,7 +37,7 @@ internal sealed partial class OverlayShellPage
         {
             shell = UtilityListFocused
                 ? (ControllerGuideHint[])[.. (utilityPanel?.FocusedActionable == true || utilityPanel?.FocusedId is null ? new ControllerGuideHint[] { new(ControllerPrompt.A, utilityPanel?.FocusedId is null ? "Select" : shownUtility == ShellUtility.Tasks && !SystemTaskViewFocused ? "Switch" : "Open", ControllerButton.A) } : []),
-                    .. (utilityPanel?.FocusedId is not null && !SystemTaskViewFocused ? new ControllerGuideHint[] { new(ControllerPrompt.X, shownUtility == ShellUtility.Tasks ? "Close window" : "Dismiss", ControllerButton.X) } : []),
+                    .. (utilityPanel?.FocusedDismissLabel is { } dismissLabel ? new ControllerGuideHint[] { new(ControllerPrompt.X, dismissLabel, ControllerButton.X) } : []),
                     new(ControllerPrompt.B, "Back to icon", ControllerButton.B, Required: true), new(ControllerPrompt.RightStickMove, "Scroll")]
                 : (ControllerGuideHint[])[new(ControllerPrompt.DPadUp, "Enter list"), new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true)];
             shellContext = ("shell-utility", shownUtility, UtilityListFocused, SystemTaskViewFocused);

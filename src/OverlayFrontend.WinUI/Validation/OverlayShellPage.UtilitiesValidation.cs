@@ -62,6 +62,9 @@ internal sealed partial class OverlayShellPage
                 await Task.Delay(50);
                 Check(UtilityListFocused, "Up enters Task Switcher without A");
                 Check(SystemTaskViewFocused, "Windows Task View is the first focusable entry");
+                var taskRows = FindControl<ListView>(panel!, "Overlay.Utility.List")!;
+                Check(!taskRows.Items.Cast<ListViewItem>().Select(row => (ShellUtilityRowContent)row.Content).Any(row => row.HintShown),
+                    "Windows Task View has no row close hint");
                 var taskView = SystemTaskViewRequested;
                 var requested = 0;
                 try
@@ -85,8 +88,32 @@ internal sealed partial class OverlayShellPage
                 var selected = panel!.FocusedId;
                 await RefreshUtilityTasksAsync(panel, lifetime.Token);
                 Check(panel.FocusedId == selected, "Window refresh preserves focused identity");
+                panel.Move(1);
+                await Until(() => panel.FocusedDismissLabel == "Close" &&
+                    taskRows.Items.Cast<ListViewItem>().Any(row => ((ShellUtilityRowContent)row.Content).HintShown));
+                Check(taskRows.Items.Cast<ListViewItem>().Count(row => ((ShellUtilityRowContent)row.Content).HintShown) == 1,
+                    "Only the focused application row shows the close hint");
+                var appRow = taskRows.Items.Cast<ListViewItem>().Single(row => (string)row.Tag == panel.FocusedId);
+                var appContent = appRow.Content;
+                await RefreshUtilityTasksAsync(panel, lifetime.Token);
+                Check(ReferenceEquals(appContent, appRow.Content) && ((ShellUtilityRowContent)appContent).HintShown,
+                    "Window refresh preserves the row and its focused close hint");
+                panel.Busy = true;
+                Check(!((ShellUtilityRowContent)appContent).HintShown, "Busy rows hide the unavailable close hint");
+                panel.Busy = false;
+                var playStation = Presentation.WidgetControllerPrompts.PlayStation;
+                try
+                {
+                    Presentation.WidgetControllerPrompts.Set(WidgetRail.OverlayPlatformClient.ControllerFamily.PlayStation);
+                    Check(AutomationProperties.GetHelpText(appRow) == "Square button: Close", "Close hint follows PlayStation controller prompts");
+                    Presentation.WidgetControllerPrompts.Set(WidgetRail.OverlayPlatformClient.ControllerFamily.Xbox);
+                    Check(AutomationProperties.GetHelpText(appRow) == "X button: Close", "Close hint follows Xbox controller prompts");
+                }
+                finally { Presentation.WidgetControllerPrompts.Set(playStation ? WidgetRail.OverlayPlatformClient.ControllerFamily.PlayStation : WidgetRail.OverlayPlatformClient.ControllerFamily.Xbox); }
                 await Button(ControllerButton.B);
                 await Task.Delay(100);
+                Check(!taskRows.Items.Cast<ListViewItem>().Any(row => ((ShellUtilityRowContent)row.Content).HintShown),
+                    "Returning to the icon removes the row hint");
                 Check(ReferenceEquals(panel, utilityPanel) && UtilityIconFocused && !UtilityListFocused && !RadialOpen,
                     "Back returns to the icon without opening the wheel or entering the panel again");
                 NavigateTray(FocusNavigationDirection.Left);
@@ -99,6 +126,9 @@ internal sealed partial class OverlayShellPage
                 NavigateTray(FocusNavigationDirection.Up);
                 await Until(() => utilityPanel?.ContainsFocus == true);
                 Check(UtilityListFocused, "Up enters notification rows");
+                var notificationRows = FindControl<ListView>(utilityPanel!, "Overlay.Utility.List")!;
+                Check(notificationRows.Items.Cast<ListViewItem>().Count(row => ((ShellUtilityRowContent)row.Content).HintShown) == 1 &&
+                    utilityPanel!.FocusedDismissLabel == "Dismiss", "Focused notification shows a dismiss hint");
                 await Button(ControllerButton.B);
                 Check(notificationBell.FocusState != FocusState.Unfocused && !RadialOpen, "Notification Back returns to bell");
                 await Button(ControllerButton.B);

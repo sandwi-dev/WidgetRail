@@ -7,7 +7,7 @@ using WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
-internal sealed record ShellUtilityEntry(string Id, string Label, object Revision, Func<UIElement> Content, bool Actionable = true);
+internal sealed record ShellUtilityEntry(string Id, string Label, object Revision, Func<UIElement> Content, bool Actionable = true, string? DismissLabel = null);
 
 /// <summary>A modeless shell list. Showing it never transfers focus from its icon.</summary>
 internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
@@ -39,8 +39,10 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
     internal event Action? Back;
     internal event Action? FocusChanged;
     internal event Action<string>? EntryShown;
-    internal bool Busy { get; set; }
+    private bool busy, subscribed, disposed;
+    internal bool Busy { get => busy; set { busy = value; RefreshRowHints(); } }
     internal bool FocusedActionable => FocusedId is { } id && rows.TryGetValue(id, out var row) && row.Entry.Actionable;
+    internal string? FocusedDismissLabel => FocusedId is { } id && rows.TryGetValue(id, out var row) ? row.Entry.DismissLabel : null;
 
     internal ShellUtilityPanel()
     {
@@ -74,10 +76,13 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
         {
             lastFocusedId = FocusedId;
             commandFocused = command.FocusState != FocusState.Unfocused;
+            RefreshRowHints();
             FocusChanged?.Invoke();
         };
+        LostFocus += (_, _) => RefreshRowHints();
+        Loaded += (_, _) => { if (!subscribed && !disposed) { subscribed = true; WidgetControllerPrompts.Changed += UpdatePrompts; } UpdatePrompts(); };
         list.LayoutUpdated += (_, _) => RestorePendingFocus();
-        Unloaded += (_, _) => CancelPendingFocus();
+        Unloaded += (_, _) => { CancelPendingFocus(); UnsubscribePrompts(); };
         PreviewKeyDown += (_, e) =>
         {
             switch (e.Key)
@@ -146,18 +151,20 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
         {
             if (rows.TryGetValue(entry.Id, out var existing))
             {
-                if (!Equals(existing.Entry.Revision, entry.Revision))
+                if (!Equals(existing.Entry.Revision, entry.Revision) || existing.Entry.DismissLabel != entry.DismissLabel || existing.Entry.Actionable != entry.Actionable)
                 {
-                    if (existing.Row.Content is ShellTaskWindowRow existingTask && entry.Revision is WidgetRail.PlatformBroker.TaskWindowSummary window)
+                    var content = (ShellUtilityRowContent)existing.Row.Content;
+                    if (content.Body is ShellTaskWindowRow existingTask && entry.Revision is WidgetRail.PlatformBroker.TaskWindowSummary window)
                         existingTask.UpdateWindow(window);
-                    else existing.Row.Content = entry.Content();
+                    else content.Body = entry.Content();
+                    content.SetAction(entry.DismissLabel);
                     AutomationProperties.SetName(existing.Row, entry.Label);
                     rows[entry.Id] = (entry, existing.Row);
                 }
             }
             else
             {
-                var row = new ListViewItem { Content = entry.Content(), Tag = entry.Id, MinHeight = 48,
+                var row = new ListViewItem { Content = new ShellUtilityRowContent(entry.Content(), entry.DismissLabel), Tag = entry.Id, MinHeight = 48,
                     HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new(10, 8, 10, 8), Margin = new(0, 2, 0, 2) };
                 AutomationProperties.SetName(row, entry.Label);
                 AutomationProperties.SetAutomationId(row, "Overlay.Utility.Item." + entry.Id);
@@ -168,10 +175,10 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
                 if (appearance is { } current)
                 { row.Foreground = ink; row.FocusVisualPrimaryBrush = new SolidColorBrush(current.Palette.Focus); }
             }
-            if (appearance is { } style && rows[entry.Id].Row.Content is ShellTaskWindowRow task) task.Apply(style.Palette, style.Scale);
-            if (appearance is { } actionStyle && rows[entry.Id].Row.Content is ShellUtilityActionRow action) action.Apply(actionStyle.Palette, actionStyle.Scale);
+            if (appearance is { } style) ((ShellUtilityRowContent)rows[entry.Id].Row.Content).Apply(style.Palette, style.Scale);
         }
         if (focused is not null && !rows.ContainsKey(focused)) FocusIndex(Math.Clamp(oldIndex, 0, Math.Max(0, list.Items.Count - 1)));
+        RefreshRowHints();
     }
     internal void Enter() => FocusIndex(0);
     internal void RestoreEntryFocus()
@@ -247,10 +254,27 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
         foreach (var (_, row) in rows.Values)
         {
             row.Foreground = ink; row.FocusVisualPrimaryBrush = new SolidColorBrush(palette.Focus);
-            if (row.Content is NotificationCard card) card.ApplyBannerPalette(palette);
-            if (row.Content is ShellTaskWindowRow task) task.Apply(palette, scale);
-            if (row.Content is ShellUtilityActionRow action) action.Apply(palette, scale);
+            ((ShellUtilityRowContent)row.Content).Apply(palette, scale);
         }
     }
-    public void Dispose() { CancelPendingFocus(); material.Dispose(); }
+    private void RefreshRowHints()
+    {
+        var focused = Busy ? null : FocusedId;
+        foreach (var (entry, row) in rows.Values)
+        {
+            var shown = entry.Id == focused && entry.DismissLabel is not null;
+            ((ShellUtilityRowContent)row.Content).SetFocused(shown);
+            AutomationProperties.SetHelpText(row, shown ? $"{WidgetGlyphs.AccessibleName(WidgetRail.WidgetProtocol.ControllerPrompt.X, WidgetControllerPrompts.PlayStation)}: {entry.DismissLabel}" : "");
+        }
+    }
+    private void UpdatePrompts()
+    {
+        if (disposed) return;
+        if (!DispatcherQueue.HasThreadAccess) { DispatcherQueue.TryEnqueue(UpdatePrompts); return; }
+        foreach (var (_, row) in rows.Values) ((ShellUtilityRowContent)row.Content).UpdatePrompt();
+        RefreshRowHints();
+    }
+    private void UnsubscribePrompts()
+    { if (subscribed) { WidgetControllerPrompts.Changed -= UpdatePrompts; subscribed = false; } }
+    public void Dispose() { disposed = true; UnsubscribePrompts(); CancelPendingFocus(); material.Dispose(); }
 }

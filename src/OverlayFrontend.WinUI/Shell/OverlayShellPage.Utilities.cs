@@ -216,7 +216,7 @@ internal sealed partial class OverlayShellPage
                 card.Update(entry, catalogItems.FirstOrDefault(widget => widget.Id == entry.Widget), Appearance.TextScale);
                 card.ApplyBannerPalette(ShellChromePalette.Resolve(ShellPalette, Appearance));
                 return card;
-            }, entry.Interactive)).ToArray());
+            }, entry.Interactive, DismissLabel: "Dismiss")).ToArray());
         panel.SetStatus(inbox.Entries.Count == 0 ? "You're all caught up" : inbox.OverflowCount > 0 ?
             $"{inbox.OverflowCount} additional notifications. Open the webapp for its full history." : "");
         panel.SetCommandEnabled(inbox.Entries.Count > 0 || inbox.OverflowCount > 0);
@@ -244,7 +244,7 @@ internal sealed partial class OverlayShellPage
                 panel.SetCount(windows.Count);
                 panel.Update((ShellUtilityEntry[])[SystemTaskViewEntry(), .. windows.Select(window => new ShellUtilityEntry(window.WindowId,
                     $"{window.ApplicationName}. {window.Title}. {(window.IsMinimized ? "Minimized" : "Open")}", window,
-                    () => TaskWindowRow(window)))]);
+                    () => TaskWindowRow(window), DismissLabel: "Close"))]);
                 panel.SetStatus(taskStatus ?? (windows.Count == 0 ? "No other application windows are open." : ""));
             }
             finally { utilityRefreshGate.Release(); }
