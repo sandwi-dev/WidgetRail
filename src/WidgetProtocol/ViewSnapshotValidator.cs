@@ -242,6 +242,8 @@ public static class ViewSnapshotValidator
         }
         if (snapshot.FocusGroupEntryRequest is { } groupEntry)
         {
+            if (groupEntry.RestoreViewport && (groupEntry.IndexedItem is null || groupEntry.TargetId is not null))
+                Add("$.focusGroupEntryRequest.restoreViewport", "invalid_return_viewport", "Viewport return requires one exact indexed occurrence.");
             if (groupEntry.RequestId is <= 0 or > ProtocolConstants.MaximumFocusGroupEntryRequestId)
                 Add("$.focusGroupEntryRequest.requestId", "out_of_range",
                     $"Focus-group entry request ID must be between 1 and {ProtocolConstants.MaximumFocusGroupEntryRequestId}.");

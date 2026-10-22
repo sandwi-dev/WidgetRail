@@ -37,6 +37,7 @@ internal static class WidgetNavigatorTests
         True(navigation.TryHandleBack(back), "Captured Back failed.");
         var returned = navigation.Value.CollectionReturnFocus!;
         Equal(item, returned.Resolve("record-list", source)!.IndexedItem);
+        True(returned.Resolve("record-list", source)!.RestoreViewport, "Navigator Back did not declare return viewport intent.");
         Equal(returned.RequestId, navigation.Value.CollectionReturnFocus!.RequestId);
         True(returned.Resolve("record-list", source with { ContentRevision = 5 }) is not null, "Content refresh retired valid return.");
         True(returned.Resolve("record-list", source with { QueryGeneration = 8 }) is null, "Retired query retained return.");

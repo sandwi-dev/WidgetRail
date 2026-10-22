@@ -84,3 +84,11 @@ descendant directly (protocol 99). It respects active scope, identity, enabled
 state and visibility; an unavailable exact target is consumed, so issue a new
 intent once it becomes available. Do not make arbitrary text focusable to use it.
 `Reveal` and `RevealCollection` request scrolling without moving focus.
+
+For navigation Back, `ReturnToCollection(source, collectionId, item)` also asks
+the host to restore the occurrence's previous visible position (protocol 101).
+The host keeps bounded position values, not rows or controls. It restores only
+matching collection/source/query/item identities after focus succeeds. A changed
+query or missing memory uses ordinary entry; later input cancels pending return
+work. After a resize, the position is clamped so the focused row stays visible.
+Use ordinary `EnterCollection` for deliberate jumps or new search results.

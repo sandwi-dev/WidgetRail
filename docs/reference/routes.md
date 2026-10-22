@@ -48,8 +48,9 @@ occurrence on the bounded stack. Back allocates a `CollectionReturnFocus` intent
 in the navigation snapshot. Render its `Resolve(collectionId, source.Descriptor)`
 result as `WidgetView.FocusGroupEntryRequest`. Resolution returns null if the
 collection/query changed or the index disappeared; content-only refreshes retain
-identity. The host still owns viewport memory. Domain routing and remapping a
-removed item remain explicit widget decisions.
+identity. The resolved request asks the host to restore compatible viewport memory
+(protocol 101); it does not carry pixel offsets or retain native controls in the
+widget. Domain routing and remapping a removed item remain explicit widget decisions.
 
 `TryHandleBack` remembers `action.FocusedElementId` by default. Supply its optional
 source-focus override only when you deliberately want a different return control.

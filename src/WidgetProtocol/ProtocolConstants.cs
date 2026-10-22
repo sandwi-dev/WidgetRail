@@ -22,7 +22,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 100;
+    public const int CurrentVersion = 101;
+    public const int CollectionReturnViewportVersion = 101;
     public const int DisclosureVersion = 100;
     public const int ExactFocusTargetVersion = 99;
     public const int ReadingSurfaceVersion = 98;

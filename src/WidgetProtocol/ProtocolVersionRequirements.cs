@@ -48,6 +48,10 @@ internal sealed class ProtocolVersionRequirements
             Add("exact-focus-target", ProtocolConstants.ExactFocusTargetVersion, "$.focusGroupEntryRequest.targetId",
                 "Exact declared focus targets require protocol version 99 or later.");
 
+        if (snapshot.FocusGroupEntryRequest?.RestoreViewport == true)
+            Add("collection-return-viewport", ProtocolConstants.CollectionReturnViewportVersion, "$.focusGroupEntryRequest.restoreViewport",
+                "Indexed return viewport requests require protocol version 101 or later.");
+
         if (snapshot.Surface is not null)
         {
             Add(

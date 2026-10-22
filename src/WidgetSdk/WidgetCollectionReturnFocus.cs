@@ -26,6 +26,6 @@ public sealed class WidgetCollectionReturnFocus
         IndexedCollectionContract.ValidateDescriptor(source);
         return Item.CollectionId == collectionId && Item.SourceId == source.SourceId &&
             Item.QueryGeneration == source.QueryGeneration && Item.Index < source.Count
-            ? new() { RequestId = RequestId, GroupId = collectionId, IndexedItem = Item } : null;
+            ? new() { RequestId = RequestId, GroupId = collectionId, IndexedItem = Item, RestoreViewport = true } : null;
     }
 }

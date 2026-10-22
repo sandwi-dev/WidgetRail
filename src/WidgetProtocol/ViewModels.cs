@@ -644,6 +644,9 @@ public sealed record FocusGroupEntryRequest
     public IndexedCollectionFocusTarget? IndexedItem { get; init; }
     /// <summary>Optional exact declared descendant; mutually exclusive with IndexedItem.</summary>
     public string? TargetId { get; init; }
+    /// <summary>Restore this exact occurrence's host-owned viewport when returning to an unchanged query.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool RestoreViewport { get; init; }
 }
 
 /// <summary>One scroll-only request. Supply a declared TargetId or an exact lazy IndexedItem, never both.</summary>

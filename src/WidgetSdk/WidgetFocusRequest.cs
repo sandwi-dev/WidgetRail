@@ -59,6 +59,33 @@ public sealed class WidgetFocusRequest
         return source.Enter(collectionId, Id, item);
     }
 
+    /// <summary>Return to an exact occurrence, restoring its host-owned viewport if the query is unchanged. Requires protocol 101.</summary>
+    public FocusGroupEntryRequest ReturnToCollection<TQuery, TItem>(
+        WidgetIndexedCollection<TQuery, TItem> source, string collectionId,
+        IndexedCollectionFocusTarget item) where TQuery : notnull where TItem : notnull
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return EnterCollection(source, collectionId, item) with { RestoreViewport = true };
+    }
+
+    /// <summary>Return to an exact loaded occurrence, restoring its host-owned viewport if the query is unchanged. Requires protocol 101.</summary>
+    public FocusGroupEntryRequest ReturnToCollection<TContext, TItem>(
+        WidgetLoadedCollection<TContext, TItem> source, string collectionId,
+        IndexedCollectionFocusTarget item) where TContext : notnull where TItem : notnull
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return EnterCollection(source, collectionId, item) with { RestoreViewport = true };
+    }
+
+    /// <summary>Return to an exact discovered occurrence without fetching the entire source. Requires protocol 101.</summary>
+    public FocusGroupEntryRequest ReturnToCollection<TQuery, TItem>(
+        WidgetDiscoveredCollection<TQuery, TItem> source, string collectionId,
+        IndexedCollectionFocusTarget item) where TQuery : notnull where TItem : notnull
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return EnterCollection(source, collectionId, item) with { RestoreViewport = true };
+    }
+
     /// <summary>Reveal a declared element without moving focus.</summary>
     public ScrollRevealRequest Reveal(string scrollId, string targetId)
     {
