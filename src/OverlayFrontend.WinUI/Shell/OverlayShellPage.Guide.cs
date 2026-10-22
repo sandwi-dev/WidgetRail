@@ -33,7 +33,7 @@ internal sealed partial class OverlayShellPage
             if (hostChoicePin is not null)
                 shell = (ControllerGuideHint[])[.. shell, new(ControllerPrompt.View, "Leave pin", ControllerButton.View)];
         }
-        else if (!interactive && (UtilityIconFocused || UtilityListFocused))
+        else if (!interactive && !RadialOpen && utilityPanel is not null && (UtilityIconFocused || UtilityListFocused))
         {
             shell = UtilityListFocused
                 ? (ControllerGuideHint[])[.. (utilityPanel?.FocusedActionable == true || utilityPanel?.FocusedId is null ? new ControllerGuideHint[] { new(ControllerPrompt.A, utilityPanel?.FocusedId is null ? "Select" : shownUtility == ShellUtility.Tasks && !SystemTaskViewFocused ? "Switch" : "Open", ControllerButton.A) } : []),
@@ -73,6 +73,8 @@ internal sealed partial class OverlayShellPage
         }
         else if (reordering)
         { shell = ControllerGuideModel.TrayHints(true); shellContext = "reorder"; }
+        else if (!interactive && RadialOpen)
+        { shell = ControllerGuideModel.WithHost(RadialGuideHints()); shellContext = "radial"; }
         else if (expandedBrowser is { } browser)
         {
             var hints = browser.Surface?.ControllerTextEntry is { } keyboard
@@ -99,7 +101,7 @@ internal sealed partial class OverlayShellPage
         }
 
         var host = interactive ? ControllerGuideModel.WithHost([]) : RadialOpen
-            ? ControllerGuideModel.WithHost(RadialGuideHints()) : ControllerGuideModel.TrayHints(false);
+            ? ControllerGuideModel.WithHost(RadialGuideHints()) : ControllerGuideModel.TrayHints(false, HasPendingNotifications);
         if (!interactive && !RadialOpen)
             host = host.Select(hint => hint.Button == ControllerButton.B ? hint with { Label = "Open radial" } : hint).ToArray();
         var committed = !retired && visible && !switching && activeWidget == requestedWidget && surface is not null &&

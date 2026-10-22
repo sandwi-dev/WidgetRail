@@ -15,7 +15,11 @@ has no close action. The existing window list remains available underneath.
 uses the same radial-chooser Back behavior as the notification bell. Left/Right
 moves between utility icons and the rail.
 
-In the rail or radial chooser, **hold Y for 300 ms** to focus Task Switcher. Tapping Y still
+In the rail or radial chooser, **hold Y for 300 ms** to enter Notifications when
+there are pending notifications, or Task Switcher when there are none. Focus goes
+directly to the first list item. The guide names the current destination and
+updates as notifications arrive or are dismissed, without switching an open panel.
+Tapping Y still
 enters reorder mode. This is a shell shortcut, not a global override of widget
 or keyboard actions. The tray menu also offers **Task Switcher** beside
 **Notifications**. Notifications follows the same focus/Up/Back flow.

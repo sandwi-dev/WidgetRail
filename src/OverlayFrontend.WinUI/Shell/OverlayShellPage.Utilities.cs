@@ -26,6 +26,7 @@ internal sealed partial class OverlayShellPage
     private static ShellUtilityEntry SystemTaskViewEntry() => new(SystemTaskViewId, "Windows Task View. Open Windows' app switcher.", SystemTaskViewId,
         () => new ShellUtilityActionRow("Windows Task View", "Open Windows’ app switcher", "\uE7C4"));
     private enum ShellUtility { Notifications, Tasks }
+    private bool HasPendingNotifications => browserOwner?.Notifications.Entries.Count > 0;
     private readonly Button taskSwitcherButton = new() { Width = 48, Height = 48, Padding = new(4),
         CornerRadius = new(12), VerticalAlignment = VerticalAlignment.Center };
     private WindowsTaskWindowCatalog? taskWindowCatalog;

@@ -7,6 +7,13 @@ namespace WinUiShell.Tests;
 [TestClass]
 public sealed class ControllerGuideModelTests
 {
+    [TestMethod]
+    public void UtilityHoldHintReflectsPendingNotificationsWithoutChangingTapAction()
+    {
+        Assert.AreEqual("Reorder · hold for Task Switcher", ControllerGuideModel.TrayHints(false).Single(h => h.Button == ControllerButton.Y).Label);
+        Assert.AreEqual("Reorder · hold for Notifications", ControllerGuideModel.TrayHints(false, true).Single(h => h.Button == ControllerButton.Y).Label);
+        Assert.AreEqual("Done", ControllerGuideModel.TrayHints(true, true).Single(h => h.Button == ControllerButton.Y).Label);
+    }
     private static ViewNode Node(string id, ControllerButton button, string? label, bool disabled = false) =>
         new() { Id = id, Kind = ViewNodeKind.Button, IsDisabled = disabled,
             Shortcuts = [new(button, "action-" + id, Label: label)] };

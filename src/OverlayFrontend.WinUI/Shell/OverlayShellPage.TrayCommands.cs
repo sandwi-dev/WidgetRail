@@ -114,8 +114,11 @@ internal sealed partial class OverlayShellPage
     private Task RunTrayHoldAsync(TrayHoldAction action)
     {
         if (action == TrayHoldAction.ToggleReorder) ToggleTrayReorder();
-        else if (action == TrayHoldAction.TaskSwitcher)
-            FocusUtility(ShellUtility.Tasks);
+        else if (action == TrayHoldAction.OpenUtility)
+        {
+            FocusUtility(HasPendingNotifications ? ShellUtility.Notifications : ShellUtility.Tasks);
+            EnterUtility();
+        }
         return Task.CompletedTask;
     }
 
@@ -243,9 +246,11 @@ internal sealed partial class OverlayShellPage
             if (browserOwner is { } notificationOwner)
             {
                 menu.Flyout.Items.Add(new MenuFlyoutSeparator());
-                Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync);
+                Add($"Notifications ({notificationOwner.Notifications.Entries.Count})", "Browser.Notifications", ShowNotificationsAsync,
+                    HasPendingNotifications ? ControllerButton.Y : null, hold: true);
             }
-            Add("Task Switcher", "Shell.TaskSwitcher", () => { FocusUtility(ShellUtility.Tasks); return Task.CompletedTask; }, ControllerButton.Y, hold: true);
+            Add("Task Switcher", "Shell.TaskSwitcher", () => { FocusUtility(ShellUtility.Tasks); return Task.CompletedTask; },
+                HasPendingNotifications ? null : ControllerButton.Y, hold: true);
             if (descriptor.CanStop && !descriptor.IsStopped)
                 Add("Stop widget", "Widget.Stop", () => StopWidgetAsync(descriptor));
             menu.Navigation = new(menu.Flyout, () => ReferenceEquals(trayMenu, menu) && TrayOwnerCurrent(menu.Owner, menu.Selection));

@@ -26,6 +26,7 @@ internal sealed partial class OverlayShellPage
         RefreshNotificationBell();
         RefreshUtilityNotifications();
         QueueWidgetStatusRefresh();
+        PublishControllerGuide();
     }
 
     private Task<string?> ShowBrowserChoiceAsync(Browser.BrowserSurface browser, string title, string message,

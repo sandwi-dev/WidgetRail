@@ -104,13 +104,30 @@ internal sealed partial class OverlayShellPage
                 await Button(ControllerButton.B);
                 await Task.Delay(100);
                 Check(RadialOpen && utilityPanel is null, "Back from utility icon preserves existing radial behavior");
+                await Until(() => trayGuide.HelpText.Contains("hold for Notifications", StringComparison.Ordinal));
+                Check(true, "Pending notifications update the radial guide destination");
                 await RouteButtonAsync(ControllerButton.Y, ControllerEventPhase.Pressed);
                 await RunTrayHoldAsync(trayHold.Tick(TrayGestureIdentity, true, Environment.TickCount64 + TrayHoldGesture.HoldMilliseconds));
                 await RouteButtonAsync(ControllerButton.Y, ControllerEventPhase.Released);
                 await Task.Delay(50);
-                Check(shownUtility == ShellUtility.Tasks && UtilityIconFocused && !RadialOpen && !reordering,
-                    "Hold Y focuses Task Switcher and release does not reorder or trigger a second action");
+                await Until(() => utilityPanel?.FocusedId == entry.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                Check(shownUtility == ShellUtility.Notifications && UtilityListFocused && !RadialOpen && !reordering,
+                    "Hold Y enters the first pending notification without an extra Up or A");
                 inbox.Dismiss(entry.Id);
+                await Task.Delay(50);
+                Check(shownUtility == ShellUtility.Notifications, "Dismissing the last notification does not switch the active panel");
+                // Removing the last row can already return focus to the bell.
+                if (UtilityListFocused) await Button(ControllerButton.B);
+                await Button(ControllerButton.B);
+                await Until(() => RadialOpen);
+                await Until(() => trayGuide.HelpText.Contains("hold for Task Switcher", StringComparison.Ordinal));
+                Check(true, "Empty inbox updates the guide to Task Switcher");
+                await RouteButtonAsync(ControllerButton.Y, ControllerEventPhase.Pressed);
+                await RunTrayHoldAsync(trayHold.Tick(TrayGestureIdentity, true, Environment.TickCount64 + TrayHoldGesture.HoldMilliseconds));
+                await RouteButtonAsync(ControllerButton.Y, ControllerEventPhase.Released);
+                await Until(() => SystemTaskViewFocused);
+                Check(shownUtility == ShellUtility.Tasks && UtilityListFocused && !RadialOpen && !reordering,
+                    "Hold Y with no notifications focuses the first Task Switcher row and release does not reorder");
                 Check(utilityPanel!.ActualWidth > 0 && utilityPanel.ActualHeight > 0 && utilityPanel.ActualWidth <= 521,
                     "Utility panel stays compact and measured");
                 var original = Appearance;
@@ -124,6 +141,13 @@ internal sealed partial class OverlayShellPage
                 finally { ApplyOverlayMotionValidationAppearance(original); }
                 CloseUtilityPanel(); FocusDirectionalTray();
                 await Until(() => FocusedTrayWidget() is not null);
+                var liveEntry = inbox.Add("settings", "fixture", "https://fixture.invalid", "guide-live", "Guide change",
+                    "Disposable notification", this, new(() => true, () => { }, () => { }, () => { }, () => { }), NotificationPresentation.ListOnly)!;
+                await Until(() => trayGuide.HelpText.Contains("hold for Notifications", StringComparison.Ordinal));
+                Check(FocusedTrayWidget() is not null, "Notification arrival updates the tray guide without stealing focus");
+                inbox.Dismiss(liveEntry.Id);
+                await Until(() => trayGuide.HelpText.Contains("hold for Task Switcher", StringComparison.Ordinal));
+                Check(FocusedTrayWidget() is not null, "Notification dismissal updates the tray guide without stealing focus");
                 await ShowTrayMenuAsync(FocusedTrayWidget()!);
                 var taskCommand = trayMenu!.Items.Single(item => AutomationProperties.GetAutomationId(item) == "Overlay.TrayCommand.Shell.TaskSwitcher");
                 Check(taskCommand.Text == "Task Switcher" && trayMenu.Items.Any(item => AutomationProperties.GetAutomationId(item) == "Overlay.TrayCommand.Browser.Notifications"),

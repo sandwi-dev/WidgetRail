@@ -13,7 +13,7 @@ public sealed class TrayHoldGestureTests
         gesture.Press("a", true, 10);
         Assert.AreEqual(TrayHoldAction.ToggleReorder, gesture.Release("a", true, 309));
         gesture.Press("a", true, 10);
-        Assert.AreEqual(TrayHoldAction.TaskSwitcher, gesture.Release("a", true, 310));
+        Assert.AreEqual(TrayHoldAction.OpenUtility, gesture.Release("a", true, 310));
         Assert.AreEqual(TrayHoldAction.None, gesture.Release("a", true, 311));
     }
 
@@ -23,7 +23,7 @@ public sealed class TrayHoldGestureTests
         var gesture = new TrayHoldGesture();
         gesture.Press("a", true, 10);
         Assert.AreEqual(TrayHoldAction.None, gesture.Tick("a", true, 309));
-        Assert.AreEqual(TrayHoldAction.TaskSwitcher, gesture.Tick("a", true, 310));
+        Assert.AreEqual(TrayHoldAction.OpenUtility, gesture.Tick("a", true, 310));
         Assert.AreEqual(TrayHoldAction.None, gesture.Tick("a", true, 1500));
         Assert.IsTrue(gesture.Capturing);
         Assert.AreEqual(TrayHoldAction.None, gesture.Release("a", true, 1600));

@@ -38,7 +38,7 @@ internal sealed partial class OverlayShellPage
                 await RouteButtonAsync(ControllerButton.Y, ControllerEventPhase.Pressed);
                 await RunTrayHoldAsync(trayHold.Tick(TrayGestureIdentity, true, Environment.TickCount64 + TrayHoldGesture.HoldMilliseconds));
                 await RouteButtonAsync(ControllerButton.Y, ControllerEventPhase.Released);
-                Check(shownUtility == ShellUtility.Tasks && UtilityIconFocused, "Hold Y opens Task Switcher from settled tray focus");
+                Check(shownUtility == ShellUtility.Tasks && UtilityListFocused, "Hold Y enters Task Switcher from settled tray focus");
                 var deadline = Environment.TickCount64 + 15000;
                 TaskWindowSummary? window;
                 do
@@ -54,7 +54,6 @@ internal sealed partial class OverlayShellPage
                 Check(native.IsOverlayForeground && visible, "Frontend owns foreground before direct handoff");
                 var taskList = FindControl<Microsoft.UI.Xaml.Controls.ListView>(utilityPanel!, "Overlay.Utility.List")!;
                 var targetRow = taskList.Items.Cast<Microsoft.UI.Xaml.Controls.ListViewItem>().Single(item => (string)item.Tag == window!.WindowId);
-                NavigateTray(Microsoft.UI.Xaml.Input.FocusNavigationDirection.Up);
                 taskList.ScrollIntoView(targetRow);
                 await Task.Delay(100);
                 Check(targetRow.Focus(FocusState.Keyboard), "Selected target receives native focus before the first A press");

@@ -9,13 +9,13 @@ internal sealed record ControllerGuideHint(ControllerPrompt Prompt, string Label
 
 internal static class ControllerGuideModel
 {
-    internal static ControllerGuideHint ReorderAndTaskSwitcherHint { get; } =
-        new(ControllerPrompt.Y, "Reorder · hold for Task Switcher", ControllerButton.Y);
-    internal static IReadOnlyList<ControllerGuideHint> TrayHints(bool reordering) => reordering
+    internal static ControllerGuideHint ReorderAndUtilityHint(bool hasNotifications) =>
+        new(ControllerPrompt.Y, hasNotifications ? "Reorder · hold for Notifications" : "Reorder · hold for Task Switcher", ControllerButton.Y, Required: true);
+    internal static IReadOnlyList<ControllerGuideHint> TrayHints(bool reordering, bool hasNotifications = false) => reordering
         ? (ControllerGuideHint[])[new(ControllerPrompt.DPadHorizontal, "Move widget", Required: true), new(ControllerPrompt.A, "Done", ControllerButton.A),
             new(ControllerPrompt.B, "Done", ControllerButton.B, Required: true), new(ControllerPrompt.Y, "Done", ControllerButton.Y)]
         : (ControllerGuideHint[])[new(ControllerPrompt.A, "Open widget", ControllerButton.A, Required: true),
-            ReorderAndTaskSwitcherHint,
+            ReorderAndUtilityHint(hasNotifications),
             new(ControllerPrompt.Menu, "Commands", ControllerButton.Menu), new(ControllerPrompt.B, "Close", ControllerButton.B, Required: true)];
     private static readonly ControllerButton[] order = [ControllerButton.X, ControllerButton.LeftTrigger,
         ControllerButton.RightTrigger, ControllerButton.LeftBumper, ControllerButton.RightBumper,
