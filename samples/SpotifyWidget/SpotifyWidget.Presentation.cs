@@ -240,8 +240,7 @@ internal static class SpotifyPresentation
         }
 
         return UI.Stack($"spotify.{mode}.queue",
-                UI.SectionHeader("Up next", $"spotify.{mode}.header", "QUEUE",
-                    "The next item from Spotify's current queue."),
+                UI.SectionHeader("Up next", $"spotify.{mode}.header", "QUEUE"),
                 content)
             .Classes("spotify-pinned-queue");
     }
@@ -752,14 +751,10 @@ internal static class SpotifyPresentation
                 compact ? "spotify-compact-track-title" : "spotify-wide-track-title");
         var subtitle = UI.Text(item.Subtitle, subtitleId, item.Subtitle)
             .Classes("spotify-track-subtitle");
-        var context = UI.Text("Now playing · " + (item.ContextName ?? "Spotify"), contextId,
-                "Now playing · " + (item.ContextName ?? "Spotify"))
-            .Classes("spotify-context");
         if (docked)
         {
             title = title.AddClasses("spotify-dock-track-title");
             subtitle = subtitle.AddClasses("spotify-dock-track-subtitle");
-            context = context.AddClasses("spotify-dock-context");
         }
         WidgetElement heading = title;
         if (SpotifySavedLibrary.IsTrack(item.Uri))
@@ -779,7 +774,14 @@ internal static class SpotifyPresentation
                     title.AddClasses("spotify-title-grow", "spotify-title-centered"), save)
                     .Classes("spotify-track-heading");
         }
-        var detailsChildren = new List<WidgetElement> { heading, subtitle, context };
+        var detailsChildren = new List<WidgetElement> { heading, subtitle };
+        if (!pinned)
+        {
+            var context = UI.Text("Now playing · " + (item.ContextName ?? "Spotify"), contextId,
+                    "Now playing · " + (item.ContextName ?? "Spotify"))
+                .Classes("spotify-context");
+            detailsChildren.Add(docked ? context.AddClasses("spotify-dock-context") : context);
+        }
         var details = UI.Stack(detailsId, detailsChildren.ToArray())
                 .Classes("spotify-details",
                     compact ? "spotify-compact-details" : "spotify-wide-details");
