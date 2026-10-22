@@ -530,12 +530,13 @@ internal static class WidgetOperationTests
             throw new InvalidOperationException("expected timer failure");
     }
 
-    private sealed class ManualTimeProvider : TimeProvider
+    internal sealed class ManualTimeProvider : TimeProvider
     {
         private readonly object _gate = new();
         private readonly List<ManualTimer> _timers = [];
         private DateTimeOffset _now = DateTimeOffset.UnixEpoch;
 
+        internal int CreatedTimerCount { get { lock (_gate) return _timers.Count; } }
         public override DateTimeOffset GetUtcNow() => _now;
         public override long GetTimestamp() => _now.Ticks;
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;

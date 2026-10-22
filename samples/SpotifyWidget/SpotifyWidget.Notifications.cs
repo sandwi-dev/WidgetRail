@@ -7,9 +7,7 @@ public sealed partial class SpotifyWidget
 {
     private readonly SpotifyNotificationPolicy notificationPolicy = new();
     private WidgetActivity? desiredActivity;
-    private WidgetNotification? pendingNotification;
-    private bool notificationNeedsShow;
-    private long notificationRevision;
+    private readonly WidgetNotificationPublisher trackNotifications;
 
     private void ObservePlaybackEffects()
     {
@@ -24,7 +22,7 @@ public sealed partial class SpotifyWidget
             notice = local is not null || IsActive ? notificationPolicy.Observe(local ?? _playback) : null;
             if (notice is { } update)
             {
-                pendingNotification = update.Content; notificationNeedsShow |= !update.UpdateOnly; notificationRevision++;
+                trackNotifications.Publish(update.Content, update.UpdateOnly);
             }
         }
         if (activityChanged)
@@ -39,21 +37,6 @@ public sealed partial class SpotifyWidget
                 }
                 catch (Exception error) when (error is WidgetCapabilityException or WidgetCapabilityUnavailableException or OperationCanceledException)
                 { lock (_gate) { if (context.IsCurrent && desiredActivity == activity) desiredActivity = null; } }
-            }, WidgetOperationLifetime.Widget);
-        if (notice is not null)
-            Operations.RunLatest("spotify.track-notification", async context =>
-            {
-                try
-                {
-                    await Task.Delay(250, context.CancellationToken);
-                    WidgetNotification? content; bool show; long revision;
-                    lock (_gate) { content = pendingNotification; show = notificationNeedsShow; revision = notificationRevision; }
-                    if (content is null) return;
-                    var result = show ? await HostServices.Notifications.ShowAsync(content, context.CancellationToken)
-                        : await HostServices.Notifications.UpdateAsync(content, context.CancellationToken);
-                    if (result.Accepted) lock (_gate) { if (revision == notificationRevision) notificationNeedsShow = false; }
-                }
-                catch (Exception error) when (error is WidgetCapabilityException or WidgetCapabilityUnavailableException or OperationCanceledException) { }
             }, WidgetOperationLifetime.Widget);
     }
     private void ConfigureSongNotifications() => Operations.RunLatest("spotify.notification-preferences", async context =>

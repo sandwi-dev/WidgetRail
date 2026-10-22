@@ -41,6 +41,7 @@ public sealed partial class StandaloneMusicWidget : Widget
 
     public StandaloneMusicWidget(IMusicService service)
     {
+        trackNotifications = CreateNotificationPublisher("music.track-notification", "now-playing", "song-changes");
         _service = service;
         _browse = GetBrowseState("home", "");
         _service.Changed += ServiceChanged;

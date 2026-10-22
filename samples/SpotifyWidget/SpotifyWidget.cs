@@ -130,6 +130,7 @@ public sealed partial class SpotifyWidget : Widget
         string? playlistCacheRoot = null)
     {
         _spotify = spotify ?? throw new ArgumentNullException(nameof(spotify));
+        trackNotifications = CreateNotificationPublisher("spotify.track-notification", "now-playing", "song-changes");
         _savedLibrary = new(spotify);
         _playlistCache = new(playlistCacheRoot);
         _timeProvider = timeProvider ?? TimeProvider.System;

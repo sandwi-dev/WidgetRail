@@ -9,9 +9,7 @@ public sealed partial class StandaloneMusicWidget
     private NotificationSettings notificationSettings = new();
     private bool notificationSettingsReady;
     private readonly MusicNotificationPolicy notificationPolicy = new();
-    private WidgetNotification? pendingNotification;
-    private bool notificationNeedsShow;
-    private long notificationRevision;
+    private readonly WidgetNotificationPublisher trackNotifications;
 
     private async Task LoadNotificationSettingsAsync(CancellationToken token)
     {
@@ -44,26 +42,8 @@ public sealed partial class StandaloneMusicWidget
             if (!notificationSettingsReady) return;
             var update = notificationPolicy.Observe(_service.State, true);
             if (update is null) return;
-            pendingNotification = update.Value.Content;
-            notificationNeedsShow |= !update.Value.UpdateOnly;
-            notificationRevision++;
+            trackNotifications.Publish(update.Value.Content, update.Value.UpdateOnly);
         }
-        Operations.RunLatest("music.track-notification", async context =>
-        {
-            try
-            {
-                // Coalesce rapid skips and early duration/artwork updates before crossing the host channel.
-                await Task.Delay(250, context.CancellationToken);
-                WidgetNotification? content; bool show; long revision;
-                lock (_gate) { content = pendingNotification; show = notificationNeedsShow; revision = notificationRevision; }
-                if (content is null) return;
-                var result = show ? await HostServices.Notifications.ShowAsync(content, context.CancellationToken)
-                    : await HostServices.Notifications.UpdateAsync(content, context.CancellationToken);
-                if (result.Accepted) lock (_gate) { if (revision == notificationRevision) notificationNeedsShow = false; }
-            }
-            catch (Exception error) when (error is WidgetCapabilityException or WidgetCapabilityUnavailableException or OperationCanceledException)
-            { /* Playback never depends on optional notification delivery. */ }
-        }, WidgetOperationLifetime.Widget);
     }
     private void NotificationSettingAction(WidgetActionEvent action)
     {

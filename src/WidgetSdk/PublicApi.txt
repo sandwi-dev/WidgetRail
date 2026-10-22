@@ -1470,6 +1470,7 @@ method WidgetRail.WidgetSdk.WidgetNetworkStatusChanged.Deconstruct(out WidgetRai
 method WidgetRail.WidgetSdk.WidgetNetworkStatusChanged.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetNetworkStatusChanged.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetNetworkStatusChanged.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetNotificationPublisher.Publish(WidgetRail.WidgetProtocol.WidgetNotification notification, bool updateOnly = false) -> WidgetRail.WidgetSdk.WidgetOperationHandle
 method WidgetRail.WidgetSdk.WidgetNotificationService.ConfigureAsync(string categoryId = "general", System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetNotificationReceipt>
 method WidgetRail.WidgetSdk.WidgetNotificationService.DismissAsync(string key, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetNotificationReceipt>
 method WidgetRail.WidgetSdk.WidgetNotificationService.ShowAsync(WidgetRail.WidgetProtocol.WidgetNotification notification, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetNotificationReceipt>
@@ -3695,6 +3696,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsChanged : S
 type sealed class WidgetRail.WidgetSdk.WidgetNetworkService
 type sealed class WidgetRail.WidgetSdk.WidgetNetworkStatus : System.IEquatable<WidgetRail.WidgetSdk.WidgetNetworkStatus>
 type sealed class WidgetRail.WidgetSdk.WidgetNetworkStatusChanged : System.IEquatable<WidgetRail.WidgetSdk.WidgetNetworkStatusChanged>
+type sealed class WidgetRail.WidgetSdk.WidgetNotificationPublisher
 type sealed class WidgetRail.WidgetSdk.WidgetNotificationService
 type sealed class WidgetRail.WidgetSdk.WidgetOperationBusyChangedEventArgs : System.EventArgs
 type sealed class WidgetRail.WidgetSdk.WidgetOperationContext

@@ -452,3 +452,18 @@ whereas Settings waits a full second after each completed poll. Substituting it
 would change cadence after slow reads. Retain the current loop rather than add
 a new timing abstraction solely to remove a few scheduler lines. Both Settings'
 and Spotify's existing poll scheduling are retained under the decision gate.
+
+### Coalesced notification delivery
+
+F14 implemented as one SDK publisher per stable notification key/category, using
+existing latest-operation scheduling. Spotify and shipping YouTube Music retain
+their domain event policies and publish under their existing policy locks. The
+shared publisher owns debounce, pending content, show-versus-update intent, and
+receipt revision matching. Updates do not resurrect dismissed notifications;
+failures retry only on a later explicit publication, with no background retry loop.
+
+SDK: 170/170; Spotify: 87/87; YouTube Music: 42/42. Deterministic tests cover
+coalescing, initial update-only delivery, noncooperative old receipts, failures,
+invalid keys, and destruction. Logs: `artifacts/authoring/f14-*-full.log`.
+Other notification consumers send discrete events and have no equivalent
+coalescing state; no migration is needed. Activity caches remain (F15).

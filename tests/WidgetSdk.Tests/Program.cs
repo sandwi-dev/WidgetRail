@@ -16,6 +16,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Focus previews preserve passive bounded versioned ownership", FocusPreviewTests.Contract),
     ("Text suggestions are whole-entry bounded versioned and reusable", TextSuggestionTests.Run),
     ("Web session shared batching preserves Unicode envelopes and bounds", WebSessionBatchTests.Run),
+    ("Notification publishers coalesce events and preserve receipt ownership", WidgetNotificationPublisherTests.Run),
     ("Activity sources coalesce preserve ownership and stay bounded", ActivityServiceTests.Contract),
     ("Permission requests wait for consent and clean up abandoned prompts", PermissionServiceTests.Contract),
     ("Media player sources are versioned bounded and source-specific", MediaPlayerPresentationTests.Contract),
