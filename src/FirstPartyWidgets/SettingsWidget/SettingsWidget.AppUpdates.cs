@@ -66,19 +66,12 @@ internal static partial class SettingsPresentation
         // Release metadata permits more text than a single presentation node.
         // Keep every character, preferring line boundaries and never splitting
         // a UTF-16 surrogate pair or a Windows newline between adjacent nodes.
-        for (int offset = 0, part = 0; offset < notes.Length; part++)
+        var part = 0;
+        foreach (var chunk in WidgetTextChunks.Split(notes, ProtocolConstants.MaximumStringLength))
         {
-            var length = Math.Min(ProtocolConstants.MaximumStringLength, notes.Length - offset);
-            if (offset + length < notes.Length)
-            {
-                var newline = notes.LastIndexOf('\n', offset + length - 1, length);
-                if (newline >= offset) length = newline - offset + 1;
-                else if (char.IsHighSurrogate(notes[offset + length - 1]) ||
-                         notes[offset + length - 1] == '\r' && notes[offset + length] == '\n') length--;
-            }
             var id = part == 0 ? "app-update.notes.text" : $"app-update.notes.text.{part}";
-            yield return UI.Text(notes.Substring(offset, length), id).Classes("app-update-notes");
-            offset += length;
+            yield return UI.Text(chunk, id).Classes("app-update-notes");
+            part++;
         }
     }
 

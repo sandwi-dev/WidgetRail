@@ -494,3 +494,18 @@ Native focus policy passes 28/28, including the new coalesced-publication case.
 Build is warning-free; screenshot inspected. Evidence: `f2-coalesced-repro` and
 `f2-coalesced-fixed` under `artifacts/authoring`. Only owned fixture processes
 were closed. No shipping app or installed widget was replaced.
+
+### Bounded text chunking
+
+F8 is narrowed to a pure shared UTF-16 chunk utility, used by PoB formatted runs
+and Settings release notes. It preserves exact concatenation, surrogate pairs,
+and CRLF, with newline/optional word-boundary preference. PoB retains its 2,400
+character/128-span paragraph budgets, semantic tones, IDs, and lazy row ownership.
+Settings retains its 4,096-character text-node limit. Whole-frame budgeting and
+continuous layout across separate paragraphs remain separate protocol concerns.
+
+SDK chunk boundary checks pass across small budgets and Unicode/newline cases;
+Settings 94/94 and PoB formatted reading 20 checks pass, including authored tone
+preservation and a CRLF at a partially full styled paragraph boundary.
+Evidence: `artifacts/authoring/f8-*.log`. Other widgets with truncation policies
+are not migrated: truncation is different from lossless document splitting.

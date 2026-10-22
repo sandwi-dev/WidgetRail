@@ -2254,6 +2254,8 @@ method static WidgetRail.WidgetSdk.WidgetTestHost.DestroyAsync(WidgetRail.Widget
 method static WidgetRail.WidgetSdk.WidgetTestHost.InitializeAsync(WidgetRail.WidgetSdk.Widget widget, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method static WidgetRail.WidgetSdk.WidgetTestHost.SetLifecycleStateAsync(WidgetRail.WidgetSdk.Widget widget, WidgetRail.WidgetSdk.WidgetLifecycleState state, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method static WidgetRail.WidgetSdk.WidgetTestHost.ValidateWinUiPresentation(WidgetRail.WidgetProtocol.ViewSnapshot snapshot) -> System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ProtocolValidationError>
+method static WidgetRail.WidgetSdk.WidgetTextChunks.NextLength(string text, int offset, int maximumLength, bool preferWhitespace = false) -> int
+method static WidgetRail.WidgetSdk.WidgetTextChunks.Split(string text, int maximumLength, bool preferWhitespace = false) -> System.Collections.Generic.IEnumerable<string>
 method static WidgetRail.WidgetSdk.WidgetTicker.RunWhileActiveAsync(System.TimeSpan interval, System.Func<System.Threading.CancellationToken,System.Threading.Tasks.ValueTask> tickAsync, System.Threading.CancellationToken activeLifetime, bool tickImmediately = false, System.TimeProvider? timeProvider = null) -> System.Threading.Tasks.Task
 method static WidgetRail.WidgetSdk.WidgetTransitionExtensions.TransitionContent(WidgetRail.WidgetSdk.WidgetElement element, string groupId, string sectionKey, int sectionOrder) -> WidgetRail.WidgetSdk.WidgetElement
 method static WidgetRail.WidgetSdk.WidgetTransitionExtensions.TransitionLayout(WidgetRail.WidgetSdk.WidgetElement element, string groupId, string sectionKey, int sectionOrder) -> WidgetRail.WidgetSdk.WidgetElement
@@ -3788,6 +3790,7 @@ type static class WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities
 type static class WidgetRail.WidgetSdk.WidgetRecentActivityCapabilities
 type static class WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities
 type static class WidgetRail.WidgetSdk.WidgetTestHost
+type static class WidgetRail.WidgetSdk.WidgetTextChunks
 type static class WidgetRail.WidgetSdk.WidgetTicker
 type static class WidgetRail.WidgetSdk.WidgetTransitionExtensions
 type static class WidgetRail.WidgetSdk.WidgetWebSessionCapabilities
