@@ -110,7 +110,37 @@ public sealed partial class PlayniteLaunchLifetimeTests
                 if (!child.HasExited) await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
                 child.Dispose();
             }
-            Directory.Delete(root, true);
+            await DeleteFixtureDirectoryAsync(root);
+        }
+    }
+
+    [TestMethod]
+    public async Task FixtureCleanupWaitsForTransientFileHandleRelease()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "WidgetRail.Lifetime." + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        using var held = new FileStream(Path.Combine(root, "held"), FileMode.Create, FileAccess.Write, FileShare.None);
+        var cleanup = DeleteFixtureDirectoryAsync(root);
+        try
+        {
+            await Task.Delay(100);
+            Assert.IsFalse(cleanup.IsCompleted, "A sharing violation must not end cleanup before the handle is released.");
+        }
+        finally { held.Dispose(); await cleanup; }
+        Assert.IsFalse(Directory.Exists(root));
+    }
+
+    private static async Task DeleteFixtureDirectoryAsync(string root)
+    {
+        // Process exit/job termination can be observed before Windows releases
+        // the final filesystem reference. All process-lifetime assertions above
+        // still run first; only sharing/lock violations receive a bounded retry.
+        var deadline = Stopwatch.StartNew();
+        while (true)
+        {
+            try { Directory.Delete(root, recursive: true); return; }
+            catch (IOException error) when ((error.HResult & 0xffff) is 32 or 33 && deadline.Elapsed < TimeSpan.FromSeconds(5))
+            { await Task.Delay(50); }
         }
     }
 
