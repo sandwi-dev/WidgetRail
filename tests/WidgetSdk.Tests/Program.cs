@@ -12,6 +12,12 @@ if (args is ["--loaded-collection-probe", var probePath])
     return 0;
 }
 
+if (args is ["--query-resource-probe", var queryProbePath])
+{
+    await WidgetQueryResourceProbe.WriteAsync(queryProbePath);
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Loaded collections freeze inputs and classify explicit query publications", WidgetLoadedCollectionTests.Run),
@@ -162,6 +168,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Optimistic commands coordinate projection rollback and lifecycle", WidgetOptimisticCommandTests.Run),
     ("Out-of-band optimistic commands own external confirmation authority",
         WidgetOutOfBandCommandTests.Run),
+    ("Query resources fence scopes and bound latest provider work", WidgetQueryResourceTests.Run),
     ("Non-paged resources coordinate cache events retry and lifecycle", WidgetResourceTests.Run),
     ("Paged resources coordinate bounded automatic collection loading", WidgetPagedResourceTests.Run),
     ("Cursor resources append bounded keyed collection windows", WidgetCursorResourceTests.Run),

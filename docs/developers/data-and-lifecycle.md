@@ -11,7 +11,9 @@ an error, and a retry action. If you already have useful data, consider keeping
 it visible while refreshing instead of replacing the whole page with a spinner.
 
 `WidgetResource<TValue>` owns a bounded asynchronous result, such as a device
-list. For virtualized browsing, publish an immutable query through
+list. `WidgetQueryResource<TQuery,TValue>` adds one immutable selected query and
+a caller scope without a second loading-state owner. Read its snapshot directly;
+see [asynchronous work](../reference/async-work.md). For virtualized browsing, publish an immutable query through
 `CreateIndexedCollection` when the count is known, or `CreateDiscoveredCollection`
 when the provider exposes continuation tokens. Use `UI.CollectionList` or
 `UI.CollectionGrid` to display the source.

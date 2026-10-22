@@ -148,6 +148,7 @@ ctor WidgetRail.WidgetSdk.WidgetPrivateSecretSlotRequest(string Slot)
 ctor WidgetRail.WidgetSdk.WidgetPrivateStateMutation(long Revision)
 ctor WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot(bool Exists, string? Json, long Revision)
 ctor WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>(bool Exists, T? Value, long Revision)
+ctor WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>()
 ctor WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetRecentActivity> Activities)
 ctor WidgetRail.WidgetSdk.WidgetRecentActivity(string ActivityId, string DisplayName, WidgetRail.WidgetSdk.WidgetRecentActivityKind Kind, bool IsRunning, bool IsMostRecent)
 ctor WidgetRail.WidgetSdk.WidgetResourceError(string code, string message)
@@ -1635,6 +1636,15 @@ method WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.Deconstruct(out bool Exis
 method WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetQueryResource<TQuery,TValue>.Cancel(bool invalidate = true) -> void
+method WidgetRail.WidgetSdk.WidgetQueryResource<TQuery,TValue>.EnsureLoaded(TQuery query, System.Threading.CancellationToken ownerCancellationToken = null, bool forceRefresh = false) -> WidgetRail.WidgetSdk.WidgetOperationHandle
+method WidgetRail.WidgetSdk.WidgetQueryResource<TQuery,TValue>.GetSnapshot(TQuery query) -> WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>
+method WidgetRail.WidgetSdk.WidgetQueryResource<TQuery,TValue>.Reset(bool invalidate = true) -> void
+method WidgetRail.WidgetSdk.WidgetQueryResource<TQuery,TValue>.WhenIdleAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.Task
+method WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>.<Clone>$() -> WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>
+method WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged.<Clone>$() -> WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged
 method WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged.Deconstruct(out System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetRecentActivity> Activities) -> void
 method WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged.Equals(object? obj) -> bool
@@ -1648,6 +1658,7 @@ method WidgetRail.WidgetSdk.WidgetRecentActivity.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetRecentActivityService.GetRecentAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetRecentActivity>>
 method WidgetRail.WidgetSdk.WidgetRecentActivityService.OpenSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged>>
 method WidgetRail.WidgetSdk.WidgetRecentActivityService.WatchAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged>
+method WidgetRail.WidgetSdk.WidgetResource<TValue>.Cancel(bool invalidate = true) -> void
 method WidgetRail.WidgetSdk.WidgetResource<TValue>.EnsureLoaded(bool forceRefresh = false) -> WidgetRail.WidgetSdk.WidgetOperationHandle
 method WidgetRail.WidgetSdk.WidgetResource<TValue>.Publish(TValue value, bool invalidate = true) -> void
 method WidgetRail.WidgetSdk.WidgetResource<TValue>.Refresh() -> WidgetRail.WidgetSdk.WidgetOperationHandle
@@ -2237,6 +2248,8 @@ method static WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot.op_Equality(Widget
 method static WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot.op_Inequality(WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot? left, WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.op_Equality(WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>? left, WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.op_Inequality(WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>? left, WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>.op_Equality(WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>? left, WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>.op_Inequality(WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>? left, WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged.op_Equality(WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged? left, WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged.op_Inequality(WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged? left, WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetRecentActivity.op_Equality(WidgetRail.WidgetSdk.WidgetRecentActivity? left, WidgetRail.WidgetSdk.WidgetRecentActivity? right) -> bool
@@ -2513,6 +2526,7 @@ method virtual WidgetRail.WidgetSdk.WidgetPrivateSecretSlotRequest.Equals(Widget
 method virtual WidgetRail.WidgetSdk.WidgetPrivateStateMutation.Equals(WidgetRail.WidgetSdk.WidgetPrivateStateMutation? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot.Equals(WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.Equals(WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>.Equals(WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged.Equals(WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetRecentActivity.Equals(WidgetRail.WidgetSdk.WidgetRecentActivity? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetResourceError.Equals(WidgetRail.WidgetSdk.WidgetResourceError? other) -> bool
@@ -2598,6 +2612,7 @@ property System.Exception? WidgetRail.WidgetSdk.WidgetOperationResult.Exception 
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetCommandError> WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.MapError { get; set; }
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.MapError { get; set; }
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.MapError { get; set; }
+property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>.MapError { get; set; }
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.MapError { get; set; }
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError>? WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.MapError { get; set; }
 property System.Func<System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<TValue>> WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.Load { get; set; }
@@ -2620,6 +2635,7 @@ property System.Func<TItem,string> WidgetRail.WidgetSdk.WidgetCursorViewport<TIt
 property System.Func<TObservation,long> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.CorrelationSequence { get; set; }
 property System.Func<TObservation,long>? WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.ObservationSequence { get; set; }
 property System.Func<TQuery,System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetCollectionItemKey>?>? WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.OccurrenceKeys { get; set; }
+property System.Func<TQuery,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<TValue>> WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>.Load { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetActionEvent,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask> WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.OnAction { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetActionEvent,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask> WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.OnAction { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetArtworkSource?>>? WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.ResolveArtworkSource { get; set; }
@@ -2651,6 +2667,7 @@ property System.Threading.Tasks.Task WidgetRail.WidgetSdk.WidgetWebSession.Compl
 property System.Threading.Tasks.Task<WidgetRail.WidgetSdk.WidgetOperationResult> WidgetRail.WidgetSdk.WidgetOperationHandle.Completion { get; set; }
 property System.TimeProvider? WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.TimeProvider { get; set; }
 property System.TimeProvider? WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.TimeProvider { get; set; }
+property System.TimeProvider? WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>.TimeProvider { get; set; }
 property System.TimeProvider? WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.TimeProvider { get; set; }
 property System.TimeSpan WidgetRail.WidgetSdk.ScrubberElement.Duration { get; set; }
 property System.TimeSpan WidgetRail.WidgetSdk.ScrubberElement.Position { get; set; }
@@ -2661,6 +2678,7 @@ property System.TimeSpan WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext
 property System.TimeSpan WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.ReadTimeout { get; set; }
 property System.TimeSpan WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.Timeout { get; set; }
 property System.TimeSpan WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.CacheDuration { get; set; }
+property System.TimeSpan WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>.CacheDuration { get; set; }
 property System.TimeSpan WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.CacheDuration { get; set; }
 property System.TimeSpan? WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.ExpiresAfter { get; set; }
 property T? WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.Value { get; set; }
@@ -2872,6 +2890,7 @@ property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.Widge
 property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Lifetime { get; set; }
 property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.ExpiryLifetime { get; set; }
 property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.Lifetime { get; set; }
+property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>.Lifetime { get; set; }
 property WidgetRail.WidgetSdk.WidgetOperationLifetime WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.Lifetime { get; set; }
 property WidgetRail.WidgetSdk.WidgetOperationStatus WidgetRail.WidgetSdk.WidgetOperationResult.Status { get; set; }
 property WidgetRail.WidgetSdk.WidgetOutOfBandCommandAdmission WidgetRail.WidgetSdk.WidgetOutOfBandCommandRun.Admission { get; set; }
@@ -2994,11 +3013,12 @@ property bool WidgetRail.WidgetSdk.WidgetPrivateSecretExists.Exists { get; set; 
 property bool WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata.Exists { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot.Exists { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.Exists { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>.RetainLastGoodValue { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetRecentActivity.IsMostRecent { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetRecentActivity.IsRunning { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetResource<TValue>.IsBusy { get; }
 property bool WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.RetainLastGoodValue { get; set; }
-property bool WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.HasValue { get; }
+property bool WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.HasValue { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetSavedNetworkProfile.CanManage { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetSavedNetworkProfile.IsConnected { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetScenarioRunResult.Passed { get; set; }
@@ -3768,6 +3788,8 @@ type sealed class WidgetRail.WidgetSdk.WidgetPrivateStateMutation : System.IEqua
 type sealed class WidgetRail.WidgetSdk.WidgetPrivateStateService
 type sealed class WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot : System.IEquatable<WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot>
 type sealed class WidgetRail.WidgetSdk.WidgetPrivateStateValue<T> : System.IEquatable<WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>>
+type sealed class WidgetRail.WidgetSdk.WidgetQueryResource<TQuery,TValue>
+type sealed class WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue> : System.IEquatable<WidgetRail.WidgetSdk.WidgetQueryResourceOptions<TQuery,TValue>>
 type sealed class WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged : System.IEquatable<WidgetRail.WidgetSdk.WidgetRecentActivitiesChanged>
 type sealed class WidgetRail.WidgetSdk.WidgetRecentActivity : System.IEquatable<WidgetRail.WidgetSdk.WidgetRecentActivity>
 type sealed class WidgetRail.WidgetSdk.WidgetRecentActivityService

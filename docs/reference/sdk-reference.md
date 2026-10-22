@@ -33,6 +33,7 @@ Use this index to find one API family at a time. For a first project, start with
 |---|---|
 | [`WidgetModel<TState>`](widget-model-reference.md) | Store related immutable UI state |
 | [`WidgetResource<TValue>`](async-work.md) | Load and cache one result |
+| [`WidgetQueryResource<TQuery,TValue>`](async-work.md) | Load one selected immutable query within a caller scope |
 | [`WidgetCursorResource<TItem>`](collections.md) | Fetch a continuous window of adjacent pages |
 | [`WidgetCollectionItems<TItem>`](collections.md#data-and-identity) | Cache immutable keyed declarations; use indexed/discovered sources for native virtualized list/grid presentation |
 | [`WidgetPagedResource<TItem>`](collections.md) | Load and cache one offset-based page at a time |

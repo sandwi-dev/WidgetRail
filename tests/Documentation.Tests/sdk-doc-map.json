@@ -19,6 +19,7 @@
   "src/WidgetSdk/SliderMath.cs": "docs/reference/identity-and-input.md",
   "src/WidgetSdk/WidgetCollectionValues.cs": "docs/reference/identity-and-input.md",
   "src/WidgetSdk/WidgetOperations.cs": "docs/reference/async-work.md",
+  "src/WidgetSdk/WidgetQueryResource.cs": "docs/reference/async-work.md",
   "src/WidgetSdk/WidgetResource.cs": "docs/reference/async-work.md",
   "src/WidgetSdk/WidgetOptimisticCommand.cs": "docs/reference/async-work.md",
   "src/WidgetSdk/WidgetOutOfBandCommand.cs": "docs/reference/async-work.md",
