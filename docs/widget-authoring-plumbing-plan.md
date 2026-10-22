@@ -2,7 +2,7 @@
 
 Date: 2026-10-22  
 Audit baseline: `adb696ac` (`codex/playnite-achievement-focus`)  
-Status: Completion audit reopened F5/F6/F9 on `codex/sdk-authoring-improvements`: the first-pass deferrals below are provisional until a bounded prototype or concrete rejection evidence resolves them. Implemented changes remain locally committed; nothing is merged, pushed, packaged, or installed.
+Status: Active implementation on `codex/sdk-authoring-improvements`. The F6 loaded-list prototype is implemented and validated; F5 keyed resources, F9 controlled disclosures, and final cross-cutting verification remain open. First-pass deferrals below are provisional where superseded by the completion audit. Nothing is merged, pushed, packaged, or installed.
 
 Move generic focus, navigation, collection, and asynchronous presentation bookkeeping out of Playnite, shared PoB, YouTube Music, Spotify, and Settings into reusable SDK and host facilities. Widget authors should declare intent and domain data without maintaining competing request counters or reconstructing framework lifecycle rules.
 
@@ -624,11 +624,11 @@ or weakens behavior. No existing widget feature was intentionally removed.
 | F2 | Implemented exact target protocol/host/SDK and admission-race fix | PoB search and native fixture |
 | F3 | Implemented narrow indexed navigation return intent | Spotify and Full Application; semantic/modal routing retained elsewhere |
 | F4 | Implemented action-focused Back default | SDK and Playnite |
-| F5 | Fixed existing resource reset/reload and Playnite teardown; general keyed/scoped cache deferred | WidgetResource and Playnite; domain owners retained |
-| F6 | General adapter deferred; no automatic identity inference | Loaded lists retain explicit query policy |
+| F5 | Open keyed-resource pilot; existing reset/reload and teardown fixes implemented | WidgetResource and Playnite; domain owners retained |
+| F6 | Implemented explicit-identity loaded-list adapter | Settings, Games & Apps, Playnite achievements, PoB loaded lists, Spotify queue, YTM snapshots; specialized sources retained |
 | F7 | Corrected audit: shared ownership/lifetime facilities already exist | Preserve widget domain guards |
 | F8 | Implemented shared lossless chunk boundaries | PoB and Settings; whole-frame document owner deferred |
-| F9 | General disclosure deferred pending protocol/UIA contract | Existing PoB/Settings behavior retained |
+| F9 | Open controlled disclosure implementation with protocol/UIA contract | Existing PoB/Settings behavior retained |
 | F10 | Fixed operation admission presentation | PoB, Playnite, YTM; Spotify/Settings existing admission paths retained |
 | F11 | Implemented explicit Settings field declarations | Settings fields; existing navigation pass retained |
 | F12 | Retained typed page-or-pin demand | Spotify; generic lease graph not justified |
@@ -637,9 +637,9 @@ or weakens behavior. No existing widget feature was intentionally removed.
 | F15 | Retained activity caches | They suppress scheduling, while SDK coalescing suppresses transport |
 | F16 | Retained provider reconciliation; fixed failed-command rollback | Spotify observations and exact command ownership |
 
-All findings have a disposition. This is not a claim that every originally
-proposed abstraction shipped. Further general keyed-resource/disclosure work
-requires its own representative design and acceptance rather than automatic migration.
+This table is a progress record, not completion evidence. F5/F9 and the remaining
+verification requirements are still part of the active goal; the initial deferrals
+do not close those requirements.
 
 ### Final validation and limits
 
@@ -743,3 +743,104 @@ graph, F13's generalized polling machinery, F15's blanket cache removal, and F16
 mechanical model conversion can be rejected with the consumer-specific evidence
 above. Their useful narrow improvements remain implemented; no external decision
 is currently blocking the remaining work.
+
+
+### F6 explicit-identity loaded-list implementation
+
+The bounded prototype disproved the first-pass deferral. `WidgetLoadedCollection`
+adapts complete immutable items to the existing indexed source, retaining its
+range/lease/action/lifecycle authority. Authors provide semantic query identity,
+captured immutable context/items, row rendering/actions and optional artwork.
+The helper owns shallow list freezing, unique occurrence-key validation, range
+slicing, unchanged/content/query classification and optional bounded continuity.
+It does not infer account/build/filter identity or own a provider/cache/expansion
+store. A force reset is explicit. Ordinary publication remains outside rendering
+where the existing consumer already publishes there.
+
+Identity replacement and force reset suppress old occurrence continuity, even
+when new rows have identical keys. Continuity remains opt-in, with the existing
+512-key wire bound and no cap on the actual list size. Key validation is shared;
+the first probe exposed per-key string-enumerator allocation in StableIdentifier,
+which was replaced with an equivalent allocation-free character loop. No validation
+rule was removed.
+
+| Consumer | Outcome |
+| --- | --- |
+| Settings installed widgets | Migrated; explicit filter identity, built-in/installed keys, package selection and permission logic retained |
+| Playnite achievements | Migrated; explicit details-generation identity, secret/search/filter policy and artwork checks retained |
+| PoB saved builds and managed sets | Migrated; set kind explicitly retires same-key queries; stale query/action guards retained |
+| PoB calculation cells | Migrated; existing content-versus-membership behavior retained |
+| PoB passive groups | Migrated loaded-list publication; grouping/expansion/build/filter policy and deferred previews remain domain-owned |
+| PoB comparison/source/picker/ranking snapshots | Retain raw indexed sources where every engine/selection snapshot deliberately retires the query; a forced-reset adapter would add a frozen copy and key scan without removing classification logic |
+| Playnite main library/Home | Retain provider-owned indexed range queries; not complete loaded lists |
+| Spotify discovered pages | Not applicable: provider continuation ownership |
+| Spotify queue and YTM complete section/queue snapshots | Migrated only range/publication plumbing; retain occurrence matching, saved/rating projection, account reset and typed demand |
+| Games & Apps saved/running observations | Migrated complete observations; broker identity/icon authority, current-generation checks, row-state projection and provider-paged Catalog retained |
+| Other shipping widgets/templates | No matching complete-list classification contract found in the applicability search; existing indexed/discovered APIs remain supported |
+
+Managed tests cover 10,000 items with zero initial row rendering, one-row deep
+reads, list freezing, unchanged publication, content identity, captured action
+context, stale action retirement, explicit identity/reset, reordering, distinct
+duplicate occurrences, invalid duplicate keys, empty lists, and collection of
+retired publication contexts. SDK 172/172; Settings 94/94; Playnite 216/216;
+SDK compatibility 17/17; documentation contract passes. Public API and reference
+mapping updated.
+
+A disposable publication probe compares the prior authored algorithm with the
+adapter at 512 and 10,000 items. `f6-publication-probe-final.json` records timings
+and per-thread allocated bytes. At 10,000 items, unchanged publication allocated
+zero bytes in both; content updates were approximately 122 versus 117 microseconds
+with about 80 KB allocated in both. Full reorders cost about 0.40 ms / 363 KB in the
+adapter versus 0.002 ms / 80 KB in the old algorithm because the adapter validates
+all occurrence keys. This is an explicit data-change cost, not per-scroll/per-frame
+work; no rows were rendered by any publication. The adapter is not applied to the
+main provider-backed game library or provider-discovered pages. Music queues retain
+their domain-specific occurrence assignment and presentation-change gates. These
+are microbench observations, not a universal performance or native-memory claim.
+The weak-reference regression independently verifies retired contexts are released.
+
+Native fixture `f6-native-final/results.json` passes six checks through the real
+bridge/worker/presenter: deep exact entry, content update with stable focus/offset,
+reordering with surviving-key focus, semantic replacement without old focus,
+new exact entry, and removed-item fallback. It realizes 30-45 of 100 fixture rows,
+not the full list. The first attempt used a toolbar Invoke that moved focus; the
+second used high function keys that did not dispatch. Final inputs use the existing
+low-function-key controller route; assertions were not weakened. Screenshot
+inspected; the minimal fixture is unthemed and is not product visual acceptance.
+Only fixture processes were closed; the user's PID13988 was left running.
+
+PoB engine-backed checks: set operations 28/28 for both games; passive/row previews
+59/59 (PoE1) and 62/62 (PoE2). PoE1 management has five checkpoint/history failures,
+reproduced unchanged with the pre-adapter library/sets implementations. Detailed
+calculation tests have the same formula-reading assertion failure (16 pass, 1 fail)
+for both games with old and new calculation collection implementations. These
+baseline failures remain explicit; no assertion was weakened or marked green.
+Additional managed-set query/row checks pass for all four set kinds in both games:
+final management results are 44 passed/5 baseline failures (PoE1) and 50/50 (PoE2).
+
+Evidence: `artifacts/authoring/f6-*.log`, `f6-publication-probe*.json`, and
+`f6-native-final/`. The probe can be rerun with the SDK test executable's
+`--loaded-collection-probe <output.json>` option. Native fixture command:
+`pwsh -NoProfile -File scripts/Test-WinUiLoadedCollection.ps1 -AppPid <fixture PID> -OutputDirectory <fresh evidence directory>`.
+
+
+F6 consumer follow-up: the Spotify/YTM/Games & Apps complete observations also
+benefit from the adapter without moving their domain logic. Spotify keeps its
+saved-state/generation/observation-change gate, avoiding render-triggered publication;
+YTM keeps reference-based duplicate matching and account reset; Games & Apps keeps
+row-state/broker generation validation and its paged Catalog. The first Spotify
+run caught an unnecessary force-reset on initial empty-source loading, which
+suppressed the expected initial continuity keys. Removed that redundant caller
+reset; the original regression now passes. No test was weakened.
+
+Games & Apps 94/94 and YTM 44/44 pass after migration. The final SDK suite includes
+context-retention and key-selector-cost checks: updating one of 10,000 immutable
+items recomputes only that item's key. Keys for unchanged values are reused, which
+also avoids rehashing opaque app identities. The additional key-reuse probe is
+`f6-publication-probe-key-reuse.json`; its timings are diagnostic, not a timing gate.
+
+
+F6 final consumer regression: Spotify 88/88 after removing the initial force reset;
+YTM 44/44; Games & Apps 94/94; Playnite 216/216; Settings 94/94. SDK 172/172,
+compatibility 17/17, and native loaded-list interaction 6/6. The remaining
+keyed-resource/disclosure/hidden-target work stays open; this closes F6 only.

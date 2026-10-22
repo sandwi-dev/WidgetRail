@@ -85,6 +85,17 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
         Loaded += (_, _) => startup ??= StartAsync();
         KeyDown += (_, args) =>
         {
+            if (args.Key is VirtualKey.F1 or VirtualKey.F2 or VirtualKey.F3 or VirtualKey.F4 &&
+                session?.GetState("indexed-owned")?.LastGood is { } loadedFrame &&
+                FindNode(loadedFrame.Snapshot.Root, "items")?.IndexedCollection?.SourceId == "loaded-probe")
+            {
+                var button = args.Key switch { VirtualKey.F1 => ControllerButton.RightBumper,
+                    VirtualKey.F2 => ControllerButton.Menu, VirtualKey.F3 => ControllerButton.LeftBumper,
+                    _ => ControllerButton.RightTrigger };
+                _ = presenter.HandleControllerButtonAsync(button, origin: ControllerInputOrigin.AccessibilityAutomation);
+                args.Handled = true;
+                return;
+            }
             switch (args.Key)
             {
                 case VirtualKey.F17: _ = ProbeScrollFocusAsync(); break;

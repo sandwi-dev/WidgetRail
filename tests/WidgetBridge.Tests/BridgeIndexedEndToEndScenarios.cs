@@ -187,7 +187,7 @@ internal static class BridgeIndexedEndToEndScenarios
     }
 }
 
-internal sealed class IndexedOwnedBridgeProbeWidget : Widget
+internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
 {
     private readonly WidgetIndexedCollection<int, int> source;
     private readonly WidgetFocusPreviewSource<(int Revision,bool ReadOnly)> previews;
@@ -298,7 +298,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     };
     private WidgetView RenderParent() => new(UI.Stack("root", UI.Text(Volatile.Read(ref status), "status"),
         UI.Text($"Calls: {Interlocked.Read(ref calls)}", "calls"), UI.Text(Interlocked.Read(ref previewReads).ToString(),"preview.reads"), UI.Text(Volatile.Read(ref backgroundState), "background-state"),
-        UI.Row("toolbar", UI.Button("Parent", "parent", "parent").FocusDown("items"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid"), UI.Button("Toggle groups", "groups", "groups"), UI.Button("Surfaces", "surfaces", "surfaces")),
+        UI.Row("toolbar", UI.Button("Parent", "parent", "parent").FocusDown("items"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid"), UI.Button("Toggle groups", "groups", "groups"), UI.Button("Surfaces", "surfaces", "surfaces"), UI.Button("Loaded source", "loaded", "loaded")),
         Collection())
         .Shortcut(ControllerButton.LeftBumper, actionId: "focus-exact")
         .Shortcut(ControllerButton.RightBumper, actionId: "focus-default")
@@ -311,6 +311,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         .Shortcut(ControllerButton.B, actionId: "focus-clear"), deferredMode?"parent":"items") { FocusGroupEntryRequest = entry, ScrollRevealRequest = reveal };
     public override WidgetView Render()
     {
+        if (loadedProbe is not null) return RenderLoadedProbe();
         var parent = RenderParent();
         if (modalItem is not { } item) return parent;
         return parent.WithModal(new($"details.{item}.{modalOpening}", $"Item {item} details revision {modalRevision}",
@@ -323,6 +324,8 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     }
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
+        if (action.ActionId.StartsWith("loaded", StringComparison.Ordinal))
+        { HandleLoadedProbe(action.ActionId); return ValueTask.CompletedTask; }
         Interlocked.Increment(ref calls);
         Volatile.Write(ref status, action.ActionId);
         if(action.ActionId is "deferred-mode" or "deferred-readonly")
