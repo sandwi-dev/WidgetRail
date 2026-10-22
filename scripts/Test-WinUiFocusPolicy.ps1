@@ -63,6 +63,29 @@ try {
     Focus 'Widget.header'
     Key C
     Assert-Focus 'disabled exact target cannot replay across coalesced publications' 'Widget.header'
+    Key H
+    Key Y
+    Assert-Focus 'hidden exact target leaves current valid focus alone' 'Widget.header'
+    Invoke-Ui @('screenshot','-o',(Join-Path $OutputDirectory 'hidden-target.png')) | Out-Null
+    Key H
+    Assert-Focus 'showing a consumed hidden target does not steal focus' 'Widget.header'
+    Key Y
+    Assert-Focus 'a new request can focus the now-visible target' 'Widget.third'
+    Invoke-Ui @('screenshot','-o',(Join-Path $OutputDirectory 'visible-target.png')) | Out-Null
+    Focus 'Widget.header'
+    Key J
+    Assert-Focus 'hidden target cannot replay across coalesced publications' 'Widget.header'
+    Key P
+    Key Y
+    Assert-Focus 'exact target inside a hidden ancestor leaves current focus alone' 'Widget.header'
+    Key P
+    Assert-Focus 'showing the ancestor cannot revive a consumed request' 'Widget.header'
+    Key Y
+    Assert-Focus 'new exact request enters the now-visible ancestor' 'Widget.third'
+    Focus 'Widget.header'
+    Key K
+    Assert-Focus 'hidden ancestor cannot replay exact entry across coalesced publications' 'Widget.header'
+
 
 
     Focus 'Widget.header'
@@ -114,7 +137,7 @@ try {
     Key F8
     Key F1
     Assert-Focus 'host entry uses the replacement owner initial target' 'Widget.header'
-    Invoke-Ui @('screenshot','--capture-screen','-o',(Join-Path $OutputDirectory 'focus-policy.png')) | Out-Null
+    Invoke-Ui @('screenshot','-o',(Join-Path $OutputDirectory 'focus-policy.png')) | Out-Null
 } finally {
     $results | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $OutputDirectory 'results.json')
 }

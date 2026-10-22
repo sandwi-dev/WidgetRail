@@ -566,7 +566,7 @@ only the latest pending read, with no overlapping provider calls or stale publis
 SDK 171/171 and Playnite 216/216 pass. Existing shipping consumers are Playnite
 hidden rows and connection status; other audited resources use distinct cursor,
 discovered-source, or domain operation contracts. Evidence: `f5-resource-repro.log`,
-`f5-resource-fixed.log`, `f5-playnite.log`.
+`f5-resource-fixed.log` (the later F5 pilot provides current Playnite evidence).
 
 A general keyed/scope resource remains deferred under the decision gate:
 - Playnite's details model atomically carries the selected game, full metadata,
@@ -927,3 +927,64 @@ Evidence under `artifacts/authoring`: `f5-sdk-verification.log`,
 `f5-compat.log`, and `f5-docs-final.log`.
 F9, hidden-target native coverage, and the final restoration/completion audit
 remain active work; this closes the bounded F5 pilot and applicability decision.
+
+
+### F2 hidden exact targets: native completion evidence
+
+Extended the existing native `FocusPolicyValidationPage` and
+`Test-WinUiFocusPolicy.ps1` with eight assertions for responsive hidden targets and
+hidden ancestors. A request while hidden leaves the valid current focus alone;
+revealing the target with that same request never steals focus; a fresh request
+can enter it. Hidden→visible updates applied within one UI handler also pass,
+proving that deferred layout/focus restoration cannot replay the consumed intent.
+This is coalescing of admitted native publications, not a claim about an
+unobserved frame discarded before host admission.
+
+All **36/36 native checks passed**, including the original disabled/remembered,
+exact/group, worker-replacement, passive-owner and request-withdrawal cases. No
+production focus code needed alteration. The first run exposed the fixture's
+pre-existing white-on-white labels in its screenshot. A standard Dark theme
+background now makes the test surface readable; the complete rerun stayed green.
+Inspected hidden, visible/focused, and final-state screenshots: labels and borders
+are readable, the hidden control is absent, and no controls overlap or clip.
+This minimal diagnostic page is not product-theme or physical-controller acceptance.
+
+Evidence: `artifacts/authoring/f2-hidden-themed/results.json` and the three PNGs
+alongside it, `f2-hidden-themed.log`, and `f2-hidden-themed-build.log` (zero warnings
+or errors). Only verified fixture PIDs 29492 and 7952 were closed. User instance
+13988 at the primary checkout's interactive-introduction installation was retained.
+The hidden-target gap in the completion audit is resolved.
+
+### F9 next implementation contract
+
+Read-only source audit and the WinUI Gallery Expander sample confirm the bounded
+approach: a controlled header with explicit authored expanded state and owned
+content identity; lazy optional children; separate idempotent expand/collapse
+actions; host UIA ExpandCollapse state and focus recovery when collapse removes
+the focused descendant. Use ordinary admitted button actions, not a separate
+privileged endpoint or host preference cache. A native Expander's independently
+changing state must not outrun the asynchronous widget snapshot owner.
+
+The host must capture focused ancestry before reconciliation removes controls,
+recover only to the same retained header/scope, and preserve newer explicit focus
+requests. Expansion, refresh, outside focus, inactive presentations and unrelated
+replacement must not steal focus. Protocol validation must reject foreign,
+self/ancestor, malformed or ambiguous content ownership, and UIA should raise a
+state change only for an accepted new expanded value. The helper must not build
+collapsed children.
+
+Confirmed consumer scope: Settings release notes and diagnostics; PoB inactive
+configuration (retain context/token safeguards, remove unconditional manual focus
+request); SDK Gallery details; Game Help solution/sources; and Playnite setup
+Advanced where composition preserves the action grid. PoB comparison context
+reveals fields in two persistent cards from a toolbar header, so do not rearrange
+that layout merely to fit a one-content-root component. Passive indexed groups
+retain their different virtualized grouping contract.
+
+Source seams: `WidgetViewPresenter.cs` reconciliation/control reuse,
+`WidgetValueButton.cs` UIA peer precedent, `Elements.cs`, protocol node/update
+contracts, and `PobWidget.Disclosures.cs`. Native acceptance must include UIA
+idempotence and state changes, controller/pointer parity, disabled/busy admission,
+child→header recovery, outside/refresh focus stability, nested collapse, stale
+owners and explicit request priority. F9 remains implementation work, not an
+external blocker. Final comparative restoration/completion review also remains.
