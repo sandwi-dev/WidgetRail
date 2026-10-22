@@ -1,6 +1,6 @@
 {
   "manifestVersion": 1, "id": "widgetrail.firstparty.marketplace", "publisher": "widgetrail.firstparty",
-  "name": "WidgetRail Catalogue", "version": "0.1.0", "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "name": "WidgetRail Catalogue", "version": "0.1.1", "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
   "entrypoint": { "runtime": "dotnet-worker", "assembly": "payload/MarketplaceWidget.dll", "type": "WidgetRail.FirstPartyWidgets.Marketplace.MarketplaceWidget" },
   "presentation": { "icon": "settings", "packageIcon": { "assetId": "marketplace.mark", "colorMode": "themeTint" } },
   "iconAssets": { "marketplace.mark": { "path": "assets/icons/marketplace.svg" } },

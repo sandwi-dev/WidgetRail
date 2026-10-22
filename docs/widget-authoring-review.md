@@ -2,7 +2,7 @@
 
 Branch: `codex/sdk-authoring-improvements`; baseline: `adb696ac`.
 
-Status: Complete for local review; not merged, pushed, published, or installed.
+Status: Accepted by the user on 2026-10-22 for integration and preview.39.
 
 The [implementation plan](widget-authoring-plumbing-plan.md) contains the full
 consumer matrix, decisions, source evidence, and test artifacts.
@@ -68,9 +68,13 @@ The fixture excludes artwork, network, playback and cold startup.
   and inspected readable captures do not constitute full physical acceptance of
   every widget/theme or real controller hardware.
 
-The user's running overlay, installed packages, preferences and permissions were
-not changed. Primary-checkout edits remain intact. The implementation is left in
-small local commits for review.
+An isolated production-shell candidate was subsequently packaged and launched.
+Smoke checks covered Settings navigation, Playnite achievements and suggestions,
+Spotify and YouTube Music collection returns, PoE2 passive inspection, and overlay
+hide/reopen. The Playnite material correction passed 56 focused layout/theme
+checks and was inspected over bright artwork. These checks do not establish full
+physical-controller, pinned-layout or all-theme visual coverage. The user accepted
+the changes; unrelated primary-checkout edits remain intact.
 
 The final restoration work is split into `75ba35be` (native binding lifetime),
 `f021566a` (SDK/protocol contract), `cc54cbea` (host restoration and native fixtures),

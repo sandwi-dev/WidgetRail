@@ -7,7 +7,7 @@ community package.
 ## The version a user installs
 
 The **application version** identifies a complete WidgetRail release. Its source
-is `eng/WidgetRailRelease.props`; the current preview is `0.1.0-preview.38`.
+is `eng/WidgetRailRelease.props`; the current preview is `0.1.0-preview.39`.
 Both Production and Bare use this version. Their contents differ, not
 their stability channel.
 
@@ -18,14 +18,14 @@ manifests use the application release settings. Optional checks notify after the
 overlay's first initialization. Users explicitly download and install updates
 from Settings, or run a newer installer themselves; installation is never automatic.
 
-The Windows numeric file version is `0.1.0.37` for this preview. A source commit
+The Windows numeric file version is `0.1.0.39` for this preview. A source commit
 distinguishes local candidates with the same preview label. Never replace a
 published release's bytes: advance its version before distributing a correction.
 
 ## The version a widget author builds against
 
 The **SDK and CLI** are a coordinated developer release unit. Their source is
-`eng/WidgetSdkRelease.props`; the current unit is `0.4.6-dev`. It includes matching
+`eng/WidgetSdkRelease.props`; the current unit is `0.4.7-dev`. It includes matching
 templates and the author-facing application bootstrap.
 
 The scaffold bundles an exact SDK package in a local feed. Its version adds a
@@ -51,7 +51,7 @@ version numbers alone do not establish compatibility.
 
 | Version | Meaning |
 |---|---|
-| Presentation protocol (currently 1–98) | The UI data features supported between a widget and host |
+| Presentation protocol (currently 1–101) | The UI data features supported between a widget and host |
 | Capability suffix, such as `.v1` | A particular Windows-service contract |
 | Manifest version | The package schema |
 | Template format (currently 2) | The format understood by the scaffold tooling |

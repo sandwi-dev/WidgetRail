@@ -56,7 +56,7 @@ From a clean committed checkout with the [development tools](building.md):
 pwsh -NoProfile -File .\scripts\Build-Release.ps1
 pwsh -NoProfile -File .\scripts\Get-InstallerCompiler.ps1
 pwsh -NoProfile -File .\scripts\Build-Installer.ps1 `
-  -ReleaseRoot .\artifacts\releases\0.1.0-preview.38 `
+  -ReleaseRoot .\artifacts\releases\0.1.0-preview.39 `
   -CompilerPath .\artifacts\tools\installer-compiler\package\tools\ISCC.exe
 ```
 
@@ -113,7 +113,7 @@ The common builder also packages the first-party optional widgets and Browser:
 
 ```powershell
 foreach ($widget in @('AudioMixer','CaptureLibrary','PerformanceMonitor','MediaSessions',
-    'GamesApps','TaskSwitcher','NetworkControls','Power','RecentApps','Browser')) {
+    'GamesApps','NetworkControls','Power','Browser')) {
     ./scripts/Build-MarketplacePackage.ps1 -Widget $widget -OutputDirectory ./artifacts/catalogue-addons/release
 }
 ```

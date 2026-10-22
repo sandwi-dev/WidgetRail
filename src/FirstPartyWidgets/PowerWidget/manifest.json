@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.power",
   "publisher": "widgetrail.firstparty",
   "name": "Power",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1

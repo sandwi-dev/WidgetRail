@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.network-controls",
   "publisher": "widgetrail.firstparty",
   "name": "Network Controls",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
