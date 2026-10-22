@@ -78,3 +78,9 @@ Exact signatures and bounds:
 For the additional helpers, see [`WidgetTicker.cs`](../../src/WidgetSdk/WidgetTicker.cs),
 [`WidgetTimedMutation.cs`](../../src/WidgetSdk/WidgetTimedMutation.cs), and
 [`WidgetOutOfBandCommand.cs`](../../src/WidgetSdk/WidgetOutOfBandCommand.cs).
+
+`Reset()` and `Publish()` retire the current read even when a provider ignores
+cancellation. A subsequent load queues behind that provider; repeated resets retain
+only the latest pending read. Ordinary duplicate loads still join one completion.
+Use an immutable captured request for provider identity and keep domain cache keys
+explicit; this resource is not a general multi-key cache.

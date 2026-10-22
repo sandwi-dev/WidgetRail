@@ -203,3 +203,19 @@ Settings/action lists use the shared first-option focus policy. Preference value
 pickers focus and reveal the current value; returning restores the originating
 row. Preference pages use Back/Done because changes save immediately. Permission
 and destructive confirmations retain safe Cancel focus. B remains available.
+
+## Coalesce optional event delivery
+
+Create one `WidgetNotificationPublisher` with
+`CreateNotificationPublisher(operationKey, notificationKey, categoryId)` and call
+`Publish(notification)` for a new event. Use `Publish(notification, updateOnly: true)`
+for later metadata. It debounces by 250 ms by default, reuses the runtime's bounded
+latest-operation lane, and tracks accepted event receipts separately from metadata
+updates. A pending unacknowledged event can still require Show; metadata after an
+accepted event uses Update and does not create another banner.
+
+Keys/categories must match the publisher. Eligibility, track/account policy and
+content remain widget-owned; delivery preferences remain host-owned. Failed or
+rejected delivery retries only after a later explicit publication. The default
+lifetime is Widget so background events can be delivered; choose Active for
+visible-only UI. This does not create background polling or bypass permissions.

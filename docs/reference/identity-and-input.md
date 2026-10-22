@@ -62,3 +62,19 @@ Exact APIs:
 [`Elements.cs`](../../src/WidgetSdk/Elements.cs),
 [`WidgetControllerQueue.cs`](../../src/WidgetSdk/WidgetControllerQueue.cs), and
 [`SliderMath.cs`](../../src/WidgetSdk/SliderMath.cs).
+
+## Explicit focus requests
+
+Call `CreateFocusRequest()` once when handling a user or lifecycle event, retain
+the returned `WidgetFocusRequest`, and reuse it across renders. Its ID comes from
+the widget-instance sequence shared with all SDK-created navigators. Do not
+allocate independent counters for tabs or use navigation revisions as request IDs.
+Existing explicit-ID APIs remain supported.
+
+`EnterGroup(groupId)` restores a group's remembered/default child.
+`EnterCollection(source, collectionId, item)` enters an exact indexed/discovered
+occurrence. `FocusElement(groupId, targetId)` targets a declared focusable
+descendant directly (protocol 99). It respects active scope, identity, enabled
+state and visibility; an unavailable exact target is consumed, so issue a new
+intent once it becomes available. Do not make arbitrary text focusable to use it.
+`Reveal` and `RevealCollection` request scrolling without moving focus.

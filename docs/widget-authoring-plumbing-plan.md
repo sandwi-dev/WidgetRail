@@ -2,7 +2,7 @@
 
 Date: 2026-10-22  
 Audit baseline: `adb696ac` (`codex/playnite-achievement-focus`)  
-Status: Implementation authorized on 2026-10-22. Work proceeds on `codex/sdk-authoring-improvements`; each finding remains subject to the decision gate below.
+Status: This implementation pass is complete on `codex/sdk-authoring-improvements`, with deliberately narrowed/deferred proposals listed in the final disposition matrix. Changes are local commits, not merged, pushed, packaged, or installed.
 
 Move generic focus, navigation, collection, and asynchronous presentation bookkeeping out of Playnite, shared PoB, YouTube Music, Spotify, and Settings into reusable SDK and host facilities. Widget authors should declare intent and domain data without maintaining competing request counters or reconstructing framework lifecycle rules.
 
@@ -394,8 +394,8 @@ Evidence is under `artifacts/authoring/` in this worktree.
 - F12: preserve the existing small Spotify page-or-pin demand logic. A new generic
   lease graph is not justified solely to replace this tested composition. Revisit
   only if scoped resources and another real consumer make it simpler.
-- F13: narrow to adopting the existing fixed ticker in Settings. Spotify's two
-  wake meanings (reschedule versus immediate read) and provider backoff remain local.
+- F13: initially considered adopting the SDK ticker in Settings; subsequent cadence
+  analysis rejected that substitution (see the final assessment below).
 - F15: reject blanket removal. The widget cache suppresses operation scheduling;
   SDK coalescing suppresses transport. Removing the former adds work on playback ticks.
 - F16: reject mechanical optimistic-command migration. The current SDK model
@@ -584,3 +584,111 @@ No new keyed-resource API or automatic scope/caching policy is shipped. The
 concrete admission, teardown, and resource-reset defects are fixed through
 existing framework ownership. This is an intentional narrower outcome, not a
 claim that the proposed general keyed abstraction was implemented.
+
+### Remaining proposals: corrected ownership decisions
+
+- **F6 — retain current loaded-list publications; generalized adapter deferred.**
+  Settings' publication gate compares domain inputs before building rows, then
+  uses a small ordered-key comparison. PoB set collections must retire identical
+  keys when `managedSetKind` changes; passives additionally distinguish filter,
+  build context and expansion. Spotify queue content includes saved-song state;
+  YTM uses occurrence keys so duplicate songs remain distinct. An adapter that
+  inferred query identity from keys would be wrong. An explicit-context adapter
+  would still need all these input/equality/publication decisions and additional
+  callback plumbing. A four-line range slicer is not enough benefit to introduce
+  another collection owner. Existing lazy sources and continuity contracts remain.
+- **F7 — reject a competing suggestion registry.** The original audit overstated
+  the missing framework work. BridgeClientRegistry.TextSuggestions validates
+  field/source/scope/runtime/lifecycle ownership both before and after a callback;
+  WidgetTextSuggestionLane bounds noncooperative callbacks and cancellation;
+  TextSuggestionController owns debounce, throttling and stale selection. Remaining
+  widget predicates protect domain state that can change before the next published
+  snapshot, such as account/build/achievement identity. They remain necessary.
+  Alias matching is not added without two consumers requiring the same semantics.
+- **F9 — defer a general disclosure control.** A button helper would leave the
+  difficult ownership with authors. A real control needs protocol/UIA expansion
+  semantics, lazy child inclusion and collapse focus recovery. PoB's contextual
+  expansion cache and flattened virtualized passive groups differ from Settings'
+  local release-note/diagnostic booleans. No new competing expansion store is added.
+  This remains a separately scoped control feature, not a completed implementation.
+
+These decisions supersede the initial proposed migrations. They follow the user's
+instruction to retain working designs when the proposed abstraction adds coupling
+or weakens behavior. No existing widget feature was intentionally removed.
+
+### Final disposition matrix
+
+| Finding | Outcome of this pass | Consumer scope |
+| --- | --- | --- |
+| F1 | Implemented shared focus allocation | All matching shipping widgets, SDK navigators and examples |
+| F2 | Implemented exact target protocol/host/SDK and admission-race fix | PoB search and native fixture |
+| F3 | Implemented narrow indexed navigation return intent | Spotify and Full Application; semantic/modal routing retained elsewhere |
+| F4 | Implemented action-focused Back default | SDK and Playnite |
+| F5 | Fixed existing resource reset/reload and Playnite teardown; general keyed/scoped cache deferred | WidgetResource and Playnite; domain owners retained |
+| F6 | General adapter deferred; no automatic identity inference | Loaded lists retain explicit query policy |
+| F7 | Corrected audit: shared ownership/lifetime facilities already exist | Preserve widget domain guards |
+| F8 | Implemented shared lossless chunk boundaries | PoB and Settings; whole-frame document owner deferred |
+| F9 | General disclosure deferred pending protocol/UIA contract | Existing PoB/Settings behavior retained |
+| F10 | Fixed operation admission presentation | PoB, Playnite, YTM; Spotify/Settings existing admission paths retained |
+| F11 | Implemented explicit Settings field declarations | Settings fields; existing navigation pass retained |
+| F12 | Retained typed page-or-pin demand | Spotify; generic lease graph not justified |
+| F13 | Retained provider polling | Settings fixed-delay and Spotify adaptive timing are not interchangeable |
+| F14 | Implemented shared notification publisher | Spotify and YTM; other discrete-notification consumers unaffected |
+| F15 | Retained activity caches | They suppress scheduling, while SDK coalescing suppresses transport |
+| F16 | Retained provider reconciliation; fixed failed-command rollback | Spotify observations and exact command ownership |
+
+All findings have a disposition. This is not a claim that every originally
+proposed abstraction shipped. Further general keyed-resource/disclosure work
+requires its own representative design and acceptance rather than automatic migration.
+
+### Final validation and limits
+
+The notification publisher's final review added another delayed-receipt test:
+metadata arriving during an accepted Show must remain Update-only. It failed when
+content revisions were treated as event revisions. The publisher now advances
+its event revision only for a genuinely new event; an accepted receipt settles
+that event even when its metadata changed, but never settles a newer event.
+SDK 171/171, Spotify 88/88 and shipping YouTube Music 43/43 pass after this fix.
+
+Final/relevant suite results for this pass:
+
+| Scope | Result |
+| --- | --- |
+| SDK | 171/171 |
+| Playnite | 216/216 |
+| Spotify | 88/88 |
+| Shipping YouTube Music | 43/43 |
+| Settings | 94/94 |
+| Full Application reference | 5/5 |
+| SDK compatibility | 17/17 |
+| PoB formatted reading | 20 checks |
+| Native exact/group focus | 28 checks |
+| Native indexed return delivery | 22 checks |
+| Native Settings forms | 290 checks (earlier batch) |
+| Generated protocol/native contract | 184 constants and ownership/repeat rules match |
+| Documentation contract | 231 Markdown files checked |
+
+Representative exact managed commands (run from this worktree):
+
+```powershell
+dotnet run --project tests/WidgetSdk.Tests/WidgetSdk.Tests.csproj -c Release -p:UseSharedCompilation=false '-bl:artifacts/authoring/final-sdk-{}.binlog'
+dotnet run --project tests/SpotifyWidget.Tests/SpotifyWidget.Tests.csproj -c Release -p:UseSharedCompilation=false '-bl:artifacts/authoring/final-spotify-{}.binlog'
+dotnet run --project tests/YtMusicStandalone.Tests/YtMusicStandalone.Tests.csproj -c Release -p:UseSharedCompilation=false '-bl:artifacts/authoring/final-ytm-{}.binlog'
+dotnet test --project tests/PlayniteLibraryWidget.Tests/PlayniteLibraryWidget.Tests.csproj -c Release -p:UseSharedCompilation=false '-bl:artifacts/authoring/f5-playnite-{}.binlog'
+dotnet test --project tests/WidgetSdk.Compatibility.Tests/WidgetSdk.Compatibility.Tests.csproj -c Release -p:UseSharedCompilation=false '-bl:artifacts/authoring/compat-final-{}.binlog'
+```
+
+Native fixture screenshots were inspected. Native evidence uses automated
+controller-routing/keyboard/UI Automation fixtures, not a claim of a physical
+controller acceptance pass. No new public UI control was introduced. No full
+shipping installer or native C++ release rebuild was performed; the WinUI fixture
+build reused the existing native DLL artifacts. No performance improvement is
+claimed from these correctness/authoring changes.
+
+The broader PoB constrained-layout failure remains reproduced with both the old
+wrapper and exact-target implementation (107 checks precede it). It is not marked
+green or silently fixed here. Earlier engine-backed PoB results are recorded above.
+
+All owned validation processes were closed; the user's existing overlay instance
+was not replaced. All changes are local commits on the isolated implementation
+branch. The primary checkout's unrelated Catalogue and plan edits remain intact.

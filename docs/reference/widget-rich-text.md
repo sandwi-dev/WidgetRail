@@ -32,3 +32,16 @@ Use ordinary layout controls around the paragraph for those features. Typography
 can be applied to the paragraph or text spans using the existing WRSS classes.
 The SDK uses existing intent-button declarations for links inside a RichText
 node, so intent feedback and pinned-surface preferences retain their normal meaning.
+
+## Split long authored text
+
+`WidgetTextChunks.Split(text, maximumLength, preferWhitespace)` lazily splits
+plain text without dropping or rewriting characters. It prefers newline boundaries,
+optionally whitespace, and never splits a UTF-16 surrogate pair or CRLF. The budget
+must be at least two code units. `NextLength(text, offset, remainingBudget, ...)`
+is available to rich-span builders; zero means the remaining budget cannot fit
+the next pair, so flush the current paragraph before continuing.
+
+Keep authored paragraph/span limits and styles. These helpers do not budget the
+whole frame, preserve arbitrary grapheme clusters between controls, or make
+separate rich-text nodes flow as one continuous paragraph.

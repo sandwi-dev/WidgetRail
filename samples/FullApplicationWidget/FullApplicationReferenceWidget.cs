@@ -81,11 +81,8 @@ public sealed class FullApplicationReferenceWidget : Widget
         ArgumentNullException.ThrowIfNull(action); cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            if (_navigation.TryHandleBack(action))
-            {
-                // The navigator owns the return intent and invalidation.
-            }
-            else if (IsActive && _navigation.Value.Route == ReferenceRoute.Library && action.ActionId is "full-app.refresh" or "full-app.retry")
+            if (_navigation.TryHandleBack(action)) return ValueTask.CompletedTask;
+            if (IsActive && _navigation.Value.Route == ReferenceRoute.Library && action.ActionId is "full-app.refresh" or "full-app.retry")
                 RefreshContent();
             // Row opens are accepted only through an indexed lease, never by parsing IDs.
         }

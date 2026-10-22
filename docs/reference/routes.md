@@ -40,3 +40,16 @@ focus. Keep that choice explicit and avoid overlapping restoration mechanisms.
 See [`WidgetNavigator.cs`](../../src/WidgetSdk/WidgetNavigator.cs) for options,
 route bounds, and methods. [`NavigationShell.cs`](../../src/WidgetSdk/NavigationShell.cs)
 contains shared page-shell composition helpers.
+
+## Return from an indexed row
+
+`PushFromCollectionAction(route, action, source.Descriptor)` captures the opening
+occurrence on the bounded stack. Back allocates a `CollectionReturnFocus` intent
+in the navigation snapshot. Render its `Resolve(collectionId, source.Descriptor)`
+result as `WidgetView.FocusGroupEntryRequest`. Resolution returns null if the
+collection/query changed or the index disappeared; content-only refreshes retain
+identity. The host still owns viewport memory. Domain routing and remapping a
+removed item remain explicit widget decisions.
+
+`TryHandleBack` remembers `action.FocusedElementId` by default. Supply its optional
+source-focus override only when you deliberately want a different return control.

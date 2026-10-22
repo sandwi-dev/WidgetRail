@@ -161,6 +161,15 @@ query generation and occurrence key before realizing/focusing it. Do not store a
 native control, assume it remains realized, or issue a new focus request on each
 data update. See Playnite's indexed details-return test for a complete example.
 
+For nested navigation, `navigator.PushFromCollectionAction(route, action,
+source.Descriptor)` captures the opening occurrence on the bounded route stack.
+After Back, render `navigation.CollectionReturnFocus?.Resolve(collectionId,
+source.Descriptor)` as the view's focus-group entry request. The navigator allocates
+one shared focus request per Back; repeated rendering reuses it. Resolution returns
+null after query replacement, collection replacement, or removal of the index,
+leaving normal host focus and viewport memory in charge. It does not remap a
+removed item or select a semantic destination; those decisions remain widget policy.
+
 The host owns range leases and validates displayed/current command bindings.
 Widget authors must still recheck domain authority at execution when an external
 item can be removed or changed. Action admission is not execution completion.
@@ -302,20 +311,11 @@ immutable 10,000-record model supports exact random-access ranges, so it uses
 `CreateIndexedCollection`, not discovered continuation. Parent snapshots contain
 no eager rows. The provider reads only the requested bounded range, and item-local
 IDs come from `context.Id`. Actions use captured records plus current query/route
-authority. Details Back retains the admitted `FocusedCollectionItem` and emits one
-entry request keyed by navigation revision. Refresh changes content revision while
+authority. Details Back uses the navigator's captured collection return intent and resolves
+it against the current source; no widget-managed request counter is needed. Refresh changes content revision while
 preserving known membership; the sample explains when to use `PublishQuery` instead.
 
 Its tests use real SDK range/action leases, safe retry, refresh retirement,
 background cancellation and deep reverse reads. They do not emulate WinUI layout
 or claim physical scrolling acceptance. Rebuild the sample package and the exported
 SDK feed before trying it on the migration frontend.
-
-For nested navigation, `navigator.PushFromCollectionAction(route, action,
-source.Descriptor)` captures the opening occurrence on the bounded route stack.
-After Back, render `navigation.CollectionReturnFocus?.Resolve(collectionId,
-source.Descriptor)` as the view's focus-group entry request. The navigator allocates
-one shared focus request per Back; repeated rendering reuses it. Resolution returns
-null after query replacement, collection replacement, or removal of the index,
-leaving normal host focus and viewport memory in charge. It does not remap a
-removed item or select a semantic destination; those decisions remain widget policy.
