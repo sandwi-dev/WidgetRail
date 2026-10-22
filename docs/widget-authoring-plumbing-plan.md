@@ -467,3 +467,17 @@ coalescing, initial update-only delivery, noncooperative old receipts, failures,
 invalid keys, and destruction. Logs: `artifacts/authoring/f14-*-full.log`.
 Other notification consumers send discrete events and have no equivalent
 coalescing state; no migration is needed. Activity caches remain (F15).
+
+### Spotify failed-command observations
+
+F16's mechanical SDK migration remains rejected: provider acknowledgment and
+observation sequencing are domain policy. A separate regression was reproduced:
+a held command, newer provider metadata, and a delayed rejection restored the old
+track title. Spotify now retains the latest authoritative rollback value during
+the pending command, including local transport observations, and clears it when
+the command settles. Exact operation ownership remains enforced.
+
+The reproduction failed before the fix. Spotify's full suite passes 88/88;
+coverage includes all five optimistic controls, both unchanged and replaced track
+identities, cancellation, stale terminals, and pre-response observations.
+Evidence: `artifacts/authoring/f16-repro.log`, `f16-fixed.log`, `f16-full.log`.

@@ -91,6 +91,7 @@ public sealed partial class SpotifyWidget : Widget
     private long _presentationCaptureSequence;
     private long _queueLoadOperationSequence;
     private SpotifyPlaybackOperation? _pendingOperation;
+    private SpotifyPlaybackSummary? _pendingRollbackPlayback;
     private long _pendingOperationSequence;
     private long _playbackOperationSequence;
     private long _playbackObservationSequence;
@@ -1671,6 +1672,7 @@ public sealed partial class SpotifyWidget : Widget
             _optimisticReconciliation = null;
             operationSequence = ++_playbackOperationSequence;
             _pendingOperation = operation;
+            _pendingRollbackPlayback = before;
             _pendingOperationSequence = operationSequence;
             _playback = SpotifyPlaybackPolicy.ApplyOptimistic(
                 before!, command, _timeProvider.GetUtcNow().ToUnixTimeMilliseconds());
@@ -1686,6 +1688,7 @@ public sealed partial class SpotifyWidget : Widget
                 if (_pendingOperation != operation ||
                     _pendingOperationSequence != operationSequence) return;
                 _pendingOperation = null;
+                _pendingRollbackPlayback = null;
                 _pendingOperationSequence = 0;
                 if (SpotifyPlaybackPolicy.HasOptimisticPresentation(operation) &&
                     _playback is { IsAvailable: true } projectedPlayback)
@@ -1723,12 +1726,12 @@ public sealed partial class SpotifyWidget : Widget
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            RestoreOptimistic(before, operationSequence, action);
+            RestoreOptimistic(operationSequence);
         }
         catch (SpotifyApplicationException exception)
         {
             RecordActionDiagnostic(action, "playback-provider", PlaybackFailureCode(exception));
-            RestoreOptimistic(before, operationSequence, action, SpotifyPlaybackPolicy.SafeMessage(exception,
+            RestoreOptimistic(operationSequence, SpotifyPlaybackPolicy.SafeMessage(exception,
                 exception.Code == "forbidden"
                     ? "Spotify did not allow playback control"
                     : "Spotify rejected that control"));
@@ -1736,21 +1739,22 @@ public sealed partial class SpotifyWidget : Widget
         catch (Exception exception)
         {
             RecordActionDiagnostic(action, "playback-provider", PlaybackFailureCode(exception));
-            RestoreOptimistic(before, operationSequence, action);
+            RestoreOptimistic(operationSequence);
             throw;
         }
     }
 
     private void RestoreOptimistic(
-        SpotifyPlaybackSummary? playback,
         long operationSequence,
-        WidgetActionEvent action,
         string? status = null)
     {
         lock (_gate)
         {
             if (_pendingOperationSequence != operationSequence) return;
-            _playback = playback;
+            // Observations can arrive while the command is awaiting its response.
+            // Roll back to the latest provider value, not the pre-command snapshot.
+            _playback = _pendingRollbackPlayback;
+            _pendingRollbackPlayback = null;
             _pendingOperation = null;
             _pendingOperationSequence = 0;
             _optimisticReconciliation = null;
@@ -1812,8 +1816,11 @@ public sealed partial class SpotifyWidget : Widget
             transport.GetLocalTransport() is { } local)
             observed = local.Playback;
         if (_pendingOperation is { } pendingOperation)
+        {
+            _pendingRollbackPlayback = observed;
             return SpotifyPlaybackPolicy.MergeOptimisticPresentation(
                 _playback, observed, pendingOperation);
+        }
 
         var reconciliation = _optimisticReconciliation;
         if (reconciliation is null || observed is null) return observed;
@@ -1860,6 +1867,7 @@ public sealed partial class SpotifyWidget : Widget
                 refreshQueue = PlaybackQueueIdentity(_playback) != PlaybackQueueIdentity(local.Playback) &&
                     _pendingOperation is not (SpotifyPlaybackOperation.Next or SpotifyPlaybackOperation.Previous);
                 _playback = local.Playback;
+                if (_pendingOperation is not null) _pendingRollbackPlayback = local.Playback;
                 _viewState = SpotifyWidgetViewState.Ready;
                 _status = "Live from this PC";
                 _refreshWarning = null;

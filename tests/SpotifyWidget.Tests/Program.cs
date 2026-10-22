@@ -119,6 +119,7 @@ var tests = new (string Name, Func<Task> Run)[]
         OptimisticControlsSurvivePreResponseObservations),
     ("Optimistic controls roll back with exact terminal ownership",
         OptimisticControlsRollbackWithExactOwnership),
+    ("Optimistic failure preserves newer playback observations", OptimisticFailurePreservesObservations),
     ("Repeat is binary and blocks only disallowed activation",
         RepeatIsBinaryAndPreciselyAvailable),
     ("Spotify runtime diagnostics are quiet by default and retain typed failures",
@@ -1906,8 +1907,7 @@ static async Task OptimisticControlsRollbackWithExactOwnership()
         "spotify.shuffle", "spotify.shuffle")).AsTask();
     await WaitUntil(() => cancellationHarness.Commands.Count == 2);
     var currentSequence = PendingOperationSequence(cancellationWidget);
-    RestoreOptimisticForTest(cancellationWidget, cancellationHarness.Playback,
-        currentSequence - 1);
+    RestoreOptimisticForTest(cancellationWidget, currentSequence - 1);
     var stillPending = cancellationWidget.RenderSnapshot(
         "spotify.exact-terminal-owner", 3);
     Assert.True(Find(stillPending.Root, "spotify.shuffle").IsBusy == true,
@@ -1917,6 +1917,43 @@ static async Task OptimisticControlsRollbackWithExactOwnership()
     secondGate.SetResult();
     await secondAction;
     await StopAsync(cancellationWidget);
+}
+
+static async Task OptimisticFailurePreservesObservations()
+{
+    foreach (var replaceTrack in new[] { false, true })
+    foreach (var scenario in OptimisticControlScenarios())
+    {
+        var harness = SpotifyHarness.Ready();
+        harness.Playback = scenario.Initial;
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.ControlWait = release.Task;
+        var widget = await StartAsync(harness);
+        try
+        {
+            await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+            var before = widget.Playback!;
+            var action = widget.OnActionAsync(scenario.Action).AsTask();
+            await WaitUntil(() => harness.Commands.Count == 1);
+            var observed = before with
+            {
+                Item = before.Item! with { Title = "New authoritative title",
+                    Uri = replaceTrack ? "spotify:track:replacement" : before.Item.Uri },
+                Attribution = "New authoritative attribution",
+                ProgressMilliseconds = before.ProgressMilliseconds + 1000,
+            };
+            harness.PlaybackHandler = _ => ValueTask.FromResult(observed);
+            Assert.True(await RefreshPlaybackForTest(widget), "New observation did not publish.");
+            Assert.Equal(observed.Item.Title, widget.Playback!.Item!.Title);
+            release.SetException(new SpotifyApplicationException("forbidden", "Delayed rejection"));
+            await action;
+            Assert.Equal(scenario.OwnedValue(observed), scenario.OwnedValue(widget.Playback!));
+            Assert.Equal(observed.Item.Title, widget.Playback!.Item!.Title);
+            Assert.Equal(observed.Attribution, widget.Playback.Attribution);
+            Assert.Equal(observed.ProgressMilliseconds, widget.Playback.ProgressMilliseconds);
+        }
+        finally { release.TrySetResult(); await StopAsync(widget); }
+    }
 }
 
 static async Task RepeatIsBinaryAndPreciselyAvailable()
@@ -2698,13 +2735,11 @@ static long PendingOperationSequence(SpotifyWidget widget) =>
 
 static void RestoreOptimisticForTest(
     SpotifyWidget widget,
-    SpotifyPlaybackSummary playback,
     long operationSequence) =>
     typeof(SpotifyWidget).GetMethod("RestoreOptimistic",
         System.Reflection.BindingFlags.Instance |
         System.Reflection.BindingFlags.NonPublic)!.Invoke(widget,
-        [playback, operationSequence,
-         new WidgetActionEvent("spotify.shuffle", "spotify.shuffle"), null]);
+        [operationSequence, null]);
 
 static ViewNode Find(ViewNode node, string id)
 {
