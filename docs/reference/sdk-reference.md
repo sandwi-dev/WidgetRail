@@ -3,6 +3,9 @@
 Use this index to find one API family at a time. For a first project, start with
 [Your first widget](../developers/widget-quickstart.md).
 
+Controlled optional content uses [`UI.Disclosure` and `UI.DisclosureHeader`](disclosures.md),
+with authored state and native accessibility/focus recovery.
+
 ## Views and interaction
 
 | Topic | Start here |

@@ -20,6 +20,7 @@ if (args is ["--query-resource-probe", var queryProbePath])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Controlled disclosures own lazy content and explicit state transitions", DisclosureTests.Run),
     ("Loaded collections freeze inputs and classify explicit query publications", WidgetLoadedCollectionTests.Run),
     ("Text chunks preserve exact Unicode text within authored budgets", WidgetTextChunksTests.Run),
     ("Reading surfaces retain focus and shortcuts without primary activation", ReadingSurfaceTests.Contract),

@@ -415,6 +415,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.IsDisabled, before.IsDisabled, after.IsDisabled);
         Add(PresentationProperty.IsSelected, before.IsSelected, after.IsSelected);
         Add(PresentationProperty.IsBusy, before.IsBusy, after.IsBusy);
+        Add(PresentationProperty.Disclosure, before.Disclosure, after.Disclosure);
         Add(PresentationProperty.FocusPersistenceId, before.FocusPersistenceId, after.FocusPersistenceId);
         Add(PresentationProperty.Focus, before.Focus, after.Focus);
         Add(PresentationProperty.InputScopeId, before.InputScopeId, after.InputScopeId);

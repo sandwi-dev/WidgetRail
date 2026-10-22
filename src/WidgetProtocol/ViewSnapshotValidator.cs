@@ -369,8 +369,37 @@ public static class ViewSnapshotValidator
                     ProtocolValidationIdentifierState.OutsideActiveScope, initial);
         }
 
+        static string FragmentRoot(string path)
+        {
+            var focus = path.LastIndexOf(".focusPresentation", StringComparison.Ordinal);
+            var fallback = path.LastIndexOf(".defaultFocusPresentation", StringComparison.Ordinal);
+            if (focus < 0 && fallback < 0) return "$";
+            return focus > fallback ? path[..(focus + ".focusPresentation".Length)] : path[..(fallback + ".defaultFocusPresentation".Length)];
+        }
+        HashSet<string>? disclosureContentIds = null;
         foreach (var (_, entry) in ids)
         {
+            if (entry.Node.Disclosure is { } disclosure)
+            {
+                var path = entry.Path + ".disclosure";
+                CheckIdentifier(disclosure.ContentId, path + ".contentId", "disclosure content ID",
+                    ProtocolValidationIdentifierKind.ElementReference);
+                if (entry.Node.Kind != ViewNodeKind.Button || entry.Node.Intent is not null)
+                    Add(path, "invalid_disclosure_header", "A disclosure header must be an ordinary button action.");
+                if (!string.IsNullOrWhiteSpace(disclosure.ContentId))
+                {
+                    if (!(disclosureContentIds ??= new(StringComparer.Ordinal)).Add(disclosure.ContentId))
+                        Add(path, "duplicate_disclosure_content", "Only one header may control a disclosure content subtree.");
+                    var exists = ids.TryGetValue(disclosure.ContentId, out var content);
+                    if (disclosure.IsExpanded != exists)
+                        Add(path, "invalid_disclosure_content", "Expanded disclosure content must exist; collapsed content must be omitted.");
+                    if (exists && (content.ScopeKey != entry.ScopeKey || FragmentRoot(content.Path) != FragmentRoot(entry.Path) ||
+                        content.Node.Id == entry.Node.Id ||
+                        entry.Path.StartsWith(content.Path + ".", StringComparison.Ordinal)))
+                        Add(path, "invalid_disclosure_owner", "Disclosure content must belong to the header's scope and cannot contain the header.");
+                }
+            }
+
             if (entry.Node.InitialChildFocusId is { } initialChild)
             {
                 CheckIdentifier(initialChild, $"{entry.Path}.initialChildFocusId",
@@ -1283,6 +1312,8 @@ public static class ViewSnapshotValidator
                     Add($"{path}.inputScopeId", "input_scope_not_allowed",
                         "Only stack, row, scroll, and grid containers may start an input scope.");
             }
+            if (node.Disclosure is not null && parent?.Kind == ViewNodeKind.RichText)
+                Add(path + ".disclosure", "invalid_disclosure_header", "Inline rich-text links cannot be disclosure headers.");
             if (node.InitialChildFocusId is not null && !isContainer)
                 Add($"{path}.initialChildFocusId", "focus_group_on_non_container",
                     "Only Stack, Row, Scroll, and Grid containers may opt into remembered-child focus.");
@@ -1969,7 +2000,7 @@ public static class ViewSnapshotValidator
                     StringLength(node.MediaSessionId) +
                     StringLength(node.PackageIcon?.AssetId) + WidgetCatalogIconValidation.TextLength(node.PackageIcon) +
                     StringLength(node.FocusPersistenceId) + StringLength(node.InputScopeId) +
-                    StringLength(node.InitialChildFocusId) +
+                    StringLength(node.InitialChildFocusId) + StringLength(node.Disclosure?.ContentId) +
                     StringLength(node.ScrollNearStartActionId) + StringLength(node.ScrollNearEndActionId) +
                     StringLength(node.IndexedCollection?.SourceId) + StringLength(node.CollectionAnchorKey) + StringLength(node.CollectionItemKey) +
                     (node.IndexedOccurrenceKeys?.Take(IndexedCollectionLimits.MaximumContinuityItems).Sum(StringLength) ?? 0) +

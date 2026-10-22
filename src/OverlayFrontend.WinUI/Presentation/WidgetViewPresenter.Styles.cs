@@ -76,7 +76,7 @@ internal sealed partial class WidgetViewPresenter
         adapter.DepthSlotsFactory = (binding.Element is Panel or Border or WidgetPresentationSurface || binding.MotionHost?.SelectionSurface is not null) && binding.MotionHost is { } depthHost
             ? depthHost.EnsureDepthSlots : null;
         adapter.TextContent = node.Kind is ViewNodeKind.Button or ViewNodeKind.Select or ViewNodeKind.TextEntry && binding.Element is ButtonBase button
-            ? button.Content switch { TextBlock label => label, Grid panel => panel.Children.OfType<TextBlock>().SingleOrDefault(), _ => null } : null;
+            ? (button is WidgetDisclosureButton disclosure ? disclosure.DisplayContent : button.Content) switch { TextBlock label => label, Grid panel => panel.Children.OfType<TextBlock>().SingleOrDefault(), _ => null } : null;
         adapter.Update(presentation?.RenderStyles.GetValueOrDefault(node.Id),
             typographyOnly: indexedRootStyleOnContainer && node.Id == fragmentRootId || binding.Element is HyperlinkButton,
             interaction: indexedRootStyleOnContainer && node.Id == fragmentRootId ? indexedRootInteraction :

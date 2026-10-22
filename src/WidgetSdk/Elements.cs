@@ -465,6 +465,8 @@ public sealed record ButtonElement : WidgetElement
         ActionId = RequireId(actionId);
     }
 
+    /// <summary>Controlled disclosure semantics; prefer UI.DisclosureHeader for explicit transition actions.</summary>
+    public WidgetDisclosure? Disclosure { get; init; }
     public string Label { get; init; }
     public WidgetIntentRequest? Intent { get; init; }
     /// <summary>Ask the widget to calculate this intent's payload after invocation, before host routing.</summary>
@@ -597,6 +599,7 @@ public sealed record ButtonElement : WidgetElement
     {
         Id = Id,
         Kind = ViewNodeKind.Button,
+        Disclosure = Disclosure,
         Intent = Intent,
         Text = Label,
         AccessibilityLabel = AccessibilityLabel,

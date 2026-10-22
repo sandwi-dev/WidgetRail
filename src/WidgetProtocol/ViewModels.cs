@@ -388,6 +388,9 @@ public sealed record VirtualCollectionWindow
     public required double EstimatedItemExtent { get; init; }
 }
 
+/// <summary>Widget-controlled disclosure state on a button. Expanded content is a separate owned subtree.</summary>
+public sealed record WidgetDisclosure(string ContentId, bool IsExpanded);
+
 /// <summary>A renderer-neutral node. Properties that do not apply to Kind must be null.</summary>
 public sealed record ViewNode
 {
@@ -489,6 +492,9 @@ public sealed record ViewNode
     public int? GridMaximumColumns { get; init; }
     public bool? IsDisabled { get; init; }
     public bool? IsSelected { get; init; }
+    /// <summary>Controlled disclosure state and content ownership; requires protocol v100.</summary>
+    public WidgetDisclosure? Disclosure { get; init; }
+
     public bool? IsBusy { get; init; }
     /// <summary>
     /// Optional protocol-v13 identity shared only by mutually exclusive

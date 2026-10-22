@@ -97,6 +97,7 @@ public enum PresentationProperty
     FocusPreview,
     FocusPreviewSource,
     FocusPreviewKey,
+    Disclosure,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -240,6 +241,9 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Interaction |
             PresentationPropertyImpact.Accessibility,
+        PresentationProperty.Disclosure =>
+            PresentationPropertyImpact.Authority | PresentationPropertyImpact.Interaction |
+            PresentationPropertyImpact.Accessibility | PresentationPropertyImpact.MeasureLayout,
         PresentationProperty.ActionId or
         PresentationProperty.ValueChangedActionId or
         PresentationProperty.Shortcuts or

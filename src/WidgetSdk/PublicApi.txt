@@ -1961,6 +1961,8 @@ method static WidgetRail.WidgetSdk.UI.ControllerGlyph(WidgetRail.WidgetProtocol.
 method static WidgetRail.WidgetSdk.UI.ControllerGlyph(WidgetRail.WidgetProtocol.ControllerPrompt prompt, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ControllerGlyphElement
 method static WidgetRail.WidgetSdk.UI.ControllerHint(WidgetRail.WidgetProtocol.ControllerButton button, string label, string id) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.ControllerHint(WidgetRail.WidgetProtocol.ControllerPrompt prompt, string label, string id) -> WidgetRail.WidgetSdk.RowElement
+method static WidgetRail.WidgetSdk.UI.Disclosure(string id, string label, bool expanded, string expandActionId, string collapseActionId, System.Func<System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetElement>> content) -> WidgetRail.WidgetSdk.StackElement
+method static WidgetRail.WidgetSdk.UI.DisclosureHeader(string id, string label, bool expanded, string contentId, string expandActionId, string collapseActionId) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.Divider(string id) -> WidgetRail.WidgetSdk.SpacerElement
 method static WidgetRail.WidgetSdk.UI.EmptyState(WidgetRail.WidgetSdk.WidgetIcon icon, string title, string message, string id, WidgetRail.WidgetSdk.ComponentAction? action = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.EmptyState(string title, string message, string id, WidgetRail.WidgetSdk.ComponentAction? action = null, WidgetRail.WidgetProtocol.WidgetGlyph glyph = WidgetRail.WidgetProtocol.WidgetGlyph.Connection) -> WidgetRail.WidgetSdk.StackElement
@@ -2759,6 +2761,7 @@ property WidgetRail.WidgetProtocol.ViewSnapshot? WidgetRail.WidgetSdk.WidgetScen
 property WidgetRail.WidgetProtocol.VirtualCollectionWindowChange WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.WindowChange { get; set; }
 property WidgetRail.WidgetProtocol.WebBrowserDocument WidgetRail.WidgetSdk.WebBrowserElement.Document { get; set; }
 property WidgetRail.WidgetProtocol.WebSessionReference WidgetRail.WidgetSdk.WidgetWebSession.Reference { get; }
+property WidgetRail.WidgetProtocol.WidgetDisclosure? WidgetRail.WidgetSdk.ButtonElement.Disclosure { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.IconElement.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.NavigationShellDestination.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.WidgetIcon.FallbackGlyph { get; }

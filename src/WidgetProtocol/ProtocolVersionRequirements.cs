@@ -141,6 +141,9 @@ internal sealed class ProtocolVersionRequirements
             bool inferDeferredFocusGroupEntry)
         {
             if (node is null) return;
+            if (node.Disclosure is not null)
+                Add("controlled-disclosure", ProtocolConstants.DisclosureVersion, path + ".disclosure",
+                    "Controlled disclosure requires protocol version 100 or later.");
             if (node.FocusPreviewSource is not null || node.FocusPreviewKey is not null ||
                 node.Kind == ViewNodeKind.RichText && (path.Contains(".focusPresentation",StringComparison.Ordinal)||path.Contains(".defaultFocusPresentation",StringComparison.Ordinal)))
                 Add("deferred-focus-preview",ProtocolConstants.DeferredFocusPreviewVersion,path,"Deferred or rich read-only previews require protocol version 95 or later.");

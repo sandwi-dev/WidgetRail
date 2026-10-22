@@ -339,6 +339,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.IsDisabled or PresentationProperty.IsSelected or
                 PresentationProperty.IsBusy or
                 PresentationProperty.UsesFocusedDescendantArtwork or PresentationProperty.RetainLastPresentation => Read<bool?>(change.Value),
+                PresentationProperty.Disclosure => Read<WidgetDisclosure?>(change.Value),
                 PresentationProperty.Focus => Read<FocusNeighbors?>(change.Value),
                 PresentationProperty.ScrollAxis => Read<ScrollAxis?>(change.Value),
                 PresentationProperty.ShowScrollbar => Read<bool?>(change.Value),
@@ -497,6 +498,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.IsDisabled => node with { IsDisabled = Read<bool?>(change.Value) },
                 PresentationProperty.IsSelected => node with { IsSelected = Read<bool?>(change.Value) },
                 PresentationProperty.IsBusy => node with { IsBusy = Read<bool?>(change.Value) },
+                PresentationProperty.Disclosure => node with { Disclosure = Read<WidgetDisclosure?>(change.Value) },
                 PresentationProperty.FocusPersistenceId => node with { FocusPersistenceId = Read<string?>(change.Value) },
                 PresentationProperty.Focus => node with { Focus = Read<FocusNeighbors?>(change.Value) },
                 PresentationProperty.InputScopeId => node with { InputScopeId = Read<string?>(change.Value) },

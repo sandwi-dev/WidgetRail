@@ -69,9 +69,11 @@ internal sealed partial class WidgetViewPresenter
         buttonIcons.Add(binding, icon);
         var label = new TextBlock();
         Grid.SetColumn(label, 1);
-        button.Content = new Grid { ColumnSpacing = 8,
+        var panel = new Grid { ColumnSpacing = 8,
             ColumnDefinitions = { new() { Width = GridLength.Auto }, new() { Width = new(1, GridUnitType.Star) } },
             Children = { icon, label } };
+        if (button is WidgetDisclosureButton disclosure) disclosure.SetDisplayContent(panel);
+        else button.Content = panel;
         return icon;
     }
     private void UpdateButtonContent(Binding binding, Button button, ViewNode node)
@@ -84,7 +86,7 @@ internal sealed partial class WidgetViewPresenter
             UpdateButtonLabel(button, node.Text ?? string.Empty); return;
         }
         var icon = EnsureButtonIcon(binding, button);
-        var panel = (Grid)button.Content;
+        var panel = (Grid)(button is WidgetDisclosureButton disclosure ? disclosure.DisplayContent! : button.Content);
         var labelPresent = !string.IsNullOrEmpty(node.Text);
         var currentLabel = (TextBlock)panel.Children[1];
         WidgetTextStyleAdapter.SetSource(currentLabel, node.Text ?? string.Empty);
@@ -98,6 +100,7 @@ internal sealed partial class WidgetViewPresenter
     }
     private static void UpdateButtonLabel(Button button, string source)
     {
+        if (button is WidgetDisclosureButton disclosure) { disclosure.SetLabel(source); return; }
         if (button is WidgetValueButton value) { value.SetLabel(source); return; }
         if (button.Content is not TextBlock label) button.Content = label = new TextBlock();
         WidgetTextStyleAdapter.SetSource(label, source);

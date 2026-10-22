@@ -148,6 +148,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         // such mutation can trigger WinUI's focused-element-removal recovery.
         var focused = FocusedBinding();
         var oldScope = activeScope;
+        var collapsedHeader = hasExpandedDisclosures && sameOwner && oldScope == nextPresentation.Scope && presentationActive &&
+            presentationInputEnabled && automaticFocusEnabled && !presentationOnly
+                ? CollapsedDisclosureHeader(plan, focused) : null;
         if (root.Kind == ViewNodeKind.ModalLayer) ClearFocusPreview();
         // Native Focus() can complete before routed GotFocus. Preserve the
         // actual opener before changing scopes and detaching its input subtree.
@@ -162,10 +165,14 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             transition = PrepareTransitions(plan, sameOwner);
             modalExit = PrepareModalExit(plan, sameOwner);
             var nextBindings = new Dictionary<string, Binding>(StringComparer.Ordinal);
+            var nextHasExpandedDisclosures = false;
             foreach (var declaration in plan.Values)
+            {
+                nextHasExpandedDisclosures |= declaration.Node.Disclosure?.IsExpanded == true;
                 nextBindings.Add(declaration.Node.Id, sameOwner && !transition.ReplacedIds.Contains(declaration.Node.Id)
                     && bindings.TryGetValue(declaration.Node.Id, out var retained)
                     && retained.Identity == declaration.Identity
+                    && (declarations[declaration.Node.Id].Node.Disclosure is null) == (declaration.Node.Disclosure is null)
                     && SameGridLayoutMode(declarations[declaration.Node.Id].Node, declaration.Node)
                     && SameSurfaceOwnership(declaration, plan)
                     && IsInlineLink(declaration, plan) == IsInlineLink(declarations[declaration.Node.Id], declarations)
@@ -174,6 +181,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     && (declaration.Node.Kind != ViewNodeKind.ActionSurface ||
                         (declarations[declaration.Node.Id].Node.ActionId is null) == (declaration.Node.ActionId is null))
                     ? retained : Create(declaration, IsModalDialog(declaration, plan), IsInlineLink(declaration, plan)));
+            }
             var currentRoot = nextBindings[root.Kind == ViewNodeKind.ModalLayer ? root.Children[0].Id : root.Id].LayoutElement;
             if (sameOwner) RetainBackgroundPaint(nextBindings, plan);
             // Keep package paint separate from input identity. Recreated buttons
@@ -220,6 +228,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             }
             declarations = plan;
             bindings = nextBindings;
+            hasExpandedDisclosures = nextHasExpandedDisclosures;
             frame = next;
             presentation = nextPresentation;
             if (!sameOwner || oldScope != nextPresentation.Scope) { scrollGesture=null;directionalScroll = null; }
@@ -257,6 +266,14 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             else needsEntry = false;
             pendingRestore = !needsEntry && focused is not null && Navigable(focused)
                 && !ReferenceEquals(FocusedBinding(), focused) ? focused : null;
+            if (collapsedHeader is { } headerIdentity && pendingGroupEntry is null &&
+                (focused is null || !bindings.TryGetValue(focused.Identity.Id, out var surviving) ||
+                    surviving.Identity != focused.Identity || !Navigable(surviving)) &&
+                bindings.TryGetValue(headerIdentity.Id, out var header) && header.Identity == headerIdentity && Navigable(header))
+            {
+                pendingRestore = header;
+                needsEntry = false;
+            }
         }
         finally { applying = false; }
         var animateContent = prepareLayout?.Invoke() != false;
@@ -495,7 +512,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 element = presentationOnly ? new TextBlock() : CreateSelect(declaration.Identity, token);
                 break;
             case ViewNodeKind.Button:
-                element = presentationOnly ? new TextBlock { TextWrapping = TextWrapping.Wrap } : inlineLink ?
+                element = presentationOnly ? new TextBlock { TextWrapping = TextWrapping.Wrap } : node.Disclosure is not null ?
+                    new WidgetDisclosureButton { Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions) } : inlineLink ?
                     new HyperlinkButton { Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions), UseSystemFocusVisuals = true } :
                     new Button { Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions) };
                 break;
@@ -568,6 +586,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 control.IsTabStop = element is not WidgetIndexedCollectionView && node.IsFocusable && binding.Identity.Scope == activeScope;
             control.IsHitTestVisible = element is not (WidgetPackageIconView or Media.WidgetMediaViewport or Previews.WidgetWindowPreview or WidgetLineGraph) && (!node.IsFocusable || binding.Identity.Scope == activeScope);
         }
+        if (element is WidgetDisclosureButton disclosure) disclosure.SetExpanded(node.Disclosure!.IsExpanded);
         if (element is Button button && node.Kind is ViewNodeKind.Button or ViewNodeKind.Select) UpdateButtonContent(binding, button, node);
         if (element is HyperlinkButton link) UpdateInlineLink(link, node.Text ?? string.Empty);
         if (element is Button entry && node.Kind == ViewNodeKind.TextEntry) UpdateButtonLabel(entry, TextEntryLabel(node));

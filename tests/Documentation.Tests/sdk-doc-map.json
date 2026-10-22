@@ -1,6 +1,7 @@
 {
   "src/WidgetSdk/Widget.cs": "docs/reference/declarative-ui.md",
   "src/WidgetSdk/UI.cs": "docs/reference/declarative-ui.md",
+  "src/WidgetSdk/Disclosure.cs": "docs/reference/disclosures.md",
   "src/WidgetSdk/Elements.cs": "docs/reference/declarative-ui.md",
   "src/WidgetSdk/Grid.cs": "docs/reference/collections.md",
   "src/WidgetSdk/WidgetCursorResource.cs": "docs/reference/collections.md",
