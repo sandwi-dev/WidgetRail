@@ -30,16 +30,20 @@ internal static class StableIdentifier
             throw new ArgumentException(
                 $"A stable identifier may not exceed {MaximumLength} characters.",
                 parameterName);
-        if (!value.All(IsIdentifierCharacter))
-            throw new ArgumentException(
-                "A stable identifier may contain only ASCII letters, digits, '.', '-' and '_'.",
-                parameterName);
+        foreach (var character in value)
+            if (!IsIdentifierCharacter(character))
+                throw new ArgumentException(
+                    "A stable identifier may contain only ASCII letters, digits, '.', '-' and '_'.",
+                    parameterName);
     }
 
     private static void ValidateSuffix(string? suffix)
     {
-        if (string.IsNullOrWhiteSpace(suffix) || !suffix.All(IsIdentifierCharacter))
+        if (string.IsNullOrWhiteSpace(suffix))
             throw new InvalidOperationException("An SDK-generated stable-ID suffix is invalid.");
+        foreach (var character in suffix)
+            if (!IsIdentifierCharacter(character))
+                throw new InvalidOperationException("An SDK-generated stable-ID suffix is invalid.");
     }
 
     private static bool IsIdentifierCharacter(char value) =>
