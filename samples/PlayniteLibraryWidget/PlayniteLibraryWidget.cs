@@ -308,21 +308,20 @@ public sealed partial class PlayniteLibraryWidget : Widget
         string activeScopeId,
         bool allowDisabledRequestedTarget)
     {
-        var requested = WidgetFocusTargetLookup.Resolve(root, requestedId, activeScopeId);
+        var targets = WidgetFocusTargetLookup.Capture(root, activeScopeId);
+        var requested = targets.Resolve(requestedId);
         if (requested.Id is not null &&
             (requested.IsEnabled ||
              (allowDisabledRequestedTarget && requested.State == WidgetFocusTargetState.Disabled)))
             return requested.Id;
 
-        var routeFallback = WidgetFocusTargetLookup.Resolve(
-            root, routeFallbackId, activeScopeId);
+        var routeFallback = targets.Resolve(routeFallbackId);
         if (routeFallback.IsEnabled) return routeFallback.Id;
 
-        var enabled = WidgetFocusTargetLookup.First(root, activeScopeId);
+        var enabled = targets.First();
         if (enabled.Id is not null) return enabled.Id;
 
-        return routeFallback.Id ?? WidgetFocusTargetLookup.First(
-            root, activeScopeId, includeDisabled: true).Id;
+        return routeFallback.Id ?? targets.First(includeDisabled: true).Id;
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)

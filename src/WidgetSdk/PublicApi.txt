@@ -1319,6 +1319,8 @@ method WidgetRail.WidgetSdk.WidgetFocusTargetResult.Deconstruct(out string? Id, 
 method WidgetRail.WidgetSdk.WidgetFocusTargetResult.Equals(object obj) -> bool
 method WidgetRail.WidgetSdk.WidgetFocusTargetResult.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetFocusTargetResult.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetFocusTargetSnapshot.First(bool includeDisabled = false) -> WidgetRail.WidgetSdk.WidgetFocusTargetResult
+method WidgetRail.WidgetSdk.WidgetFocusTargetSnapshot.Resolve(string? targetId) -> WidgetRail.WidgetSdk.WidgetFocusTargetResult
 method WidgetRail.WidgetSdk.WidgetIcon.<Clone>$() -> WidgetRail.WidgetSdk.WidgetIcon
 method WidgetRail.WidgetSdk.WidgetIcon.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetIcon.GetHashCode() -> int
@@ -2157,6 +2159,7 @@ method static WidgetRail.WidgetSdk.WidgetElement.op_Equality(WidgetRail.WidgetSd
 method static WidgetRail.WidgetSdk.WidgetElement.op_Inequality(WidgetRail.WidgetSdk.WidgetElement? left, WidgetRail.WidgetSdk.WidgetElement? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.op_Equality(WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>? left, WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.op_Inequality(WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>? left, WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetFocusTargetLookup.Capture(WidgetRail.WidgetSdk.WidgetElement root, string? activeInputScopeId = null) -> WidgetRail.WidgetSdk.WidgetFocusTargetSnapshot
 method static WidgetRail.WidgetSdk.WidgetFocusTargetLookup.First(WidgetRail.WidgetSdk.WidgetElement root, string? activeInputScopeId = null, bool includeDisabled = false) -> WidgetRail.WidgetSdk.WidgetFocusTargetResult
 method static WidgetRail.WidgetSdk.WidgetFocusTargetLookup.Resolve(WidgetRail.WidgetSdk.WidgetElement root, string? targetId, string? activeInputScopeId = null) -> WidgetRail.WidgetSdk.WidgetFocusTargetResult
 method static WidgetRail.WidgetSdk.WidgetFocusTargetResult.op_Equality(WidgetRail.WidgetSdk.WidgetFocusTargetResult left, WidgetRail.WidgetSdk.WidgetFocusTargetResult right) -> bool
@@ -3727,6 +3730,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetFileArtwork : WidgetRail.WidgetSdk.
 type sealed class WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext> : System.IEquatable<WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>>
 type sealed class WidgetRail.WidgetSdk.WidgetFocusPreviewSource<TContext> : WidgetRail.WidgetSdk.IWidgetIndexedCollection
 type sealed class WidgetRail.WidgetSdk.WidgetFocusRequest
+type sealed class WidgetRail.WidgetSdk.WidgetFocusTargetSnapshot
 type sealed class WidgetRail.WidgetSdk.WidgetHostServices
 type sealed class WidgetRail.WidgetSdk.WidgetIcon : System.IEquatable<WidgetRail.WidgetSdk.WidgetIcon>
 type sealed class WidgetRail.WidgetSdk.WidgetIdScope

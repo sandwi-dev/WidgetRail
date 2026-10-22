@@ -8,7 +8,37 @@ internal static class FocusTargetLookupTests
         ClassifiesSerializedWrappersScopesAndDisabledTargets();
         ClassifiesDuplicateAndMissingTargets();
         ValidatorUsesTheSharedTargetClassification();
+        SnapshotSerializesOnceAndRetainsCapturedTree();
         return Task.CompletedTask;
+    }
+
+    private static void SnapshotSerializesOnceAndRetainsCapturedTree()
+    {
+        var children = new List<WidgetElement>
+        {
+            UI.Button("Enabled", "enabled", "snapshot.enabled"),
+            UI.Button("Disabled", "disabled", "snapshot.disabled") with { IsDisabled = true },
+            UI.Stack("snapshot.modal", UI.Button("Modal", "modal", "snapshot.modal.button")).InputScope("modal"),
+        };
+        var conversions = 0;
+        var root = new CountingElement(UI.Stack("snapshot.root", children.ToArray()), () => ++conversions);
+        var snapshot = WidgetFocusTargetLookup.Capture(root);
+        Equal(1, conversions);
+        foreach (var id in new[] { "snapshot.enabled", "snapshot.disabled", "snapshot.modal.button", "absent", null })
+            Equal(WidgetFocusTargetLookup.Resolve(root, id), snapshot.Resolve(id));
+        var beforeQueries = conversions;
+        Equal("snapshot.enabled", snapshot.First().Id);
+        Equal(WidgetFocusTargetState.Disabled, snapshot.Resolve("snapshot.disabled").State);
+        Equal(beforeQueries, conversions);
+        var replacement = UI.Stack("snapshot.root", UI.Button("Replacement", "new", "snapshot.new"));
+        Equal("snapshot.new", WidgetFocusTargetLookup.Capture(replacement).First().Id);
+        Equal("snapshot.enabled", snapshot.First().Id);
+        Equal(WidgetFocusTargetState.Missing, snapshot.Resolve("snapshot.new").State);
+    }
+
+    private sealed record CountingElement(WidgetElement Content, Action Converted) : WidgetElement(Content.Id)
+    {
+        internal override ViewNode ToProtocolNode() { Converted(); return Content.ToProtocolNode(); }
     }
 
     private static void ClassifiesSerializedWrappersScopesAndDisabledTargets()

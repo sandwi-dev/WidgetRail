@@ -495,9 +495,10 @@ internal static partial class PlayniteLibraryPresentation
         {
             // Only results belong to this group. Header and filter controls must
             // never become the remembered destination when entering a library.
-            var target = WidgetFocusTargetLookup.Resolve(contentGroup, initialFocus, contentGroup.Id);
+            var targets = WidgetFocusTargetLookup.Capture(contentGroup, contentGroup.Id);
+            var target = targets.Resolve(initialFocus);
             if (!target.IsEnabled)
-                target = WidgetFocusTargetLookup.First(contentGroup, contentGroup.Id);
+                target = targets.First();
             if (target.IsEnabled && target.Id is { } contentFocusId)
             {
                 content = contentGroup.RememberChildFocus(contentFocusId);

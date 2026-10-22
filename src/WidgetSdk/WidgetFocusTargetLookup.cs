@@ -26,6 +26,16 @@ public readonly record struct WidgetFocusTargetResult(string? Id, WidgetFocusTar
 /// </summary>
 public static class WidgetFocusTargetLookup
 {
+    /// <summary>
+    /// Serializes one authored tree once for multiple focus queries. Capture again
+    /// after changing the tree; this snapshot does not observe subsequent renders.
+    /// </summary>
+    public static WidgetFocusTargetSnapshot Capture(WidgetElement root, string? activeInputScopeId = null)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        return new(root.ToProtocolNode(), activeInputScopeId ?? RootScopeId(root));
+    }
+
     public static WidgetFocusTargetResult Resolve(
         WidgetElement root,
         string? targetId,
@@ -50,7 +60,7 @@ public static class WidgetFocusTargetLookup
         return new(result.Id, Map(result.State));
     }
 
-    private static WidgetFocusTargetState Map(ViewFocusTargetState state) => state switch
+    internal static WidgetFocusTargetState Map(ViewFocusTargetState state) => state switch
     {
         ViewFocusTargetState.Missing => WidgetFocusTargetState.Missing,
         ViewFocusTargetState.NotFocusable => WidgetFocusTargetState.NotFocusable,
@@ -67,4 +77,31 @@ public static class WidgetFocusTargetLookup
         ContainerElement container => container.InputScopeId ?? container.Id,
         _ => root.Id,
     };
+}
+
+/// <summary>
+/// An authored-tree snapshot for a single focus-selection decision. It
+/// retains protocol data only; native visibility and layout remain host-owned.
+/// </summary>
+public sealed class WidgetFocusTargetSnapshot
+{
+    private readonly ViewNode root;
+    private readonly string scopeId;
+    internal WidgetFocusTargetSnapshot(ViewNode root, string scopeId)
+    {
+        this.root = root;
+        this.scopeId = scopeId;
+    }
+
+    public WidgetFocusTargetResult Resolve(string? targetId)
+    {
+        var result = ViewFocusTargetLookup.Resolve(root, targetId, scopeId);
+        return new(result.Id, WidgetFocusTargetLookup.Map(result.State));
+    }
+
+    public WidgetFocusTargetResult First(bool includeDisabled = false)
+    {
+        var result = ViewFocusTargetLookup.First(root, scopeId, includeDisabled);
+        return new(result.Id, WidgetFocusTargetLookup.Map(result.State));
+    }
 }

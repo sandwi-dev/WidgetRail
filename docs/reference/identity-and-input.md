@@ -24,6 +24,12 @@ It can distinguish a missing, duplicate, non-focusable, disabled, or out-of-scop
 target from a valid one. Use this when an advanced presentation needs to choose
 a fallback; do not treat “an element with this ID exists” as proof it can receive input.
 
+When selecting among several candidates in the same tree, use
+`WidgetFocusTargetLookup.Capture(root, activeScopeId)` and call `Resolve(id)` or
+`First()` on the returned snapshot. This converts the authored tree once for the
+whole decision. Capture again for a new tree; do not cache this across renders.
+The widget still chooses its fallback policy, and the host checks actual visibility.
+
 Containers can use `RememberChildFocus` for stable child restoration. Keep it
 separate from collection refresh, which has its own position-reset signal.
 

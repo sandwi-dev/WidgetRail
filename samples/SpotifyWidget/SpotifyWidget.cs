@@ -232,13 +232,12 @@ public sealed partial class SpotifyWidget : Widget
         string? requestedFocus,
         string? fallbackFocus)
     {
-        if (WidgetFocusTargetLookup.Resolve(
-                root, requestedFocus, inputScopeId).IsEnabled)
+        var targets = WidgetFocusTargetLookup.Capture(root, inputScopeId);
+        if (targets.Resolve(requestedFocus).IsEnabled)
             return requestedFocus;
-        if (WidgetFocusTargetLookup.Resolve(
-                root, fallbackFocus, inputScopeId).IsEnabled)
+        if (targets.Resolve(fallbackFocus).IsEnabled)
             return fallbackFocus;
-        return WidgetFocusTargetLookup.First(root, inputScopeId).Id;
+        return targets.First().Id;
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
