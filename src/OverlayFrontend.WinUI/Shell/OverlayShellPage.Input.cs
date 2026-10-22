@@ -202,8 +202,9 @@ internal sealed partial class OverlayShellPage
         if (LocalInstallActive) { localInstallDialog?.Handle(button, phase); return; }
         if (hostChoiceDialog is { } dialog)
         { HandleHostChoiceButton(dialog, button, phase); return; }
-        if (ReceiveStartupInput(button, phase) || switching && interactive) return;
+        if (ReceiveStartupInput(button, phase)) return;
         if (RouteIntroductionButton(button, phase)) return;
+        if (switching && interactive) return;
         try
         {
             if (await RoutePinnedPlacementButtonAsync(button, phase)) return;

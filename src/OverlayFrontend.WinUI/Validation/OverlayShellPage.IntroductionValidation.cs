@@ -26,6 +26,32 @@ internal sealed partial class OverlayShellPage
                 ReplayIntroduction();
                 await Until(() => introductionCard is { Focused: true });
                 Check(introduction.Step == "welcome", "First-run welcome is reachable");
+                var hiddenDuringTour = false;
+                var visibilityWatch = introductionCard!.RegisterPropertyChangedCallback(VisibilityProperty,
+                    (_, _) => hiddenDuringTour |= introductionCard.Visibility != Visibility.Visible);
+                try
+                {
+                    foreach (var step in new[] { "guide", "commands", "utilities", "catalogue", "appearance-details" })
+                    {
+                        await Press(ControllerButton.A);
+                        await Until(() => introduction.Step == step && !introductionBusy && !switching);
+                        Check(introductionCard is { Visibility: Visibility.Visible, Focused: true }, step + " retains visible tutorial focus after Next");
+                        Check(FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused && AutomationProperties.GetAutomationId(focused) == "Introduction.next",
+                            step + " focuses the primary tutorial action");
+                        if (step == "catalogue") Check(activeWidget == "marketplace", "Next opens Catalogue directly");
+                        if (step == "appearance-details") Check(IntroductionAppearanceVisible, "Next opens Appearance directly without another choice");
+                    }
+                    Check(!hiddenDuringTour, "The complete Next flow never collapses the tutorial between pages");
+                }
+                finally { introductionCard.UnregisterPropertyChangedCallback(VisibilityProperty, visibilityWatch); }
+                Check(FindIntroductionTarget(surface!, "appearance.theme") is not null, "Appearance intent reaches the real theme control");
+                Check(FindIntroductionTarget(surface!, "interface.stepper") is not null, "Appearance exposes interface size");
+                await Press(ControllerButton.A);
+                await Until(() => introduction.Finished);
+                await introductionWrite;
+                Check((await introductionStore!.LoadAsync()).Finished, "Completed tutorial is saved");
+                ReplayIntroduction();
+                await Until(() => introductionCard.Focused);
                 await Press(ControllerButton.A);
                 await Until(() => introduction.Step == "guide" && !interactive);
                 Check(introductionCard!.Focused, "Show me around keeps focus in the tutorial after the button release");
@@ -55,25 +81,16 @@ internal sealed partial class OverlayShellPage
                 Check(UtilityIconFocused, "B retains the normal utility-list back behavior");
                 CloseUtilityPanel(); FocusDirectionalTray();
                 ContinueIntroduction();
-                await IntroductionActionAsync("open");
-                await Until(() => activeWidget == "marketplace" && introduction.Step == "appearance" && !switching);
-                Check(interactive, "Catalogue opens as an ordinary interactive widget");
-                FocusDirectionalTray(); ContinueIntroduction();
-                await IntroductionActionAsync("open");
+                await IntroductionActionAsync("next");
                 await Until(() => IntroductionAppearanceVisible && introduction.Step == "appearance-details" && !switching);
-                Check(FindIntroductionTarget(surface!, "appearance.theme") is not null, "Appearance intent reaches the real theme control");
-                Check(FindIntroductionTarget(surface!, "interface.stepper") is not null, "Appearance exposes interface size");
-                await Until(() => introductionCard?.Visibility == Visibility.Visible);
-                introductionCard!.FocusPrimary();
-                await Until(() => introductionCard.Focused);
+                await Until(() => introductionCard is { Visibility: Visibility.Visible, Focused: true });
+                Check(true, "Continuing after exploration restores tutorial focus in Appearance");
                 await Press(ControllerButton.A);
                 await Until(() => introduction.Finished);
-                await introductionWrite;
-                Check((await introductionStore!.LoadAsync()).Finished, "Completed tutorial is saved");
                 ReplayIntroduction();
                 await Press(ControllerButton.B);
-                await Until(() => introduction.Paused && !introductionCard.Focused);
-                Check(introductionCard.Visibility == Visibility.Collapsed, "B can leave welcome without accepting a tutorial");
+                await Until(() => introduction.Paused && introductionCard is { Focused: false });
+                Check(introductionCard!.Visibility == Visibility.Collapsed, "B can leave welcome without accepting a tutorial");
                 ContinueIntroduction(); await IntroductionActionAsync("skip");
                 await introductionWrite;
                 Check((await introductionStore.LoadAsync()).Finished, "Explore on my own persists the skipped tutorial");

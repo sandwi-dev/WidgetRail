@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.settings",
   "publisher": "widgetrail.firstparty",
   "name": "Settings",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -20,7 +20,8 @@
     "settings.overlay": { "path": "assets/icons/overlay.svg" },
     "settings.controllers": { "path": "assets/icons/controllers.svg" },
     "settings.widgets": { "path": "assets/icons/widgets.svg" },
-    "settings.diagnostics": { "path": "assets/icons/diagnostics.svg" }
+    "settings.diagnostics": { "path": "assets/icons/diagnostics.svg" },
+    "settings.introduction": { "path": "assets/icons/introduction.svg" }
   },
   "permissions": [],
   "optionalPermissions": [],

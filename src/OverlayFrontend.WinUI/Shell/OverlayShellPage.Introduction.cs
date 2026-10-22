@@ -19,6 +19,8 @@ internal sealed partial class OverlayShellPage
     private ControllerSettings introductionControllers = new();
     private Task introductionWrite = Task.CompletedTask;
     private bool introductionLoaded, introductionQueued, introductionBusy, introductionWasShown, introductionSaveFailed;
+    private bool introductionRetainFocus;
+    private bool IntroductionOwnsFocus => introductionRetainFocus || introductionCard is { Visibility: Visibility.Visible, Focused: true };
     private (string Step, bool Notifications, ControllerOpenShortcut Shortcut, bool F1)? introductionContent;
     private (FrameworkElement Target, Windows.Foundation.Rect Bounds)[] introductionBounds = [];
     private Windows.UI.Color introductionOutline;
@@ -100,7 +102,7 @@ internal sealed partial class OverlayShellPage
     private void RefreshIntroduction()
     {
         if (introductionCard is not { } card) return;
-        if (introductionLoaded && !introduction.Paused && !introductionBusy)
+        if (introductionLoaded && !introduction.Paused && !introductionBusy && !IntroductionOwnsFocus)
         {
             if (introduction.Step == "welcome" && introductionWasShown && !card.Focused &&
                 (interactive || trayMenu is not null || utilityPanel is not null || RadialOpen))
@@ -117,12 +119,12 @@ internal sealed partial class OverlayShellPage
             };
             if (observed) SetIntroduction(introduction.Next());
         }
-        var blocked = !visible || !foreground || retired || startupPresentationPending || switching ||
+        var blocked = !visible || !foreground || retired || startupPresentationPending || switching && !introductionRetainFocus ||
             IsMediaFullscreen || PinnedInputActive || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen ||
             nativeBrowserPickerActive || trayMenu is not null || RadialOpen || utilityPanel is not null || surface?.HasTransientControl == true;
         var show = introductionLoaded && !introduction.Finished && !introduction.Paused && !blocked &&
-            (introduction.Step != "appearance-details" || IntroductionAppearanceVisible) &&
-            (introduction.Step == "welcome" || card.Focused || !interactive ||
+            (introduction.Step != "appearance-details" || IntroductionAppearanceVisible || introductionRetainFocus) &&
+            (introduction.Step == "welcome" || IntroductionOwnsFocus || !interactive ||
                 introduction.Step == "appearance-details" && IntroductionAppearanceVisible);
         card.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (!show) { card.CancelPendingFocus(); introductionHighlights.Children.Clear(); introductionBounds = []; return; }
@@ -213,30 +215,37 @@ internal sealed partial class OverlayShellPage
 
     private async Task IntroductionActionAsync(string action)
     {
-        if (retired || !visible || introductionBusy) return;
+        if (retired || !visible) return;
         if (action == "skip") { SetIntroduction(introduction with { Step = "complete", Paused = false }); LeaveIntroduction(); return; }
-        if (action == "next")
+        if (introductionBusy) return;
+        if (action != "next") return;
+        var next = introduction.Step is "catalogue" or "appearance" ? "appearance-details" : introduction.Next().Step;
+        if (next is not ("catalogue" or "appearance-details"))
         {
-            SetIntroduction(introduction.Step == "appearance" ? introduction with { Step = "complete" } : introduction.Next());
+            SetIntroduction(introduction with { Step = next });
             RefreshIntroduction();
             if (introduction.Finished) LeaveIntroduction(); else introductionCard?.FocusPrimary();
             PublishControllerGuide();
             return;
         }
-        if (action != "open" || owner is null) return;
+        if (owner is null) return;
         introductionBusy = true;
+        introductionRetainFocus = true;
+        surface?.SetAutomaticFocusEnabled(false);
         try
         {
-            if (introduction.Step == "catalogue")
+            if (next == "catalogue")
             {
                 if (!catalogItems.Any(item => item.Id == "marketplace")) { introductionCard?.ShowError("Catalogue is not available yet. Try again when widgets have finished loading."); return; }
                 await SelectAsync("marketplace");
-                if (activeWidget == "marketplace") SetIntroduction(introduction.Next());
+                if (activeWidget == "marketplace" && introductionRetainFocus) SetIntroduction(introduction with { Step = next });
             }
-            else if (introduction.Step == "appearance")
+            else
             {
-                if (await InvokeIntentCoreAsync(prepareNotification: owner.Session.PrepareAppearanceIntentAsync))
-                    SetIntroduction(introduction with { Step = "appearance-details" });
+                if (await InvokeIntentCoreAsync(prepareNotification: owner.Session.PrepareAppearanceIntentAsync) && introductionRetainFocus)
+                    SetIntroduction(introduction with { Step = next });
+                else if (introductionRetainFocus)
+                    introductionCard?.ShowError("Appearance could not be opened. Select Next to try again.");
             }
         }
         catch (OperationCanceledException) when (retired || !visible) { }
@@ -245,11 +254,20 @@ internal sealed partial class OverlayShellPage
             Diagnostics.FrontendFailureLog.Current.Write("introduction-destination", error);
             introductionCard?.ShowError("This page could not be opened. You can still open it from the tray.");
         }
-        finally { introductionBusy = false; ScheduleIntroduction(); }
+        finally
+        {
+            introductionBusy = false;
+            RefreshIntroduction();
+            if (introductionRetainFocus && visible && foreground && !retired) introductionCard?.FocusPrimary();
+            introductionRetainFocus = false;
+            surface?.SetAutomaticFocusEnabled(MainFocusEnabled);
+            PublishControllerGuide();
+        }
     }
 
     private void LeaveIntroduction()
     {
+        introductionRetainFocus = false;
         introductionCard?.CancelPendingFocus();
         if (introduction.Step == "welcome") SetIntroduction(introduction with { Paused = true });
         FocusDirectionalTray();

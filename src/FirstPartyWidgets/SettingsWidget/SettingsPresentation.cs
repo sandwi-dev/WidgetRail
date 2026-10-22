@@ -215,10 +215,11 @@ internal static partial class SettingsPresentation
                     "open.controllers", "category.controllers", "controllers", WidgetGlyph.Connection),
                 Card("Widgets", "Install, update, and permissions", "open.installed-widgets", "category.installed-widgets", "widgets", WidgetGlyph.Settings),
                 Card("Extensions", "Install once and choose where extensions run", "open.extensions", "category.extensions", "widgets", WidgetGlyph.Connection),
-                Card("About & troubleshooting", "App information, diagnostics, and recovery", "open.about", "category.diagnostics", "diagnostics", WidgetGlyph.Connection))
-                .Classes("category-grid")).Classes("root-category-list");
+                Card("About & troubleshooting", "App information, diagnostics, and recovery", "open.about", "category.diagnostics", "diagnostics", WidgetGlyph.Connection),
+                Card("Introduction", "Controls and a quick tour", "application.introduction", "settings.introduction", "introduction", WidgetGlyph.Play))
+                .Classes("category-grid"))
+            .Classes("root-category-list");
         var utilities = UI.ResponsiveGrid("settings.home.utilities", 120, 4,
-            UI.Button("Replay introduction", "application.introduction", "settings.introduction").Classes("home-utility"),
             UI.Button("Restart", "application.restart", "settings.restart").Classes("home-utility") with { AccessibilityLabel = "Restart WidgetRail" },
             UI.Button("Quit", "application.quit", "settings.quit").Classes("home-utility") with { AccessibilityLabel = "Quit WidgetRail" })
             .Classes("home-utilities");

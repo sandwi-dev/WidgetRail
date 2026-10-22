@@ -61,7 +61,7 @@ internal sealed partial class OverlayShellPage
     }
     private bool PinnedInteractionRequested => pinned?.Window.Interactive == true;
     private bool MainFocusEnabled => visible && interactive && foreground && !switching && activeWidget == requestedWidget &&
-        !PinnedInteractionRequested && !PinnedAdjustmentActive && webAppEditor is null && !LocalInstallActive && !SystemFilePickerOpen && !HostChoiceActive;
+        !IntroductionOwnsFocus && !PinnedInteractionRequested && !PinnedAdjustmentActive && webAppEditor is null && !LocalInstallActive && !SystemFilePickerOpen && !HostChoiceActive;
 
     private WidgetLifecycleState LifecycleFor(string id)
     {

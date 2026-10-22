@@ -2,7 +2,7 @@
 
 The host owns the welcome surface and optional contextual tour. The tray,
 widgets, Commands, and overlay show/hide controls remain available. Tips hide
-while a competing dialog or menu is open. **Settings → Replay introduction**
+while a competing dialog or menu is open. **Settings → Introduction**
 restarts the welcome; an unfinished tour also exposes **Continue introduction**
 in the tray's Commands menu.
 
@@ -29,10 +29,14 @@ Supported steps, in order: `welcome`, `guide`, `commands`, `utilities`,
 
 - A missing file starts the welcome on the next normal opening.
 - `paused: true` leaves normal navigation untouched; use Continue introduction
-  or Replay introduction to resume.
+  or Introduction in Settings to resume or restart.
 - `step: "complete"` suppresses automatic tips across restarts and updates.
-- `appearance-details` waits for the Appearance page; it does not navigate
-  there automatically. Use `appearance` to test its Open Appearance action.
+- Next opens Catalogue and Appearance directly while keeping the tutorial
+  visible and focused. The older `appearance` progress value remains accepted;
+  Next from that value also opens Appearance. The normal tour skips that
+  introductory page and shows `appearance-details` beside the actual controls.
+- `appearance-details` waits for the Appearance page after a restart; it does
+  not navigate there automatically.
 - Comments and trailing commas are accepted for manual testing.
 - Invalid JSON, invalid field types, unknown versions/steps, excessive depth,
   files over 8 KB, and unreadable files fall back to a paused introduction.

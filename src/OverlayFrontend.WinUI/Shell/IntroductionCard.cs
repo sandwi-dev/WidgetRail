@@ -18,7 +18,7 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
     private readonly TextBlock counter = new();
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
     private readonly StackPanel rows = new() { Spacing = 10 };
-    private readonly Button primary = new(), secondary = new(), skip = new();
+    private readonly Button primary = new(), skip = new();
     private readonly ScrollViewer scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
     private readonly List<(FontIcon Icon, ControllerPrompt Prompt)> glyphs = [];
     private readonly List<TextBlock> labels = [];
@@ -39,7 +39,7 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
         var copy = new StackPanel { Spacing = 12, Children = { counter, title, body, rows, status } };
         scroll.Content = copy;
         var buttons = new Grid { ColumnSpacing = 8 };
-        foreach (var button in new[] { primary, secondary, skip })
+        foreach (var button in new[] { primary, skip })
         {
             var column = buttons.ColumnDefinitions.Count;
             buttons.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
@@ -47,14 +47,13 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
             button.HorizontalAlignment = HorizontalAlignment.Stretch;
             button.Padding = new(10, 8, 10, 8);
         }
-        secondary.RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => buttons.ColumnDefinitions[1].Width = secondary.Visibility == Visibility.Visible ? new(1, GridUnitType.Star) : new(0));
         var layout = new Grid { RowSpacing = 16 };
         layout.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
         layout.Children.Add(scroll); layout.Children.Add(buttons); Grid.SetRow(buttons, 1);
         frame.Surface.Child = layout;
         Content = frame;
-        Wire(primary, "next"); Wire(secondary, "open"); Wire(skip, "skip");
+        Wire(primary, "next"); Wire(skip, "skip");
         PreviewKeyDown += (_, e) =>
         {
             if (Input.GamepadKeyBoundary.Owns(this, e)) return;
@@ -88,16 +87,16 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
         Step = step;
         appearance = null;
         glyphs.Clear(); labels.Clear(); rows.Children.Clear();
-        counter.Text = step == "welcome" ? "WELCOME" : $"QUICK TOUR  ·  {Math.Clamp(Array.IndexOf(IntroductionProgress.Steps, step), 1, 6)} / 6";
+        counter.Text = step == "welcome" ? "WELCOME" : $"QUICK TOUR  ·  {Math.Clamp(Array.IndexOf(IntroductionProgress.Steps, step), 1, 5)} / 5";
         (title.Text, body.Text) = step switch
         {
-            "welcome" => ("Welcome to WidgetRail", "Thanks for installing! Your PC, ready for a controller. Open widgets, adjust your setup, then carry on."),
-            "guide" => ("Your controls, right here", "The guide changes with your focus. Look here whenever you're unsure what you can do. You can also click its action hints."),
-            "commands" => ("More commands for each widget", "Select a widget in the tray, then open Commands to find actions such as pinning and managing the widget."),
-            "utilities" => (notifications ? "Your notifications are one hold away" : "Switch apps without leaving the overlay", "From the tray or widget wheel, hold the button to enter notifications when available, otherwise Task Switcher. A quick tap reorders widgets."),
-            "catalogue" => ("Discover more widgets", "Browse the WidgetRail Catalogue to find and install more widgets. Each listing explains any additional setup."),
-            "appearance" => ("Make it yours", "Change the overlay size and choose a theme in Settings → Appearance. Nothing changes unless you choose it."),
-            _ => ("Size and theme live here", "Use Interface size to make the overlay comfortable on this display. Open Theme to choose its look. You don't need to change either to finish."),
+            "welcome" => ("Welcome to WidgetRail", "Thanks for installing! Find this tour anytime in Settings → Introduction."),
+            "guide" => ("Control guide", "The guide shows controls for your current focus. Its action hints are clickable."),
+            "commands" => ("Widget commands", "Select a widget in the tray for pinning and other commands."),
+            "utilities" => ("Notifications and Task Switcher", "From the tray, open notifications when available, otherwise Task Switcher."),
+            "catalogue" => ("WidgetRail Catalogue", "Find and install more widgets here."),
+            "appearance" => ("Appearance", "Next opens Settings → Appearance."),
+            _ => ("Appearance", "Choose a theme and adjust Interface size here in Settings → Appearance."),
         };
         if (step == "welcome")
         {
@@ -107,13 +106,9 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
             Row(openingPrompt, openingLabel, f1 ? "F1 also toggles the overlay" : "F1 can be enabled in Settings → Controllers",
                 openingPrompt == ControllerPrompt.View ? ControllerPrompt.Menu : null);
         }
-        else if (step == "commands") Row(ControllerPrompt.Menu, "Commands", "Right-click a tray item, or click Commands in the guide");
-        else if (step == "utilities") Row(ControllerPrompt.Y, notifications ? "Hold for Notifications" : "Hold for Task Switcher", "Mouse: click the bell or Task Switcher icon · keyboard: navigate to its icon");
-        else if (step == "guide") Row(ControllerPrompt.A, "The hint shows the current action", "Clickable action hints perform the press; hold actions use the controller");
-        else if (step != "appearance-details") Row(ControllerPrompt.A, step == "catalogue" ? "Open Catalogue" : "Open Appearance", "Enter or mouse click");
+        else if (step == "commands") Row(ControllerPrompt.Menu, "Commands", "Right-click a tray item or click Commands in the guide");
+        else if (step == "utilities") Row(ControllerPrompt.Y, notifications ? "Hold for Notifications" : "Hold for Task Switcher", "Mouse: click its icon · keyboard: arrows, then Enter");
         ButtonLabel(primary, ControllerPrompt.A, step == "welcome" ? "Show me around" : step == "appearance-details" ? "Finish" : "Next");
-        secondary.Visibility = step is "catalogue" or "appearance" ? Visibility.Visible : Visibility.Collapsed;
-        ButtonLabel(secondary, ControllerPrompt.A, step == "catalogue" ? "Open Catalogue" : "Open Appearance");
         var skipLabel = step == "welcome" ? "Explore on my own" : "Skip tour";
         skip.Content = new TextBlock { Text = skipLabel, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetName(skip, skipLabel);
@@ -169,7 +164,7 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
         Foreground = new SolidColorBrush(palette.Text);
         counter.Foreground = new SolidColorBrush(palette.Muted);
         foreach (var label in labels) label.FontSize = 14 * scale;
-        foreach (var button in new[] { primary, secondary, skip })
+        foreach (var button in new[] { primary, skip })
         {
             button.FontSize = 14 * scale;
             button.Foreground = new SolidColorBrush(palette.Text);
@@ -189,7 +184,6 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
     {
         var focused = FocusManager.GetFocusedElement(XamlRoot);
         if (ReferenceEquals(focused, primary)) Action?.Invoke("next");
-        else if (ReferenceEquals(focused, secondary)) Action?.Invoke("open");
         else if (ReferenceEquals(focused, skip)) Action?.Invoke("skip");
     }
     internal bool Move(FocusNavigationDirection direction) => FocusManager.TryMoveFocus(direction, new FindNextElementOptions { SearchRoot = this });
