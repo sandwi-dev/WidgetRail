@@ -123,7 +123,7 @@ public sealed partial class PobWidget
             Work(async token=>
             {
                 var inspected=await engine.ExecuteAsync(new{op="inspect-item",slot=ItemSlot},token,result.Xml);
-                lock(gate){itemEditor=inspected.State.GetProperty("itemEditor");detailKind="item-manage";focusRequestSequence++;}
+                lock(gate){itemEditor=inspected.State.GetProperty("itemEditor");detailKind="item-manage";lastFocusRequestId = CreateFocusRequest().Id;}
             },"Reading item controls…");return true;
         }
         if(id=="back"&&detailKind=="item-manage"){detailKind="item";return true;}
@@ -204,7 +204,7 @@ public sealed partial class PobWidget
     },"Calculating comparison…");
 
     private void OpenFeaturePicker(string title,string prefix,JsonElement[] choices)
-    {featurePicker=(title,prefix,choices,detailKind);choiceSearch="";detailKind="feature-picker";focusRequestSequence++;}
+    {featurePicker=(title,prefix,choices,detailKind);choiceSearch="";detailKind="feature-picker";lastFocusRequestId = CreateFocusRequest().Id;}
 
     private WidgetElement FeaturePickerWorkspace()
     {
@@ -303,7 +303,7 @@ public sealed partial class PobWidget
                 UI.Text((entry.Supported?"Modifier ":"Unsupported modifier ")+(entry.Index+1),context.Id("label")).Classes(entry.Supported?"pob-field-label":"pob-gold"),
                 UI.Text(Limit(entry.Text),context.Id("text")).Classes("pob-small","pob-choice-description")).Classes("pob-list-item"),
             OnAction=(query,entry,action,token)=>{lock(gate){if(!ReferenceEquals(query,modifierQuery)||customGroup!=query.Group||busy||action.ActionId!="edit")return ValueTask.CompletedTask;
-                editingModifier=entry.Index;modifierFocusRequested=true;focusRequestSequence++;Invalidate();return ValueTask.CompletedTask;}},
+                editingModifier=entry.Index;modifierFocusRequested=true;lastFocusRequestId = CreateFocusRequest().Id;Invalidate();return ValueTask.CompletedTask;}},
         });
         if(modifierQuery.Group!=customGroup||!modifierQuery.Entries.SequenceEqual(entries))
         {

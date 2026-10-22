@@ -47,7 +47,7 @@ public sealed partial class PobWidget
                 var target=id["quick-controls.".Length..];
                 if(target is "pob.buildtools" or "pob.body" && !BuildControlsAvailable)return ValueTask.CompletedTask;
                 var permitted=pendingBefore is null || target is "pob.tree.preview.actions" or "pob.tree.preview-details";
-                if(permitted&&quickControlTargets.Contains(target)){quickControlTarget=target;historyFocusRequested=false;focusRequestSequence++;Invalidate();}
+                if(permitted&&quickControlTargets.Contains(target)){quickControlTarget=target;historyFocusRequested=false;lastFocusRequestId = CreateFocusRequest().Id;Invalidate();}
                 return ValueTask.CompletedTask;
             }
             if (pendingBefore is not null && id is not "apply" and not "cancel") return ValueTask.CompletedTask;
@@ -75,7 +75,7 @@ public sealed partial class PobWidget
                     {
                         PushHistory(undo,previous.Xml);redo.Clear();
 
-                        pendingBefore=null;focusRequestSequence++;
+                        pendingBefore=null;lastFocusRequestId = CreateFocusRequest().Id;
                         if(detailKind=="choose-slot")
                         {
                             var item=A(State,"items").FirstOrDefault(i=>S(i,"slot")==previewSlot);
@@ -102,7 +102,7 @@ public sealed partial class PobWidget
                 await RefreshMapAsync(token);
             },"Creating build…");
             else if(id=="rename" && documentId is not null) RenameBuild(documentId,action.CommittedText??"");
-            else if(parts[0]=="library-select"&&parts.Length==2&&savedBuilds.Any(b=>b.Id==parts[1])){librarySelection=parts[1];libraryOpenFocusRequested=true;focusRequestSequence++;}
+            else if(parts[0]=="library-select"&&parts.Length==2&&savedBuilds.Any(b=>b.Id==parts[1])){librarySelection=parts[1];libraryOpenFocusRequested=true;lastFocusRequestId = CreateFocusRequest().Id;}
             else if(id=="library-search")librarySearch=action.CommittedText??"";
             else if(parts[0]=="library-sort"&&parts.Length==2&&parts[1] is "recent" or "name")librarySort=parts[1];
             else if(id=="library-rename"&&librarySelection is {} rename)RenameBuild(rename,action.CommittedText??"");
@@ -123,9 +123,9 @@ public sealed partial class PobWidget
                 Edit(new{op="skill-number",group=numericGroup,control=numberControl,value=action.CommittedText??""});
             else if(parts[0]=="stat"&&parts.Length==2&&A(State,"stats").Any(s=>S(s,"name")==parts[1])) {statDetail=parts[1];detailKind="stat";SetSection("Calcs");}
             else if(id=="back"&&detailKind=="choose-slot"&&pastedItem is not null) DiscardItemDraft();
-            else if(id=="back") { if(detailKind=="node"&&!(nodeReturnToMap&&mapSession is not null))RevealPassiveOnReturn();detailKind=detailKind=="library"&&result is not null?"menu":detailKind=="node"&&nodeReturnToMap&&mapSession is not null?"map":"";nodeReturnToMap=false;if(section=="Tree")focusRequestSequence++; }
-            else if(id is "next-section" or "previous-section") { var index=Array.IndexOf(NavigationSections,section);SetSection(NavigationSections[(index+(id=="next-section"?1:NavigationSections.Length-1))%NavigationSections.Length]);detailKind="";filter="";passiveReturnKey=null;focusRequestSequence++; }
-            else if(parts[0]=="section"&&int.TryParse(parts.ElementAtOrDefault(1),out var selected)&&selected>=0&&selected<Sections.Length) {SetSection(Sections[selected]);detailKind="";filter="";passiveReturnKey=null;focusRequestSequence++;}
+            else if(id=="back") { if(detailKind=="node"&&!(nodeReturnToMap&&mapSession is not null))RevealPassiveOnReturn();detailKind=detailKind=="library"&&result is not null?"menu":detailKind=="node"&&nodeReturnToMap&&mapSession is not null?"map":"";nodeReturnToMap=false;if(section=="Tree")lastFocusRequestId = CreateFocusRequest().Id; }
+            else if(id is "next-section" or "previous-section") { var index=Array.IndexOf(NavigationSections,section);SetSection(NavigationSections[(index+(id=="next-section"?1:NavigationSections.Length-1))%NavigationSections.Length]);detailKind="";filter="";passiveReturnKey=null;lastFocusRequestId = CreateFocusRequest().Id; }
+            else if(parts[0]=="section"&&int.TryParse(parts.ElementAtOrDefault(1),out var selected)&&selected>=0&&selected<Sections.Length) {SetSection(Sections[selected]);detailKind="";filter="";passiveReturnKey=null;lastFocusRequestId = CreateFocusRequest().Id;}
             else if(id=="search") {filter=action.CommittedText??"";passiveReturnKey=null;}
             else if(parts[0]=="config-section"&&parts.Length==2&&int.TryParse(parts[1],out var category)&&category>=0&&category<ConfigurationSections().Length)
             {configSection=ConfigurationSections()[category];filter="";passiveReturnKey=null;}
@@ -133,7 +133,7 @@ public sealed partial class PobWidget
             else if(id=="config-changed"&&ConfigurationCatalog.SupportsChangedFilter)configChangedOnly=!configChangedOnly;
             else if(id=="config-clear-search"){filter="";passiveReturnKey=null;}
             else if(parts[0] is "node" or "skill" or "item" && parts.Length==2 && int.TryParse(parts[1],out var detail))
-            {var array=parts[0]=="node"?"nodes":parts[0]=="skill"?"skills":"items";if(A(State,array).Any(x=>I(x,"id")==detail&&(parts[0]!="node"||B(x,"interactive")))){detailKind=parts[0];detailId=detail;selections[parts[0]]=detail;nodeReturnToMap=false;if(parts[0]=="node"){focusRequestSequence++;SendNodeSelection(detail);ReadAttributeChoices(detail);}}}
+            {var array=parts[0]=="node"?"nodes":parts[0]=="skill"?"skills":"items";if(A(State,array).Any(x=>I(x,"id")==detail&&(parts[0]!="node"||B(x,"interactive")))){detailKind=parts[0];detailId=detail;selections[parts[0]]=detail;nodeReturnToMap=false;if(parts[0]=="node"){lastFocusRequestId = CreateFocusRequest().Id;SendNodeSelection(detail);ReadAttributeChoices(detail);}}}
             else if(id=="node-change")
             {
                 var node=A(State,"nodes").FirstOrDefault(n=>I(n,"id")==detailId);
@@ -182,14 +182,14 @@ public sealed partial class PobWidget
         var before=result!;var next=await engine.ExecuteAsync(command,token,before.Xml,compare:true);
         var pending=new PobPendingChange(next.Xml,detailKind=="node"?"node":detailKind=="choose-slot"?"item":"character",detailId,previewSlot);
         token.ThrowIfCancellationRequested();SaveWork(before,CurrentWork(before.Xml,pending,pastedItem),refreshXml:false);
-        lock(gate){pendingBefore=before;result=next;showChangedNodes=false;focusRequestSequence++;}
+        lock(gate){pendingBefore=before;result=next;showChangedNodes=false;lastFocusRequestId = CreateFocusRequest().Id;}
         await RefreshCommittedMapAsync(token);
     },"Calculating comparison…");
     private void Restore(string xml,bool clearPreview)=>Work(async token=>
     {
         var next=await engine.ExecuteAsync(new{op="load",xml,name="Working build"},token);
         token.ThrowIfCancellationRequested();SaveWork(next,CurrentWork(next.Xml,draft:pastedItem),refreshXml:false);
-        lock(gate){result=next;if(clearPreview){pendingBefore=null;focusRequestSequence++;}}
+        lock(gate){result=next;if(clearPreview){pendingBefore=null;lastFocusRequestId = CreateFocusRequest().Id;}}
         if(detailKind=="skill-options")await RefreshSkillOptionsAsync(detailId,token);
         await RefreshCommittedMapAsync(token);
     },"Restoring build…");
@@ -260,7 +260,7 @@ public sealed partial class PobWidget
                 }
                 else if(S(message,"type")=="select")
                 {
-                    var id=I(message,"id");lock(gate){if(!busy&&pendingBefore is null&&passiveChoicePopup is null&&A(State,"nodes").Any(n=>I(n,"id")==id&&B(n,"interactive"))){detailId=id;selections["node"]=id;focusRequestSequence++;detailKind="node";nodeReturnToMap=true;passiveReturnKey=null;ReadAttributeChoices(id);}}
+                    var id=I(message,"id");lock(gate){if(!busy&&pendingBefore is null&&passiveChoicePopup is null&&A(State,"nodes").Any(n=>I(n,"id")==id&&B(n,"interactive"))){detailId=id;selections["node"]=id;lastFocusRequestId = CreateFocusRequest().Id;detailKind="node";nodeReturnToMap=true;passiveReturnKey=null;ReadAttributeChoices(id);}}
                     Invalidate();
                 }
             }

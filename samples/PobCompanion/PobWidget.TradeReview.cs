@@ -23,7 +23,7 @@ public sealed partial class PobWidget
             pendingBefore=before;result=next;tradeListing=candidate.Listing;pastedItem=candidate.Raw;
             previewSlot=candidate.Slot;itemDraftSlots=slots;tradeBrowsing=true;SetSection("Items");detailKind="choose-slot";
             tradeCandidates.Clear();tradeCandidates.AddRange(recent);websiteReview=true;
-            websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;
+            websiteFocus="pob.website.review.tools";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);
             rankingVisible=false;
             tradePurchaseExpanded=false;tradeWorkspaceFocus="pob.item.compare.controls";
         }
@@ -34,19 +34,19 @@ public sealed partial class PobWidget
         var id=action.ActionId;
         if(HandleComparisonViewAction(id))return true;
         if(id=="trade-review-focus")
-        {tradeWorkspaceFocus="pob.item.compare.controls";websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;return true;}
+        {tradeWorkspaceFocus="pob.item.compare.controls";websiteFocus="pob.website.review.tools";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);return true;}
         if(id=="trade-review-expand")
-        {websiteVisible=false;tradeWorkspaceFocus="pob.item.compare.controls";focusRequestSequence++;return true;}
+        {websiteVisible=false;tradeWorkspaceFocus="pob.item.compare.controls";lastFocusRequestId = CreateFocusRequest().Id;return true;}
         if(id=="trade-review-hide")
-        {websiteReview=false;websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;return true;}
+        {websiteReview=false;websiteFocus="pob.website.browser";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);return true;}
         if(id=="trade-review-show")
-        {rankingVisible=false;websiteReview=true;websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;return true;}
+        {rankingVisible=false;websiteReview=true;websiteFocus="pob.website.review.tools";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);return true;}
         if(id=="trade-review-find"&&tradeListing is {} listing)
         {
             Work(async token=>
             {
                 await OpenWebsiteAsync(listing.FindUrl(game),token);
-                lock(gate){websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;}
+                lock(gate){websiteFocus="pob.website.browser";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);}
             },"Finding saved listing…");return true;
         }
         if(id=="trade-review-adopt"&&tradeListing is {} legacy&&pastedItem is {} raw&&previewSlot is {} legacySlot)
@@ -67,7 +67,7 @@ public sealed partial class PobWidget
                 {
                     rankingVisible=HasRanking;websiteReview=!rankingVisible;
                     websiteFocus=rankingVisible?(rankedItems.Length>0?"pob.rank.list":"pob.rank.tools"):"pob.website.review.tools";
-                    websiteFocusSequence=++focusRequestSequence;
+                    websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);
                 }
             },"Returning to results…");return true;
         }
@@ -77,7 +77,7 @@ public sealed partial class PobWidget
             Work(_=>
             {
                 SaveWork(before,new(before.Xml,undo.ToArray(),redo.ToArray()),refreshXml:false);
-                lock(gate){result=before;pendingBefore=null;pastedItem=null;tradeListing=null;tradeBrowsing=false;websiteReview=false;websiteVisible=false;detailKind="";focusRequestSequence++;}
+                lock(gate){result=before;pendingBefore=null;pastedItem=null;tradeListing=null;tradeBrowsing=false;websiteReview=false;websiteVisible=false;detailKind="";lastFocusRequestId = CreateFocusRequest().Id;}
                 return Task.CompletedTask;
             },"Finishing comparison…");return true;
         }
@@ -111,7 +111,7 @@ public sealed partial class PobWidget
                     detailKind="item";var item=A(State,"items").FirstOrDefault(i=>S(i,"slot")==previewSlot);
                     detailId=I(item,"id");selections["item"]=detailId;websiteReview=false;
                     ShowFeedback("Equipped in build","Your game character is unchanged. New comparisons use this equipment.",ToastTone.Info);
-                    websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;
+                    websiteFocus="pob.website.browser";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);
                 }
                 await RefreshCommittedMapAsync(token);
             },"Equipping in build…");return true;

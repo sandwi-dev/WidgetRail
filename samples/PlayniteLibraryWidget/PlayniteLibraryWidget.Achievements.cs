@@ -10,10 +10,9 @@ public sealed partial class PlayniteLibraryWidget
 
     private void RequestAchievementSearch(bool clear) => _model.Update(state =>
     {
-        var request = NextFocusRequest(state);
+        var request = CreateFocusRequest().Id;
         return state with
         {
-            FocusRequestSequence = request,
             DetailsExtras = state.DetailsExtras with
             {
                 AchievementSearchRequest = request,

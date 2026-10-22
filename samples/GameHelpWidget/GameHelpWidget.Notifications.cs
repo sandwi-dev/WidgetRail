@@ -24,8 +24,8 @@ public sealed partial class GameHelpWidget
             Settings = false, LibraryOpen = false, CaptureOptions = false, PreviewReadOnly = true,
             ConfirmNew = false, ConfirmDelete = false,
             Reveal = state.Messages.Any(message => message.Id == id && message.Role == "assistant")
-                ? new(Interlocked.Increment(ref nextRevealRequest), "help.transcript", "help.message." + id) : null,
-            FocusGroup = "help.compose-focus", FocusRequest = Interlocked.Increment(ref nextFocusRequest),
+                ? new(CreateFocusRequest().Id, "help.transcript", "help.message." + id) : null,
+            FocusGroup = "help.compose-focus", FocusRequest = CreateFocusRequest().Id,
         });
         return ValueTask.FromResult(WidgetIntentResult.Accepted);
     }

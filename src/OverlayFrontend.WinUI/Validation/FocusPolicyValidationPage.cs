@@ -6,6 +6,7 @@ using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 using Windows.System;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
@@ -18,6 +19,7 @@ internal sealed partial class FocusPolicyValidationPage : Page
     private long sequence;
     private long owner = 1;
     private long request;
+    private FocusProbeWidget focusSource = new();
     private bool ready;
     private bool neighbors = true;
     private bool disableThird;
@@ -38,20 +40,22 @@ internal sealed partial class FocusPolicyValidationPage : Page
                     passive = !passive; presenter.SetAutomaticFocusEnabled(!passive);
                     if (passive) outside.Focus(FocusState.Keyboard); else presenter.Enter();
                     Apply(); break;
-                case VirtualKey.F2: ++request; Apply(); break;
+                case VirtualKey.F2: request = focusSource.Request().Id; Apply(); break;
                 case VirtualKey.F3: ready = !ready; Apply(); break;
                 case VirtualKey.F4: presenter.MoveFocus(FocusNavigationDirection.Down); break;
                 case VirtualKey.F5: presenter.MoveFocus(FocusNavigationDirection.Right); break;
                 case VirtualKey.F6: neighbors = !neighbors; Apply(); break;
                 case VirtualKey.F7: disableThird = !disableThird; Apply(); break;
-                case VirtualKey.F8: ++owner; sequence = request = 0; disableThird = false; Apply(); break;
+                case VirtualKey.F8: ++owner; focusSource.Dispose(); focusSource = new(); sequence = request = 0; disableThird = false; Apply(); break;
                 case VirtualKey.F9: request = 0; Apply(); break;
                 case VirtualKey.F10: groupNeighbor = !groupNeighbor; Apply(); break;
+                case VirtualKey.F11: request = focusSource.Navigate(); Apply(); break;
                 case VirtualKey.F12: Apply(); break;
                 default: return;
             }
             args.Handled = true;
         };
+        Unloaded += (_, _) => focusSource.Dispose();
         Apply();
     }
 
@@ -79,4 +83,18 @@ internal sealed partial class FocusPolicyValidationPage : Page
             SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot)), new Dictionary<string, BridgeNodeRenderStyles>()));
         status.Text = $"Owner {owner}; revision {sequence}; request {request}; ready {ready}";
     }
+    private sealed class FocusProbeWidget : Widget, IDisposable
+    {
+        private readonly WidgetNavigator<bool> navigation;
+        internal FocusProbeWidget() => navigation = CreateNavigator("probe", false);
+        internal WidgetFocusRequest Request() => CreateFocusRequest();
+        internal long Navigate()
+        {
+            navigation.NavigateRoot(!navigation.Value.Route, "group");
+            return navigation.Value.FocusGroupEntryRequest!.RequestId;
+        }
+        public override WidgetView Render() => new(UI.Stack("probe.root"));
+        public void Dispose() => navigation.Dispose();
+    }
+
 }

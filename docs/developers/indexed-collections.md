@@ -155,7 +155,8 @@ their authored artwork and presentation; recycled containers do not erase logica
 membership. A modal still belongs to its parent page and uses its own input scope.
 
 For an exact return target, retain the admitted action's `FocusedCollectionItem`
-and use the source's `Enter` method with a new positive request ID. The host checks
+and use `CreateFocusRequest().EnterCollection(source, collectionId, target)` when
+handling Back. Retain the resulting request across renders. The host checks
 query generation and occurrence key before realizing/focusing it. Do not store a
 native control, assume it remains realized, or issue a new focus request on each
 data update. See Playnite's indexed details-return test for a complete example.
@@ -173,7 +174,8 @@ containers and indexed collections. For a lazy row, use its exact occurrence:
 
 ```csharp
 var item = source.FocusTarget("queue", new(currentOccurrenceKey), currentIndex);
-var request = source.Reveal("queue", ++queueEntryRequestId, item);
+// Run once for the navigation event, then retain this request across renders.
+var request = CreateFocusRequest().RevealCollection(source, "queue", item);
 return view with { ScrollRevealRequest = request };
 ```
 

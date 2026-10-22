@@ -26,7 +26,7 @@ public sealed partial class GameHelpWidget : Widget
     }
     private readonly IGameHelpService service;
     private readonly WidgetModel<State> model;
-    private long nextMessage, keyRevision, nextOperation, nextFocusRequest, nextRevealRequest;
+    private long nextMessage, keyRevision, nextOperation;
     public GameHelpWidget()
     {
         service = new GeminiGameHelpService(() => HostServices);
@@ -121,13 +121,13 @@ public sealed partial class GameHelpWidget : Widget
         }
         return ValueTask.CompletedTask;
     }
-    private void RequestFocus(string group) => model.Update(s => s with { FocusGroup = group, FocusRequest = Interlocked.Increment(ref nextFocusRequest) });
+    private void RequestFocus(string group) => model.Update(s => s with { FocusGroup = group, FocusRequest = CreateFocusRequest().Id });
     private void AddQuestion(string question,bool offerContext)
     {
         var id=Interlocked.Increment(ref nextMessage);
         model.Update(s=>s with {Messages=s.Messages.Append(new Message(id,"user",question)).TakeLast(20).ToArray(),Draft="",PendingQuestion=question,OfferContext=offerContext,Error=null,
-            Reveal = new(Interlocked.Increment(ref nextRevealRequest), "help.transcript", "help.message." + id),
-            FocusGroup = offerContext ? "help.context-choice" : "help.compose-focus", FocusRequest = Interlocked.Increment(ref nextFocusRequest)});
+            Reveal = new(CreateFocusRequest().Id, "help.transcript", "help.message." + id),
+            FocusGroup = offerContext ? "help.context-choice" : "help.compose-focus", FocusRequest = CreateFocusRequest().Id});
         if(!offerContext) Answer(model.Value.Context);
     }
     private void ConfigureKey(string? key)
@@ -205,7 +205,7 @@ public sealed partial class GameHelpWidget : Widget
         var epoch=Interlocked.Increment(ref nextOperation);
         model.Update(s=>s with {Busy=true,OfferContext=false,PreviewReadOnly=true,Error=null,AnswerEpoch=epoch,Context=contextAttachment,
             Reveal = s.Messages.LastOrDefault(message => message.Role == "user") is { } latest
-                ? new(Interlocked.Increment(ref nextRevealRequest), "help.transcript", "help.message." + latest.Id) : null });
+                ? new(CreateFocusRequest().Id, "help.transcript", "help.message." + latest.Id) : null });
         Operations.RunLatest("answer",async context=>
         {
             var phase = "conversation-preparation";

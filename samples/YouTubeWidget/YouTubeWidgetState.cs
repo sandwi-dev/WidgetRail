@@ -402,7 +402,7 @@ internal sealed record YouTubeWidgetState
 
     public YouTubeWidgetState WithRootSection(
         YouTubeRootSection section,
-        string? focusGroupId = null)
+        string? focusGroupId = null, long focusRequestId = 0)
     {
         var route = section == YouTubeRootSection.Discover
             ? YouTubeRoute.Search
@@ -417,12 +417,12 @@ internal sealed record YouTubeWidgetState
                 RootFocusGroupId = null,
                 RootInitialFocusId = null,
             };
-        if (RootFocusRequestId >= ProtocolConstants.MaximumFocusGroupEntryRequestId)
-            return this;
+        if (focusRequestId is <= 0 or > ProtocolConstants.MaximumFocusGroupEntryRequestId)
+            throw new ArgumentOutOfRangeException(nameof(focusRequestId));
         return this with
         {
             Route = route,
-            RootFocusRequestId = RootFocusRequestId + 1,
+            RootFocusRequestId = focusRequestId,
             RootFocusGroupId = focusGroupId,
             RootInitialFocusId = null,
         };
@@ -465,17 +465,19 @@ internal sealed record YouTubeWidgetState
         Setup = Setup with { Error = null },
     };
 
-    public YouTubeWidgetState WithSetupReturnRoute()
+    public YouTubeWidgetState WithSetupReturnRoute(long focusRequestId = 0)
     {
         if (SetupReturnRoute is not { } route) return this;
         var item = route == YouTubeRoute.Search ? SetupReturnCollectionItem : null;
+        if (item is not null && focusRequestId is <= 0 or > ProtocolConstants.MaximumFocusGroupEntryRequestId)
+            throw new ArgumentOutOfRangeException(nameof(focusRequestId));
         return this with
         {
             Route = route,
             // Lazy item IDs are not nodes in the page tree. Restore through the
             // collection's generation/key/index contract, never InitialFocusId.
             RootFocusGroupId = item is null ? null : YouTubeVideoWidget.SearchFocusGroupId,
-            RootFocusRequestId = item is null ? RootFocusRequestId : checked(RootFocusRequestId + 1),
+            RootFocusRequestId = item is null ? RootFocusRequestId : focusRequestId,
             RootInitialFocusId = item is null ? SetupReturnFocusId : null,
             Search = item is null ? Search : Search with { ReturnCollectionItem = item },
         };
@@ -570,7 +572,7 @@ internal sealed record YouTubeWidgetState
         string videoId,
         long sequence,
         string playerFocusGroupId,
-        IndexedCollectionFocusTarget? returnCollectionItem = null)
+        IndexedCollectionFocusTarget? returnCollectionItem = null, long focusRequestId = 0)
     {
         var selected = this with
         {
@@ -578,7 +580,7 @@ internal sealed record YouTubeWidgetState
             Playback = Playback.WithSelectedVideo(videoId, sequence),
         };
         return selected.WithRootSection(
-            YouTubeRootSection.Player, playerFocusGroupId);
+            YouTubeRootSection.Player, playerFocusGroupId, focusRequestId);
     }
 
     public YouTubeWidgetState WithPlayback(

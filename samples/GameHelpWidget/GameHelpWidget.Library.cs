@@ -24,7 +24,7 @@ public sealed partial class GameHelpWidget
                 {
                     await RequirePermissionAsync(WidgetCaptureLibraryCapabilities.ReadPermission, context.CancellationToken);
                     var page = await HostServices.CaptureLibrary.ListAsync(offset, context.CancellationToken);
-                    if (context.IsCurrent) model.Update(s => s with { LibraryPage = page, LibraryFocusRequest = Interlocked.Increment(ref nextFocusRequest) });
+                    if (context.IsCurrent) model.Update(s => s with { LibraryPage = page, LibraryFocusRequest = CreateFocusRequest().Id });
                 }
                 catch (OperationCanceledException) { }
                 catch (WidgetCapabilityException error) { if (context.IsCurrent) model.Update(s => s with { Error = Friendly(error) }); }

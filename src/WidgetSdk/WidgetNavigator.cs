@@ -104,7 +104,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     private WidgetNavigationSnapshot<TRoute> _snapshot;
     private FocusGroupEntryRequest? _focusGroupEntryRequest;
     private int _nextScopeOrdinal;
-    private long _nextFocusGroupEntryRequestId;
+    private readonly WidgetFocusRequestAllocator _focusRequests;
     private bool _disposed;
 
     internal WidgetNavigator(
@@ -115,7 +115,8 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
         IEqualityComparer<TRoute>? comparer,
         CancellationToken widgetLifetime,
         Action invalidate,
-        WidgetNavigatorOptions<TRoute>? options = null)
+        WidgetNavigatorOptions<TRoute>? options = null,
+        WidgetFocusRequestAllocator? focusRequests = null)
     {
         StableIdentifier.Validate(id, nameof(id));
         ArgumentNullException.ThrowIfNull(initialRoute);
@@ -125,6 +126,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             throw new ArgumentOutOfRangeException(nameof(maximumRoutes));
         ArgumentNullException.ThrowIfNull(invalidate);
 
+        _focusRequests = focusRequests ?? new();
         _id = id;
         _backActionId = StableIdentifier.Child(id, "back");
         _ = StableIdentifier.Child(id, $"scope-{maximumRoutes - 1}");
@@ -226,9 +228,9 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             }
             if (!TryGetOrCreateScopeId(route, rootFrame: true, out var scopeId))
                 return WidgetNavigationResult.RejectedCapacity;
-            if (focusBehavior == RootFocusBehavior.EnterRememberedGroup &&
-                _nextFocusGroupEntryRequestId >=
-                    ProtocolConstants.MaximumFocusGroupEntryRequestId)
+            var focusRequest = focusBehavior == RootFocusBehavior.EnterRememberedGroup
+                ? _focusRequests.TryCreate() : null;
+            if (focusBehavior == RootFocusBehavior.EnterRememberedGroup && focusRequest is null)
                 return WidgetNavigationResult.RejectedCapacity;
 
             if (focusBehavior == RootFocusBehavior.RestoreRemembered)
@@ -239,14 +241,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             string? restoredFocus = null;
             if (focusBehavior == RootFocusBehavior.RestoreRemembered)
                 _focusMemory.TryGetValue(route, out restoredFocus);
-            var groupEntryRequest =
-                focusBehavior == RootFocusBehavior.EnterRememberedGroup
-                    ? new FocusGroupEntryRequest
-                    {
-                        RequestId = ++_nextFocusGroupEntryRequestId,
-                        GroupId = focusGroupId!,
-                    }
-                    : null;
+            var groupEntryRequest = focusRequest?.EnterGroup(focusGroupId!);
             retired = Advance(restoredFocus, rootChanged, groupEntryRequest);
         }
         Publish(retired);
@@ -694,7 +689,7 @@ public abstract partial class Widget
             WidgetLifetimeToken, () =>
             {
                 if (LifecycleState != WidgetLifecycleState.Destroying) Invalidate();
-            });
+            }, focusRequests: focusRequestAllocator);
 
     /// <summary>
     /// Creates a navigator with an optional shared root scope and authored
@@ -715,6 +710,6 @@ public abstract partial class Widget
             WidgetLifetimeToken, () =>
             {
                 if (LifecycleState != WidgetLifecycleState.Destroying) Invalidate();
-            }, options);
+            }, options, focusRequestAllocator);
     }
 }

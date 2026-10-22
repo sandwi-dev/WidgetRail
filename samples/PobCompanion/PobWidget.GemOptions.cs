@@ -24,7 +24,7 @@ public sealed partial class PobWidget
             Work(async token=>
             {
                 var response=await engine.ExecuteAsync(new{op="gem-controls",group=detailId,gem},token,result!.Xml);
-                lock(gate){optionsGem=gem;gemOptions=response.State;detailKind="gem-options";focusRequestSequence++;}
+                lock(gate){optionsGem=gem;gemOptions=response.State;detailKind="gem-options";lastFocusRequestId = CreateFocusRequest().Id;}
             },"Reading gem options…");return true;
         }
         if(detailKind!="gem-options")return false;
@@ -33,7 +33,7 @@ public sealed partial class PobWidget
             detailKind="skill";skillWorkspaceFocusRequested=true;
             var group=A(State,"skills").FirstOrDefault(g=>I(g,"id")==detailId);
             skillWorkspaceGemReturn=A(group,"gems").Any(g=>I(g,"id")==optionsGem)?optionsGem:null;
-            focusRequestSequence++;return true;
+            lastFocusRequestId = CreateFocusRequest().Id;return true;
         }
         if(parts is ["gem-extra",var controlId])
         {

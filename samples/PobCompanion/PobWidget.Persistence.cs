@@ -148,7 +148,7 @@ public sealed partial class PobWidget
             else if (work?.Pending is { Kind: "item" }) { SetSection("Items"); detailKind = "choose-slot"; }
             else if (work?.Pending is not null) detailKind = "menu";
             else if (pastedItem is not null) { SetSection("Items"); detailKind = "choose-slot"; }
-            focusRequestSequence++;
+            lastFocusRequestId = CreateFocusRequest().Id;
             if(recovered)ShowFeedback("Opened saved build",readOnly
                 ?"Pending work could not be restored or safely preserved. This build is read-only; duplicate it to continue editing."
                 :"Pending work or history could not be restored. Your saved build is open, and the failed recovery data has been kept separately.",ToastTone.Warning);

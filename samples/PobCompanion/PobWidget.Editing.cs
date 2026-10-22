@@ -50,7 +50,7 @@ public sealed partial class PobWidget
                 var changedTarget=detailId!=editedGroup||detailKind!=skillDestination;
                 detailId=editedGroup;selections["skill"]=detailId;
                 detailKind=detailId>0?skillDestination:"";
-                if(changedTarget||skillOrderFocusRequested){focusRequestSequence++;skillWorkspaceFocusRequested=detailKind=="skill";}
+                if(changedTarget||skillOrderFocusRequested){lastFocusRequestId = CreateFocusRequest().Id;skillWorkspaceFocusRequested=detailKind=="skill";}
             }
             else if(closeDetail)detailKind="";
             PublishVisibleSkillOptions(options);
@@ -82,7 +82,7 @@ public sealed partial class PobWidget
             if(inventory is not null)PublishInventory(inventory);
             if(calculations is not null)PublishCalculations(calculations);
             PublishVisibleSkillOptions(options);
-            historyFocusRequested=true;focusRequestSequence++;
+            historyFocusRequested=true;lastFocusRequestId = CreateFocusRequest().Id;
         }
         await RefreshCommittedMapAsync(token);
     },backwards?"Undoing change…":"Redoing change…");

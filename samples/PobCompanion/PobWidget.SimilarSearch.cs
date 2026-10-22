@@ -71,7 +71,7 @@ public sealed partial class PobWidget
                     tradeCatalog=catalog;
                     var available=A(catalog,"slots").Select(s=>S(s,"name")).Where(slots.Contains).ToArray();
                     tradeSlot=available.Contains(slot)?slot:available.FirstOrDefault()??"";
-                    detailKind="similar-search";focusRequestSequence++;
+                    detailKind="similar-search";lastFocusRequestId = CreateFocusRequest().Id;
                 }
             },"Reading similar-item filters…");
             return true;
@@ -81,7 +81,7 @@ public sealed partial class PobWidget
         {
             detailKind=SimilarCurrent?similarReference!.ReturnKind:"";
             similarReturnGroup=SimilarCurrent?similarReference!.ReturnGroup:null;
-            similarReference=null;similarFields=[];similarModes=[];++similarGeneration;focusRequestSequence++;return true;
+            similarReference=null;similarFields=[];similarModes=[];++similarGeneration;lastFocusRequestId = CreateFocusRequest().Id;return true;
         }
         var parts=id.Split('.');
         if(parts.Length<3||parts[0]!="similar"||!long.TryParse(parts[1],out var generationId)||generationId!=similarGeneration||!SimilarCurrent)return false;

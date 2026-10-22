@@ -40,6 +40,15 @@ try {
     Key F2
     Assert-Focus 'fresh request restores remembered child' 'Widget.third'
     Focus 'Widget.header'
+    Key F11
+    Assert-Focus 'navigator request follows widget requests without collision' 'Widget.third'
+    Focus 'Widget.header'
+    Key F12
+    Assert-Focus 'repeated navigator snapshot does not steal focus' 'Widget.header'
+    Key F2
+    Assert-Focus 'widget request follows navigator request without collision' 'Widget.third'
+
+    Focus 'Widget.header'
     Key F7
     Key F2
     Assert-Focus 'disabled remembered child falls back within group' 'Widget.second'

@@ -10,7 +10,6 @@ public sealed partial class CaptureLibraryWidget : Widget
         string? SelectedId = null, bool Detail = false, bool Busy = false, bool Capturing = false, bool ConfirmDelete = false, string? Message = null, long FocusRequest = 0,
         WidgetNavigationOperation Navigation = WidgetNavigationOperation.Forward, bool Settings = false, CapturePreferences? Preferences = null, CaptureCapabilities? Capabilities = null, long PreferencesRevision = 0);
     private readonly WidgetModel<State> model;
-    private long nextFocusRequest;
     public CaptureLibraryWidget() => model = CreateModel(new State());
     protected override ValueTask OnActivatedAsync(CancellationToken token)
     {
@@ -73,7 +72,7 @@ public sealed partial class CaptureLibraryWidget : Widget
     {
         var page = await HostServices.CaptureLibrary.ListAsync(offset, token);
         if (page.Items.Count == 0 && page.TotalCount > 0 && offset > 0) page = await HostServices.CaptureLibrary.ListAsync(Math.Max(0, ((page.TotalCount - 1) / CaptureLibraryLimits.PageSize) * CaptureLibraryLimits.PageSize), token);
-        model.Update(s => s with { Page = page, FocusRequest = enterPage ? Interlocked.Increment(ref nextFocusRequest) : s.FocusRequest });
+        model.Update(s => s with { Page = page, FocusRequest = enterPage ? CreateFocusRequest().Id : s.FocusRequest });
         await LoadPreferencesAsync(token);
     }
     private void Work(Func<CancellationToken, Task> work)

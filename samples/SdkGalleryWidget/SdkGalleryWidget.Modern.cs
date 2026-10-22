@@ -219,7 +219,7 @@ public sealed partial class SdkGalleryWidget
             case "gallery.text.commit": _demo.Update(s => s with { Text = action.CommittedText ?? "" }); break;
             case "gallery.secret.commit": _demo.Update(s => s with { SecretReceived = action.CommittedText is { Length: > 0 } }); break;
             case "gallery.details": _demo.Update(s => s with { Expanded = !s.Expanded }); break;
-            case "gallery.message": _demo.Update(s => s with { Messages = s.Messages + 1, Reveal = new((s.Reveal?.RequestId ?? 0) + 1, "gallery.page-scroll", "gallery.message." + (s.Messages + 1)) }); break;
+            case "gallery.message": _demo.Update(s => s with { Messages = s.Messages + 1, Reveal = CreateFocusRequest().Reveal("gallery.page-scroll", "gallery.message." + (s.Messages + 1)) }); break;
             case "gallery.level" when action.RequestedValue is { } value && double.IsFinite(value): _demo.Update(s => s with { Level = Math.Clamp(value, 0, 100) }); break;
             case "gallery.browser.mode": _demo.Update(s => s with { ActivateBrowser = !s.ActivateBrowser }); break;
             case "gallery.webapp.account": _demo.Update(s => s with { WebAppWorkProfile = !s.WebAppWorkProfile }); break;

@@ -51,7 +51,7 @@ public sealed partial class MarketplaceWidget : Widget
         if (action.ActionId == "marketplace.search.focus")
         {
             if (state.ReviewToken is null)
-                model.Update(s => s with { Selected = null, SearchFocusRequested = true, FocusRequest = checked(s.FocusRequest + 1) });
+                model.Update(s => s with { Selected = null, SearchFocusRequested = true, FocusRequest = CreateFocusRequest().Id });
             return ValueTask.CompletedTask;
         }
         if (state.SearchFocusRequested) model.Update(s => s with { SearchFocusRequested = false });

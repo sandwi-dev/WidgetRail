@@ -780,6 +780,16 @@ the root actually changes. Publish `Value.FocusGroupEntryRequest` on the
 restoring its valid remembered child or the group's authored fallback; routine
 renders carrying the same request cannot steal focus again.
 
+For explicit focus outside navigation, allocate one intent with
+`CreateFocusRequest()` in the event handler. Use `EnterGroup(groupId)`,
+`EnterCollection(source, collectionId, target)`, `Reveal(scrollId, targetId)`, or
+`RevealCollection(source, collectionId, target)` and retain the returned request
+across renders. Navigators created by the widget share this same bounded sequence;
+page changes and hide/show do not reset it. `Id` is available for pending-intent
+supersession checks and existing explicit-ID APIs. Do not maintain a second
+counter or use a navigation revision as a request ID. Scroll-only requests remain
+scroll-only even though allocation is shared with focus requests.
+
 `Value.RootRouteCancellationToken` owns root-page work and remains active while
 a nested route is open. `Value.RouteCancellationToken` owns only the current
 route. Changing roots cancels both departed owners; pushing or popping a nested

@@ -38,9 +38,9 @@ public sealed partial class PobWidget
         }
         if (id == "trade-review-unchanged") { tradeShowUnchanged = !tradeShowUnchanged;ReturnFromModifierReading();return true; }
         if (id == "trade-review-candidates" && HasRanking && rankedItems.Length>0)
-        { tradeWorkspaceFocus = "pob.rank.list"; focusRequestSequence++; return true; }
+        { tradeWorkspaceFocus = "pob.rank.list"; lastFocusRequestId = CreateFocusRequest().Id; return true; }
         if (id == "trade-review-reading" && tradeComparisonView=="changes" && itemModifierQuery.Rows.Length>0)
-        { tradeWorkspaceFocus="pob.item.compare.reading";websiteFocus="pob.website.review.reading";websiteFocusSequence=++focusRequestSequence;return true; }
+        { tradeWorkspaceFocus="pob.item.compare.reading";websiteFocus="pob.website.review.reading";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);return true; }
         if (tradeListing is { } listing && id == "trade-review-purchase." + listing.Id)
         { tradePurchaseExpanded = !tradePurchaseExpanded; return true; }
         return false;
@@ -49,7 +49,7 @@ public sealed partial class PobWidget
     private void ReturnFromModifierReading()
     {
         if(tradeWorkspaceFocus!="pob.item.compare.reading"&&websiteFocus!="pob.website.review.reading")return;
-        tradeWorkspaceFocus="pob.item.compare.controls";websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;
+        tradeWorkspaceFocus="pob.item.compare.controls";websiteFocus="pob.website.review.tools";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);
     }
 
     private static WidgetElement ModifierCell(PobModifierLine[] lines,string status,string side,string prefix)
@@ -106,7 +106,7 @@ public sealed partial class PobWidget
                 {
                     if(!ReferenceEquals(query,itemModifierQuery)||busy||pendingBefore is null||action.ActionId!="inspect")return ValueTask.CompletedTask;
                     tradeComparisonView="items";tradeWorkspaceFocus="pob.item.compare.controls";
-                    websiteFocus="pob.website.review.tools";websiteFocusSequence=++focusRequestSequence;
+                    websiteFocus="pob.website.review.tools";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);
                     Invalidate();return ValueTask.CompletedTask;
                 }
             },

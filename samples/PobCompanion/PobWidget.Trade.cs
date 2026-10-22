@@ -28,7 +28,7 @@ public sealed partial class PobWidget
         if(HandleTradeOptions(action))return true;
         if(id=="trade")
         {
-            tradeSlot=ItemSlot;ResetTradeCatalog();detailKind="trade";focusRequestSequence++;ReadTradePreferences();
+            tradeSlot=ItemSlot;ResetTradeCatalog();detailKind="trade";lastFocusRequestId = CreateFocusRequest().Id;ReadTradePreferences();
             RefreshTradeLeagues();return true;
         }
         if(id=="trade-browse")
@@ -40,7 +40,7 @@ public sealed partial class PobWidget
             Work(async token=>await OpenTradeSearchAsync(await CalculateTradeUrlAsync(current.Xml,slot,priority,league,price,currency,mode,token),token),"Calculating upgrade search…");
             return true;
         }
-        if(id=="back"){detailKind="item";focusRequestSequence++;return true;}
+        if(id=="back"){detailKind="item";lastFocusRequestId = CreateFocusRequest().Id;return true;}
         if(id=="trade-refresh"){RefreshTradeLeagues(force:true);return true;}
         if(id=="trade-budget")tradeBudget=action.CommittedText??"";
         else if(parts is["trade-league",var league]&&int.TryParse(league,out var li)&&li>=0&&li<tradeLeagues.Length)tradeLeague=tradeLeagues[li];

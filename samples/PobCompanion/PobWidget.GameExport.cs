@@ -13,9 +13,9 @@ public sealed partial class PobWidget
     {
         var id=action.ActionId;
         if(id=="game-export" && gameDefinition.SupportsGameFileExport)
-        { gameExportName=BuildName(); gameExportPaths=[]; detailKind="game-export"; focusRequestSequence++; return true; }
+        { gameExportName=BuildName(); gameExportPaths=[]; detailKind="game-export"; lastFocusRequestId = CreateFocusRequest().Id; return true; }
         if(detailKind!="game-export")return false;
-        if(id=="back"){detailKind="menu";focusRequestSequence++;return true;}
+        if(id=="back"){detailKind="menu";lastFocusRequestId = CreateFocusRequest().Id;return true;}
         if(id=="game-export.name")gameExportName=action.CommittedText??gameExportName;
         else if(id=="game-export.author")gameExportAuthor=action.CommittedText??gameExportAuthor;
         else if(id=="game-export.description")gameExportDescription=action.CommittedText??gameExportDescription;

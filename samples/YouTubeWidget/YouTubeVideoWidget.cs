@@ -58,7 +58,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             var query = request.Payload.GetProperty("query").GetString()!.Trim();
             // Move route and focus before configuration can select Search for
             // an empty player; otherwise its old Player focus request survives.
-            _model.Update(state => state.WithRootSection(YouTubeRootSection.Discover, SearchFocusGroupId)
+            _model.Update(state => state.WithRootSection(YouTubeRootSection.Discover, SearchFocusGroupId, CreateFocusRequest().Id)
                 .WithConfigurationSummary(true).WithQueryDraft(query));
             StartSearch();
             return WidgetIntentResult.Accepted;
@@ -390,7 +390,7 @@ public sealed partial class YouTubeVideoWidget : Widget
     private void RunPlaybackLatest(YouTubePlaybackRequest request) =>
         _playbackCommand.RunLatest(request);
 
-    private static WidgetOutOfBandCommandProjection<YouTubeWidgetState, string>
+    private WidgetOutOfBandCommandProjection<YouTubeWidgetState, string>
         ApplyPlaybackRequest(
             YouTubeWidgetState state,
             YouTubePlaybackRequest request,
@@ -404,7 +404,7 @@ public sealed partial class YouTubeVideoWidget : Widget
                 break;
             case YouTubePlaybackIntent.OpenVideoIntent when request.VideoId is { } intentVideo:
                 next = state.WithPlayback(playback => playback.WithSelectedVideo(intentVideo, sequence, request.StartTimeSeconds))
-                    .WithRootSection(YouTubeRootSection.Player, PlayerFocusGroupId) with { Route = YouTubeRoute.Player };
+                    .WithRootSection(YouTubeRootSection.Player, PlayerFocusGroupId, CreateFocusRequest().Id) with { Route = YouTubeRoute.Player };
                 break;
             case YouTubePlaybackIntent.SelectResult when
                 request.ReturnFocusId is { } returnFocusId &&
@@ -412,7 +412,7 @@ public sealed partial class YouTubeVideoWidget : Widget
                 if (request.SearchRevision is { } revision && (state.Route != YouTubeRoute.Search || state.Search.Revision != revision))
                     return new(state, state.Playback.VideoId ?? "youtube.none", false);
                 next = state.WithSelectedResult(
-                    returnFocusId, selectedVideoId, sequence, PlayerFocusGroupId, request.ReturnCollectionItem);
+                    returnFocusId, selectedVideoId, sequence, PlayerFocusGroupId, request.ReturnCollectionItem, CreateFocusRequest().Id);
                 break;
             default:
                 var preferenceIntent = request.Intent is

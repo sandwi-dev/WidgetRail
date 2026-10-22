@@ -450,7 +450,7 @@ public sealed class YouTubeWidgetStateTests
 
         var opened = searching.WithSelectedResult(
             "youtube.result." + VideoId, VideoId, sequence: 1,
-            playerFocusGroupId: "youtube.player.page");
+            playerFocusGroupId: "youtube.player.page", focusRequestId: 1);
         Assert.AreEqual(YouTubeRoute.Player, opened.Route);
         Assert.AreEqual("youtube.result." + VideoId, opened.Search.ReturnFocusId);
         Assert.AreEqual(VideoId, opened.Playback.VideoId);
@@ -470,14 +470,14 @@ public sealed class YouTubeWidgetStateTests
         Assert.AreEqual(YouTubeRootSection.Discover, search.RootSection);
 
         var player = search.WithRootSection(
-            YouTubeRootSection.Player, "youtube.player.page");
+            YouTubeRootSection.Player, "youtube.player.page", focusRequestId: 1);
         Assert.AreEqual(YouTubeRoute.Link, player.Route);
         Assert.AreEqual(YouTubeRootSection.Player, player.RootSection);
         Assert.AreEqual(1L, player.RootFocusGroupEntryRequest!.RequestId);
         Assert.AreEqual("youtube.player.page", player.RootFocusGroupEntryRequest.GroupId);
 
         var discover = player.WithRootSection(
-            YouTubeRootSection.Discover, "youtube.search.page");
+            YouTubeRootSection.Discover, "youtube.search.page", focusRequestId: 2);
         Assert.AreEqual(YouTubeRoute.Search, discover.Route);
         Assert.AreEqual(2L, discover.RootFocusGroupEntryRequest!.RequestId);
         Assert.AreEqual("youtube.search.page", discover.RootFocusGroupEntryRequest.GroupId);

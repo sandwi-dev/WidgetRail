@@ -33,7 +33,7 @@ public sealed partial class PobWidget : Widget
     internal static readonly TimeSpan InformationFeedbackDuration=TimeSpan.FromSeconds(3);
     internal static readonly TimeSpan ErrorFeedbackDuration=TimeSpan.FromSeconds(8);
     private readonly Dictionary<string,int> selections = new();
-    private long focusRequestSequence;
+    private long lastFocusRequestId;
     // Stable section action/focus IDs are independent of display order.
     private static readonly string[] Sections = ["Calcs", "Tree", "Skills", "Items", "Configuration", "Notes"];
     private static readonly string[] NavigationSections = ["Calcs", "Skills", "Items", "Configuration", "Tree", "Notes"];

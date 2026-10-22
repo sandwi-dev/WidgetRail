@@ -53,13 +53,13 @@ public sealed partial class PobWidget
     private void OpenInventory(int selected=0)=>Work(async token=>
     {
         var view=await ReadInventoryAsync(result!.Xml,selected,token);
-        lock(gate){var entering=detailKind!="inventory";PublishInventory(view);detailKind="inventory";SetSection("Items");if(entering)focusRequestSequence++;}
+        lock(gate){var entering=detailKind!="inventory";PublishInventory(view);detailKind="inventory";SetSection("Items");if(entering)lastFocusRequestId = CreateFocusRequest().Id;}
     },"Reading inventory…");
 
     private void OpenItemAuthoring(int itemId)=>Work(async token=>
     {
         var response=await engine.ExecuteAsync(itemId>0?new{op="inventory-inspect",itemId}:(object)new{op="item-draft",mode="inspect",raw=pastedItem},token,result!.Xml);
-        lock(gate){authoredItem=response.State.GetProperty("authoring");authoringId=itemId;detailKind="item-author";focusRequestSequence++;}
+        lock(gate){authoredItem=response.State.GetProperty("authoring");authoringId=itemId;detailKind="item-author";lastFocusRequestId = CreateFocusRequest().Id;}
     },"Reading item editor…");
 
     private void ChangeItemDraft(object command)=>Work(async token=>
@@ -87,7 +87,7 @@ public sealed partial class PobWidget
         lock(gate)
         {
             PushHistory(undo,before.Xml);redo.Clear();result=next;pastedItem=null;itemDraftSlots=[];
-            detailKind="inventory";PublishInventory(view);focusRequestSequence++;
+            detailKind="inventory";PublishInventory(view);lastFocusRequestId = CreateFocusRequest().Id;
         }
         await RefreshCommittedMapAsync(token);
     },"Saving item to inventory…");
@@ -117,7 +117,7 @@ public sealed partial class PobWidget
         {var item=A(State,"items").FirstOrDefault(i=>I(i,"id")==detailId);if(I(item,"itemId")>0)OpenItemAuthoring(I(item,"itemId"));return true;}
         if(id=="draft-edit"&&pastedItem is not null){OpenItemAuthoring(0);return true;}
         if(id=="draft-store"&&pastedItem is not null){StoreItemDraft();return true;}
-        if(id=="draft-compare"&&pastedItem is not null){detailKind="choose-slot";focusRequestSequence++;return true;}
+        if(id=="draft-compare"&&pastedItem is not null){detailKind="choose-slot";lastFocusRequestId = CreateFocusRequest().Id;return true;}
         if(id=="item-uniques")
         {
             if(pastedItem is not null){ShowFeedback("An item draft is already open","Save or discard the draft before choosing another item.",ToastTone.Info);return true;}
@@ -163,9 +163,9 @@ public sealed partial class PobWidget
             }
             return true;
         }
-        if(id=="back"&&detailKind=="inventory"){detailKind="";focusRequestSequence++;return true;}
+        if(id=="back"&&detailKind=="inventory"){detailKind="";lastFocusRequestId = CreateFocusRequest().Id;return true;}
         if(id=="back"&&detailKind=="item-author")
-        {if(authoringId>0)OpenInventory(authoringId);else{detailKind="";focusRequestSequence++;}return true;}
+        {if(authoringId>0)OpenInventory(authoringId);else{detailKind="";lastFocusRequestId = CreateFocusRequest().Id;}return true;}
         if(parts is ["author-setting-choice",var settingId,var selection]&&int.TryParse(settingId,out var settingIndex)&&int.TryParse(selection,out var selectedOption))
         {
             if(!(detailKind=="item-author"||featurePicker?.Prefix=="author-setting-choice."+settingIndex+".")||settingIndex<0||settingIndex>=A(authoredItem,"controls").Length)return true;

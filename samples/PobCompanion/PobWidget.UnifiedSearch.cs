@@ -49,7 +49,7 @@ public sealed partial class PobWidget
             if(category is not null){unifiedCategory=category;unifiedSearchText="";unifiedSelectedResult=null;}
             if(unifiedCategory!="All"&&!cache.Index.Categories.Contains(unifiedCategory)){unifiedCategory="All";unifiedSelectedResult=null;}
             unifiedCache=cache;unifiedSearchOpen=true;unifiedNotice="";
-            unifiedSearchReturnRequest=unifiedSelectedResult is null?0:++focusRequestSequence;
+            unifiedSearchReturnRequest=unifiedSelectedResult is null?0:(lastFocusRequestId = CreateFocusRequest().Id);
             unifiedSuggestionSource="pob.unified."+Guid.NewGuid().ToString("N");
             unifiedSuggestions=new(cache.Index.Entries.Select(e=>(e.Title,e.SearchText,e.Category+" · "+e.Context)),160);
             Invalidate();
@@ -228,9 +228,9 @@ public sealed partial class PobWidget
         },"Opening calculation sources…");
     }
     private void SetUnifiedFocus(string target)
-    {unifiedTargetId=target;unifiedIndexedKind=null;unifiedTargetSection=section;unifiedTargetDetail=detailKind;unifiedFocusRequest=++focusRequestSequence;quickControlTarget=null;historyFocusRequested=false;}
+    {unifiedTargetId=target;unifiedIndexedKind=null;unifiedTargetSection=section;unifiedTargetDetail=detailKind;unifiedFocusRequest=(lastFocusRequestId = CreateFocusRequest().Id);quickControlTarget=null;historyFocusRequested=false;}
     private void SetUnifiedIndexedFocus(string kind,string key)
-    {unifiedTargetId=null;unifiedIndexedKind=kind;unifiedIndexedKey=key;unifiedTargetSection=section;unifiedTargetDetail=detailKind;unifiedFocusRequest=++focusRequestSequence;quickControlTarget=null;historyFocusRequested=false;}
+    {unifiedTargetId=null;unifiedIndexedKind=kind;unifiedIndexedKey=key;unifiedTargetSection=section;unifiedTargetDetail=detailKind;unifiedFocusRequest=(lastFocusRequestId = CreateFocusRequest().Id);quickControlTarget=null;historyFocusRequested=false;}
 
     private int UnifiedWarningCount()=>A(State,"warnings").Length+A(State,"items").Sum(item=>A(item,"warnings").Length)+(PobMainSkillWarning.Read(State)is null?0:1);
     private WidgetElement UnifiedWarningSummary()=>UI.Stack("pob.warnings",Button("Warnings ("+UnifiedWarningCount()+")","unified-warnings"));

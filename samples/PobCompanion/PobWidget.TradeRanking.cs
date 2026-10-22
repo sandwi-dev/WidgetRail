@@ -56,7 +56,7 @@ public sealed partial class PobWidget
             rankingSlot=tradeSlot;rankingBuild="";rankingBaseline="";rankingWeights="";rankingSummary="";rankingSelected="";
             rankingVisible=false;rankingEditing=false;rankingSkippedExpanded=false;rankingRates=null;
             tradeCandidates.Clear();tradeListing=null;tradeBrowsing=false;previewSlot=null;websiteReview=false;
-            websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;
+            websiteFocus="pob.website.browser";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);
             File.Delete(Path.Combine(dataDirectory,documentId+".ranking.json"));
         }
     }
@@ -101,7 +101,7 @@ public sealed partial class PobWidget
         try
         {
             var catalog=(await engine.ExecuteAsync(new{op="trade-catalog",slot},token,before.Xml)).State;
-            lock(gate){rankingSlots=A(catalog,"slots");rankingVisible=true;websiteFocus="pob.rank.tools";websiteFocusSequence=++focusRequestSequence;}
+            lock(gate){rankingSlots=A(catalog,"slots");rankingVisible=true;websiteFocus="pob.rank.tools";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);}
             if(!rankingSlots.Any(s=>S(s,"name")==slot))throw new IOException("Choose an active equipment slot for evaluation.");
             await engine.ExecuteAsync(new{op="trade-rank-begin",slot,priority=tradePriority,weights=TradeWeights()},token,before.Xml);
             for(var offset=0;offset<inputs.Length;offset+=10)
@@ -138,7 +138,7 @@ public sealed partial class PobWidget
                 rankingSort=finalOrder;rankingRates=ordered.Rates;rankedItems=rows;rankingSkipped=skipped.ToArray();rankingBaseline=baseline;rankingWeights=weights;rankingBuild=documentId??"";
                 if(sortingNotice is not null)ShowFeedback("Price ordering unavailable",sortingNotice,ToastTone.Warning);
                 rankingSummary=$"{rows.Length} ranked · {skipped.Count} skipped · {inputs.Length} of {rankingInputs.Count} loaded evaluated · {timer.Elapsed.TotalSeconds:F1}s";
-                rankingVisible=true;rankingEditing=false;rankingSkippedExpanded=false;websiteFocus="pob.rank.tools";websiteFocusSequence=++focusRequestSequence;
+                rankingVisible=true;rankingEditing=false;rankingSkippedExpanded=false;websiteFocus="pob.rank.tools";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);
             }
         }
         catch(OperationCanceledException)
@@ -191,14 +191,14 @@ public sealed partial class PobWidget
                 lock(gate){rankedItems=sorted.Rows;rankingSort=order;rankingRates=sorted.Rates;}
             },"Sorting evaluated listings…");return true;
         }
-        if(id=="trade-rank-edit"){rankingEditing=!rankingEditing;websiteFocus="pob.rank.tools";websiteFocusSequence=++focusRequestSequence;return true;}
+        if(id=="trade-rank-edit"){rankingEditing=!rankingEditing;websiteFocus="pob.rank.tools";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);return true;}
         if(id=="trade-rank-skipped"){rankingSkippedExpanded=!rankingSkippedExpanded;return true;}
-        if(id=="trade-rank-hide"){rankingVisible=false;websiteReview=false;websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;return true;}
-        if(id=="trade-rank-focus"){tradeWorkspaceFocus="pob.item.compare.controls";websiteFocus="pob.rank.tools";websiteFocusSequence=++focusRequestSequence;return true;}
+        if(id=="trade-rank-hide"){rankingVisible=false;websiteReview=false;websiteFocus="pob.website.browser";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);return true;}
+        if(id=="trade-rank-focus"){tradeWorkspaceFocus="pob.item.compare.controls";websiteFocus="pob.rank.tools";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);return true;}
         if(id=="trade-rank-show"&&HasRanking)
         {
             rankingVisible=true;
-            Work(async token=>{await ReadRankingSlotsAsync(token);await OpenWebsiteAsync(websiteUrl??rankingInputs[0].Listing.Url,token);lock(gate){websiteFocus=rankedItems.Length>0?"pob.rank.list":"pob.rank.tools";websiteFocusSequence=++focusRequestSequence;}},"Opening evaluated results…");return true;
+            Work(async token=>{await ReadRankingSlotsAsync(token);await OpenWebsiteAsync(websiteUrl??rankingInputs[0].Listing.Url,token);lock(gate){websiteFocus=rankedItems.Length>0?"pob.rank.list":"pob.rank.tools";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);}},"Opening evaluated results…");return true;
         }
         if(id=="trade-rank-recent"&&tradeCandidates.Count>0)
         {

@@ -355,3 +355,56 @@ Completion requires the migrated widget code to express domain intent without th
 - Reproduction: the new SDK navigation test failed before the change (`detail.second` was not remembered), then passed. Focused Playnite navigation/achievement/model tests: 5 passed, 0 failed. Native verification remains pending with F1.
 - F11 assessment narrowed: explicit field declarations are justified, but a new shared form-navigation abstraction is not yet justified. Preserve Settings' existing navigation pass initially; it also serves non-form pages and responsive controls.
 - Worktree: `C:/Users/dwive/.codex/worktrees/sdk-authoring-improvements/WidgetRail`. Unrelated Catalogue changes remain in the primary checkout.
+
+### Focus allocation consumer coverage
+
+F1 now uses one widget-instance allocator shared with every SDK-created navigator.
+`CreateFocusRequest()` captures an immutable intent once per event; its helpers
+produce group entry, indexed/discovered collection entry, and scroll-only reveal.
+The explicit-ID APIs remain compatible. Pending-intent IDs remain where they
+protect supersession; they no longer allocate independent sequences.
+
+| Consumer | Disposition |
+| --- | --- |
+| WidgetNavigator and Playnite | Shared allocation; Playnite's model counter removed |
+| PoB | Shared allocation throughout; retain last-intent comparisons for search and website supersession |
+| Spotify | Navigator IDs no longer rewritten; collection return IDs allocated at Back events |
+| YouTube Music | Shared focus/reveal allocation; no change to queue reveal policy |
+| Settings and Capture Library | Entry events allocate centrally |
+| Games and Apps | Navigator request identity preserved; separate indexed selection intents allocate centrally |
+| Marketplace | Search entry allocates centrally; unrelated Catalogue work excluded |
+| Game Help, YouTube video, Full Application, SDK Gallery | Central allocation; YouTube pure state transitions receive explicit IDs |
+| Templates and other shipping widgets | No matching direct allocation; navigators inherit the shared allocator |
+| Legacy fixtures and raw protocol tests | Keep explicit IDs as intentional protocol test inputs |
+| WidgetCursorResource navigation | Separate protocol stream; not changed |
+
+Native focus policy: 22 checks passed, including explicit request → navigator →
+explicit request interleaving, repeated-snapshot non-interference, deferred entry,
+owner replacement, passive presentation, and scope containment. Screenshot inspected;
+this is a focus fixture, not a themed product-layout acceptance run.
+
+Managed coverage so far: SDK 169/169, Spotify 87/87, YouTube Music 42/42,
+Settings 93/93, YouTube video 64/64, Games and Apps 94/94, Capture Library 27/27,
+Game Help 48/48, Full Application 5/5, Marketplace 18/18. SDK Gallery and WinUI
+validation build passed. Engine-backed PoB checks are recorded after completion.
+Evidence is under `artifacts/authoring/` in this worktree.
+
+### Reassessments from implementation inspection
+
+- F12: preserve the existing small Spotify page-or-pin demand logic. A new generic
+  lease graph is not justified solely to replace this tested composition. Revisit
+  only if scoped resources and another real consumer make it simpler.
+- F13: narrow to adopting the existing fixed ticker in Settings. Spotify's two
+  wake meanings (reschedule versus immediate read) and provider backoff remain local.
+- F15: reject blanket removal. The widget cache suppresses operation scheduling;
+  SDK coalescing suppresses transport. Removing the former adds work on playback ticks.
+- F16: reject mechanical optimistic-command migration. The current SDK model
+  abstraction does not replace Spotify's acknowledgment/observation boundary.
+  Investigate the separate inferred whole-snapshot rollback risk with a reproduction.
+
+PoB engine-backed F1 checks passed for both games: navigation restore 17/17 each;
+unified search 170/170 (PoE1) and 164/164 (PoE2); skill management 73/73 and 74/74.
+An initial runner invocation lacked required arguments, and a subsequent probe
+used a PoE2 fixture for PoE1; neither reached the relevant tests. Corrected inputs
+produced the passing results above. The final rebuild includes the pending-intent
+field rename; that rename changes no request behavior.

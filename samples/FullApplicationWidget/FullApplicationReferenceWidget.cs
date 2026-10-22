@@ -17,6 +17,7 @@ public sealed class FullApplicationReferenceWidget : Widget
     private ReferenceDocument? _selected;
     private IndexedCollectionFocusTarget? _returnItem;
     private long? _returnRevision;
+    private WidgetFocusRequest? _returnFocus;
     private bool _loadError;
 
     public FullApplicationReferenceWidget() : this(new ReferenceLibrary()) { }
@@ -74,7 +75,7 @@ public sealed class FullApplicationReferenceWidget : Widget
                     PreferredHeight = 620, MinimumWidth = 360, MinimumHeight = 300 })
             {
                 FocusGroupEntryRequest = !details && navigation.Revision == _returnRevision && _returnItem is { } target
-                    ? _documents.Enter(CollectionId, navigation.Revision, target) : null,
+                    ? _returnFocus?.EnterCollection(_documents, CollectionId, target) : null,
             };
         }
     }
@@ -87,6 +88,7 @@ public sealed class FullApplicationReferenceWidget : Widget
             if (_navigation.TryHandleBack(action))
             {
                 _returnRevision = _navigation.Value.Revision;
+                _returnFocus = CreateFocusRequest();
                 Invalidate();
             }
             else if (IsActive && _navigation.Value.Route == ReferenceRoute.Library && action.ActionId is "full-app.refresh" or "full-app.retry")

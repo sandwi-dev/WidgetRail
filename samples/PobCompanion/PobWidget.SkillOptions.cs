@@ -98,7 +98,7 @@ public sealed partial class PobWidget
         Work(async token=>
         {
             if(!SkillOptionsCurrent)await RefreshSkillOptionsAsync(group,token);
-            lock(gate){detailKind="skill-options";focusRequestSequence++;}
+            lock(gate){detailKind="skill-options";lastFocusRequestId = CreateFocusRequest().Id;}
         },"Reading skill options…");
     }
     private List<WidgetElement> SkillOptionsContent()

@@ -55,7 +55,7 @@ public sealed partial class PobWidget
                 var retry=savedTradeUrl??tradeListing?.Url??websiteUrl;
                 if(retry is not null)Work(token=>OpenWebsiteAsync(retry,token),"Restoring trade results…");
             }
-            else{websiteVisible=true;websiteFocus="pob.website.browser";websiteFocusSequence=++focusRequestSequence;Invalidate();}
+            else{websiteVisible=true;websiteFocus="pob.website.browser";websiteFocusSequence=(lastFocusRequestId = CreateFocusRequest().Id);Invalidate();}
             return true;
         }
         if(overlayWebsites&&websiteActions.TryGetValue(action.ActionId,out var url))

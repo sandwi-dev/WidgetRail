@@ -26,10 +26,11 @@ public sealed record WidgetView(
 
     /// <summary>
     /// Optional one-shot host request to enter an authored remembered-child
-    /// focus group. Authors must advance RequestId for each new request.
+    /// focus group. Create an intent with Widget.CreateFocusRequest once per event
+    /// and retain the request across renders.
     /// </summary>
     public FocusGroupEntryRequest? FocusGroupEntryRequest { get; init; }
-    /// <summary>Reveal a child at the start of its scroll viewport. Advance RequestId for each user-requested reveal.</summary>
+    /// <summary>Reveal a child without focus. Allocate once per event with Widget.CreateFocusRequest.</summary>
     public ScrollRevealRequest? ScrollRevealRequest { get; init; }
 
     /// <summary>

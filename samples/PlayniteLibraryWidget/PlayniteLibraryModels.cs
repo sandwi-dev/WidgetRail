@@ -83,7 +83,6 @@ internal sealed record PlayniteLibraryRenderState
     internal bool SetupDialogOpen { get; init; }
     // Focus-group request IDs are monotonic across every page and modal in
     // this widget, not independently within each destination.
-    internal long FocusRequestSequence { get; init; }
     internal PlayniteLibraryFilterDraft? FilterDraft { get; init; }
     // Collection is the Home route's independent query/selection model.
     internal required PlayniteLibraryCollectionState Collection { get; init; }

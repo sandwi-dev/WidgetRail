@@ -99,7 +99,7 @@ public sealed partial class SettingsWidget
                 {
                     var selectedId = _installedState.SelectedBuiltInId ?? _installedState.SelectedInstalledId;
                     installedReturnKey = selectedId is null ? null : SettingsInstalledRow.KeyFor(selectedId, _installedState.SelectedBuiltInId is not null);
-                    installedEntryRevision++;
+                    installedEntryRevision = CreateFocusRequest().Id;
                 }
                 installedListWasShown = _page == SettingsPage.InstalledWidgets;
             }

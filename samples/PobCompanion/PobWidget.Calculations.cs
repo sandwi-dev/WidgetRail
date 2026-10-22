@@ -66,7 +66,7 @@ public sealed partial class PobWidget
     private void OpenCalculations(string? stat=null,CalculationSelection? selection=null)=>Work(async token=>
     {
         var view=await ReadCalculationsAsync(result!.Xml,token,stat,selection);
-        lock(gate){PublishCalculations(view);detailKind="calculations";calculationSearch="";focusRequestSequence++;}
+        lock(gate){PublishCalculations(view);detailKind="calculations";calculationSearch="";lastFocusRequestId = CreateFocusRequest().Id;}
     },"Reading detailed calculations…");
 
     private bool HandleCalculationAction(WidgetActionEvent action)
@@ -88,7 +88,7 @@ public sealed partial class PobWidget
             if(!minion||B(calculationCatalog.GetProperty("context"),"hasMinion"))OpenCalculations(CurrentCalculationStat(),calculationSelection with{Minion=minion});
             return true;
         }
-        if(id=="back"){detailKind="";focusRequestSequence++;return true;}
+        if(id=="back"){detailKind="";lastFocusRequestId = CreateFocusRequest().Id;return true;}
         if(id=="calculation-search"){calculationSearch=action.CommittedText??"";return true;}
         if(id.StartsWith("calculation-section.",StringComparison.Ordinal))
         {

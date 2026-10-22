@@ -23,7 +23,7 @@ public sealed partial class PobWidget
             {
                 var reply=await engine.ExecuteAsync(new{op="timeless-catalog"},token,result!.Xml);
                 var rows=await ReadTimelessRowsAsync(reply.State,reply.Xml,token);
-                lock(gate){timelessRows=rows;timelessState=reply.State;detailKind="timeless";focusRequestSequence++;}
+                lock(gate){timelessRows=rows;timelessState=reply.State;detailKind="timeless";lastFocusRequestId = CreateFocusRequest().Id;}
             },"Reading Timeless Jewel finder…");return true;
         }
         if(parts is ["timeless-fallback-choice",var fallbackValue]&&int.TryParse(fallbackValue,out var fallbackOption)&&A(timelessState,"settings").Any(s=>S(s,"key")=="nodeSelect"&&A(s,"options").Any(o=>I(o,"id")==fallbackOption)))
@@ -32,7 +32,7 @@ public sealed partial class PobWidget
             A(timelessState,"settings").Any(s=>S(s,"key")==key&&A(s,"options").Any(o=>I(o,"id")==option)))
         {featurePicker=null;detailKind="timeless";Edit(new{op="timeless-edit",control=key,value=option});return true;}
         if(detailKind!="timeless")return false;
-        if(id=="back"){detailKind="";focusRequestSequence++;return true;}
+        if(id=="back"){detailKind="";lastFocusRequestId = CreateFocusRequest().Id;return true;}
         if(id=="timeless-fallback-picker")
         {var setting=A(timelessState,"settings").First(s=>S(s,"key")=="nodeSelect");OpenFeaturePicker("Add fallback modifier","timeless-fallback-choice.",A(setting,"options"));return true;}
         if(parts is ["timeless-picker",var control])

@@ -157,6 +157,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Paged resources coordinate bounded automatic collection loading", WidgetPagedResourceTests.Run),
     ("Cursor resources append bounded keyed collection windows", WidgetCursorResourceTests.Run),
     ("Hierarchical widget IDs stay stable bounded and opaque", WidgetIdsTests.Run),
+    ("Widget focus requests share one bounded instance sequence", WidgetFocusRequestTests.Run),
     ("Widget navigation owns bounded routes scopes focus Back and cancellation", WidgetNavigatorTests.Run),
     ("Navigation shells share responsive content and preserve controller traversal", NavigationShellTests.ComposesOneResponsiveContentTree),
     ("Navigation shell legacy overloads match frozen pre-extraction trees", NavigationShellTests.LegacyOverloadsMatchFrozenPreExtractionTrees),

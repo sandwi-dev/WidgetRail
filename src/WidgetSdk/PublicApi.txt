@@ -1301,6 +1301,11 @@ method WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.Equals(object? o
 method WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetFocusPreviewSource<TContext>.Publish(TContext context) -> void
+method WidgetRail.WidgetSdk.WidgetFocusRequest.EnterCollection<TQuery,TItem>(WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
+method WidgetRail.WidgetSdk.WidgetFocusRequest.EnterCollection<TQuery,TItem>(WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
+method WidgetRail.WidgetSdk.WidgetFocusRequest.EnterGroup(string groupId) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
+method WidgetRail.WidgetSdk.WidgetFocusRequest.Reveal(string scrollId, string targetId) -> WidgetRail.WidgetProtocol.ScrollRevealRequest
+method WidgetRail.WidgetSdk.WidgetFocusRequest.RevealCollection<TQuery,TItem>(WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget item) -> WidgetRail.WidgetProtocol.ScrollRevealRequest
 method WidgetRail.WidgetSdk.WidgetFocusTargetResult.Deconstruct(out string? Id, out WidgetRail.WidgetSdk.WidgetFocusTargetState State) -> void
 method WidgetRail.WidgetSdk.WidgetFocusTargetResult.Equals(object obj) -> bool
 method WidgetRail.WidgetSdk.WidgetFocusTargetResult.GetHashCode() -> int
@@ -3052,6 +3057,7 @@ property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.ResetGene
 property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.StartIndex { get; set; }
 property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.WindowGeneration { get; set; }
+property long WidgetRail.WidgetSdk.WidgetFocusRequest.Id { get; }
 property long WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetMediaSession.CapturedAtUnixMilliseconds { get; set; }
 property long WidgetRail.WidgetSdk.WidgetMediaSession.DurationMilliseconds { get; set; }
@@ -3656,6 +3662,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetEncodedArtwork : WidgetRail.WidgetS
 type sealed class WidgetRail.WidgetSdk.WidgetFileArtwork : WidgetRail.WidgetSdk.WidgetArtworkSource
 type sealed class WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext> : System.IEquatable<WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>>
 type sealed class WidgetRail.WidgetSdk.WidgetFocusPreviewSource<TContext> : WidgetRail.WidgetSdk.IWidgetIndexedCollection
+type sealed class WidgetRail.WidgetSdk.WidgetFocusRequest
 type sealed class WidgetRail.WidgetSdk.WidgetHostServices
 type sealed class WidgetRail.WidgetSdk.WidgetIcon : System.IEquatable<WidgetRail.WidgetSdk.WidgetIcon>
 type sealed class WidgetRail.WidgetSdk.WidgetIdScope

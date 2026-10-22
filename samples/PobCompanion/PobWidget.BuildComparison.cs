@@ -40,7 +40,7 @@ public sealed partial class PobWidget
             buildComparisonReturn = detailKind == "library" ? "library" : "menu";
             detailKind = "build-comparison"; buildComparison = null; buildComparisonDetail = -1;
             buildComparisonTarget = BuildComparisonChoices().FirstOrDefault(choice => choice.SavedId == librarySelection)?.Id ?? BuildComparisonChoices().FirstOrDefault()?.Id;
-            buildComparisonReturnRow = null; buildComparisonReading = null; buildComparisonFilter = ""; focusRequestSequence++; return true;
+            buildComparisonReturnRow = null; buildComparisonReading = null; buildComparisonFilter = ""; lastFocusRequestId = CreateFocusRequest().Id; return true;
         }
         if (detailKind != "build-comparison") return false;
         if (id.StartsWith("build-comparison-context.", StringComparison.Ordinal))
@@ -56,7 +56,7 @@ public sealed partial class PobWidget
             ++buildComparisonRequest; Operations.Cancel("pob.build-comparison"); buildComparisonRunning = false;
             if (buildComparisonDetail >= 0 || buildComparisonReading is not null) { buildComparisonDetail = -1; buildComparisonReading = null; }
             else detailKind = buildComparisonReturn;
-            focusRequestSequence++; return true;
+            lastFocusRequestId = CreateFocusRequest().Id; return true;
         }
         if (id.StartsWith("build-comparison-target.", StringComparison.Ordinal))
         {
@@ -212,7 +212,7 @@ public sealed partial class PobWidget
                     if (action.ActionId != "inspect" || !ReferenceEquals(query, buildComparisonQuery) ||
                         !ReferenceEquals(query.Comparison, buildComparison) || !BuildComparisonCurrent || buildComparisonRunning || busy) return ValueTask.CompletedTask;
                     buildComparisonReading = row; buildComparisonDetail = row.DifferenceIndex; buildComparisonReturnRow = row.Key;
-                    focusRequestSequence++;
+                    lastFocusRequestId = CreateFocusRequest().Id;
                 }
                 Invalidate(); return ValueTask.CompletedTask;
             }
@@ -253,10 +253,10 @@ public sealed partial class PobWidget
         if (buildComparisonDetail < 0 && buildComparisonReading is null && BuildComparisonCurrent && buildComparisonReturnRow is { } key && buildComparisonCollection is not null)
         {
             var index = Array.FindIndex(buildComparisonQuery.Rows, row => row.Key == key);
-            if (index >= 0) return buildComparisonCollection.Enter("pob.build-comparison.rows", focusRequestSequence,
+            if (index >= 0) return buildComparisonCollection.Enter("pob.build-comparison.rows", lastFocusRequestId,
                 buildComparisonCollection.FocusTarget("pob.build-comparison.rows", new(key), index));
         }
-        return new() { RequestId = focusRequestSequence, GroupId = "pob.build-comparison.tools" };
+        return new() { RequestId = lastFocusRequestId, GroupId = "pob.build-comparison.tools" };
     }
     private static string BuildComparisonStatLabel(string key) => key switch
     {

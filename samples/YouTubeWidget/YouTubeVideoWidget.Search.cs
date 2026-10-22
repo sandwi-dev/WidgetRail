@@ -545,7 +545,7 @@ public sealed partial class YouTubeVideoWidget
                 _model.Update(state => state.WithSetupRoute(action.FocusedElementId, action.FocusedCollectionItem));
                 return true;
             case SetupBackActionId:
-                _model.Update(state => state.WithSetupReturnRoute());
+                _model.Update(state => state.WithSetupReturnRoute(CreateFocusRequest().Id));
                 return true;
             case SearchRouteActionId:
                 _model.Update(state => state.Setup.Configured
@@ -555,7 +555,7 @@ public sealed partial class YouTubeVideoWidget
             case SearchFocusActionId:
                 if (IsActive)
                     _model.Update(state => state.Route == YouTubeRoute.Search && state.RootFocusRequestId < ProtocolConstants.MaximumFocusGroupEntryRequestId
-                        ? state with { RootFocusRequestId = state.RootFocusRequestId + 1, RootFocusGroupId = SearchFieldGroupId,
+                        ? state with { RootFocusRequestId = CreateFocusRequest().Id, RootFocusGroupId = SearchFieldGroupId,
                             RootInitialFocusId = "youtube.search.query" } : state);
                 return true;
             case LinkRouteActionId:
@@ -587,7 +587,7 @@ public sealed partial class YouTubeVideoWidget
                 return true;
             case "youtube.player.return":
                 _model.Update(state => state.WithRootSection(
-                    YouTubeRootSection.Player, PlayerFocusGroupId));
+                    YouTubeRootSection.Player, PlayerFocusGroupId, CreateFocusRequest().Id));
                 return true;
             case SearchCommitActionId when action.CommittedText is { } query:
                 _model.Update(state => state.WithQueryDraft(query));
@@ -654,7 +654,7 @@ public sealed partial class YouTubeVideoWidget
             var groupId = destination == YouTubeRootSection.Discover
                 ? SearchFocusGroupId
                 : PlayerFocusGroupId;
-            return state.WithRootSection(destination, groupId);
+            return state.WithRootSection(destination, groupId, CreateFocusRequest().Id);
         });
     }
 

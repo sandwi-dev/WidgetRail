@@ -14,7 +14,6 @@ public sealed partial class GamesAppsWidget
     private readonly WidgetIndexedCollection<AppQuery, WidgetAppLibraryItem> _indexedRunning;
     private AppQuery? _libraryQuery;
     private AppQuery? _runningQuery;
-    private long _viewFocusSequence;
     private long _lastFocusNavigationRevision = -1;
     private FocusGroupEntryRequest? _viewFocusRequest;
     private IndexedCollectionFocusTarget? _requestedItemFocus;
@@ -81,7 +80,7 @@ public sealed partial class GamesAppsWidget
         {
             _lastFocusNavigationRevision = navigation.Revision;
             _viewFocusRequest = navigation.FocusGroupEntryRequest is { } entry
-                ? entry with { RequestId = ++_viewFocusSequence } : null;
+                ? entry : null;
         }
         if (_viewFocusRequest?.IndexedItem is { } old &&
             (state.Collection?.Source.SourceId != old.SourceId || state.Collection.Source.QueryGeneration != old.QueryGeneration))
@@ -96,7 +95,7 @@ public sealed partial class GamesAppsWidget
         }
         if (_requestedItemFocus is { } target && state.Collection?.Source.QueryGeneration == target.QueryGeneration &&
             state.Collection.Source.SourceId == target.SourceId)
-            _viewFocusRequest = _indexedLibrary.Enter(target.CollectionId, ++_viewFocusSequence, target);
+            _viewFocusRequest = CreateFocusRequest().EnterCollection(_indexedLibrary, target.CollectionId, target);
         _requestedItemFocus = null;
         return _viewFocusRequest;
     }

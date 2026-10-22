@@ -32,9 +32,7 @@ public sealed partial class StandaloneMusicWidget : Widget
     }
     private bool _loading, _signingIn, _initialized;
     private long _pageGeneration;
-    private long _focusSequence;
     private FocusGroupEntryRequest? _focusRequest;
-    private long _queueRevealSequence;
     private ScrollRevealRequest? _queueReveal;
     private string? _panel;
     private string? _panelReturnFocus;
@@ -179,17 +177,17 @@ public sealed partial class StandaloneMusicWidget : Widget
         : _kind == "library" && _service.State.Connected ? _browse.ScrollId : _browse.GroupId;
     private void EnterContent()
     {
-        _focusSequence++;
+        var request = CreateFocusRequest();
         if (_panel is null && _browse.Items.Length > 0 && !(_tab == "library" && !_service.State.Connected))
         {
             var index = _panelReturnFocus is { } id && id.StartsWith("item.", StringComparison.Ordinal) && int.TryParse(id.AsSpan(5), out var parsed)
                 ? Math.Clamp(parsed, 0, _browse.Items.Length - 1) : -1;
-            _focusRequest = _browse.Collection.Enter(_browse.ScrollId, _focusSequence, index < 0 ? null :
+            _focusRequest = request.EnterCollection(_browse.Collection, _browse.ScrollId, index < 0 ? null :
                 _browse.Collection.FocusTarget(_browse.ScrollId, _browse.Items[index].Key, index));
             _panelReturnFocus = null;
             return;
         }
-        _focusRequest = new() { RequestId = _focusSequence, GroupId = ContentGroupId };
+        _focusRequest = request.EnterGroup(ContentGroupId);
     }
 
     private void LoadPage(string? returnFocus = null, bool refresh = true)
@@ -267,10 +265,10 @@ public sealed partial class StandaloneMusicWidget : Widget
             {
                 // Queue is locally owned and available synchronously. No deferred
                 // request is issued later if entry has no playing occurrence.
-                _focusRequest = new() { RequestId = ++_focusSequence, GroupId = "music.navigation.header" };
+                _focusRequest = CreateFocusRequest().EnterGroup("music.navigation.header");
                 var current = _service.State.Current;
                 var entry = _browse.Items.FirstOrDefault(entry => ReferenceEquals(entry.Item, current));
-                _queueReveal = entry is null ? null : _browse.Collection.Reveal(_browse.ScrollId, ++_queueRevealSequence,
+                _queueReveal = entry is null ? null : CreateFocusRequest().RevealCollection(_browse.Collection, _browse.ScrollId,
                     _browse.Collection.FocusTarget(_browse.ScrollId, entry.Key, entry.Index));
             }
             Invalidate();

@@ -29,7 +29,7 @@ public sealed partial class PobWidget
         unifiedTargetId=null;unifiedIndexedKind=null;unifiedIndexedKey=null;
         // A deliberate collapse also handles pointer invocation while native
         // focus was in a child that is being removed. Never focus on refresh.
-        quickControlTarget = group; focusRequestSequence++;
+        quickControlTarget = group; lastFocusRequestId = CreateFocusRequest().Id;
         return true;
     }
     private ContainerElement DisclosureButton(PobDisclosure disclosure, string title, string actionPrefix, string id, string group)

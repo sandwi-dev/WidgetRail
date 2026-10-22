@@ -79,7 +79,7 @@ public sealed partial class PobWidget
                     {
                         var expanded=ExpandedPassives(query.Context);
                         if(!expanded.Add(entry.Name))expanded.Remove(entry.Name);
-                        passiveResult=null;quickControlTarget=null;historyFocusRequested=false;focusRequestSequence++;Invalidate();return ValueTask.CompletedTask;
+                        passiveResult=null;quickControlTarget=null;historyFocusRequested=false;lastFocusRequestId = CreateFocusRequest().Id;Invalidate();return ValueTask.CompletedTask;
                     }
                     return OnActionAsync(action with{ActionId=entry.Key},token);
                 }

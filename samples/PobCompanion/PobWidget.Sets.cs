@@ -15,11 +15,11 @@ public sealed partial class PobWidget
     private bool HandleSetAction(WidgetActionEvent action)
     {
         var id=action.ActionId;var parts=id.Split('.');
-        if(id=="sets"){detailKind="sets";managedSetId=I(ManagedSets().FirstOrDefault(s=>B(s,"active")),"id");focusRequestSequence++;return true;}
+        if(id=="sets"){detailKind="sets";managedSetId=I(ManagedSets().FirstOrDefault(s=>B(s,"active")),"id");lastFocusRequestId = CreateFocusRequest().Id;return true;}
         if(detailKind!="sets")return false;
-        if(id=="back"){detailKind="menu";focusRequestSequence++;return true;}
+        if(id=="back"){detailKind="menu";lastFocusRequestId = CreateFocusRequest().Id;return true;}
         if(parts.Length==2&&parts[0]=="sets-kind"&&SetKinds.Any(k=>k.Kind==parts[1]))
-        {managedSetKind=parts[1];managedSetId=I(ManagedSets().FirstOrDefault(s=>B(s,"active")),"id");newSetName="";focusRequestSequence++;return true;}
+        {managedSetKind=parts[1];managedSetId=I(ManagedSets().FirstOrDefault(s=>B(s,"active")),"id");newSetName="";lastFocusRequestId = CreateFocusRequest().Id;return true;}
         if(parts.Length==2&&parts[0]=="sets-select"&&int.TryParse(parts[1],out var selected)&&ManagedSets().Any(s=>I(s,"id")==selected))
         {managedSetId=selected;newSetName="";return true;}
         if(id=="sets-name"){newSetName=action.CommittedText??"";return true;}

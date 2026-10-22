@@ -65,33 +65,33 @@ public sealed partial class PobWidget
 
     private FocusGroupEntryRequest? ContentFocusRequest()
     {
-        if(busy||focusRequestSequence==0)return null;
-        if(similarReturnGroup is {} similarReturn)return new(){RequestId=focusRequestSequence,GroupId=similarReturn};
-        if(detailKind=="similar-search"&&SimilarCurrent)return new(){RequestId=focusRequestSequence,GroupId="pob.similar.tools"};
+        if(busy||lastFocusRequestId==0)return null;
+        if(similarReturnGroup is {} similarReturn)return new(){RequestId=lastFocusRequestId,GroupId=similarReturn};
+        if(detailKind=="similar-search"&&SimilarCurrent)return new(){RequestId=lastFocusRequestId,GroupId="pob.similar.tools"};
         if(detailKind=="build-comparison")return BuildComparisonFocusRequest();
         if(UnifiedIndexedFocusRequest() is {} unified)return unified;
-        if(detailKind=="choose-slot"&&pendingBefore is not null)return new(){RequestId=focusRequestSequence,GroupId=tradeWorkspaceFocus};
-        if(detailKind=="library"&&libraryOpenFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.library.open-action"};
-        if(modifierFocusRequested&&section=="Configuration"&&configSection=="Custom modifiers"&&string.IsNullOrWhiteSpace(filter))return new(){RequestId=focusRequestSequence,GroupId="pob.custom.edit-tools"};
-        if(quickControlTarget is {} target && quickControlTargets.Contains(target))return new(){RequestId=focusRequestSequence,GroupId=target};
-        if(historyFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.buildtools"};
-        if(detailKind=="skill"&&skillWorkspaceFocusRequested)return new(){RequestId=focusRequestSequence,
+        if(detailKind=="choose-slot"&&pendingBefore is not null)return new(){RequestId=lastFocusRequestId,GroupId=tradeWorkspaceFocus};
+        if(detailKind=="library"&&libraryOpenFocusRequested)return new(){RequestId=lastFocusRequestId,GroupId="pob.library.open-action"};
+        if(modifierFocusRequested&&section=="Configuration"&&configSection=="Custom modifiers"&&string.IsNullOrWhiteSpace(filter))return new(){RequestId=lastFocusRequestId,GroupId="pob.custom.edit-tools"};
+        if(quickControlTarget is {} target && quickControlTargets.Contains(target))return new(){RequestId=lastFocusRequestId,GroupId=target};
+        if(historyFocusRequested)return new(){RequestId=lastFocusRequestId,GroupId="pob.buildtools"};
+        if(detailKind=="skill"&&skillWorkspaceFocusRequested)return new(){RequestId=lastFocusRequestId,
             GroupId=skillWorkspaceGemReturn is {} gem?"pob.gem-options."+gem+".return":skillWorkspaceReturnControl is not null?"pob.skill.actions":"pob.detail.scroll"};
-        if(detailKind=="skill-options")return new(){RequestId=focusRequestSequence,GroupId="pob.skill-options.content"};
-        if(detailKind=="skill-manage"&&skillOrderFocusRequested)return new(){RequestId=focusRequestSequence,GroupId="pob.group-order.actions"};
-        if(detailKind is "skill-manage" or "gem-picker")return new(){RequestId=focusRequestSequence,GroupId=detailKind=="gem-picker"?"pob.gem-picker.tools":"pob.skill-manage.tools"};
-        if(detailKind is "item-manage" or "feature-picker")return new(){RequestId=focusRequestSequence,GroupId=detailKind=="feature-picker"?"pob.choice-tools":"pob.item-edit.controls"};
-        if(detailKind is "inventory" or "item-author")return new(){RequestId=focusRequestSequence,GroupId=detailKind=="inventory"?"pob.stored.tools":"pob.author.controls"};
-        if(detailKind=="timeless")return new(){RequestId=focusRequestSequence,GroupId="pob.timeless.settings"};
-        if(detailKind=="calculations")return new(){RequestId=focusRequestSequence,GroupId="pob.calculation.tools"};
-        if(detailKind=="gem-options")return new(){RequestId=focusRequestSequence,GroupId="pob.gem-options.page"};
+        if(detailKind=="skill-options")return new(){RequestId=lastFocusRequestId,GroupId="pob.skill-options.content"};
+        if(detailKind=="skill-manage"&&skillOrderFocusRequested)return new(){RequestId=lastFocusRequestId,GroupId="pob.group-order.actions"};
+        if(detailKind is "skill-manage" or "gem-picker")return new(){RequestId=lastFocusRequestId,GroupId=detailKind=="gem-picker"?"pob.gem-picker.tools":"pob.skill-manage.tools"};
+        if(detailKind is "item-manage" or "feature-picker")return new(){RequestId=lastFocusRequestId,GroupId=detailKind=="feature-picker"?"pob.choice-tools":"pob.item-edit.controls"};
+        if(detailKind is "inventory" or "item-author")return new(){RequestId=lastFocusRequestId,GroupId=detailKind=="inventory"?"pob.stored.tools":"pob.author.controls"};
+        if(detailKind=="timeless")return new(){RequestId=lastFocusRequestId,GroupId="pob.timeless.settings"};
+        if(detailKind=="calculations")return new(){RequestId=lastFocusRequestId,GroupId="pob.calculation.tools"};
+        if(detailKind=="gem-options")return new(){RequestId=lastFocusRequestId,GroupId="pob.gem-options.page"};
         if(detailKind.Length>0&&!InlineDetail)return null;
         if(section=="Tree"&&detailKind!="node"&&passiveReturnKey is not null&&passives is not null)
         {
             var index=Array.FindIndex(passiveQuery.Entries,e=>e.Key==passiveReturnKey);
-            if(index>=0)return passives.Enter("pob.passives",focusRequestSequence,
+            if(index>=0)return passives.Enter("pob.passives",lastFocusRequestId,
                 passives.FocusTarget("pob.passives",new(passiveReturnKey),index));
         }
-        return new(){RequestId=focusRequestSequence,GroupId=section=="Tree"?"pob.tree.side":"pob.root"};
+        return new(){RequestId=lastFocusRequestId,GroupId=section=="Tree"?"pob.tree.side":"pob.root"};
     }
 }
