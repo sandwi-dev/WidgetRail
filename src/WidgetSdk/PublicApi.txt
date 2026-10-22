@@ -1980,7 +1980,9 @@ method static WidgetRail.WidgetSdk.UI.Stack(string id, params WidgetRail.WidgetS
 method static WidgetRail.WidgetSdk.UI.StatusBadge(WidgetRail.WidgetSdk.WidgetIcon icon, string label, WidgetRail.WidgetSdk.StatusTone tone, string id) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.StatusBadge(string label, WidgetRail.WidgetSdk.StatusTone tone, string id, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.Stepper(string label, string value, string decrementAction, string incrementAction, string id, bool canDecrement = true, bool canIncrement = true) -> WidgetRail.WidgetSdk.RowElement
+method static WidgetRail.WidgetSdk.UI.Stepper(string label, string value, string decrementAction, string incrementAction, string id, bool canDecrement, bool canIncrement, bool showLabel) -> WidgetRail.WidgetSdk.RowElement
 method static WidgetRail.WidgetSdk.UI.Switch(string label, bool isOn, string action, string id, bool isDisabled = false) -> WidgetRail.WidgetSdk.ButtonElement
+method static WidgetRail.WidgetSdk.UI.Switch(string label, bool isOn, string action, string id, bool isDisabled, bool showLabel) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.Text(string text, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.TextElement
 method static WidgetRail.WidgetSdk.UI.TextEntry(string value, string placeholder, string action, string id, int maximumLength = 96) -> WidgetRail.WidgetSdk.TextEntryElement
 method static WidgetRail.WidgetSdk.UI.Tile(string title, string stateLabel, string action, string id, string? subtitle = null, string? metadata = null, WidgetRail.WidgetSdk.TileArtwork? artwork = null, string? accessibilityLabel = null, WidgetRail.WidgetProtocol.ActionSurfaceOrientation orientation = WidgetRail.WidgetProtocol.ActionSurfaceOrientation.Horizontal) -> WidgetRail.WidgetSdk.ActionSurfaceElement

@@ -105,6 +105,12 @@ public static partial class UI
         string id,
         bool canDecrement = true,
         bool canIncrement = true)
+        => Stepper(label, value, decrementAction, incrementAction, id, canDecrement, canIncrement, showLabel: true);
+
+    /// <summary>A stepper with an optional external visual label; button and value accessibility names are retained.</summary>
+    public static RowElement Stepper(
+        string label, string value, string decrementAction, string incrementAction, string id,
+        bool canDecrement, bool canIncrement, bool showLabel)
     {
         ArgumentNullException.ThrowIfNull(label);
         ArgumentNullException.ThrowIfNull(value);
@@ -134,19 +140,21 @@ public static partial class UI
                 "wrail-stepper__button--increment",
             ],
         };
-        return new RowElement(id,
-        [
-            new TextElement(labelId, label, label)
+        var children = new List<WidgetElement>();
+        if (showLabel)
+            children.Add(new TextElement(labelId, label, label)
             {
                 RequiredStyleClasses = ["wrail-stepper__label"],
-            },
+            });
+        children.AddRange([
             decrement,
             new TextElement(valueId, value, $"{label}: {value}")
             {
                 RequiredStyleClasses = ["wrail-stepper__value"],
             },
             increment,
-        ])
+        ]);
+        return new RowElement(id, children)
         {
             RequiredStyleClasses = ["wrail-stepper"],
         };

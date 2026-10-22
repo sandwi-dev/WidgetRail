@@ -20,8 +20,8 @@ internal static partial class SettingsPresentation
         {
             rows.Add(UI.Text("Install once. New extensions start disabled; choose where each one runs.", "extensions.help").Classes("page-help"));
             if (profiles.Length > 0)
-                rows.Add(UI.Select("Show settings for", [new("all", "All widgets", "extensions.profile.all", IsSelected: data.Profile.Length == 0),
-                    .. profiles.Select(p => new SelectOption(p.Name, p.Label, "extensions.profile." + p.Name, IsSelected: data.Profile == p.Name))], "extensions.profile", "Widget profile").Busy(data.Busy).Classes("setting-row"));
+                rows.Add(Field("Show settings for", (UI.Select("Show settings for", [new("all", "All widgets", "extensions.profile.all", IsSelected: data.Profile.Length == 0),
+                    .. profiles.Select(p => new SelectOption(p.Name, p.Label, "extensions.profile." + p.Name, IsSelected: data.Profile == p.Name))], "extensions.profile", "Widget profile").Busy(data.Busy).Classes("setting-row") with { ShowLabel = false })));
             var target = data.Profile.Length == 0 ? "all" : data.Profile;
             rows.Add(UI.ResponsiveGrid("extensions.install-actions", 180, 2,
                 UI.Button("Install from ZIP…", "host.extensions.install.zip." + target, "extensions.install-zip").Busy(data.Busy).Classes("secondary-button"),
@@ -44,9 +44,9 @@ internal static partial class SettingsPresentation
         {
             var entry = selected!;
             rows.Add(UI.Text("Version " + entry.Manifest.Version, "extensions.version").Classes("page-help"));
-            rows.Add(UI.Switch("Enabled by default", entry.EnabledByDefault,
-                "host.extensions.default." + entry.Slot + "." + (entry.EnabledByDefault ? "off" : "on"), "extensions.default").Busy(data.Busy));
-            rows.Add(UI.Text("Applies to existing and new profiles using Default. Explicit On or Off choices are kept. Each enabled profile runs the extension separately and can add memory and CPU usage. Enable it only where needed.", "extensions.default-help").Classes("page-help"));
+            rows.Add(Field("Enabled by default", UI.Switch("Enabled by default", entry.EnabledByDefault,
+                "host.extensions.default." + entry.Slot + "." + (entry.EnabledByDefault ? "off" : "on"), "extensions.default", isDisabled: false, showLabel: false).Busy(data.Busy),
+                "Applies to existing and new profiles using Default. Explicit On or Off choices are kept. Each enabled profile runs the extension separately and can add memory and CPU usage. Enable it only where needed."));
             rows.Add(UI.Text("Widget profiles", "extensions.profiles-heading").Classes("section-heading"));
             if (profiles.Length == 0) rows.Add(UI.Text("Open Browser or a webapp once to add its profile here. New profiles inherit this extension's default.", "extensions.no-profiles").Classes("page-help"));
             foreach (var profile in profiles.OrderByDescending(p => p.Name == data.Profile))

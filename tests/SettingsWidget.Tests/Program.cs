@@ -72,6 +72,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Maximum installed inventory remains virtualized and bounded", InstalledListBounds),
     ("Settings pages have distinct ownership and valid focus paths", SettingsUsabilityScenarios.PagesHaveConsistentOwnershipAndFocus),
     ("Explicit preference choices are idempotent", SettingsUsabilityScenarios.ExplicitChoicesAreIdempotent),
+    ("Settings labels remain data rather than layout instructions", SettingsUsabilityScenarios.LabelsDoNotDetermineFieldStructure),
     ("Shared setting rows retain control authority and accessible values", SettingsUsabilityScenarios.SettingRowKeepsControlSemantics),
     ("Host-selected Settings profile persists real actions and reloads the matching theme manager", HostSelectedSettingsProfile),
     ("Animation controls persist each preset and independent dialog preference", AnimationPreferences),

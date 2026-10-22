@@ -113,6 +113,17 @@ internal sealed partial class WidgetStylesValidationPage
                         descriptor.InstanceId, snapshot.Sequence, snapshot.ActiveInputScopeId), descriptor, snapshot, styles));
                     Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), focused), label + ": unchanged snapshot retains focus");
                 }
+                var declarations = Walk(snapshot.Root).ToDictionary(node => node.Id);
+                foreach (var node in declarations.Values.Where(node =>
+                    node.StyleClasses.Contains("wrail-stepper__button") && node.IsDisabled != true))
+                {
+                    if (node.Focus?.Down is not { } nextId || !declarations.TryGetValue(nextId, out var next) || next.IsDisabled == true ||
+                        Find<Control>("Widget." + node.Id) is not { } source || Find<Control>("Widget." + nextId) is not { } destination) continue;
+                    Check(source.Focus(FocusState.Keyboard), label + ": stepper accepts focus " + node.Id);
+                    presenter.MoveFocus(FocusNavigationDirection.Down);
+                    await Wait(() => ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), destination));
+                    Check(true, label + ": vertical stepper navigation preserves its authored column " + node.Id);
+                }
                 if (snapshot.ActiveInputScopeId == "app-update.page")
                     await VerifyUpdateFixtureAsync(snapshot, Path.GetFileNameWithoutExtension(file), label);
             }

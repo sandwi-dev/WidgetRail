@@ -1115,10 +1115,15 @@ public static partial class UI
         string action,
         string id,
         bool isDisabled = false)
+        => Switch(label, isOn, action, id, isDisabled, showLabel: true);
+
+    /// <summary>A switch with an optional external visual label; its accessible name is retained.</summary>
+    public static ButtonElement Switch(
+        string label, bool isOn, string action, string id, bool isDisabled, bool showLabel)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
         var state = isOn ? "On" : "Off";
-        return new ButtonElement(id, $"{label}  {state}", action)
+        return new ButtonElement(id, showLabel ? $"{label}  {state}" : state, action)
         {
             AccessibilityLabel = $"{label}, {state}",
             IsSelected = isOn ? true : null,

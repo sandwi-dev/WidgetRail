@@ -72,5 +72,27 @@ internal static class SettingsUsabilityScenarios
         return Task.CompletedTask;
     }
 
+    public static Task LabelsDoNotDetermineFieldStructure()
+    {
+        const string wording = "Action: keep  both spaces";
+        var ordinary = SettingsPresentation.View(UI.Stack("header", UI.Button("Back", "back", "settings.back")),
+            SettingsPresentation.PageScope("appearance.page", UI.Button(wording, "test", "test")), "test", "appearance.page");
+        var nodes = Walk(ordinary.CreateSnapshot("wording", 1).Root).ToArray();
+        if (nodes.Single(node => node.Id == "test").Text != wording || nodes.Any(node => node.Id == "test.row.label"))
+            throw new Exception("Button punctuation was interpreted as form structure.");
+        var toggle = UI.Switch(wording, true, "toggle", "toggle", isDisabled: false, showLabel: false);
+        var stepper = UI.Stepper(wording, "120%", "less", "more", "step", true, false, showLabel: false);
+        var view = new WidgetView(UI.Stack("root", SettingsPresentation.Field(wording, toggle, "Description: exact  spacing"),
+            SettingsPresentation.Field(wording, stepper)), "toggle").CreateSnapshot("external-labels", 1);
+        nodes = Walk(view.Root).ToArray();
+        if (ViewSnapshotValidator.Validate(view).Count != 0 || nodes.Single(node => node.Id == "toggle").Text != "On" ||
+            nodes.Single(node => node.Id == "toggle").AccessibilityLabel != wording + ", On" ||
+            nodes.Single(node => node.Id == "toggle.row.label").Text != wording ||
+            nodes.Any(node => node.Id == "step.label") || nodes.Single(node => node.Id == "step.increment").IsDisabled != true ||
+            nodes.Single(node => node.Id == "step.decrement").AccessibilityLabel != "Decrease " + wording)
+            throw new Exception("External labels changed control identity, state, or accessibility.");
+        return Task.CompletedTask;
+    }
+
     private static IEnumerable<ViewNode> Walk(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Walk));
 }

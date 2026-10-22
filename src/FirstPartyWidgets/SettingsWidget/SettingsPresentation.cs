@@ -130,7 +130,7 @@ internal static partial class SettingsPresentation
                     : child).ToArray() };
                 content = page with { Children = page.Children.Where(child => child != heading).ToArray() };
             }
-            content = ArrangeSettingsRows((ContainerElement)content);
+            content = LinkSettingsRows((ContainerElement)content);
         }
         WidgetElement Link(WidgetElement element)
         {
@@ -238,26 +238,26 @@ internal static partial class SettingsPresentation
         return View(header, PageScope("appearance.page",
             UI.Text("Appearance", "appearance.heading").Classes("page-heading"),
             UI.Text("Theme and sizing", "appearance.visual.heading").Classes("section-heading"),
-            UI.Button("Theme: " + (selected?.Descriptor.Name ?? "Unavailable"), "open.themes", "appearance.theme").Busy(busy).Classes("setting-row"),
+            Field("Theme", (UI.Button((selected?.Descriptor.Name ?? "Unavailable") + "  ›", "open.themes", "appearance.theme") with { AccessibilityLabel = "Theme: " + (selected?.Descriptor.Name ?? "Unavailable") }).Busy(busy).Classes("setting-row")),
             DisplayHint(display),
-            LinkStepper(UI.Stepper("Interface size", Percent(scale.InterfaceScale),
+            Field("Interface size", LinkStepper(UI.Stepper("Interface size", Percent(scale.InterfaceScale),
                 ScaleAction("interface.decrease", display), ScaleAction("interface.increase", display), "interface.stepper",
-                scale.InterfaceScale > AppearanceSettings.MinimumInterfaceScale, scale.InterfaceScale < AppearanceSettings.MaximumInterfaceScale),
-                null, null, busy || string.IsNullOrEmpty(display?.Id)),
-            LinkStepper(UI.Stepper("Backdrop darkness", Percent(appearance.BackdropOpacity), "opacity.decrease", "opacity.increase", "opacity.stepper",
-                appearance.BackdropOpacity > AppearanceSettings.MinimumBackdropOpacity, appearance.BackdropOpacity < AppearanceSettings.MaximumBackdropOpacity), null, null, busy),
+                scale.InterfaceScale > AppearanceSettings.MinimumInterfaceScale, scale.InterfaceScale < AppearanceSettings.MaximumInterfaceScale, showLabel: false),
+                null, null, busy || string.IsNullOrEmpty(display?.Id))),
+            Field("Backdrop darkness", LinkStepper(UI.Stepper("Backdrop darkness", Percent(appearance.BackdropOpacity), "opacity.decrease", "opacity.increase", "opacity.stepper",
+                appearance.BackdropOpacity > AppearanceSettings.MinimumBackdropOpacity, appearance.BackdropOpacity < AppearanceSettings.MaximumBackdropOpacity, showLabel: false), null, null, busy)),
             UI.Text("Animations", "appearance.animations.heading").Classes("section-heading"),
             UI.Text("Reduced motion in Accessibility overrides these effects.", "appearance.motion.help").Classes("page-help"),
-            UI.Switch("Animate widget switching", appearance.AnimateWidgetSwitching, "widget-switch-animation.toggle", "appearance.animate-widget-switching").Busy(busy),
-                UI.Select("Focus animation", new SelectOption[]
+            Field("Animate widget switching", UI.Switch("Animate widget switching", appearance.AnimateWidgetSwitching, "widget-switch-animation.toggle", "appearance.animate-widget-switching", isDisabled: false, showLabel: false).Busy(busy)),
+                Field("Focus animation", (UI.Select("Focus animation", new SelectOption[]
                 {
                     new("fade", "Fade", "focus-animation.fade", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.Fade),
                     new("settle", "Settle", "focus-animation.settle", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.Settle),
                     new("none", "None", "focus-animation.none", IsSelected: appearance.FocusAnimation == WidgetFocusAnimation.None),
                 }, "overlay.focus-animation", "Focus animation")
                     .FocusUp("appearance.animate-widget-switching").FocusDown("overlay.section-animation")
-                    .Busy(busy).AddClasses("setting-row"),
-                UI.Select("Section animation", new SelectOption[]
+                    .Busy(busy).AddClasses("setting-row") with { ShowLabel = false })),
+                Field("Section animation", (UI.Select("Section animation", new SelectOption[]
                 {
                     new("slide", "Slide", "section-animation.slide", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.Slide),
                     new("paging", "Paging", "section-animation.paging", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.Paging),
@@ -267,8 +267,8 @@ internal static partial class SettingsPresentation
                     new("none", "None", "section-animation.none", IsSelected: appearance.SectionAnimation == WidgetSectionAnimation.None),
                 }, "overlay.section-animation", "Section animation")
                     .FocusUp("overlay.focus-animation").FocusDown("overlay.page-animation")
-                    .Busy(busy).AddClasses("setting-row"),
-                UI.Select("Page animation", new SelectOption[]
+                    .Busy(busy).AddClasses("setting-row") with { ShowLabel = false })),
+                Field("Page animation", (UI.Select("Page animation", new SelectOption[]
                 {
                     new("slide", "Slide", "page-animation.slide", IsSelected: appearance.PageAnimation == WidgetPageAnimation.Slide),
                     new("verticalslide", "Vertical slide", "page-animation.verticalslide", IsSelected: appearance.PageAnimation == WidgetPageAnimation.VerticalSlide),
@@ -278,28 +278,24 @@ internal static partial class SettingsPresentation
                     new("none", "None", "page-animation.none", IsSelected: appearance.PageAnimation == WidgetPageAnimation.None),
                 }, "overlay.page-animation", "Page animation")
                     .FocusUp("overlay.section-animation").FocusDown("overlay.animate-dialogs")
-                    .Busy(busy).AddClasses("setting-row"),
-                UI.Text("Used when opening a detail page or going back. Tabs use Section animation.", "appearance.page-animation.help").Classes("page-help"),
-                UI.Switch("Animate widget dialogs", appearance.AnimateWidgetModals,
-                    "widget-modal-animation.toggle", "overlay.animate-dialogs")
+                    .Busy(busy).AddClasses("setting-row") with { ShowLabel = false }), "Used when opening a detail page or going back. Tabs use Section animation."),
+                Field("Animate widget dialogs", UI.Switch("Animate widget dialogs", appearance.AnimateWidgetModals,
+                    "widget-modal-animation.toggle", "overlay.animate-dialogs", isDisabled: false, showLabel: false)
                     .FocusUp("overlay.page-animation").FocusDown("overlay.modal-animation")
-                    .Busy(busy).AddClasses("setting-row"),
-                UI.Select("Dialog animation", new SelectOption[]
+                    .Busy(busy).AddClasses("setting-row")),
+                Field("Dialog animation", (UI.Select("Dialog animation", new SelectOption[]
                 {
                     new("zoom", "Zoom", "modal-animation.zoom", IsSelected: appearance.ModalAnimation == WidgetModalAnimation.Zoom),
                     new("lift", "Lift", "modal-animation.lift", IsSelected: appearance.ModalAnimation == WidgetModalAnimation.Lift),
                 }, "overlay.modal-animation", "Dialog animation")
                     .FocusUp("overlay.animate-dialogs").FocusDown("overlay.animation-speed.decrement")
-                    .Busy(busy).Disabled(!appearance.AnimateWidgetModals).AddClasses("setting-row"),
-                UI.Text(appearance.AnimateWidgetModals ? "Used when widget dialogs open and close." : "Turn on Animate widget dialogs to choose a style.", "appearance.dialog.help").Classes("page-help"),
-                LinkStepper(UI.Stepper("Widget animation speed",
+                    .Busy(busy).Disabled(!appearance.AnimateWidgetModals).AddClasses("setting-row") with { ShowLabel = false }), appearance.AnimateWidgetModals ? "Used when widget dialogs open and close." : "Turn on Animate widget dialogs to choose a style."),
+                Field("Widget animation speed", LinkStepper(UI.Stepper("Widget animation speed",
                     appearance.WidgetAnimationSpeed.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "×",
                     "widget-animation-speed.decrease", "widget-animation-speed.increase", "overlay.animation-speed",
                     appearance.WidgetAnimationSpeed > AppearanceSettings.MinimumWidgetAnimationSpeed,
-                    appearance.WidgetAnimationSpeed < AppearanceSettings.MaximumWidgetAnimationSpeed),
-                    "overlay.modal-animation", null, busy),
-                UI.Text("0.5× is slower; 2× is faster. Applies to supported widget animations.",
-                    "overlay.animations.help").Classes("page-help")), "appearance.theme", "appearance.page");
+                    appearance.WidgetAnimationSpeed < AppearanceSettings.MaximumWidgetAnimationSpeed, showLabel: false),
+                    "overlay.modal-animation", null, busy), "0.5× is slower; 2× is faster. Applies to supported widget animations.")), "appearance.theme", "appearance.page");
     }
 
     private static WidgetView RenderAccessibility(StackElement header, PlatformSettingsDocument settings,
@@ -311,25 +307,23 @@ internal static partial class SettingsPresentation
             UI.Text("Accessibility", "accessibility.heading").Classes("page-heading"),
             UI.Text("Text", "accessibility.text.heading").Classes("section-heading"),
             DisplayHint(display),
-            LinkStepper(UI.Stepper("Text size", Percent(scale.TextScale), ScaleAction("text.decrease", display),
+            Field("Text size", LinkStepper(UI.Stepper("Text size", Percent(scale.TextScale), ScaleAction("text.decrease", display),
                 ScaleAction("text.increase", display), "text.stepper", scale.TextScale > AppearanceSettings.MinimumTextScale,
-                scale.TextScale < AppearanceSettings.MaximumTextScale), null, null, busy || string.IsNullOrEmpty(display?.Id)),
-            UI.Text("For proportional sizing, use Interface size in Appearance.", "text.layout-warning").Classes("page-help"),
-            UI.Switch("Bold text", appearance.BoldText, "bold-text.toggle", "bold-text.toggle").Busy(busy),
+                scale.TextScale < AppearanceSettings.MaximumTextScale, showLabel: false), null, null, busy || string.IsNullOrEmpty(display?.Id)), "For proportional sizing, use Interface size in Appearance."),
+            Field("Bold text", UI.Switch("Bold text", appearance.BoldText, "bold-text.toggle", "bold-text.toggle", isDisabled: false, showLabel: false).Busy(busy)),
             UI.Text("Visibility and motion", "accessibility.visibility.heading").Classes("section-heading"),
-            UI.Select("Contrast", [
+            Field("Contrast", (UI.Select("Contrast", [
                 new("system", "Follow Windows", "contrast.choose.system", IsSelected: appearance.Contrast == ContrastPreference.System),
                 new("standard", "Standard", "contrast.choose.standard", IsSelected: appearance.Contrast == ContrastPreference.Standard),
                 new("high", "High", "contrast.choose.high", IsSelected: appearance.Contrast == ContrastPreference.High)
-            ], "contrast.preference").Busy(busy),
-            UI.Switch("Reduced transparency", appearance.Transparency == TransparencyPreference.Reduced,
-                "transparency.reduced", "transparency.reduced").Busy(busy),
-            UI.Select("Motion", [
+            ], "contrast.preference").Busy(busy) with { ShowLabel = false })),
+            Field("Reduced transparency", UI.Switch("Reduced transparency", appearance.Transparency == TransparencyPreference.Reduced,
+                "transparency.reduced", "transparency.reduced", isDisabled: false, showLabel: false).Busy(busy)),
+            Field("Motion", (UI.Select("Motion", [
                 new("system", "Follow Windows", "motion.choose.system", IsSelected: appearance.Motion == MotionPreference.System),
                 new("full", "Full", "motion.choose.full", IsSelected: appearance.Motion == MotionPreference.Full),
                 new("reduced", "Reduced", "motion.choose.reduced", IsSelected: appearance.Motion == MotionPreference.Reduced)
-            ], "motion.preference").Busy(busy),
-            UI.Text("Reduced motion overrides animation styles in Appearance.", "accessibility.motion.help").Classes("page-help")
+            ], "motion.preference").Busy(busy) with { ShowLabel = false }), "Reduced motion overrides animation styles in Appearance.")
         ), "text.stepper.decrement", "accessibility.page");
     }
 
@@ -351,17 +345,15 @@ internal static partial class SettingsPresentation
         return View(header, PageScope("overlay.page", [
             UI.Text("General", "overlay.heading").Classes("page-heading"),
             UI.Text("Overlay", "overlay.layout.heading").Classes("section-heading"),
-            UI.Select("Position", [
+            Field("Position", (UI.Select("Position", [
                 new("center", "Center", "position.choose.center", IsSelected: appearance.OverlayPosition == OverlayPosition.Center),
                 new("left", "Bottom left", "position.choose.left", IsSelected: appearance.OverlayPosition == OverlayPosition.BottomLeft),
                 new("right", "Bottom right", "position.choose.right", IsSelected: appearance.OverlayPosition == OverlayPosition.BottomRight)
-            ], "overlay.position").Busy(busy),
-            UI.Text("Corner layouts keep the outside edge fixed as widgets resize.", "overlay.position.help").Classes("page-help"),
+            ], "overlay.position").Busy(busy) with { ShowLabel = false }), "Corner layouts keep the outside edge fixed as widgets resize."),
             .. hostFeatures.StartupRegistration ? new WidgetElement[] {
                 UI.Text("Startup", "overlay.startup.heading").Classes("section-heading"),
-                UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,
-                    "startup.toggle", "overlay.startup").Busy(busy).Disabled(startup?.CanChange != true),
-                UI.Text("Status — " + (startup?.Message ?? "Startup settings unavailable."), "overlay.startup.status").Classes("page-help")
+                Field("Start WidgetRail when I sign in", UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,
+                    "startup.toggle", "overlay.startup", isDisabled: false, showLabel: false).Busy(busy).Disabled(startup?.CanChange != true), "Status — " + (startup?.Message ?? "Startup settings unavailable."))
             } : []
         ]), "overlay.position", "overlay.page");
     }

@@ -429,3 +429,26 @@ field rename; that rename changes no request behavior.
   begins inside admitted execution, so rejected/joined work cannot orphan it.
   The reproduction fails before and passes after the change; it also verifies
   joined work does not execute twice and a later request succeeds.
+
+### Structured Settings fields
+
+F11 implemented in narrowed form: Appearance, Accessibility, General, Controllers,
+and extension fields now declare labels/descriptions explicitly. Removed label
+punctuation parsing, stepper child extraction, and next-sibling help inference.
+The existing navigation pass remains, renamed to describe its actual purpose.
+Additive Switch/Stepper overloads hide only the visual label while retaining
+accessible names, values, states, and existing signatures.
+
+Settings tests: 94/94; SDK compatibility: 17/17. Native form fixture: 290 checks
+passed at wide/narrow sizes and normal/enlarged text, including stepper column
+navigation. Screenshot inspected. The initial broader fixture encountered an
+unrelated installed-list snapshot requiring a live presentation session; the
+passing form run uses the seven intended Settings page fixtures, not that list.
+Extension declarations are covered by managed validation; no claim of a full
+native extension-manager integration run is made.
+
+Further F13 assessment: the existing SDK ticker uses fixed-rate PeriodicTimer,
+whereas Settings waits a full second after each completed poll. Substituting it
+would change cadence after slow reads. Retain the current loop rather than add
+a new timing abstraction solely to remove a few scheduler lines. Both Settings'
+and Spotify's existing poll scheduling are retained under the decision gate.

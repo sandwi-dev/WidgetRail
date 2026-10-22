@@ -5,53 +5,15 @@ namespace WidgetRail.FirstPartyWidgets.Settings;
 
 internal static partial class SettingsPresentation
 {
-    private static ContainerElement ArrangeSettingsRows(ContainerElement page)
+    internal static GridElement Field(string label, WidgetElement control, string? description = null) =>
+        UI.SettingsField(control.Id + ".row", label, control.AddClasses("setting-control"), description);
+
+    internal static GridElement Field(string label, RowElement control, string? description = null) =>
+        UI.SettingsField(control.Id + ".row", label, control, description);
+
+    private static ContainerElement LinkSettingsRows(ContainerElement page)
     {
-        var form = page.Id is "appearance.page" or "overlay.page" or "accessibility.page" or "controllers.page" or "controllers.exclusive.page"
-            or "extensions.library" or "extensions.details";
-        var children = new List<WidgetElement>();
-        for (var index = 0; index < page.Children.Count; index++)
-        {
-            var child = page.Children[index];
-            string? label = null;
-            WidgetElement control = child;
-            if (form)
-            {
-                switch (child)
-                {
-                    case SelectElement select:
-                        label = select.Label;
-                        control = (select with { ShowLabel = false }).AddClasses("setting-control");
-                        break;
-                    case ButtonElement button when button.StyleClasses.Contains("wrail-switch"):
-                        var separator = button.Label.LastIndexOf("  ", StringComparison.Ordinal);
-                        if (separator > 0)
-                        {
-                            label = button.Label[..separator];
-                            control = (button with { Label = button.Label[(separator + 2)..] }).AddClasses("setting-control");
-                        }
-                        break;
-                    case ButtonElement button when button.Label.Contains(": ", StringComparison.Ordinal):
-                        var colon = button.Label.IndexOf(": ", StringComparison.Ordinal);
-                        label = button.Label[..colon];
-                        control = (button with { Label = button.Label[(colon + 2)..] + "  ›",
-                            AccessibilityLabel = button.AccessibilityLabel ?? button.Label }).AddClasses("setting-control");
-                        break;
-                    case RowElement stepper when stepper.StyleClasses.Contains("wrail-stepper"):
-                        label = ((TextElement)stepper.Children[0]).Text;
-                        control = stepper with { Children = stepper.Children.Skip(1).ToArray() };
-                        break;
-                }
-            }
-            if (label is null) { children.Add(child); continue; }
-            string? description = null;
-            if (index + 1 < page.Children.Count && page.Children[index + 1] is TextElement help && help.StyleClasses.Contains("page-help") && help.Id != "settings.display")
-            {
-                description = help.Text;
-                index++;
-            }
-            children.Add(UI.SettingsField(child.Id + ".row", label, control, description));
-        }
+        var children = page.Children;
         // Link rows, not individual buttons: a stepper is one vertical stop and
         // keeps the selected minus/plus column when moving to another stepper.
         var groups = children.SelectMany(FocusRows).Where(group => group.Count != 0).ToArray();

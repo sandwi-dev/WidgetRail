@@ -14,9 +14,10 @@ internal static class ControllerSettingsPresentation
         var failed = status.State == ControllerControlState.Failed;
         var displayedOn = requested && !failed;
         var canChange = displayedOn || status.CanEnable;
-        var toggle = UI.Switch("Exclusive control", displayedOn,
-                "controllers.exclusive-control.toggle", "controllers.exclusive-control")
-            .Busy(state.Busy).Disabled(!canChange).AddClasses("setting-row");
+        var toggle = SettingsPresentation.Field("Exclusive control", UI.Switch("Exclusive control", displayedOn,
+                "controllers.exclusive-control.toggle", "controllers.exclusive-control", isDisabled: false, showLabel: false)
+            .Busy(state.Busy).Disabled(!canChange).AddClasses("setting-row"),
+            "Keep controller input in WidgetRail while the overlay is open. Turn this on if your game also reacts when you use the overlay.");
         var recovery = status.State == ControllerControlState.RecoveryRequired;
         var refresh = UI.Button(recovery ? "Restore controller access" : failed ? "Keep Exclusive control off" : "Check again",
                 recovery || failed ? "controllers.restore" : "refresh", "controllers.refresh")
@@ -39,25 +40,21 @@ internal static class ControllerSettingsPresentation
             {
                 UI.Text("Controllers", "controllers.heading").Classes("page-heading"),
                 UI.Text("Open WidgetRail", "controllers.open-heading").Classes("section-heading"),
-                UI.Select("Controller shortcut", [
+                SettingsPresentation.Field("Controller shortcut", (UI.Select("Controller shortcut", [
                     new("guide", "Guide", "controllers.open-shortcut.guide", IsSelected: state.Settings.Controllers.OpenShortcut == ControllerOpenShortcut.Guide),
                     new("view-menu", "View + Menu", "controllers.open-shortcut.view-menu", IsSelected: state.Settings.Controllers.OpenShortcut == ControllerOpenShortcut.ViewMenu)
-                ], "controllers.open-shortcut").Busy(state.Busy),
-                UI.Text("Open and close the overlay with the selected shortcut.", "controllers.open-help").Classes("page-help"),
-                UI.Switch("F1 keyboard shortcut", state.Settings.Controllers.F1ShortcutEnabled,
-                    "controllers.f1-shortcut.toggle", "controllers.f1-shortcut").Busy(state.Busy),
-                UI.Text("Use F1 to open and close WidgetRail from any application. Off by default.",
-                    "controllers.f1-shortcut.help").Classes("page-help"),
+                ], "controllers.open-shortcut").Busy(state.Busy) with { ShowLabel = false }), "Open and close the overlay with the selected shortcut."),
+                SettingsPresentation.Field("F1 keyboard shortcut", UI.Switch("F1 keyboard shortcut", state.Settings.Controllers.F1ShortcutEnabled,
+                    "controllers.f1-shortcut.toggle", "controllers.f1-shortcut", isDisabled: false, showLabel: false).Busy(state.Busy), "Use F1 to open and close WidgetRail from any application. Off by default."),
             };
             if (features.HeldDpadScroll) navigation.AddRange([
                 UI.Text("Input behavior", "controllers.input-heading").Classes("section-heading"),
-                UI.Switch("Hold D-pad to scroll", state.Settings.Controllers.HoldDpadToScroll,
-                    "controllers.hold-scroll.toggle", "controllers.hold-scroll").Busy(state.Busy),
-                UI.Text("Tap to move focus. Hold Up or Down to scroll, then release to focus a visible item.", "controllers.hold-scroll.help").Classes("page-help")]);
+                SettingsPresentation.Field("Hold D-pad to scroll", UI.Switch("Hold D-pad to scroll", state.Settings.Controllers.HoldDpadToScroll,
+                    "controllers.hold-scroll.toggle", "controllers.hold-scroll", isDisabled: false, showLabel: false).Busy(state.Busy), "Tap to move focus. Hold Up or Down to scroll, then release to focus a visible item.")]);
             if (features.ExclusiveControllerControl) navigation.AddRange([
-                UI.Button($"Exclusive control: {(recovery ? "Needs attention" : displayedOn ? "On" : "Off")}",
-                    "open.controller-help", "controllers.help").Classes("setting-row"),
-                UI.Text("Manage controller isolation, driver status, and recovery.", "controllers.exclusive.summary").Classes("page-help")]);
+                SettingsPresentation.Field("Exclusive control", (UI.Button((recovery ? "Needs attention" : displayedOn ? "On" : "Off") + "  ›",
+                    "open.controller-help", "controllers.help") with { AccessibilityLabel = $"Exclusive control: {(recovery ? "Needs attention" : displayedOn ? "On" : "Off")}" }).Classes("setting-row"),
+                    "Manage controller isolation, driver status, and recovery.")]);
             return SettingsPresentation.View(SettingsPresentation.Header(state),
                 SettingsPresentation.PageScope("controllers.page", navigation.ToArray()), "controllers.open-shortcut", "controllers.page");
         }
@@ -71,8 +68,6 @@ internal static class ControllerSettingsPresentation
             SettingsPresentation.PageScope("controllers.exclusive.page",
                 UI.Text("Exclusive control", "controllers.exclusive.heading").Classes("page-heading"),
                 toggle,
-                UI.Text("Keep controller input in WidgetRail while the overlay is open. Turn this on if your game also reacts when you use the overlay.",
-                    "controllers.enable-help").Classes("page-help", "controllers-help"),
                 UI.Text($"Status - {statusText}", "controllers.status").Classes("settings-status", "controllers-status"),
                 refresh,
                 UI.Text("Required drivers", "controllers.drivers-heading").Classes("section-heading"),
