@@ -15,9 +15,6 @@ public sealed class FullApplicationReferenceWidget : Widget
     private readonly WidgetNavigator<ReferenceRoute> _navigation;
     private ReferenceQuery _query;
     private ReferenceDocument? _selected;
-    private IndexedCollectionFocusTarget? _returnItem;
-    private long? _returnRevision;
-    private WidgetFocusRequest? _returnFocus;
     private bool _loadError;
 
     public FullApplicationReferenceWidget() : this(new ReferenceLibrary()) { }
@@ -74,8 +71,7 @@ public sealed class FullApplicationReferenceWidget : Widget
                 Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = 820,
                     PreferredHeight = 620, MinimumWidth = 360, MinimumHeight = 300 })
             {
-                FocusGroupEntryRequest = !details && navigation.Revision == _returnRevision && _returnItem is { } target
-                    ? _returnFocus?.EnterCollection(_documents, CollectionId, target) : null,
+                FocusGroupEntryRequest = navigation.CollectionReturnFocus?.Resolve(CollectionId, _documents.Descriptor),
             };
         }
     }
@@ -87,9 +83,7 @@ public sealed class FullApplicationReferenceWidget : Widget
         {
             if (_navigation.TryHandleBack(action))
             {
-                _returnRevision = _navigation.Value.Revision;
-                _returnFocus = CreateFocusRequest();
-                Invalidate();
+                // The navigator owns the return intent and invalidation.
             }
             else if (IsActive && _navigation.Value.Route == ReferenceRoute.Library && action.ActionId is "full-app.refresh" or "full-app.retry")
                 RefreshContent();
@@ -106,9 +100,7 @@ public sealed class FullApplicationReferenceWidget : Widget
             if (!IsActive || !ReferenceEquals(query, _query) || _navigation.Value.Route != ReferenceRoute.Library || action.ActionId != "full-app.open")
                 return ValueTask.CompletedTask;
             _selected = item;
-            _returnItem = action.FocusedCollectionItem;
-            _returnRevision = null;
-            _navigation.PushFromAction(ReferenceRoute.Details, action, CollectionId);
+            _navigation.PushFromCollectionAction(ReferenceRoute.Details, action, _documents.Descriptor);
         }
         return ValueTask.CompletedTask;
     }

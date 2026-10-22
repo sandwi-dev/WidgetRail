@@ -37,12 +37,6 @@ public sealed partial class SpotifyWidget : Widget
     private const string SearchScrollId = "spotify.search.scroll";
     private long _libraryGeneration;
     private SpotifyDetailQuery _detailQuery = new(null, null);
-    private IndexedCollectionFocusTarget? _playlistReturnItem;
-    private long? _playlistReturnRevision;
-    private long _playlistReturnRequestId;
-    private IndexedCollectionFocusTarget? _setupReturnItem;
-    private long? _setupReturnRevision;
-    private long _setupReturnRequestId;
     private static readonly TimeSpan PlayingPollInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan PausedPollInterval = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan IdlePollInterval = TimeSpan.FromSeconds(30);
@@ -385,11 +379,13 @@ public sealed partial class SpotifyWidget : Widget
                 lock (_gate)
                 {
                     _setupViewGeneration++;
-                    _setupReturnItem = action.FocusedCollectionItem;
-                    _setupReturnRevision = null;
                 }
-                _navigation.PushFromAction(SpotifyRoute.Setup, action,
-                    action.FocusedElementId ?? action.SourceElementId);
+                if (action.FocusedCollectionItem is { } setupItem &&
+                    ReturnCollectionSource(_navigation.Value.Route, setupItem.CollectionId) is { } setupSource)
+                    _navigation.PushFromCollectionAction(SpotifyRoute.Setup, action, setupSource);
+                else
+                    _navigation.PushFromAction(SpotifyRoute.Setup, action,
+                        action.FocusedElementId ?? action.SourceElementId);
                 break;
             case SpotifyActionKind.SetupClose:
                 BackFromSetup(action.FocusedElementId ?? action.SourceElementId);
@@ -1124,11 +1120,9 @@ public sealed partial class SpotifyWidget : Widget
                 new SpotifySearchPresentation(_searchQuery, _searchKind,
                     new(UI.CollectionList(SearchScrollId, _search, 82, "Spotify search results").Classes("spotify-page-scroll")), _suggestionSource), _actionToast),
                 _activeGeneration, _indexedQueue, ref _queueQuery, _savedLibrary.Get);
-            if (navigation.Route == SpotifyRoute.Playlists && navigation.Revision == _playlistReturnRevision &&
-                _playlistReturnItem is { } target && target.QueryGeneration == playlists.Source.QueryGeneration)
-                result = result with { CollectionEntry = _playlists.Enter(PlaylistsScrollId, _playlistReturnRequestId, target) };
-            else if (SetupCollectionEntry(navigation) is { } setupEntry)
-                result = result with { CollectionEntry = setupEntry };
+            if (navigation.CollectionReturnFocus is { } returnFocus &&
+                ReturnCollectionSource(navigation.Route, returnFocus.Item.CollectionId) is { } returnSource)
+                result = result with { CollectionEntry = returnFocus.Resolve(returnFocus.Item.CollectionId, returnSource) };
             return result with { SavedSong = _playback?.Item is { Uri: not null } current
                 ? new(_savedLibrary.Get(current.Uri), _savedBusy.Contains(current.Uri)) : null };
         }
@@ -1137,10 +1131,8 @@ public sealed partial class SpotifyWidget : Widget
     private bool TryHandleNavigationBack(WidgetActionEvent action)
     {
         var detail = _navigation.Value.Route == SpotifyRoute.PlaylistDetail;
-        var setup = _navigation.Value.Route == SpotifyRoute.Setup;
         if (!_navigation.TryHandleBack(action, action.FocusedElementId)) return false;
         if (detail) FinishPlaylistBack();
-        if (setup) { lock (_gate) { _setupReturnRevision = _navigation.Value.Revision; _setupReturnRequestId = CreateFocusRequest().Id; } Invalidate(); }
         return true;
     }
 
@@ -1155,8 +1147,6 @@ public sealed partial class SpotifyWidget : Widget
         CancelPageOperation();
         lock (_gate)
         {
-            _playlistReturnRevision = _navigation.Value.Revision;
-            _playlistReturnRequestId = CreateFocusRequest().Id;
             ClearPlaylistSelectionLocked();
             _pageLoading = false; _pageError = null;
         }
@@ -1315,7 +1305,6 @@ public sealed partial class SpotifyWidget : Widget
     {
         ResetSavedSongsLocked();
         _playlistCache.Clear();
-        _setupReturnItem = null; _setupReturnRevision = null;
         _searchQuery = string.Empty;
         ++_searchGeneration;
         _search.ReplaceQuery(new(_searchGeneration, _searchQuery, _searchKind));
@@ -2102,13 +2091,11 @@ public sealed partial class SpotifyWidget : Widget
         {
             if (!IsActive || _viewState != SpotifyWidgetViewState.Ready || _navigation.Value.Route != SpotifyRoute.Playlists ||
                 query.Generation != _libraryGeneration) return;
-            _playlistReturnItem = action.FocusedCollectionItem;
-            _playlistReturnRevision = null;
             _pageError = null;
             _playlistSelection = new(new(item.Value.PlaylistId, checked(++_playlistSelectionGeneration)), item.Value);
             ReplaceDetailQueryLocked();
         }
-        if (_navigation.PushFromAction(SpotifyRoute.PlaylistDetail, action, PlaylistsScrollId) != WidgetNavigationResult.Changed)
+        if (_navigation.PushFromCollectionAction(SpotifyRoute.PlaylistDetail, action, _playlists.Descriptor) != WidgetNavigationResult.Changed)
             lock (_gate) ClearPlaylistSelectionLocked();
     }
 
@@ -2121,14 +2108,11 @@ public sealed partial class SpotifyWidget : Widget
 
     private void ReplaceLibraryQueryLocked()
     {
-        _playlistReturnItem = null; _playlistReturnRevision = null;
         _playlists.ReplaceQuery(new(checked(++_libraryGeneration)));
     }
 
-    private FocusGroupEntryRequest? SetupCollectionEntry(WidgetNavigationSnapshot<SpotifyRoute> navigation)
-    {
-        if (navigation.Revision != _setupReturnRevision || _setupReturnItem is not { } target) return null;
-        var descriptor = (navigation.Route, target.CollectionId) switch
+    private IndexedCollectionDescriptor? ReturnCollectionSource(SpotifyRoute route, string collectionId) =>
+        (route, collectionId) switch
         {
             (SpotifyRoute.Playlists, PlaylistsScrollId) => _playlists.Descriptor,
             (SpotifyRoute.PlaylistDetail, DetailScrollId) => _playlistItems.Descriptor,
@@ -2136,15 +2120,10 @@ public sealed partial class SpotifyWidget : Widget
             (SpotifyRoute.Queue, "spotify.queue.scroll") => _indexedQueue.Descriptor,
             _ => null,
         };
-        if (descriptor is null || target.SourceId != descriptor.SourceId || target.QueryGeneration != descriptor.QueryGeneration ||
-            target.Index < 0 || target.Index >= descriptor.Count) return null;
-        return new() { GroupId = target.CollectionId, RequestId = _setupReturnRequestId, IndexedItem = target };
-    }
 
     private void BackFromSetup(string sourceElementId)
     {
         if (_navigation.Back(sourceElementId) != WidgetNavigationResult.Changed) return;
-        lock (_gate) { _setupReturnRevision = _navigation.Value.Revision; _setupReturnRequestId = CreateFocusRequest().Id; }
         Invalidate();
     }
 

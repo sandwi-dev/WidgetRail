@@ -1170,6 +1170,7 @@ method WidgetRail.WidgetSdk.WidgetCollectionItemKey.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetCollectionItemKey.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetCollectionItems<TItem>.Capture(System.Collections.Generic.IReadOnlyList<TItem> items) -> System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetElement>
 method WidgetRail.WidgetSdk.WidgetCollectionItems<TItem>.Clear() -> void
+method WidgetRail.WidgetSdk.WidgetCollectionReturnFocus.Resolve(string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionDescriptor source) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest?
 method WidgetRail.WidgetSdk.WidgetCommandError.<Clone>$() -> WidgetRail.WidgetSdk.WidgetCommandError
 method WidgetRail.WidgetSdk.WidgetCommandError.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetCommandError.GetHashCode() -> int
@@ -1409,6 +1410,7 @@ method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.NavigateRoot(TRoute route) -
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.NavigateRoot(TRoute route, string focusGroupId) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Push(TRoute route, string? sourceFocusId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.PushFromAction(TRoute route, WidgetRail.WidgetSdk.WidgetActionEvent action, string? returnFocusOverrideId = null) -> WidgetRail.WidgetSdk.WidgetNavigationResult
+method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.PushFromCollectionAction(TRoute route, WidgetRail.WidgetSdk.WidgetActionEvent action, WidgetRail.WidgetProtocol.IndexedCollectionDescriptor source) -> WidgetRail.WidgetSdk.WidgetNavigationResult
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.ContainerElement root) -> WidgetRail.WidgetSdk.ContainerElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.GridElement root) -> WidgetRail.WidgetSdk.GridElement
 method WidgetRail.WidgetSdk.WidgetNavigator<TRoute>.Scope(WidgetRail.WidgetSdk.RowElement root) -> WidgetRail.WidgetSdk.RowElement
@@ -2691,6 +2693,7 @@ property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.Widget
 property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.WidgetSdk.WidgetFocusPreviewSource<TContext>.Descriptor { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.Descriptor { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor? WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.PreviewSource { get; set; }
+property WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget WidgetRail.WidgetSdk.WidgetCollectionReturnFocus.Item { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? WidgetRail.WidgetSdk.WidgetActionEvent.FocusedCollectionItem { get; set; }
 property WidgetRail.WidgetProtocol.IndexedCollectionRange WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.Range { get; }
 property WidgetRail.WidgetProtocol.LineGraphDefinition WidgetRail.WidgetSdk.LineGraphElement.Graph { get; set; }
@@ -2784,6 +2787,7 @@ property WidgetRail.WidgetSdk.WidgetCollectionCursor? WidgetRail.WidgetSdk.Widge
 property WidgetRail.WidgetSdk.WidgetCollectionItemKey WidgetRail.WidgetSdk.CollectionItemElement.Key { get; set; }
 property WidgetRail.WidgetSdk.WidgetCollectionItemKey WidgetRail.WidgetSdk.WidgetIndexedItemContext.Key { get; }
 property WidgetRail.WidgetSdk.WidgetCollectionItemKey? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Anchor { get; set; }
+property WidgetRail.WidgetSdk.WidgetCollectionReturnFocus? WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.CollectionReturnFocus { get; set; }
 property WidgetRail.WidgetSdk.WidgetCommandPolicy WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Policy { get; set; }
 property WidgetRail.WidgetSdk.WidgetCursorDirection? WidgetRail.WidgetSdk.WidgetAppLibraryCursorRequest.Direction { get; set; }
 property WidgetRail.WidgetSdk.WidgetCursorDirection? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.LoadingDirection { get; set; }
@@ -3059,6 +3063,7 @@ property long WidgetRail.WidgetSdk.WidgetActionEvent.MonotonicTimestampMicroseco
 property long WidgetRail.WidgetSdk.WidgetActionEvent.Sequence { get; set; }
 property long WidgetRail.WidgetSdk.WidgetAppLibraryMetadataAttribution.RetrievedAtUnixMilliseconds { get; set; }
 property long WidgetRail.WidgetSdk.WidgetAppLibrarySource.Revision { get; set; }
+property long WidgetRail.WidgetSdk.WidgetCollectionReturnFocus.RequestId { get; }
 property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.ResetGeneration { get; set; }
 property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.StartIndex { get; set; }
@@ -3642,6 +3647,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetCapabilityUnavailableException : Sy
 type sealed class WidgetRail.WidgetSdk.WidgetCaptureLibraryService
 type sealed class WidgetRail.WidgetSdk.WidgetCaptureService
 type sealed class WidgetRail.WidgetSdk.WidgetCollectionItems<TItem>
+type sealed class WidgetRail.WidgetSdk.WidgetCollectionReturnFocus
 type sealed class WidgetRail.WidgetSdk.WidgetCommandError : System.IEquatable<WidgetRail.WidgetSdk.WidgetCommandError>
 type sealed class WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs : System.IEquatable<WidgetRail.WidgetSdk.WidgetActionFailedEventArgs>, System.IEquatable<WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs>, WidgetRail.WidgetSdk.WidgetActionFailedEventArgs
 type sealed class WidgetRail.WidgetSdk.WidgetCursorPage<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorPage<TItem>>

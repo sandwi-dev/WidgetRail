@@ -60,6 +60,9 @@ public sealed record WidgetNavigationSnapshot<TRoute>(
     /// transition. Repeated renders may carry the same already-consumed request.
     /// </summary>
     public FocusGroupEntryRequest? FocusGroupEntryRequest { get; init; }
+
+    /// <summary>Optional indexed return intent from the most recent Back transition.</summary>
+    public WidgetCollectionReturnFocus? CollectionReturnFocus { get; init; }
 }
 
 /// <summary>
@@ -73,7 +76,8 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     public const int DefaultMaximumRoutes = 32;
     public const int MaximumRoutesLimit = 32;
 
-    private sealed record Frame(TRoute Route, string InputScopeId, string? ReturnFocusId);
+    private sealed record Frame(TRoute Route, string InputScopeId, string? ReturnFocusId,
+        IndexedCollectionFocusTarget? ReturnItem = null);
 
     private enum RootFocusBehavior
     {
@@ -103,6 +107,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     private CancellationTokenSource _routeLifetime;
     private WidgetNavigationSnapshot<TRoute> _snapshot;
     private FocusGroupEntryRequest? _focusGroupEntryRequest;
+    private WidgetCollectionReturnFocus? _collectionReturnFocus;
     private int _nextScopeOrdinal;
     private readonly WidgetFocusRequestAllocator _focusRequests;
     private bool _disposed;
@@ -253,6 +258,10 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     /// in the parent route rather than guessing from rendered geometry.
     /// </summary>
     public WidgetNavigationResult Push(TRoute route, string? sourceFocusId = null)
+        => PushCore(route, sourceFocusId, null);
+
+    private WidgetNavigationResult PushCore(TRoute route, string? sourceFocusId,
+        IndexedCollectionFocusTarget? returnItem, string? expectedScope = null)
     {
         ArgumentNullException.ThrowIfNull(route);
         ValidateOptionalFocus(sourceFocusId);
@@ -260,6 +269,8 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
         lock (_gate)
         {
             ThrowIfDisposed();
+            if (returnItem is not null && expectedScope != _snapshot.InputScopeId)
+                return WidgetNavigationResult.RejectedConflict;
             if (_stack.Count - 1 >= _maximumDepth)
                 return WidgetNavigationResult.RejectedCapacity;
             if (!TryGetOrCreateScopeId(route, rootFrame: false, out var scopeId))
@@ -269,7 +280,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
                 return WidgetNavigationResult.RejectedConflict;
 
             RememberFocus(_stack[^1].Route, sourceFocusId);
-            _stack.Add(new(route, scopeId, sourceFocusId));
+            _stack.Add(new(route, scopeId, sourceFocusId, returnItem));
             _focusMemory.TryGetValue(route, out var restoredFocus);
             retired = Advance(
                 restoredFocus, replaceRootLifetime: false,
@@ -293,11 +304,14 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
             if (_stack.Count == 1) return WidgetNavigationResult.CannotGoBack;
 
             var removed = _stack[^1];
+            var request = removed.ReturnItem is null ? null : _focusRequests.TryCreate();
+            if (removed.ReturnItem is not null && request is null) return WidgetNavigationResult.RejectedCapacity;
             RememberFocus(removed.Route, sourceFocusId);
             _stack.RemoveAt(_stack.Count - 1);
             retired = Advance(
                 removed.ReturnFocusId, replaceRootLifetime: false,
-                focusGroupEntryRequest: null);
+                focusGroupEntryRequest: null,
+                collectionReturnFocus: request is null ? null : new(request.Id, removed.ReturnItem!));
         }
         Publish(retired);
         return WidgetNavigationResult.Changed;
@@ -324,11 +338,14 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
                 return false;
 
             var removed = _stack[^1];
+            var request = removed.ReturnItem is null ? null : _focusRequests.TryCreate();
+            if (removed.ReturnItem is not null && request is null) return false;
             RememberFocus(removed.Route, sourceFocusId);
             _stack.RemoveAt(_stack.Count - 1);
             retired = Advance(
                 removed.ReturnFocusId, replaceRootLifetime: false,
-                focusGroupEntryRequest: null);
+                focusGroupEntryRequest: null,
+                collectionReturnFocus: request is null ? null : new(request.Id, removed.ReturnItem!));
         }
         Publish(retired);
         return true;
@@ -351,6 +368,25 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
                 "Action-aware navigation requires an actual focused element or an explicit return-focus override.",
                 nameof(action));
         return Push(route, returnFocusId);
+    }
+
+    /// <summary>
+    /// Pushes a nested route from a captured indexed action. Back allocates a
+    /// return intent centrally. Resolve Value.CollectionReturnFocus against the
+    /// current source when rendering the parent. Stale scopes/queries are rejected.
+    /// </summary>
+    public WidgetNavigationResult PushFromCollectionAction(
+        TRoute route, WidgetActionEvent action, IndexedCollectionDescriptor source)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        if (action.FocusedCollectionItem is not { } item)
+            throw new ArgumentException("A captured collection occurrence is required.", nameof(action));
+        IndexedCollectionContract.ValidateDescriptor(source);
+        if (item.SourceId != source.SourceId || item.QueryGeneration != source.QueryGeneration || item.Index >= source.Count)
+            return WidgetNavigationResult.RejectedConflict;
+        IndexedCollectionContract.ValidateFocusTarget(item, item.CollectionId, source);
+        if (action.Phase != ControllerEventPhase.Pressed) return WidgetNavigationResult.RejectedConflict;
+        return PushCore(route, item.CollectionId, item, action.InputScopeId);
     }
 
     /// <summary>
@@ -495,7 +531,8 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     private RetiredLifetimes Advance(
         string? restoredFocus,
         bool replaceRootLifetime,
-        FocusGroupEntryRequest? focusGroupEntryRequest)
+        FocusGroupEntryRequest? focusGroupEntryRequest,
+        WidgetCollectionReturnFocus? collectionReturnFocus = null)
     {
         var previousRoute = _routeLifetime;
         CancellationTokenSource? previousRoot = null;
@@ -506,6 +543,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
         }
         _routeLifetime = CancellationTokenSource.CreateLinkedTokenSource(_widgetLifetime);
         _focusGroupEntryRequest = focusGroupEntryRequest;
+        _collectionReturnFocus = collectionReturnFocus;
         var revision = checked(_snapshot.Revision + 1);
         _snapshot = CreateSnapshot(restoredFocus, revision);
         return new(previousRoute, previousRoot);
@@ -528,6 +566,7 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
         {
             RootRouteCancellationToken = _rootRouteLifetime.Token,
             FocusGroupEntryRequest = _focusGroupEntryRequest,
+            CollectionReturnFocus = _collectionReturnFocus,
         };
     }
 

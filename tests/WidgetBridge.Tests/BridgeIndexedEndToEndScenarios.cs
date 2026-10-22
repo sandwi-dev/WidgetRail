@@ -207,11 +207,13 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
     private string backgroundState = "idle";
     private TaskCompletionSource? activationReadGate;
     private long calls;
-    private long focusRequest;
+    private readonly WidgetNavigator<int> returnNavigation;
     private FocusGroupEntryRequest? entry;
     private ScrollRevealRequest? reveal;
     internal IndexedOwnedBridgeProbeWidget()
     {
+        returnNavigation = CreateNavigatorWithOptions("probe-navigation", 0, new WidgetNavigatorOptions<int>
+        { RouteScopeIds = new Dictionary<int, string> { [0] = "root", [1] = "detail" } });
         previews=CreateFocusPreviewSource("preview-provider",(0,false),new WidgetFocusPreviewOptions<(int Revision,bool ReadOnly)>
         {
             Resolve=async(context,key,token)=>
@@ -335,14 +337,14 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         {
             focusPreviews = true; surfaces = grid = grouped = modalMode = false; modalItem = null; reveal = null;
             source.PublishQuery(150, 100);
-            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+            entry = source.Enter("items", CreateFocusRequest().Id, source.FocusTarget("items", new("item.75"), 75));
         }
         if (action.ActionId == "preview-replace") { entry = null; source.PublishQuery(151, 100); }
         if (action.ActionId == "focus-placeholder")
         {
             activationReadGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
             source.PublishQuery(97, 34);
-            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.33"), 33));
+            entry = source.Enter("items", CreateFocusRequest().Id, source.FocusTarget("items", new("item.33"), 33));
         }
         if (action.ActionId == "focus-placeholder-end")
         {
@@ -354,13 +356,13 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
             activationReadGate?.TrySetResult(); activationReadGate = null;
             modalMode = grid = grouped = false; surfaces = true; modalItem = null;
             source.PublishQuery(300, 100);
-            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+            entry = source.Enter("items", CreateFocusRequest().Id, source.FocusTarget("items", new("item.75"), 75));
         }
         if (action.ActionId is "focus-default-replace" or "focus-default-republish")
         {
             activationReadGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
             source.PublishQuery(97, 2);
-            if (action.ActionId == "focus-default-replace") entry = source.Enter("items", ++focusRequest);
+            if (action.ActionId == "focus-default-replace") entry = source.Enter("items", CreateFocusRequest().Id);
         }
         if (action.ActionId is "activation-refresh" or "activation-changed" or "activation-disabled")
         {
@@ -373,13 +375,13 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
             activationReadGate?.TrySetResult(); activationReadGate = null;
             source.UpdateContent(action.ActionId == "activation-selected" ? 304 : action.ActionId == "activation-busy" ? 305 : 306);
         }
-        if (action.ActionId == "activation-replace") { source.PublishQuery(300, 100); entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75)); }
+        if (action.ActionId == "activation-replace") { source.PublishQuery(300, 100); entry = source.Enter("items", CreateFocusRequest().Id, source.FocusTarget("items", new("item.75"), 75)); }
         if (action.ActionId == "activation-modal") { modalItem = 75; ++modalOpening; }
         if (action.ActionId == "context-mode")
         {
             modalMode = true; surfaces = true; grid = grouped = false; modalItem = null;
             source.PublishQuery(400, 100);
-            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+            entry = source.Enter("items", CreateFocusRequest().Id, source.FocusTarget("items", new("item.75"), 75));
         }
         if (action.ActionId == "context-refresh") source.UpdateContent(401);
         if (action.ActionId == "context-replace") source.PublishQuery(402, 100);
@@ -387,7 +389,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         {
             modalMode = true; surfaces = true; grid = grouped = false; modalItem = null;
             source.PublishQuery(200, 100);
-            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+            entry = source.Enter("items", CreateFocusRequest().Id, source.FocusTarget("items", new("item.75"), 75));
         }
         if (action.ActionId == "modal-dismiss") modalItem = null;
         if (action.ActionId == "modal-update") { ++modalRevision; source.UpdateContent(201); }
@@ -398,12 +400,19 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         if (action.ActionId == "failure-mode") { surfaces = true; source.PublishQuery(500, 100); }
         if (action.ActionId == "group-label") { ++headerRevision; }
         if (action.ActionId == "group-partition") { grouped = true; repartitioned = !repartitioned; }
-        if (action.ActionId == "focus-exact") entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
-        if (action.ActionId == "focus-default") entry = source.Enter("items", ++focusRequest);
-        if (action.ActionId == "focus-wrong") entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("wrong-key"), 80));
+        if (action.ActionId == "focus-exact")
+        {
+            var opening = action with { FocusedCollectionItem = source.FocusTarget("items", new("item.75"), 75) };
+            if (returnNavigation.PushFromCollectionAction(1, opening, source.Descriptor) != WidgetNavigationResult.Changed ||
+                returnNavigation.Back() != WidgetNavigationResult.Changed)
+                throw new InvalidOperationException("Native return fixture failed to navigate.");
+            entry = returnNavigation.Value.CollectionReturnFocus!.Resolve("items", source.Descriptor);
+        }
+        if (action.ActionId == "focus-default") entry = source.Enter("items", CreateFocusRequest().Id);
+        if (action.ActionId == "focus-wrong") entry = source.Enter("items", CreateFocusRequest().Id, source.FocusTarget("items", new("wrong-key"), 80));
         if (action.ActionId == "focus-stale")
         {
-            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+            entry = source.Enter("items", CreateFocusRequest().Id, source.FocusTarget("items", new("item.75"), 75));
             source.PublishQuery(3, 100);
         }
         if (action.ActionId == "focus-clear") entry = null;
@@ -426,7 +435,7 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
             activationReadGate?.TrySetResult();
             activationReadGate = action.ActionId == "reveal-delayed" ? new(TaskCreationOptions.RunContinuationsAsynchronously) : null;
             source.PublishQuery(action.ActionId == "reveal-delayed" ? 97 : 0, 100);
-            reveal = source.Reveal("items", ++focusRequest, source.FocusTarget("items", new(action.ActionId == "reveal-wrong" ? "wrong-key" : "item.75"), 75));
+            reveal = source.Reveal("items", CreateFocusRequest().Id, source.FocusTarget("items", new(action.ActionId == "reveal-wrong" ? "wrong-key" : "item.75"), 75));
         }
         if (action.ActionId == "reveal-clear") { reveal = null; entry = null; source.PublishQuery(0, 100); }
         if (action.ActionId == "reveal-republish") source.UpdateContent(0);
@@ -434,12 +443,12 @@ internal sealed class IndexedOwnedBridgeProbeWidget : Widget
         if (action.ActionId == "focus-delayed")
         {
             source.PublishQuery(99, 100);
-            entry = source.Enter("items", ++focusRequest, source.FocusTarget("items", new("item.75"), 75));
+            entry = source.Enter("items", CreateFocusRequest().Id, source.FocusTarget("items", new("item.75"), 75));
         }
         if (action.ActionId == "focus-disabled")
         {
             source.PublishQuery(98, 100);
-            entry = source.Enter("items", ++focusRequest);
+            entry = source.Enter("items", CreateFocusRequest().Id);
         }
         Invalidate(); return ValueTask.CompletedTask;
     }

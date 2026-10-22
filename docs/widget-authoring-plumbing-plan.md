@@ -509,3 +509,26 @@ Settings 94/94 and PoB formatted reading 20 checks pass, including authored tone
 preservation and a CRLF at a partially full styled paragraph boundary.
 Evidence: `artifacts/authoring/f8-*.log`. Other widgets with truncation policies
 are not migrated: truncation is different from lossless document splitting.
+
+### Indexed navigation returns
+
+F3 implemented in narrowed form: an opt-in captured-action push retains only
+collection occurrence identity on each navigator frame. Back allocates its intent
+from the shared widget sequence. Snapshot resolution checks current collection,
+source, query, and index without retaining queries/items/native controls. No new
+viewport owner or implicit cache policy is introduced.
+
+Full Application's three return bookkeeping fields and Spotify's six playlist/
+setup return fields were removed. Existing Spotify source-to-route selection
+remains domain policy. Full Application 5/5, Spotify 88/88, SDK 171/171 pass.
+Native logical-focus fixture passes 22 checks through the real bridge/worker;
+its exact-entry request now comes from navigator Push/Back. The fixture tests
+request delivery, one-shot behavior, stale/empty queries, focus ownership, and
+content refresh, not a themed product-layout review. Screenshot was inspected
+(the deliberately minimal fixture lacks product styling).
+
+PoB's semantic destination and passive-expansion recovery, Playnite's modal
+anchor/captured-action targets, Settings package-selection recovery, and YTM's
+provider/cache history remain local. They are not mechanically equivalent to an
+indexed route return, and the new API is not a replacement modal framework.
+Evidence: `artifacts/authoring/f3-*.log`, `f3-native/result.json`.

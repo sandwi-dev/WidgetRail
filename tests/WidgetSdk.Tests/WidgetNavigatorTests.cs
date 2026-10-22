@@ -10,8 +10,41 @@ internal static class WidgetNavigatorTests
         await SharedRootsSeparatePageAndNestedLifetimesAsync();
         await ActionAwarePushCapturesActualDispatchFocusAsync();
         await BackRemembersDispatchFocusAndHonorsOverridesAsync();
+        await IndexedReturnTargetsAreScopedAndRetireWithQueriesAsync();
         await ScopeComposesEveryContainerAndRejectsLeafRootsAsync();
         CapacityAndAuthoringConflictsFailClosed();
+    }
+
+    private static async Task IndexedReturnTargetsAreScopedAndRetireWithQueriesAsync()
+    {
+        using var widget = new NavigationWidget();
+        await WidgetTestHost.InitializeAsync(widget);
+        var navigation = widget.Navigation;
+        var source = new IndexedCollectionDescriptor("records", 7, 0, 10000);
+        var item = new IndexedCollectionFocusTarget("record-list", source.SourceId, 7, "record-9999", 9999);
+        var action = new WidgetActionEvent("open", "row", InputScopeId: navigation.Value.InputScopeId)
+            { FocusedCollectionItem = item };
+        Equal(WidgetNavigationResult.RejectedConflict, navigation.PushFromCollectionAction(Route.Detail,
+            action with { InputScopeId = "stale.scope" }, source));
+        Equal(WidgetNavigationResult.RejectedConflict, navigation.PushFromCollectionAction(Route.Detail,
+            action, source with { QueryGeneration = 8 }));
+        Equal(WidgetNavigationResult.Changed, navigation.PushFromCollectionAction(Route.Detail, action, source));
+        True(navigation.Value.CollectionReturnFocus is null, "Push published a return intent early.");
+        Equal(WidgetNavigationResult.Changed, navigation.Push(Route.Library, "nested.control"));
+        navigation.Back();
+        True(navigation.Value.CollectionReturnFocus is null, "Nested Back used another frame's occurrence.");
+        var back = new WidgetActionEvent(navigation.Value.BackActionId!, "back", InputScopeId: navigation.Value.InputScopeId);
+        True(navigation.TryHandleBack(back), "Captured Back failed.");
+        var returned = navigation.Value.CollectionReturnFocus!;
+        Equal(item, returned.Resolve("record-list", source)!.IndexedItem);
+        Equal(returned.RequestId, navigation.Value.CollectionReturnFocus!.RequestId);
+        True(returned.Resolve("record-list", source with { ContentRevision = 5 }) is not null, "Content refresh retired valid return.");
+        True(returned.Resolve("record-list", source with { QueryGeneration = 8 }) is null, "Retired query retained return.");
+        True(returned.Resolve("record-list", source with { Count = 10 }) is null, "Removed index retained return.");
+        True(returned.Resolve("other-list", source) is null, "Return escaped collection identity.");
+        navigation.NavigateRoot(Route.Library);
+        True(navigation.Value.CollectionReturnFocus is null, "Return intent leaked into a new route.");
+        await WidgetTestHost.DestroyAsync(widget);
     }
 
     private static async Task SharedRootsSeparatePageAndNestedLifetimesAsync()

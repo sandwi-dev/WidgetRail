@@ -310,3 +310,12 @@ Its tests use real SDK range/action leases, safe retry, refresh retirement,
 background cancellation and deep reverse reads. They do not emulate WinUI layout
 or claim physical scrolling acceptance. Rebuild the sample package and the exported
 SDK feed before trying it on the migration frontend.
+
+For nested navigation, `navigator.PushFromCollectionAction(route, action,
+source.Descriptor)` captures the opening occurrence on the bounded route stack.
+After Back, render `navigation.CollectionReturnFocus?.Resolve(collectionId,
+source.Descriptor)` as the view's focus-group entry request. The navigator allocates
+one shared focus request per Back; repeated rendering reuses it. Resolution returns
+null after query replacement, collection replacement, or removal of the index,
+leaving normal host focus and viewport memory in charge. It does not remap a
+removed item or select a semantic destination; those decisions remain widget policy.
