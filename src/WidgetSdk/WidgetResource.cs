@@ -199,7 +199,10 @@ public sealed class WidgetResource<TValue> where TValue : notnull
                     null);
             }
 
-            var underlying = _operations.RunSingleFlight(
+            // Duplicate requests join _currentRequest above. A Reset/Publish
+            // retires that owner even if its provider has not drained yet; its
+            // successor must queue, never join the canceled underlying read.
+            var underlying = _operations.RunLatest(
                 _operationKey,
                 context => LoadCoreAsync(request, context),
                 _options.Lifetime);

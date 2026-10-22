@@ -553,3 +553,34 @@ stuck-loading assertion. Final tests restore full destruction cleanup.
 
 Playnite 216/216; YouTube Music 43/43. Logs: `playnite-final.log`,
 `f10-playnite-repro.log`, `f10-playnite-fixed.log`, and `f10-ytm-*.log`.
+
+### Resource reassessment and reset/reload correction
+
+F5 is narrowed to correcting the existing resource facility, rather than adding
+a second state owner to the audited widgets. A new noncooperative-provider test
+reproduced `Reset(); EnsureLoaded()` joining canceled underlying SingleFlight
+work: only the original read ran. WidgetResource already coalesces duplicates in
+its own current-request slot; underlying admission now uses RunLatest so a new
+resource owner queues behind the draining old provider. Multiple resets retain
+only the latest pending read, with no overlapping provider calls or stale publish.
+SDK 171/171 and Playnite 216/216 pass. Existing shipping consumers are Playnite
+hidden rows and connection status; other audited resources use distinct cursor,
+discovered-source, or domain operation contracts. Evidence: `f5-resource-repro.log`,
+`f5-resource-fixed.log`, `f5-playnite.log`.
+
+A general keyed/scope resource remains deferred under the decision gate:
+- Playnite's details model atomically carries the selected game, full metadata,
+  completion mutation confirmations, tabs and suspended presentation. Adding a
+  separately observable resource snapshot while retaining those fields would
+  create two owners and still need the existing opening/generation fence. A clean
+  conversion would redesign that model, not remove a few cancellation lines.
+- PoB skill reads retain one-build/32-group caches and intentionally let admitted
+  engine commands finish when selection changes. A normal cancel-on-key-change
+  resource would weaken those semantics.
+- YTM retains typed section caches plus a reusable detail slot, with account
+  invalidation and a live queue. Spotify's queue is a cursor resource; neither is
+  interchangeable with one ordinary key/value cache.
+No new keyed-resource API or automatic scope/caching policy is shipped. The
+concrete admission, teardown, and resource-reset defects are fixed through
+existing framework ownership. This is an intentional narrower outcome, not a
+claim that the proposed general keyed abstraction was implemented.

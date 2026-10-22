@@ -12,6 +12,7 @@ internal static class WidgetResourceTests
         await FailureCanDiscardLastGoodValueAsync();
         await PublishRejectsAStaleReadAsync();
         await ResetRejectsAStaleReadAsync();
+        await ResetThenReloadSchedulesTheLatestReadAsync();
         await MapperFailureUsesSafeCopyAsync();
         await LifecycleCancellationDrainsBeforeDeactivationAsync();
     }
@@ -183,6 +184,42 @@ internal static class WidgetResourceTests
         True(widget.Resource.Snapshot.Value is null,
             "Reset allowed a stale read to republish data.");
         await StopAsync(widget);
+    }
+
+    private static async Task ResetThenReloadSchedulesTheLatestReadAsync()
+    {
+        var started = Signal();
+        var release = new TaskCompletionSource<TestValue>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var active = 0;
+        var peak = 0;
+        var widget = await StartAsync(Options(async _ =>
+        {
+            peak = Math.Max(peak, Interlocked.Increment(ref active));
+            try
+            {
+                if (Interlocked.Increment(ref calls) == 1)
+                { started.TrySetResult(); return await release.Task; } // Deliberately ignore cancellation.
+                return new TestValue("current");
+            }
+            finally { Interlocked.Decrement(ref active); }
+        }));
+        try
+        {
+            var old = widget.Resource.EnsureLoaded();
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            widget.Resource.Reset();
+            var intermediate = widget.Resource.EnsureLoaded();
+            widget.Resource.Reset();
+            var latest = widget.Resource.EnsureLoaded();
+            release.TrySetResult(new("stale"));
+            await Task.WhenAll(old.Completion, intermediate.Completion, latest.Completion).WaitAsync(TimeSpan.FromSeconds(3));
+            Equal(2, calls);
+            Equal(1, peak);
+            Equal(WidgetOperationStatus.Succeeded, (await latest.Completion).Status);
+            Equal("current", widget.Resource.Snapshot.Value!.Name);
+        }
+        finally { release.TrySetResult(new("cleanup")); await StopAsync(widget); }
     }
 
     private static async Task MapperFailureUsesSafeCopyAsync()
