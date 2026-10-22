@@ -38,18 +38,25 @@ internal static class MusicNotificationTests
         {
             await WidgetTestHost.InitializeAsync(widget);
             await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
-            for (var i = 0; i < 100 && !Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Id == "notifications.configure"); i++) await Task.Delay(20);
+            await Until(() => Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Id == "notifications.configure"));
             Check(Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Text == "Manage song notifications"), "Setup exposes shared preferences");
             Check(!Nodes(widget.Render().CreateSnapshot("test", 1).Root).Any(n => n.Id is "notifications.toggle" or "notifications.opacity"), "No competing local preferences");
             await widget.OnActionAsync(new("notifications.configure", "notifications.configure"));
-            await Task.Delay(100);
+            await Until(() => { lock (published) return published.Any(n => n.ConfigureCategoryId == "song-changes"); });
             lock (published) Check(published.Any(n => n.ConfigureCategoryId == "song-changes"), "Setup opens host category settings");
-            service.SetPlayback(true); await Task.Delay(450);
+            service.SetPlayback(true);
+            await Until(() => { lock (published) return published.Any(n => n.Notification?.CategoryId == "song-changes" && !n.UpdateOnly); });
             lock (published) Check(published.Any(n => n.Notification?.CategoryId == "song-changes" && !n.UpdateOnly), "Track uses declared category");
             await widget.OnActionAsync(new("panel.back", "panel.back"));
+            // Setup completion is saved by a debounced widget-lifetime operation.
+            // A wall-clock delay does not establish that the write finished on a
+            // loaded runner; teardown deliberately cancels unfinished operations.
+            await Until(() => store.Json is { } json &&
+                System.Text.Json.JsonSerializer.Deserialize<StandaloneMusicWidget.NotificationSettings>(json)?.SetupSeen == true);
             int before; lock (published) before = published.Count;
             await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
-            service.SetPlayback(true, "background-next"); await Task.Delay(450);
+            service.SetPlayback(true, "background-next");
+            await Until(() => { lock (published) return published.Count > before && published[^1].Notification?.CategoryId == "song-changes"; });
             lock (published) Check(published.Count > before && published[^1].Notification?.CategoryId == "song-changes", "Background track changes use the shared host policy");
         }
         finally { await WidgetTestHost.DestroyAsync(widget); }
@@ -58,12 +65,18 @@ internal static class MusicNotificationTests
         {
             await WidgetTestHost.InitializeAsync(restored);
             await WidgetTestHost.SetLifecycleStateAsync(restored, WidgetLifecycleState.Visible);
-            await Task.Delay(300);
+            // LoadPage publishes an entry request after initialization completes.
+            await Until(() => restored.Render().FocusGroupEntryRequest is not null);
             Check(!Nodes(restored.Render().CreateSnapshot("restored", 1).Root).Any(n => n.Id == "notifications.configure"), "Completed setup is not reopened on restart");
             await restored.OnActionAsync(new("tab.setup", "setup"));
             Check(Nodes(restored.Render().CreateSnapshot("restored", 2).Root).Any(n => n.Text == "Manage song notifications"), "Preferences remain discoverable");
         }
         finally { await WidgetTestHost.DestroyAsync(restored); }
+    }
+    private static async Task Until(Func<bool> ready)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (!ready()) await Task.Delay(20, timeout.Token);
     }
     private static IEnumerable<ViewNode> Nodes(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Nodes));
     private static void Check(bool value, string message) { if (!value) throw new Exception(message); }
