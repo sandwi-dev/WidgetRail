@@ -54,6 +54,10 @@ internal sealed partial class FocusPolicyValidationPage : Page
                 case VirtualKey.F12: Apply(); break;
                 case VirtualKey.X: exactTarget = "first"; request = focusSource.Request().Id; Apply(); break;
                 case VirtualKey.Y: exactTarget = "third"; request = focusSource.Request().Id; Apply(); break;
+                case VirtualKey.C:
+                    exactTarget = "third"; request = focusSource.Request().Id;
+                    disableThird = true; Apply();
+                    disableThird = false; Apply(); break;
                 default: return;
             }
             args.Handled = true;

@@ -481,3 +481,16 @@ The reproduction failed before the fix. Spotify's full suite passes 88/88;
 coverage includes all five optimistic controls, both unchanged and replaced track
 identities, cancellation, stale terminals, and pre-response observations.
 Evidence: `artifacts/authoring/f16-repro.log`, `f16-fixed.log`, `f16-full.log`.
+
+### Exact focus admission race
+
+A new native regression applied a disabled-target request and an enabled-target
+refresh before dispatcher focus restoration. This failed against the initial F2
+implementation: the unavailable request replayed into the enabled frame. Admission
+now checks declared enabled state and current visibility before retaining the
+exact identity; dispatch still rechecks current identity/scope/availability.
+
+Native focus policy passes 28/28, including the new coalesced-publication case.
+Build is warning-free; screenshot inspected. Evidence: `f2-coalesced-repro` and
+`f2-coalesced-fixed` under `artifacts/authoring`. Only owned fixture processes
+were closed. No shipping app or installed widget was replaced.

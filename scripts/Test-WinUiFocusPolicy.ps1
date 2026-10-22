@@ -60,6 +60,9 @@ try {
     Assert-Focus 'enabling a consumed exact target does not steal focus' 'Widget.header'
     Key Y
     Assert-Focus 'new exact request can focus the enabled target' 'Widget.third'
+    Focus 'Widget.header'
+    Key C
+    Assert-Focus 'disabled exact target cannot replay across coalesced publications' 'Widget.header'
 
 
     Focus 'Widget.header'

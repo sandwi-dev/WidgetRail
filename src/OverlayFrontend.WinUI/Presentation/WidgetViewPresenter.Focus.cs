@@ -109,6 +109,7 @@ internal sealed partial class WidgetViewPresenter
             if (request.TargetId is { } targetId)
                 pendingGroupEntry = pendingGroupEntry is { } pending &&
                     bindings.TryGetValue(targetId, out var target) && target.Identity.Scope == pending.Group.Scope &&
+                    declarations[targetId].Node.IsDisabled != true && IsMemoryVisible(target.Element) &&
                     IsDescendant(targetId, pending.Group.Id)
                     ? pending with { ExactTarget = target.Identity } : null;
         }
