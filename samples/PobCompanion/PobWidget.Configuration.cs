@@ -75,9 +75,10 @@ public sealed partial class PobWidget
             controls.Add(DisclosureButton(inactiveDisclosure,$"saved inactive settings · {inactive.Length} "+(inactive.Length==1?"setting":"settings")+$" · {changed} changed",
                 "summary-inactive-config","pob.config.inactive.toggle","pob.config.inactive.disclosure"));
             controls.Add(Text("Saved in this configuration, but not currently applicable. Expanding lets you edit their retained values.","config.inactive.help","pob-small pob-muted"));
-            foreach(var option in inactive)
-                if(inactiveDisclosure.Expanded)controls.Add(ConfigurationSetting(option));
-                else controls.Add(Text(InlineLabel(option.Title)+": "+ConfigurationSummaryValue(option),"config.inactive.summary."+option.Index,"pob-small pob-muted"));
+            if(inactiveDisclosure.Expanded)
+                controls.Add(UI.Stack("pob.config.inactive.disclosure.content", inactive.Select(ConfigurationSetting).ToArray()).Classes("pob-inactive-disclosure-content"));
+            else foreach(var option in inactive)
+                controls.Add(Text(InlineLabel(option.Title)+": "+ConfigurationSummaryValue(option),"config.inactive.summary."+option.Index,"pob-small pob-muted"));
         }
         var customMatches=searching?A(State,"customModGroups").Where(g=>(S(g,"title")+" "+S(g,"text")).Contains(filter,StringComparison.OrdinalIgnoreCase)).ToArray():[];
         foreach(var group in customMatches)controls.Add(Button("Custom modifiers · "+S(group,"title"),"custom-open."+I(group,"id")));

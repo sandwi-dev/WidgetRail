@@ -50,24 +50,27 @@ internal static partial class SettingsPresentation
         if (health.ControllerProblem)
             children.Add(UI.Button("Review controller access", "open.controller-help", "diagnostics.controllers")
                 .Busy(state.Busy).Classes("setting-row"));
-        children.Add(UI.Button(state.DiagnosticDetails ? "Hide service details" : "Show service details",
-            "diagnostics.details.toggle", "diagnostics.details").Busy(state.Busy).Classes("setting-row"));
+        children.Add(UI.DisclosureHeader("diagnostics.details", state.DiagnosticDetails ? "Hide service details" : "Show service details",
+            state.DiagnosticDetails, "diagnostics.details.content", "diagnostics.details.expand", "diagnostics.details.collapse")
+            .Busy(state.Busy).Classes("setting-row"));
         if (state.DiagnosticDetails)
         {
-            children.Add(UI.Text(state.SettingsValid ? "Settings file: valid" : "Settings file: invalid; defaults shown",
+            var details = new List<WidgetElement>();
+            details.Add(UI.Text(state.SettingsValid ? "Settings file: valid" : "Settings file: invalid; defaults shown",
                 "diagnostics.settings").Classes(state.SettingsValid ? "diagnostic-ok" : "diagnostic-error"));
-            children.Add(UI.Text($"Theme packages: {state.Themes.Themes.Count} total, {invalidThemes} invalid",
+            details.Add(UI.Text($"Theme packages: {state.Themes.Themes.Count} total, {invalidThemes} invalid",
                 "diagnostics.themes").Classes(invalidThemes == 0 ? "diagnostic-ok" : "diagnostic-error"));
-            children.Add(UI.CodeText($"Schema: {state.Settings.SchemaVersion}; runtime snapshot {diagnostics.Revision}",
+            details.Add(UI.CodeText($"Schema: {state.Settings.SchemaVersion}; runtime snapshot {diagnostics.Revision}",
                 "diagnostics.schema").AddClasses("diagnostic-line"));
-            children.AddRange(areas.Select(area => UI.Text(
+            details.AddRange(areas.Select(area => UI.Text(
                 $"{DiagnosticPrefix(area.State)} {area.Label}: {area.Summary}",
                 $"diagnostics.area.{area.Id}", $"{area.Label}: {area.State}; {area.Summary}").Classes(
                     area.State == PlatformDiagnosticState.Healthy ? "diagnostic-ok" :
                     area.State == PlatformDiagnosticState.Unavailable && area.Id is "overlay" or "guide"
                         ? "diagnostic-line" : "diagnostic-error")));
-            children.Add(UI.Text("Unavailable overlay/Guide telemetry means this build does not report it; it does not prove an input failure.",
+            details.Add(UI.Text("Unavailable overlay/Guide telemetry means this build does not report it; it does not prove an input failure.",
                 "diagnostics.telemetry.help").Classes("page-help"));
+            children.Add(UI.Stack("diagnostics.details.content", details.ToArray()).Classes("settings-disclosure-content"));
         }
         children.Add(UI.Text(
             $"Widgets: {runningWorkers}/{diagnostics.Workers.Count} running; " +

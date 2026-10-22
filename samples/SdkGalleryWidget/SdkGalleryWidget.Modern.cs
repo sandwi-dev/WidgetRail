@@ -64,7 +64,8 @@ public sealed partial class SdkGalleryWidget
                 UI.Text(" and a compact reference ", "gallery.rich.middle"),
                 UI.InlineLink("[1]", "gallery.rich.citation", WebRequest("https://example.com"), "Reference 1: example.com").Classes("gallery-inline-citation"),
                 UI.Text(" inside the same wrapping paragraph. Links are reachable with the controller.", "gallery.rich.after")),
-            UI.Button(state.Expanded ? "Hide details" : "Show details", "gallery.details", "gallery.details"),
+            UI.DisclosureHeader("gallery.details", state.Expanded ? "Hide details" : "Show details", state.Expanded,
+                "gallery.details.body", "gallery.details.expand", "gallery.details.collapse"),
         };
         if (state.Expanded)
             content.Add(UI.Card("gallery.details.body", CardVariant.Subtle,
@@ -218,7 +219,8 @@ public sealed partial class SdkGalleryWidget
         {
             case "gallery.text.commit": _demo.Update(s => s with { Text = action.CommittedText ?? "" }); break;
             case "gallery.secret.commit": _demo.Update(s => s with { SecretReceived = action.CommittedText is { Length: > 0 } }); break;
-            case "gallery.details": _demo.Update(s => s with { Expanded = !s.Expanded }); break;
+            case "gallery.details.expand": _demo.Update(s => s with { Expanded = true }); break;
+            case "gallery.details.collapse": _demo.Update(s => s with { Expanded = false }); break;
             case "gallery.message": _demo.Update(s => s with { Messages = s.Messages + 1, Reveal = CreateFocusRequest().Reveal("gallery.page-scroll", "gallery.message." + (s.Messages + 1)) }); break;
             case "gallery.level" when action.RequestedValue is { } value && double.IsFinite(value): _demo.Update(s => s with { Level = Math.Clamp(value, 0, 100) }); break;
             case "gallery.browser.mode": _demo.Update(s => s with { ActivateBrowser = !s.ActivateBrowser }); break;

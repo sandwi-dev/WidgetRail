@@ -273,3 +273,5 @@
   background: var(--surface);
   border-color: transparent;
 }
+
+.settings-disclosure-content { gap: 8px; }

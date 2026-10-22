@@ -22,9 +22,9 @@ internal static class AppUpdateScenarios
             await widget.InitializationTask;
             await widget.OnActionAsync(new("open.app-updates", "test"));
             await export(widget.Render().CreateSnapshot("settings-update-layout", 1), Path.Combine(directory, "ready.json"));
-            await widget.OnActionAsync(new("app-update.notes", "test"));
+            await widget.OnActionAsync(new("app-update.notes.expand", "test"));
             await export(widget.Render().CreateSnapshot("settings-update-layout", 2), Path.Combine(directory, "notes.json"));
-            await widget.OnActionAsync(new("app-update.notes", "test"));
+            await widget.OnActionAsync(new("app-update.notes.collapse", "test"));
             service.Interactive();
             await widget.OnActionAsync(new("open.app-updates", "test"));
             await export(widget.Render().CreateSnapshot("settings-update-layout", 3), Path.Combine(directory, "interactive-required.json"));
@@ -72,7 +72,10 @@ internal static class AppUpdateScenarios
             Check(await widget.OnIntentAsync(intent) == WidgetIntentResult.Accepted);
             await widget.IntentNavigationTask;
             Check(Snapshot().ActiveInputScopeId == "app-update.page");
-            await Action("app-update.notes"); Check(Node("app-update.notes.text").Text == "Notes");
+            await Action("app-update.notes.expand"); Check(Node("app-update.notes.text").Text == "Notes");
+            await Action("app-update.notes.expand");
+            Check(Node("app-update.notes.toggle").Disclosure is { IsExpanded: true, ContentId: "app-update.notes.content" });
+            Check(Node("app-update.notes.text").Text == "Notes");
             foreach (var notes in new[]
             {
                 new string('a', 4096), new string('a', 4097), new string('a', 8000),
@@ -92,7 +95,9 @@ internal static class AppUpdateScenarios
                     !char.IsHighSurrogate(text[^1]) && !char.IsLowSurrogate(text[0]) && text[^1] != '\r'));
                 Check(ViewSnapshotValidator.Validate(snapshot).Count == 0 && WinUiPresentationContract.Validate(snapshot).Count == 0);
             }
-            await Action("app-update.notes");
+            await Action("app-update.notes.collapse");
+            await Action("app-update.notes.collapse");
+            Check(Node("app-update.notes.toggle").Disclosure is { IsExpanded: false });
             Check(!Walk(Snapshot().Root).Any(n => n.Id.StartsWith("app-update.notes.text", StringComparison.Ordinal)));
             await Action("app-update.download"); Check(Node("app-update.primary").IsBusy == true && Node("app-update.primary").IsDisabled != true);
             service.Ready(); await Action("open.app-updates");

@@ -87,31 +87,34 @@ internal static partial class PlayniteLibraryConnectionPresentation
                 .Busy(setup.Busy).Disabled(!state.Interactive || setup.Plan?.CanApply != true).Classes("playnite-library-setup-primary"),
             UI.ResponsiveGrid(prefix + "secondary", 180, 3,
                 UI.Button("Find Playnite", prefix + "scan", prefix + "scan").Busy(setup.Busy).Disabled(!state.Interactive),
-                UI.Button(setup.Advanced ? "Hide advanced" : "Advanced", prefix + "advanced", prefix + "advanced").Disabled(!enabled),
+                UI.DisclosureHeader(prefix + "advanced", setup.Advanced ? "Hide advanced" : "Advanced", setup.Advanced,
+                    prefix + "advanced.content", prefix + "advanced.expand", prefix + "advanced.collapse").Disabled(!enabled),
                 UI.Button("Get Playnite", prefix + "download", prefix + "download")
                     .OpenIntent(WidgetIntentContracts.Web, JsonSerializer.SerializeToElement(new { url = "https://playnite.link/" })).Disabled(!enabled))
                 .Classes("playnite-library-setup-secondary"))
             .Classes("playnite-library-setup-actions"));
         if (setup.Advanced)
         {
-            children.Add(UI.SectionHeader("Folders and manual connection", prefix + "advanced.title",
+            var advanced = new List<WidgetElement>();
+            advanced.Add(UI.SectionHeader("Folders and manual connection", prefix + "advanced.title",
                 description: "Use these options for a custom installation or an existing integration you manage yourself."));
-            children.Add(UI.Text("Playnite application folder", prefix + "program.label"));
-            children.Add((UI.TextEntry(setup.ProgramPath, "Folder containing Playnite.DesktopApp.exe", prefix + "program", prefix + "program", 1024)
+            advanced.Add(UI.Text("Playnite application folder", prefix + "program.label"));
+            advanced.Add((UI.TextEntry(setup.ProgramPath, "Folder containing Playnite.DesktopApp.exe", prefix + "program", prefix + "program", 1024)
                 with { InputKind = TextEntryInputKind.Ordinary }).Disabled(!enabled).Classes("playnite-library-control"));
-            children.Add(UI.Text("Playnite data folder (optional)", prefix + "data.label"));
-            children.Add((UI.TextEntry(setup.DataPath, "Leave empty to detect the profile", prefix + "data", prefix + "data", 1024)
+            advanced.Add(UI.Text("Playnite data folder (optional)", prefix + "data.label"));
+            advanced.Add((UI.TextEntry(setup.DataPath, "Leave empty to detect the profile", prefix + "data", prefix + "data", 1024)
                 with { InputKind = TextEntryInputKind.Ordinary }).Disabled(!enabled).Classes("playnite-library-control"));
-            children.Add(UI.Button("Use these folders", prefix + "folders", prefix + "folders").Disabled(!enabled || string.IsNullOrWhiteSpace(setup.ProgramPath)));
-            children.Add(UI.Text("Manual Bridge token · stored in Windows Credential Manager", prefix + "token.label").Classes("playnite-library-setup-path"));
-            children.Add(UI.SensitiveTextEntry("Enter a Playnite Bridge token", PlayniteLibraryWidget.PlayniteSaveActionId,
+            advanced.Add(UI.Button("Use these folders", prefix + "folders", prefix + "folders").Disabled(!enabled || string.IsNullOrWhiteSpace(setup.ProgramPath)));
+            advanced.Add(UI.Text("Manual Bridge token · stored in Windows Credential Manager", prefix + "token.label").Classes("playnite-library-setup-path"));
+            advanced.Add(UI.SensitiveTextEntry("Enter a Playnite Bridge token", PlayniteLibraryWidget.PlayniteSaveActionId,
                 "playnite-library.playnite.token", ProtocolConstants.MaximumTextEntryLength).Disabled(!enabled).Classes("playnite-library-playnite-token"));
-            children.Add(UI.ResponsiveGrid(prefix + "manual-actions", 180, 2,
+            advanced.Add(UI.ResponsiveGrid(prefix + "manual-actions", 180, 2,
                 UI.Button("Test connection", PlayniteLibraryWidget.PlayniteRefreshActionId, PlayniteLibraryWidget.PlayniteRefreshActionId).Disabled(!enabled),
                 UI.Button("Remove saved token", PlayniteLibraryWidget.PlayniteDeleteActionId, PlayniteLibraryWidget.PlayniteDeleteActionId).Disabled(!enabled))
                 .Classes("playnite-library-setup-secondary"));
             if (state.Feedback is { } feedback)
-                children.Add(UI.Alert(feedback.Title, feedback.Message, state.Kind == PlayniteBridgeConnectionKind.Connected ? AlertTone.Success : AlertTone.Info, prefix + "manual-result"));
+                advanced.Add(UI.Alert(feedback.Title, feedback.Message, state.Kind == PlayniteBridgeConnectionKind.Connected ? AlertTone.Success : AlertTone.Info, prefix + "manual-result"));
+            children.Add(UI.Stack(prefix + "advanced.content", advanced.ToArray()).Classes("playnite-library-advanced-content"));
         }
         var header = UI.Row("playnite-library.playnite.header",
             UI.Text("Playnite connection", "playnite-library.playnite.title").Classes("playnite-library-title"),

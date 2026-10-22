@@ -82,7 +82,7 @@ public sealed class GameHelpTests
             await widget.OnActionAsync(new("starter.0", "help.starter.0"));
             await widget.OnActionAsync(new("ask.plain", "help.answer-plain"));
             await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.message.2.sources-toggle"));
-            await widget.OnActionAsync(new("sources.2", "help.message.2.sources-toggle"));
+            await widget.OnActionAsync(new(Walk(Snapshot(widget).Root).Single(n => n.Id == "help.message.2.sources-toggle").ActionId!, "help.message.2.sources-toggle"));
             var intents = Walk(Snapshot(widget).Root).Where(n => n.Id.StartsWith("help.message.2.source.")).Select(n => n.Intent!).ToArray();
             Assert.AreEqual(3, intents.Length);
             Assert.IsTrue(intents.All(intent => intent.Routing == WidgetIntentRouting.WidgetPreferred && intent.Presentation == WidgetIntentPresentation.PreferExistingSurface));
@@ -177,9 +177,12 @@ public sealed class GameHelpTests
             await widget.OnActionAsync(new("ask.plain", "help.answer-plain"));
             await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.message.2.solution-toggle"));
             Assert.IsFalse(Walk(Snapshot(widget).Root).Any(n => n.Text == "Use the office door, then cross the cubicles."));
-            await widget.OnActionAsync(new("solution.2", "help.message.2.solution-toggle"));
+            await widget.OnActionAsync(new(Walk(Snapshot(widget).Root).Single(n => n.Id == "help.message.2.solution-toggle").ActionId!, "help.message.2.solution-toggle"));
             Assert.IsTrue(Walk(Snapshot(widget).Root).Any(n => n.Text == "Use the office door, then cross the cubicles."));
-            await widget.OnActionAsync(new("solution.2", "help.message.2.solution-toggle"));
+            await widget.OnActionAsync(new("solution.expand.2", "help.message.2.solution-toggle"));
+            Assert.IsTrue(Walk(Snapshot(widget).Root).Single(n => n.Id == "help.message.2.solution-toggle").Disclosure!.IsExpanded,
+                "Duplicate Expand must not hide a solution.");
+            await widget.OnActionAsync(new(Walk(Snapshot(widget).Root).Single(n => n.Id == "help.message.2.solution-toggle").ActionId!, "help.message.2.solution-toggle"));
             Assert.IsFalse(Walk(Snapshot(widget).Root).Any(n => n.Id == "help.message.2.solution"));
             Assert.AreEqual(1, service.Requests.Count, "Expansion/collapse is local, not an AI request.");
             var before = Snapshot(widget).ScrollRevealRequest!.RequestId;
@@ -229,7 +232,7 @@ public sealed class GameHelpTests
             await widget.OnActionAsync(new("starter.0", "help.starter.0"));
             await widget.OnActionAsync(new("ask.plain", "help.answer-plain"));
             await Until(() => Walk(Snapshot(widget).Root).Any(node => node.Id == "help.message.2.sources-toggle"));
-            await widget.OnActionAsync(new("sources.2", "help.message.2.sources-toggle"));
+            await widget.OnActionAsync(new(Walk(Snapshot(widget).Root).Single(n => n.Id == "help.message.2.sources-toggle").ActionId!, "help.message.2.sources-toggle"));
             var intent = Walk(Snapshot(widget).Root).Single(node => node.Id == "help.message.2.source.0").Intent!;
             Assert.AreEqual(video ? WidgetIntentContracts.OpenVideo : WidgetIntentContracts.OpenWebPage, intent.ContractId);
             if (!video) Assert.AreEqual(url, intent.Payload.GetProperty("url").GetString());

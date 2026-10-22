@@ -290,3 +290,5 @@
 }
 
 .playnite-library-achievement-description { color: var(--text); text-align: start; font-size: 16px; line-height: 1.35; max-lines: 128; overflow-wrap: anywhere; }
+
+.playnite-library-advanced-content { gap: 14px; }

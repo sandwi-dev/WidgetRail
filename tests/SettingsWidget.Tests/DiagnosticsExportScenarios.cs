@@ -33,7 +33,7 @@ internal static class DiagnosticsExportScenarios
             await export;
             Check(Node("diagnostics.export").IsBusy != true, "Busy state remained after export");
             Check(Node("diagnostics.export.saved").Text!.Contains("WidgetRail-support-test.zip"), "Saved filename was not retained");
-            await widget.OnActionAsync(new("diagnostics.details.toggle", "diagnostics.details"));
+            await widget.OnActionAsync(new("diagnostics.details.expand", "diagnostics.details"));
             Check(Node("diagnostics.export.saved").Text!.Contains("WidgetRail-support-test.zip"), "Expanding details lost the result");
         }
         finally

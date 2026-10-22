@@ -97,7 +97,7 @@ public sealed class GameHelpCitationTests
             Assert.IsFalse(Nodes(widget).Any(n => n.Id.StartsWith("help.message.2.source.")));
             Assert.IsTrue(Nodes(widget).Any(n => n.Id == "help.message.2.attribution"));
             Assert.IsFalse(Nodes(widget).Any(n => n.Id.Contains(".citation.")), "Do not attach solution citations to an uncited hint.");
-            await widget.OnActionAsync(new("solution.2", "help.message.2.solution-toggle"));
+            await widget.OnActionAsync(new(Nodes(widget).Single(n => n.Id == "help.message.2.solution-toggle").ActionId!, "help.message.2.solution-toggle"));
             var links = Nodes(widget).Where(n => n.Id.Contains(".citation.") && n.Intent is not null).ToArray();
             CollectionAssert.AreEqual(new[] { "¹", "²", "¹" }, links.Select(n => n.Text!).ToArray());
             Assert.AreEqual(ViewNodeKind.RichText, Nodes(widget).Single(n => n.Id == "help.message.2.solution-text.paragraph").Kind);
@@ -106,10 +106,10 @@ public sealed class GameHelpCitationTests
             StringAssert.Contains(links[0].AccessibilityLabel!, "Move the boxes");
             var displayed = string.Concat(Nodes(widget).Where(n => n.Kind == ViewNodeKind.Text && n.Id.StartsWith("help.message.2.solution-text.") && !n.Id.Contains(".separator.")).Select(n => n.Text));
             Assert.AreEqual(answer.DetailedSolution, displayed, "Markers must not replace or drop answer text.");
-            await widget.OnActionAsync(new("sources.2", "help.message.2.sources-toggle"));
+            await widget.OnActionAsync(new(Nodes(widget).Single(n => n.Id == "help.message.2.sources-toggle").ActionId!, "help.message.2.sources-toggle"));
             Assert.AreEqual("[1] Source 1", Nodes(widget).Single(n => n.Id == "help.message.2.source.0").Text);
             Assert.AreEqual("[2] Source 2", Nodes(widget).Single(n => n.Id == "help.message.2.source.1").Text);
-            await widget.OnActionAsync(new("sources.2", "help.message.2.sources-toggle"));
+            await widget.OnActionAsync(new(Nodes(widget).Single(n => n.Id == "help.message.2.sources-toggle").ActionId!, "help.message.2.sources-toggle"));
             Assert.AreEqual(3, Nodes(widget).Count(n => n.Id.Contains(".citation.") && n.Intent is not null));
             Assert.IsTrue(Nodes(widget).Any(n => n.Id == "help.message.2.attribution"));
             Assert.AreEqual(1, service.Requests, "Expansion and collapse must not call Gemini again.");

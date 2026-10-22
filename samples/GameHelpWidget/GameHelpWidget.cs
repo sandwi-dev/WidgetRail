@@ -101,12 +101,14 @@ public sealed partial class GameHelpWidget : Widget
             case "new.cancel": model.Update(s => s with { ConfirmNew = false }); break;
             case "new.confirm": NewConversation(); break;
             default:
-                if(action.ActionId.StartsWith("solution.",StringComparison.Ordinal) && long.TryParse(action.ActionId[9..], out var solutionId))
-                    model.Update(s => s with { Messages = s.Messages.Select(message => message.Id == solutionId && !string.IsNullOrWhiteSpace(message.Answer?.DetailedSolution)
-                        ? message with { SolutionExpanded = !message.SolutionExpanded } : message).ToArray() });
-                else if(action.ActionId.StartsWith("sources.",StringComparison.Ordinal) && long.TryParse(action.ActionId[8..], out var sourcesId))
-                    model.Update(s => s with { Messages = s.Messages.Select(message => message.Id == sourcesId && message.Answer?.Sources.Count > 0
-                        ? message with { SourcesExpanded = !message.SourcesExpanded } : message).ToArray() });
+                var disclosureParts = action.ActionId.Split('.');
+                if (disclosureParts.Length == 3 && disclosureParts[0] is "solution" or "sources" &&
+                    disclosureParts[1] is "expand" or "collapse" && long.TryParse(disclosureParts[2], out var messageId))
+                    model.Update(s => s with { Messages = s.Messages.Select(message => message.Id != messageId ? message :
+                        disclosureParts[0] == "solution" && !string.IsNullOrWhiteSpace(message.Answer?.DetailedSolution)
+                            ? message with { SolutionExpanded = disclosureParts[1] == "expand" }
+                            : disclosureParts[0] == "sources" && message.Answer?.Sources.Count > 0
+                                ? message with { SourcesExpanded = disclosureParts[1] == "expand" } : message).ToArray() });
                 else if(action.ActionId.StartsWith("spoiler.",StringComparison.Ordinal) && int.TryParse(action.ActionId[8..],out var spoiler) && spoiler>=0 && spoiler<Spoilers.Length)
                     SetPreferences(spoilers: Spoilers[spoiler]);
                 else if(!state.Busy && !state.Capturing && action.ActionId.StartsWith("starter.",StringComparison.Ordinal) && int.TryParse(action.ActionId[8..],out var starter) && starter>=0 && starter<Starters.Length)

@@ -27,6 +27,13 @@ internal sealed class PobDisclosureState
         Remember(current.Context, !current.Expanded);
         return true;
     }
+    internal bool SetExpanded(long expectedToken, bool expanded)
+    {
+        if (Current is not { } current || current.Token != expectedToken || current.Expanded == expanded) return false;
+        Current = current with { Expanded = expanded };
+        Remember(current.Context, expanded);
+        return true;
+    }
     private void Remember(string context, bool expanded)
     {
         for (var node = recent.First; node is not null; node = node.Next)

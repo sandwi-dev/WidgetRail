@@ -131,8 +131,8 @@ public sealed partial class GameHelpWidget
             {
                 if (!string.IsNullOrWhiteSpace(answer.DetailedSolution))
                 {
-                    parts.Add(UI.Button(message.SolutionExpanded ? "Hide detailed solution" : "Show detailed solution",
-                        "solution." + message.Id, id + ".solution-toggle").Classes("help-followup"));
+                    parts.Add(UI.DisclosureHeader(id + ".solution-toggle", message.SolutionExpanded ? "Hide detailed solution" : "Show detailed solution",
+                        message.SolutionExpanded, id + ".solution", "solution.expand." + message.Id, "solution.collapse." + message.Id).Classes("help-followup"));
                     if (message.SolutionExpanded)
                         parts.Add(UI.Stack(id + ".solution",
                             new[] { UI.Text("Detailed solution", id + ".solution-title").Classes("help-section-title") }
@@ -145,8 +145,8 @@ public sealed partial class GameHelpWidget
                     parts.AddRange(CitedText(answer.Uncertainty, answer, "uncertainty", id + ".uncertainty", "help-caption"));
                 if (answer.Sources.Count > 0)
                 {
-                    parts.Add(UI.Button((message.SourcesExpanded ? "Hide sources" : "Show sources") + $" ({answer.Sources.Count})",
-                        "sources." + message.Id, id + ".sources-toggle").Classes("help-followup"));
+                    parts.Add(UI.DisclosureHeader(id + ".sources-toggle", (message.SourcesExpanded ? "Hide sources" : "Show sources") + $" ({answer.Sources.Count})",
+                        message.SourcesExpanded, id + ".sources.links", "sources.expand." + message.Id, "sources.collapse." + message.Id).Classes("help-followup"));
                     if (message.SourcesExpanded)
                         parts.Add(UI.ResponsiveGrid(id + ".sources.links", 240, 3,
                             answer.Sources.Select((source, index) => Source(source, id + ".source." + index, $"[{index + 1}] {source.Title}").Classes("help-link")).ToArray())

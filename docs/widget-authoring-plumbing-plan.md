@@ -628,7 +628,7 @@ or weakens behavior. No existing widget feature was intentionally removed.
 | F6 | Implemented explicit-identity loaded-list adapter | Settings, Games & Apps, Playnite achievements, PoB loaded lists, Spotify queue, YTM snapshots; specialized sources retained |
 | F7 | Corrected audit: shared ownership/lifetime facilities already exist | Preserve widget domain guards |
 | F8 | Implemented shared lossless chunk boundaries | PoB and Settings; whole-frame document owner deferred |
-| F9 | Open controlled disclosure implementation with protocol/UIA contract | Existing PoB/Settings behavior retained |
+| F9 | Implemented controlled disclosure with protocol/UIA and native collapse recovery | Settings, PoB configuration, Playnite setup, Game Help and SDK Gallery migrated |
 | F10 | Fixed operation admission presentation | PoB, Playnite, YTM; Spotify/Settings existing admission paths retained |
 | F11 | Implemented explicit Settings field declarations | Settings fields; existing navigation pass retained |
 | F12 | Retained typed page-or-pin demand | Spotify; generic lease graph not justified |
@@ -988,3 +988,79 @@ idempotence and state changes, controller/pointer parity, disabled/busy admissio
 child→header recovery, outside/refresh focus stability, nested collapse, stale
 owners and explicit request priority. F9 remains implementation work, not an
 external blocker. Final comparative restoration/completion review also remains.
+
+
+### F9 controlled disclosure implementation and validation
+
+Protocol **100** adds `WidgetDisclosure(ContentId, IsExpanded)` on ordinary
+button actions. SDK `UI.Disclosure` composes a stable header and lazy optional body;
+`UI.DisclosureHeader` supports existing layouts with a separate body root. The
+wire validator requires unique content ownership in the same input scope and
+presentation fragment; content exists exactly when expanded and cannot contain
+its header. It rejects malformed/cross-fragment ownership and inline rich-text
+headers. Diffing, atomic property updates, version inference and the generated
+native constants include the new declaration. No host preference cache or
+additional action endpoint was introduced.
+
+`WidgetDisclosureButton` retains normal button authority, styles, leading icons,
+and controller/pointer activation. Its UIA Expand/Collapse requests are idempotent
+and use the current explicit action. Accepted snapshots drive chevrons and UIA
+state-change events. The host captures old ancestry before removal and recovers to
+the nearest surviving disclosure header only when the focused control was removed
+or became unavailable. Surviving/reparented controls, outside focus, refreshes,
+expansion and newer explicit focus requests keep their existing behavior. This
+also works in an entered interactive preview and retains normal B-to-source.
+
+Review identified and fixed prototype issues before commit: leading icons had
+replaced the chevron; new content wrappers had inherited the wrong gaps; preview
+fragments lacked recovery and allowed cross-fragment content references; and
+collapse could override a control surviving outside the old body. The final tests
+cover these cases. Wrappers retain their original gaps (Settings 8, PoB 4,
+Playnite 14 logical pixels), without inheriting page padding/growth/surface styles.
+The host's no-expanded-disclosure path uses a flag maintained during its existing
+binding pass; it performs no extra ancestry scan. Disclosure validation allocates
+its ownership set only when the feature is present. Optional children are never
+constructed while collapsed. These are bounded source/behavior observations, not
+a claim of measured process-memory or scrolling improvements.
+
+| Consumer | Final disposition |
+|---|---|
+| Settings update notes / service diagnostics | Migrated, explicit set-true/set-false actions, original page state and operation guards retained. |
+| PoB saved inactive configuration | Migrated; retained 24-context preference bound and stale-token/build guards; removed widget-generated collapse/expand focus request. Collapsed value summaries remain visible outside optional editing controls. |
+| Playnite setup Advanced | Migrated without moving its action-grid header or changing setup/authentication authority. |
+| Game Help solution / source lists | Migrated, preserving message identity, provider citations, attribution and local-only expansion. |
+| SDK Gallery details | Migrated as a public example. |
+| PoB comparison context | Narrowed exception: toolbar action reveals fields in two existing permanent cards. Combining those into one removable subtree would change the layout/summary contract. Retain the domain disclosure. |
+| PoB passive virtual groups | Separate indexed-group contract retained; not ordinary optional content. |
+| Spotify / YTM and other shipping widgets | No equivalent ordinary optional-content disclosure identified in the applicability audit. Navigation, dialogs and provider pagination are not migrated as disclosures. |
+
+Validation:
+- SDK **174/174**; focused disclosure contract also covers lazy creation, malformed
+  references, version gating, nested trees, cross-fragment rejection, and atomic
+  expand/collapse/metadata removal.
+- Settings **94/94**, Playnite **219/219**, Game Help **48/48**, SDK Gallery
+  **13/13**; explicit duplicate expand/collapse scenarios preserve state.
+- PoB disclosure workflows **27/27 for each game**, including context retirement,
+  cache bounds, repeated expansion, search revealing inactive controls, and
+  unchanged build/XML. Real exported snapshots remain in `f9-pob-fixtures`.
+- Native **33/33**, including ten built-in theme foreground checks plus high
+  contrast. Real pointer activation and UIA property-state reads passed.
+- A separate UIA client received **Collapsed, Expanded** events; repeated Expand
+  raised no additional event. Its first probe expected enum strings, while WinUI
+  delivers boxed numeric enum values; normalizing the standard UIA enum fixed the
+  probe without changing product behavior or assertions.
+- Compatibility **17/17**, Full Application **5/5**; SDK API baseline **3869**.
+- Inspected final expanded/collapsed native screenshots: text, leading icon,
+  chevrons and children remain visible without overlap or clipping. This is an
+  isolated diagnostic surface, not acceptance of every product page/theme.
+
+Evidence under `artifacts/authoring`: `f9-sdk-full.log`,
+`f9-sdk-ownership.log`, `f9-settings-final.log`, `f9-playnite.log`,
+`f9-gamehelp-final.log`, `f9-gallery.log`, `f9-pob1.log`, `f9-pob2.log`,
+`f9-native-final-results.json`, `f9-uia-final-events.json`,
+`f9-final-pointer-state.json`, `f9-final-expanded.png`,
+`f9-final-collapsed.png`, `f9-compat.log`, and `f9-fullapp.log`.
+All owned native fixtures were closed. No installed package, permissions, or
+running production app was changed. The goal remains active for the final
+requirement-by-requirement completion audit and remaining restoration evidence;
+this section closes F9's implementation and representative validation.

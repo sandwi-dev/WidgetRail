@@ -158,3 +158,5 @@ text { color: var(--text); text-align: start; }
 .pob-button.pob-discard { color:var(--danger,var(--text)); border-color:var(--danger,var(--text)); }
 .pob-button.pob-discard:focused { color:var(--danger,var(--text)); border-color:var(--danger,var(--text)); outline-color:var(--focus); }
 .pob-comparison-columns { padding:4px 10px; background:var(--surface-raised); corner-radius:6px; }
+
+.pob-inactive-disclosure-content { gap: 4px; }

@@ -30,7 +30,8 @@ public sealed partial class SettingsWidget
             case "app-update.check": await ReadAppUpdatesAsync(new("check"), token).ConfigureAwait(false); break;
             case "app-update.download": await ReadAppUpdatesAsync(new("download"), token).ConfigureAwait(false); break;
             case "app-update.cancel": await ReadAppUpdatesAsync(new("cancel"), token).ConfigureAwait(false); break;
-            case "app-update.notes": lock (_stateLock) _appUpdateState = state with { NotesExpanded = !state.NotesExpanded }; break;
+            case "app-update.notes.expand": lock (_stateLock) _appUpdateState = _appUpdateState with { NotesExpanded = true }; break;
+            case "app-update.notes.collapse": lock (_stateLock) _appUpdateState = _appUpdateState with { NotesExpanded = false }; break;
             case "app-update.install":
                 if (state.Snapshot is { State: "ready", ReviewToken: { } review })
                     await ReadAppUpdatesAsync(new("install", review), token).ConfigureAwait(false);
@@ -98,8 +99,9 @@ internal static partial class SettingsPresentation
             items.Add(UI.Text("Available " + available, "app-update.available").Classes("section-heading"));
             if (snapshot.Notes.Length != 0)
             {
-                items.Add(UI.Button(state.NotesExpanded ? "Hide release notes" : "Show release notes", "app-update.notes", "app-update.notes.toggle").Classes("secondary-button"));
-                if (state.NotesExpanded) items.AddRange(ReleaseNoteElements(snapshot.Notes));
+                items.Add(UI.DisclosureHeader("app-update.notes.toggle", state.NotesExpanded ? "Hide release notes" : "Show release notes",
+                    state.NotesExpanded, "app-update.notes.content", "app-update.notes.expand", "app-update.notes.collapse").Classes("secondary-button"));
+                if (state.NotesExpanded) items.Add(UI.Stack("app-update.notes.content", ReleaseNoteElements(snapshot.Notes).ToArray()).Classes("settings-disclosure-content"));
             }
             if (snapshot.RequiresInteractiveSetup) items.Add(installerWarning);
             if (snapshot.CanInstall)

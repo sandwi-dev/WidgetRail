@@ -13,30 +13,28 @@ public sealed partial class PobWidget
     {
         if(!InactiveConfiguration(option))return;
         var disclosure=inactiveConfigurationDisclosure.Select(InactiveConfigurationContext(),defaultExpanded:false);
-        if(!disclosure.Expanded)inactiveConfigurationDisclosure.Toggle(disclosure.Token);
+        inactiveConfigurationDisclosure.SetExpanded(disclosure.Token, true);
     }
     private bool HandleDisclosureAction(WidgetActionEvent action)
     {
-        var split = action.ActionId.Split('.', 2);
-        if (split.Length != 2 || !long.TryParse(split[1], NumberStyles.None, CultureInfo.InvariantCulture, out var token)) return false;
-        PobDisclosureState owner;
-        string group;
-        if (split[0] == "summary-inactive-config" && section == "Configuration" && detailKind.Length == 0 &&
-            string.IsNullOrWhiteSpace(filter) && inactiveConfigurationDisclosure.Current?.Context == InactiveConfigurationContext())
-        { owner = inactiveConfigurationDisclosure; group = "pob.config.inactive.disclosure"; }
-        else return false;
-        if (!owner.Toggle(token)) return true;
-        unifiedTargetId=null;unifiedIndexedKind=null;unifiedIndexedKey=null;
-        // A deliberate collapse also handles pointer invocation while native
-        // focus was in a child that is being removed. Never focus on refresh.
-        quickControlTarget = group; lastFocusRequestId = CreateFocusRequest().Id;
+        var split = action.ActionId.Split('.');
+        if (split.Length != 3 || split[0] != "summary-inactive-config" || split[1] is not ("expand" or "collapse") ||
+            !long.TryParse(split[2], NumberStyles.None, CultureInfo.InvariantCulture, out var token)) return false;
+        if (section != "Configuration" || detailKind.Length != 0 || !string.IsNullOrWhiteSpace(filter) ||
+            inactiveConfigurationDisclosure.Current?.Context != InactiveConfigurationContext()) return true;
+        if (!inactiveConfigurationDisclosure.SetExpanded(token, split[1] == "expand")) return true;
+        unifiedTargetId=null;unifiedIndexedKind=null;unifiedIndexedKey=null;quickControlTarget=null;
+        // Native disclosure ownership recovers removed-child focus. Expansion and
+        // outside focus need no author-generated focus request.
         return true;
     }
     private ContainerElement DisclosureButton(PobDisclosure disclosure, string title, string actionPrefix, string id, string group)
     {
         quickControlTargets.Add(group);
-        return UI.Stack(group, UI.Button((disclosure.Expanded ? "Hide " : "Show ") + title,
-            actionPrefix + "." + disclosure.Token.ToString(CultureInfo.InvariantCulture), id).Classes("pob-button"))
+        return UI.Stack(group, UI.DisclosureHeader(id, (disclosure.Expanded ? "Hide " : "Show ") + title,
+            disclosure.Expanded, group + ".content",
+            actionPrefix + ".expand." + disclosure.Token.ToString(CultureInfo.InvariantCulture),
+            actionPrefix + ".collapse." + disclosure.Token.ToString(CultureInfo.InvariantCulture)).Classes("pob-button"))
             .RememberChildFocus(id);
     }
     private static bool InactiveConfiguration(PobConfigurationOption option) =>

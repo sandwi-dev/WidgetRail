@@ -16,6 +16,8 @@ internal static class DisclosureWorkflowTests
         check(refresh.Token==first.Token&&!refresh.Expanded,"Same-context refresh preserves collapse and action identity");
         var next=state.Select("build-a/cell-b",true);
         check(next.Expanded&&!state.Toggle(first.Token),"Switching cells resets default presentation and rejects stale toggles");
+        check(!state.SetExpanded(first.Token,false)&&state.Current!.Expanded,"Explicit transitions reject retired context tokens");
+        check(!state.SetExpanded(next.Token,true)&&state.Current!.Expanded,"Duplicate explicit expansion is idempotent");
         check(!state.Select("build-a/cell-a",true).Expanded,"Returning to a recent cell restores its disclosure preference");
         check(state.Select("build-b/cell-a",true).Expanded,"Another build does not inherit the old build's collapsed cell");
         for(var index=0;index<100;index++)state.Select("cell-"+index,true);
@@ -122,8 +124,12 @@ internal static class DisclosureWorkflowTests
             var inactiveToggle=Node("pob.config.inactive.toggle").ActionId!;
             await Action(inactiveToggle);
             check(Has(settingId),"Expanding inactive settings exposes their original controls");Valid();Export("configuration-expanded");
-            await Action(inactiveToggle,focused:settingId);
-            check(!Has(settingId)&&View().FocusGroupEntryRequest?.GroupId=="pob.config.inactive.disclosure","Collapsing secondary settings returns child focus to the stable toggle");
+            await Action(inactiveToggle);
+            check(Has(settingId),"Repeated expansion is idempotent");
+            var beforeCollapseRequest=View().FocusGroupEntryRequest?.RequestId;
+            await Action(Node("pob.config.inactive.toggle").ActionId!,focused:settingId);
+            check(!Has(settingId)&&Node("pob.config.inactive.toggle").Disclosure is { IsExpanded:false,ContentId:"pob.config.inactive.disclosure.content" }&&
+                View().FocusGroupEntryRequest?.RequestId==beforeCollapseRequest,"Collapse declares host-owned focus recovery without a manual focus request");
             await Action("search",option.Title);
             check(Has(settingId)&&!Has("pob.config.inactive.toggle"),"Search reveals matching inactive settings directly instead of hiding the result");
             check(ReferenceEquals(Get("result"),fixture)&&File.ReadAllText(Path.Combine(directory,id+".xml"))==xml,"Disclosure and search changes leave build and saved XML untouched");

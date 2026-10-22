@@ -126,7 +126,8 @@ public sealed partial class PlayniteLibraryWidget
             case "apply": ApplySetup(false); break;
             case "scan": RefreshSetup(); break;
             case "folders": RefreshSetup(_model.Value.Setup.ProgramPath, _model.Value.Setup.DataPath); break;
-            case "advanced": _model.Update(state => state with { Setup = state.Setup with { Advanced = !state.Setup.Advanced } }); break;
+            case "advanced.expand": _model.Update(state => state with { Setup = state.Setup with { Advanced = true } }); break;
+            case "advanced.collapse": _model.Update(state => state with { Setup = state.Setup with { Advanced = false } }); break;
             case "program" when action.CommittedText is { } value: _model.Update(state => state with { Setup = state.Setup with { ProgramPath = value } }); break;
             case "data" when action.CommittedText is { } value: _model.Update(state => state with { Setup = state.Setup with { DataPath = value } }); break;
             default:

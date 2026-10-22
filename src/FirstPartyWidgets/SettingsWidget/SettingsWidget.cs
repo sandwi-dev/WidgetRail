@@ -486,9 +486,10 @@ public sealed partial class SettingsWidget : Widget
             }
             switch (action.ActionId)
             {
-                case "diagnostics.details.toggle":
+                case "diagnostics.details.expand":
+                case "diagnostics.details.collapse":
                     if (CurrentPage != SettingsPage.Diagnostics) return;
-                    lock (_stateLock) _diagnosticDetails = !_diagnosticDetails;
+                    lock (_stateLock) _diagnosticDetails = action.ActionId == "diagnostics.details.expand";
                     PublishSettingsChanged();
                     break;
                 case "diagnostics.export":

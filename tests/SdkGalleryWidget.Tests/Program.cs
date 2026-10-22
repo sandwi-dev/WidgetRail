@@ -655,7 +655,7 @@ static async Task ModernExamples()
     Assert.True(Find(text, "gallery.rich.link").Intent is { Presentation: WidgetIntentPresentation.PreferExistingSurface });
     await widget.OnActionAsync(new("gallery.text.commit", "gallery.text.entry") { CommittedText = "Hello controller" });
     await widget.OnActionAsync(new("gallery.secret.commit", "gallery.secret") { CommittedText = "dummy-never-echo" });
-    await Act(widget, "gallery.details");
+    await Act(widget, "gallery.details.expand");
     await Act(widget, "gallery.message");
     var updated = Snapshot(widget, 2);
     Assert.Equal(0, ViewSnapshotValidator.Validate(updated).Count);
