@@ -319,3 +319,34 @@ Its tests use real SDK range/action leases, safe retry, refresh retirement,
 background cancellation and deep reverse reads. They do not emulate WinUI layout
 or claim physical scrolling acceptance. Rebuild the sample package and the exported
 SDK feed before trying it on the migration frontend.
+
+
+## Complete loaded lists
+
+`CreateLoadedCollection<TContext, TItem>(sourceId, queryIdentity, context, items,
+options)` adapts already-loaded immutable values to the existing lazy indexed
+source. Provide item keys, row rendering, actions and optional artwork resolvers;
+do not provide another range slicer. The adapter freezes the list, while item and
+context objects must themselves be immutable. Rendering and actions receive the
+context captured with that publication, not a mutable current-page variable.
+
+Call `Publish(queryIdentity, context, items)` at the data-change boundary. It
+returns `Unchanged`, `Content`, or `Query`: equal identity/context/items does not
+publish; changed content with the same ordered keys increments content revision;
+changed identity, membership or order starts a query. `forceReset: true` retires
+otherwise identical input. Query identity is private domain data: use the relevant
+account, build, filter or opening identity. It is never inferred from item keys.
+
+`PreserveOccurrences` is an explicit opt-in for host focus/viewport continuity.
+It supplies occurrence keys only within the existing 512-item continuity bound;
+it does not cap the list at 512 items. Identity changes and explicit resets suppress
+continuity with the previous query. Larger lists remain lazy indexed sources.
+Duplicate domain items must have distinct occurrence keys. Duplicate keys fail
+before publication. This validation costs a full key scan when membership changes;
+unchanged publications allocate no rows and content-only changes reuse frozen keys.
+
+Use the adapter for complete lists whose publication classification is mechanical.
+Keep the original indexed source for provider paging, engine-owned immutable
+snapshots that intentionally retire every query, or specialized occurrence policies.
+The adapter does not own data fetching, semantic selection, expansion preferences,
+permissions, or provider/account validation.

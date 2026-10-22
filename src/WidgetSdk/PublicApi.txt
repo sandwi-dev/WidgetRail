@@ -107,6 +107,7 @@ ctor WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>()
 ctor WidgetRail.WidgetSdk.WidgetFocusTargetResult(string? Id, WidgetRail.WidgetSdk.WidgetFocusTargetState State)
 ctor WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>()
 ctor WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs(long Revision)
+ctor WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>()
 ctor WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader(string Name, string Value)
 ctor WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest(string Path, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader> Headers, string? BearerSecretSlot, string? JsonBody, int TimeoutMilliseconds, bool InvalidateBearerSecretOnUnauthorized = false)
 ctor WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse(int StatusCode, string JsonBody, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader> Headers)
@@ -318,6 +319,9 @@ enum WidgetRail.WidgetSdk.WidgetLifecycleState.Created = WidgetRail.WidgetSdk.Wi
 enum WidgetRail.WidgetSdk.WidgetLifecycleState.Destroying = WidgetRail.WidgetSdk.WidgetLifecycleState.Destroying
 enum WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive = WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive
 enum WidgetRail.WidgetSdk.WidgetLifecycleState.Visible = WidgetRail.WidgetSdk.WidgetLifecycleState.Visible
+enum WidgetRail.WidgetSdk.WidgetLoadedCollectionChange.Content = WidgetRail.WidgetSdk.WidgetLoadedCollectionChange.Content
+enum WidgetRail.WidgetSdk.WidgetLoadedCollectionChange.Query = WidgetRail.WidgetSdk.WidgetLoadedCollectionChange.Query
+enum WidgetRail.WidgetSdk.WidgetLoadedCollectionChange.Unchanged = WidgetRail.WidgetSdk.WidgetLoadedCollectionChange.Unchanged
 enum WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus.Changing = WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus.Changing
 enum WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus.Closed = WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus.Closed
 enum WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus.Opened = WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus.Opened
@@ -1302,11 +1306,13 @@ method WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.Equals(object? o
 method WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetFocusPreviewSource<TContext>.Publish(TContext context) -> void
+method WidgetRail.WidgetSdk.WidgetFocusRequest.EnterCollection<TContext,TItem>(WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
 method WidgetRail.WidgetSdk.WidgetFocusRequest.EnterCollection<TQuery,TItem>(WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
 method WidgetRail.WidgetSdk.WidgetFocusRequest.EnterCollection<TQuery,TItem>(WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
 method WidgetRail.WidgetSdk.WidgetFocusRequest.EnterGroup(string groupId) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
 method WidgetRail.WidgetSdk.WidgetFocusRequest.FocusElement(string groupId, string targetId) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
 method WidgetRail.WidgetSdk.WidgetFocusRequest.Reveal(string scrollId, string targetId) -> WidgetRail.WidgetProtocol.ScrollRevealRequest
+method WidgetRail.WidgetSdk.WidgetFocusRequest.RevealCollection<TContext,TItem>(WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget item) -> WidgetRail.WidgetProtocol.ScrollRevealRequest
 method WidgetRail.WidgetSdk.WidgetFocusRequest.RevealCollection<TQuery,TItem>(WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget item) -> WidgetRail.WidgetProtocol.ScrollRevealRequest
 method WidgetRail.WidgetSdk.WidgetFocusTargetResult.Deconstruct(out string? Id, out WidgetRail.WidgetSdk.WidgetFocusTargetState State) -> void
 method WidgetRail.WidgetSdk.WidgetFocusTargetResult.Equals(object obj) -> bool
@@ -1343,6 +1349,14 @@ method WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.Deconstruct(out long Revi
 method WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem>.Enter(string collectionId, long requestId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
+method WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem>.FocusTarget(string collectionId, WidgetRail.WidgetSdk.WidgetCollectionItemKey key, int index) -> WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget
+method WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem>.Publish(string queryIdentity, TContext context, System.Collections.Generic.IReadOnlyList<TItem> values, bool forceReset = false) -> WidgetRail.WidgetSdk.WidgetLoadedCollectionChange
+method WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem>.Reveal(string collectionId, long requestId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget item) -> WidgetRail.WidgetProtocol.ScrollRevealRequest
+method WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.<Clone>$() -> WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>
+method WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader.<Clone>$() -> WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader
 method WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader.Deconstruct(out string Name, out string Value) -> void
 method WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader.Equals(object? obj) -> bool
@@ -1925,9 +1939,11 @@ method static WidgetRail.WidgetSdk.UI.ChoiceRow(WidgetRail.WidgetSdk.WidgetIcon 
 method static WidgetRail.WidgetSdk.UI.ChoiceRow(string label, string action, string id, bool isSelected = false, bool isDisabled = false, bool isBusy = false, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ButtonElement
 method static WidgetRail.WidgetSdk.UI.CodeText(string text, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.TextElement
 method static WidgetRail.WidgetSdk.UI.CollectionGrid(string id, double minimumColumnWidth, double estimatedItemExtent, int? maximumColumns = null, params WidgetRail.WidgetSdk.WidgetElement[] items) -> WidgetRail.WidgetSdk.ScrollElement
+method static WidgetRail.WidgetSdk.UI.CollectionGrid<TContext,TItem>(string id, WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem> source, double minimumColumnWidth, double estimatedItemExtent, string accessibilityLabel, int? maximumColumns = null) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method static WidgetRail.WidgetSdk.UI.CollectionGrid<TQuery,TItem>(string id, WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem> source, double minimumColumnWidth, double estimatedItemExtent, string accessibilityLabel, int? maximumColumns = null) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method static WidgetRail.WidgetSdk.UI.CollectionGrid<TQuery,TItem>(string id, WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem> source, double minimumColumnWidth, double estimatedItemExtent, string accessibilityLabel, int? maximumColumns = null) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method static WidgetRail.WidgetSdk.UI.CollectionList(string id, double estimatedItemExtent, WidgetRail.WidgetProtocol.ScrollAxis axis = WidgetRail.WidgetProtocol.ScrollAxis.Vertical, params WidgetRail.WidgetSdk.WidgetElement[] items) -> WidgetRail.WidgetSdk.ScrollElement
+method static WidgetRail.WidgetSdk.UI.CollectionList<TContext,TItem>(string id, WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem> source, double estimatedItemExtent, string accessibilityLabel, WidgetRail.WidgetProtocol.ScrollAxis axis = WidgetRail.WidgetProtocol.ScrollAxis.Vertical) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method static WidgetRail.WidgetSdk.UI.CollectionList<TQuery,TItem>(string id, WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem> source, double estimatedItemExtent, string accessibilityLabel, WidgetRail.WidgetProtocol.ScrollAxis axis = WidgetRail.WidgetProtocol.ScrollAxis.Vertical) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method static WidgetRail.WidgetSdk.UI.CollectionList<TQuery,TItem>(string id, WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem> source, double estimatedItemExtent, string accessibilityLabel, WidgetRail.WidgetProtocol.ScrollAxis axis = WidgetRail.WidgetProtocol.ScrollAxis.Vertical) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method static WidgetRail.WidgetSdk.UI.ControllerGlyph(WidgetRail.WidgetProtocol.ControllerButton button, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ControllerGlyphElement
@@ -2142,6 +2158,8 @@ method static WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.
 method static WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>? left, WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.op_Equality(WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? left, WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.op_Inequality(WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? left, WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.op_Equality(WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>? left, WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>? left, WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.CapabilityId(int port) -> string
 method static WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.GetJson(int port) -> WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest,WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse>
 method static WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.PostJson(int port) -> WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest,WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse>
@@ -2457,6 +2475,7 @@ method virtual WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>
 method virtual WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.Dispose() -> void
 method virtual WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.Dispose() -> void
 method virtual WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.Equals(WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.Equals(WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader.Equals(WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.Equals(WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse.Equals(WidgetRail.WidgetSdk.WidgetLoopbackJsonResponse? other) -> bool
@@ -2522,6 +2541,7 @@ property System.Collections.Generic.IReadOnlyDictionary<string,string> WidgetRai
 property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>.Items { get; set; }
+property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem>.Items { get; }
 property System.Collections.Generic.IReadOnlyList<TItem> WidgetRail.WidgetSdk.WidgetPage<TItem>.Items { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ActionSurfaceElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ButtonElement.Shortcuts { get; set; }
@@ -2582,6 +2602,10 @@ property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError> 
 property System.Func<System.Exception,WidgetRail.WidgetSdk.WidgetResourceError>? WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.MapError { get; set; }
 property System.Func<System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<TValue>> WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.Load { get; set; }
 property System.Func<TAuthority,TObservation,bool> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.MatchesProjectionAuthority { get; set; }
+property System.Func<TContext,TItem,WidgetRail.WidgetSdk.WidgetActionEvent,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask> WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.OnAction { get; set; }
+property System.Func<TContext,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetArtworkSource?>>? WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.ResolveArtworkSource { get; set; }
+property System.Func<TContext,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>>? WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.ResolveArtwork { get; set; }
+property System.Func<TContext,TItem,WidgetRail.WidgetSdk.WidgetIndexedItemContext,WidgetRail.WidgetSdk.WidgetElement> WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.RenderItem { get; set; }
 property System.Func<TContext,string,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetElement>> WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.Resolve { get; set; }
 property System.Func<TContext,string,WidgetRail.WidgetSdk.WidgetActionEvent,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask>? WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.OnAction { get; set; }
 property System.Func<TContext,string,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetArtworkSource?>>? WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.ResolveArtworkSource { get; set; }
@@ -2590,6 +2614,7 @@ property System.Func<TExecution,WidgetRail.WidgetSdk.WidgetOperationContext,Syst
 property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ItemKey { get; set; }
 property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.ItemKey { get; set; }
 property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.ItemKey { get; set; }
+property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.ItemKey { get; set; }
 property System.Func<TItem,int,string> WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>.ItemFocusId { get; set; }
 property System.Func<TItem,string> WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ItemFocusId { get; set; }
 property System.Func<TObservation,long> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.CorrelationSequence { get; set; }
@@ -2640,6 +2665,7 @@ property System.TimeSpan WidgetRail.WidgetSdk.WidgetResourceOptions<TValue>.Cach
 property System.TimeSpan? WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.ExpiresAfter { get; set; }
 property T? WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.Value { get; set; }
 property TAuthority WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.Authority { get; set; }
+property TContext WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem>.Context { get; }
 property TExecution WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution>.Execution { get; set; }
 property TRequest? WidgetRail.WidgetSdk.WidgetScenarioOperationInvocation<TRequest,TResponse>.Request { get; }
 property TResult? WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>.Result { get; set; }
@@ -2692,6 +2718,7 @@ property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.Widget
 property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem>.Descriptor { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.WidgetSdk.WidgetFocusPreviewSource<TContext>.Descriptor { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.Descriptor { get; }
+property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem>.Descriptor { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor? WidgetRail.WidgetSdk.FocusPresentationSurfaceElement.PreviewSource { get; set; }
 property WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget WidgetRail.WidgetSdk.WidgetCollectionReturnFocus.Item { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? WidgetRail.WidgetSdk.WidgetActionEvent.FocusedCollectionItem { get; set; }
@@ -2934,6 +2961,7 @@ property bool WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.Available { get; 
 property bool WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.MatchesCurrent { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetFileArtwork.PackageRelative { get; }
 property bool WidgetRail.WidgetSdk.WidgetFocusTargetResult.IsEnabled { get; }
+property bool WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.PreserveOccurrences { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.InvalidateBearerSecretOnUnauthorized { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.InvalidateBearerSecretOnUnauthorized { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetMediaSession.CanNext { get; set; }
@@ -3505,6 +3533,7 @@ type enum WidgetRail.WidgetSdk.WidgetCursorDirection : System.IComparable, Syste
 type enum WidgetRail.WidgetSdk.WidgetDiscoveredDuplicatePolicy : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetFocusTargetState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetLifecycleState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum WidgetRail.WidgetSdk.WidgetLoadedCollectionChange : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetMediaSessionCommand : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetNavigationResult : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -3684,6 +3713,8 @@ type sealed class WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost : System.
 type sealed class WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease : System.IDisposable
 type sealed class WidgetRail.WidgetSdk.WidgetIndexedItemContext
 type sealed class WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs : System.IEquatable<WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs>
+type sealed class WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem> : WidgetRail.WidgetSdk.IWidgetIndexedCollection
+type sealed class WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader : System.IEquatable<WidgetRail.WidgetSdk.WidgetLoopbackHttpHeader>
 type sealed class WidgetRail.WidgetSdk.WidgetLoopbackHttpService
 type sealed class WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest : System.IEquatable<WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest>

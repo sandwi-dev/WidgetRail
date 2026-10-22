@@ -41,6 +41,15 @@ public sealed class WidgetFocusRequest
         return source.Enter(collectionId, Id, item);
     }
 
+    /// <summary>Enter a loaded collection without realizing its other rows.</summary>
+    public FocusGroupEntryRequest EnterCollection<TContext, TItem>(
+        WidgetLoadedCollection<TContext, TItem> source, string collectionId,
+        IndexedCollectionFocusTarget? item = null) where TContext : notnull where TItem : notnull
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Enter(collectionId, Id, item);
+    }
+
     /// <summary>Enter the discovered prefix without fetching the entire source.</summary>
     public FocusGroupEntryRequest EnterCollection<TQuery, TItem>(
         WidgetDiscoveredCollection<TQuery, TItem> source, string collectionId,
@@ -62,6 +71,15 @@ public sealed class WidgetFocusRequest
     public ScrollRevealRequest RevealCollection<TQuery, TItem>(
         WidgetIndexedCollection<TQuery, TItem> source, string collectionId,
         IndexedCollectionFocusTarget item) where TQuery : notnull where TItem : notnull
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Reveal(collectionId, Id, item);
+    }
+
+    /// <summary>Reveal a loaded collection occurrence without moving focus.</summary>
+    public ScrollRevealRequest RevealCollection<TContext, TItem>(
+        WidgetLoadedCollection<TContext, TItem> source, string collectionId,
+        IndexedCollectionFocusTarget item) where TContext : notnull where TItem : notnull
     {
         ArgumentNullException.ThrowIfNull(source);
         return source.Reveal(collectionId, Id, item);

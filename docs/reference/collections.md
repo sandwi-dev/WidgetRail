@@ -10,6 +10,7 @@ for native control mappings.
 | Data | Presentation |
 | --- | --- |
 | Small, static or heterogeneous content | `UI.VerticalScroll`, `UI.HorizontalScroll` or `UI.ResponsiveGrid` |
+| Complete loaded immutable list with explicit query identity | `CreateLoadedCollection` with the same lazy list/grid controls |
 | Immutable query with a known count and range access | `CreateIndexedCollection` with `UI.CollectionList` or `UI.CollectionGrid` |
 | Remote results with an opaque next token and no known total | `CreateDiscoveredCollection` with the same list/grid controls |
 | Explicit Next/Previous pages | Provider resource plus ordinary page controls, publishing the current page as a captured query |

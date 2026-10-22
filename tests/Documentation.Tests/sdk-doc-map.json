@@ -28,6 +28,7 @@
   "src/WidgetSdk/WidgetNavigator.cs": "docs/reference/routes.md",
   "src/WidgetSdk/WidgetFocusRequest.cs": "docs/reference/identity-and-input.md",
   "src/WidgetSdk/WidgetCollectionReturnFocus.cs": "docs/reference/routes.md",
+  "src/WidgetSdk/WidgetLoadedCollection.cs": "docs/developers/indexed-collections.md",
   "src/WidgetSdk/WidgetNotificationPublisher.cs": "docs/reference/widget-notifications.md",
   "src/WidgetSdk/WidgetTextChunks.cs": "docs/reference/widget-rich-text.md",
   "src/WidgetSdk/NavigationShell.cs": "docs/reference/presentation-composition.md",
