@@ -44,8 +44,8 @@ internal sealed partial class OverlayShellPage
         if (ReceivePinnedPlacement(frame)) { heldAction.Reset(); return; }
         if (frame.Connected == 0) { trayHold.Reset(); shellGestures.Reset(); radialInput.Reset(); }
         // Native focus/modal transitions can consume a release edge. Physical
-        // state is authoritative; retire released claims before routing new input.
-        else shellGestures.ReconcileReleasedState(frame.State);
+        // state retires missing releases; explicit edges remain owned for routing.
+        else shellGestures.ReconcileReleasedState(frame);
         if (retired || !visible || frame.Connected == 0 || frame.Primed != 0) { heldAction.Reset(); rightStick.Reset(); return; }
         if (startupPresentationPending)
         {

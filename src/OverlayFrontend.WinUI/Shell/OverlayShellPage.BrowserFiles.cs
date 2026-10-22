@@ -47,7 +47,7 @@ internal sealed partial class OverlayShellPage
         heldAction.Reset(); rightStick.Reset();
         if (frame.Connected == 0 || frame.Primed != 0) { shellGestures.Reset(); return true; }
         shellGestures.CaptureFrame(frame);
-        shellGestures.ReconcileReleasedState(frame.State);
+        shellGestures.ReconcileReleasedState(frame);
         return true;
     }
 }

@@ -57,12 +57,13 @@ internal sealed class ControllerGestureOwnership
     }
 
     // Native focus/modal transitions can omit release edges. Reconcile only
-    // releases from physical state; this never claims a fresh press.
-    internal void ReconcileReleasedState(RawControllerState state)
+    // missing releases from physical state; explicit release edges stay owned
+    // until the router consumes them, including tap actions completed on release.
+    internal void ReconcileReleasedState(ControllerFrame frame)
     {
         foreach (var (mask, button) in digitalButtons)
-            if ((state.Buttons & mask) == 0) Release(button);
-        if (state.LeftTrigger == 0) Release(ControllerButton.LeftTrigger);
-        if (state.RightTrigger == 0) Release(ControllerButton.RightTrigger);
+            if ((frame.State.Buttons & mask) == 0 && (frame.ReleasedButtons & mask) == 0) Release(button);
+        if (frame.State.LeftTrigger == 0 && frame.LeftTriggerReleased == 0) Release(ControllerButton.LeftTrigger);
+        if (frame.State.RightTrigger == 0 && frame.RightTriggerReleased == 0) Release(ControllerButton.RightTrigger);
     }
 }

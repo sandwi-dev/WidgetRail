@@ -50,13 +50,43 @@ public sealed class ControllerGestureOwnershipTests
     {
         var gestures = new ControllerGestureOwnership();
         gestures.Claim(ControllerButton.A); gestures.Claim(ControllerButton.LeftTrigger); gestures.Claim(ControllerButton.RightTrigger);
-        gestures.ReconcileReleasedState(new() { Buttons = 0x2000, RightTrigger = 1 });
+        gestures.ReconcileReleasedState(new() { State = new() { Buttons = 0x2000, RightTrigger = 1 } });
         Assert.IsFalse(gestures.Owns(ControllerButton.A));
         Assert.IsFalse(gestures.Owns(ControllerButton.B));
         Assert.IsFalse(gestures.Owns(ControllerButton.LeftTrigger));
         Assert.IsTrue(gestures.Owns(ControllerButton.RightTrigger));
         gestures.Reset();
         Assert.IsFalse(gestures.Owns(ControllerButton.RightTrigger));
+    }
+
+    [TestMethod]
+    public void ExplicitReleaseEdgesStayOwnedUntilRouterConsumesThem()
+    {
+        var gestures = new ControllerGestureOwnership();
+        foreach (var (mask, button) in ControllerGestureOwnership.DigitalButtons)
+        {
+            gestures.Claim(button);
+            gestures.ReconcileReleasedState(new() { ReleasedButtons = mask });
+            Assert.IsTrue(gestures.Release(button), button.ToString());
+            Assert.IsFalse(gestures.Release(button), "Duplicate releases must not dispatch twice.");
+        }
+        gestures.Claim(ControllerButton.LeftTrigger); gestures.Claim(ControllerButton.RightTrigger);
+        gestures.ReconcileReleasedState(new() { LeftTriggerReleased = 1, RightTriggerReleased = 1 });
+        Assert.IsTrue(gestures.Release(ControllerButton.LeftTrigger));
+        Assert.IsTrue(gestures.Release(ControllerButton.RightTrigger));
+        gestures.ReconcileReleasedState(new() { ReleasedButtons = 0x8000 });
+        Assert.IsFalse(gestures.Owns(ControllerButton.Y), "An unowned release must never acquire ownership.");
+    }
+
+    [TestMethod]
+    public void PickerCaptureConsumesExplicitEdgesBeforeReconciliation()
+    {
+        var gestures = new ControllerGestureOwnership();
+        gestures.Claim(ControllerButton.Y);
+        var release = new ControllerFrame { ReleasedButtons = 0x8000 };
+        gestures.CaptureFrame(release);
+        gestures.ReconcileReleasedState(release);
+        Assert.IsFalse(gestures.Owns(ControllerButton.Y));
     }
 
     [TestMethod]
