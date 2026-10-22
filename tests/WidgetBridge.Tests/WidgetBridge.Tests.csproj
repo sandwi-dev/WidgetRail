@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/FirstPartyWidgets/MarketplaceWidget/MarketplaceWidget.csproj" />
     <Content Include="../../src/FirstPartyWidgets/SettingsWidget/styles/default.wrss" Link="fixture/settings-default.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../src/FirstPartyWidgets/SettingsWidget/manifest.json" Link="fixture/settings-manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\PlayniteLibraryApplicationFixture\PlayniteLibraryApplicationFixture.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\WidgetBridge\WidgetBridge.csproj" />
     <ProjectReference Include="..\..\src\FirstPartyWidgets\SettingsWidget\SettingsWidget.csproj" />

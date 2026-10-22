@@ -13,6 +13,9 @@ using WidgetRail.WidgetStyling;
 internal static class SettingsNavigationFixture
 {
     internal const string Package = "fixture.navigation-target";
+    internal static HashSet<string> SettingsIconAssetIds() => ManifestJson.Deserialize(
+        File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "fixture", "settings-manifest.json")))
+        .IconAssets.Keys.ToHashSet(StringComparer.Ordinal);
     internal static async Task ServeAsync(string pipe, string root)
     {
         Seed(root);
@@ -87,8 +90,7 @@ internal static class SettingsNavigationFixture
             StylePackage = SettingsStyle(),
             // This navigation fixture uses the icons' semantic fallbacks. The
             // declarations still match Settings' real package admission contract.
-            DeclaredPackageIconAssetIds = new HashSet<string>(["settings.appearance", "settings.accessibility", "settings.overlay",
-                "settings.controllers", "settings.widgets", "settings.diagnostics"], StringComparer.Ordinal),
+            DeclaredPackageIconAssetIds = SettingsIconAssetIds(),
             Intents = new() { Requests = [WidgetIntentContracts.Marketplace, WidgetIntentContracts.AppUpdates],
                 Handles = [new(WidgetIntentContracts.WidgetSettings), new(WidgetIntentContracts.WidgetPermissions), new(WidgetIntentContracts.AppUpdates)] } }
     ]);

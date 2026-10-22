@@ -413,11 +413,11 @@ static Task ConfiguredSettingsIcons()
     var catalog = BridgeCatalog.Load(Path.Combine(VerificationInstallation.Root, "widget-catalog.json"));
     var settings = catalog.GetConfigured("settings");
     var descriptor = settings.PublicDescriptor();
-    Assert.Equal(6, descriptor.IconAssets.Count);
+    Assert.Equal(7, descriptor.IconAssets.Count);
     Assert.True(settings.DeclaredPackageIconAssetIds.SetEquals([
         "settings.appearance", "settings.accessibility", "settings.overlay",
-        "settings.controllers", "settings.widgets", "settings.diagnostics"]),
-        "The dedicated Settings worker must admit all six home-card icons.");
+        "settings.controllers", "settings.widgets", "settings.diagnostics", "settings.introduction"]),
+        "The dedicated Settings worker must admit all seven home-card icons.");
     Assert.Equal(WidgetGlyph.Settings, descriptor.Icon);
     Assert.True(descriptor.PackageIcon is null, "Settings must retain its semantic tray gear.");
     foreach (var asset in descriptor.IconAssets)

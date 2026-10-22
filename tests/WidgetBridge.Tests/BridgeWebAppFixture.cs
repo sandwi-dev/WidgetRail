@@ -27,7 +27,7 @@ internal static class BridgeWebAppFixture
             InstanceId = extensions ? "settings-navigation.fixture" : "settings.fixture", WorkerExecutable = Environment.ProcessPath!,
             WorkerArguments = extensions ? ["--settings-fixture-root", settingsRoot] : [],
             StylePackage = extensions ? SettingsNavigationFixture.SettingsStyle() : new([], []),
-            DeclaredPackageIconAssetIds = extensions ? new HashSet<string>(["settings.appearance", "settings.accessibility", "settings.overlay", "settings.controllers", "settings.widgets", "settings.diagnostics"], StringComparer.Ordinal) : new HashSet<string>(),
+            DeclaredPackageIconAssetIds = extensions ? SettingsNavigationFixture.SettingsIconAssetIds() : new HashSet<string>(),
             WorkerFingerprint = new string('f', 64), CatalogFingerprint = new string('f', 64),
             Intents = new() { Requests = [WidgetIntentContracts.AppUpdates], Handles = [new(WidgetIntentContracts.AppUpdates)] },
         }).ToArray());
