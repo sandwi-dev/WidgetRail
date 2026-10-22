@@ -70,8 +70,17 @@ public sealed partial class WidgetPresentationSession
         {
             using (_gate.Enter())
             {
-                _ = ValidateDisplayedOrdinaryFrameLocked(target, target.Snapshot.ActiveInputScopeId);
-                if (target.Authority.WorkerRun is null || !prepared.Destinations.Any(item => item.WidgetId == target.Authority.WidgetId))
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                ThrowIfTerminalLocked();
+                // An intent addresses the selected widget worker, not a control
+                // in its loading page. That page may finish loading before
+                // delivery; retain owner/worker authority across scope changes.
+                if (!_publishedInputFrames.TryGetValue(target, out _) ||
+                    _states.GetValueOrDefault(target.Authority.WidgetId)?.LastGood is not { } current ||
+                    !SameIndexedOwner(target.Authority, current.Authority) ||
+                    target.Authority.SnapshotSequence > current.Authority.SnapshotSequence ||
+                    target.Authority.WorkerRun is null || target.Authority.WorkerRun != current.Authority.WorkerRun ||
+                    !prepared.Destinations.Any(item => item.WidgetId == target.Authority.WidgetId))
                     throw OrdinaryInputStale("Intent destination changed.");
             }
         }

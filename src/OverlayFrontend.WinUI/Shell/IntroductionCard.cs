@@ -23,15 +23,14 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
     private readonly List<(FontIcon Icon, ControllerPrompt Prompt)> glyphs = [];
     private readonly List<TextBlock> labels = [];
     private (ShellChromePalette Palette, PreviewFrameStyle Style, double Scale, double Height)? appearance;
-    private bool pendingFocus;
     internal event Action<string>? Action;
-    internal event Action? Leave;
     internal string Step { get; private set; } = "";
     internal bool Focused => XamlRoot is not null && Contains(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject);
 
     internal IntroductionCard()
     {
         IsTabStop = false;
+        HorizontalContentAlignment = HorizontalAlignment.Stretch;
         HorizontalAlignment = HorizontalAlignment.Left;
         VerticalAlignment = VerticalAlignment.Bottom;
         AutomationProperties.SetAutomationId(this, "Introduction.Card");
@@ -46,6 +45,8 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
             buttons.Children.Add(button); Grid.SetColumn(button, column);
             button.HorizontalAlignment = HorizontalAlignment.Stretch;
             button.Padding = new(10, 8, 10, 8);
+            button.IsTabStop = false;
+            button.AllowFocusOnInteraction = false;
         }
         var layout = new Grid { RowSpacing = 16 };
         layout.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
@@ -53,27 +54,8 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
         layout.Children.Add(scroll); layout.Children.Add(buttons); Grid.SetRow(buttons, 1);
         frame.Surface.Child = layout;
         Content = frame;
-        Wire(primary, "next"); Wire(skip, "skip");
-        PreviewKeyDown += (_, e) =>
-        {
-            if (Input.GamepadKeyBoundary.Owns(this, e)) return;
-            if (e.Key == Windows.System.VirtualKey.Escape) { e.Handled = true; Leave?.Invoke(); }
-            var direction = e.Key switch
-            {
-                Windows.System.VirtualKey.Up => FocusNavigationDirection.Up,
-                Windows.System.VirtualKey.Down => FocusNavigationDirection.Down,
-                Windows.System.VirtualKey.Left => FocusNavigationDirection.Left,
-                Windows.System.VirtualKey.Right => FocusNavigationDirection.Right,
-                _ => FocusNavigationDirection.None,
-            };
-            if (direction != FocusNavigationDirection.None)
-            {
-                e.Handled = true;
-                if (!Move(direction) && direction == FocusNavigationDirection.Down) Leave?.Invoke();
-            }
-        };
+        Wire(primary, "next"); Wire(skip, "close");
         WidgetControllerPrompts.Changed += PromptsChanged;
-        LayoutUpdated += (_, _) => TryPendingFocus();
     }
 
     private void Wire(Button button, string action)
@@ -108,10 +90,9 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
         }
         else if (step == "commands") Row(ControllerPrompt.Menu, "Commands", "Right-click a tray item or click Commands in the guide");
         else if (step == "utilities") Row(ControllerPrompt.Y, notifications ? "Hold for Notifications" : "Hold for Task Switcher", "Mouse: click its icon · keyboard: arrows, then Enter");
-        ButtonLabel(primary, ControllerPrompt.A, step == "welcome" ? "Show me around" : step == "appearance-details" ? "Finish" : "Next");
-        var skipLabel = step == "welcome" ? "Explore on my own" : "Skip tour";
-        skip.Content = new TextBlock { Text = skipLabel, TextWrapping = TextWrapping.Wrap };
-        AutomationProperties.SetName(skip, skipLabel);
+        ButtonLabel(primary, ControllerPrompt.X, step == "welcome" ? "Show me around" : step == "appearance-details" ? "Finish" : "Continue");
+        ButtonLabel(skip, ControllerPrompt.B, "Close tour");
+        rows.Children.Add(new TextBlock { Text = "Keyboard: F8 to continue · Esc to close", TextWrapping = TextWrapping.Wrap });
         status.Visibility = Visibility.Collapsed;
         RefreshGlyphs();
     }
@@ -172,26 +153,11 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
             button.FocusVisualPrimaryBrush = new SolidColorBrush(palette.Focus);
         }
     }
-    internal void ShowError(string message) { status.Text = message; status.Visibility = Visibility.Visible; }
-    internal void FocusPrimary() { pendingFocus = true; TryPendingFocus(); }
-    internal void CancelPendingFocus() => pendingFocus = false;
-    private void TryPendingFocus()
-    {
-        if (pendingFocus && IsLoaded && Visibility == Visibility.Visible && primary.ActualWidth > 0 && primary.Focus(FocusState.Keyboard))
-            pendingFocus = false;
-    }
-    internal void Activate()
-    {
-        var focused = FocusManager.GetFocusedElement(XamlRoot);
-        if (ReferenceEquals(focused, primary)) Action?.Invoke("next");
-        else if (ReferenceEquals(focused, skip)) Action?.Invoke("skip");
-    }
-    internal bool Move(FocusNavigationDirection direction) => FocusManager.TryMoveFocus(direction, new FindNextElementOptions { SearchRoot = this });
-    internal void Scroll(double delta) => scroll.ChangeView(null, scroll.VerticalOffset + delta, null, true);
+    internal void ShowStatus(string? message) { status.Text = message ?? ""; status.Visibility = message is null ? Visibility.Collapsed : Visibility.Visible; }
     internal bool Contains(DependencyObject? node)
     {
         for (; node is not null; node = VisualTreeHelper.GetParent(node)) if (ReferenceEquals(node, this)) return true;
         return false;
     }
-    public void Dispose() { pendingFocus = false; WidgetControllerPrompts.Changed -= PromptsChanged; frame.Dispose(); }
+    public void Dispose() { WidgetControllerPrompts.Changed -= PromptsChanged; frame.Dispose(); }
 }

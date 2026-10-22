@@ -1,8 +1,9 @@
 # Overlay introduction
 
-The host owns the welcome surface and optional contextual tour. The tray,
-widgets, Commands, and overlay show/hide controls remain available. Tips hide
-while a competing dialog or menu is open. **Settings → Introduction**
+The host owns the welcome surface and optional contextual tour. Focus stays on
+the real widget controls. X advances, B pauses the tour, and keyboard F8/Escape
+provide the same actions. Tips remain visible through Commands, utility panels,
+widget interaction, and destination loading. **Settings → Introduction**
 restarts the welcome; an unfinished tour also exposes **Continue introduction**
 in the tray's Commands menu.
 
@@ -31,10 +32,11 @@ Supported steps, in order: `welcome`, `guide`, `commands`, `utilities`,
 - `paused: true` leaves normal navigation untouched; use Continue introduction
   or Introduction in Settings to resume or restart.
 - `step: "complete"` suppresses automatic tips across restarts and updates.
-- Next opens Catalogue and Appearance directly while keeping the tutorial
-  visible and focused. The older `appearance` progress value remains accepted;
-  Next from that value also opens Appearance. The normal tour skips that
-  introductory page and shows `appearance-details` beside the actual controls.
+- Continue opens Catalogue and Appearance directly while keeping the tutorial
+  visible, preserving normal Catalogue entry focus and focusing Theme when ready.
+  The older `appearance` progress value remains accepted; Continue also opens
+  Appearance. The normal tour skips that introductory page and shows
+  `appearance-details` beside the actual controls.
 - `appearance-details` waits for the Appearance page after a restart; it does
   not navigate there automatically.
 - Comments and trailing commas are accepted for manual testing.

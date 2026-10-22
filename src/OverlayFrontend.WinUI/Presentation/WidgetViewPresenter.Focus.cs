@@ -7,6 +7,18 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
+    internal bool FocusHostTarget(string id)
+    {
+        if (disposed || applying || !presentationActive || !presentationInputEnabled || !automaticFocusEnabled ||
+            !bindings.TryGetValue(id, out var binding) || !Navigable(binding)) return false;
+        CancelGroupEntry();
+        if (!FocusBinding(binding)) return false;
+        needsEntry = false; restoreNativeFocus = false; ClearEntryLayoutWait();
+        RememberFocus(binding);
+        NotifyControllerGuideChanged();
+        return true;
+    }
+
     private bool restoringRetainedFocusPresentation;
 
     private Binding? RememberedBinding() => remembered.TryGetValue(activeScope, out var identity) &&

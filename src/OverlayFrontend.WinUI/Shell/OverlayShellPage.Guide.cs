@@ -13,13 +13,6 @@ internal sealed partial class OverlayShellPage
     private void PublishControllerGuide()
     {
         ScheduleIntroduction();
-        if (introductionCard is { Visibility: Visibility.Visible, Focused: true })
-        {
-            trayGuide.Present("introduction", true, [], (ControllerGuideHint[])[
-                new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.B, "Back to tray", ControllerButton.B),
-                new(ControllerPrompt.RightStickMove, "Scroll")]);
-            return;
-        }
         IReadOnlyList<ControllerGuideHint>? shell = null;
         object? shellContext = null;
         if (webAppEditor is { } editor)
@@ -104,7 +97,7 @@ internal sealed partial class OverlayShellPage
             WaitForGuideLayout(null);
             // Explicit host interactions (such as changing pin opacity) are
             // already settled and must not debounce their own live readout.
-            trayGuide.Present((shellContext, pinnedAdjustment?.Placement.OpacityPercent, savingPinnedAdjustment), true, [], shell);
+            trayGuide.Present((shellContext, pinnedAdjustment?.Placement.OpacityPercent, savingPinnedAdjustment, IntroductionRunning, introduction.Step), true, [], IntroductionGuide(shell));
             return;
         }
 
@@ -123,7 +116,8 @@ internal sealed partial class OverlayShellPage
         // actions through the lifecycle/row handoff; readiness commits their new
         // meaning. Input routing changes immediately; all guide pixels publish
         // together so old widget hints never mix with new navigation hints.
-        trayGuide.Present((surface, activeWidget, surface?.ControllerGuideContext), ready, actions, host);
+        if (IntroductionRunning) actions = actions.Where(hint => hint.Button is not (ControllerButton.X or ControllerButton.B)).ToArray();
+        trayGuide.Present((surface, activeWidget, surface?.ControllerGuideContext, IntroductionRunning, introduction.Step), ready || IntroductionRunning, actions, IntroductionGuide(host));
     }
 
     private void WaitForGuideLayout(WidgetViewPresenter? presenter)

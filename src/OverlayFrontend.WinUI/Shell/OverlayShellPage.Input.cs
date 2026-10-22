@@ -38,14 +38,15 @@ internal sealed partial class OverlayShellPage
     private void ReceiveCore(ControllerFrame frame, out bool delivered)
     {
         delivered = false;
+        // Recover lost release edges before tutorial or modal input can consume
+        // the frame; a held tutorial shortcut must not leak into widget input.
+        if (frame.Connected == 0) { trayHold.Reset(); shellGestures.Reset(); radialInput.Reset(); }
+        else shellGestures.ReconcileReleasedState(frame);
+        if (ReceiveIntroduction(frame)) return;
         if (ReceiveWebAppEditor(frame) || ReceiveSystemFilePicker(frame) || ReceiveLocalInstall(frame)) return;
         if (ReceiveHostChoice(frame)) return;
         if (nativeBrowserPickerActive) { heldAction.Reset(); rightStick.Reset(); return; }
         if (ReceivePinnedPlacement(frame)) { heldAction.Reset(); return; }
-        if (frame.Connected == 0) { trayHold.Reset(); shellGestures.Reset(); radialInput.Reset(); }
-        // Native focus/modal transitions can consume a release edge. Physical
-        // state retires missing releases; explicit edges remain owned for routing.
-        else shellGestures.ReconcileReleasedState(frame);
         if (retired || !visible || frame.Connected == 0 || frame.Primed != 0) { heldAction.Reset(); rightStick.Reset(); return; }
         if (startupPresentationPending)
         {
@@ -70,7 +71,6 @@ internal sealed partial class OverlayShellPage
                     _ = RouteButtonAsync(button, ControllerEventPhase.Released);
             heldAction.Reset(); rightStick.Reset(); return;
         }
-        if (ReceiveIntroduction(frame)) { heldAction.Reset(); delivered = true; return; }
         if (trayHold.Capturing && (frame.State.Buttons & 0x8000) == 0 && (frame.ReleasedButtons & 0x8000) == 0)
         { trayHold.Reset(); shellGestures.Release(ControllerButton.Y); }
         _ = RunTrayHoldAsync(trayHold.Tick(TrayGestureIdentity, !reordering, Environment.TickCount64));
@@ -191,6 +191,7 @@ internal sealed partial class OverlayShellPage
             return;
         }
         if (retired || !visible) return;
+        if (RouteIntroductionButton(button, phase)) return;
         if (preparingIntent && button == ControllerButton.B)
         {
             if (phase == ControllerEventPhase.Pressed) { shellGestures.Claim(button); intentCancellation?.Cancel(); }
@@ -203,7 +204,6 @@ internal sealed partial class OverlayShellPage
         if (hostChoiceDialog is { } dialog)
         { HandleHostChoiceButton(dialog, button, phase); return; }
         if (ReceiveStartupInput(button, phase)) return;
-        if (RouteIntroductionButton(button, phase)) return;
         if (switching && interactive) return;
         try
         {
