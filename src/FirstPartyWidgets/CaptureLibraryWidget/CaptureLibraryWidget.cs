@@ -253,12 +253,44 @@ public sealed partial class CaptureLibraryWidget : Widget
             FocusGroupEntryRequest = state.Preview is null && !state.Detail && state.Page?.Items.Count > 0 && state.FocusRequest > 0
                 ? new() { RequestId = state.FocusRequest, GroupId = "capture-library.entries" } : null,
         };
-        if (state.ConfirmDelete)
-            view = view.WithModal(new WidgetModal("capture-library.confirm", "Delete saved capture?",
-                UI.Stack("capture-library.confirm.content", UI.Text("This permanently deletes the saved file from Pictures → WidgetRail → Captures.", "capture-library.confirm.help"),
-                    UI.Row("capture-library.confirm.actions", UI.Button("Cancel", "capture-library.delete.cancel", "capture-library.delete.cancel").Busy(state.Busy),
-                        UI.Button("Delete", "capture-library.delete.confirm", "capture-library.delete.confirm").Busy(state.Busy))), "capture-library.delete.cancel", "capture-library.delete.cancel"));
+        if (state.ConfirmDelete) view = view.WithModal(DeleteConfirmation(state));
         return view;
+    }
+    private static WidgetModal DeleteConfirmation(State state)
+    {
+        var saved = state.Page?.Items.FirstOrDefault(item => item.Id == state.SelectedId);
+        var media = state.Preview ?? (saved?.Available == true ? saved.Media : null);
+        var kind = media is null ? "saved capture" : media.ContentType == "image/png" ? "screenshot" : "clip";
+        var details = new List<WidgetElement>
+        {
+            UI.Text(media?.SourceApplication?.ApplicationName ?? (media is null ? "Saved capture" : media.ContentType == "image/png" ? "Screenshot" : "Video clip"),
+                "capture-library.confirm.name").Classes("capture-heading"),
+        };
+        if (media is not null)
+            details.Add(UI.Text(Describe(media with { SourceApplication = null }), "capture-library.confirm.metadata").Classes("capture-help"));
+        if (saved is not null)
+            details.Add(UI.Text("Saved " + DateTimeOffset.FromUnixTimeMilliseconds(saved.SavedAtUnixMilliseconds).ToLocalTime().ToString("g", CultureInfo.CurrentCulture),
+                "capture-library.confirm.date").Classes("capture-help"));
+        if (media is null)
+            details.Add(UI.Text("The preview is unavailable. This removes the saved entry and any remaining capture file.",
+                "capture-library.confirm.unavailable").Classes("capture-help"));
+        return new("capture-library.confirm", $"Delete {kind}?",
+            UI.Stack("capture-library.confirm.content",
+                UI.VerticalScroll("capture-library.confirm.body",
+                    UI.Stack("capture-library.confirm.summary", details.ToArray()).Classes("capture-confirm-summary"),
+                    UI.Text("This permanently deletes the saved file. You can’t undo this.", "capture-library.confirm.help").Classes("capture-confirm-warning"))
+                    .Classes("capture-confirm-body"),
+                UI.Row("capture-library.confirm.actions",
+                    UI.Button("Cancel", "capture-library.delete.cancel", "capture-library.delete.cancel").Busy(state.Busy)
+                        .FocusRight("capture-library.delete.confirm").Classes("capture-confirm-button"),
+                    UI.Button(state.Busy ? "Deleting…" : "Delete", "capture-library.delete.confirm", "capture-library.delete.confirm").Busy(state.Busy)
+                        .FocusLeft("capture-library.delete.cancel").Classes("capture-confirm-button", "capture-delete"))
+                    .Classes("capture-confirm-actions")).Classes("capture-confirm-content"),
+            "capture-library.delete.cancel", "capture-library.delete.cancel")
+        {
+            ScrollContent = false,
+            HeaderActions = UI.Row("capture-library.confirm.header-actions"),
+        };
     }
     private static string Describe(CaptureAttachment media) => (media.SourceApplication?.ApplicationName is { } name ? name + " · " : "") +
         (media.ContentType == "image/png" ? "Screenshot" : $"{media.DurationSeconds:0.#}-second clip") + $" · {media.Width} × {media.Height} · {media.ByteLength / 1048576d:0.0} MiB";

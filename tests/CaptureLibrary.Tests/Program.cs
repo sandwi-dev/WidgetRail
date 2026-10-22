@@ -67,6 +67,8 @@ static Task Style()
     Check(parsed.IsValid);
     var compiled=WidgetRail.WidgetStyling.WrssThemeCompiler.Compile([parsed.Document]);
     Check(compiled.IsValid,string.Join("; ",compiled.Diagnostics.Select(d=>d.Message)));
+    var modal = compiled.Theme!.Resolve(new("stack", "capture-library.confirm", new HashSet<string> { "wrail-modal" }, new HashSet<WidgetRail.WidgetStyling.WrssPseudoState>())).Properties;
+    Check(modal["width"].Number == 560 && modal["height"].Number == 320, "Confirmation geometry must apply to the actual SDK modal class");
     return Task.CompletedTask;
 }
 static async Task Reject(Func<Task> action) { try { await action(); } catch (Exception error) when (error is BrokerException or IOException) { return; } throw new Exception("Operation should have been refused"); }
@@ -355,9 +357,11 @@ static async Task ThumbnailTransport()
 }
 static async Task WidgetFlow()
 {
-    var id = new string('B', 32); var source = new CaptureAttachment(new string('C',32), "image/png", 3840, 2160, 1000, 0, long.MaxValue);
+    var id = new string('B', 32); var source = new CaptureAttachment(new string('C',32), "image/png", 3840, 2160, 1000, 0, long.MaxValue)
+        { SourceApplication = new("Example Game", "Example Game") };
     var page = new CaptureLibraryPage([], 0, 0, 0); var saves = 0; var deletes = 0;
     var saveGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var deleteGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var client = new WidgetTestHostServicesBuilder()
         .WithPrivateState(new())
         .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
@@ -369,7 +373,7 @@ static async Task WidgetFlow()
         .WithResponse(WidgetCaptureCapabilities.Status, new WindowCaptureStatus(id, WindowCapturePhase.Ready, source))
         .WithResponse(WidgetCaptureCapabilities.Discard, new WidgetCapabilityAcknowledgement(true))
         .WithHandler(WidgetCaptureLibraryCapabilities.Save, async (_, token) => { saves++; await saveGate.Task.WaitAsync(token); var item = new CaptureLibraryItem(id, source, 1); page = new([item],0,1,1000); return item; })
-        .WithHandler(WidgetCaptureLibraryCapabilities.Delete, (_, _) => { deletes++; page = new([],0,0,0); return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true)); }).Build();
+        .WithHandler(WidgetCaptureLibraryCapabilities.Delete, async (_, token) => { deletes++; await deleteGate.Task.WaitAsync(token); page = new([],0,0,0); return new WidgetCapabilityAcknowledgement(true); }).Build();
     var widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), client);
     ViewSnapshot View() => widget.RenderSnapshot("library-test", 1);
     IEnumerable<ViewNode> Walk(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Walk));
@@ -389,11 +393,35 @@ static async Task WidgetFlow()
         Check(View().Root.Transition?.Key == "preview", "Saving must not navigate away from the current preview");
         await widget.OnActionAsync(new("capture-library.delete", "capture-library.delete"));
         Check(View().InitialFocusId == "capture-library.delete.cancel" && deletes == 0);
+        Check(Node("capture-library.confirm")!.Shortcuts.Single(shortcut => shortcut.Button == ControllerButton.B).ActionId == "capture-library.delete.cancel",
+            "B dismisses the confirmation without reaching the background Library action");
+        Check(Node("capture-library.confirm.close") is null && Node("capture-library.confirm.scroll") is null, "Delete confirmation must have one Cancel action and keep footer outside scrolling content");
+        Check(Node("capture-library.confirm.name")?.Text == "Example Game" && Node("capture-library.confirm.metadata")?.Text?.Contains("3840 × 2160") == true,
+            "Confirmation identifies the capture being deleted");
+        Check(Node("capture-library.delete.confirm")!.StyleClasses.Contains("capture-delete"), "Delete action uses the theme's danger styling");
+        Check(ViewSnapshotValidator.Validate(View()).Count == 0 && WinUiPresentationContract.Validate(View()).Count == 0);
+        Export("confirmation", View());
+        await widget.OnActionAsync(new("capture-library.delete.cancel", "capture-library.delete.cancel"));
+        Check(Node("capture-library.confirm") is null && deletes == 0 && Node("capture-library.preview") is not null, "Cancel retains capture and preview");
+        await widget.OnActionAsync(new("capture-library.delete", "capture-library.delete"));
         await widget.OnActionAsync(new("capture-library.delete.confirm", "capture-library.delete.confirm"));
+        await Until(() => deletes == 1 && Node("capture-library.delete.confirm")?.IsBusy == true);
+        Check(Node("capture-library.delete.confirm")?.Text == "Deleting…");
+        Export("deleting", View());
+        await widget.OnActionAsync(new("capture-library.delete.confirm", "capture-library.delete.confirm"));
+        Check(deletes == 1, "Busy confirmation must not delete twice");
+        deleteGate.TrySetResult();
         await Until(() => Node("capture-library.empty") is not null); Check(deletes == 1);
         Check(View().Root.Transition is { Key: "home", Navigation: WidgetNavigationOperation.Back }, "Deleting returns to the library with Back navigation");
     }
-    finally { saveGate.TrySetResult(); await WidgetTestHost.DestroyAsync(widget); }
+    finally { saveGate.TrySetResult(); deleteGate.TrySetResult(); await WidgetTestHost.DestroyAsync(widget); }
+    static void Export(string name, ViewSnapshot snapshot)
+    {
+        if (Environment.GetEnvironmentVariable("CAPTURE_DELETE_FIXTURES") is not { Length: > 0 } directory) return;
+        Directory.CreateDirectory(directory);
+        File.WriteAllBytes(Path.Combine(directory, name + ".json"), SnapshotJson.Serialize(snapshot));
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "fixture/capture.wrss"), Path.Combine(directory, "capture.wrss"), true);
+    }
 }
 static async Task RecordingDiscovery()
 {

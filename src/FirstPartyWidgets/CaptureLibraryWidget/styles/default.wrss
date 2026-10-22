@@ -8,3 +8,13 @@
 .capture-thumbnail { width: 100%; height: 180px; }
 .capture-thumbnail-placeholder { height: 144px; color: var(--text-muted); }
 .capture-settings-section { padding: 12px; gap: 12px; background: var(--surface-raised); corner-radius: 8px; }
+.wrail-modal { width: 560px; height: 320px; min-width: 0px; min-height: 0px; padding: 24px; gap: 16px; }
+.wrail-modal__title { font-size: 24px; }
+.capture-confirm-content { flex-grow: 1; min-height: 0px; gap: 16px; }
+.capture-confirm-body { flex-grow: 1; min-height: 0px; gap: 12px; }
+.capture-confirm-summary { padding: 12px; gap: 4px; background: var(--surface-raised); corner-radius: 8px; }
+.capture-confirm-warning { text-align: start; }
+.capture-confirm-actions { justify: end; gap: 12px; }
+.capture-confirm-button { min-width: 96px; }
+.capture-delete { color: var(--danger, #c98181); border-color: var(--danger, #c98181); border-width: 1px; }
+.capture-delete:focused { color: var(--danger, #c98181); outline-color: var(--focus); }

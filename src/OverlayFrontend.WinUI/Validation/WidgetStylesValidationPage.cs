@@ -40,6 +40,8 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--capture-delete-fixtures") is { } captureDeleteFixtures)
+        { await CaptureDeleteAsync(captureDeleteFixtures); return; }
         if (Environment.GetCommandLineArgs().Contains("--acrylic-panels-only"))
         { await AcrylicPanelsAsync(); return; }
         if(Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--indexed-publication-output") is {} publicationOutput)
