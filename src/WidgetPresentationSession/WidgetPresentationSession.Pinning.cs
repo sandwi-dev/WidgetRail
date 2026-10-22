@@ -73,10 +73,12 @@ public sealed partial class WidgetPresentationSession
         {
             using var dispatch = await AcquirePinnedDispatchAsync(cancellationToken).ConfigureAwait(false);
             using (_gate.Enter())
-                if (DemandPinnedProjectionLocked(projection).Authority.SnapshotSequence != projection.Frame.Authority.SnapshotSequence ||
-                    !ReferenceEquals(_pinnedSelections.GetValueOrDefault(selected.WidgetId), selected) ||
+            {
+                DemandPinnedProjectionLocked(projection);
+                if (!ReferenceEquals(_pinnedSelections.GetValueOrDefault(selected.WidgetId), selected) ||
                     _indexedHiddenWidgets.Contains(selected.WidgetId))
                     throw PinnedStale("The selection retired or changed before notification.");
+            }
             // Full-widget is a host projection, not a package handle. Clearing
             // authored demand cancels the prior handle without inventing one.
             var full = projection.LayoutId == PinnedSurfaceContract.FullWidgetLayoutId;
@@ -93,6 +95,8 @@ public sealed partial class WidgetPresentationSession
                 if (!ReferenceEquals(_pinnedSelections.GetValueOrDefault(selected.WidgetId), selected) ||
                     _indexedHiddenWidgets.Contains(selected.WidgetId)) throw PinnedStale("The selection retired during notification.");
                 selected.DemandAcknowledged = acknowledged;
+                if (!full && !acknowledged)
+                    throw PinnedStale("The widget did not acknowledge the selected layout demand.");
                 selected.Active = true;
                 return selected;
             }
@@ -121,8 +125,11 @@ public sealed partial class WidgetPresentationSession
         {
             using var dispatch = await AcquirePinnedDispatchAsync(cancellationToken).ConfigureAwait(false);
             using (_gate.Enter())
-                if (DemandPinnedFrameLocked(displayed).Authority.SnapshotSequence != displayed.Authority.SnapshotSequence)
-                    throw PinnedStale("The deselection frame changed before notification.");
+            {
+                DemandPinnedFrameLocked(displayed);
+                if (!ReferenceEquals(_pinnedSelections.GetValueOrDefault(selection.WidgetId), selection))
+                    throw PinnedStale("The selection changed before demand removal.");
+            }
             var input = new ControllerInputEvent(ControllerButton.View, ControllerEventPhase.Pressed,
                 ControllerInputContext.PinnedLayoutSelection, Sequence: sequence,
                 MonotonicTimestampMicroseconds: monotonicTimestampMicroseconds, SnapshotSequence: displayed.Authority.SnapshotSequence)

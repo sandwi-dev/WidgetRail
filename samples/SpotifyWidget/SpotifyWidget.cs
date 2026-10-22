@@ -267,12 +267,7 @@ public sealed partial class SpotifyWidget : Widget
                 return ValueTask.CompletedTask;
             },
             invalidateAfterTick: false);
-        lock (_gate)
-        {
-            if (_navigation.Value.RootRoute == SpotifyRoute.Queue ||
-                     IsUpNextPinnedLayoutDemanded())
-                _queue.EnsureLoaded();
-        }
+        EnsureDemandedQueueLoaded();
         return ValueTask.CompletedTask;
     }
 
@@ -340,12 +335,7 @@ public sealed partial class SpotifyWidget : Widget
             static state => ((SpotifyWidget)state!).ReleaseUpNextPinnedLayoutDemand(),
             this);
 
-        bool load;
-        lock (_gate)
-        {
-            load = IsActive && _viewState == SpotifyWidgetViewState.Ready;
-        }
-        if (load) _queue.EnsureLoaded();
+        EnsureDemandedQueueLoaded();
         return ValueTask.CompletedTask;
     }
 
@@ -673,6 +663,16 @@ public sealed partial class SpotifyWidget : Widget
         if (route.RootRoute == SpotifyRoute.Queue || IsUpNextPinnedLayoutDemanded())
             _queue.Refresh();
         else _queue.Reset(invalidate: false);
+    }
+
+    private void EnsureDemandedQueueLoaded()
+    {
+        lock (_gate)
+        {
+            if (IsActive && _viewState == SpotifyWidgetViewState.Ready &&
+                (_navigation.Value.RootRoute == SpotifyRoute.Queue || IsUpNextPinnedLayoutDemanded()))
+                _queue.EnsureLoaded();
+        }
     }
 
     private bool IsUpNextPinnedLayoutDemanded()
@@ -1772,8 +1772,10 @@ public sealed partial class SpotifyWidget : Widget
     {
         if (generation != Volatile.Read(ref _activeGeneration)) return;
         bool playbackIdentityChanged;
+        bool becameReady;
         lock (_gate)
         {
+            becameReady = _viewState != SpotifyWidgetViewState.Ready && state == SpotifyWidgetViewState.Ready;
             var admittedPlayback = AdmitPlaybackObservationLocked(
                 playback, observationSequence);
             playbackIdentityChanged = refreshDemandedQueueOnPlaybackChange &&
@@ -1790,6 +1792,7 @@ public sealed partial class SpotifyWidget : Widget
         ObserveSavedSong();
         ObservePlaybackEffects();
         if (playbackIdentityChanged) InvalidateQueueCollection();
+        else if (becameReady) EnsureDemandedQueueLoaded();
     }
 
     private static (bool Available, string? Uri) PlaybackQueueIdentity(

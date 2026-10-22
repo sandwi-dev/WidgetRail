@@ -14,9 +14,52 @@ internal static class PinnedPresentationLayoutTests
         ProjectionIsDeclarativeBoundedAndVersioned();
         await SelectionDemandIsExplicitAndRevocable();
         await TypedHandleAndPublicTestHostOwnSelection();
+        await SelectionSurvivesPublicationButNotRetiredLayout();
         await PinnedBackUsesOnlyTheSelectedProjection();
         await PinnedInputResolvesOnlyTheSelectedRoot();
         CatalogChangesRequireCheckpointFallback();
+    }
+
+    private static async Task SelectionSurvivesPublicationButNotRetiredLayout()
+    {
+        var widget = new HandleWidget();
+        await WidgetTestHost.InitializeAsync(widget);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+        try
+        {
+            widget.RenderSnapshot("pin.race", 1);
+            widget.RenderSnapshot("pin.race", 2);
+            ControllerInputEvent Selection(long sequence, string? id, bool selected = true) =>
+                new(ControllerButton.View, ControllerEventPhase.Pressed,
+                    ControllerInputContext.PinnedLayoutSelection, SnapshotSequence: sequence)
+                { PinnedLayoutId = id, IsPinnedLayoutSelected = selected };
+
+            True(await widget.OnControllerInputAsync(Selection(1, "compact")),
+                "A content publication lost the still-current layout demand.");
+            True(widget.Compact.IsSelected, "The selected handle did not receive demand.");
+            var lifetime = widget.Compact.SelectionCancellationToken;
+            True(await widget.OnControllerInputAsync(Selection(1, "compact")),
+                "Duplicate selection was not idempotent.");
+            Equal(1, widget.SelectionObservations.Count);
+            widget.RenderSnapshot("pin.race", 3);
+            True(await widget.OnControllerInputAsync(Selection(2, null, false)),
+                "A content publication lost demand revocation.");
+            True(lifetime.IsCancellationRequested, "Revocation did not cancel demand.");
+            True(!await widget.OnControllerInputAsync(Selection(1, "compact")),
+                "A superseded notification restored old demand.");
+
+            widget.IncludeCompact = false;
+            widget.RenderSnapshot("pin.race", 4);
+            widget.IncludeCompact = true;
+            widget.RenderSnapshot("pin.race", 5);
+            True(!await widget.OnControllerInputAsync(Selection(3, "compact")),
+                "Removing and reintroducing a layout revived old authority.");
+            True(!await widget.OnControllerInputAsync(Selection(6, "compact")),
+                "A future snapshot acquired demand.");
+            True(await widget.OnControllerInputAsync(Selection(5, "compact")),
+                "The reintroduced layout could not acquire fresh demand.");
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
     }
 
     private static void ProjectionIsDeclarativeBoundedAndVersioned()
@@ -226,19 +269,18 @@ internal static class PinnedPresentationLayoutTests
         Equal(1, invalidations);
         Equal(firstSelection, widget.Compact.SelectionCancellationToken);
 
-        var staleSequence = host.CurrentSnapshot.Sequence;
         await host.ReplaceSnapshotAsync();
         var stale = await widget.OnControllerInputAsync(new ControllerInputEvent(
             ControllerButton.View,
             ControllerEventPhase.Pressed,
             ControllerInputContext.PinnedLayoutSelection,
-            SnapshotSequence: staleSequence)
+            SnapshotSequence: host.CurrentSnapshot.Sequence + 1)
         {
             PinnedLayoutId = "details",
             IsPinnedLayoutSelected = true,
         });
         True(!stale && widget.Compact.IsSelected && !widget.Details.IsSelected,
-            "A stale layout notification replaced current handle authority.");
+            "An unpublished layout notification replaced current handle authority.");
         Equal(1, invalidations);
 
         True(await host.SelectAsync(PinnedSurfaceContract.FullWidgetLayoutId),

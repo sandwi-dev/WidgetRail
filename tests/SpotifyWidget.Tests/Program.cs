@@ -96,6 +96,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pinned Up Next preserves disabled rows and rejects retired projection targets", PinnedUpNextDisabledAndRetired),
     ("Typed pinned Up Next demand survives lifecycle and transport",
         TypedPinnedUpNextDemandSurvivesLifecycleAndTransport),
+    ("Typed pinned Up Next resumes demand after delayed startup", PinnedUpNextDelayedStartup),
     ("Queue realizes deep bounded occurrences with native navigation authority", QueueTraversesContinuously),
     ("Duplicate queue occurrences keep unique exact actions", DuplicateQueueOccurrencesRouteExactly),
     ("Occurrence identity retention is bounded by the collection window", OccurrenceIdentityIsBounded),
@@ -737,6 +738,37 @@ static async Task LazyPageLoading()
     Assert.True((await ReadDiscoveredRows(widget, "spotify.playlists.scroll")).Any(row => row.Id == PlaylistFocus("wide", "playlist-one")),
         "The retained library source lost its first playlist.");
     await StopAsync(widget);
+}
+
+static async Task PinnedUpNextDelayedStartup()
+{
+    foreach (var selectBeforeActivation in new[] { false, true })
+        await VerifyStartup(selectBeforeActivation);
+}
+
+static async Task VerifyStartup(bool selectBeforeActivation)
+{
+    var harness = SpotifyHarness.Ready();
+    var playback = new TaskCompletionSource<SpotifyPlaybackSummary>(TaskCreationOptions.RunContinuationsAsynchronously);
+    harness.PlaybackHandler = token => new(playback.Task.WaitAsync(token));
+    var widget = new SpotifyWidget(harness);
+    await WidgetTestHost.InitializeAsync(widget);
+    if (!selectBeforeActivation)
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    try
+    {
+        var host = WidgetTestHost.CreatePinnedLayoutHost(widget, "spotify.startup.pin");
+        Assert.True(await host.SelectAsync(SpotifyPresentation.UpNextPinnedLayoutId), "Startup selection was rejected.");
+        if (selectBeforeActivation)
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+        Assert.Equal(0, harness.QueueCalls);
+        playback.SetResult(harness.Playback);
+        await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+        await WaitUntil(() => harness.QueueCalls == 1, "The pin never loaded its queue after Spotify became ready.");
+        await host.ReplaceSnapshotAsync();
+        AssertPinnedUpNextReady(host.CurrentSnapshot);
+    }
+    finally { await StopAsync(widget); }
 }
 
 static async Task TypedPinnedUpNextDemandSurvivesLifecycleAndTransport()

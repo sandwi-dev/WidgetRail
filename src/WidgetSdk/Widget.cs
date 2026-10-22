@@ -278,6 +278,8 @@ public abstract partial class Widget
     private readonly object _pinnedLayoutGate = new();
     private readonly Dictionary<string, PinnedLayoutHandle> _pinnedLayoutHandles =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _pinnedLayoutFirstSequences = new(StringComparer.Ordinal);
+    private long _pinnedSelectionSequence;
     private string? _selectedPinnedLayoutId;
     private CancellationTokenSource? _pinnedLayoutSelectionLifetime;
 
@@ -603,7 +605,7 @@ public abstract partial class Widget
     public ViewSnapshot RenderSnapshot(string widgetInstanceId, long sequence)
     {
         var snapshot = AdvertiseArtworkSources(Render().CreateSnapshot(widgetInstanceId, sequence));
-        Volatile.Write(ref _latestSnapshot, snapshot);
+        RememberSnapshot(snapshot);
         RetireIndexedLeases();
         return snapshot;
     }
@@ -627,9 +629,31 @@ public abstract partial class Widget
             capabilities,
             transactionKind,
             recoveryOriginSequence);
-        Volatile.Write(ref _latestSnapshot, publication.Snapshot);
+        RememberSnapshot(publication.Snapshot);
         RetireIndexedLeases();
         return publication;
+    }
+
+    private void RememberSnapshot(ViewSnapshot snapshot)
+    {
+        lock (_pinnedLayoutGate)
+        {
+            var previous = _latestSnapshot;
+            if (previous is null || previous.WidgetInstanceId != snapshot.WidgetInstanceId ||
+                snapshot.Sequence < previous.Sequence)
+            {
+                _pinnedLayoutFirstSequences.Clear();
+                _pinnedSelectionSequence = snapshot.Sequence;
+            }
+            // Keep only the current, bounded layout catalog. Content and scope
+            // changes preserve demand; removal and reintroduction start a new lifetime.
+            foreach (var id in _pinnedLayoutFirstSequences.Keys.ToArray())
+                if (!snapshot.PinnedLayouts.Any(layout => layout.Id == id))
+                    _pinnedLayoutFirstSequences.Remove(id);
+            foreach (var layout in snapshot.PinnedLayouts)
+                _pinnedLayoutFirstSequences.TryAdd(layout.Id, snapshot.Sequence);
+            Volatile.Write(ref _latestSnapshot, snapshot);
+        }
     }
 
     public virtual ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
@@ -1001,8 +1025,13 @@ public abstract partial class Widget
             return true;
         }
 
-        if (!IsCurrentPinnedLayoutNotification(input)) return false;
-        if (!TryChangePinnedLayoutSelection(selectedId, out var priorLifetime)) return true;
+        CancellationTokenSource? priorLifetime;
+        lock (_pinnedLayoutGate)
+        {
+            if (!IsCurrentPinnedLayoutNotification(input)) return false;
+            _pinnedSelectionSequence = input.SnapshotSequence;
+            if (!TryChangePinnedLayoutSelection(selectedId, out priorLifetime)) return true;
+        }
         CancelAndDispose(priorLifetime);
         try
         {
@@ -1019,10 +1048,16 @@ public abstract partial class Widget
     private bool IsCurrentPinnedLayoutNotification(ControllerInputEvent input)
     {
         var snapshot = Volatile.Read(ref _latestSnapshot);
-        if (snapshot is null || input.SnapshotSequence != snapshot.Sequence) return false;
+        // This is a lifetime notification, not an action against rendered content.
+        // Routine publications may overtake it in transit. Preserve the original
+        // sequence and accept only the same uninterrupted layout lifetime, never
+        // a future publication or a notification older than an accepted selection.
+        if (snapshot is null || input.SnapshotSequence > snapshot.Sequence ||
+            input.SnapshotSequence < _pinnedSelectionSequence) return false;
         if (input.IsPinnedLayoutSelected == true)
-            return snapshot.PinnedLayouts.Any(layout =>
-                string.Equals(layout.Id, input.PinnedLayoutId, StringComparison.Ordinal));
+            return input.PinnedLayoutId is { } id &&
+                _pinnedLayoutFirstSequences.TryGetValue(id, out var firstSequence) &&
+                input.SnapshotSequence >= firstSequence;
         lock (_pinnedLayoutGate)
         {
             return _selectedPinnedLayoutId is not null &&

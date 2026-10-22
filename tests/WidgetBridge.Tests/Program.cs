@@ -166,6 +166,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Shell palette accepts every real resolved theme role across bridge session", ShellPaletteEndToEndScenario.RunAsync),
     ("Local webapp catalog and host renderer preserve ordinary browser lifecycle", HostWebAppScenarios.RunAsync),
     ("Pinned action worker validates layout sequence scope text and context triggers", PinnedActionBridgeScenarios.WorkerAuthority),
+    ("Pinned demand survives racing publications through bridge and real worker", PinnedDemandBridgeScenarios.PublicationRace),
     ("Pinned actions and artwork cross session bridge and real worker", PinnedActionBridgeScenarios.EndToEnd),
     ("Pinned action bridge rejects stale binding scope version and foreign artwork", PinnedActionBridgeScenarios.Authority),
     ("Discovered prefixes cross real worker bridge and session with retained action authority", DiscoveredBridgeScenarios.EndToEnd),
@@ -502,6 +503,7 @@ static async Task<int> RunWorkerAsync(string[] arguments)
             ? new PinnedPresenterBridgeWidget()
             : string.Equals(instance, "pinned-actions.instance", StringComparison.Ordinal)
             ? new PinnedActionBridgeWidget()
+            : instance == "pinned-demand.instance" ? new PinnedDemandBridgeScenarios.Probe()
             : string.Equals(instance, "discovered.instance", StringComparison.Ordinal)
             ? new DiscoveredBridgeWidget()
             : string.Equals(instance, "indexed-owned.instance", StringComparison.Ordinal)

@@ -140,6 +140,54 @@ public sealed class PinnedPresentationSessionTests
     }
 
     [TestMethod]
+    public async Task RejectedAuthoredDemandNeverBecomesAnActivePin()
+    {
+        await Run(channel => Selection(channel, "compact", true, handled: false), async (session, frame) =>
+        {
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(() =>
+                session.SelectPinnedLayoutAsync(session.ResolvePinnedProjection(frame, "compact")));
+            var attempted = session.GetPinnedSelection(frame)!;
+            Assert.IsFalse(attempted.DemandAcknowledged);
+            Assert.IsFalse(attempted.IsCurrent);
+        });
+    }
+
+    [TestMethod]
+    public async Task ContentPublicationDoesNotDiscardQueuedDemandRemoval()
+    {
+        var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var refreshed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await Run(async channel =>
+        {
+            var selecting = await Read(channel);
+            admitted.SetResult();
+            var refresh = await Read(channel);
+            await ReplySnapshot(channel, refresh.RequestId, Snapshot(2));
+            await refreshed.Task.WaitAsync(Limit);
+            await Handled(channel, selecting);
+            var clearing = await Read(channel);
+            var input = BridgeJson.FromElement<BridgeControllerInputRequest>(clearing.Payload).Input;
+            Assert.AreEqual(ControllerInputContext.PinnedLayoutSelection, input.Context);
+            Assert.IsFalse(input.IsPinnedLayoutSelected);
+            Assert.AreEqual(1L, input.SnapshotSequence, "Demand removal must retain its admitted origin.");
+            await Handled(channel, clearing);
+        }, async (session, frame) =>
+        {
+            using var cancel = new CancellationTokenSource();
+            var selecting = session.SelectPinnedLayoutAsync(session.ResolvePinnedProjection(frame, "compact"), cancellationToken: cancel.Token);
+            await admitted.Task.WaitAsync(Limit);
+            var attempt = session.GetPinnedSelection(frame)!;
+            cancel.Cancel();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => selecting);
+            var clearing = session.ClearPinnedSelectionAsync(attempt, frame);
+            var next = await session.RefreshAsync(frame.Authority);
+            refreshed.SetResult();
+            Assert.IsTrue(await clearing);
+            Assert.IsNull(session.GetPinnedSelection(next));
+        });
+    }
+
+    [TestMethod]
     [DataRow("action")][DataRow("disabled")][DataRow("busy")][DataRow("kind")][DataRow("scope")]
     public async Task ChangedPinnedBindingRejectsCapturedInput(string change)
     {
