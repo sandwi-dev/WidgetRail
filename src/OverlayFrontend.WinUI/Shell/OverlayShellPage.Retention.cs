@@ -3,6 +3,7 @@ using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.OverlayFrontend.WinUI.Previews;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetPresentationSession;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
@@ -111,7 +112,20 @@ internal sealed partial class OverlayShellPage
 
     private void ApplyWidgetSurfaceFrame(RetainedWidgetSurface retained, WidgetPresentationFrame next)
     {
-        retained.Presenter.Apply(next);
+        retained.Presenter.Apply(next, () =>
+        {
+            if (!ReferenceEquals(surface, retained.Presenter) || switching) return true;
+            var previous = new SurfaceExtent(WidgetSurface.Width, WidgetSurface.Height);
+            var hints = next.Snapshot.Surface;
+            var resolveSize = SurfaceHints != hints || hints?.WidthMode == WidgetSurfaceAxisMode.Content ||
+                hints?.HeightMode == WidgetSurfaceAxisMode.Content;
+            UpdateSurfaceHints(hints);
+            if (resolveSize && shellViewport.Width > 0 && shellViewport.Height > 0) ConfigureProductionViewport(shellViewport);
+            // Compare resolved extents, not hints: viewport constraints can make
+            // different preferred sizes resolve to the same on-screen size.
+            return previous == new SurfaceExtent(WidgetSurface.Width, WidgetSurface.Height) &&
+                retained.Presenter.WidgetResizeCompletion is not { IsCompleted: false };
+        });
         retained.Frame = next;
         var id = next.Descriptor.Id;
         if (!SameSurfaceOwner(retained.Descriptor, next.Descriptor)) presentationMemory.Remove(id);

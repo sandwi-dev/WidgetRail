@@ -40,6 +40,15 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--resize-navigation-output") is { } resizeOutput)
+        {
+            Exception? failure = null;
+            try { await ResizeNavigationAsync(); }
+            catch (Exception error) { failure = error; }
+            await File.WriteAllTextAsync(resizeOutput, System.Text.Json.JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString() }));
+            if (failure is not null) throw failure;
+            return;
+        }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--capture-delete-fixtures") is { } captureDeleteFixtures)
         { await CaptureDeleteAsync(captureDeleteFixtures); return; }
         if (Environment.GetCommandLineArgs().Contains("--acrylic-panels-only"))

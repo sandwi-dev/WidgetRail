@@ -115,18 +115,23 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
 
     public void Apply(WidgetPresentationFrame next) => ApplyBinding(WidgetPresentationBinding.ForMain(next));
 
+    // The shell resolves destination sizing after content is measured but before
+    // content motion starts. False selects the shell's resize animation only.
+    internal void Apply(WidgetPresentationFrame next, Func<bool> prepareLayout) =>
+        ApplyBinding(WidgetPresentationBinding.ForMain(next), prepareLayout);
+
     internal void ApplyPinned(WidgetPinnedSelection selection, WidgetPinnedProjection projection) =>
         ApplyBinding(WidgetPresentationBinding.ForPinned(Session ?? throw new InvalidOperationException("Pinned presentation requires its session."), selection, projection));
 
-    private void ApplyBinding(WidgetPresentationBinding next) => ApplyCore(next, next.View.Root,
-        next.View.Root.InputScopeId ?? next.View.Root.Id);
+    private void ApplyBinding(WidgetPresentationBinding next, Func<bool>? prepareLayout = null) => ApplyCore(next, next.View.Root,
+        next.View.Root.InputScopeId ?? next.View.Root.Id, prepareLayout);
 
     internal void ApplyFragment(WidgetPresentationFrame parent, ViewNode root, string scope) =>
         ApplyFragment(WidgetPresentationBinding.ForMain(parent), root, scope);
     internal void ApplyFragment(WidgetPresentationBinding parent, ViewNode root, string scope)
     { fragmentRootId = root.Id; ApplyCore(parent, root, scope); }
 
-    private void ApplyCore(WidgetPresentationBinding nextPresentation, ViewNode root, string rootScope)
+    private void ApplyCore(WidgetPresentationBinding nextPresentation, ViewNode root, string rootScope, Func<bool>? prepareLayout = null)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Widget presentation must use its WinUI dispatcher.");
@@ -254,6 +259,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 && !ReferenceEquals(FocusedBinding(), focused) ? focused : null;
         }
         finally { applying = false; }
+        var animateContent = prepareLayout?.Invoke() != false;
         NotifyControllerGuideChanged();
         ValidateTransientControl();
         ValidateSliderAdjustment();
@@ -262,7 +268,11 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (needsEntry || pendingRestore is not null || pendingGroupEntry is not null) QueueEntryFocus();
         if (fragmentRootId is null) UpdateScrollReveal(nextPresentation.View);
         QueueSurfaceUpdate();
-        if (presentationActive) { StartTransitions(transition); StartModalExit(modalExit); }
+        if (presentationActive)
+        {
+            if (animateContent) StartTransitions(transition); else SettleTransitions();
+            StartModalExit(modalExit);
+        }
         else { SettleTransitions(); SettleModalExit(); }
     }
 

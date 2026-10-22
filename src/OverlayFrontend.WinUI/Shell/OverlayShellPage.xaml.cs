@@ -319,7 +319,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         }
         try
         {
-            ApplyWidgetSurfaceFrame(next); UpdateSurfaceHints(next.Snapshot.Surface); ShowPresentationStatus(next.Descriptor.Name);
+            ApplyWidgetSurfaceFrame(next); ShowPresentationStatus(next.Descriptor.Name);
             if (mediaOwner?.FullscreenState is { } fullscreen) fullscreenView.Show(fullscreen.Declaration);
         }
         catch (Exception error) { ReportFailure(error); }
