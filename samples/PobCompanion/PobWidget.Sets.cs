@@ -9,7 +9,7 @@ public sealed partial class PobWidget
     private string managedSetKind="tree",newSetName="";
     private int managedSetId;
     private ListQuery managedSetsQuery=new("",[]);
-    private WidgetIndexedCollection<ListQuery,ListEntry>? managedSetsCollection;
+    private WidgetLoadedCollection<ListQuery,ListEntry>? managedSetsCollection;
     private static readonly (string Kind,string Field,string Title)[] SetKinds=[("tree","trees","Passive trees"),("items","itemSets","Equipment"),("skills","skillSets","Skills"),("config","configSets","Configuration")];
     private JsonElement[] ManagedSets()=>A(State,SetKinds.Single(k=>k.Kind==managedSetKind).Field);
     private bool HandleSetAction(WidgetActionEvent action)
@@ -43,9 +43,8 @@ public sealed partial class PobWidget
         var sets=ManagedSets();
         if(!sets.Any(s=>I(s,"id")==managedSetId))managedSetId=I(sets.FirstOrDefault(),"id");
         var selected=sets.FirstOrDefault(s=>I(s,"id")==managedSetId);
-        managedSetsCollection??=CreateIndexedCollection<ListQuery,ListEntry>("pob.sets.source",managedSetsQuery,0,new()
+        managedSetsCollection??=CreateLoadedCollection<ListQuery,ListEntry>("pob.sets.source",managedSetsQuery.Context,managedSetsQuery,managedSetsQuery.Entries,new()
         {
-            ReadRange=(query,start,count,token)=>{token.ThrowIfCancellationRequested();return ValueTask.FromResult<IReadOnlyList<ListEntry>>(query.Entries.Skip(start).Take(count).ToArray());},
             ItemKey=entry=>new(entry.Key),
             RenderItem=(_,entry,context)=>UI.Button(entry.Label,"select",context.Id("entry")).Selected(entry.Selected).FocusRight("pob.sets-name").Classes("pob-list-item"),
             OnAction=(query,entry,action,token)=>
@@ -55,9 +54,8 @@ public sealed partial class PobWidget
         var entries=sets.Select(s=>new ListEntry(I(s,"id").ToString(),S(s,"title")+(B(s,"active")?" · Active":"")+(I(s,"id")==managedSetId?" · Selected":""),"sets-select."+I(s,"id"),I(s,"id")==managedSetId)).ToArray();
         if(managedSetsQuery.Context!=managedSetKind||!managedSetsQuery.Entries.SequenceEqual(entries))
         {
-            var same=managedSetsQuery.Context==managedSetKind&&managedSetsQuery.Entries.Select(e=>e.Key).SequenceEqual(entries.Select(e=>e.Key));
             managedSetsQuery=new(managedSetKind,entries);
-            if(same)managedSetsCollection.UpdateContent(managedSetsQuery);else managedSetsCollection.PublishQuery(managedSetsQuery,entries.Length);
+            managedSetsCollection.Publish(managedSetKind,managedSetsQuery,entries);
         }
         var list=QuickControls(UI.Stack("pob.sets.list-panel",UI.CollectionList("pob.sets.list",managedSetsCollection,64,"Build sets").Classes("pob-scroll")).Classes("pob-panel","pob-workspace"),"pob.sets.list","pob.sets-kind","Set type",NeedsQuickControls(entries.Length));
         var details=UI.VerticalScroll("pob.sets.details",

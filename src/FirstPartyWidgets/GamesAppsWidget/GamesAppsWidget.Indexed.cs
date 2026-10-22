@@ -10,22 +10,17 @@ public sealed partial class GamesAppsWidget
     private sealed record AppQuery(GamesAppsPage Page, long Generation, string? RunningRevision,
         GamesAppsPresentationState? State, WidgetAppLibraryItem[] Items);
     private sealed record AppActionOrigin(GamesAppsPage Page, long Generation, string? RunningRevision, string SavedId, string AppId);
-    private readonly WidgetIndexedCollection<AppQuery, WidgetAppLibraryItem> _indexedLibrary;
-    private readonly WidgetIndexedCollection<AppQuery, WidgetAppLibraryItem> _indexedRunning;
+    private readonly WidgetLoadedCollection<AppQuery, WidgetAppLibraryItem> _indexedLibrary;
+    private readonly WidgetLoadedCollection<AppQuery, WidgetAppLibraryItem> _indexedRunning;
     private AppQuery? _libraryQuery;
     private AppQuery? _runningQuery;
     private long _lastFocusNavigationRevision = -1;
     private FocusGroupEntryRequest? _viewFocusRequest;
     private IndexedCollectionFocusTarget? _requestedItemFocus;
 
-    private WidgetIndexedCollection<AppQuery, WidgetAppLibraryItem> CreateAppCollection(string id, GamesAppsPage page) =>
-        CreateIndexedCollection<AppQuery, WidgetAppLibraryItem>(id, new(page, 0, null, null, []), 0, new()
+    private WidgetLoadedCollection<AppQuery, WidgetAppLibraryItem> CreateAppCollection(string id, GamesAppsPage page) =>
+        CreateLoadedCollection<AppQuery, WidgetAppLibraryItem>(id, page.ToString(), new(page, 0, null, null, []), [], new()
         {
-            ReadRange = (query, start, count, token) =>
-            {
-                token.ThrowIfCancellationRequested();
-                return ValueTask.FromResult<IReadOnlyList<WidgetAppLibraryItem>>(query.Items.AsSpan(start, count).ToArray());
-            },
             // Saved IDs are opaque broker values, not necessarily SDK identifiers.
             ItemKey = item => new(GamesAppsPresentation.LibraryElementId(item.SavedId)),
             RenderItem = (query, item, _) => query.Page == GamesAppsPage.Library
@@ -50,13 +45,12 @@ public sealed partial class GamesAppsWidget
         var source = page == GamesAppsPage.Library ? _indexedLibrary : _indexedRunning;
         var previous = page == GamesAppsPage.Library ? _libraryQuery : _runningQuery;
         var next = new AppQuery(page, _generation, page == GamesAppsPage.Running ? _runningRevision : null, state, items);
-        var membershipChanged = previous is null || !previous.Items.Select(item => item.SavedId).SequenceEqual(items.Select(item => item.SavedId));
-        var contentChanged = membershipChanged || previous!.Generation != next.Generation || previous.RunningRevision != next.RunningRevision ||
+        var contentChanged = previous is null || previous.Generation != next.Generation || previous.RunningRevision != next.RunningRevision ||
             !previous.Items.SequenceEqual(items) || !SameRowState(previous.State!, state);
         if (page == GamesAppsPage.Library) _libraryQuery = next; else _runningQuery = next;
         if (contentChanged)
         {
-            if (membershipChanged) source.PublishQuery(next, items.Length); else source.UpdateContent(next);
+            source.Publish(page.ToString(), next, items);
         }
         var scrollId = page == GamesAppsPage.Library ? "games.library.scroll" : "games.running.scroll";
         if (page == GamesAppsPage.Library && state.LifecycleState == WidgetLifecycleState.Interactive &&

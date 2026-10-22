@@ -21,7 +21,7 @@ public sealed partial class StandaloneMusicWidget : Widget
     {
         public string ScrollId { get; } = "music.scroll." + id;
         public string GroupId { get; } = "music.content." + id;
-        public WidgetIndexedCollection<BrowseQuery, BrowseEntry> Collection { get; set; } = null!;
+        public WidgetLoadedCollection<BrowseQuery, BrowseEntry> Collection { get; set; } = null!;
         public BrowseQuery Query { get; set; } = new([], false, false, -1, false, null, MusicState.Empty);
         public MusicPage Page { get; set; } = new("Home", []);
         public IReadOnlyList<MusicItem> Source { get; set; } = [];
@@ -29,6 +29,7 @@ public sealed partial class StandaloneMusicWidget : Widget
         public string Kind { get; set; } = "";
         public string Value { get; set; } = "";
         public bool Loaded { get; set; }
+        public string QueryIdentity => Kind + "\u001f" + Value;
     }
     private bool _loading, _signingIn, _initialized;
     private long _pageGeneration;
@@ -53,14 +54,9 @@ public sealed partial class StandaloneMusicWidget : Widget
         var id = kind == "library" ? "library." + value : kind is "home" or "search" or "queue" ? kind : "detail";
         if (_sections.TryGetValue(id, out var existing)) return existing;
         var state = new BrowseState(id);
-        state.Collection = CreateIndexedCollection<BrowseQuery, BrowseEntry>("music.collection." + id, state.Query, 0, new()
+        state.Collection = CreateLoadedCollection<BrowseQuery, BrowseEntry>("music.collection." + id, state.QueryIdentity, state.Query, state.Items, new()
         {
-            OccurrenceKeys = id == "queue" ? query => query.Entries.Select(entry => entry.Key).ToArray() : null,
-            ReadRange = (query, start, count, token) =>
-            {
-                token.ThrowIfCancellationRequested();
-                return ValueTask.FromResult<IReadOnlyList<BrowseEntry>>(query.Entries.Skip(start).Take(count).ToArray());
-            },
+            PreserveOccurrences = id == "queue",
             ItemKey = entry => entry.Key,
             RenderItem = (query, entry, _) => RenderBrowseRow(new(entry, query.Home,
                 query.Queue && entry.Index == query.PlayingIndex, entry.Index == 0 ? query.FocusUp : null, query.HasPlayer, query.Queue, query.RatingState)),
@@ -140,13 +136,11 @@ public sealed partial class StandaloneMusicWidget : Widget
                 if (!previous.TryGetValue(entry.Item, out var keys)) previous.Add(entry.Item, keys = new());
                 keys.Enqueue(entry.Key);
             }
-        var oldKeys = _browse.Items.Select(entry => entry.Key).ToArray();
         _browse.Items = items.Select((item, index) =>
             new BrowseEntry(index, item, previous.TryGetValue(item, out var keys) && keys.TryDequeue(out var key)
                 ? key : new($"music.item.{generation}.{index}"))).ToArray();
         _browse.Query = CaptureBrowseQuery(_browse);
-        if (oldKeys.SequenceEqual(_browse.Items.Select(entry => entry.Key))) _browse.Collection.UpdateContent(_browse.Query);
-        else _browse.Collection.PublishQuery(_browse.Query, _browse.Items.Length);
+        _browse.Collection.Publish(_browse.QueryIdentity, _browse.Query, _browse.Items);
     }
 
     private sealed record BrowseQuery(IReadOnlyList<BrowseEntry> Entries, bool Home, bool Queue,
@@ -171,7 +165,7 @@ public sealed partial class StandaloneMusicWidget : Widget
                 ReferenceEquals(player.SongLikes, browse.Query.RatingState.SongLikes) &&
                 ReferenceEquals(player.PendingLikes, browse.Query.RatingState.PendingLikes)) continue;
             browse.Query = next;
-            browse.Collection.UpdateContent(next);
+            browse.Collection.Publish(browse.QueryIdentity, next, browse.Items);
         }
     }
     private void SetStatus(string value) { lock (_gate) _status = value; Invalidate(); }
@@ -492,7 +486,7 @@ public sealed partial class StandaloneMusicWidget : Widget
                 state.Loaded = false;
                 state.Source = []; state.Items = []; state.Page = new("", []);
                 state.Query = CaptureBrowseQuery(state);
-                state.Collection.PublishQuery(state.Query, 0);
+                state.Collection.Publish(state.QueryIdentity, state.Query, state.Items, forceReset: true);
             }
             _history.Clear();
             _kind = _tab; _value = _tab == "library" ? _libraryFilter : _tab == "search" ? _query : "";

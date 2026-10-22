@@ -11,7 +11,7 @@ public sealed partial class PobWidget
     internal sealed record PassiveEntry(string Key,string Name,JsonElement[] Nodes,bool IsGroup=false,bool Expanded=false,bool IsChild=false);
     internal sealed record PassiveQuery(string Context,PassiveEntry[] Entries,int NodeCount);
     private PassiveQuery passiveQuery=new("",[],0);
-    private WidgetIndexedCollection<PassiveQuery,PassiveEntry>? passives;
+    private WidgetLoadedCollection<PassiveQuery,PassiveEntry>? passives;
     private PobResult? passiveResult;
     private string? passiveFilter,passiveReturnKey;
     private readonly Dictionary<string,HashSet<string>> passiveExpansion=new(StringComparer.Ordinal);
@@ -62,11 +62,10 @@ public sealed partial class PobWidget
 
     private WidgetElement PassiveList()
     {
-        passives??=CreateIndexedCollection<PassiveQuery,PassiveEntry>("pob.passive-source",passiveQuery,0,new()
+        passives??=CreateLoadedCollection<PassiveQuery,PassiveEntry>("pob.passive-source",passiveQuery.Context+"\u001f"+passiveFilter,passiveQuery,passiveQuery.Entries,new()
         {
-            ReadRange=(query,start,count,token)=>{token.ThrowIfCancellationRequested();return ValueTask.FromResult<IReadOnlyList<PassiveEntry>>(query.Entries.Skip(start).Take(count).ToArray());},
             ItemKey=entry=>new(entry.Key),RenderItem=(_,entry,context)=>PassiveListRow(entry,context),
-            OccurrenceKeys=query=>query.Entries.Length<=512?query.Entries.Select(entry=>new WidgetCollectionItemKey(entry.Key)).ToArray():null,
+            PreserveOccurrences=true,
             OnAction=(query,entry,action,token)=>
             {
                 lock(gate)
@@ -89,9 +88,8 @@ public sealed partial class PobWidget
         if(!ReferenceEquals(passiveResult,result)||passiveFilter!=filter||passiveQuery.Context!=context)
         {
             var next=BuildPassiveList(A(State,"nodes"),context,filter,ExpandedPassives(context));
-            var same=passiveQuery.Context==next.Context&&passiveFilter==filter&&passiveQuery.Entries.Select(entry=>entry.Key).SequenceEqual(next.Entries.Select(entry=>entry.Key));
             passiveQuery=next;passiveResult=result;passiveFilter=filter;
-            if(same)passives.UpdateContent(next);else passives.PublishQuery(next,next.Entries.Length);
+            passives.Publish(context+"\u001f"+filter,next,next.Entries);
         }
         return WithPassivePreviews(UI.CollectionList("pob.passives",passives,64,"Passive skill results").Classes("pob-scroll"));
     }

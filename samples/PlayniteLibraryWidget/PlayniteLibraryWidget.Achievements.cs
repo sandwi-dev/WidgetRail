@@ -6,7 +6,7 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 public sealed partial class PlayniteLibraryWidget
 {
     private PlayniteAchievementBrowse? achievementBrowse;
-    private WidgetIndexedCollection<PlayniteAchievementBrowse, PlayniteAchievementEntry>? achievementRows;
+    private WidgetLoadedCollection<PlayniteAchievementBrowse, PlayniteAchievementEntry>? achievementRows;
 
     private void RequestAchievementSearch(bool clear) => _model.Update(state =>
     {
@@ -28,17 +28,11 @@ public sealed partial class PlayniteLibraryWidget
         {
             var next = new PlayniteAchievementBrowse(local.DetailsGeneration, local.DetailsExtras);
             if (achievementRows is null)
-                achievementRows = CreateIndexedCollection<PlayniteAchievementBrowse, PlayniteAchievementEntry>(
-                    "playnite-library.achievement-rows", next, next.Rows.Count, new()
+                achievementRows = CreateLoadedCollection<PlayniteAchievementBrowse, PlayniteAchievementEntry>(
+                    "playnite-library.achievement-rows", next.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture), next, next.Rows, new()
                     {
-                        ReadRange = (query, start, count, token) =>
-                        {
-                            token.ThrowIfCancellationRequested();
-                            return ValueTask.FromResult<IReadOnlyList<PlayniteAchievementEntry>>(query.Rows.Skip(start).Take(count).ToArray());
-                        },
+                        PreserveOccurrences = true,
                         ItemKey = entry => new(entry.Key),
-                        OccurrenceKeys = query => query.Rows.Count <= IndexedCollectionLimits.MaximumContinuityItems
-                            ? query.Rows.Select(entry => new WidgetCollectionItemKey(entry.Key)).ToArray() : null,
                         RenderItem = (_, entry, ids) => PlayniteAchievementPresentation.Row(entry, ids.Id("row")),
                         OnAction = async (query, entry, action, token) =>
                         {
@@ -52,9 +46,7 @@ public sealed partial class PlayniteLibraryWidget
                             return ValueTask.FromResult(AchievementArtwork(query, entry, handle));
                         },
                     });
-            else if (achievementBrowse!.Rows.Select(entry => entry.Key).SequenceEqual(next.Rows.Select(entry => entry.Key)))
-                achievementRows.UpdateContent(next);
-            else achievementRows.PublishQuery(next, next.Rows.Count);
+            else achievementRows.Publish(next.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture), next, next.Rows);
             achievementBrowse = next;
         }
         return UI.CollectionList(PlayniteAchievementBrowse.ListId, achievementRows!, 104, "Achievements")

@@ -24,8 +24,8 @@ internal sealed record SettingsInstalledListView(WidgetElement Content, string I
 
 public sealed partial class SettingsWidget
 {
-    private WidgetIndexedCollection<IReadOnlyList<SettingsInstalledRow>, SettingsInstalledRow> installedList = null!;
-    private IReadOnlyList<SettingsInstalledRow> installedRows = [];
+    private WidgetLoadedCollection<SettingsWidgetFilter, SettingsInstalledRow> installedList = null!;
+    private IReadOnlyList<SettingsInstalledRow> installedRows => installedList?.Items ?? [];
     private SettingsInstalledWidgetState? installedRowsState;
     private BuiltInWidgetSettings? installedRowsPreferences;
     private bool installedRowsBusy;
@@ -38,13 +38,9 @@ public sealed partial class SettingsWidget
 
     private void InitializeInstalledList()
     {
-        installedList = CreateIndexedCollection<IReadOnlyList<SettingsInstalledRow>, SettingsInstalledRow>("settings.widgets", installedRows, 0, new()
+        installedList = CreateLoadedCollection<SettingsWidgetFilter, SettingsInstalledRow>("settings.widgets",
+            _installedState.Filter.ToString(), _installedState.Filter, [], new()
         {
-            ReadRange = (rows, start, count, token) =>
-            {
-                token.ThrowIfCancellationRequested();
-                return ValueTask.FromResult<IReadOnlyList<SettingsInstalledRow>>(rows.Skip(start).Take(count).ToArray());
-            },
             ItemKey = row => new(row.Key),
             RenderItem = (_, row, context) => SettingsInstalledWidgetPresentation.InstalledEntry(row, context.Id("row")),
             OnAction = OpenInstalledRowAsync,
@@ -87,13 +83,7 @@ public sealed partial class SettingsWidget
                                 widget.ActiveVersion.Manifest.Presentation.Icon, rowBusy, false)
                                 { PackageIcon = widget.ActiveVersion.Manifest.Presentation.PackageIcon, ContentDigest = widget.ActiveVersion.ContentDigest });
                         }
-                    if (!rows.SequenceEqual(installedRows))
-                    {
-                        var sameKeys = rows.Select(row => row.Key).SequenceEqual(installedRows.Select(row => row.Key));
-                        installedRows = rows.ToArray();
-                        if (sameKeys) installedList.UpdateContent(installedRows);
-                        else installedList.PublishQuery(installedRows, installedRows.Count);
-                    }
+                    installedList.Publish(_installedState.Filter.ToString(), _installedState.Filter, rows);
                 }
                 if (_page == SettingsPage.InstalledWidgets && !installedListWasShown)
                 {
@@ -120,7 +110,7 @@ public sealed partial class SettingsWidget
         return new(UI.CollectionList(id, installedList, 72, "Installed widgets").Classes("installed-widget-list"), id, installedRows.Count, entry);
     }
 
-    private async ValueTask OpenInstalledRowAsync(IReadOnlyList<SettingsInstalledRow> _, SettingsInstalledRow row, WidgetActionEvent action, CancellationToken token)
+    private async ValueTask OpenInstalledRowAsync(SettingsWidgetFilter _, SettingsInstalledRow row, WidgetActionEvent action, CancellationToken token)
     {
         if (action.ActionId != "installed.open") return;
         await _operationGate.WaitAsync(token).ConfigureAwait(false);

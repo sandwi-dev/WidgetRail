@@ -62,7 +62,7 @@ public sealed partial class SpotifyWidget : Widget
         SpotifyAuthorizationState.Disconnected;
     private SpotifyPlaybackSummary? _playback;
     private readonly WidgetCursorResource<SpotifyMediaCollectionItem> _queue;
-    private readonly WidgetIndexedCollection<SpotifyQueueQuery, SpotifyMediaCollectionItem> _indexedQueue;
+    private readonly WidgetLoadedCollection<SpotifyQueueQuery, SpotifyMediaCollectionItem> _indexedQueue;
     private SpotifyQueueQuery? _queueQuery;
     private readonly WidgetDiscoveredCollection<SpotifyLibraryQuery, SpotifyPlaylistCollectionItem> _playlists;
     private readonly WidgetDiscoveredCollection<SpotifyDetailQuery, SpotifyMediaCollectionItem> _playlistItems;
@@ -151,8 +151,8 @@ public sealed partial class SpotifyWidget : Widget
                 },
             });
         _toastExpiry = CreateTimedMutation(WidgetOperationLifetime.Active, _timeProvider);
-        _indexedQueue = CreateIndexedCollection<SpotifyQueueQuery, SpotifyMediaCollectionItem>(
-            "spotify.queue.indexed", new(0, []), 0, SpotifyIndexedQueue.Options(HandleIndexedQueueActionAsync));
+        _indexedQueue = CreateLoadedCollection<SpotifyQueueQuery, SpotifyMediaCollectionItem>(
+            "spotify.queue.indexed", "queue", new(0, []), [], SpotifyIndexedQueue.Options(HandleIndexedQueueActionAsync));
         _search = CreateDiscoveredCollection<SpotifySearchQuery, SpotifySearchCollectionItem>("spotify.search", new(0, "", SpotifySearchKind.Track),
             SpotifyDiscoveredCollections.Search(_spotify, maximumDiscoveredItems, HandleDiscoveredSearchActionAsync, SpotifyResourceError, (query, names) => { lock (_gate) if (query.Generation == _searchGeneration) RememberLoadedNames(names); }));
         _compactPinnedLayout = CreatePinnedLayoutHandle(

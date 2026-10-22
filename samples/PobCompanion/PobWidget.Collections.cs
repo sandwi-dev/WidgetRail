@@ -8,17 +8,12 @@ public sealed partial class PobWidget
     private sealed record ListEntry(string Key,string Label,string Action,bool Selected=false);
     private sealed record ListQuery(string Context,ListEntry[] Entries);
     private ListQuery libraryQuery=new("",[]);
-    private WidgetIndexedCollection<ListQuery,ListEntry>? library;
+    private WidgetLoadedCollection<ListQuery,ListEntry>? library;
     private bool libraryOpenFocusRequested;
 
-    private WidgetIndexedCollection<ListQuery,ListEntry> CreateLibraryList()=>
-        CreateIndexedCollection<ListQuery,ListEntry>("pob.saved-source",libraryQuery,0,new()
+    private WidgetLoadedCollection<ListQuery,ListEntry> CreateLibraryList()=>
+        CreateLoadedCollection<ListQuery,ListEntry>("pob.saved-source",libraryQuery.Context,libraryQuery,libraryQuery.Entries,new()
         {
-            ReadRange=(query,start,count,token)=>
-            {
-                token.ThrowIfCancellationRequested();
-                return ValueTask.FromResult<IReadOnlyList<ListEntry>>(query.Entries.Skip(start).Take(count).ToArray());
-            },
             ItemKey=entry=>new(entry.Key),
             RenderItem=(_,entry,context)=>UI.Button(entry.Label,"open",context.Id("entry")).Selected(entry.Selected).FocusRight("pob.library.detail").Classes("pob-button"),
             OnAction=(query,entry,action,token)=>
@@ -44,9 +39,8 @@ public sealed partial class PobWidget
         var entries=visible.Select(b=>new ListEntry(b.Id,b.Name+(b.Id==documentId?" · Current":"")+(b.Id==librarySelection?" · Selected":""),"library-select."+b.Id,b.Id==librarySelection)).ToArray();
         if(!libraryQuery.Entries.SequenceEqual(entries))
         {
-            var same=libraryQuery.Entries.Select(e=>e.Key).SequenceEqual(entries.Select(e=>e.Key));
             libraryQuery=new("saved",entries);
-            if(same)library.UpdateContent(libraryQuery);else library.PublishQuery(libraryQuery,entries.Length);
+            library.Publish(libraryQuery.Context,libraryQuery,entries);
         }
         return UI.Stack("pob.library.workspace",ManagementHeader($"Saved builds · {entries.Length}"),
             QuickControls(UI.Grid("pob.library.tools",[GridTrack.Auto()],[GridTrack.Star(),GridTrack.Auto(),GridTrack.Auto()],

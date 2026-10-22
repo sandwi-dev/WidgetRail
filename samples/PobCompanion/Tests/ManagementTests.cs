@@ -42,6 +42,20 @@ internal static class ManagementTests
             check(stableWorkspace&&treeSurface.HeightMode==WidgetSurfaceAxisMode.FillAvailable&&treeSurface.WidthMode==WidgetSurfaceAxisMode.Preferred,
                 "Every planning section uses the same bounded width and available-height policy");
             await Action("menu");
+            await Action("sets");
+            long previousSetQuery=-1;
+            foreach(var kind in new[]{"tree","items","skills","config"})
+            {
+                await Action("sets-kind."+kind);
+                var setList=Nodes(Snapshot().Root).Single(node=>node.Id=="pob.sets.list").IndexedCollection!;
+                check(setList.Count>0&&setList.QueryGeneration>previousSetQuery,
+                    kind+": set-type identity retires the previous loaded collection query");
+                previousSetQuery=setList.QueryGeneration;
+                using var host=WidgetTestHost.CreateIndexedCollectionHost(widget!,"management-sets");
+                using var row=await host.AcquireAsync("pob.sets.list",0,1);
+                check(row.Range.Items.Single().Root.ActionId=="select",kind+": loaded set row retains its action declaration");
+            }
+            await Action("back");
             check(Nodes(Snapshot().Root).Single(n=>n.Id=="pob.rename").TextEntryInputKind==TextEntryInputKind.Prose,"Current build names enable offline word completion");
             if(game==2)
             {

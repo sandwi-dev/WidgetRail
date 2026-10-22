@@ -18,7 +18,7 @@ public sealed partial class PobWidget
     private sealed record CalculationCell(string Id,string Title,string Value,bool Selected);
     private sealed record CalculationQuery(CalculationCell[] Items);
     private CalculationQuery calculationQuery=new([]);
-    private WidgetIndexedCollection<CalculationQuery,CalculationCell>? calculationCollection;
+    private WidgetLoadedCollection<CalculationQuery,CalculationCell>? calculationCollection;
     private sealed record CalculationSource(string Key,string Title,string Summary,string[] Labels,JsonElement[] Cells);
     private sealed record CalculationSources(CalculationSource[] Items);
     private CalculationSources calculationSources=new([]);
@@ -130,9 +130,8 @@ public sealed partial class PobWidget
         var sections=A(calculationCatalog,"sections");var selected=sections.FirstOrDefault(s=>S(s,"id")==calculationSection);
         var entries=A(selected,"items").Where(c=>(S(c,"title")+" "+S(c,"value")).Contains(calculationSearch,StringComparison.OrdinalIgnoreCase))
             .Select(c=>new CalculationCell(S(c,"id"),S(c,"title"),CalculationValue(S(c,"value")),S(c,"id")==calculationCell)).ToArray();
-        calculationCollection??=CreateIndexedCollection<CalculationQuery,CalculationCell>("pob.calculation.source",calculationQuery,0,new()
+        calculationCollection??=CreateLoadedCollection<CalculationQuery,CalculationCell>("pob.calculation.source","calculations",calculationQuery,calculationQuery.Items,new()
         {
-            ReadRange=(query,start,count,token)=>{token.ThrowIfCancellationRequested();return ValueTask.FromResult<IReadOnlyList<CalculationCell>>(query.Items.Skip(start).Take(count).ToArray());},
             ItemKey=item=>new(item.Id),
             RenderItem=(_,item,context)=>UI.ActionSurface("choose",context.Id("cell"),item.Title+": "+item.Value,ActionSurfaceOrientation.Vertical,
                 UI.Text(item.Title,context.Id("title")).Classes("pob-small","pob-muted"),UI.Text(item.Value,context.Id("value")).Classes("pob-list-title","pob-gold"))
@@ -141,8 +140,8 @@ public sealed partial class PobWidget
         });
         if(!calculationQuery.Items.SequenceEqual(entries))
         {
-            var same=calculationQuery.Items.Select(i=>i.Id).SequenceEqual(entries.Select(i=>i.Id));calculationQuery=new(entries);
-            if(same)calculationCollection.UpdateContent(calculationQuery);else calculationCollection.PublishQuery(calculationQuery,entries.Length);
+            calculationQuery=new(entries);
+            calculationCollection.Publish("calculations",calculationQuery,entries);
         }
         calculationSourceCollection??=CreateIndexedCollection<CalculationSources,CalculationSource>("pob.calculation.detail-source",calculationSources,calculationSources.Items.Length,new()
         {
