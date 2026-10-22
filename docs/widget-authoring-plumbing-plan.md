@@ -2,7 +2,7 @@
 
 Date: 2026-10-22  
 Audit baseline: `adb696ac` (`codex/playnite-achievement-focus`)  
-Status: Active completion audit on `codex/sdk-authoring-improvements`. F5 scoped resources, F6 loaded lists, and F9 controlled disclosures are implemented and validated. Remaining work is the final requirement-by-requirement review, native restoration coverage, and comparative performance evidence. Historical first-pass outcomes below are superseded where later sections say so. Nothing is merged, pushed, published, or installed. The current user authorization permits launching a separate candidate for validation.
+Status: Active completion audit on `codex/sdk-authoring-improvements`. F5 scoped resources, F6 loaded lists, and F9 controlled disclosures are implemented and validated. Comparative YTM performance evidence is recorded below. F3 explicit viewport-return implementation passes its delayed-return fixture; broader native regression and recreation qualification remain in progress. Historical first-pass outcomes below are superseded where later sections say so. Nothing is merged, pushed, published, or installed. The current user authorization permits launching a separate candidate for validation.
 
 Move generic focus, navigation, collection, and asynchronous presentation bookkeeping out of Playnite, shared PoB, YouTube Music, Spotify, and Settings into reusable SDK and host facilities. Widget authors should declare intent and domain data without maintaining competing request counters or reconstructing framework lifecycle rules.
 
@@ -1155,3 +1155,34 @@ measures retained-view readiness rather than cold startup, and is not a claim
 about game-library memory or physical controller polling. Full GC occurs only in
 the isolated diagnostic fixture after timing, never in product code. Screenshots
 show bounded, readable rows with ordinary clipped edge rows in the scroll viewport.
+
+### F3 follow-up: native binding lifetime
+
+The delayed-return fixture reproduced a retained hide/show stall: row 75's current
+lease was available, but its disabled native container remained bound to a different,
+evicted slot object at the same index. `IndexedItemsSource.Pump` had discarded the
+slot while WinUI temporarily excluded its page from range demand, even though
+`ContainerContentChanging` had not recycled the container. Refilling updated a
+new slot rather than the native binding.
+
+Keep slot identity while its internal `StateChanged` event has a native container
+subscriber. Existing recycling/detachment removes those subscribers. Page leases
+still retire when undemanded; keeping a slot does not request its page. Unobserved
+slots are evicted on the next pump. The retained bound is demanded pages plus
+currently bound containers, not total library size. A retired row payload may
+remain in a bound slot, but its native container already retained that same value;
+this does not extend provider action authority.
+
+`IndexedSourceReentrancyScenarios` now checks page release while a native observer
+remains, same-slot refill notifications, and eviction after observer removal.
+The source lifetime/reentrancy suite passes **29 checks**, exercised inside the
+new return fixture. `artifacts/authoring/return-complete/result.json` reports
+**51/51** overall checks, including disabled/query-replaced/delayed targets,
+explicit native departure, retained/recreated return, horizontal scrolling,
+changed row height, smaller viewport, repeated suspension, and actual wheel input.
+The earlier `return-container-trace` artifact preserves the mismatched-slot failure.
+
+The larger F3 protocol/viewport changes are still uncommitted at this checkpoint.
+The existing memento and broad indexed-widget fixtures have additional failures
+under the current viewport, and a separate checkout of `223ffc16` is being used
+to establish their baseline. They are not counted as green or assumed pre-existing.

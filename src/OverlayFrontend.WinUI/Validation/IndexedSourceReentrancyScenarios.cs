@@ -71,7 +71,44 @@ internal static class IndexedSourceReentrancyScenarios
             Check(owner.Releases == 1 && (action != "refresh" || nextOwner.Releases == 1),
                 $"{action}: all page owners release exactly once");
         }
+        var boundOwner = new Lifetime();
+        var loads = 0;
+        await using (var boundSource = new IndexedItemsSource<string>(new(new("validation", "bound-slot", "rows"), 1), 10,
+            dispatcher, (request, _) => Task.FromResult(new IndexedRangeResult<string>(request.Query, request.RequestId, request.StartIndex,
+                Enumerable.Range(request.StartIndex, request.Count).Select(index => new KeyedCollectionItem<string>($"item.{index}", $"{Interlocked.Increment(ref loads)}:{index}")).ToArray(),
+                Lifetime: request.RequestId == 1 ? boundOwner : new Lifetime())), pageSize: 2))
+        {
+            boundSource.RangesChanged(new(0, 2), []);
+            await Until(() => boundSource.CompletedLoads == 1);
+            var bound = (IndexedItem<string>)boundSource[0];
+            var oldValue = bound.Value;
+            var notifications = 0;
+            EventHandler observer = (_, _) => ++notifications;
+            bound.StateChanged += observer;
+            boundSource.RangesChanged(new(4, 2), []);
+            await Until(() => boundSource.CompletedLoads == 2 && boundOwner.Releases == 1);
+            Check(ReferenceEquals(bound, boundSource[0]) && boundSource.ResidentSlots == 3,
+                "native binding keeps only its stable slot without retaining page authority or creating provider demand");
+            boundSource.RangesChanged(new(0, 2), []);
+            await Until(() => boundSource.CompletedLoads == 3);
+            Check(ReferenceEquals(bound, boundSource[0]) && bound.Value != oldValue && notifications == 1,
+                "range reentry updates the still-bound native slot");
+            bound.StateChanged -= observer;
+            boundSource.RangesChanged(new(8, 2), []);
+            await Until(() => boundSource.CompletedLoads == 4 && boundSource.ResidentSlots == 2);
+            Check(!ReferenceEquals(bound, boundSource[0]), "recycled native binding no longer pins slot identity");
+        }
         return checks;
+
+        static async Task Until(Func<bool> condition)
+        {
+            var deadline = Environment.TickCount64 + 5000;
+            while (!condition())
+            {
+                if (Environment.TickCount64 >= deadline) throw new TimeoutException("Bound slot lifetime did not settle.");
+                await Task.Delay(10);
+            }
+        }
 
         void Check(bool condition, string message)
         { if (!condition) throw new InvalidOperationException(message); ++checks; }

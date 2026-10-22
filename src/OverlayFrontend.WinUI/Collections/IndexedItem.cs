@@ -10,6 +10,9 @@ public abstract class IndexedItem : INotifyPropertyChanged
     // Native container policy consumes one completed update, independently of
     // the per-property notifications needed by XAML bindings.
     internal event EventHandler? StateChanged;
+    // Native containers explicitly subscribe until recycling/detachment. Their
+    // stable binding identity must survive temporary changes in range demand.
+    internal bool HasStateObservers => StateChanged is not null;
     protected void Changed(string property) => PropertyChanged?.Invoke(this, new(property));
     protected void StateUpdated() => StateChanged?.Invoke(this, EventArgs.Empty);
 }

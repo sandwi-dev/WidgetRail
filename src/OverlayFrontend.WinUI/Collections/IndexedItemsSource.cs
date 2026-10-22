@@ -300,7 +300,11 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
                 pages.Remove(page);
             }
         foreach (var index in slots.Keys.ToArray())
-            if (!demandedPages.Contains(index / pageSize)) slots.Remove(index);
+            // WinUI may keep a bound container while temporarily excluding its
+            // page from range demand (notably during retained hide/show). Keep
+            // that slot identity so a later refill updates the same binding.
+            // This does not retain the page lease or add provider demand.
+            if (!demandedPages.Contains(index / pageSize) && !slots[index].HasStateObservers) slots.Remove(index);
         failedPages.RemoveWhere(page => !demandedPages.Contains(page));
         foreach (var pair in fetching.ToArray())
             if (!demandedPages.Contains(pair.Key))
