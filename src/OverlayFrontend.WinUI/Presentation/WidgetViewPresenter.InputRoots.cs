@@ -13,6 +13,7 @@ internal sealed partial class WidgetViewPresenter
         PointerEventHandler wheel = (_, _) =>
         {
             CancelPassiveScrollFocus();
+            CancelGroupEntry();
             CancelScrollReveal();
             // Wheel input now owns the viewport. Retire controller settlement
             // without cancelling the native wheel motion already admitted.

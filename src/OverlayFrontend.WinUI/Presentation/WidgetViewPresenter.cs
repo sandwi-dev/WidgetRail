@@ -83,6 +83,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         automaticFocusEnabled = enabled;
         if (!enabled)
         {
+            SuspendCollectionReturn();
             CancelPassiveScrollFocus();
             scrollGesture = null;
             directionalScroll = null;
@@ -95,6 +96,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         // must not replace it with an old pending initial-focus request.
         if (FocusedBinding() is { } focused && Navigable(focused) &&
             (RememberedBinding() is not { } preferred || ReferenceEquals(preferred, focused))) needsEntry = false;
+        ResumeSuspendedCollectionReturn();
     }
 
     public WidgetViewPresenter(bool presentationOnly = false)
@@ -161,6 +163,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         applying = true;
         try
         {
+            CaptureReturnViewport(plan, sameOwner, focused);
             PreparePageMemory(plan, sameOwner);
             transition = PrepareTransitions(plan, sameOwner);
             modalExit = PrepareModalExit(plan, sameOwner);

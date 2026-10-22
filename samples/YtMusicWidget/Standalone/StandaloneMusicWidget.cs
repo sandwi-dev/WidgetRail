@@ -177,8 +177,9 @@ public sealed partial class StandaloneMusicWidget : Widget
         if (_panel is null && _browse.Items.Length > 0 && !(_tab == "library" && !_service.State.Connected))
         {
             var index = ReturnIndex(_panelReturnItem);
-            _focusRequest = request.EnterCollection(_browse.Collection, _browse.ScrollId, index < 0 ? null :
-                _browse.Collection.FocusTarget(_browse.ScrollId, _browse.Items[index].Key, index));
+            _focusRequest = index < 0 ? request.EnterCollection(_browse.Collection, _browse.ScrollId) :
+                request.ReturnToCollection(_browse.Collection, _browse.ScrollId,
+                    _browse.Collection.FocusTarget(_browse.ScrollId, _browse.Items[index].Key, index));
             _panelReturnItem = null;
             return;
         }

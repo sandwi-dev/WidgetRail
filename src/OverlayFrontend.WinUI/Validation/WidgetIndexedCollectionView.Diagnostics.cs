@@ -20,10 +20,16 @@ internal sealed partial class WidgetIndexedCollectionView
     {
         var slot = navigationRetention?.Slot;
         var scroll = view is null ? null : FindNativeScroll(view);
+        var native = pendingIndex is { } pending ? view?.ContainerFromIndex(pending) as Microsoft.UI.Xaml.Controls.Primitives.SelectorItem : null;
+        var tracked = native is not null && containers.TryGetValue(native, out var binding) ? binding.Slot : null;
         return new { pendingIndex, entering, scrollOnly, navigationQueued, navigationNeedsScroll, CanReceiveInput,
             current = slot?.Value?.Lease.IsCurrent, key = slot?.Key, failed = slot?.Failed,
             targetLoaded = pendingIndex is { } index && view?.ContainerFromIndex(index) is FrameworkElement { IsLoaded: true },
             offset = scroll?.VerticalOffset, extent = scroll?.ScrollableHeight, viewport = scroll?.ViewportHeight,
+            horizontalOffset = scroll?.HorizontalOffset, horizontalExtent = scroll?.ScrollableWidth, viewportWidth = scroll?.ViewportWidth,
+            nativeLoaded = view?.IsLoaded, panel = view?.ItemsPanelRoot?.GetType().Name,
+            nativeEnabled = native?.IsEnabled, nativeTabStop = native?.IsTabStop, nativeVisibility = native?.Visibility.ToString(),
+            trackedIndex = tracked?.Index, sameSlot = ReferenceEquals(tracked, slot), trackedCurrent = tracked?.Value?.Lease.IsCurrent,
             containers = containers.Keys.Select(item => view?.IndexFromContainer(item)).ToArray() };
     }
     private static readonly bool CaptureEntryFocusStacks = Environment.GetCommandLineArgs().Any(argument =>
@@ -42,6 +48,8 @@ internal sealed partial class WidgetIndexedCollectionView
     }
     private static string Id(DependencyObject? element) => element is null ? "null" : AutomationProperties.GetAutomationId(element);
     internal Action<string>? NavigationTrace { get; set; }
+    partial void TraceViewportRestore(int index, double current, double position, double size, double desiredPosition, double desired, double? pendingOffset, bool? accepted) =>
+        NavigationTrace?.Invoke($"viewport index={index} current={current} position={position} size={size} targetPosition={desiredPosition} desired={desired} pending={pendingOffset} accepted={accepted}");
     partial void TraceNavigation(string phase, int index, WidgetIndexedRow row, Control target) =>
         NavigationTrace?.Invoke($"{phase} index={index} entry={pendingEntry?.Index} entering={entering} nativeEnabled={target.IsEnabled} rowDisabled={row.Item.Root.IsDisabled} rowBusy={row.Item.Root.IsBusy} current={row.Lease.IsCurrent}");
     partial void TraceContinuity(string phase, IndexedViewportMemento? viewport)

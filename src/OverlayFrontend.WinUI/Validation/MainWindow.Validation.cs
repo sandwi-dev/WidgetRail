@@ -221,10 +221,15 @@ public sealed partial class MainWindow
         else if (indexedValidationPipe is not null)
         {
             if (Shell.FrontendArguments.Value(arguments, "--ytm-navigation-output") is not null ||
-                Shell.FrontendArguments.Value(arguments, "--ytm-performance-output") is not null)
+                Shell.FrontendArguments.Value(arguments, "--ytm-performance-output") is not null ||
+                Shell.FrontendArguments.Value(arguments, "--collection-return-output") is not null ||
+                arguments.Contains("--indexed-authoring-regression"))
             {
                 var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96d;
-                AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(960 * scale), (int)Math.Ceiling(720 * scale)));
+                // The legacy indexed regression's fixed realization bound assumes
+                // a smaller viewport than the shipping YTM/return fixture.
+                var height = arguments.Contains("--indexed-authoring-regression") ? 600 : 720;
+                AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(960 * scale), (int)Math.Ceiling(height * scale)));
             }
             if (Shell.FrontendArguments.Value(arguments,"--playnite-performance-output") is {} performanceOutput)
                 RootFrame.Content = new Validation.PlaynitePerformanceValidationPage(indexedValidationPipe,performanceOutput);

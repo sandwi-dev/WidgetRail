@@ -24,7 +24,7 @@ internal sealed partial class NativeWheelProbe : IDisposable
 
     internal object Position => new { point.X, point.Y, window = window.ToInt64() };
 
-    internal unsafe void Send(int delta)
+    internal void MoveToTarget()
     {
         DemandOwned(window);
         if (GetForegroundWindow() != window) throw new InvalidOperationException("Wheel injection lost its fixture foreground.");
@@ -33,6 +33,11 @@ internal sealed partial class NativeWheelProbe : IDisposable
         if (SetCursorPos(point.X, point.Y) == 0) throw new InvalidOperationException("Cannot target fixture pointer.");
         movedCursor = true;
         DemandOwned(WindowFromPoint(point));
+    }
+
+    internal unsafe void Send(int delta)
+    {
+        MoveToTarget();
         var input = new NativeInput { Data = new() { Mouse = new() { Data = unchecked((uint)delta), Flags = 0x0800 } } };
         if (SendInput(1, &input, sizeof(NativeInput)) != 1) throw new InvalidOperationException("Fixture wheel injection failed.");
     }

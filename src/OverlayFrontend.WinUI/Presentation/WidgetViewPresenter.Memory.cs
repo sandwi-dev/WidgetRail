@@ -9,8 +9,8 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     private const int MaximumMemoryEntries = 64;
-    private sealed class PendingViewport(IndexedViewportMemento memory)
-    { internal IndexedViewportMemento Memory { get; } = memory; internal bool Requested; internal double? Offset; internal IDisposable? Retention; internal WidgetIndexedCollectionView? Collection; }
+    private sealed class PendingViewport(IndexedViewportMemento memory, FocusGroupEntryRequest? returnIntent = null)
+    { internal IndexedViewportMemento Memory { get; } = memory; internal FocusGroupEntryRequest? ReturnIntent { get; } = returnIntent; internal bool Requested; internal double? Offset; internal IDisposable? Retention; internal WidgetIndexedCollectionView? Collection; }
     private readonly List<PendingViewport> pendingIndexedViewports = [];
     private sealed class PendingScroll(ScrollViewportMemento memory)
     { internal ScrollViewportMemento Memory { get; } = memory; internal ScrollViewer? Scroll; internal double? Offset; }
@@ -25,7 +25,9 @@ internal sealed partial class WidgetViewPresenter
         if (disposed || frame is null) return null;
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Capture presentation memory on its dispatcher.");
         RememberFocus();
+        var returning = CapturePendingCollectionReturn();
         var indexed = bindings.Values.Where(binding => binding.Element is WidgetIndexedCollectionView && IsMemoryVisible(binding.Element))
+            .Where(binding => binding.Identity.Id != returning?.GroupId)
             .Select(binding => ((WidgetIndexedCollectionView)binding.Element).CaptureViewport(binding.Identity))
             .OfType<IndexedViewportMemento>().Take(MaximumMemoryEntries).ToArray();
         var scrolls = bindings.Values.Where(binding => binding.Element is ScrollViewer && IsMemoryVisible(binding.Element))
@@ -33,7 +35,8 @@ internal sealed partial class WidgetViewPresenter
         return new(PresentationMemoryOwner.From(frame.Authority), pendingGroupEntry is null ? lastGroupRequest : 0,
             remembered.Values.TakeLast(MaximumMemoryEntries).ToArray(),
             groupMemory.Values.TakeLast(MaximumMemoryEntries).Select(memory => new GroupFocusMemento(memory.Group, memory.Child)).ToArray(),
-            collectionMemory.TakeLast(MaximumMemoryEntries).Select(pair => new IndexedFocusMemento(pair.Key.Identity, pair.Value)).ToArray(), indexed, scrolls);
+            collectionMemory.TakeLast(MaximumMemoryEntries).Select(pair => new IndexedFocusMemento(pair.Key.Identity, pair.Value)).ToArray(), indexed, scrolls)
+            { CollectionReturns = returnViewports.Values.TakeLast(MaximumMemoryEntries).ToArray(), PendingCollectionReturn = returning };
     }
 
     /// <summary>Apply after the first frame, while inactive. The shell controls later entry focus.</summary>
@@ -43,6 +46,9 @@ internal sealed partial class WidgetViewPresenter
         ObjectDisposedException.ThrowIf(disposed, this);
         CancelMemoryRestoration();
         if (frame is null || state.Owner != PresentationMemoryOwner.From(frame.Authority)) return false;
+        foreach (var memory in state.CollectionReturns.TakeLast(MaximumMemoryEntries))
+            returnViewports[new(memory.Element, memory.Source, memory.Query)] = memory;
+        while (returnViewports.Count > MaximumMemoryEntries) returnViewports.RemoveAt(0);
         lastGroupRequest = Math.Max(lastGroupRequest, state.ConsumedFocusRequest);
         if (pendingGroupEntry is { } request && request.RequestId <= state.ConsumedFocusRequest) pendingGroupEntry = null;
         // The first admitted frame may be a loading declaration. Keep bounded
@@ -64,6 +70,11 @@ internal sealed partial class WidgetViewPresenter
             if (Matches(viewport.Element) && Matches(viewport.Anchor)) pendingScrollViewports.Add(new(viewport));
         memoryIntent = entryIntentVersion;
         memoryOwner = state.Owner;
+        if (state.PendingCollectionReturn is { } pending)
+        {
+            suspendedCollectionReturn = (state.Owner, pending);
+            ResumeSuspendedCollectionReturn();
+        }
         if (HasPendingMemoryRestore) LayoutUpdated += MemoryLayoutUpdated;
         return true;
     }
@@ -118,8 +129,19 @@ internal sealed partial class WidgetViewPresenter
             if (Matches(pending.Memory.Element) && bindings[pending.Memory.Element.Id].Element is WidgetIndexedCollectionView collection && IsMemoryVisible(collection))
             {
                 if (pending.Collection is null) { pending.Collection = collection; collection.NavigationSettled += QueueMemoryRestoration; }
-                pending.Retention ??= collection.RetainViewport(pending.Memory, QueueMemoryRestoration);
-                if (!collection.RestoreViewport(pending.Memory, ref pending.Requested, ref pending.Offset)) continue;
+                if (pending.ReturnIntent?.IndexedItem is { } target)
+                {
+                    if (!collection.MatchesQuery(target))
+                    { ReleaseViewport(pending); pendingIndexedViewports.Remove(pending); continue; }
+                    if (collection.IsEntryPending) continue;
+                    if (collection.CaptureFocusedItem() != target || collection.RetainedFocusTarget(target) is not { IsEnabled: true })
+                    { ReleaseViewport(pending); pendingIndexedViewports.Remove(pending); continue; }
+                }
+                // Native layout/BringIntoView can supersede an accepted ChangeView.
+                // Once scrolling settles, reconcile actual geometry even if the
+                // desired offset is identical to the previous request.
+                pending.Retention ??= collection.RetainViewport(pending.Memory, QueueMemoryRestoration, () => pending.Offset = null);
+                if (!collection.RestoreViewport(pending.Memory, ref pending.Requested, ref pending.Offset, keepAnchorVisible: pending.ReturnIntent is not null)) continue;
             }
             ReleaseViewport(pending); pendingIndexedViewports.Remove(pending);
         }

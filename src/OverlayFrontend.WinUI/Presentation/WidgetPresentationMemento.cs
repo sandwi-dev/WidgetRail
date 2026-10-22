@@ -19,4 +19,8 @@ internal sealed record ScrollViewportMemento(WidgetElementIdentity Element, Widg
 internal sealed record WidgetPresentationMemento(PresentationMemoryOwner Owner, long ConsumedFocusRequest,
     IReadOnlyList<WidgetElementIdentity> Focus, IReadOnlyList<GroupFocusMemento> Groups,
     IReadOnlyList<IndexedFocusMemento> IndexedFocus, IReadOnlyList<IndexedViewportMemento> IndexedViewports,
-    IReadOnlyList<ScrollViewportMemento> ScrollViewports);
+    IReadOnlyList<ScrollViewportMemento> ScrollViewports)
+{
+    internal IReadOnlyList<IndexedViewportMemento> CollectionReturns { get; init; } = [];
+    internal FocusGroupEntryRequest? PendingCollectionReturn { get; init; }
+}

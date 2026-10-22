@@ -25,6 +25,7 @@ internal sealed partial class WidgetViewPresenter
             ResetSliderValues(); SetSliderAdjustment(null);
             DismissTransientControl();
         }
+        else ResumeSuspendedCollectionReturn();
     }
 
     internal bool HasPreparedLayout => !disposed && !applying && presentationActive && frame is not null &&

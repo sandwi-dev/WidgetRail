@@ -234,6 +234,8 @@ internal sealed partial class WidgetViewPresenter
         DisposeSurfaceClip();
         surfaceResize?.Dispose(); surfaceResize = null;
         CancelMemoryRestoration();
+        returnViewports.Clear();
+        suspendedCollectionReturn = null;
         ClearEntryLayoutWait();
         SettleTransitions();
         SettleModalExit();

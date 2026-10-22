@@ -132,6 +132,8 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
             session.PresentationChanged += Changed;
             await session.ListWidgetsAsync(lifetime.Token);
             await session.EstablishPresentationAsync(session.GetTarget("indexed-owned"), WidgetLifecycleState.Interactive, lifetime.Token);
+            if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--collection-return-output") is { } returnOutput)
+            { await ValidateCollectionReturnsAsync(returnOutput); return; }
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--ytm-performance-output") is { } performanceOutput)
             { await ValidateYtmPerformanceAsync(performanceOutput); return; }
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--ytm-navigation-output") is { } musicOutput)
@@ -175,6 +177,18 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
             Observe();
         });
     }
+    private void AdoptCurrentPresentation()
+    {
+        // Recreated presenters need the latest frame even when that revision was
+        // already displayed by their predecessor. Advance the event watermark too:
+        // older queued lifecycle notifications must not replay after this adoption.
+        var state = session!.GetState("indexed-owned")!;
+        if (state.Failure is { } error) throw new InvalidOperationException(error.Message);
+        var current = state.LastGood ?? throw new InvalidOperationException("No current fixture presentation.");
+        publication = Math.Max(publication, state.PublicationRevision);
+        presenter.Apply(current);
+    }
+
     private ListViewBase? View() => Descendants(presenter).OfType<ListViewBase>().FirstOrDefault();
     private async Task RefreshContentAsync()
     {

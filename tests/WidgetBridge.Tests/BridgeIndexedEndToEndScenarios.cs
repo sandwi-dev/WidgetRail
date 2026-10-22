@@ -7,7 +7,7 @@ using WidgetRail.PlatformSettings;
 
 internal static class BridgeIndexedEndToEndScenarios
 {
-    internal static async Task ServeThemedValidationAsync(string pipe, string settingsRoot)
+    internal static async Task ServeThemedValidationAsync(string pipe, string settingsRoot, bool returnFixture = false)
     {
         var paths = new PlatformSettingsPaths(Path.GetFullPath(settingsRoot));
         var store = new PlatformSettingsStore(paths);
@@ -15,10 +15,11 @@ internal static class BridgeIndexedEndToEndScenarios
             { ThemeId = ThemeIdentity.BuiltInNeonCircuit, ThemeVersion = ThemeIdentity.BuiltInNeonCircuitVersion } });
         await using var appearance = new PlatformAppearanceService(paths, new ThemeManager(store, new ThemeCatalog(paths)));
         await appearance.StartAsync();
-        var document = WrssParser.Parse("image { width: 48px; height: 48px; } text { font-size: 16px; color: var(--text); }", "native-validation.wrss").Document;
+        var document = WrssParser.Parse("image { width: 48px; height: 48px; } text { font-size: 16px; color: var(--text); }" +
+            (returnFixture ? " .return-row-tall { min-height: 84px; }" : ""), "native-validation.wrss").Document;
         var configured = new ConfiguredWidget
         {
-            Id = "indexed-owned", Name = "Indexed ownership", InstanceId = "indexed-owned.instance",
+            Id = "indexed-owned", Name = "Indexed ownership", InstanceId = returnFixture ? "indexed-return.instance" : "indexed-owned.instance",
             PackageId = "dev.indexed", PublisherId = "dev", WorkerExecutable = Environment.ProcessPath!,
             WorkerFingerprint = new('a', 64), CatalogFingerprint = new('a', 64), StylePackage = new([document], []),
         };
@@ -210,7 +211,7 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
     private readonly WidgetNavigator<int> returnNavigation;
     private FocusGroupEntryRequest? entry;
     private ScrollRevealRequest? reveal;
-    internal IndexedOwnedBridgeProbeWidget()
+    internal IndexedOwnedBridgeProbeWidget(bool returnFixture = false)
     {
         returnNavigation = CreateNavigatorWithOptions("probe-navigation", 0, new WidgetNavigatorOptions<int>
         { RouteScopeIds = new Dictionary<int, string> { [0] = "root", [1] = "detail" } });
@@ -286,6 +287,7 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
                 return new(WidgetArtworkContentType.Png, Convert.FromBase64String(png));
             },
         });
+        if (returnFixture) HandleReturnProbe("return-mode");
     }
     private static int[] ContinuityOrder(int query) => query switch
     {
@@ -311,6 +313,7 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
         .Shortcut(ControllerButton.B, actionId: "focus-clear"), deferredMode?"parent":"items") { FocusGroupEntryRequest = entry, ScrollRevealRequest = reveal };
     public override WidgetView Render()
     {
+        if (returnProbe is not null) return RenderReturnProbe();
         if (loadedProbe is not null) return RenderLoadedProbe();
         var parent = RenderParent();
         if (modalItem is not { } item) return parent;
@@ -324,6 +327,8 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
     }
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
+        if (action.ActionId.StartsWith("return-", StringComparison.Ordinal))
+        { HandleReturnProbe(action.ActionId); return ValueTask.CompletedTask; }
         if (action.ActionId.StartsWith("loaded", StringComparison.Ordinal))
         { HandleLoadedProbe(action.ActionId); return ValueTask.CompletedTask; }
         Interlocked.Increment(ref calls);

@@ -13,6 +13,8 @@ internal sealed partial class IndexedWidgetValidationPage
         var checks = new List<string>();
         var failures = new List<string>();
         var observations = new List<object>();
+        var traces = new Queue<string>();
+        presenter.FocusTrace = line => { traces.Enqueue(line); if (traces.Count > 1000) traces.Dequeue(); };
         Exception? error = null;
         var mode = session!.GetTarget("indexed-owned").Descriptor.InstanceId["ytm-navigation-".Length..];
         ViewSnapshot Snapshot() => session.GetState("indexed-owned")!.LastGood!.Snapshot;
@@ -20,6 +22,7 @@ internal sealed partial class IndexedWidgetValidationPage
         ViewNode? Collection() => Nodes(Snapshot().Root).FirstOrDefault(node => node.IndexedCollection is not null);
         bool Shown(string text) => Descendants(presenter).OfType<TextBlock>().Any(node => node.IsLoaded && node.Text == text);
         ScrollViewer Scroll() => Descendants(View()!).OfType<ScrollViewer>().First();
+        double RowY(int index) => ((FrameworkElement)View()!.ContainerFromIndex(index)).TransformToVisual(View()!).TransformPoint(default).Y;
         int FocusIndex()
         {
             for (DependencyObject? node = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject; node is not null; node = VisualTreeHelper.GetParent(node))
@@ -32,13 +35,16 @@ internal sealed partial class IndexedWidgetValidationPage
             while (!predicate())
             {
                 if (failure is not null) throw new InvalidOperationException(failure);
-                if (Environment.TickCount64 > deadline) throw new TimeoutException(label + "; focus=" + FocusIndex() + "; collection=" + Collection()?.Id + "; native=" + presenter.FocusDiagnostics());
+                if (Environment.TickCount64 > deadline) throw new TimeoutException(label + "; focus=" + FocusIndex() + "; collection=" + Collection()?.Id + "; native=" + presenter.FocusDiagnostics() + "; entries=" + System.Text.Json.JsonSerializer.Serialize(Descendants(presenter).OfType<Presentation.WidgetIndexedCollectionView>().Select(item => item.NavigationDiagnosticState())));
                 await Task.Delay(20, lifetime.Token);
             }
         }
         void Check(bool pass, string label) { if (pass) checks.Add(label); else failures.Add(label); }
         async Task SettleViewport()
         {
+            await Until(() => !presenter.HasPendingMemoryRestore &&
+                Descendants(presenter).OfType<Presentation.WidgetIndexedCollectionView>().All(collection => !collection.IsEntryPending),
+                "host viewport restoration completed");
             var offset = Scroll().VerticalOffset;
             var stable = 0;
             await Until(() =>
@@ -67,6 +73,7 @@ internal sealed partial class IndexedWidgetValidationPage
             await FocusRow(60);
             var homeQuery = Collection()!.IndexedCollection;
             var homeOffset = Scroll().VerticalOffset;
+            var homeY = RowY(60);
             Check(Descendants(presenter).Count(node => node is ListViewItem or GridViewItem) < 50, "home realizes a bounded subset of the real widget's rows");
             await presenter.HandleControllerButtonAsync(ControllerButton.A);
             await Until(() => Shown("Artist albums 1") && View()?.Items.Count == 100, "artist loaded");
@@ -82,21 +89,54 @@ internal sealed partial class IndexedWidgetValidationPage
             await presenter.HandleControllerButtonAsync(ControllerButton.B);
             await Until(() => Collection()?.Id == "music.scroll.home" && Shown("Artists") && FocusIndex() == 60, "home return");
             await SettleViewport();
-            observations.Add(new { phase = "home-return", before = homeOffset, after = Scroll().VerticalOffset });
+            observations.Add(new { phase = "home-return", before = homeOffset, after = Scroll().VerticalOffset, beforeY = homeY, afterY = RowY(60) });
+            Check(Math.Abs(RowY(60) - homeY) < 2, "Home Back restores the opener's native screen position");
             Check(Collection()!.IndexedCollection == homeQuery, "Home Back retains the original query identity");
             Check(Math.Abs(Scroll().VerticalOffset - homeOffset) < 2, "Home Back restores the original viewport offset");
             var settingsOffset = Scroll().VerticalOffset;
+            var settingsY = RowY(60);
             await presenter.HandleControllerButtonAsync(ControllerButton.Y);
             await Until(() => Descendants(presenter).OfType<Button>().Any(button => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button) == "Widget.panel.back"), "settings panel");
             var back = Descendants(presenter).OfType<Button>().Single(button => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button) == "Widget.panel.back");
             back.Focus(FocusState.Keyboard); presenter.ActivateFocused();
             await Until(() => Collection()?.Id == "music.scroll.home" && Shown("Artists") && FocusIndex() == 60, "visible Settings Back");
             await SettleViewport();
-            observations.Add(new { phase = "settings-return", before = settingsOffset, after = Scroll().VerticalOffset });
+            observations.Add(new { phase = "settings-return", before = settingsOffset, after = Scroll().VerticalOffset, beforeY = settingsY, afterY = RowY(60) });
+            Check(Math.Abs(RowY(60) - settingsY) < 2, "visible Settings Back restores the opener's native screen position");
             Check(Math.Abs(Scroll().VerticalOffset - settingsOffset) < 2, "visible Settings Back restores the exact opener and viewport");
+            var recreationY = RowY(60);
+            await presenter.HandleControllerButtonAsync(ControllerButton.Y);
+            await Until(() => Shown("YouTube Music · Settings"), "settings before recreation");
+            var memory = presenter.CapturePresentationState()!;
+            Check(memory.CollectionReturns.Any(item => item.Element.Id == "music.scroll.home" && item.Index == 60),
+                "host memento includes value-only return geometry while the original page is absent");
+            var old = presenter;
+            await old.SetPresentationActiveAsync(false);
+            await session!.SetLifecycleAsync(session.GetTarget("indexed-owned"), WidgetRail.WidgetSdk.WidgetLifecycleState.Background, lifetime.Token);
+            var layout = (Grid)Content;
+            layout.Children.Remove(old);
+            await old.DisposeAsync();
+            presenter = new() { Session = session, Failed = old.Failed, DispatchActionAsync = old.DispatchActionAsync, FocusTrace = old.FocusTrace };
+            await presenter.SetPresentationActiveAsync(false);
+            presenter.SetAutomaticFocusEnabled(false);
+            Grid.SetRow(presenter, 1); layout.Children.Add(presenter);
+            await session.EstablishPresentationAsync(session.GetTarget("indexed-owned"), WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive, lifetime.Token);
+            AdoptCurrentPresentation();
+            await Until(() => presenter.IsLoaded && Shown("YouTube Music · Settings"), "recreated settings");
+            Check(presenter.RestorePresentationState(memory), "same-owner recreation accepts return memory");
+            Check(!presenter.RestorePresentationState(memory with { Owner = memory.Owner with { Runtime = "other" } }),
+                "another runtime cannot supply return memory");
+            await presenter.SetPresentationActiveAsync(true);
+            presenter.SetAutomaticFocusEnabled(true);
+            await Until(() => presenter.FocusHostTarget("panel.back"), "recreated Back focus");
+            presenter.ActivateFocused();
+            await Until(() => Shown("Artists") && FocusIndex() == 60, "return after native recreation");
+            await SettleViewport();
+            observations.Add(new { phase = "recreated-return", beforeY = recreationY, afterY = RowY(60) });
+            Check(Math.Abs(RowY(60) - recreationY) < 2, "return after native recreation preserves the opener's screen position");
         }
         catch (Exception exception) { error = exception; }
-        await File.WriteAllTextAsync(output, System.Text.Json.JsonSerializer.Serialize(new { mode, passed = error is null && failures.Count == 0, checks, failures, observations, error = error?.ToString() }));
+        await File.WriteAllTextAsync(output, System.Text.Json.JsonSerializer.Serialize(new { mode, passed = error is null && failures.Count == 0, checks, failures, observations, trace = traces.ToArray(), error = error?.ToString() }));
         if (error is not null) throw error;
         if (failures.Count != 0) throw new InvalidOperationException(string.Join("; ", failures));
     }

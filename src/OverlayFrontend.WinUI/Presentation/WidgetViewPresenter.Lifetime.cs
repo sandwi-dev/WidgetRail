@@ -21,6 +21,7 @@ internal sealed partial class WidgetViewPresenter
         if (presentationActive == active) return active ? Task.CompletedTask : suspension;
         if (active && !suspension.IsCompleted) throw new InvalidOperationException("Await presentation suspension before resuming.");
         if (active && !suspension.IsCompletedSuccessfully) throw new InvalidOperationException("Presentation suspension failed.", suspension.Exception);
+        var pendingReturn = !active ? CapturePendingCollectionReturn() : null;
         if (!active) { RememberFocus(); ClearFocusPreview(); ClearDeferredPreviews(); }
         presentationActive = active;
         RefreshReadingFocus();
@@ -40,6 +41,8 @@ internal sealed partial class WidgetViewPresenter
             foreach (var reveal in artworkReveals.Values) reveal.Cancel();
             SettleWidgetResize();
             ClearEntryLayoutWait(); CancelGroupEntry(); DismissTransientControl();
+            if (pendingReturn is not null && frame is not null)
+                suspendedCollectionReturn = (PresentationMemoryOwner.From(frame.Authority), pendingReturn);
             ResetPressedStyles(); SettleTransitions(); SettleModalExit();
             foreach (var (binding, demand) in imageDemands.ToArray())
                 if (!demand.Completed)
@@ -74,6 +77,7 @@ internal sealed partial class WidgetViewPresenter
             foreach (var binding in bindings.Values)
                 if (binding.Element is WidgetPackageIconView icon) icon.RetryTransientFailure();
             QueueSurfaceUpdate(); QueueMediaRefresh();
+            ResumeSuspendedCollectionReturn();
         }
         else work.AddRange(retirements.ToArray());
         var completion = Task.WhenAll(work);

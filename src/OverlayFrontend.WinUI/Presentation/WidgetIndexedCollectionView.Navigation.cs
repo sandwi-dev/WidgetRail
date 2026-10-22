@@ -129,7 +129,7 @@ internal sealed partial class WidgetIndexedCollectionView
         if (scrollOnly) CancelNavigation();
     }
 
-    private bool MatchesQuery(IndexedCollectionFocusTarget target) => source?.Declaration is { IndexedCollection: { } query } node &&
+    internal bool MatchesQuery(IndexedCollectionFocusTarget target) => source?.Declaration is { IndexedCollection: { } query } node &&
         target.CollectionId == node.Id && target.SourceId == query.SourceId && target.QueryGeneration == query.QueryGeneration &&
         target.Index >= 0 && target.Index < query.Count;
 
@@ -239,6 +239,11 @@ internal sealed partial class WidgetIndexedCollectionView
                 // controller frames never creates a backlog of layout work.
                 if (navigationNeedsScroll)
                 {
+                    // ScrollIntoView before the native panel's first arrange can
+                    // be ignored (notably by horizontal lists). Keep the one
+                    // logical intent pending until actual viewport readiness.
+                    if (!view.IsLoaded || view.ItemsPanelRoot is null ||
+                        FindNativeScroll(view) is not { ViewportWidth: > 0, ViewportHeight: > 0 }) return;
                     navigationNeedsScroll = false;
                     view.ScrollIntoView(view.Items[index], ScrollIntoViewAlignment.Default);
                     QueueNavigation(scrollIntoView: false);
@@ -294,6 +299,10 @@ internal sealed partial class WidgetIndexedCollectionView
         // They are not current navigation availability. Wait for the requested
         // row lease rather than skipping every old disabled item to the far end.
         if (slot.Value is not { } row || !row.Lease.IsCurrent) return;
+        // An exact disabled occurrence is already inadmissible. Do not wait for
+        // WinUI to realize a disabled offscreen container before retiring entry.
+        if (entering && !allowEntryFallback && row.Item.Root.IsDisabled == true)
+        { CancelNavigation(); return; }
         if (entering || scrollOnly)
         {
             if (pendingEntry is { } queryTarget && !MatchesQuery(queryTarget)) { CancelNavigation(); return; }
@@ -302,6 +311,12 @@ internal sealed partial class WidgetIndexedCollectionView
             if (pendingEntry is { } entry && slot.Key != entry.ItemKey) { CancelNavigation(); return; }
         }
         if (view.ContainerFromIndex(index) is not Control { IsLoaded: true } target) return;
+        // Payload publication, native recycling, and container policy have distinct
+        // callbacks. A current row lease alone does not mean that this container
+        // has finished adopting that row's enabled state (especially on resume).
+        if (target is not Microsoft.UI.Xaml.Controls.Primitives.SelectorItem selector ||
+            !containers.TryGetValue(selector, out var bound) || !ReferenceEquals(bound.Slot, slot) ||
+            target.IsEnabled != (row.Item.Root.IsDisabled != true)) return;
         if (scrollOnly) { CancelNavigation(); return; }
         if (!target.IsEnabled)
         {

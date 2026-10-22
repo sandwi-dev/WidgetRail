@@ -82,6 +82,11 @@ if (args is ["--serve-themed-indexed-validation", var themedPipe, var themeSetti
     await BridgeIndexedEndToEndScenarios.ServeThemedValidationAsync(themedPipe, themeSettingsRoot);
     return 0;
 }
+if (args is ["--serve-return-validation", var returnPipe, var returnSettingsRoot])
+{
+    await BridgeIndexedEndToEndScenarios.ServeThemedValidationAsync(returnPipe, returnSettingsRoot, returnFixture: true);
+    return 0;
+}
 if (args is ["--serve-discovered-validation", var discoveredPipe])
 {
     await DiscoveredBridgeScenarios.ServeAsync(discoveredPipe);
@@ -516,6 +521,8 @@ static async Task<int> RunWorkerAsync(string[] arguments)
             ? new DiscoveredBridgeWidget()
             : string.Equals(instance, "indexed-owned.instance", StringComparison.Ordinal)
             ? new IndexedOwnedBridgeProbeWidget()
+            : string.Equals(instance, "indexed-return.instance", StringComparison.Ordinal)
+            ? new IndexedOwnedBridgeProbeWidget(returnFixture: true)
             : string.Equals(instance, "indexed-real.instance", StringComparison.Ordinal)
             ? new IndexedBridgeProbeWidget()
             : string.Equals(instance, "virtual.instance", StringComparison.Ordinal)

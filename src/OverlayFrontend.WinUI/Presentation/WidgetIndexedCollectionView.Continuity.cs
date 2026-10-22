@@ -54,7 +54,7 @@ internal sealed partial class WidgetIndexedCollectionView
     {
         if (source is null || view is null || pending.Viewport is null && pending.Focus is null) return;
         pendingContinuity = pending;
-        if (pending.Viewport is { } viewport) pending.ViewportRetention = RetainViewport(viewport, QueueContinuity);
+        if (pending.Viewport is { } viewport) pending.ViewportRetention = RetainViewport(viewport, QueueContinuity, () => pending.Offset = null);
         if (pending.Focus is { } focus)
         {
             pending.FocusRetention = source.Items.Retain(focus.Index);

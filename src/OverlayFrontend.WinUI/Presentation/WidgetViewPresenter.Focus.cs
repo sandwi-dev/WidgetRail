@@ -63,7 +63,7 @@ internal sealed partial class WidgetViewPresenter
             .All(declaration => declaration.Identity.Scope == activeScope);
     private sealed record GroupMemory(WidgetElementIdentity Group, WidgetElementIdentity Child);
     private sealed record GroupEntry(long RequestId, WidgetElementIdentity Group,
-        IndexedCollectionFocusTarget? IndexedItem, WidgetElementIdentity? ExactTarget = null);
+        IndexedCollectionFocusTarget? IndexedItem, WidgetElementIdentity? ExactTarget = null, bool RestoreViewport = false);
     private sealed record CollectionMemoryKey(WidgetElementIdentity Identity, string SourceId, long QueryGeneration);
     private readonly OrderedDictionary<CollectionMemoryKey, IndexedCollectionFocusTarget> collectionMemory = [];
     private readonly Dictionary<string, GroupMemory> groupMemory = new(StringComparer.Ordinal);
@@ -77,6 +77,8 @@ internal sealed partial class WidgetViewPresenter
     {
         groupMemory.Clear();
         collectionMemory.Clear();
+        returnViewports.Clear();
+        suspendedCollectionReturn = null;
         pendingGroupEntry = null;
         lastGroupRequest = 0;
         declaredGroupRequest = null;
@@ -105,7 +107,7 @@ internal sealed partial class WidgetViewPresenter
             CancelGroupEntry();
             lastGroupRequest = request.RequestId;
             pendingGroupEntry = bindings.TryGetValue(request.GroupId, out var group)
-                ? new(request.RequestId, group.Identity, request.IndexedItem) : null;
+                ? new(request.RequestId, group.Identity, request.IndexedItem, RestoreViewport: request.RestoreViewport) : null;
             if (request.TargetId is { } targetId)
                 pendingGroupEntry = pendingGroupEntry is { } pending &&
                     bindings.TryGetValue(targetId, out var target) && target.Identity.Scope == pending.Group.Scope &&
@@ -120,6 +122,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void CancelGroupEntry()
     {
+        suspendedCollectionReturn = null;
         CancelMemoryRestoration();
         pendingRestore = null;
         ++entryIntentVersion;
@@ -214,7 +217,10 @@ internal sealed partial class WidgetViewPresenter
         }
         else if (group.Element is WidgetIndexedCollectionView collection)
         {
-            if (entry.IndexedItem is { } item) collection.Enter(item);
+            if (entry.IndexedItem is { } item)
+            {
+                if (collection.Enter(item) && entry.RestoreViewport) RestoreReturnViewport(entry.RequestId, group.Identity, item);
+            }
             else FocusBinding(group);
             // Even a stale exact target is consumed. It must not fall through
             // to unrelated initial focus or replay on a later content update.
@@ -233,6 +239,7 @@ internal sealed partial class WidgetViewPresenter
             if (args.FocusState is not (FocusState.Pointer or FocusState.Programmatic) || !owner.EnterFocusPreview(focusFirst: false)) { args.TryCancel(); return; }
         }
         if (RejectInactiveFocus(args)) return;
+        if (!applying) ObserveReturnFocusDeparture(args);
         if (!applying && !redirectingGroupFocus && args.Direction != FocusNavigationDirection.None) CancelGroupEntry();
         // Pointer focus and explicit programmatic focus retain their exact target.
         // WinUI finds spatial candidates; group policy only chooses the declared
