@@ -999,13 +999,15 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private void RequestContentEntry()
     {
         var scope = _navigation.Value.InputScopeId;
-        _model.Update(state => state with
+        _model.Update(state =>
         {
-            ContentEntryRequestId = Math.Min(state.ContentEntryRequestId + 1,
-                ProtocolConstants.MaximumFocusGroupEntryRequestId),
-            ContentEntryScopeId = scope,
+            var request = NextFocusRequest(state);
+            return state with { FocusRequestSequence = request, ContentEntryRequestId = request, ContentEntryScopeId = scope };
         });
     }
+
+    private static long NextFocusRequest(PlayniteLibraryRenderState state) =>
+        Math.Min(state.FocusRequestSequence + 1, ProtocolConstants.MaximumFocusGroupEntryRequestId);
 
     private bool TryOpenBrowse(string sourceElementId)
     {

@@ -8,6 +8,20 @@ public sealed partial class PlayniteLibraryWidget
     private PlayniteAchievementBrowse? achievementBrowse;
     private WidgetIndexedCollection<PlayniteAchievementBrowse, PlayniteAchievementEntry>? achievementRows;
 
+    private void RequestAchievementSearch(bool clear) => _model.Update(state =>
+    {
+        var request = NextFocusRequest(state);
+        return state with
+        {
+            FocusRequestSequence = request,
+            DetailsExtras = state.DetailsExtras with
+            {
+                AchievementSearchRequest = request,
+                AchievementSearch = clear ? "" : state.DetailsExtras.AchievementSearch,
+            },
+        };
+    });
+
     private WidgetElement? PrepareAchievements(PlayniteLibraryRenderState local)
     {
         if (local.DetailsExtras.Achievements is not { Available: true }) return null;

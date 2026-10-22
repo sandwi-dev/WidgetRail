@@ -142,11 +142,7 @@ public sealed partial class PlayniteLibraryWidget
         {
             if (state.DetailsExtras.Tab == PlayniteDetailsTab.Achievements &&
                 !state.DetailsExtras.ConfirmUninstall && state.DetailsExtras.Achievements is { Available: true })
-                _model.Update(value => value with
-                {
-                    AchievementFocusSequence = value.AchievementFocusSequence + 1,
-                    DetailsExtras = value.DetailsExtras with { AchievementSearchRequest = value.AchievementFocusSequence + 1 },
-                });
+                RequestAchievementSearch(clear: false);
             return true;
         }
         if (name.StartsWith("achievement.reveal.", StringComparison.Ordinal))
@@ -163,15 +159,7 @@ public sealed partial class PlayniteLibraryWidget
         }
         if (name == "achievement.search.clear")
         {
-            _model.Update(value => value with
-            {
-                AchievementFocusSequence = value.AchievementFocusSequence + 1,
-                DetailsExtras = value.DetailsExtras with
-                {
-                    AchievementSearch = "",
-                    AchievementSearchRequest = value.AchievementFocusSequence + 1,
-                },
-            });
+            RequestAchievementSearch(clear: true);
             return true;
         }
         if (name.StartsWith("achievement.filter.", StringComparison.Ordinal) && Enum.TryParse<AchievementFilter>(name[19..], out var filter) && Enum.IsDefined(filter))

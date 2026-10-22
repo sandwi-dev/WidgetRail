@@ -8,6 +8,54 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed partial class PlayniteLibraryTests
 {
     [TestMethod]
+    public async Task AchievementSearchUsesNewRequestsAfterLibraryNavigationAndOnReturn()
+    {
+        var provider = new FakeHost(1);
+        var widget = Create(provider, out TestApplicationService application);
+        application.AchievementsHandler = (_, _) => ValueTask.FromResult(new PlayniteAchievements(true, 1, 0,
+            [new PlayniteAchievement("First achievement", "Description", false, null, null, null, false) { Id = "first" }]));
+        await Interactive(widget);
+        await Ready(widget, provider);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.BrowseOpen, "library"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "Library entry");
+        long sequence = 170_000;
+        for (var index = 0; index < 8; ++index)
+            await widget.OnActionAsync(new(PlayniteLibraryActions.SearchFocus, "search"));
+        var prior = Snapshot(widget, ++sequence).FocusGroupEntryRequest!.RequestId;
+        for (var visit = 0; visit < 2; ++visit)
+        {
+            using var collectionHost = WidgetTestHost.CreateIndexedCollectionHost(widget, "achievement-focus");
+            using var game = await collectionHost.AcquireAsync(PlayniteLibraryPresentation.ScrollId, 0, 1);
+            Assert.AreEqual(WidgetOperationAdmission.Enqueued, game.RouteAction(game.Range.Items[0].Key, ControllerButton.A));
+            await WaitIndexed(() => widget.RenderState.Value.DetailsItem is not null);
+            await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
+            await Bounded(widget.WhenDetailsIdleAsync(), "achievement data");
+            await widget.OnActionAsync(new(PlayniteAchievementBrowse.SearchFocusAction, PlayniteAchievementBrowse.ListId));
+            NewRequest(PlayniteAchievementBrowse.SearchGroupId, "First L3 press must exceed previously consumed Library requests");
+            await widget.OnActionAsync(new(DetailAction + "achievement.search.clear", "clear"));
+            NewRequest(PlayniteAchievementBrowse.SearchGroupId, "Clear search must issue a new focus request");
+            await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsClose, "close"));
+            NewRequest(PlayniteLibraryPresentation.ScrollId, "Closing details must exceed achievement requests");
+            await widget.OnActionAsync(new(PlayniteLibraryActions.SearchFocus, "search"));
+            NewRequest("playnite-library.search.group", "Library L3 must keep working after achievements");
+        }
+        await Background(widget);
+
+        void NewRequest(string group, string message)
+        {
+            var snapshot = Snapshot(widget, ++sequence);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+            var request = snapshot.FocusGroupEntryRequest;
+            Assert.IsNotNull(request);
+            Assert.AreEqual(group, request.GroupId);
+            Assert.IsTrue(request.RequestId > prior, $"{message}: {request.RequestId} <= {prior}");
+            prior = request.RequestId;
+            Assert.AreEqual(prior, Snapshot(widget, ++sequence).FocusGroupEntryRequest!.RequestId,
+                "Rendering must not generate another focus request");
+        }
+    }
+
+    [TestMethod]
     [DataRow("boss")]
     [DataRow("SPOILER")]
     [DataRow("Secret achievement")]
