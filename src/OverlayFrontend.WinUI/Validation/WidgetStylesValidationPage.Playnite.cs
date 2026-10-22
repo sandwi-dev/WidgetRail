@@ -44,7 +44,7 @@ internal sealed partial class WidgetStylesValidationPage
         const string prefix = "Widget.playnite-library.details.";
         await Wait(() => Find<WidgetArtworkView>(prefix + "poster") is { Source: BitmapSource { PixelWidth: > 0 } });
         var panel = Find<WidgetModalPanel>("Widget.playnite-library.details")!;
-        Check(panel.Background is AcrylicBrush { TintOpacity: .35, TintLuminosityOpacity: .25 } && panel.Opacity == 1,
+        Check(panel.Background is AcrylicBrush { TintOpacity: .8, TintLuminosityOpacity: null } && panel.Opacity == 1,
             "the production modal uses a native acrylic brush without fading its text");
         var acrylic = panel.Background;
         presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);

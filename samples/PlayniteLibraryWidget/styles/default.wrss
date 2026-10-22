@@ -193,8 +193,9 @@
 .playnite-library-details-source-row { min-width: 0; align: center; gap: 12px; }
 .playnite-library-details-completion { color: var(--text); background: var(--surface-subtle, var(--surface-muted)); font-size: 13px; font-weight: 600; padding: 4px 10px; corner-radius: 8px; min-width: 0; max-lines: 2; overflow-wrap: anywhere; }
 
-/* Dense details use tinted acrylic without reducing text opacity. */
-.wrail-modal { background-material: acrylic; background-tint-opacity: var(--acrylic-tint-opacity, .35); background-luminosity-opacity: var(--acrylic-luminosity-opacity, .25); width: 900px; height: 720px; padding: 24px; gap: 20px; background: var(--surface-raised); }
+/* Content acrylic needs more backdrop suppression than decorative previews.
+   Automatic luminosity follows the theme's tint, including light themes. */
+.wrail-modal { background-material: acrylic; background-tint-opacity: .8; background-luminosity-opacity: auto; width: 900px; height: 720px; padding: 24px; gap: 20px; background: var(--surface-raised); }
 /* The shared row header reserves hint width; long titles wrap in the remaining space. */
 .wrail-modal__title { font-size: 24px; line-height: 1.2; }
 #playnite-start-dialog { width: 560px; height: 380px; max-height: 460px; min-height: 0px; }
@@ -281,12 +282,13 @@
 
 .playnite-library-section-tools { min-width: 0; align: center; gap: 18px; }
 
-/* One material per foreground panel; covers, badges and inner rows keep ordinary fills. */
+/* One content material per foreground panel. Keep text readable over bright or
+   dark artwork without fading children or stacking acrylic on inner controls. */
 .playnite-library-home-actions, .playnite-library-home-summary,
 .playnite-library-home-content, .playnite-library-browse-foreground {
   background-material: acrylic;
-  background-tint-opacity: var(--acrylic-tint-opacity, .35);
-  background-luminosity-opacity: var(--acrylic-luminosity-opacity, .25);
+  background-tint-opacity: .8;
+  background-luminosity-opacity: auto;
 }
 
 .playnite-library-achievement-description { color: var(--text); text-align: start; font-size: 16px; line-height: 1.35; max-lines: 128; overflow-wrap: anywhere; }

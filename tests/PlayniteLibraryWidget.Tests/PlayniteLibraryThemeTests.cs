@@ -66,14 +66,14 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(text, Resolve("button", "playnite-library-section-link").Get("color")?.Text);
         Assert.AreEqual("acrylic", Resolve("stack", "wrail-modal").Get("background-material")?.Text);
         foreach (var panel in new[] { "playnite-library-home-actions", "playnite-library-home-summary",
-                     "playnite-library-home-content", "playnite-library-browse-foreground" })
+                     "playnite-library-home-content", "playnite-library-browse-foreground", "wrail-modal" })
         {
             var material = Resolve("stack", panel);
             Assert.AreEqual("acrylic", material.Get("background-material")?.Text, panel);
-            Assert.AreEqual(themeName == "builtin-mineral-light" ? .55 : .35,
+            Assert.AreEqual(.8,
                 material.Get("background-tint-opacity")?.Number, panel);
-            Assert.AreEqual(themeName == "builtin-mineral-light" ? .5 : .25,
-                material.Get("background-luminosity-opacity")?.Number, panel);
+            Assert.AreEqual("auto",
+                material.Get("background-luminosity-opacity")?.Text, panel);
             Assert.IsNull(material.Get("opacity"), "Panel material must not fade its children.");
         }
         foreach (var ordinary in new[] { "playnite-library-tile", "playnite-library-summary-strip",
