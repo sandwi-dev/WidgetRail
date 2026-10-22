@@ -134,11 +134,19 @@ internal sealed partial class OverlayShellPage
             activeWidget == descriptor.Id && requestedWidget == descriptor.Id &&
             owner?.Session.GetState(descriptor.Id)?.LastGood is { } latest && SameSurfaceOwner(descriptor, latest.Descriptor);
         if (!Current()) return;
-        var choices = GetPinChoices(descriptor);
-        if (choices.Count == 0) return;
+        var choices = GetPinChoices(descriptor).Where(choice => expected.WidgetId != descriptor.Id ||
+            expected.LayoutId != choice.LayoutId || choice.Popup).ToArray();
+        if (choices.Length == 0) return;
         var closesOwnPage = expected.Popup is not null && expected.WidgetId == descriptor.Id;
+        // Replace pin is already the user's explicit command. Only ask another
+        // question when there is a real layout choice or an additional page to lose.
+        if (choices.Length == 1 && !closesOwnPage)
+        {
+            if (Current()) await ExecutePinChoiceAsync(descriptor.Id, choices[0], expected);
+            return;
+        }
         var selected = await ShowHostChoiceAsync("Replace pin", closesOwnPage
-                ? $"Pinning the full {descriptor.Name} widget will close its pinned additional page. To keep that page, cancel and choose Return page to widget."
+                ? "Replacing this pin will close its additional page. To keep that page, cancel and choose Return page to widget."
                 : $"Replace the current pin with {descriptor.Name}. Choose a pin layout.",
                 choices.Select(choice => new HostDialogChoice(choice.AutomationId, choice.Label)).ToArray(),
                 lifetime.Token, primaryButtonText: "Replace pin");

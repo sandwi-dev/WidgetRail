@@ -189,16 +189,10 @@ internal sealed partial class OverlayShellPage
                 Check(ReferenceEquals(pinned, replacement), "A stale replacement cannot remove a newer pin");
                 await SelectAsync("intent-target", enterWidget: false);
                 var singleReplacement = PinCommands(surface!.CurrentBinding!.Frame.Descriptor)[0].Action();
-                await Until(() => hostChoiceDialog is { IsLoaded: true });
-                Check(hostChoiceDialog!.PrimaryButtonText == "Replace pin", "A single replacement layout still asks before replacing the live pin");
-                var confirmReplacement = Walk(hostChoiceDialog).OfType<Button>().Single(button =>
-                    AutomationProperties.GetAutomationId(button) == "Host.Choice.Primary");
-                confirmReplacement.Focus(FocusState.Keyboard);
-                hostChoiceDialog.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
-                hostChoiceDialog.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
+                Check(!HostChoiceActive, "A single eligible layout replaces directly without a redundant chooser");
                 await singleReplacement;
                 Check(pinned is { WidgetId: "intent-target", IsCurrent: true } && !HostChoiceActive && !replacement!.IsCurrent,
-                    "Confirming the single layout replaces the live pin");
+                    "Direct single-layout replacement revokes the prior pin and leaves the replacement current");
                 await UnpinAsync(save: true);
                 if (verifyWebHandoff is not null) checks.AddRange(await verifyWebHandoff());
 

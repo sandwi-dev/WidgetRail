@@ -90,7 +90,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     private readonly ScrollViewer? messageViewport;
     private readonly RightStickScroll messageScroll = new();
     private bool choiceScrollPending;
-    internal bool SupportsScroll => messageViewport is not null || content.Children.Contains(choices);
+    internal bool SupportsScroll => messageViewport?.ScrollableHeight > 0.5 || content.Children.Contains(choices);
     internal string? SelectedId { get; private set; }
     internal Input.DialogControllerAdmission ControllerAdmission { get; } = new();
 
@@ -123,7 +123,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
                     HorizontalScrollMode = ScrollMode.Disabled, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                     VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
                 AutomationProperties.SetAutomationId(messageViewport, "Host.Choice.Message");
-                AutomationProperties.SetName(messageViewport, "Dialog details. Scroll to read more.");
+                AutomationProperties.SetName(messageViewport, "Dialog details");
                 details.Children.Add(messageViewport);
             }
             else details.Children.Add(text);
@@ -182,17 +182,39 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         };
         choices.LayoutUpdated += ChoicesLayoutUpdated;
         Closing += (_, _) => closing = true;
-        Closed += (_, _) => { opened = false; LayoutUpdated -= InitialFocusLayoutUpdated; choices.LayoutUpdated -= ChoicesLayoutUpdated; };
+        Closed += (_, _) =>
+        {
+            opened = false; LayoutUpdated -= InitialFocusLayoutUpdated; choices.LayoutUpdated -= ChoicesLayoutUpdated;
+            if (messageViewport is not null) { messageViewport.IsTabStop = false; messageViewport.LayoutUpdated -= MessageLayoutUpdated; }
+        };
         Loaded += (_, _) =>
         {
             // ContentDialog performs its initial content focus during opening.
-            // Admit the scroll stop after that pass so Cancel remains the safe
-            // default, while the message is reachable during normal navigation.
+            // Admit a message stop only when text overflows. Short explanations
+            // remain readable to accessibility without becoming navigation targets.
             DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             {
-                if (IsLoaded && messageViewport is not null) messageViewport.IsTabStop = true;
+                if (IsLoaded && !closing && messageViewport is not null)
+                {
+                    messageViewport.LayoutUpdated -= MessageLayoutUpdated;
+                    messageViewport.LayoutUpdated += MessageLayoutUpdated;
+                    UpdateMessageFocusability();
+                }
             });
         };
+    }
+
+    private void MessageLayoutUpdated(object? sender, object args) => UpdateMessageFocusability();
+    private void UpdateMessageFocusability()
+    {
+        if (messageViewport is null || !IsLoaded || closing) return;
+        var canScroll = messageViewport.ScrollableHeight > 0.5;
+        if (messageViewport.IsTabStop == canScroll) return;
+        if (!canScroll && IsWithinFocused(messageViewport))
+            (GetTemplateChild("CloseButton") as Control)?.Focus(FocusState.Keyboard);
+        messageViewport.IsTabStop = canScroll;
+        AutomationProperties.SetName(messageViewport, canScroll ? "Dialog details. Scroll to read more." : "Dialog details");
+        SelectionContextChanged?.Invoke();
     }
     private UIElement CreateChoiceContent(HostDialogChoice entry)
     {

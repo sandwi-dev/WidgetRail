@@ -222,6 +222,7 @@ internal sealed partial class OverlayShellPage
         var dialog = new HostChoiceDialog(title, message, choices, directDecisionButtons || primaryButtonText is not null && choices.Count==1) { XamlRoot = root };
         dialog.ConstrainMessageViewport(root.Size.Height);
         if (primaryButtonText is not null) dialog.PrimaryButtonText = primaryButtonText;
+        dialog.SelectionContextChanged += PublishControllerGuide;
         hostChoiceDialog = dialog;
 #if ENABLE_WIDGET_VALIDATION
         AttachValidationInputReplay(dialog);
@@ -245,6 +246,7 @@ internal sealed partial class OverlayShellPage
         }
         finally
         {
+            dialog.SelectionContextChanged -= PublishControllerGuide;
             if (ReferenceEquals(hostChoiceCompletion, completion)) hostChoiceCompletion = null;
             completion.TrySetResult();
             // Explicit pin exit revokes ownership before Hide's asynchronous

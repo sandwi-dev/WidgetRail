@@ -43,10 +43,11 @@ internal sealed partial class PermissionDialogValidationPage : Page, IAsyncDispo
                     await loaded.Task.WaitAsync(TimeSpan.FromSeconds(3), lifetime.Token);
                     Check(active.IsLoaded && Walk(active).OfType<TextBlock>().Any(t => t.Text.Contains("Synthetic permission fixture")), "Native prompt renders trusted widget identity: " + choice);
                     var focused = FocusManager.GetFocusedElement(XamlRoot);
-                    Check(focused is Button { Content: "Cancel" }, "Default focus is Cancel: " + choice + " (actual " + focused?.GetType().Name + ": " + (focused as ContentControl)?.Content + ")");
+                    Check(focused is Button cancel && IsChoiceButton(cancel, "Close") && ButtonLabel(cancel) == "Cancel", "Default focus is Cancel: " + choice + " (actual " + focused?.GetType().Name + ": " + (focused as ContentControl)?.Content + ")");
                     active.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
                     Check(!showing.IsCompleted, "Opening A cannot accept an unarmed dialog: " + choice);
-                    Check(Walk(active).OfType<Button>().Any(b => b.Content is "Allow") && Walk(active).OfType<Button>().Any(b => b.Content is "Deny"),
+                    Check(Walk(active).OfType<Button>().Any(b => IsChoiceButton(b, "Primary") && ButtonLabel(b) == "Allow") &&
+                        Walk(active).OfType<Button>().Any(b => IsChoiceButton(b, "Secondary") && ButtonLabel(b) == "Deny"),
                         "Allow/Deny are native buttons: " + choice);
                     var primary = Walk(active).OfType<FrameworkElement>().First(e => AutomationProperties.GetAutomationId(e) == "Host.Choice.Primary");
                     var bounds = primary.TransformToVisual(this).TransformBounds(new(0,0,primary.ActualWidth,primary.ActualHeight));
@@ -56,7 +57,7 @@ internal sealed partial class PermissionDialogValidationPage : Page, IAsyncDispo
                     if (choice == "cancel") active.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
                     else
                     {
-                        var button = Walk(active).OfType<Button>().Single(b => b.Content is string label && label == (choice == "allow" ? "Allow" : "Deny"));
+                        var button = Walk(active).OfType<Button>().Single(b => IsChoiceButton(b, choice == "allow" ? "Primary" : "Secondary"));
                         button.Focus(FocusState.Keyboard);
                         active.Handle(ControllerButton.A, ControllerEventPhase.Pressed);
                     }
@@ -64,6 +65,22 @@ internal sealed partial class PermissionDialogValidationPage : Page, IAsyncDispo
                     Check(active.SelectedId == (choice == "cancel" ? null : choice), "Controller outcome is exact: " + choice);
                     active = null;
                 }
+                active = new("Replace pin", "Replace the current pin with Browser.",
+                    (HostDialogChoice[])[new("replace", "Replace pin")], directDecisionButtons: true) { XamlRoot = XamlRoot };
+                var shortShowing = active.ShowAsync().AsTask();
+                await Until(() => active.IsOpenForValidation && Walk(active).OfType<Button>().Any(b => IsChoiceButton(b, "Close") && ButtonLabel(b) == "Cancel"));
+                var shortMessage = Walk(active).OfType<ScrollViewer>().Single(v => AutomationProperties.GetAutomationId(v) == "Host.Choice.Message");
+                await Task.Delay(100, lifetime.Token);
+                Check(shortMessage.ScrollableHeight <= 0.5 && !shortMessage.IsTabStop && !active.SupportsScroll,
+                    "Short confirmation text is not a focus stop and has no scroll guide");
+                active.MoveFocus(FocusNavigationDirection.Up);
+                Check(FocusManager.GetFocusedElement(XamlRoot) is Button action &&
+                    (IsChoiceButton(action, "Primary") || IsChoiceButton(action, "Close")),
+                    "Directional navigation stays on actions when confirmation text fits");
+                active.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
+                active.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
+                await shortShowing.WaitAsync(TimeSpan.FromSeconds(3), lifetime.Token);
+                active = null;
                 var pinContent = new Grid();
                 pinContent.Children.Add(new Button { Content = "Pinned permission origin" });
                 pin = new PinnedWidgetWindow("Permission fixture");
@@ -74,7 +91,7 @@ internal sealed partial class PermissionDialogValidationPage : Page, IAsyncDispo
                 active = new("Allow widget access?", OverlayShellPage.PermissionPromptMessage(prompt),
                     (HostDialogChoice[])[new("allow","Allow"),new("deny","Deny")],directDecisionButtons:true) { XamlRoot = pinContent.XamlRoot };
                 var pinShowing = active.ShowAsync().AsTask();
-                await Until(() => active.IsLoaded && Walk(active).OfType<Button>().Any(b => b.Content is "Cancel"));
+                await Until(() => active.IsLoaded && Walk(active).OfType<Button>().Any(b => IsChoiceButton(b, "Close") && ButtonLabel(b) == "Cancel"));
                 Check(pinForeground,"Pinned window keeps foreground ownership during its native dialog");
                 active.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true); active.Handle(ControllerButton.B,ControllerEventPhase.Pressed);
                 await pinShowing.WaitAsync(TimeSpan.FromSeconds(3),lifetime.Token);
@@ -89,12 +106,12 @@ internal sealed partial class PermissionDialogValidationPage : Page, IAsyncDispo
                         (HostDialogChoice[])[new("allow", "Allow"), new("deny", "Deny")], directDecisionButtons: true) { XamlRoot = pinContent.XamlRoot };
                     active.ConstrainMessageViewport(height);
                     pinShowing = active.ShowAsync().AsTask();
-                    await Until(() => active.IsLoaded && Walk(active).OfType<Button>().Any(b => b.Content is "Allow"));
-                    foreach (var button in Walk(active).OfType<Button>().Where(b => b.Content is "Allow" or "Deny" or "Cancel"))
+                    await Until(() => active.IsLoaded && Walk(active).OfType<Button>().Any(b => IsChoiceButton(b, "Primary") && ButtonLabel(b) == "Allow"));
+                    foreach (var button in Walk(active).OfType<Button>().Where(b => IsChoiceButton(b, "Primary") || IsChoiceButton(b, "Secondary") || IsChoiceButton(b, "Close")))
                     {
                         var bounds = button.TransformToVisual(pinContent).TransformBounds(new(0, 0, button.ActualWidth, button.ActualHeight));
                         Check(bounds.Top >= 0 && bounds.Bottom <= height && bounds.Left >= 0 && bounds.Right <= width,
-                            $"{button.Content} remains fully visible in a {width}×{height} pin");
+                            $"{ButtonLabel(button)} remains fully visible in a {width}×{height} pin");
                     }
                     var viewport = Walk(active).OfType<ScrollViewer>().Single(v => AutomationProperties.GetAutomationId(v) == "Host.Choice.Message");
                     await Until(() => viewport.IsTabStop && viewport.ScrollableHeight > 0);
@@ -107,6 +124,11 @@ internal sealed partial class PermissionDialogValidationPage : Page, IAsyncDispo
                     active.SampleScroll(0, -32767, 1040);
                     await Until(() => viewport.VerticalOffset > offset);
                     Check(true, "Right stick scrolls the permission message");
+                    ((TextBlock)viewport.Content).Text = "Short details.";
+                    await Until(() => viewport.ScrollableHeight <= 0.5 && !viewport.IsTabStop);
+                    Check(FocusManager.GetFocusedElement(pinContent.XamlRoot) is Button fallback && IsChoiceButton(fallback, "Close") &&
+                        ButtonLabel(fallback) == "Cancel" && !active.SupportsScroll,
+                        "When details fit again, their focus stop retires and focus returns to Cancel");
                     active.ControllerAdmission.Observe(new() { Connected = 1 }, ownsInput: true);
                     active.Handle(ControllerButton.B, ControllerEventPhase.Pressed);
                     await pinShowing.WaitAsync(TimeSpan.FromSeconds(3), lifetime.Token);
@@ -122,6 +144,8 @@ internal sealed partial class PermissionDialogValidationPage : Page, IAsyncDispo
             async Task Until(Func<bool> ready) { var deadline=Environment.TickCount64+3000; while(!ready()) { if(Environment.TickCount64>=deadline)throw new Exception("Native permission fixture timed out"); await Task.Delay(15,lifetime.Token); } }
         };
     }
+    private static bool IsChoiceButton(Button button, string suffix) => AutomationProperties.GetAutomationId(button) == "Host.Choice." + suffix;
+    private static string? ButtonLabel(Button button) => button.Content switch { string text => text, TextBlock text => text.Text, _ => null };
     private static IEnumerable<DependencyObject> Walk(DependencyObject root)
     {
         yield return root;
