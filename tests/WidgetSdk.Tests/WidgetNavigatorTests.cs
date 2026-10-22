@@ -9,6 +9,7 @@ internal static class WidgetNavigatorTests
         await NestedBackIsScopedAndLifecycleOwnedAsync();
         await SharedRootsSeparatePageAndNestedLifetimesAsync();
         await ActionAwarePushCapturesActualDispatchFocusAsync();
+        await BackRemembersDispatchFocusAndHonorsOverridesAsync();
         await ScopeComposesEveryContainerAndRejectsLeafRootsAsync();
         CapacityAndAuthoringConflictsFailClosed();
     }
@@ -136,6 +137,30 @@ internal static class WidgetNavigatorTests
         Equal(WidgetNavigationResult.Changed, widget.Navigation.Back());
         Equal("player.play", widget.Navigation.Value.InitialFocusId!);
 
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    private static async Task BackRemembersDispatchFocusAndHonorsOverridesAsync()
+    {
+        using var widget = new NavigationWidget();
+        await WidgetTestHost.InitializeAsync(widget);
+        widget.Navigation.Push(Route.Detail, "player.open-detail");
+        var detail = widget.Navigation.Value;
+        var back = new WidgetActionEvent(detail.BackActionId!, "detail.root", ControllerButton.B,
+            InputScopeId: detail.InputScopeId) { FocusedElementId = "detail.second" };
+        True(widget.Navigation.TryHandleBack(back), "Scoped Back was not handled.");
+        Equal("player.open-detail", widget.Navigation.Value.InitialFocusId!);
+        widget.Navigation.Push(Route.Detail, "player.open-detail");
+        Equal("detail.second", widget.Navigation.Value.InitialFocusId!);
+        True(widget.Navigation.TryHandleBack(back, "detail.override"), "Explicit Back override failed.");
+        widget.Navigation.Push(Route.Detail, "player.open-detail");
+        Equal("detail.override", widget.Navigation.Value.InitialFocusId!);
+        True(widget.Navigation.TryHandleBack(back with { FocusedElementId = null }), "Back without focus failed.");
+        widget.Navigation.Push(Route.Detail, "player.open-detail");
+        Equal("detail.override", widget.Navigation.Value.InitialFocusId!);
+        False(widget.Navigation.TryHandleBack(back with { InputScopeId = "stale.scope" }),
+            "A stale action changed navigation.");
+        Equal(Route.Detail, widget.Navigation.Value.Route);
         await WidgetTestHost.DestroyAsync(widget);
     }
 

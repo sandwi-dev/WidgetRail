@@ -310,11 +310,13 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
 
     /// <summary>
     /// Handles only the navigator's exact pressed Back action in the exact
-    /// current nested input scope. Stale actions fail closed.
+    /// current nested input scope. Stale actions fail closed. Remembers the actual
+    /// dispatch focus unless an explicit source-focus override is supplied.
     /// </summary>
     public bool TryHandleBack(WidgetActionEvent action, string? sourceFocusId = null)
     {
         ArgumentNullException.ThrowIfNull(action);
+        sourceFocusId ??= action.FocusedElementId;
         ValidateOptionalFocus(sourceFocusId);
         RetiredLifetimes retired = default;
         lock (_gate)

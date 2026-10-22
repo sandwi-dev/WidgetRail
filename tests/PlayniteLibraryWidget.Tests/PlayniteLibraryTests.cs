@@ -2615,7 +2615,6 @@ public sealed partial class PlayniteLibraryTests
             "_livePlayniteAuthority", "_presentationAuthority", "_homeQueryAuthorityGeneration",
             "_browseQueryAuthorityGeneration",
             "_authorityRevision", "_hasLivePlayniteAuthority", "_playniteClient",
-            "_pendingBackFocus", "_pendingBackFocusGate",
             "_playniteConnection",
             "_stateGate", "_stateRevision",
         }, fields.Select(field => field.Name).ToArray(),

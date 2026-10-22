@@ -49,10 +49,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         new(StringComparer.Ordinal);
     private readonly LinkedList<string> _launchStateRecency = [];
     private readonly PlayniteLibraryLaunchGenerationOwner _launchGeneration = new();
-    private readonly object _pendingBackFocusGate = new();
     private long _browseReloadAttempt;
-    private readonly Dictionary<(long Sequence, string ScopeId), string>
-        _pendingBackFocus = [];
 
     internal PlayniteLibraryWidget(
         IPlayniteLibraryApplicationService application,
@@ -362,7 +359,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
             RefreshSetupAvailability();
         if (current != WidgetLifecycleState.Interactive)
         {
-            ClearPendingBackFocus();
             _model.Update(state => state.ContentEntryScopeId is null && !state.SearchFocusPending
                 ? state : state with { ContentEntryScopeId = null, SearchFocusPending = false });
         }
@@ -375,7 +371,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
-        ClearPendingBackFocus();
         SuspendDetails();
         RetirePlayniteConnection(clearPresentation: false);
         _actionFeedbackExpiry.Cancel();
@@ -397,39 +392,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     protected override ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
-        ClearPendingBackFocus();
         RetireIndexedHome();
         RetireIndexedBrowse();
         _playniteClient?.Dispose();
         return _application.DisposeAsync();
-    }
-
-    public override async ValueTask<bool> OnControllerInputAsync(
-        ControllerInputEvent input,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(input);
-        var capture = input.Context == ControllerInputContext.OpenWidget &&
-            input.Button == ControllerButton.B &&
-            input.Phase == ControllerEventPhase.Pressed &&
-            input.FocusedElementId is { Length: > 0 } &&
-            input.ActiveInputScopeId is { Length: > 0 } &&
-            _navigation.Value.CanGoBack;
-        if (capture)
-        {
-            lock (_pendingBackFocusGate)
-            {
-                if (_pendingBackFocus.Count < ActionQueueCapacity)
-                    _pendingBackFocus[(input.Sequence, input.ActiveInputScopeId!)] =
-                        input.FocusedElementId!;
-            }
-        }
-
-        var handled = await base.OnControllerInputAsync(input, cancellationToken)
-            .ConfigureAwait(false);
-        if (!handled && capture)
-            RemovePendingBackFocus(input.Sequence, input.ActiveInputScopeId!);
-        return handled;
     }
 
     public override ValueTask OnActionAsync(
@@ -506,8 +472,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             return;
         }
         var routeBeforeBack = _navigation.Value.Route;
-        var backFocus = TakePendingBackFocus(action);
-        if (_navigation.TryHandleBack(action, backFocus ?? action.SourceElementId))
+        if (_navigation.TryHandleBack(action))
         {
             if (routeBeforeBack == PlayniteLibraryRoute.Browse &&
                 _navigation.Value.Route == PlayniteLibraryRoute.Library)
@@ -865,34 +830,6 @@ public sealed partial class PlayniteLibraryWidget : Widget
         }
         categoryId = candidate;
         return true;
-    }
-
-    private string? TakePendingBackFocus(WidgetActionEvent action)
-    {
-        if (action.ControllerButton != ControllerButton.B ||
-            action.Phase != ControllerEventPhase.Pressed ||
-            action.InputScopeId is not { Length: > 0 } scopeId)
-            return null;
-        string? focusId;
-        lock (_pendingBackFocusGate)
-        {
-            if (!_pendingBackFocus.Remove((action.Sequence, scopeId), out focusId))
-                return null;
-        }
-        return string.Equals(action.ActionId, _navigation.Value.BackActionId,
-            StringComparison.Ordinal) ? focusId : null;
-    }
-
-    private void RemovePendingBackFocus(long sequence, string scopeId)
-    {
-        lock (_pendingBackFocusGate)
-            _pendingBackFocus.Remove((sequence, scopeId));
-    }
-
-    private void ClearPendingBackFocus()
-    {
-        lock (_pendingBackFocusGate)
-            _pendingBackFocus.Clear();
     }
 
     private static string? NormalizeSearch(string value)
