@@ -7,6 +7,7 @@ internal static class WidgetNotificationPublisherTests
     {
         await CoalescesAndKeepsUpdateOnlyAsync();
         await OlderReceiptCannotClearNewEventAsync();
+        await MetadataDuringDeliveryDoesNotBecomeANewEventAsync();
         await FailureAndDestructionAreBoundedAsync();
     }
 
@@ -69,6 +70,30 @@ internal static class WidgetNotificationPublisherTests
             await latest.Completion.WaitAsync(TimeSpan.FromSeconds(3));
             lock (commands) Check(commands.Count == 2 && commands[^1].Notification!.Title == "Newest track" && !commands[^1].UpdateOnly,
                 "An old receipt cleared the new event or obsolete tracks were delivered.");
+        }
+        finally { release.TrySetResult(); await WidgetTestHost.DestroyAsync(widget); }
+    }
+
+    private static async Task MetadataDuringDeliveryDoesNotBecomeANewEventAsync()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var commands = new List<WidgetNotificationCommand>();
+        var widget = await CreateAsync(TimeProvider.System, TimeSpan.Zero, async (command, _) =>
+        {
+            commands.Add(command);
+            if (commands.Count == 1) { started.SetResult(); await release.Task; }
+            return new WidgetNotificationReceipt(true);
+        });
+        try
+        {
+            widget.Publisher.Publish(Notice("Track"));
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            var metadata = widget.Publisher.Publish(Notice("Track with artwork"), updateOnly: true);
+            release.SetResult();
+            await metadata.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(commands.Count == 2 && commands[1].UpdateOnly,
+                "Metadata arriving during an accepted delivery became another new event.");
         }
         finally { release.TrySetResult(); await WidgetTestHost.DestroyAsync(widget); }
     }

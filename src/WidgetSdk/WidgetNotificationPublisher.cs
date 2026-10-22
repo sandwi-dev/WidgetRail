@@ -18,7 +18,7 @@ public sealed class WidgetNotificationPublisher
     private readonly WidgetOperationLifetime lifetime;
     private WidgetNotification? pending;
     private bool needsShow;
-    private long revision;
+    private long eventRevision;
 
     internal WidgetNotificationPublisher(string operationKey, string notificationKey, string? categoryId,
         TimeSpan debounce, WidgetOperationLifetime lifetime, TimeProvider clock,
@@ -54,8 +54,7 @@ public sealed class WidgetNotificationPublisher
         lock (gate)
         {
             pending = notification;
-            needsShow |= !updateOnly;
-            revision++;
+            if (!updateOnly) { needsShow = true; eventRevision++; }
         }
         return operations.RunLatest(operationKey, async context =>
         {
@@ -63,13 +62,16 @@ public sealed class WidgetNotificationPublisher
             {
                 await Task.Delay(debounce, clock, context.CancellationToken).ConfigureAwait(false);
                 WidgetNotification content; bool show; long sentRevision;
-                lock (gate) { content = pending!; show = needsShow; sentRevision = revision; }
+                lock (gate) { content = pending!; show = needsShow; sentRevision = eventRevision; }
                 var notifications = service();
                 var result = show
                     ? await notifications.ShowAsync(content, context.CancellationToken).ConfigureAwait(false)
                     : await notifications.UpdateAsync(content, context.CancellationToken).ConfigureAwait(false);
                 if (result.Accepted)
-                    lock (gate) { if (revision == sentRevision) needsShow = false; }
+                    // Metadata may have changed while this event was delivered.
+                    // Its accepted receipt still settles Show, but cannot settle
+                    // a genuinely newer event with another event revision.
+                    lock (gate) { if (eventRevision == sentRevision) needsShow = false; }
             }
             catch (Exception error) when (error is WidgetCapabilityException or WidgetCapabilityUnavailableException or OperationCanceledException)
             {
