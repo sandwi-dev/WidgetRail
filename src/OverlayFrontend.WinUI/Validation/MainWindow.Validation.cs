@@ -220,6 +220,12 @@ public sealed partial class MainWindow
             RootFrame.Content = new Validation.GroupedCollectionValidationPage(flatBaseline: validateGroupedFlat, useRangeAdapter: validateGroupedAdapted);
         else if (indexedValidationPipe is not null)
         {
+            if (Shell.FrontendArguments.Value(arguments, "--ytm-navigation-output") is not null ||
+                Shell.FrontendArguments.Value(arguments, "--ytm-performance-output") is not null)
+            {
+                var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96d;
+                AppWindow.ResizeClient(new SizeInt32((int)Math.Ceiling(960 * scale), (int)Math.Ceiling(720 * scale)));
+            }
             if (Shell.FrontendArguments.Value(arguments,"--playnite-performance-output") is {} performanceOutput)
                 RootFrame.Content = new Validation.PlaynitePerformanceValidationPage(indexedValidationPipe,performanceOutput);
             else if (indexedValidationPipe.StartsWith("pinned-validation-", StringComparison.Ordinal))

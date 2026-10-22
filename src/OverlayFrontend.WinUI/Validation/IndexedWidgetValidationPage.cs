@@ -132,6 +132,10 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
             session.PresentationChanged += Changed;
             await session.ListWidgetsAsync(lifetime.Token);
             await session.EstablishPresentationAsync(session.GetTarget("indexed-owned"), WidgetLifecycleState.Interactive, lifetime.Token);
+            if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--ytm-performance-output") is { } performanceOutput)
+            { await ValidateYtmPerformanceAsync(performanceOutput); return; }
+            if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--ytm-navigation-output") is { } musicOutput)
+            { await ValidateYtmNavigationAsync(musicOutput); return; }
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--deferred-preview-validation") is { } deferredPreviewResult)
                 await ValidateDeferredPreviewsAsync(deferredPreviewResult);
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--indexed-entry-validation") is { } entryResult)

@@ -27,6 +27,10 @@
     <ProjectReference Include="..\..\samples\BrowserWidget\BrowserWidget.csproj" />
     <ProjectReference Include="..\..\samples\SpotifyWidget\Backend\SpotifyApplicationBackend.csproj" />
     <ProjectReference Include="..\..\samples\GameHelpWidget\GameHelpWidget.csproj" />
+    <ProjectReference Include="..\..\samples\YtMusicWidget\YtMusicWidget.csproj" />
+    <Content Include="../../samples/YtMusicWidget/styles/default.wrss" Link="fixture/ytm-default.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../samples/YtMusicWidget/manifest.json" Link="fixture/ytm/manifest.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../samples/YtMusicWidget/assets/icons/*.svg" Link="fixture/ytm/assets/icons/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <None Include="../../src/WidgetSdk/WebSessionRuntime.js" Link="WebSessionRuntime.js" CopyToOutputDirectory="PreserveNewest" />

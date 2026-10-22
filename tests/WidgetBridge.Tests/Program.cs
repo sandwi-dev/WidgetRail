@@ -67,6 +67,11 @@ if (args is ["--serve-pinned-validation", var pinnedPipe])
 {
     await PinnedPresenterBridgeWidget.Serve(pinnedPipe); return 0;
 }
+if (args is ["--serve-ytm-navigation", var musicPipe, var musicMode])
+{
+    await YtmNavigationFixture.ServeAsync(musicPipe, musicMode);
+    return 0;
+}
 if (args is ["--serve-indexed-validation", var validationPipe])
 {
     await BridgeIndexedEndToEndScenarios.ServeValidationAsync(validationPipe);
@@ -476,6 +481,9 @@ static Task MarketplaceAuthority()
 static async Task<int> RunWorkerAsync(string[] arguments)
 {
     var instance = RequiredValue(arguments, "--widget-instance");
+    if (instance.StartsWith("ytm-navigation-", StringComparison.Ordinal))
+        return await WidgetWorkerBootstrap.RunAsync(arguments, () => new WidgetRail.Samples.YtMusicWidget.Standalone.StandaloneMusicWidget(
+            new YtmNavigationFixture.Service(instance["ytm-navigation-".Length..])));
     if (instance == "suggestion-cancel.instance")
         return await WidgetWorkerBootstrap.RunAsync(arguments, () => new SuggestionCancellationWidget());
     if (instance == "settings-navigation.fixture")

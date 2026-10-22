@@ -2,7 +2,7 @@
 
 Date: 2026-10-22  
 Audit baseline: `adb696ac` (`codex/playnite-achievement-focus`)  
-Status: Active implementation on `codex/sdk-authoring-improvements`. The F6 loaded-list prototype is implemented and validated; F5 keyed resources, F9 controlled disclosures, and final cross-cutting verification remain open. First-pass deferrals below are provisional where superseded by the completion audit. Nothing is merged, pushed, packaged, or installed.
+Status: Active completion audit on `codex/sdk-authoring-improvements`. F5 scoped resources, F6 loaded lists, and F9 controlled disclosures are implemented and validated. Remaining work is the final requirement-by-requirement review, native restoration coverage, and comparative performance evidence. Historical first-pass outcomes below are superseded where later sections say so. Nothing is merged, pushed, published, or installed. The current user authorization permits launching a separate candidate for validation.
 
 Move generic focus, navigation, collection, and asynchronous presentation bookkeeping out of Playnite, shared PoB, YouTube Music, Spotify, and Settings into reusable SDK and host facilities. Widget authors should declare intent and domain data without maintaining competing request counters or reconstructing framework lifecycle rules.
 
@@ -627,7 +627,7 @@ or weakens behavior. No existing widget feature was intentionally removed.
 | F5 | Implemented single-current-query resource and Playnite read-section migration; validated below | Existing state machine, bounded scheduler, explicit caller scope; domain mutations retained |
 | F6 | Implemented explicit-identity loaded-list adapter | Settings, Games & Apps, Playnite achievements, PoB loaded lists, Spotify queue, YTM snapshots; specialized sources retained |
 | F7 | Corrected audit: shared ownership/lifetime facilities already exist | Preserve widget domain guards |
-| F8 | Implemented shared lossless chunk boundaries | PoB and Settings; whole-frame document owner deferred |
+| F8 | Implemented shared lossless chunk boundaries; rejected automatic whole-frame budgeting | PoB and Settings retain domain run/layout policy |
 | F9 | Implemented controlled disclosure with protocol/UIA and native collapse recovery | Settings, PoB configuration, Playnite setup, Game Help and SDK Gallery migrated |
 | F10 | Fixed operation admission presentation | PoB, Playnite, YTM; Spotify/Settings existing admission paths retained |
 | F11 | Implemented explicit Settings field declarations | Settings fields; existing navigation pass retained |
@@ -637,11 +637,10 @@ or weakens behavior. No existing widget feature was intentionally removed.
 | F15 | Retained activity caches | They suppress scheduling, while SDK coalescing suppresses transport |
 | F16 | Retained provider reconciliation; fixed failed-command rollback | Spotify observations and exact command ownership |
 
-This table is a progress record, not completion evidence. F5/F9 and the remaining
-verification requirements are still part of the active goal; the initial deferrals
-do not close those requirements.
+This table is a progress record, not completion evidence. Later F5/F6/F9 sections
+supersede the original deferrals. The final verification audit remains active.
 
-### Final validation and limits
+### First-pass validation and limits (historical checkpoint)
 
 The notification publisher's final review added another delayed-receipt test:
 metadata arriving during an accepted Show must remain Update-only. It failed when
@@ -1064,3 +1063,95 @@ All owned native fixtures were closed. No installed package, permissions, or
 running production app was changed. The goal remains active for the final
 requirement-by-requirement completion audit and remaining restoration evidence;
 this section closes F9's implementation and representative validation.
+
+### Completion audit: focus lookup and retained domain policies
+
+The lower-priority Playnite focus lookup is now consolidated with
+`WidgetFocusTargetLookup.Capture`. One decision serializes the authored tree once;
+its requested/fallback/first queries share that protocol snapshot. Playnite's two
+multi-query paths and Spotify's fallback chain use the helper. Their fallback
+ordering and disabled-target policy are unchanged. PoB's single query keeps the
+existing static API. No cross-render cache or native visibility inference is added.
+SDK coverage checks one conversion, scope/disabled/missing equivalence, and a new
+tree leaving the old snapshot unchanged. SDK **174/174**, Playnite **219/219**,
+Spotify **88/88**, compatibility **17/17**; API baseline **3873 symbols**, four
+additions and no removals. Logs: `audit-focus-snapshot-sdk.log`,
+`audit-focus-playnite.log`, `audit-focus-spotify.log`, `audit-focus-compat.log`.
+
+The remaining source-only cleanup proposals were reassessed:
+
+- Settings `ObservePageNavigation` observes the displayed page and preserves its
+  transition across repeated renders. The parent relation, including the permission
+  page's dynamic return parent, is domain policy. Moving this to every assignment
+  would track intermediate asynchronous destinations that may never be displayed
+  and duplicate mutation-path hooks. Retain this narrow display-transition observer;
+  it neither allocates focus requests nor owns host motion. Existing resize-only
+  behavior for size-changing Settings pages remains intact.
+- PoB's tabs use a proportional grid (Configuration gets a wider track), explicit
+  stable target IDs, pending-edit disabling and a Notes focus wrapper. Replacing
+  this with NavigationShell would change layout/IDs or require compensating wrappers.
+  It already uses the shared TransitionContent motion declaration. Retain composition.
+- PoB's website preference is shared across the two game widgets; the SDK private
+  state boundary is per widget. Its navigation preference is a bounded 64-byte
+  per-game file in the existing data directory, atomically written separately from
+  build XML/history. Migrating only that value would require data migration and a
+  second asynchronous state owner without removing the shared preference store.
+  Retain these small stores, including malformed/oversized input handling and
+  write-failure feedback. These are source-grounded ownership dispositions, not new
+  physical acceptance claims.
+
+### Completion audit: shipping YTM native restoration and performance
+
+`Test-YtmAuthoring.ps1` runs the shipping StandaloneMusicWidget in a real worker,
+bridge, and native presenter. Only IMusicService is synthetic. The fixture copies
+the actual manifest/icons/styles and validates icon digests normally. No account,
+network, playback, installed package, or existing process is changed. Controller
+navigation reaches Home item 60, artist item 75, then enters the album. Native B
+and the visible Settings Back button exercise the actual action paths.
+
+Native reordered/removed/ambiguous scenarios confirm the correct surviving
+identity (index 24 after reorder), safe initial entry when missing/ambiguous,
+bounded native realization, unchanged Home query identity, and Home item 60 focus.
+**Viewport assertions remain red**: Home's offset changes from about 2847 to
+2920 logical pixels (one run settled near 2833). Settings Back also changes the
+offset when it opens from that latter position. The failed assertions remain in
+the fixture; no acceptance threshold was relaxed. Files:
+`ytm-nav-{reordered,removed,ambiguous}-complete/result.json`.
+
+The pre-loaded-adapter YTM source at `df4c6555`, rebuilt against the same SDK and
+executed in the same native renderer, reproduces the 2847-to-2920 shift
+(`audit-ytm-preloaded.json`). This isolates the F6 migration from the viewport
+problem; it is not a comparison against a fully historical host binary. The host
+currently remembers collection focus across removed pages but only restores
+viewport mementos for lifecycle recreation/continuity. Exact entry requests do
+not identify navigation-return intent separately from reveal. F3's original
+viewport integration requirement therefore remains **open**, despite passing
+focus-target tests. This is an internal implementation gap, not an external blocker.
+
+The performance mode loads 10,000 synthetic artists, makes three six-second full
+scroll passes, reopens the retained presentation three times, and samples memory.
+It compares pre-F6 shipping source at `df4c6555` with current shipping source while
+holding SDK/bridge/native binaries and provider data constant. Two quiet paired
+runs (`ytm-performance-{before,after}-{2,3}`) passed; the earlier pair overlapped
+compilation and is excluded from conclusions. Aggregate:
+`ytm-performance-comparison.json`.
+
+| Measurement | Before adapter | After adapter |
+| --- | --- | --- |
+| Maximum native rows realized | 34 | 34 |
+| Per-pass composition interval p95 | 9.43–9.75 ms | 8.13–10.25 ms |
+| Intervals over 50 ms across six passes | 1 | 1 |
+| Retained-view reopen readiness | 12.48–24.15 ms | 13.55–33.83 ms |
+| Frontend managed memory after diagnostic full GC | 33.32–36.68 MiB | 33.03–38.96 MiB |
+| Frontend private memory after diagnostic full GC | 238.93–251.08 MiB | 220.59–253.09 MiB |
+| Worker final private memory | 75.87–76.00 MiB | 75.71–75.95 MiB |
+| Frontend allocated bytes during measured workload | 2751–2773 MiB | 2753–2896 MiB |
+
+Ranges overlap; this does not establish a performance improvement. The timed
+scroll loop can demand different numbers of rows as scheduling varies, so the
+allocation totals are workload observations, not per-item costs. Native allocation
+churn remains substantial in both versions. This fixture excludes artwork/network,
+measures retained-view readiness rather than cold startup, and is not a claim
+about game-library memory or physical controller polling. Full GC occurs only in
+the isolated diagnostic fixture after timing, never in product code. Screenshots
+show bounded, readable rows with ordinary clipped edge rows in the scroll viewport.
