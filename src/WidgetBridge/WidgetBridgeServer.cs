@@ -874,6 +874,12 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             await ReplyAsync(BridgeMessageTypes.IntentPrepared, request.RequestId, result, cancellationToken).ConfigureAwait(false);
             break;
         }
+        case BridgeMessageTypes.PrepareAppearanceIntent:
+        {
+            var result = await _registry.PrepareAppearanceIntentAsync(cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.IntentPrepared, request.RequestId, result, cancellationToken).ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.StartAppUpdateCheck:
         {
             var status = await _appUpdates.CheckAtStartupAsync(cancellationToken).ConfigureAwait(false);

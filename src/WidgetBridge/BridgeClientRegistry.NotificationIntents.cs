@@ -83,10 +83,14 @@ internal sealed partial class BridgeClientRegistry
         catch (BridgeProtocolException) { return false; }
     }
     // Host-only, closed destination; callers cannot supply an arbitrary payload or source identity.
-    internal async Task<WidgetIntentPreparation> PrepareAppUpdateIntentAsync(CancellationToken token)
+    internal Task<WidgetIntentPreparation> PrepareAppUpdateIntentAsync(CancellationToken token) =>
+        PrepareHostSettingsIntentAsync(WidgetIntentContracts.AppUpdates, token);
+    internal Task<WidgetIntentPreparation> PrepareAppearanceIntentAsync(CancellationToken token) =>
+        PrepareHostSettingsIntentAsync(WidgetIntentContracts.Appearance, token);
+    private async Task<WidgetIntentPreparation> PrepareHostSettingsIntentAsync(WidgetIntentContract contract, CancellationToken token)
     {
         var source = await GetOrCreateAsync("settings", token).ConfigureAwait(false);
-        var intent = WidgetIntentRequest.Create(WidgetIntentContracts.AppUpdates, JsonSerializer.SerializeToElement(new { }), WidgetIntentPresentation.OpenWidget);
+        var intent = WidgetIntentRequest.Create(contract, JsonSerializer.SerializeToElement(new { }), WidgetIntentPresentation.OpenWidget);
         IntentTicket ticket;
         lock (_gate)
         {

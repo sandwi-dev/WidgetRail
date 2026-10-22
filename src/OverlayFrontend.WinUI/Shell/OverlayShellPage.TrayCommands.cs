@@ -251,6 +251,8 @@ internal sealed partial class OverlayShellPage
             }
             Add("Task Switcher", "Shell.TaskSwitcher", () => { FocusUtility(ShellUtility.Tasks); return Task.CompletedTask; },
                 HasPendingNotifications ? null : ControllerButton.Y, hold: true);
+            if (introductionLoaded && !introduction.Finished)
+                Add("Continue introduction", "Shell.Introduction", () => { ContinueIntroduction(); return Task.CompletedTask; });
             if (descriptor.CanStop && !descriptor.IsStopped)
                 Add("Stop widget", "Widget.Stop", () => StopWidgetAsync(descriptor));
             menu.Navigation = new(menu.Flyout, () => ReferenceEquals(trayMenu, menu) && TrayOwnerCurrent(menu.Owner, menu.Selection));

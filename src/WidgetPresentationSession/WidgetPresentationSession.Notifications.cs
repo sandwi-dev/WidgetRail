@@ -71,4 +71,11 @@ public sealed partial class WidgetPresentationSession
         ValidateIntentPreparation(result, "settings");
         return result;
     }
+    public async Task<WidgetIntentPreparation> PrepareAppearanceIntentAsync(CancellationToken token = default)
+    {
+        var response = await RequestAsync(BridgeMessageTypes.PrepareAppearanceIntent, new BridgeEmptyPayload(), BridgeMessageTypes.IntentPrepared, token).ConfigureAwait(false);
+        var result = BridgeJson.FromElement<WidgetIntentPreparation>(response.Payload);
+        ValidateIntentPreparation(result, "settings");
+        return result;
+    }
 }

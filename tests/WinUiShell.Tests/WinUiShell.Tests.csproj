@@ -6,6 +6,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\IntroductionProgress.cs" Link="IntroductionProgress.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\WindowsTaskView.cs" Link="WindowsTaskView.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\ApplicationRestart.cs" Link="ApplicationRestart.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ArtworkFileStream.cs" Link="ArtworkFileStream.cs" />

@@ -41,6 +41,10 @@ public static class WidgetIntentContracts
     public const string OpenWidgetPermissions = "widgetrail.settings.permissions.open";
     public const string OpenMarketplace = "widgetrail.marketplace.open";
     public const string OpenAppUpdates = "widgetrail.settings.updates.open";
+    public const string OpenAppearance = "widgetrail.settings.appearance.open";
+    public static WidgetIntentContract Appearance { get; } = new(OpenAppearance, 1, Schema("""
+        {"type":"object","additionalProperties":false,"properties":{}}
+        """));
     public static WidgetIntentContract AppUpdates { get; } = new(OpenAppUpdates, 1, Schema("""
         {"type":"object","additionalProperties":false,"properties":{}}
         """));
@@ -121,7 +125,7 @@ public static class WidgetIntentContracts
                         add(path, "conflicting_intent", "The same intent version has conflicting schemas.");
                     contracts[key] = compiled.SchemaDigest;
                     var standard = compiled.Id switch { OpenWebPage => compiled.Version == 2 ? WebV2 : Web, OpenVideo => Video, SearchVideo => VideoSearch,
-                        OpenWidgetSettings => WidgetSettings, OpenWidgetPermissions => WidgetPermissions, OpenMarketplace => Marketplace, OpenAppUpdates => AppUpdates, _ => null };
+                        OpenWidgetSettings => WidgetSettings, OpenWidgetPermissions => WidgetPermissions, OpenMarketplace => Marketplace, OpenAppUpdates => AppUpdates, OpenAppearance => Appearance, _ => null };
                     if (compiled.Id.StartsWith("widgetrail.", StringComparison.Ordinal) &&
                         (standard is null || compiled.Version != standard.Version ||
                          compiled.SchemaDigest != CompiledWidgetIntentContract.Create(standard).SchemaDigest))

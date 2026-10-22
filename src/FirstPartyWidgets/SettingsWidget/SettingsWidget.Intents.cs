@@ -9,6 +9,7 @@ public sealed partial class SettingsWidget
     private static readonly CompiledWidgetIntentContract widgetSettingsIntent = CompiledWidgetIntentContract.Create(WidgetIntentContracts.WidgetSettings);
     private static readonly CompiledWidgetIntentContract widgetPermissionsIntent = CompiledWidgetIntentContract.Create(WidgetIntentContracts.WidgetPermissions);
     private static readonly CompiledWidgetIntentContract appUpdatesIntent = CompiledWidgetIntentContract.Create(WidgetIntentContracts.AppUpdates);
+    private static readonly CompiledWidgetIntentContract appearanceIntent = CompiledWidgetIntentContract.Create(WidgetIntentContracts.Appearance);
     private const string IntentNavigationKey = "settings.intent-navigation";
     private sealed record IntentNavigation(WidgetIntentRequest Request, string? Error = null);
     private IntentNavigation? intentNavigation;
@@ -20,7 +21,8 @@ public sealed partial class SettingsWidget
     {
         cancellationToken.ThrowIfCancellationRequested();
         var contract = request.ContractId == widgetSettingsIntent.Id ? widgetSettingsIntent :
-            request.ContractId == widgetPermissionsIntent.Id ? widgetPermissionsIntent : request.ContractId == appUpdatesIntent.Id ? appUpdatesIntent : null;
+            request.ContractId == widgetPermissionsIntent.Id ? widgetPermissionsIntent : request.ContractId == appUpdatesIntent.Id ? appUpdatesIntent :
+            request.ContractId == appearanceIntent.Id ? appearanceIntent : null;
         if (!IsActive || contract is null || !request.IsWellFormed() || request.Version != contract.Version ||
             request.SchemaDigest != contract.SchemaDigest || !contract.Accepts(request.Payload)) return ValueTask.FromResult(WidgetIntentResult.Rejected);
         var navigation = new IntentNavigation(request);
@@ -49,13 +51,18 @@ public sealed partial class SettingsWidget
             await _initializationTask.WaitAsync(token).ConfigureAwait(false);
             var request = navigation.Request;
             var updates = request.ContractId == appUpdatesIntent.Id;
+            var appearance = request.ContractId == appearanceIntent.Id;
             var permissions = request.ContractId == widgetPermissionsIntent.Id;
-            var packageId = updates ? null : request.Payload.GetProperty("packageId").GetString()!;
+            var packageId = updates || appearance ? null : request.Payload.GetProperty("packageId").GetString()!;
             await _operationGate.WaitAsync(token).ConfigureAwait(false);
             try
             {
                 if (!Current()) return;
-                if (updates)
+                if (appearance)
+                {
+                    lock (_stateLock) { if (!Current()) return; _page = SettingsPage.Appearance; }
+                }
+                else if (updates)
                 {
                     lock (_stateLock) { if (!Current()) return; _page = SettingsPage.AppUpdates; }
                 }
@@ -94,7 +101,7 @@ public sealed partial class SettingsWidget
             // Do not hold the ordinary action gate during optional inspection.
             if (!Current()) return;
             if (updates) await ReadAppUpdatesAsync(new("status"), token).ConfigureAwait(false);
-            else if (!permissions)
+            else if (!permissions && !appearance)
             {
                 await InspectSelectedWidgetLocalDataAsync(token).ConfigureAwait(false);
                 if (Current()) await InspectSelectedWidgetUninstallAsync(token).ConfigureAwait(false);

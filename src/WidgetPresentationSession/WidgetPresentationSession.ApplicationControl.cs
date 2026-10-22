@@ -8,6 +8,20 @@ public enum WidgetApplicationControl { None, Quit, Restart }
 
 public sealed partial class WidgetPresentationSession
 {
+    public const string ReplayIntroductionAction = "application.introduction";
+    public void ValidateIntroductionCommand(WidgetPresentationFrame displayed, WidgetActionEvent action)
+    {
+        using (_gate.Enter())
+        {
+            var current = ValidateDisplayedOrdinaryFrameLocked(displayed, action.InputScopeId);
+            if (displayed.Authority.WidgetId != "settings" || action.ActionId != ReplayIntroductionAction ||
+                action.SourceElementId != "settings.introduction" || action.InputScopeId != "settings-root" ||
+                action.Phase != ControllerEventPhase.Pressed || action.RequestedValue is not null || action.CommittedText is not null ||
+                ResolveDisplayedAction(displayed.Snapshot, action) is not { } declared || declared != ResolveDisplayedAction(current.Snapshot, action))
+                throw OrdinaryInputStale("Introduction requires the current Settings command.");
+        }
+    }
+
     public static bool IsApplicationControlAction(string action) => action is "application.quit" or "application.restart";
 
     /// <summary>Validates a currently displayed Settings command without queueing behind widget work.</summary>

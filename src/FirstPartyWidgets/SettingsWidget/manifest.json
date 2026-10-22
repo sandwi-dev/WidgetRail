@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.settings",
   "publisher": "widgetrail.firstparty",
   "name": "Settings",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -25,11 +25,15 @@
   "permissions": [],
   "optionalPermissions": [],
   "intents": { "requests": [
+    { "id": "widgetrail.settings.appearance.open", "version": 1,
+      "payloadSchema": { "type": "object", "additionalProperties": false, "properties": {} } },
     { "id": "widgetrail.settings.updates.open", "version": 1,
       "payloadSchema": { "type": "object", "additionalProperties": false, "properties": {} } },
     { "id": "widgetrail.marketplace.open", "version": 1,
       "payloadSchema": { "type": "object", "additionalProperties": false, "properties": {} } }
   ], "handles": [
+    { "id": "widgetrail.settings.appearance.open", "version": 1,
+      "payloadSchema": { "type": "object", "additionalProperties": false, "properties": {} } },
     { "id": "widgetrail.settings.updates.open", "version": 1,
       "payloadSchema": { "type": "object", "additionalProperties": false, "properties": {} } },
     { "id": "widgetrail.settings.widget.open", "version": 1,

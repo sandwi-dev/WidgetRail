@@ -75,6 +75,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         InitializePinnedPlacement();
         InitializeRadialChooser();
         InitializeOpeningIndicator();
+        InitializeIntroduction();
         if (startService) InitializeStartupPresentation();
         UpdateTrayHelp();
         InitializeFullscreenView();
@@ -160,6 +161,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             BridgeReady?.Invoke();
             Phase("bridge-notifications-queued");
             await InitializeStartupCatalogAsync(Phase);
+            await LoadIntroductionAsync();
         }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error)
@@ -426,6 +428,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             var settings = await new PlatformSettingsStore(new(options.SettingsRoot)).LoadAsync(lifetime.Token);
             if (retired || version != settingsReadVersion) return;
             savedAppearance = settings.Appearance;
+            introductionControllers = settings.Controllers;
             ControllerSettingsLoaded?.Invoke(settings.Controllers);
             ApplyEffectiveAppearance();
         }
@@ -516,6 +519,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (!value) ExitPinnedInteraction(restoreMain: false);
         interactionAdmission.Invalidate();
         visible = value;
+        ScheduleIntroduction();
         if (value && notificationBannerState.EntryId is { } bannerId &&
             (notificationCenter?.Inbox.Find(bannerId) is not { } bannerEntry || !NotificationBannerEligible(bannerEntry) || !PlaceNotificationBanner())) HideNotificationBanner();
         RefreshStartupPresentation();
@@ -582,6 +586,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (!value) CancelPinnedAdjustment(restoreFocus: false);
         interactionAdmission.Invalidate();
         foreground = value;
+        ScheduleIntroduction();
         RefreshExpandedBrowser();
         if (value) intentForegroundAcquired?.TrySetResult();
         // The main HWND also deactivates when focus transfers to the pinned
@@ -721,6 +726,11 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                     else await ManageUserWebAppsAsync();
                 }
                 else if (request.IndexedLease is not null) await InvokeIntentAsync(request);
+                else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.ReplayIntroductionAction)
+                {
+                    owner.Session.ValidateIntroductionCommand(request.Displayed, request.Action);
+                    ReplayIntroduction();
+                }
                 else if (WidgetRail.WidgetPresentationSession.WidgetPresentationSession.IsApplicationControlAction(request.Action.ActionId))
                     RequestApplicationControl(owner.Session.ResolveApplicationControl(request.Displayed, request.Action));
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.InstallLocalWidgetAction)
@@ -899,6 +909,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         localInstallCancellation?.Cancel();
         webAppEditor?.Close();
         openingIndicator?.Dispose();
+        introductionCard?.Dispose();
+        await introductionWrite;
         intentCancellation?.Cancel();
         ++startupPresentationVersion;
         startupIndicator?.Dispose();

@@ -84,6 +84,21 @@ public sealed class LocalWidgetInstallTests
     }
 
     [TestMethod]
+    public async Task IntroductionReplayRequiresTheDeclaredSettingsControl()
+    {
+        var action = new WidgetActionEvent(WidgetPresentationSession.ReplayIntroductionAction,
+            "settings.introduction", InputScopeId: "settings-root");
+        await Run(_ => Task.CompletedTask, (session, frame) =>
+        {
+            session.ValidateIntroductionCommand(frame, action);
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateIntroductionCommand(frame, action with { SourceElementId = "forged" }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateIntroductionCommand(frame, action with { Phase = ControllerEventPhase.Repeated }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateIntroductionCommand(frame with { Authority = frame.Authority with { WidgetId = "community" } }, action));
+            return Task.CompletedTask;
+        }, action);
+    }
+
+    [TestMethod]
     [DataRow(false)][DataRow(true)]
     public async Task CompletionBeforeAcknowledgementIsNotLostAndUpdateKeepsTarget(bool update)
     {

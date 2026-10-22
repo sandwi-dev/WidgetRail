@@ -273,7 +273,7 @@ static Task RootCategories()
     Assert.SequenceEqual(
         ["category.overlay", "category.appearance", "category.accessibility", "category.controllers", "category.installed-widgets", "category.extensions", "category.diagnostics"],
         Nodes(snapshot.Root).Where(node => node.Kind == ViewNodeKind.ActionSurface).Select(node => node.Id));
-    Assert.SequenceEqual(["settings.restart", "settings.quit"],
+    Assert.SequenceEqual(["settings.introduction", "settings.restart", "settings.quit"],
         Buttons(snapshot.Root).Select(button => button.Id));
     foreach (var card in Nodes(snapshot.Root).Where(node => node.Kind == ViewNodeKind.ActionSurface))
     {
@@ -325,7 +325,7 @@ static async Task LoadingBeforeReady()
     Assert.Equal("settings-root", loading.ActiveInputScopeId);
     Assert.True(Nodes(loading.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface && node.IsBusy != true) == 7, "Home categories must remain usable while loading.");
     Assert.True(!Nodes(loading.Root).Any(node => node.Id is "settings.home.subtitle" or "settings.toast"), "Loading home should have neither a subtitle nor a duplicate loading toast.");
-    Assert.SequenceEqual(["settings.restart", "settings.quit"], Buttons(loading.Root).Select(node => node.Id));
+    Assert.SequenceEqual(["settings.introduction", "settings.restart", "settings.quit"], Buttons(loading.Root).Select(node => node.Id));
     Assert.True(Buttons(loading.Root).All(node => node.IsBusy != true), "Application controls must remain usable during loading.");
     await Action(widget, "application.quit");
     await Action(widget, "application.restart");

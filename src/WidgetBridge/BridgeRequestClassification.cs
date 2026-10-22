@@ -212,7 +212,7 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.PrepareNotificationIntent => NotificationIntent(request.Payload, BridgeRequestKind.PrepareIntent),
                 BridgeMessageTypes.ReleaseNotificationIntent => NotificationIntent(request.Payload, BridgeRequestKind.CancelIntent),
                 BridgeMessageTypes.PrepareWidgetSettingsIntent => Widget(BridgeJson.FromElement<BridgeWidgetManagementRequest>(request.Payload).WidgetId, BridgeRequestKind.PrepareIntent),
-                BridgeMessageTypes.PrepareAppUpdateIntent or BridgeMessageTypes.StartAppUpdateCheck => Empty(request.Payload, BridgeRequestKind.ApplicationControl),
+                BridgeMessageTypes.PrepareAppUpdateIntent or BridgeMessageTypes.PrepareAppearanceIntent or BridgeMessageTypes.StartAppUpdateCheck => Empty(request.Payload, BridgeRequestKind.ApplicationControl),
                 BridgeMessageTypes.CommitIntent => IntentCommit(request.Payload),
                 BridgeMessageTypes.CancelIntent => IntentCancel(request.Payload),
                 BridgeMessageTypes.ControllerInput => Widget(

@@ -12,6 +12,14 @@ internal sealed partial class OverlayShellPage
 
     private void PublishControllerGuide()
     {
+        ScheduleIntroduction();
+        if (introductionCard is { Visibility: Visibility.Visible, Focused: true })
+        {
+            trayGuide.Present("introduction", true, [], (ControllerGuideHint[])[
+                new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.B, "Back to tray", ControllerButton.B),
+                new(ControllerPrompt.RightStickMove, "Scroll")]);
+            return;
+        }
         IReadOnlyList<ControllerGuideHint>? shell = null;
         object? shellContext = null;
         if (webAppEditor is { } editor)

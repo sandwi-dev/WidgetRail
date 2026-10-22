@@ -55,6 +55,14 @@ internal static class AppUpdateScenarios
             await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, default);
             await widget.InitializationTask;
             await Action("open.about"); Check(Node("about.updates").ActionId == "open.app-updates");
+            var appearance = WidgetIntentRequest.Create(WidgetIntentContracts.Appearance,
+                System.Text.Json.JsonSerializer.SerializeToElement(new { }), WidgetIntentPresentation.OpenWidget);
+            Check(await widget.OnIntentAsync(appearance) == WidgetIntentResult.Accepted);
+            await widget.IntentNavigationTask;
+            Check(Snapshot().ActiveInputScopeId == "appearance.page");
+            Check(Node("appearance.theme").ActionId == "open.themes");
+            await Action("back");
+            Check(Node("settings.introduction").ActionId == "application.introduction");
             await Action("open.app-updates");
             Check(Snapshot().ActiveInputScopeId == "app-update.page");
             Check(Node("app-update.auto").ActionId == "app-update.auto");

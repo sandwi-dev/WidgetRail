@@ -70,6 +70,7 @@ internal sealed partial class OverlayShellPage
                     _ = RouteButtonAsync(button, ControllerEventPhase.Released);
             heldAction.Reset(); rightStick.Reset(); return;
         }
+        if (ReceiveIntroduction(frame)) { heldAction.Reset(); delivered = true; return; }
         if (trayHold.Capturing && (frame.State.Buttons & 0x8000) == 0 && (frame.ReleasedButtons & 0x8000) == 0)
         { trayHold.Reset(); shellGestures.Release(ControllerButton.Y); }
         _ = RunTrayHoldAsync(trayHold.Tick(TrayGestureIdentity, !reordering, Environment.TickCount64));
@@ -202,6 +203,7 @@ internal sealed partial class OverlayShellPage
         if (hostChoiceDialog is { } dialog)
         { HandleHostChoiceButton(dialog, button, phase); return; }
         if (ReceiveStartupInput(button, phase) || switching && interactive) return;
+        if (RouteIntroductionButton(button, phase)) return;
         try
         {
             if (await RoutePinnedPlacementButtonAsync(button, phase)) return;
