@@ -62,7 +62,8 @@ internal sealed partial class WidgetViewPresenter
         declarations.Values.Where(declaration => declaration.Node.IsFocusable && bindings[declaration.Node.Id].Element.Visibility == Visibility.Visible)
             .All(declaration => declaration.Identity.Scope == activeScope);
     private sealed record GroupMemory(WidgetElementIdentity Group, WidgetElementIdentity Child);
-    private sealed record GroupEntry(long RequestId, WidgetElementIdentity Group, IndexedCollectionFocusTarget? IndexedItem);
+    private sealed record GroupEntry(long RequestId, WidgetElementIdentity Group,
+        IndexedCollectionFocusTarget? IndexedItem, WidgetElementIdentity? ExactTarget = null);
     private sealed record CollectionMemoryKey(WidgetElementIdentity Identity, string SourceId, long QueryGeneration);
     private readonly OrderedDictionary<CollectionMemoryKey, IndexedCollectionFocusTarget> collectionMemory = [];
     private readonly Dictionary<string, GroupMemory> groupMemory = new(StringComparer.Ordinal);
@@ -105,6 +106,11 @@ internal sealed partial class WidgetViewPresenter
             lastGroupRequest = request.RequestId;
             pendingGroupEntry = bindings.TryGetValue(request.GroupId, out var group)
                 ? new(request.RequestId, group.Identity, request.IndexedItem) : null;
+            if (request.TargetId is { } targetId)
+                pendingGroupEntry = pendingGroupEntry is { } pending &&
+                    bindings.TryGetValue(targetId, out var target) && target.Identity.Scope == pending.Group.Scope &&
+                    IsDescendant(targetId, pending.Group.Id)
+                    ? pending with { ExactTarget = target.Identity } : null;
         }
         if (pendingGroupEntry is { } entry &&
             (!bindings.TryGetValue(entry.Group.Id, out var current) || current.Identity != entry.Group ||
@@ -197,7 +203,15 @@ internal sealed partial class WidgetViewPresenter
     {
         if (pendingGroupEntry is not { } entry || !bindings.TryGetValue(entry.Group.Id, out var group) ||
             group.Identity != entry.Group) return false;
-        if (group.Element is WidgetIndexedCollectionView collection)
+        if (entry.ExactTarget is { } exact)
+        {
+            // Never turn an exact intent into remembered-group entry. An unavailable
+            // target is consumed so enabling it on a later refresh cannot steal focus.
+            pendingGroupEntry = null;
+            if (!bindings.TryGetValue(exact.Id, out var target) || target.Identity != exact ||
+                !IsDescendant(exact.Id, group.Identity.Id) || !Navigable(target) || !FocusBinding(target)) return false;
+        }
+        else if (group.Element is WidgetIndexedCollectionView collection)
         {
             if (entry.IndexedItem is { } item) collection.Enter(item);
             else FocusBinding(group);

@@ -44,6 +44,10 @@ internal sealed class ProtocolVersionRequirements
             Add("indexed-focus-target", ProtocolConstants.IndexedCollectionFocusVersion, "$.focusGroupEntryRequest.indexedItem",
                 "Logical indexed focus targets require protocol version 61 or later.");
 
+        if (snapshot.FocusGroupEntryRequest?.TargetId is not null)
+            Add("exact-focus-target", ProtocolConstants.ExactFocusTargetVersion, "$.focusGroupEntryRequest.targetId",
+                "Exact declared focus targets require protocol version 99 or later.");
+
         if (snapshot.Surface is not null)
         {
             Add(

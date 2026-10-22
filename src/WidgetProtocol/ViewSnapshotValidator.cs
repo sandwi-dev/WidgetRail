@@ -285,6 +285,18 @@ public static class ViewSnapshotValidator
                     // publishes a newer query. Hosts ignore stale generations;
                     // that must not invalidate the new parent presentation.
                 }
+                if (groupEntry.TargetId is { } targetId)
+                {
+                    CheckIdentifier(targetId, "$.focusGroupEntryRequest.targetId", "focus target ID",
+                        ProtocolValidationIdentifierKind.ElementReference);
+                    if (groupEntry.IndexedItem is not null)
+                        Add("$.focusGroupEntryRequest", "conflicting_focus_targets", "Choose a declared target or an indexed occurrence, not both.");
+                    if (group.Node is null || !ids.TryGetValue(targetId, out var target) ||
+                        !target.Node.IsFocusable || target.ScopeKey != activeScopeKey ||
+                        !(target.Path == group.Path || target.Path.StartsWith(group.Path + ".children[", StringComparison.Ordinal)))
+                        Add("$.focusGroupEntryRequest.targetId", "invalid_exact_focus_target",
+                            "The exact focus target must be a focusable descendant in the active group scope.");
+                }
             }
         }
 

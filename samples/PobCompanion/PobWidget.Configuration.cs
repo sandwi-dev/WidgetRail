@@ -101,7 +101,11 @@ public sealed partial class PobWidget
         if(InactiveConfiguration(option))rows.Add(Text("Saved setting; not currently applicable to this build.","config.retained."+index,"pob-small"));
         if(configHelp&&!string.IsNullOrWhiteSpace(S(condition,"description")))
             AddFormatted(rows,condition,"description","descriptionRuns","config.description."+index,"pob-help",emphasizeStats:true);
-        return UI.Stack("pob.config.row."+index,rows.ToArray()).Classes("pob-setting");
+        var row = UI.Stack("pob.config.row." + index, rows.ToArray()).Classes("pob-setting");
+        // Read-only search destinations need a reading viewport, authored here
+        // rather than discovered by rewriting the completed UI tree.
+        return unifiedTargetId is not null && unifiedReadOnlyConfig == index && unifiedTargetSection == section && unifiedTargetDetail == detailKind
+            ? UI.VerticalScroll("pob.config.readonly-scroll", row).Classes("pob-scroll") : row;
     }
 
     private WidgetElement NotesWorkspace()

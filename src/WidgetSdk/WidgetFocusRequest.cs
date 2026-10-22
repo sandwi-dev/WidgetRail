@@ -21,6 +21,17 @@ public sealed class WidgetFocusRequest
         return new() { RequestId = Id, GroupId = groupId };
     }
 
+    /// <summary>
+    /// Focus a declared descendant in the active group scope without entering its
+    /// remembered child. Requires protocol 99. Hidden or unavailable targets do not
+    /// receive deferred focus later; issue a new intent when appropriate.
+    /// </summary>
+    public FocusGroupEntryRequest FocusElement(string groupId, string targetId)
+    {
+        StableIdentifier.Validate(targetId, nameof(targetId));
+        return EnterGroup(groupId) with { TargetId = targetId };
+    }
+
     /// <summary>Enter a collection, optionally at an exact current occurrence.</summary>
     public FocusGroupEntryRequest EnterCollection<TQuery, TItem>(
         WidgetIndexedCollection<TQuery, TItem> source, string collectionId,

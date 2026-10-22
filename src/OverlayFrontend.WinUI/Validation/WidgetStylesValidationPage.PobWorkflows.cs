@@ -31,6 +31,7 @@ internal sealed partial class WidgetStylesValidationPage
         var densityMetrics=new List<object>();
         try
         {
+            var searchTargetsOnly=Environment.GetCommandLineArgs().Contains("--pob-search-targets-only");
             var disclosures=Environment.GetCommandLineArgs().Contains("--pob-disclosures-only");
             var density=Environment.GetCommandLineArgs().Contains("--pob-density-only");
             var headerOnly=Environment.GetCommandLineArgs().Contains("--pob-header-only");
@@ -39,7 +40,7 @@ internal sealed partial class WidgetStylesValidationPage
             var gemDetailsOnly=Environment.GetCommandLineArgs().Contains("--pob-gem-details-only");
             foreach(var themeId in new[]{ThemeIdentity.BuiltInMonoInk,ThemeIdentity.BuiltInMineralLight,"widgetrail.builtin.velvet-dusk","high-contrast"})
             foreach(var game in new[]{1,2})
-            foreach(var scenario in gemDetailsOnly?new[]{"gem1-full","gem2-full"}:historyOnly?new[]{"history-undo","history-redo"}:editorOnly?new[]{"trade-options","item-name"}:headerOnly?new[]{"header"}:density?new[]{"configuration-density"}:disclosures?new[]{"calculation-details","calculation-short","calculation-explanation","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
+            foreach(var scenario in searchTargetsOnly?new[]{"search-target-equipment","search-target-gem","search-target-configuration"}:gemDetailsOnly?new[]{"gem1-full","gem2-full"}:historyOnly?new[]{"history-undo","history-redo"}:editorOnly?new[]{"trade-options","item-name"}:headerOnly?new[]{"header"}:density?new[]{"configuration-density"}:disclosures?new[]{"calculation-details","calculation-short","calculation-explanation","configuration-collapsed","configuration-expanded"}:new[]{"search","skill-workspace","build-comparison","search-target-equipment","search-target-gem","search-target-configuration"})
             foreach(var size in new[]{(Width:1320d,Height:900d),(Width:820d,Height:600d)})
             {
                 root.Width=page.Width=size.Width;root.Height=page.Height=size.Height;
@@ -75,7 +76,7 @@ internal sealed partial class WidgetStylesValidationPage
                 Publish();
                 var declared=Flatten(snapshot.Root).ToArray();
                 var target=snapshot.FocusGroupEntryRequest is {} focus
-                    ?declared.Single(n=>n.Id==focus.GroupId).InitialChildFocusId:snapshot.InitialFocusId;
+                    ?focus.TargetId??declared.Single(n=>n.Id==focus.GroupId).InitialChildFocusId:snapshot.InitialFocusId;
                 if(target is not null)
                 {
                     await Wait(()=>Find<Control>("Widget."+target,root) is {IsLoaded:true});

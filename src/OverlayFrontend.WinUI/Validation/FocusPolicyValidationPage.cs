@@ -19,6 +19,7 @@ internal sealed partial class FocusPolicyValidationPage : Page
     private long sequence;
     private long owner = 1;
     private long request;
+    private string? exactTarget;
     private FocusProbeWidget focusSource = new();
     private bool ready;
     private bool neighbors = true;
@@ -40,17 +41,19 @@ internal sealed partial class FocusPolicyValidationPage : Page
                     passive = !passive; presenter.SetAutomaticFocusEnabled(!passive);
                     if (passive) outside.Focus(FocusState.Keyboard); else presenter.Enter();
                     Apply(); break;
-                case VirtualKey.F2: request = focusSource.Request().Id; Apply(); break;
+                case VirtualKey.F2: exactTarget = null; request = focusSource.Request().Id; Apply(); break;
                 case VirtualKey.F3: ready = !ready; Apply(); break;
                 case VirtualKey.F4: presenter.MoveFocus(FocusNavigationDirection.Down); break;
                 case VirtualKey.F5: presenter.MoveFocus(FocusNavigationDirection.Right); break;
                 case VirtualKey.F6: neighbors = !neighbors; Apply(); break;
                 case VirtualKey.F7: disableThird = !disableThird; Apply(); break;
-                case VirtualKey.F8: ++owner; focusSource.Dispose(); focusSource = new(); sequence = request = 0; disableThird = false; Apply(); break;
+                case VirtualKey.F8: ++owner; focusSource.Dispose(); focusSource = new(); sequence = request = 0; exactTarget = null; disableThird = false; Apply(); break;
                 case VirtualKey.F9: request = 0; Apply(); break;
                 case VirtualKey.F10: groupNeighbor = !groupNeighbor; Apply(); break;
-                case VirtualKey.F11: request = focusSource.Navigate(); Apply(); break;
+                case VirtualKey.F11: exactTarget = null; request = focusSource.Navigate(); Apply(); break;
                 case VirtualKey.F12: Apply(); break;
+                case VirtualKey.X: exactTarget = "first"; request = focusSource.Request().Id; Apply(); break;
+                case VirtualKey.Y: exactTarget = "third"; request = focusSource.Request().Id; Apply(); break;
                 default: return;
             }
             args.Handled = true;
@@ -69,7 +72,7 @@ internal sealed partial class FocusPolicyValidationPage : Page
             ] : [] };
         var snapshot = new ViewSnapshot { WidgetInstanceId = "focus.instance", Sequence = ++sequence,
             ActiveInputScopeId = "page", InitialFocusId = "header",
-            FocusGroupEntryRequest = request == 0 ? null : new() { RequestId = request, GroupId = "group" },
+            FocusGroupEntryRequest = request == 0 ? null : new() { RequestId = request, GroupId = "group", TargetId = exactTarget },
             Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
                 new() { Id = "header", Kind = ViewNodeKind.Button, Text = "Header", ActionId = "header", Focus = ready && groupNeighbor ? new FocusNeighbors(Right: "group") : null }, row,
                 new() { Id = "other", Kind = ViewNodeKind.Stack, InputScopeId = "other", Children = (ViewNode[])[

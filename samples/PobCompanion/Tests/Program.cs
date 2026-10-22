@@ -5,6 +5,13 @@ using WidgetRail.Samples.PobCompanion;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetProtocol;
 
+if(args is ["--operation-admission-only"])
+{
+    await OperationAdmissionTests.RunAsync();
+    Console.WriteLine("Operation admission: rejected, joined, and recovered work passed");
+    return 0;
+}
+
 if(args is ["--history-preview-only"])
 {
     var passed=0;var failed=0;

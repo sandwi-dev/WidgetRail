@@ -74,7 +74,7 @@ internal static class UnifiedSearchTests
                     "Named equipment search opens its existing slot "+equipment.Target.Id);
                 var destination=View();
                 check(Get("feedback") is null&&destination.FocusGroupEntryRequest is {} equipmentFocus&&
-                    Nodes(destination.Root).Any(node=>node.Id==equipmentFocus.GroupId&&node.InitialChildFocusId=="pob.item."+equipment.Target.Id),
+                    equipmentFocus.TargetId=="pob.item."+equipment.Target.Id&&Nodes(destination.Root).Any(node=>node.Id==equipmentFocus.TargetId&&node.IsFocusable),
                     "Named equipment search focuses the preview-wrapped row without a stale-result warning for slot "+equipment.Target.Id);
                 if((bool)Get("unifiedSearchOpen")!)throw new InvalidOperationException("Equipment search rejected a current result");
             }
@@ -110,18 +110,18 @@ internal static class UnifiedSearchTests
             }
             await Action("unified-search-close");
             await Select(PobSearchTargetKind.EquippedItem);
-            ExportTarget("equipment");var equipped=View();check((string)Get("section")! == "Items"&&equipped.FocusGroupEntryRequest is {} itemFocus&&itemFocus.GroupId.StartsWith("pob.unified.",StringComparison.Ordinal)&&Nodes(equipped.Root).Any(n=>n.Id==itemFocus.GroupId&&n.InitialChildFocusId=="pob.item."+Get("detailId")),
-                "Equipment result opens the correct item and authors a narrow focus group for that actual row");
+            ExportTarget("equipment");var equipped=View();check((string)Get("section")! == "Items"&&equipped.FocusGroupEntryRequest is {} itemFocus&&itemFocus.TargetId=="pob.item."+Get("detailId")&&Nodes(equipped.Root).Any(n=>n.Id==itemFocus.TargetId&&n.IsFocusable),
+                "Equipment result opens the correct item and requests the actual row without rewriting its tree");
             await Jump("pob.buildtools");await Jump("pob.body");
             await Select(PobSearchTargetKind.Gem);
-            ExportTarget("gem");var gemView=View();check((string)Get("section")! == "Skills"&&gemView.FocusGroupEntryRequest is {} gemFocus&&Nodes(gemView.Root).Any(n=>n.Id==gemFocus.GroupId&&n.InitialChildFocusId!.StartsWith("pob.gem.",StringComparison.Ordinal)),
+            ExportTarget("gem");var gemView=View();check((string)Get("section")! == "Skills"&&gemView.FocusGroupEntryRequest is {} gemFocus&&gemFocus.TargetId is {} gemTarget&&gemTarget.StartsWith("pob.gem.",StringComparison.Ordinal)&&Nodes(gemView.Root).Any(n=>n.Id==gemTarget&&n.IsFocusable),
                 "Gem result identifies its group and focuses the actual gem field");
             await Jump("pob.buildtools");await Jump("pob.body");
             var skillShortcut=Nodes(View().Root).SelectMany(n=>n.Shortcuts??[]).FirstOrDefault(s=>s.Button==ControllerButton.LeftStick&&s.ActionId.StartsWith("quick-controls.",StringComparison.Ordinal));
             if(skillShortcut is not null)await Jump(skillShortcut.ActionId["quick-controls.".Length..]);
             await Select(PobSearchTargetKind.Configuration,e=>{var option=Result().Configuration.Options.Single(c=>c.Id==e.Target.Key);return option.Id!="customMods"&&option.Raw.GetProperty("kind").GetString()!="customMods"&&option.Raw.GetProperty("value").ToString().Length<=2048;});
             ExportTarget("configuration");var config=View();var focus=config.FocusGroupEntryRequest!;
-            check((string)Get("section")! == "Configuration"&&Nodes(config.Root).Any(n=>n.Id==focus.GroupId&&n.InitialChildFocusId!.StartsWith("pob.condition.",StringComparison.Ordinal)),
+            check((string)Get("section")! == "Configuration"&&focus.TargetId is {} configTarget&&configTarget.StartsWith("pob.condition.",StringComparison.Ordinal)&&Nodes(config.Root).Any(n=>n.Id==configTarget&&n.IsFocusable),
                 "Configuration result reaches its actual control without invoking it");
             await Select(PobSearchTargetKind.Calculation);
             check((string)Get("detailKind")! == "calculations"&&View().FocusGroupEntryRequest?.IndexedItem?.CollectionId=="pob.calculation.cells",

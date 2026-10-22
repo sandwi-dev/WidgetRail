@@ -408,3 +408,24 @@ An initial runner invocation lacked required arguments, and a subsequent probe
 used a PoE2 fixture for PoE1; neither reached the relevant tests. Corrected inputs
 produced the passing results above. The final rebuild includes the pending-intent
 field rename; that rename changes no request behavior.
+
+### Exact focus targets and operation admission
+
+- F2: protocol 99 adds a validated exact descendant target on focus entry. The
+  SDK exposes `WidgetFocusRequest.FocusElement`. The host consumes unavailable
+  targets without replaying them when later enabled. PoB no longer rewrites its
+  completed tree to insert focus groups; read-only configuration reading
+  viewports are authored at the field declaration.
+- SDK suite: 169/169. PoB unified search: 170/170 and 164/164. Native focus-policy
+  fixture: 27/27, including exact-versus-remembered focus, refresh, and disabled
+  target behavior. Protocol/native generated-contract parity verified.
+- Broader PoB layout fixture has an existing constrained-layout visibility failure
+  after 107 successful checks. Reconstructing the former focus wrapper against
+  the same snapshots reproduces the same failure at the same check. Evidence:
+  `pob-exact/native-result.json` and `pob-legacy-wrapper/native-result.json` under
+  `artifacts/authoring`. This is not claimed as a fully passing layout sweep or
+  fixed by the new focus API; the separate baseline layout limitation remains.
+- F10: reproduced capacity rejection leaving PoB busy. Busy presentation now
+  begins inside admitted execution, so rejected/joined work cannot orphan it.
+  The reproduction fails before and passes after the change; it also verifies
+  joined work does not execute twice and a later request succeeds.

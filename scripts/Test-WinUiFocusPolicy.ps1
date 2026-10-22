@@ -47,6 +47,20 @@ try {
     Assert-Focus 'repeated navigator snapshot does not steal focus' 'Widget.header'
     Key F2
     Assert-Focus 'widget request follows navigator request without collision' 'Widget.third'
+    Focus 'Widget.header'
+    Key X
+    Assert-Focus 'exact target overrides the remembered group child' 'Widget.first'
+    Focus 'Widget.header'
+    Key F12
+    Assert-Focus 'consumed exact target does not reassert on refresh' 'Widget.header'
+    Key F7
+    Key Y
+    Assert-Focus 'disabled exact target leaves current valid focus alone' 'Widget.header'
+    Key F7
+    Assert-Focus 'enabling a consumed exact target does not steal focus' 'Widget.header'
+    Key Y
+    Assert-Focus 'new exact request can focus the enabled target' 'Widget.third'
+
 
     Focus 'Widget.header'
     Key F7

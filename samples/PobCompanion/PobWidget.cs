@@ -84,10 +84,13 @@ public sealed partial class PobWidget : Widget
 
     private void Work(Func<CancellationToken, Task> operation, string message)
     {
-        lock (gate) { if (busy) return; busy = true; status = message; feedback=null; }
-        Invalidate();
-        Operations.RunSingleFlight("pob.work", async context =>
+        lock (gate) { if (busy) return; }
+        var admission = Operations.RunSingleFlight("pob.work", async context =>
         {
+            // Only admitted execution owns this presentation. Rejected or joined
+            // requests never run this callback and must not create a busy flag.
+            lock (gate) { busy = true; status = message; feedback = null; }
+            Invalidate();
             try { await operation(context.CancellationToken); RefreshLibrary(); }
             catch (OperationCanceledException) { lock (gate) { ShowFeedback("Cancelled", "You can continue working.", ToastTone.Info); } }
             catch (Exception error) when (error is WidgetCapabilityException or IOException or JsonException or InvalidOperationException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or HttpRequestException)
@@ -100,6 +103,11 @@ public sealed partial class PobWidget : Widget
             }
             finally { lock (gate) { busy = false;status=""; } Invalidate(); }
         }, WidgetOperationLifetime.Widget);
+        if (!admission.IsAccepted && LifecycleState != WidgetLifecycleState.Destroying)
+        {
+            lock (gate) ShowFeedback("Action not started", "The request could not start. Try again.", ToastTone.Warning);
+            Invalidate();
+        }
     }
 
     private void ShowFeedback(string title,string message,ToastTone tone)
@@ -155,14 +163,13 @@ public sealed partial class PobWidget : Widget
                 return new(loading,"pob.cancel-operation",ActiveInputScopeId:"pob.loading",
                     Surface:new(){Mode=WidgetSurfaceMode.Standard,PreferredWidth=760,PreferredHeight=440,MinimumWidth=620,MinimumHeight=360});
             }
-            unifiedRenderedFocusGroup=null;
             var children = new List<WidgetElement>();
             if (result is null && detailKind=="library")
                 children.Add(LibraryWorkspace());
             else if(ManagementView&&result is not null)
             {
                 if(pendingBefore is not null)children.Add(UI.Row("pob.preview",Text("PREVIEW · not applied","preview.label","pob-eyebrow pob-gold"),Button("Apply change","apply"),Button("Discard","cancel")).Classes("pob-preview"));
-                children.Add(WithUnifiedNavigationTarget(detailKind=="build-comparison"?BuildComparisonWorkspace():detailKind=="library"?LibraryWorkspace():detailKind=="game-export"?GameExportWorkspace():detailKind=="sets"?SetsWorkspace():BuildMenu()));
+                children.Add(detailKind=="build-comparison"?BuildComparisonWorkspace():detailKind=="library"?LibraryWorkspace():detailKind=="game-export"?GameExportWorkspace():detailKind=="sets"?SetsWorkspace():BuildMenu());
             }
             else if (result is null)
             {
@@ -184,7 +191,7 @@ public sealed partial class PobWidget : Widget
                 if(TradeSessionControls() is {} tradeSession)children.Add(tradeSession);
                 if (pendingBefore is not null && !CanReplaceTradeComparison && !(section == "Tree" && detailKind == "node"))
                     children.Add(UI.Row("pob.preview", Text("PREVIEW · not applied", "preview.label", "pob-eyebrow pob-gold"), Button("Apply change", "apply"), Button("Discard", "cancel")).Classes("pob-preview"));
-                children.Add(UI.Stack("pob.section.content",WithUnifiedNavigationTarget(Workspace())).Classes("pob-workspace")
+                children.Add(UI.Stack("pob.section.content",Workspace()).Classes("pob-workspace")
                     .TransitionContent("pob.sections",section.ToLowerInvariant(),Array.IndexOf(NavigationSections,section)));
             }
             var scope = "pob.scope." + section.ToLowerInvariant() + "." + (pendingBefore is not null ? "preview" : detailKind.Length == 0 || InlineDetail ? "main" : detailKind);

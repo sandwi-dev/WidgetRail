@@ -636,6 +636,8 @@ public sealed record FocusGroupEntryRequest
     public required string GroupId { get; init; }
     /// <summary>Optional exact lazy occurrence; otherwise enter the group's remembered/default child.</summary>
     public IndexedCollectionFocusTarget? IndexedItem { get; init; }
+    /// <summary>Optional exact declared descendant; mutually exclusive with IndexedItem.</summary>
+    public string? TargetId { get; init; }
 }
 
 /// <summary>One scroll-only request. Supply a declared TargetId or an exact lazy IndexedItem, never both.</summary>

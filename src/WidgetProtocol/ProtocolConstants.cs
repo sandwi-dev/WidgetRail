@@ -22,7 +22,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 98;
+    public const int CurrentVersion = 99;
+    public const int ExactFocusTargetVersion = 99;
     public const int ReadingSurfaceVersion = 98;
     public const int FileArtworkVersion = 97;
     public const int TextEntryPurposeVersion = 96;

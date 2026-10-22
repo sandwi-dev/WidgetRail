@@ -9,6 +9,7 @@ internal static class WidgetFocusRequestTests
         using var widget = new FocusWidget();
         await WidgetTestHost.InitializeAsync(widget);
         var explicitRequest = widget.Request();
+        ExactTargetsAreScopedAndVersioned(explicitRequest);
         widget.First.NavigateRoot("second", "first.group");
         var first = widget.First.Value.FocusGroupEntryRequest!;
         widget.Second.NavigateRoot("second", "second.group");
@@ -45,6 +46,30 @@ internal static class WidgetFocusRequestTests
         Check(bounded.NavigateRoot("other", "other.group") == WidgetNavigationResult.RejectedCapacity &&
             bounded.Value == original, "Exhaustion partially changed navigation.");
         await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    private static void ExactTargetsAreScopedAndVersioned(WidgetFocusRequest intent)
+    {
+        var root = UI.Stack("root", UI.Button("Header", "header", "header"),
+            UI.Stack("group", UI.Button("First", "first", "first"),
+                UI.Button("Second", "second", "second")).RememberChildFocus("second"),
+            UI.Stack("foreign", UI.Button("Other", "other", "other")).InputScope("foreign"));
+        var snapshot = new WidgetView(root, "header")
+        { FocusGroupEntryRequest = intent.FocusElement("group", "first") }.CreateSnapshot("exact", 1);
+        Check(snapshot.ProtocolVersion == ProtocolConstants.ExactFocusTargetVersion &&
+            ViewSnapshotValidator.Validate(snapshot).Count == 0, "Exact target did not receive its versioned contract.");
+        Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot)).FocusGroupEntryRequest?.TargetId == "first",
+            "Exact target was lost in transport.");
+        Check(ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = 98 }).Count > 0,
+            "An older host admitted a feature it cannot execute.");
+        foreach (var target in new[] { "missing", "header", "other", "group" })
+            Check(ViewSnapshotValidator.Validate(snapshot with
+            { FocusGroupEntryRequest = intent.FocusElement("group", target) }).Any(error => error.Code == "invalid_exact_focus_target"),
+                "Missing, unrelated, inactive, or non-focusable target was admitted: " + target);
+        Check(ViewSnapshotValidator.Validate(snapshot with
+        { FocusGroupEntryRequest = intent.FocusElement("group", "first") with
+            { IndexedItem = new("group", "source", 1, "item", 0) } }).Any(error => error.Code == "conflicting_focus_targets"),
+            "Conflicting exact and indexed targets were admitted.");
     }
 
     private sealed class FocusWidget : Widget, IDisposable

@@ -1304,6 +1304,7 @@ method WidgetRail.WidgetSdk.WidgetFocusPreviewSource<TContext>.Publish(TContext 
 method WidgetRail.WidgetSdk.WidgetFocusRequest.EnterCollection<TQuery,TItem>(WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
 method WidgetRail.WidgetSdk.WidgetFocusRequest.EnterCollection<TQuery,TItem>(WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
 method WidgetRail.WidgetSdk.WidgetFocusRequest.EnterGroup(string groupId) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
+method WidgetRail.WidgetSdk.WidgetFocusRequest.FocusElement(string groupId, string targetId) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
 method WidgetRail.WidgetSdk.WidgetFocusRequest.Reveal(string scrollId, string targetId) -> WidgetRail.WidgetProtocol.ScrollRevealRequest
 method WidgetRail.WidgetSdk.WidgetFocusRequest.RevealCollection<TQuery,TItem>(WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget item) -> WidgetRail.WidgetProtocol.ScrollRevealRequest
 method WidgetRail.WidgetSdk.WidgetFocusTargetResult.Deconstruct(out string? Id, out WidgetRail.WidgetSdk.WidgetFocusTargetState State) -> void
