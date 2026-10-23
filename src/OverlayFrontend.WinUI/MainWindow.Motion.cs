@@ -79,7 +79,7 @@ public sealed partial class MainWindow
         if (!opening)
         {
             if (taskHandoff is { } handoff && handoff.Version == version) handoff.MotionFinished.TrySetResult();
-            else CompleteOverlayHide();
+            else CompleteOverlayHide(restoreForeground: true);
         }
     }
 
@@ -107,12 +107,17 @@ public sealed partial class MainWindow
         overlayMotion?.Snap(false);
         (RootFrame.Content as OverlayShellPage)?.SetVisible(false);
         input?.SetVisible(false);
-        CompleteOverlayHide();
+        CompleteOverlayHide(restoreForeground: true);
     }
 
-    private void CompleteOverlayHide()
+    private void CompleteOverlayHide(bool restoreForeground = false)
     {
         mouseSession?.End();
+        // A passive pin remains a visible HWND and can still own foreground.
+        // Ordinary close returns activation before Hide can consume our grant.
+        // Explicit task/browser/capture handoffs own their destination instead.
+        if (restoreForeground) ReturnForegroundBeforeHide();
+        else foregroundReturnTarget = null;
         AppWindow.Hide();
         (RootFrame.Content as OverlayShellPage)?.CompleteExitPresentation();
     }

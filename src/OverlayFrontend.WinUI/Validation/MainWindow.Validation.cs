@@ -343,6 +343,10 @@ public sealed partial class MainWindow
             page.EnableYouTubeVolumeValidation(volumeResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-youtube-fullscreen") is { } fullscreenResult)
             page.EnableYouTubeFullscreenValidation(fullscreenResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pinned-foreground") is { } pinForegroundResult &&
+            long.TryParse(Shell.FrontendArguments.Value(arguments, "--foreground-test-peer"), out var pinPeer) &&
+            long.TryParse(Shell.FrontendArguments.Value(arguments, "--foreground-other-peer"), out var otherPeer))
+            EnablePinnedForegroundValidation(page, pinForegroundResult, (nint)pinPeer, (nint)otherPeer, arguments.Contains("--foreground-live-target"));
         hiddenStartupResult = Shell.FrontendArguments.Value(arguments, "--validate-hidden-startup");
         validationPlatformActivation = arguments.Contains("--validation-platform-activation");
         if ((arguments.Contains("--shell-no-controller") || arguments.Contains("--validate-production-controller")) &&

@@ -36,6 +36,7 @@ public sealed partial class MainWindow
         if (cleanupStarted) return;
         CancelTaskHandoff();
         if (input?.PrepareShow() == false) return;
+        RememberForegroundReturn();
         chooserHidePending = false; ++chooserHideVersion;
         var entering = !overlayRequestedVisible;
         overlayRequestedVisible = true;
