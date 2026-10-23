@@ -31,7 +31,7 @@ internal sealed partial class OverlayShellPage
         var dispatched = 0;
         try
         {
-            HostTaskActivationRequested = _ => { dispatched++; return Task.FromResult(WidgetRail.WindowsWindowActivation.TaskWindowActivationResult.Requested); };
+            HostTaskActivationRequested = _ => { dispatched++; return Task.FromResult(new Input.HostTaskActivationOutcome(WidgetRail.WindowsWindowActivation.TaskWindowActivationResult.Requested)); };
             Receive(new() { Connected = 1, State = new() { Buttons = 0x1000 }, PressedButtons = 0x1000 });
             Receive(new() { Connected = 1, ReleasedButtons = 0x1000 });
             if (dispatched != 1) throw new InvalidOperationException("The first A press after reentry did not dispatch exactly once.");

@@ -347,6 +347,10 @@ public sealed partial class MainWindow
             long.TryParse(Shell.FrontendArguments.Value(arguments, "--foreground-test-peer"), out var pinPeer) &&
             long.TryParse(Shell.FrontendArguments.Value(arguments, "--foreground-other-peer"), out var otherPeer))
             EnablePinnedForegroundValidation(page, pinForegroundResult, (nint)pinPeer, (nint)otherPeer, arguments.Contains("--foreground-live-target"));
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-task-fallback") is { } fallbackResult &&
+            Shell.FrontendArguments.Value(arguments, "--activation-task-peer") is { } fallbackPeer &&
+            Shell.FrontendArguments.Value(arguments, "--fallback-other-peer") is { } fallbackOther)
+            EnableTaskFallbackValidation(page, fallbackResult, fallbackPeer, fallbackOther, Shell.FrontendArguments.Value(arguments, "--task-fallback-case"));
         hiddenStartupResult = Shell.FrontendArguments.Value(arguments, "--validate-hidden-startup");
         validationPlatformActivation = arguments.Contains("--validation-platform-activation");
         if ((arguments.Contains("--shell-no-controller") || arguments.Contains("--validate-production-controller")) &&

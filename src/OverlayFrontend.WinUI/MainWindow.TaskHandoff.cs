@@ -1,6 +1,7 @@
 using WidgetRail.OverlayFrontend.WinUI.Shell;
 using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WindowsWindowActivation;
+using WidgetRail.OverlayFrontend.WinUI.Input;
 
 namespace WidgetRail.OverlayFrontend.WinUI;
 
@@ -16,15 +17,19 @@ public sealed partial class MainWindow
     }
     private TaskHandoff? taskHandoff;
 
-    private async Task<TaskWindowActivationResult> RunHostTaskHandoffAsync(OverlayShellPage page, HostTaskActivationRequest request)
+    private Func<OverlayShellPage, HostTaskActivationRequest, CancellationToken, Task<WidgetTaskActivationResult>> hostTaskActivator =
+        static (page, request, token) => page.CompleteHostTaskActivationAsync(request, token);
+
+    private async Task<HostTaskActivationOutcome> RunHostTaskHandoffAsync(OverlayShellPage page, HostTaskActivationRequest request)
     {
-        if (cleanupStarted || taskHandoff is not null) return TaskWindowActivationResult.Rejected;
+        if (cleanupStarted || taskHandoff is not null) return new(TaskWindowActivationResult.Rejected);
         using var handoff = new TaskHandoff();
         taskHandoff = handoff;
         handoff.Cancellation.CancelAfter(TimeSpan.FromMilliseconds(Math.Clamp(request.InitiatedAt + 2000 - Environment.TickCount64, 1, 2000)));
         void Trace(string message)
         { input?.TraceInput("Host task handoff " + message); page.WindowActivationDiagnostic?.Invoke("Host task handoff " + message); }
         var native = new WindowsTaskWindowActivation(Trace);
+        uint? inputAtHide = null;
         try
         {
             // Preserve the established permission refresh -> hide -> broker
@@ -34,11 +39,13 @@ public sealed partial class MainWindow
                 () =>
                 {
                     handoff.Committed = true;
+                    var observation = WindowsTaskWindowActivation.Observe(0);
+                    inputAtHide = observation.LastInputAvailable ? observation.LastInputTick : null;
                     input?.SetVisible(false);
                     CompleteOverlayHide();
                 }, async () =>
                 {
-                    var completed = await page.CompleteHostTaskActivationAsync(request, handoff.Cancellation.Token);
+                    var completed = await hostTaskActivator(page, request, handoff.Cancellation.Token);
                     Trace($"brokerPid={completed.ProcessId} code={completed.Code} {completed.NativeTrace}");
                     return completed.Result switch { "Requested" => TaskWindowActivationResult.Requested,
                         "Denied" => TaskWindowActivationResult.Denied, _ => TaskWindowActivationResult.Rejected };
@@ -52,20 +59,19 @@ public sealed partial class MainWindow
                     page.RefreshHostTaskActivationPermission();
                     return true;
                 });
-            if (result == TaskWindowActivationResult.Requested)
+            var outcome = await TaskSwitchConfirmation.ConfirmAsync(result, inputAtHide, () =>
             {
-                // A successful API return is not proof that the target owns foreground.
-                var until = Environment.TickCount64 + 250;
-                while (native.IsCurrent(request.Target) && Environment.TickCount64 < until && !native.IsTargetForeground(request.Target))
-                    await Task.Delay(25, handoff.Cancellation.Token);
-                if (!native.IsTargetForeground(request.Target))
-                    result = TaskWindowActivationResult.Denied;
-            }
-            Trace("result=" + result);
-            return result;
+                var current = !cleanupStarted && handoff.Committed && ReferenceEquals(taskHandoff, handoff) &&
+                    handoff.Version == overlayVisibilityVersion && !overlayRequestedVisible && !AppWindow.IsVisible && request.IsCurrent();
+                var observation = WindowsTaskWindowActivation.Observe(0);
+                return new(current, native.IsCurrent(request.Target), native.IsTargetForeground(request.Target),
+                    observation.LastInputAvailable ? observation.LastInputTick : null);
+            }, systemTaskViewLauncher, handoff.Cancellation.Token);
+            Trace($"result={outcome.Activation} taskViewFallback={outcome.Fallback?.ToString() ?? "none"}");
+            return outcome;
         }
         catch (OperationCanceledException) when (handoff.Cancellation.IsCancellationRequested)
-        { Trace("cancelled"); return TaskWindowActivationResult.Rejected; }
+        { Trace("cancelled"); return new(TaskWindowActivationResult.Rejected); }
         finally { FinishOverlayHandoff(page, handoff); }
     }
 

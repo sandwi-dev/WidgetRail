@@ -43,7 +43,7 @@ internal sealed partial class OverlayShellPage
     private bool utilityClosing;
     private bool utilityEntered;
     private (ShellUtilityPanel Panel, double X, double Y, double Width, double Height, AppearanceSettings Appearance, object? Styles)? utilityPlacement;
-    internal Func<HostTaskActivationRequest, Task<TaskWindowActivationResult>>? HostTaskActivationRequested { get; set; }
+    internal Func<HostTaskActivationRequest, Task<HostTaskActivationOutcome>>? HostTaskActivationRequested { get; set; }
     internal void CancelPendingHostTaskActivation() => pendingHostTask = null;
     internal void CompleteControllerHandoffRelease() => shellGestures.Reset();
     internal void RefreshHostTaskActivationPermission() => owner?.RefreshForegroundPermissionForHandoff();
@@ -331,9 +331,15 @@ internal sealed partial class OverlayShellPage
         {
             var result = await HostTaskActivationRequested(new(new(handle, target.ProcessId, created, target.ClassName),
                 Environment.TickCount64, visibleSince, () => !retired && ReferenceEquals(pendingHostTask, request)));
-            if (result != TaskWindowActivationResult.Requested && ReferenceEquals(pendingHostTask, request))
+            if (result.Activation != TaskWindowActivationResult.Requested &&
+                result.Fallback is not (WindowsTaskViewResult.Requested or WindowsTaskViewResult.Cancelled) && ReferenceEquals(pendingHostTask, request))
             {
-                taskStatus = "Windows couldn't switch to that window. Refresh the list or use the taskbar.";
+                taskStatus = result.Fallback switch
+                {
+                    WindowsTaskViewResult.KeyboardBusy => "Couldn't switch windows. Release keyboard modifiers and try Windows Task View.",
+                    WindowsTaskViewResult.InputRejected => "Couldn't switch windows or open Windows Task View. Use the taskbar.",
+                    _ => "Windows couldn't switch to that window. Refresh the list or use the taskbar.",
+                };
                 if (visible)
                 {
                     if (!ReferenceEquals(panel, utilityPanel)) FocusUtility(ShellUtility.Tasks);
