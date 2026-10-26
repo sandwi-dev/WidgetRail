@@ -1,0 +1,15 @@
+{
+  "manifestVersion": 1,
+  "id": "widgetrail.prototype.discord",
+  "publisher": "widgetrail.prototype",
+  "name": "Discord Native Prototype",
+  "version": "0.0.4",
+  "pinningSupported": true,
+  "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "entrypoint": { "runtime": "full-trust-application-v1", "executable": "payload/DiscordNativePrototype.exe" },
+  "presentation": { "icon": "connection" },
+  "permissions": [],
+  "optionalPermissions": [],
+  "residencyPolicy": { "schemaVersion": 1, "mode": "keep-alive" },
+  "architectures": ["x64"]
+}
