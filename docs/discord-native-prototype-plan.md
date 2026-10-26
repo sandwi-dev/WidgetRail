@@ -115,3 +115,11 @@ prototype intentionally supports one viewing relay at a time.
 Final package 0.0.4 SHA-256: `2a618f7bde8c2c1e825710913c4b8effcac6c4a5f17d8d570580d449662fddae`.
 Vesktop 1.6.8 official portable ZIP SHA-256 verified against GitHub asset metadata:
 `8ffa8d3778c287551ee0b302b3396acd2fac45931282071048bb881b67c88286`.
+
+## WebView2 alternative (2026-10-26)
+
+The separate host-owned WebView2 feasibility prototype and its live evidence are
+tracked in [the WebView2 plan](discord-webview-prototype-plan.md). It exercises
+native source selection and generated media without Vesktop. The installed
+Vesktop prototype package above remains unchanged; the alternative is not yet a
+production widget-shell integration or catalogue package.

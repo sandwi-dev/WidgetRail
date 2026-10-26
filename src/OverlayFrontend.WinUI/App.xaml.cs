@@ -73,6 +73,9 @@ public partial class App : Application
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
+        var mediaPrototype = false;
+        TryLaunchMediaPrototype(ref mediaPrototype);
+        if (mediaPrototype) return;
         if (arguments.Contains("--trace-layout")) DebugSettings.LayoutCycleTracingLevel = LayoutCycleTracingLevel.High;
         ValidationFixturePath = Shell.FrontendArguments.Value(arguments, "--playnite-layout-fixture");
         var main = new MainWindow(arguments, launchOptions, configurationError);
@@ -82,4 +85,5 @@ public partial class App : Application
         main.StartPresentation();
         main.StartReplay();
     }
+    partial void TryLaunchMediaPrototype(ref bool handled);
 }
