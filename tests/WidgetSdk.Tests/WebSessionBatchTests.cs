@@ -21,6 +21,20 @@ internal static class WebSessionBatchTests
         WebSessionContract.DecodeMessage(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(Nested(WebSessionContract.MaximumMessageDepth))));
         try{WebSessionContract.DecodeMessage(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(Nested(WebSessionContract.MaximumMessageDepth+1))));throw new Exception("Over-depth result accepted");}catch(ArgumentException){}
         await Requests();
+        await BackendOpening();
+    }
+    private static async Task BackendOpening()
+    {
+        WebSessionOperation? opened=null;
+        var widget=WidgetTestHost.Attach(new Probe(),new WidgetTestHostServicesBuilder().WithHandler(WidgetWebSessionCapabilities.Command,async(command,token)=>
+        {
+            if(command.Operation==WebSessionOperation.OpenBackend){opened=command.Operation;return new(){Session=new(new string('b',32))};}
+            if(command.Operation==WebSessionOperation.ReadMessages)await Task.Delay(100,token);
+            return new();
+        }).Build());
+        await using(var session=await widget.Open(WebSessionPageAdapterMode.SessionBackend))
+            if(opened!=WebSessionOperation.OpenBackend)throw new Exception("Backend silently downgraded to isolated mode");
+        await WidgetTestHost.DestroyAsync(widget);
     }
     private static async Task Requests()
     {
@@ -36,6 +50,7 @@ internal static class WebSessionBatchTests
                 else
                 {
                     var id=request.GetProperty("id").GetString();var method=request.GetProperty("method").GetString();var batchId=Guid.NewGuid().ToString();
+                    if(method=="loading")await Task.Delay(Timeout.Infinite,token);
                     if(method!="wait")for(var index=method=="broken"?1:0;index<4;index++)messages.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{widgetRail=1,kind="response-batch",id,payload=new{batchId,index,total=4,context=new{source="fixture"},items=Enumerable.Range(index*25,25).Select(i=>new{id=i,text=new string('x',1000)}).ToArray()}})));
                 }
             }
@@ -49,6 +64,9 @@ internal static class WebSessionBatchTests
         using var cancel=new CancellationTokenSource(50);
         try{await session.RequestAsync<object,JsonElement>("wait",new{},cancel.Token);throw new Exception("Cancelled RPC returned success");}catch(OperationCanceledException){}
         if(cancels!=1)throw new Exception("RPC cancellation not delivered");
+        using var loadingCancel=new CancellationTokenSource(50);
+        try{await session.RequestAsync<object,JsonElement>("loading",new{},loadingCancel.Token);throw new Exception("Cancelled admission returned success");}catch(OperationCanceledException){}
+        if(cancels!=2)throw new Exception("RPC cancelled before acknowledgement did not retire host admission");
         result=await session.RequestAsync<object,JsonElement>("bulk",new{});
         if(result.GetProperty("items").GetArrayLength()!=100)throw new Exception("Failed request poisoned next batch");
         await WidgetTestHost.DestroyAsync(widget);
@@ -56,6 +74,6 @@ internal static class WebSessionBatchTests
     private sealed class Probe:Widget
     {
         public override WidgetView Render()=>new(UI.Text("Session test","test"));
-        internal ValueTask<WidgetWebSession> Open()=>HostServices.WebSessions.OpenAsync(new("test","Test",WebSessionSource.Remote("https://example.com")){PageAdapter=new(){ScriptAsset="web/actions.js",Origins=["https://example.com"]}});
+        internal ValueTask<WidgetWebSession> Open(WebSessionPageAdapterMode mode=WebSessionPageAdapterMode.IsolatedPageActions)=>HostServices.WebSessions.OpenAsync(new("test","Test",WebSessionSource.Remote("https://example.com")){PageAdapter=new(){ScriptAsset="web/actions.js",Origins=["https://example.com"],Mode=mode}});
     }
 }

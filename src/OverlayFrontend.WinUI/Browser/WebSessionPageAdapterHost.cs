@@ -6,7 +6,7 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
-/// <summary>One top-level document's isolated adapter; no page credentials or arbitrary CDP are exposed.</summary>
+/// <summary>One top-level document's package adapter; runtime authority never leaves the host.</summary>
 internal sealed partial class WebSessionPageAdapterHost : IDisposable
 {
     private readonly CoreWebView2 core;
@@ -18,6 +18,15 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
     private readonly List<(CoreWebView2DevToolsProtocolEventReceiver Receiver, Windows.Foundation.TypedEventHandler<CoreWebView2, CoreWebView2DevToolsProtocolEventReceivedEventArgs> Handler)> receivers = [];
     private readonly Dictionary<string, (long Epoch, string Url, int Limit)> responses = [];
     private readonly string binding = "widgetRailAction" + Guid.NewGuid().ToString("N");
+    private readonly Dictionary<string,int> documentContexts = new(StringComparer.Ordinal);
+    private (string Frame, long Epoch, TaskCompletionSource<int> Ready)? contextWaiter;
+    private TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private ulong? navigationId;
+    private bool installed, documentLoaded;
+    internal bool IsReady => installed && documentLoaded && context is not null && Current(epoch);
+    internal bool AllowsBackgroundRequests => definition.Mode == WebSessionPageAdapterMode.SessionBackend;
+    private string RequestEndpoint => AllowsBackgroundRequests ? binding + "Request" : "__widgetRailRequest";
+    private string CancelEndpoint => AllowsBackgroundRequests ? binding + "Cancel" : "__widgetRailCancelRequests";
     private long epoch;
     private int? context;
     private string? loader, frame;
@@ -31,7 +40,7 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
     internal void SetStyle(string style)
     {
         if(buttonStyle==style)return;buttonStyle=style;
-        if(context is not null)_=RefreshStyleAsync(epoch);
+        if(!AllowsBackgroundRequests && context is not null)_=RefreshStyleAsync(epoch);
     }
     private async Task RefreshStyleAsync(long current)
     {
@@ -47,12 +56,45 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
     {
         core.NavigationStarting += Starting;
         core.ContentLoading += Loading;
+        core.NavigationCompleted += Completed;
         core.SourceChanged += LocationChanged;
+        if (AllowsBackgroundRequests)
+        {
+            Listen("Runtime.executionContextCreated", CreatedContext);
+            Listen("Runtime.executionContextDestroyed", DestroyedContext);
+            Listen("Runtime.executionContextsCleared", _ => { documentContexts.Clear(); RetireContext(); });
+            await Call("Runtime.enable", new());
+        }
         Listen("Runtime.bindingCalled", Bound);
-        Listen("Network.responseReceived", Response);
-        Listen("Network.loadingFinished", Finished);
-        Listen("Network.loadingFailed", Failed);
-        await Call("Network.enable", new() { ["maxTotalBufferSize"]=2*1024*1024, ["maxResourceBufferSize"]=WebSessionResponseRule.MaximumResponseBytes });
+        if(!AllowsBackgroundRequests)
+        {
+            Listen("Network.responseReceived", Response);
+            Listen("Network.loadingFinished", Finished);
+            Listen("Network.loadingFailed", Failed);
+            await Call("Network.enable", new() { ["maxTotalBufferSize"]=2*1024*1024, ["maxResourceBufferSize"]=WebSessionResponseRule.MaximumResponseBytes });
+        }
+    }
+    private void CreatedContext(JsonElement value)
+    {
+        var created = value.GetProperty("context");
+        if (!created.TryGetProperty("auxData", out var data) ||
+            !data.TryGetProperty("isDefault", out var isDefault) || isDefault.ValueKind != JsonValueKind.True ||
+            !data.TryGetProperty("frameId", out var frameId) || frameId.GetString() is not { } id) return;
+        if (documentContexts.Count < 128 || documentContexts.ContainsKey(id)) documentContexts[id] = created.GetProperty("id").GetInt32();
+        if(contextWaiter is { } waiter && waiter.Frame == id && Current(waiter.Epoch))
+            waiter.Ready.TrySetResult(created.GetProperty("id").GetInt32());
+    }
+    private void DestroyedContext(JsonElement value)
+    {
+        var destroyed = value.GetProperty("executionContextId").GetInt32();
+        foreach (var key in documentContexts.Where(p => p.Value == destroyed).Select(p => p.Key).ToArray()) documentContexts.Remove(key);
+        if (context == destroyed) RetireContext();
+    }
+    private void RetireContext()
+    {
+        if(context is null)return;
+        RetireRequests();context=null;installed=false;epoch++;
+        ready.TrySetCanceled();ready=new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
     private void Listen(string name, Action<JsonElement> action)
     {
@@ -68,8 +110,19 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
     private void Starting(CoreWebView2 sender, CoreWebView2NavigationStartingEventArgs args)
     {
         if(args.Cancel)return;
+        if(navigationId is not null && navigationId!=args.NavigationId)
+        { ready.TrySetCanceled();ready=new(TaskCreationOptions.RunContinuationsAsynchronously); }
+        navigationId=args.NavigationId;installed=false;documentLoaded=false;
         RetireRequests();
+        contextWaiter?.Ready.TrySetCanceled();contextWaiter=null;documentContexts.Clear();
         epoch++;context=null;loader=frame=null;responses.Clear();reportedFailure=false;
+    }
+    private void Completed(CoreWebView2 sender, CoreWebView2NavigationCompletedEventArgs args)
+    {
+        if(disposed || args.NavigationId!=navigationId)return;
+        documentLoaded=args.IsSuccess;
+        if(!args.IsSuccess || !definition.AllowsPage(core.Source))ready.TrySetException(new InvalidOperationException("Adapter navigation is unavailable."));
+        else if(installed)ready.TrySetResult();
     }
     private void LocationChanged(CoreWebView2 sender,CoreWebView2SourceChangedEventArgs args)
     {
@@ -86,14 +139,35 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
             if(!Current(current))return;
             var root=tree.RootElement.GetProperty("frameTree").GetProperty("frame");
             frame=root.GetProperty("id").GetString();loader=root.GetProperty("loaderId").GetString();
-            using var world=JsonDocument.Parse(await Call("Page.createIsolatedWorld",new(){["frameId"]=frame,["worldName"]=binding}));
-            if(!Current(current))return;
-            context=world.RootElement.GetProperty("executionContextId").GetInt32();
+            if (AllowsBackgroundRequests)
+            {
+                // Bind only the default context belonging to the verified top
+                // frame. Child frames and previous documents cannot reply.
+                if(!documentContexts.TryGetValue(frame!,out var documentContext))
+                {
+                    var ready=new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    contextWaiter=(frame!,current,ready);
+                    try{documentContext=await ready.Task.WaitAsync(TimeSpan.FromSeconds(5));}
+                    finally{if(contextWaiter?.Ready==ready)contextWaiter=null;}
+                }
+                if(!Current(current))return;
+                context=documentContext;
+            }
+            else
+            {
+                using var world=JsonDocument.Parse(await Call("Page.createIsolatedWorld",new(){["frameId"]=frame,["worldName"]=binding}));
+                if(!Current(current))return;
+                context=world.RootElement.GetProperty("executionContextId").GetInt32();
+            }
             await Call("Runtime.addBinding",new(){["name"]=binding,["executionContextId"]=context.Value});
             if(!Current(current))return;
-            var source="(()=>{const deliver=globalThis["+JsonSerializer.Serialize(binding, BrowserJsonContext.Default.String)+"];delete globalThis["+JsonSerializer.Serialize(binding, BrowserJsonContext.Default.String)+"];"+Prelude+"\n"+RequestsPrelude+"\n"+script+"\n})()";
+            var source="(()=>{const deliver=globalThis["+JsonSerializer.Serialize(binding, BrowserJsonContext.Default.String)+"];delete globalThis["+JsonSerializer.Serialize(binding, BrowserJsonContext.Default.String)+"];"+
+                "const requestEndpoint="+JsonSerializer.Serialize(RequestEndpoint,BrowserJsonContext.Default.String)+",cancelEndpoint="+JsonSerializer.Serialize(CancelEndpoint,BrowserJsonContext.Default.String)+";"+
+                BatchPrelude+"\n"+(AllowsBackgroundRequests?BackendPrelude:Prelude)+"\n"+RequestsPrelude+"\n"+script+"\n})()";
             await Evaluate(source,current);
-            await RefreshStyleAsync(current);
+            if(!Current(current))return;
+            installed=true;if(documentLoaded)ready.TrySetResult();
+            if(!AllowsBackgroundRequests)await RefreshStyleAsync(current);
         }
         catch(Exception error)when(error is not OutOfMemoryException){if(Current(current))Report("adapter_unavailable");}
     }
@@ -108,6 +182,7 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
         // batch envelope. Match the ordinary web-session JSON depth budget.
         using var data=JsonDocument.Parse(text,new(){MaxDepth=WebSessionContract.MaximumMessageDepth});
         if(data.RootElement.TryGetProperty("widgetRail",out _)){ReceiveReply(data.RootElement);return;}
+        if(AllowsBackgroundRequests){LastAction="unsolicited-action-denied";return;}
         if(!canInvoke()){LastAction="not-interactive";return;}
         var action=data.RootElement.GetProperty("action").GetString();
         if(!WebSessionContract.IsKey(action)){Report("invalid_page_action");return;}
@@ -161,7 +236,8 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
     {
         if(!Current(expected)||context is null)return;
         using var result=JsonDocument.Parse(await Call("Runtime.evaluate",new(){["expression"]=source,["contextId"]=context.Value}));
-        if(Current(expected)&&result.RootElement.TryGetProperty("exceptionDetails",out _))Report("adapter_failed");
+        if(Current(expected)&&result.RootElement.TryGetProperty("exceptionDetails",out _))
+        {Report("adapter_failed");throw new InvalidOperationException("Page adapter evaluation failed.");}
     }
     private Task<string> Call(string method,JsonObject arguments)=>core.CallDevToolsProtocolMethodAsync(method,arguments.ToJsonString()).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
     private void Report(string code)
@@ -174,14 +250,14 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
     public void Dispose()
     {
         if(disposed)return;RetireRequests();disposed=true;epoch++;responses.Clear();
-        core.NavigationStarting-=Starting;core.ContentLoading-=Loading;
+        contextWaiter?.Ready.TrySetCanceled();contextWaiter=null;documentContexts.Clear();
+        ready.TrySetCanceled();
+        core.NavigationStarting-=Starting;core.ContentLoading-=Loading;core.NavigationCompleted-=Completed;
         core.SourceChanged-=LocationChanged;
         foreach(var (receiver,handler) in receivers)receiver.DevToolsProtocolEventReceived-=handler;
         receivers.Clear();
     }
-    private const string Prelude="""
-        let receive=()=>{};
-        let actionStyle='';
+    private const string BatchPrelude="""
         function batchPayloads(value) {
           if (!value || !Array.isArray(value.items) || value.items.length < 1 || value.items.length > 100) throw new Error('Invalid batch');
           const context=value.context??{};
@@ -198,6 +274,16 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
           const batchId=crypto.randomUUID();
           return chunks.map((items,index)=>({batchId,index,total:chunks.length,context,items}));
         }
+        """;
+    private const string BackendPrelude="""
+        const host=Object.freeze({
+          onRequest(callback){requestHandler=callback;},
+          batchResult(context,items){return{[batchResultKey]:true,context,items};}
+        });
+        """;
+    private const string Prelude="""
+        let receive=()=>{};
+        let actionStyle='';
         const baseStyle='display:block;margin:8px 0;padding:10px 14px;border:2px solid currentColor;border-radius:6px;background:Canvas;color:CanvasText;font:600 14px system-ui;cursor:pointer;';
         globalThis.__widgetRailStyle=css=>{actionStyle=css;for(const b of document.querySelectorAll('button[data-widgetrail-action]'))b.style.cssText=baseStyle+css;};
         const host=Object.freeze({

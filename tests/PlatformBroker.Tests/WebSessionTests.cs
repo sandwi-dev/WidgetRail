@@ -100,6 +100,32 @@ internal static class WebSessionTests
         await Reject(()=>owner.ExecuteAsync(new(WebSessionOperation.ReadMessages){Session=session},default).AsTask(),"session_closed");
     }
 
+    internal static async Task BackendAsync()
+    {
+        var registry=new WebSessionRegistry();
+        using var isolated=registry.CreateOwner("isolated",new("example.isolated","example.publisher","isolated"),true);
+        using var trusted=registry.CreateOwner("trusted",new("example.trusted","example.publisher","trusted"),false,allowsPageBackend:true);
+        var adapter=new WebSessionPageAdapter{ScriptAsset="web/backend.js",Origins=["https://example.com"],Mode=WebSessionPageAdapterMode.SessionBackend};
+        var definition=new WebSessionDefinition("backend","Backend",WebSessionSource.Remote("https://example.com/app")){PageAdapter=adapter};
+        Check(definition.IsWellFormed(),"Explicit exact-origin backend definition is valid.");
+        Check(JsonSerializer.Deserialize<WebSessionDefinition>(JsonSerializer.Serialize(definition))?.PageAdapter?.Mode==WebSessionPageAdapterMode.SessionBackend,"Backend mode survives the wire contract.");
+        Check(!JsonSerializer.Serialize(adapter with{Mode=WebSessionPageAdapterMode.IsolatedPageActions}).Contains("\"Mode\"",StringComparison.Ordinal),"Default mode keeps the original isolated-adapter wire shape.");
+        Check(!(definition with{Browser=definition.Browser with{Background=BrowserBackgroundMode.Automatic}}).IsWellFormed(),"Backend requires an explicit background lifetime.");
+        Check(!(definition with{Source=WebSessionSource.Remote("https://other.example")}).IsWellFormed(),"Backend must start on an authorized origin.");
+        Check(!(adapter with{Mode=(WebSessionPageAdapterMode)99}).IsWellFormed(),"Unknown execution modes are rejected.");
+        Check(!(adapter with{Responses=[new("https://example.com","/api/")]}).IsWellFormed(),"Backend does not silently accept response-observer rules.");
+        await Reject(()=>isolated.ExecuteAsync(new(WebSessionOperation.OpenBackend){Definition=definition},default).AsTask(),"permission_denied");
+        await Reject(()=>trusted.ExecuteAsync(new(WebSessionOperation.OpenAdapted){Definition=definition},default).AsTask(),"invalid_payload");
+        await Reject(()=>trusted.ExecuteAsync(new(WebSessionOperation.OpenBackend){Definition=definition with{PageAdapter=adapter with{Mode=WebSessionPageAdapterMode.IsolatedPageActions}}},default).AsTask(),"invalid_payload");
+        var open=trusted.ExecuteAsync(new(WebSessionOperation.OpenBackend){Definition=definition},default).AsTask();
+        var work=(await registry.TakeAsync(default)).Work.Single();
+        Check(work.Command.Operation==WebSessionOperation.OpenBackend,"Backend uses a distinct operation; old hosts cannot silently downgrade it.");
+        registry.Complete(new(work.RequestId));var reference=(await open).Session!;
+        await Reject(()=>isolated.ExecuteAsync(new(WebSessionOperation.PostMessage){Session=reference,MessageBase64="e30="},default).AsTask(),"session_closed");
+        trusted.Dispose();
+        await Reject(()=>trusted.ExecuteAsync(new(WebSessionOperation.ReadMessages){Session=reference},default).AsTask(),"session_closed");
+    }
+
     private static WebSessionDefinition Definition() => new("player", "Synthetic player",
         WebSessionSource.Package("web/index.html", [new() { Path = "web/index.html", ContentType = "text/html" }]));
     private static void Check(bool value, string reason) { if (!value) throw new InvalidOperationException(reason); }

@@ -69,6 +69,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     internal Action? InteractionChanged { get; set; }
 #if ENABLE_WIDGET_VALIDATION || ENABLE_TRIMMED_CONTROL_VALIDATION
     internal static Func<string, string?>? FixturePage { get; set; }
+    internal bool FixturePageAdapterReady => pageAdapter?.IsReady == true;
     internal static Func<string, string>? FixtureContentType { get; set; }
     internal Presentation.WidgetTextEntryDialog? FixtureEditor => editDialog;
     internal bool FixtureZoomIdle => !zoomPumping;
@@ -156,7 +157,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         if (acceptsInput) passivePinnedPresentation = false;
         presentationInputRequested = acceptsInput;
         visible = isVisible && !retired; input = visible && acceptsInput && !faulted && !profileChanging && AttachedPopup is null;
-        if(!visible)pageAdapter?.CancelRequests();
+        if(!visible&&pageAdapter?.AllowsBackgroundRequests!=true)pageAdapter?.CancelRequests();
         AttachedPopup?.SetPresentation(isVisible, acceptsInput, passivePinnedPresentation);
         if (!visible) CancelSiteDecisions();
         if (!input) { editorOwnedButtons.Clear(); chromeOwnedA = false; }

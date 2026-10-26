@@ -9,10 +9,11 @@ public partial class App
     {
         var discord = FrontendArguments.Value(arguments, "--discord-webview-prototype");
         var capture = FrontendArguments.Value(arguments, "--discord-capture-probe");
-        if (discord is null && capture is null) return;
+        var backend = FrontendArguments.Value(arguments, "--validate-web-session-backend");
+        if (discord is null && capture is null && backend is null) return;
         handled = true;
-        var page = discord is not null ? (FrameworkElement)new Validation.DiscordWebViewPrototypePage(discord) : new Validation.DiscordCaptureProbePage(capture!);
-        var window = new Window { Title = discord is not null ? "Discord WebView2 Prototype" : "WidgetRail Capture Probe", Content = page };
+        var page = backend is not null ? (FrameworkElement)new Validation.WebSessionBackendValidationPage(backend) : discord is not null ? new Validation.DiscordWebViewPrototypePage(discord) : new Validation.DiscordCaptureProbePage(capture!);
+        var window = new Window { Title = backend is not null ? "WidgetRail Backend Session Validation" : discord is not null ? "Discord WebView2 Prototype" : "WidgetRail Capture Probe", Content = page };
         Window = window;
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         window.AppWindow.Resize(new(discord is not null ? 1440 : 1000, 1000));

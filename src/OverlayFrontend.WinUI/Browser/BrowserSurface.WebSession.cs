@@ -134,7 +134,8 @@ internal sealed partial class BrowserSurface
                 try {WebSessionContract.DecodeMessage(encoded);}
                 catch(ArgumentException){FailHostedSession("Page adapter result exceeds its bound.");return;}
                 if(!hostedMessages.Writer.TryWrite(encoded))FailHostedSession("Page adapter message queue exceeded its bound.");
-            },()=>!retired&&!faulted&&visible&&!loading);
+            },()=>!retired&&!faulted&&!profileChanging&&!loading&&
+                (visible||adapter.Mode==WebSessionPageAdapterMode.SessionBackend));
             if(pageActionStyle is not null)pageAdapter.SetStyle(pageActionStyle);
             await pageAdapter.StartAsync();
         }

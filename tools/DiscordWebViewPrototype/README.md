@@ -50,6 +50,22 @@ node --test tools/DiscordWebViewPrototype/*.test.mjs samples/DiscordNativeProtot
 
 ## Boundaries and remaining work
 
+### Background-session contract fixture
+
+Build a validation-enabled candidate with `Build-Prototype.ps1`, then run:
+
+```powershell
+./tools/DiscordWebViewPrototype/Test-BackendSession.ps1 -CandidateDirectory <candidate-directory>
+```
+
+This uses the real host browser and offscreen session backing with synthetic
+documents. Each run gets a fresh profile and an atomic `result.json` under
+`artifacts/discord-webview/backend-runs/`. It checks startup and cancellation,
+main-world versus isolated-world behavior, origin boundaries, navigation and
+teardown. It does not open Discord or touch the signed-in prototype profile.
+
+### Media prototype boundaries
+
 - WebView2's capture event cannot accept a selected native window. This experiment
   instead supplies generated tracks backed by Windows Graphics Capture and process
   loopback audio. It blocks the browser's separate screen chooser.

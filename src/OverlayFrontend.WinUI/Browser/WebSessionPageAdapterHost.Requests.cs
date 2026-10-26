@@ -6,6 +6,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 internal sealed partial class WebSessionPageAdapterHost
 {
     private readonly Dictionary<string,long> requests=[];
+    private readonly Dictionary<string,CancellationTokenSource> admissions=[];
     internal async Task PostMessageAsync(string json)
     {
         using var message=JsonDocument.Parse(json);
@@ -14,7 +15,26 @@ internal sealed partial class WebSessionPageAdapterHost
             !value.TryGetProperty("id",out var idValue)||idValue.GetString() is not {} id||!Guid.TryParseExact(id,"N",out _)||
             !value.TryGetProperty("kind",out var kindValue))throw new InvalidOperationException("Invalid adapter request.");
         var kind=kindValue.GetString();
-        if(kind=="cancel")requests.Remove(id);
+        if(kind=="request"&&AllowsBackgroundRequests)
+        {
+            if(admissions.Count+requests.Count>=16||admissions.ContainsKey(id)||requests.ContainsKey(id))
+                throw new InvalidOperationException("Too many adapter requests.");
+            using var cancellation=new CancellationTokenSource();
+            admissions.Add(id,cancellation);
+            try
+            {
+                var admission=ready;
+                await admission.Task.WaitAsync(TimeSpan.FromSeconds(25),cancellation.Token);
+                cancellation.Token.ThrowIfCancellationRequested();
+                if(admission!=ready || !IsReady)throw new InvalidOperationException("Adapter document changed.");
+            }
+            finally { admissions.Remove(id); }
+        }
+        if(kind=="cancel")
+        {
+            if(admissions.TryGetValue(id,out var admission))admission.Cancel();
+            requests.Remove(id);
+        }
         else
         {
             if(kind!="request"||!value.TryGetProperty("method",out var method)||!WebSessionContract.IsKey(method.GetString())||
@@ -23,7 +43,7 @@ internal sealed partial class WebSessionPageAdapterHost
             if(requests.Count>=16||requests.ContainsKey(id))throw new InvalidOperationException("Too many adapter requests.");
             requests[id]=Environment.TickCount64+30000;
         }
-        try{await Evaluate("globalThis.__widgetRailRequest?.("+json+")",epoch);}
+        try{await Evaluate("globalThis["+JsonSerializer.Serialize(RequestEndpoint)+"]?.("+json+")",epoch);}
         catch{requests.Remove(id);throw;}
     }
     private void ReceiveReply(JsonElement reply)
@@ -49,7 +69,7 @@ internal sealed partial class WebSessionPageAdapterHost
     }
     private async Task CancelRequestsAsync(long current)
     {
-        try{await Evaluate("globalThis.__widgetRailCancelRequests?.()",current);}
+        try{await Evaluate("globalThis["+JsonSerializer.Serialize(CancelEndpoint)+"]?.()",current);}
         catch(Exception error)when(error is not OutOfMemoryException){ }
     }
     private void RetireRequests()
@@ -62,19 +82,22 @@ internal sealed partial class WebSessionPageAdapterHost
         const batchResultKey=Symbol('batchResult');
         const requests=new Map();
         const reply=value=>deliver(JSON.stringify(value));
-        globalThis.__widgetRailCancelRequests=()=>{for(const controller of requests.values())controller.abort();};
-        globalThis.__widgetRailRequest=message=>{
+        globalThis[cancelEndpoint]=()=>{for(const controller of requests.values())controller.abort();};
+        globalThis[requestEndpoint]=message=>{
           const {id,kind}=message;
           if(kind==='cancel'){requests.get(id)?.abort();return;}
           if(kind!=='request'||requests.has(id)||requests.size>=16)return;
           const controller=new AbortController();requests.set(id,controller);
           const timeout=setTimeout(()=>controller.abort(),29000);
           const send=value=>reply({widgetRail:1,id,...value});
-          Promise.resolve().then(()=>{
+          const cancelled=new Promise((_,reject)=>controller.signal.addEventListener('abort',()=>reject(new Error('Cancelled')),{once:true}));
+          const operation=Promise.resolve().then(()=>{
+            if(controller.signal.aborted)throw new Error('Cancelled');
             if(!requestHandler)throw new Error('No request handler');
             return requestHandler(message.method,message.payload,{signal:controller.signal,
               progress:payload=>{if(!controller.signal.aborted)send({kind:'progress',payload});}});
-          }).then(value=>{
+          });
+          Promise.race([operation,cancelled]).then(value=>{
             if(controller.signal.aborted)throw new Error('Cancelled');
             if(value?.[batchResultKey])for(const payload of batchPayloads(value))send({kind:'response-batch',payload});
             else send({kind:'response',payload:value});

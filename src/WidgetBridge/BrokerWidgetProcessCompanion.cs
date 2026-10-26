@@ -43,7 +43,7 @@ internal sealed class BrokerWidgetProcessCompanion :
         if (_isolated && string.IsNullOrWhiteSpace(context.AppContainerSid))
             throw new InvalidOperationException(
                 "An isolated widget broker requires the runtime AppContainer SID.");
-        _webSessions = webSessionWidgetId is null ? null : WebSessionRegistry.Shared.CreateOwner(webSessionWidgetId, identity, !_isolated);
+        _webSessions = webSessionWidgetId is null ? null : WebSessionRegistry.Shared.CreateOwner(webSessionWidgetId, identity, !_isolated, allowsPageBackend: !_isolated);
         var intrinsic = new List<string> { PlatformCapabilities.WidgetActivityV1, PlatformCapabilities.WidgetNotificationsV1,
             PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1 };
         if (marketplace is not null) intrinsic.Add(PlatformCapabilities.WidgetMarketplaceV1);

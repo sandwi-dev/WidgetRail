@@ -30,14 +30,14 @@ public sealed class WebSessionRegistry
         internal bool Reading;
     }
 
-    public Owner CreateOwner(string widgetId, BrokerWidgetIdentity identity, bool allowsLocalResources)
+    public Owner CreateOwner(string widgetId, BrokerWidgetIdentity identity, bool allowsLocalResources, bool allowsPageBackend = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
         identity.Validate();
         lock (gate)
         {
             if (owners.TryGetValue(widgetId, out var previous)) Retire(previous);
-            var owner = new Owner(this, widgetId, identity, allowsLocalResources);
+            var owner = new Owner(this, widgetId, identity, allowsLocalResources, allowsPageBackend);
             owners[widgetId] = owner;
             return owner;
         }
@@ -49,9 +49,10 @@ public sealed class WebSessionRegistry
         internal string WidgetId { get; }
         internal BrokerWidgetIdentity Identity { get; }
         internal bool AllowsLocalResources { get; }
+        internal bool AllowsPageBackend { get; }
         internal bool Retired;
-        internal Owner(WebSessionRegistry registry, string widgetId, BrokerWidgetIdentity identity, bool local)
-        { this.registry = registry; WidgetId = widgetId; Identity = identity; AllowsLocalResources = local; }
+        internal Owner(WebSessionRegistry registry, string widgetId, BrokerWidgetIdentity identity, bool local, bool pageBackend)
+        { this.registry = registry; WidgetId = widgetId; Identity = identity; AllowsLocalResources = local; AllowsPageBackend = pageBackend; }
         public ValueTask<WebSessionReply> ExecuteAsync(WebSessionCommand command, CancellationToken token) => registry.ExecuteAsync(this, command, token);
         public void Dispose() => registry.Retire(this);
     }
@@ -63,12 +64,15 @@ public sealed class WebSessionRegistry
         lock (gate)
         {
             if (owner.Retired) throw Failure("session_closed");
-            if (command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted)
+            if (command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted or WebSessionOperation.OpenBackend)
             {
                 if (command.Definition?.IsWellFormed() != true || command.Session is not null || command.MessageBase64 is not null || command.ResourceUrl is not null || command.Destination is not null)
                     throw Failure("invalid_payload");
-                if ((command.Operation == WebSessionOperation.OpenAdapted) != (command.Definition.PageAdapter is not null))
+                var expectedOpen = command.Definition.PageAdapter is null ? WebSessionOperation.Open :
+                    command.Definition.PageAdapter.Mode == WebSessionPageAdapterMode.SessionBackend ? WebSessionOperation.OpenBackend : WebSessionOperation.OpenAdapted;
+                if (command.Operation != expectedOpen)
                     throw Failure("invalid_payload");
+                if (command.Operation == WebSessionOperation.OpenBackend && !owner.AllowsPageBackend) throw Failure("permission_denied");
                 if (sessions.Values.Any(s => ReferenceEquals(s.Owner, owner) && s.Definition.Key == command.Definition.Key)) throw Failure("session_exists");
                 if (sessions.Count >= 8 || sessions.Values.Count(s => ReferenceEquals(s.Owner, owner)) >= 4) throw Failure("session_limit");
                 var reference = new WebSessionReference(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant());
@@ -130,7 +134,7 @@ public sealed class WebSessionRegistry
         }
         catch
         {
-            if (command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted) lock (gate) CloseLocked(session, "session_failed");
+            if (command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted or WebSessionOperation.OpenBackend) lock (gate) CloseLocked(session, "session_failed");
             throw;
         }
     }

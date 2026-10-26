@@ -22,7 +22,9 @@ public sealed class WidgetWebSessionService
     {
         if (definition?.IsWellFormed() != true) throw new ArgumentException("Invalid web session definition.", nameof(definition));
         var reply = await client.InvokeAsync(WidgetWebSessionCapabilities.Command,
-            new(definition.PageAdapter is null ? WebSessionOperation.Open : WebSessionOperation.OpenAdapted) { Definition = definition }, cancellationToken).ConfigureAwait(false);
+            new(definition.PageAdapter is null ? WebSessionOperation.Open :
+                definition.PageAdapter.Mode == WebSessionPageAdapterMode.SessionBackend ? WebSessionOperation.OpenBackend : WebSessionOperation.OpenAdapted)
+                { Definition = definition }, cancellationToken).ConfigureAwait(false);
         if (reply?.Session?.IsWellFormed() != true) throw new WidgetCapabilityException("malformed_response", "Invalid web session reference.");
         return new(client, reply.Session);
     }
@@ -75,18 +77,18 @@ public sealed class WidgetWebSession : IAsyncDisposable
         pending[id] = completion;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
-        var posted = false;
         try
         {
             await PostMessageAsync(new { widgetRail = 1, kind = "request", id, method, payload, sentAtTicks = System.Diagnostics.Stopwatch.GetTimestamp(), clockFrequency = System.Diagnostics.Stopwatch.Frequency }, timeout.Token).ConfigureAwait(false);
-            posted = true;
             var value = await completion.Task.WaitAsync(timeout.Token).ConfigureAwait(false);
             return value.Deserialize<TResponse>(Json)!;
         }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {
-            if (posted && !lifetime.IsCancellationRequested)
+            if (!lifetime.IsCancellationRequested)
             {
+                // Delivery may have started even when its acknowledgement was
+                // cancelled (for example while a backend document is loading).
                 // Cooperative cancellation cannot undo effects a handler already performed.
                 using var cancelDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(1));
                 try { await PostMessageAsync(new { widgetRail = 1, kind = "cancel", id }, cancelDeadline.Token).ConfigureAwait(false); }

@@ -39,7 +39,9 @@ public sealed record WebSessionDefinition(string Key, string AccessibleName, Web
     public bool IsWellFormed() => WebSessionContract.IsKey(Key) &&
         AccessibleName is { Length: > 0 and <= 160 } && !string.IsNullOrWhiteSpace(AccessibleName) &&
         !AccessibleName.Any(char.IsControl) && Source?.IsWellFormed() == true && Browser?.IsWellFormed() == true &&
-        (PageAdapter is null || Source.Kind == WebSessionSourceKind.Remote && PageAdapter.IsWellFormed());
+        (PageAdapter is null || Source.Kind == WebSessionSourceKind.Remote && PageAdapter.IsWellFormed() &&
+            (PageAdapter.Mode != WebSessionPageAdapterMode.SessionBackend ||
+                Browser.Background == BrowserBackgroundMode.KeepAlive && PageAdapter.AllowsPage(Source.Location)));
 }
 
 /// <summary>Opaque, worker-lifetime reference. It carries no browser data or credentials.</summary>
@@ -49,7 +51,7 @@ public sealed record WebSessionReference(string Id)
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<WebSessionOperation>))]
-public enum WebSessionOperation { Open, PostMessage, ReadMessages, AuthorizeResource, Navigate, Close, OpenAdapted }
+public enum WebSessionOperation { Open, PostMessage, ReadMessages, AuthorizeResource, Navigate, Close, OpenAdapted, OpenBackend }
 
 public sealed record WebSessionCommand(WebSessionOperation Operation)
 {

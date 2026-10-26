@@ -140,3 +140,65 @@ WebSession consumers before widening the contract.
 Error reference: [Discord audio/video error guide](https://support.discord.com/hc/en-us/articles/30952914470807-Discord-Audio-and-Video-Error-Codes-Troubleshooting-Guide).
 
 Build and run instructions: [README](../tools/DiscordWebViewPrototype/README.md).
+
+## Native widget integration: background-session foundation (2026-10-26)
+
+The standalone prototype remains the working media candidate. This next stage
+extends the existing WebSession contract instead of adding a second local server
+or exposing CDP to widget code. It is not yet a completed Discord widget migration.
+
+`WebSessionPageAdapter.Mode = SessionBackend` is an explicit, full-trust-only
+execution mode. Its sealed package script runs in the exact top-level document's
+main JavaScript world and registers `host.onRequest`. Requests and bounded batches
+use the existing SDK correlation, cancellation and message transport. The host
+owns document readiness, context selection and navigation retirement. Hidden
+sessions retain their existing offscreen backing. The mode does not grant any
+website permission, capture authority, arbitrary host object, or network response
+observer. It rejects unsolicited native page actions.
+
+This mode intentionally shares the website's execution world. It is not a security
+boundary against that website or an isolation guarantee for the package script.
+The broker admits it only for full-trust workers; sandboxed workers cannot opt in.
+The distinct `OpenBackend` operation requires protocol 102 rather than silently
+falling back on older hosts. Default isolated adapters omit the new mode field on
+the wire, preserving their existing declaration shape.
+
+### Ownership findings
+
+| Location | Finding and evidence | Owner / disposition |
+|---|---|---|
+| `Browser/WebSessionPageAdapterHost.cs` | Existing isolated-page behavior intentionally cannot read Discord's JavaScript stores. Hidden host requests need a separate lifecycle policy. Source finding; new mode exercised with actual WebView2. | SDK/protocol/host; explicit backend mode, medium complexity. Electron's explicit execution-world/preload distinction is a useful precedent, not an equivalent security model. |
+| `Browser/WebSessionPageAdapterHost.Requests.cs` | Waiting for document readiness introduces cancellation-before-admission and stale-document risks. | Host owns bounded readiness admission and cancellation; no widget retry counters. |
+| `WidgetSdk/WebSessions.cs` | Cancelling a request before its post acknowledgement previously omitted its cancellation message. Source-derived; deterministic delayed-acknowledgement test now covers it. | SDK sends best-effort cancellation even before acknowledgement. This cannot undo already-performed external effects. |
+| `Browser/BrowserSurface.Permissions.cs` | Hidden remote pages cannot request microphone permission through the current visible-page consent flow. | Still open. Add an explicit host-owned user-consent path before migrating native Join; do not automatically grant permission. |
+| `Validation/WebViewLiveCapture.cs` | Capture still belongs to the standalone validation process and receives native source identity there. | Still open. Production integration needs permission-bound opaque source references, lifecycle ownership, and a decision on blocking native capture teardown. Do not expose raw HWNDs to the widget. |
+| `WidgetSdk/WebSessionPageActionBatchReader.cs` | Current page-result batching caps the aggregate at 100 items; Discord can enumerate 1,000 voice channels. | Still open for the real consumer. Preserve existing PoB bounds while designing a bounded backend snapshot or domain query; do not silently truncate channels or hand-build transport fragments. |
+
+### Consumer applicability
+
+| Consumer | Status |
+|---|---|
+| PoB trade (`PobWidget.Preferences.cs`) | Keeps default isolated actions and response observation. Native synthetic comparison checks its execution-world and hidden-request policy. Live trade workflow has not been retested. |
+| PoB passive tree | Packaged session; new backend mode does not apply. Shared SDK cancellation remains compatible. |
+| Spotify / YouTube Music players | Packaged sessions; no migration. Their cancellation transport can now receive cancellation while an acknowledgement is pending. |
+| Existing Vesktop prototype receiver | Packaged session; unchanged. Existing prototype remains available for comparison. |
+| First-party widgets, templates and remaining samples | No additional page-adapter consumer found in repository search. Ordinary WebBrowser consumers retain their current policy. |
+| Broker / SDK tests | Cover explicit authority/operation, owner retirement, wire compatibility, background lifetime, RPC batching and cancellation before acknowledgement. |
+| Native validation fixture | Uses real BrowserSurface and WebSessionBackgroundHost, fresh synthetic profiles, and intercepted local documents. No account, microphone, or screen-sharing consent is involved. |
+| Discord native WebView2 widget | Migration pending the permission and streaming contracts above. Do not mark the standalone media tests as proof of shell integration. |
+
+Validation for this foundation:
+
+- Broker console runner: 5/5 WebSession groups passed, including backend authority,
+  wire shape, background lifetime and distinct-operation validation.
+- SDK console runner: 1/1 WebSession group passed, including batch assembly,
+  explicit backend opening and cancellation before post acknowledgement.
+- Actual WinUI/WebView2 fixture: 14/14 checks passed. Includes cancellation before
+  readiness (no page mutation), requests while hidden, the root context with a
+  child iframe present, navigation retirement, unlisted-origin rejection,
+  disposal and isolated-adapter compatibility. Eighteen deliberately uncooperative
+  handlers were cancelled without exhausting the 16 active-request slots.
+- Native result: `artifacts/discord-webview/backend-runs/06e6acb99b0f4e35a75c6faea1f27e11/result.json`.
+- Validation-enabled Release publication and production Release build (validation
+  excluded) succeeded with zero warnings/errors. No live Discord call, microphone grant or user
+  capture selection was exercised by this fixture.

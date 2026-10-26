@@ -1,16 +1,27 @@
+using System.Text.Json.Serialization;
+
 namespace WidgetRail.WidgetProtocol;
 
-/// <summary>A sealed package script running in an isolated world on exact HTTPS origins.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<WebSessionPageAdapterMode>))]
+public enum WebSessionPageAdapterMode { IsolatedPageActions, SessionBackend }
+
+/// <summary>A sealed package adapter scoped to exact HTTPS origins.</summary>
 public sealed record WebSessionPageAdapter
 {
     public required string ScriptAsset { get; init; }
+    /// <summary>SessionBackend runs in the document world, accepts correlated host requests
+    /// in the background, and cannot publish unsolicited native actions or observe
+    /// network responses. Full-trust only.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public WebSessionPageAdapterMode Mode { get; init; } = WebSessionPageAdapterMode.IsolatedPageActions;
     public IReadOnlyList<string> Origins { get; init; } = [];
     /// <summary>Optional observation of matching responses already requested by the website.</summary>
     public IReadOnlyList<WebSessionResponseRule> Responses { get; init; } = [];
-    public bool IsWellFormed() => WebSessionContract.IsAssetPath(ScriptAsset) &&
+    public bool IsWellFormed() => Enum.IsDefined(Mode) && WebSessionContract.IsAssetPath(ScriptAsset) &&
         Origins is { Count: > 0 and <= 8 } && Origins.All(IsExactOrigin) &&
         Origins.Distinct(StringComparer.Ordinal).Count() == Origins.Count &&
-        Responses is { Count: <= 8 } && Responses.All(rule => rule?.IsWellFormed() == true && Origins.Contains(rule.Origin));
+        Responses is { Count: <= 8 } && Responses.All(rule => rule?.IsWellFormed() == true && Origins.Contains(rule.Origin)) &&
+        (Mode != WebSessionPageAdapterMode.SessionBackend || Responses.Count == 0);
     public static bool IsExactOrigin(string? value) => value is not null &&
         !value.Contains('*') && WebSessionContract.IsNetworkOrigin(value);
     public bool AllowsPage(string url) => Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
