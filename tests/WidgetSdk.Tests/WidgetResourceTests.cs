@@ -1,6 +1,6 @@
 using WidgetRail.WidgetSdk;
 
-internal static class WidgetResourceTests
+internal static partial class WidgetResourceTests
 {
     internal static async Task Run()
     {
@@ -11,6 +11,8 @@ internal static class WidgetResourceTests
         await RefreshRetainsLastGoodAndRetriesAsync();
         await FailureCanDiscardLastGoodValueAsync();
         await PublishRejectsAStaleReadAsync();
+        await AuthoritativeUpdatesPreserveAdmissionAsync();
+        await AuthoritativeUpdatesAreAtomicAsync();
         await ResetRejectsAStaleReadAsync();
         await ResetThenReloadSchedulesTheLatestReadAsync();
         await MapperFailureUsesSafeCopyAsync();

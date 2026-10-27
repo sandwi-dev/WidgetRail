@@ -20,6 +20,9 @@ if (args is ["--query-resource-probe", var queryProbePath])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Pinning requests use declared layout handles and bounded identities", PinningServiceTests.Contract),
+    ("Web session microphone consent uses the owned interactive host route", WebSessionMicrophoneTests.Run),
+    ("Web session capture service rejects foreign tickets and unconfirmed stop results", WebCaptureServiceTests.Run),
     ("Controlled disclosures own lazy content and explicit state transitions", DisclosureTests.Run),
     ("Loaded collections freeze inputs and classify explicit query publications", WidgetLoadedCollectionTests.Run),
     ("Text chunks preserve exact Unicode text within authored budgets", WidgetTextChunksTests.Run),
@@ -4104,7 +4107,7 @@ file sealed class CloseEffectRoutingWidget : Widget
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var lease = WidgetActionInvocationContext.Current?.TryBeginCloseRequest()
+        var lease = WidgetActionInvocationContext.Current?.TryBeginHostEffectRequest()
             ?? throw new InvalidOperationException("Action invocation context is missing.");
         CloseRequestStarted.TrySetResult();
         _ = ReleaseAsync(lease, cancellationToken);

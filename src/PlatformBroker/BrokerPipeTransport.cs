@@ -13,6 +13,7 @@ public enum BrokerHostEffectKind
 {
     CloseOverlayAfterAppLaunch,
     ActivateTaskWindow,
+    OpenPinnedLayout,
 }
 
 public sealed record BrokerHostEffect(BrokerHostEffectKind Kind)
@@ -20,6 +21,7 @@ public sealed record BrokerHostEffect(BrokerHostEffectKind Kind)
     public long InitiatedAtMilliseconds { get; init; }
     public string? WindowId { get; init; }
     public NativeWindowPreviewTarget? WindowTarget { get; init; }
+    public string? PinnedLayoutId { get; init; }
 }
 
 internal readonly record struct BrokerCapabilityDiagnostic(
@@ -100,7 +102,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         Func<WidgetRail.WidgetProtocol.MarketplaceCommand,CancellationToken,ValueTask<WidgetRail.WidgetProtocol.MarketplaceSnapshot>>? marketplace = null,
         Func<WidgetRail.WidgetProtocol.WidgetNotificationCommand, CancellationToken, ValueTask<WidgetRail.WidgetProtocol.WidgetNotificationReceipt>>? notifications = null,
         Func<WidgetRail.WidgetProtocol.WidgetActivity, CancellationToken, ValueTask<WidgetRail.WidgetProtocol.WidgetActivityReceipt>>? activity = null,
-        Func<WidgetRail.WidgetProtocol.WebSessionCommand, CancellationToken, ValueTask<WidgetRail.WidgetProtocol.WebSessionReply>>? webSessions = null)
+        Func<WidgetRail.WidgetProtocol.WebSessionCommand, CancellationToken, ValueTask<WidgetRail.WidgetProtocol.WebSessionReply>>? webSessions = null,
+        WebSessionRegistry.Owner? webSessionOwner = null)
     {
         BrokerPipeNames.Validate(pipeName);
         BrokerPipeNames.ValidateAppContainerSid(isolatedClientAppContainerSid);
@@ -128,7 +131,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         {
             _broker = new PlatformCapabilityBroker(
                 _identity, _declaredCapabilities, consentStore, backend,
-                _hostGrantedCapabilities, AppLibrarySavedIdIssuer.Shared, artworkSession, marketplace, notifications, activity, webSessions);
+                _hostGrantedCapabilities, AppLibrarySavedIdIssuer.Shared, artworkSession, marketplace, notifications, activity, webSessions, webSessionOwner);
         }
         catch
         {
@@ -323,6 +326,14 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             return;
         }
         long? actionLifecycleGeneration = null;
+        // Pinning is a user presentation action, never a background capability.
+        // Require the runtime's action scope and terminal-success handoff.
+        if (request.CapabilityId == PlatformCapabilities.WidgetPinningV1 &&
+            (message.ActionExecutionId is null || _actionExecutionAdmission is null || _hostEffectSink is null))
+        {
+            _ = SendErrorSafeAsync(message.CorrelationId,"action_context_required",cancellationToken);
+            return;
+        }
         if (message.ActionExecutionId is { } executionId &&
             _actionExecutionAdmission is not null)
         {
@@ -411,6 +422,9 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         BrokerResponseEnvelope response)
     {
         var request = BrokerJson.ParseRequest(requestBytes);
+        if(request.CapabilityId==PlatformCapabilities.WidgetPinningV1 && request.Operation=="pin.open")
+            return new(BrokerHostEffectKind.OpenPinnedLayout)
+            { PinnedLayoutId=BrokerJson.ParsePayload<WidgetRail.WidgetProtocol.WidgetPinRequest>(request.Payload).LayoutId };
         if (request.CapabilityId == PlatformCapabilities.TaskWindowsSwitchV1 &&
             request.Operation == PlatformCapabilities.TaskWindowsSwitch)
         {

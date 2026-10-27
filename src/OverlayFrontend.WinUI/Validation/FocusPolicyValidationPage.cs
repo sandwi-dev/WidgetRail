@@ -28,6 +28,8 @@ internal sealed partial class FocusPolicyValidationPage : Page
     private bool hideThirdParent;
     private bool groupNeighbor;
     private bool passive;
+    private bool publicationScroll, publicationRetired, publicationPartial;
+    private string publicationScope = "page";
     private readonly Button outside = new() { Content = "Host tray" };
 
     public FocusPolicyValidationPage()
@@ -79,24 +81,30 @@ internal sealed partial class FocusPolicyValidationPage : Page
         };
         Unloaded += (_, _) => focusSource.Dispose();
         Apply();
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--focus-publication-output") is { } publicationOutput)
+            Loaded += async (_, _) => await ValidatePublicationContinuityAsync(publicationOutput);
     }
 
     private void Apply()
     {
-        var row = new ViewNode { Id = "group", Kind = ViewNodeKind.Row, InitialChildFocusId = ready ? "second" : null,
+        var row = new ViewNode { Id = "group", Kind = ViewNodeKind.Row, InitialChildFocusId = ready ? (publicationRetired ? "replacement" : "second") : null,
             Children = ready ? (ViewNode[])[
                 new() { Id = "first", Kind = ViewNodeKind.Button, Text = "First", ActionId = "first", Focus = neighbors ? new FocusNeighbors(Right: "third") : null },
-                new() { Id = "second", Kind = ViewNodeKind.Button, Text = "Second", ActionId = "second" },
+                new() { Id = publicationRetired ? "replacement" : "second", Kind = ViewNodeKind.Button, Text = "Second", ActionId = "second" },
                 new() { Id = "third-parent", Kind = ViewNodeKind.Stack,
                     VisibleWhen = hideThirdParent ? ResponsiveVisibility.ExpandedOnly : ResponsiveVisibility.Always,
                     Children = (ViewNode[])[new() { Id = "third", Kind = ViewNodeKind.Button, Text = "Third", ActionId = "third",
                         IsDisabled = disableThird, VisibleWhen = hideThird ? ResponsiveVisibility.ExpandedOnly : ResponsiveVisibility.Always }] },
             ] : [] };
+        var groupContainer = publicationPartial ? new ViewNode { Id = "partial-subtree",
+            Kind = publicationScroll ? ViewNodeKind.Scroll : ViewNodeKind.Stack,
+            ScrollAxis = publicationScroll ? ScrollAxis.Vertical : null, Children = (ViewNode[])[row] } : row;
         var snapshot = new ViewSnapshot { WidgetInstanceId = "focus.instance", Sequence = ++sequence,
-            ActiveInputScopeId = "page", InitialFocusId = "header",
+            ActiveInputScopeId = publicationScope, InitialFocusId = "header",
             FocusGroupEntryRequest = request == 0 ? null : new() { RequestId = request, GroupId = "group", TargetId = exactTarget },
-            Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
-                new() { Id = "header", Kind = ViewNodeKind.Button, Text = "Header", ActionId = "header", Focus = ready && groupNeighbor ? new FocusNeighbors(Right: "group") : null }, row,
+            Root = new() { Id = "page", Kind = publicationScroll && !publicationPartial ? ViewNodeKind.Scroll : ViewNodeKind.Stack,
+                ScrollAxis = publicationScroll && !publicationPartial ? ScrollAxis.Vertical : null, InputScopeId = publicationScope, Children = (ViewNode[])[
+                new() { Id = "header", Kind = ViewNodeKind.Button, Text = "Header", ActionId = "header", Focus = ready && groupNeighbor ? new FocusNeighbors(Right: "group") : null }, groupContainer,
                 new() { Id = "other", Kind = ViewNodeKind.Stack, InputScopeId = "other", Children = (ViewNode[])[
                     new() { Id = "foreign", Kind = ViewNodeKind.Button, Text = "Inactive scope", ActionId = "foreign" },
                 ] },

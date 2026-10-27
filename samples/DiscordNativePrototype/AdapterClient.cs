@@ -18,7 +18,10 @@ internal sealed class AdapterClient : IDiscordAdapter
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     internal static string RuntimeFile => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "WidgetRail", "DiscordPrototype", "runtime.json");
-    private static readonly string Script = ReadScript();
+    internal static readonly int ExpectedBuild = ReadBuild();
+    private static readonly string Invocation = ReadResource("adapter-invocation.js");
+    private static readonly string Script = ReadResource("activity-provider.js")+"\n"+ReadResource("adapter.js")+
+        $"\ninitializeWidgetRailDiscordAdapter({ExpectedBuild});";
     private readonly HttpClient http = new(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(3) };
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly string owner = Guid.NewGuid().ToString("N");
@@ -58,20 +61,27 @@ internal sealed class AdapterClient : IDiscordAdapter
             socket.Options.Proxy = null;
             await socket.ConnectAsync(ws, token);
             var envelope = JsonSerializer.Serialize(new { method, args, owner }, Json);
-            // Install only once per page lifetime; reload naturally creates a new adapter.
-            var expression = $"globalThis.WidgetRailDiscordPrototype?.build===4 ? globalThis.WidgetRailDiscordPrototype.invoke({envelope}) : ({{ok:false,code:globalThis.WidgetRailDiscordPrototype?.build>4?'adapter_newer':'adapter_missing'}})";
-            var value = await EvaluateAsync(socket, expression, 1, token);
-            if (!value.GetProperty("ok").GetBoolean() && value.GetProperty("code").GetString() == "adapter_missing")
-            {
-                // No action ran on the missing-adapter branch. Installing and
-                // issuing it once is safe; transport failures are never replayed.
-                value = await EvaluateAsync(socket, $"(async()=>{{ {Script}\n return await globalThis.WidgetRailDiscordPrototype.invoke({envelope}); }})()", 2, token);
-            }
-            if (!value.GetProperty("ok").GetBoolean())
-                throw new InvalidOperationException(value.GetProperty("code").GetString());
-            return value.GetProperty("value").Clone();
+            return await InvokeGuardedAsync(envelope,(expression,id,operationToken)=>EvaluateAsync(socket,expression,id,operationToken),token);
         }
         finally { gate.Release(); }
+    }
+
+    internal static async Task<JsonElement> InvokeGuardedAsync(string envelope,
+        Func<string,int,CancellationToken,Task<JsonElement>> evaluate,CancellationToken token)
+    {
+        // The guard encloses the provider result: a provider error named
+        // adapter_missing must not accidentally trigger an action replay.
+        var gated = await evaluate(InvocationExpression(envelope, install:false), 1, token);
+        if (gated.GetProperty("needsInstall").GetBoolean())
+        {
+            // Recheck the version inside the second evaluation before installing:
+            // another caller may have installed a newer adapter in between.
+            gated = await evaluate(InvocationExpression(envelope, install:true), 2, token);
+        }
+        var value=gated.GetProperty("result");
+        if (!value.GetProperty("ok").GetBoolean())
+            throw new InvalidOperationException(value.GetProperty("code").GetString());
+        return value.GetProperty("value").Clone();
     }
 
     private static async Task<JsonElement> EvaluateAsync(ClientWebSocket socket, string expression, int requestId, CancellationToken token)
@@ -111,10 +121,22 @@ internal sealed class AdapterClient : IDiscordAdapter
         }
     }
 
-    private static string ReadScript()
+    private static string InvocationExpression(string envelope,bool install) =>
+        $"({Invocation})({ExpectedBuild},{envelope},{(install?"()=>{"+Script+"\n}":"null")})";
+
+    private static int ReadBuild()
     {
-        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("DiscordNativePrototype.adapter.js")!;
-        using var reader = new StreamReader(stream);
+        using var contract=JsonDocument.Parse(ReadResource("adapter-contract.json"));
+        if(!contract.RootElement.TryGetProperty("build",out var value)||!value.TryGetInt32(out var build)||build<1)
+            throw new InvalidDataException("invalid_adapter_contract");
+        return build;
+    }
+
+    private static string ReadResource(string name)
+    {
+        using var stream=Assembly.GetExecutingAssembly().GetManifestResourceStream("DiscordNativePrototype."+name)
+            ??throw new InvalidOperationException("adapter_resource_missing");
+        using var reader=new StreamReader(stream);
         return reader.ReadToEnd();
     }
 

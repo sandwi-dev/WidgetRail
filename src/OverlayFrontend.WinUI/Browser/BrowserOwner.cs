@@ -169,7 +169,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                     {
                         if (chosen.Document.HostedSession is not null) { chosen.Slot.SetMessage("This web session is unavailable. Reopen it from the widget."); continue; }
                         if (retiringEntries.Contains(group.Key)) continue;
-                        if (entries.Count + retiringEntries.Count >= 4)
+                        if (BrowserResidencyCount >= 4)
                         {
                             var oldest = entries.Where(pair => !pair.Value.Retained && !pair.Value.Surface.BackgroundFaulted && pair.Value.Slot?.CanDisplay != true &&
                                 !(popupPresentation is { IsCurrent: true } popup && ReferenceEquals(popup.Parent, pair.Value.Surface))).OrderBy(pair => pair.Value.LastUse).FirstOrDefault();
@@ -202,6 +202,9 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                             if (slots.GetValueOrDefault(chosen.Slot)?.Document != chosen.Document ||
                                 !session.IsWebBrowserSessionCurrent(chosen.Authority, chosen.Document.Id)) { dirty = true; continue; }
                         }
+                        // A hosted startup may reserve the last slot while profile/library I/O awaits.
+                        if (BrowserResidencyCount >= 4)
+                        { chosen.Slot.SetMessage("Stop another webapp session before opening this one."); continue; }
                         var surface = CreateSurface(group.Key.Widget, chosen.Document, chosen.Authority, providerHtml, library, profileName);
                         entry = new(chosen.Authority, surface); entries.Add(group.Key, entry); CreatedCount++;
                         // WinUI can move composition across XamlRoots while the
@@ -349,6 +352,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     }
     internal async Task RetireWidgetAsync(string widgetId)
     {
+        hostedStartups.RetireWidget(widgetId);
         foreach (var pair in entries.Where(pair => pair.Key.Widget == widgetId).ToArray()) _ = RetireAsync(pair.Key, pair.Value);
         await Task.WhenAll(retirements.Where(pair => pair.Value == widgetId).Select(pair => pair.Key).ToArray());
     }
@@ -356,6 +360,8 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     private Task RetireAsync((string Widget, string Document) key, Entry entry)
     {
         if (!ReferenceEquals(entries.GetValueOrDefault(key), entry) || !retiringEntries.Add(key)) return Task.CompletedTask;
+        hostedStartups.Retire(key);
+        if (entry.Surface.SupportsNativeCapture) captureRetirements[key] = entry;
         entries.Remove(key); entry.Slot?.SetSurface(null);
         var task = RetireCoreAsync(key, entry);
         foreach (var completed in retirements.Keys.Where(task => task.IsCompleted).ToArray()) retirements.Remove(completed);
@@ -391,6 +397,12 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
             var parent = entry.Surface.Parent as Panel ?? entry.Surface.PlacementHost;
             if (parent?.Children.Contains(entry.Surface) == true) parent.Children.Remove(entry.Surface);
             entry.Surface.PlacementHost = null;
+            captureRetirements.Remove(key);
+        }
+        catch (Exception error) when (error is not OutOfMemoryException && captureRetirements.ContainsKey(key))
+        {
+            Diagnostics.FrontendFailureLog.Current.Write("web-capture-retirement", null, "cleanup_unconfirmed");
+            ScheduleCaptureRetirementRetry(key, entry);
         }
         finally { retiringEntries.Remove(key); if (!retired) parking.DispatcherQueue.TryEnqueue(Refresh); }
     }
@@ -400,6 +412,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     internal void BeginShutdown()
     {
         if (retired) return; retired = true; lifetime.Cancel();
+        hostedStartups.RetireAll();
         profileWatcher?.Dispose(); profileCleanupRetry?.Stop();
         session.PresentationChanged -= Changed; session.CatalogChanged -= CatalogChanged;
     }
@@ -419,6 +432,11 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         try { foreach (var pair in entries.ToArray()) await RetireAsync(pair.Key, pair.Value); }
         finally { popupPlacement.Release(); }
         if (retirements.Count != 0) await Task.WhenAll(retirements.Keys.ToArray());
+        if (captureRetirementRetries.Count != 0) await Task.WhenAll(captureRetirementRetries.Values.ToArray());
+        // A previous capture stop may have timed out while the OS completed its
+        // exit. Retry those exact retained owners before closing their backing.
+        foreach (var pair in captureRetirements.ToArray())
+            if (retiringEntries.Add(pair.Key)) await RetireCoreAsync(pair.Key, pair.Value);
         if (hostedMessagePumps.Count != 0) await Task.WhenAll(hostedMessagePumps.Values.ToArray());
         sessionBackgroundHost?.Dispose();
         lifetime.Dispose();

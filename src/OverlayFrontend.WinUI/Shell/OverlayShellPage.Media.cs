@@ -34,6 +34,8 @@ internal sealed partial class OverlayShellPage
         notificationCenter = new(options.SettingsRoot);
         browserOwner = new(owner.Session, MediaParking, options.SettingsRoot, notificationCenter)
         { OpenExternal = OpenBrowserExternalAsync, Choose = ShowBrowserChoiceAsync, ChooseFiles = ShowBrowserFilePickerAsync,
+            RequestMicrophone = RequestWebSessionMicrophoneAsync,
+            ChooseWebCaptureSource = ChooseWebCaptureSourceAsync,
             PrepareScreenPicker = PrepareBrowserScreenPickerAsync,
             PopupPresentationInvalidated = InvalidatePopupPin,
             RequestPopupPin = RequestBrowserPopupPinAsync,

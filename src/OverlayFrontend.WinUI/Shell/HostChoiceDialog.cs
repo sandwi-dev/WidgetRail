@@ -74,15 +74,37 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     internal void SetListHeight(double height) => choices.MaxHeight = Math.Max(48, height);
 
     private CheckBox? rememberChoice;
+    private readonly Dictionary<string,CheckBox> booleanOptions=new(StringComparer.Ordinal);
+    private readonly StackPanel trailingOptions=new(){Spacing=8};
     internal bool RememberChoice => rememberChoice?.IsChecked == true;
     internal void AddRememberChoice(string label)
     {
         if (rememberChoice is not null) return;
-        rememberChoice = new CheckBox { Content = label, IsChecked = false };
-        AutomationProperties.SetAutomationId(rememberChoice, "Host.Choice.Remember");
-        AutomationProperties.SetName(rememberChoice, label);
-        Grid.SetRow(rememberChoice, 2);
-        content.Children.Add(rememberChoice);
+        rememberChoice=AddBooleanOption(label,"Host.Choice.Remember",beforeChoices:false);
+    }
+    /// <summary>Adds a native, controller-reachable option without closing the action list.</summary>
+    internal CheckBox AddBooleanOption(string label,string automationId,bool beforeChoices=false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        ArgumentException.ThrowIfNullOrWhiteSpace(automationId);
+        if(booleanOptions.TryGetValue(automationId,out var existing))return existing;
+        if(selectionIds.Contains(automationId))throw new ArgumentException("A host option identity must be unique.",nameof(automationId));
+        if(booleanOptions.Count>=4)throw new InvalidOperationException("A host choice dialog supports at most four boolean options.");
+        var option=new CheckBox{Content=label,IsChecked=false};
+        AutomationProperties.SetAutomationId(option,automationId);
+        AutomationProperties.SetName(option,label);
+        option.GotFocus+=(_,_)=>SelectionContextChanged?.Invoke();
+        option.Checked+=(_,_)=>SelectionContextChanged?.Invoke();
+        option.Unchecked+=(_,_)=>SelectionContextChanged?.Invoke();
+        booleanOptions.Add(automationId,option);
+        if(beforeChoices)details.Children.Add(option);
+        else
+        {
+            if(!content.Children.Contains(trailingOptions))
+            {Grid.SetRow(trailingOptions,2);content.Children.Add(trailingOptions);}
+            trailingOptions.Children.Add(option);
+        }
+        return option;
     }
     internal event Action<string>? DismissChoiceRequested;
     internal event Action<string>? ChoiceShown;
@@ -90,7 +112,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     private readonly ScrollViewer? messageViewport;
     private readonly RightStickScroll messageScroll = new();
     private bool choiceScrollPending;
-    internal bool SupportsScroll => messageViewport?.ScrollableHeight > 0.5 || content.Children.Contains(choices);
+    internal bool SupportsScroll => selectionPopup is null && (messageViewport?.ScrollableHeight > 0.5 || content.Children.Contains(choices));
     internal string? SelectedId { get; private set; }
     internal Input.DialogControllerAdmission ControllerAdmission { get; } = new();
 
@@ -181,7 +203,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
             QueueVisibleChoices();
         };
         choices.LayoutUpdated += ChoicesLayoutUpdated;
-        Closing += (_, _) => closing = true;
+        Closing += (_, _) => { closing = true; CloseSelection(); };
         Closed += (_, _) =>
         {
             opened = false; LayoutUpdated -= InitialFocusLayoutUpdated; choices.LayoutUpdated -= ChoicesLayoutUpdated;
@@ -438,6 +460,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     internal void MoveFocus(FocusNavigationDirection direction)
     {
         if (closing) return;
+        if (selectionPopup is { } popup) { Presentation.NativeMenuFocus.Move(popup.Items, direction, ref selectionFocus); return; }
         initialFocusRequired = false;
         RevealVisibleChoice();
         if (ListFocused()) choices.SelectedIndex = FocusedChoiceIndex();
@@ -453,6 +476,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     { ControllerAdmission.Reset(); messageScroll.Reset(); choiceScrollPending = false; }
     internal void SampleScroll(short x, short y, long timestamp)
     {
+        if (selectionPopup is not null) return;
         var delta = messageScroll.Sample(x, y, timestamp);
         if (content.Children.Contains(choices) && FindChoiceViewport() is { } viewport)
         {
@@ -503,14 +527,15 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     {
         if (closing || !ControllerAdmission.IsArmed || phase != ControllerEventPhase.Pressed) return;
         initialFocusRequired = false;
+        if (HandleSelection(button)) return;
         if (button == ControllerButton.B) { ControllerAdmission.Reset(); Hide(); }
         else if (button == ControllerButton.X && SupportsDismissChoice && FocusedChoice() is { Tag: string id })
             DismissChoiceRequested?.Invoke(id);
         else if (button == ControllerButton.A)
         {
             if (ListFocused()) { RevealVisibleChoice(); Choose(FocusedChoiceIndex()); }
-            else if (rememberChoice is not null && IsWithinFocused(rememberChoice))
-                rememberChoice.IsChecked = !RememberChoice;
+            else if (booleanOptions.Values.FirstOrDefault(IsWithinFocused) is { } option)
+                option.IsChecked = option.IsChecked!=true;
             else if (FocusManager.GetFocusedElement(XamlRoot) is Button focused)
             {
                 (FrameworkElementAutomationPeer.CreatePeerForElement(focused)?.GetPattern(PatternInterface.Invoke) as IInvokeProvider)?.Invoke();

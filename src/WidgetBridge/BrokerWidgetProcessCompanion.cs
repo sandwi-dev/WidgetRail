@@ -45,7 +45,7 @@ internal sealed class BrokerWidgetProcessCompanion :
                 "An isolated widget broker requires the runtime AppContainer SID.");
         _webSessions = webSessionWidgetId is null ? null : WebSessionRegistry.Shared.CreateOwner(webSessionWidgetId, identity, !_isolated, allowsPageBackend: !_isolated);
         var intrinsic = new List<string> { PlatformCapabilities.WidgetActivityV1, PlatformCapabilities.WidgetNotificationsV1,
-            PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1 };
+            PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1, PlatformCapabilities.WidgetPinningV1 };
         if (marketplace is not null) intrinsic.Add(PlatformCapabilities.WidgetMarketplaceV1);
         if (_webSessions is not null) intrinsic.Add(PlatformCapabilities.WebSessionsV1);
         var pipeName = $"wrail-broker-{Environment.ProcessId}-{Guid.NewGuid():N}";
@@ -65,7 +65,7 @@ internal sealed class BrokerWidgetProcessCompanion :
                 contextualHostEffectSink: _hostEffects.Register,
                 actionExecutionAdmission: _hostEffects.Admit,
                 marketplace: marketplace, notifications: notifications, activity: activity,
-                webSessions: _webSessions is null ? null : _webSessions.ExecuteAsync);
+                webSessions: _webSessions is null ? null : _webSessions.ExecuteAsync, webSessionOwner: _webSessions);
         }
         catch
         {

@@ -3,10 +3,26 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.PlatformBroker;
 
-internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identity, CaptureLibraryStore? library = null) : IDisposable
+internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identity, CaptureLibraryStore? library = null,
+    WebSessionRegistry.Owner? webSessionOwner = null) : IDisposable
 {
     internal async Task<JsonElement> ExecuteAsync(string operation, JsonElement payload, CancellationToken token)
     {
+        if(operation is "capture.web-prepare" or "capture.web-prepare-constrained")
+        {
+            var preparation=BrokerJson.ParsePayload<WebCaptureStreamRequest>(payload);
+            if((preparation.AllowedQualities is not null)!=(operation=="capture.web-prepare-constrained"))
+                throw new BrokerException("invalid_payload","Capture quality restrictions require the constrained operation.");
+            return BrokerJson.ToElement(await WebSessionRegistry.Shared.PrepareWebCaptureAsync(this,identity,
+                preparation,token,SessionOwner()).ConfigureAwait(false));
+        }
+        if(operation=="capture.web-status")
+            return BrokerJson.ToElement(WebSessionRegistry.Shared.WebCaptureStatus(this,identity,BrokerJson.ParsePayload<WebCaptureStreamTicket>(payload),SessionOwner()));
+        if(operation=="capture.web-stop")
+        {
+            await WebSessionRegistry.Shared.StopWebCaptureAsync(this,identity,BrokerJson.ParsePayload<WebCaptureStreamTicket>(payload),token,SessionOwner()).ConfigureAwait(false);
+            return BrokerCapabilityDomains.Acknowledged();
+        }
         if (operation == "capture.recording-capabilities")
         {
             return BrokerJson.ToElement(await WindowCaptureRegistry.Shared.GetRecordingCapabilitiesAsync(
@@ -79,7 +95,11 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         { throw new BrokerException("capture_library_io_failed", "Capture Library could not read or write its files. Check storage and retry."); }
     }
-    internal void Revoke(string capability) => WindowCaptureRegistry.Shared.Retire(this, capability);
+    internal void Revoke(string capability)
+    {
+        WindowCaptureRegistry.Shared.Retire(this, capability);
+        if(capability==PlatformCapabilities.WindowCaptureV1)WebSessionRegistry.Shared.RetireWebCaptures(this);
+    }
     internal JsonElement Execute(string operation, JsonElement payload, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -116,5 +136,7 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
         }
     }
     internal HostCaptureAttachment ResolveForHost(CaptureAttachment attachment) => WindowCaptureRegistry.Shared.ResolveOwned(this, attachment);
-    public void Dispose() => WindowCaptureRegistry.Shared.Retire(this);
+    private WebSessionRegistry.Owner SessionOwner()=>webSessionOwner??throw new BrokerException("platform_unavailable","This worker has no hosted web session authority.");
+    public void Dispose()
+    { WindowCaptureRegistry.Shared.Retire(this);WebSessionRegistry.Shared.RetireWebCaptures(this); }
 }

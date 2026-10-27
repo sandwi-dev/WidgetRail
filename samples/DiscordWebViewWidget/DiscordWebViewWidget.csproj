@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <AssemblyName>DiscordWebViewWidget</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/WidgetApplicationRuntime/WidgetApplicationRuntime.csproj" />
+    <Compile Include="../DiscordNativePrototype/DiscordState.cs" Link="Domain/DiscordState.cs" />
+    <Compile Include="../DiscordNativePrototype/DiscordVoiceSettings.cs" Link="Domain/DiscordVoiceSettings.cs" />
+    <Compile Include="../DiscordNativePrototype/DiscordFriendActivity.cs" Link="Domain/DiscordFriendActivity.cs" />
+    <None Include="../DiscordNativePrototype/web/receiver.html" Link="web/receiver.html" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../DiscordNativePrototype/web/receiver.js" Link="web/receiver.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../src/WidgetSdk/WebSessionRuntime.js" Link="web/web-session.js" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

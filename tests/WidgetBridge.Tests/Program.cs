@@ -129,6 +129,7 @@ if (args.Length is 4 or 5 && args[0] == "--export-styled-fixture")
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Pinning effects require successful current user actions", PinningEffectTests.Contract),
     ("Artwork file admission preserves full-access and package boundaries", ArtworkFileAdmissionTests.Run),
     ("Catalogue integrated widget review update revert retry and permission workflow", MarketplaceIntegratedWorkflow.RunAsync),
     ("Text suggestions preserve authority, cancellation and bounded admission", BridgeClientRegistryScenarios.TextSuggestions),
@@ -3385,7 +3386,7 @@ static async Task PrivateStateAuthorityIsHostSynthesized()
         "dev.example.widget", "dev.example", "default", [],
         new ConsentStore(temporary.Path), new SimulatedPlatformBrokerBackend(), context);
     Assert.Equal(0, companion.DeclaredCapabilities.Count);
-    Assert.SequenceEqual(new[] { PlatformCapabilities.WidgetActivityV1, PlatformCapabilities.WidgetNotificationsV1, PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1 }.Order(StringComparer.Ordinal),
+    Assert.SequenceEqual(new[] { PlatformCapabilities.WidgetActivityV1, PlatformCapabilities.WidgetNotificationsV1, PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1, PlatformCapabilities.WidgetPinningV1 }.Order(StringComparer.Ordinal),
         companion.HostGrantedCapabilities.Order(StringComparer.Ordinal));
     Assert.True(companion.WorkerArguments.Contains("--broker-pipe", StringComparer.Ordinal),
         "The host-granted state service did not create an authenticated broker channel.");

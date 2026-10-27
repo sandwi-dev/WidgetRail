@@ -5,6 +5,7 @@ param(
     [switch]$Audio
 )
 $ErrorActionPreference='Stop'
+if($SelfTest){throw 'Use Test-CaptureWorker.ps1 or Measure-WebCapture.ps1 for unattended capture; those runners launch and bind their own exact synthetic source.'}
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if(!$CandidateDirectory){
     $latest=Join-Path $repo 'artifacts/discord-webview/latest-candidate.txt'
@@ -25,8 +26,7 @@ if(!(Test-Path -LiteralPath (Join-Path $CandidateDirectory 'WebRtcCapturePrototy
 $arguments=@("--discord-webview-prototype=$assets")
 if($Mode -eq 'Capture'){
     $arguments=@("--discord-capture-probe=$assets")
-    if($SelfTest){$arguments+='--capture-probe-selftest';if($Audio){$arguments+='--capture-probe-audio'}}
-}elseif($SelfTest -or $Audio){throw 'Automatic capture is restricted to the synthetic fixture mode.'}
+}elseif($Audio){throw 'Automatic capture is restricted to the synthetic fixture mode.'}
 # An interactive prototype window must be visible to the user for sign-in and source choice.
 $process=Start-Process -FilePath $exe -ArgumentList $arguments -WindowStyle Normal -PassThru
 Write-Output "Started $Mode prototype, process $($process.Id)."

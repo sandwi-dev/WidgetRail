@@ -21,12 +21,14 @@ internal enum BrokerCapabilityDomain
     Notifications,
     Activity,
     WebSessions,
+    Pinning,
 }
 
 internal static class BrokerCapabilityDomains
 {
     internal static BrokerCapabilityDomain Resolve(string capabilityId)
     {
+        if (capabilityId == PlatformCapabilities.WidgetPinningV1) return BrokerCapabilityDomain.Pinning;
         if (capabilityId == PlatformCapabilities.WebSessionsV1) return BrokerCapabilityDomain.WebSessions;
         if (capabilityId == PlatformCapabilities.WidgetActivityV1) return BrokerCapabilityDomain.Activity;
         if (capabilityId == PlatformCapabilities.WidgetNotificationsV1) return BrokerCapabilityDomain.Notifications;

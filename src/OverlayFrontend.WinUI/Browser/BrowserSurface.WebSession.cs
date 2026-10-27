@@ -19,6 +19,7 @@ internal sealed partial class BrowserSurface
     private readonly Channel<string> hostedMessages = Channel.CreateBounded<string>(WebSessionContract.MaximumQueuedMessages);
     internal bool IsHostedPackage => hostedDefinition?.Source.Kind == WebSessionSourceKind.Package;
     internal bool IsHostedSession => hostedDefinition is not null;
+    internal bool SupportsNativeCapture => IsBackendSession && hostedDefinition?.NativeCapture==true;
     internal ChannelReader<string> HostedMessages => hostedMessages.Reader;
 
     internal void ConfigureHostedSession(WebSessionDefinition definition, IReadOnlyList<BridgeWebSessionResource> resources)
@@ -105,6 +106,8 @@ internal sealed partial class BrowserSurface
     private async Task ConfigureHostedCoreAsync(CoreWebView2Environment env)
     {
         if (hostedDefinition is null) return;
+        InitializeBackendMicrophone();
+        await ConfigureNativeCaptureAsync();
         core!.NavigationCompleted += (sender, args) =>
         {
             if (args.IsSuccess)
@@ -247,6 +250,7 @@ internal sealed partial class BrowserSurface
 
     private void FailHostedSession(string reason)
     {
+        RetireDocumentLeases();
         var error = new InvalidOperationException(reason);
         hostedNavigation.TrySetException(error);
         hostedMessages.Writer.TryComplete(error);

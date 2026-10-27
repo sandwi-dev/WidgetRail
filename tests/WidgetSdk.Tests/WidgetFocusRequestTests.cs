@@ -109,8 +109,12 @@ internal static class WidgetFocusRequestTests
         var request = intent.ReturnToCollection(widget.Source, "items", target);
         var snapshot = new WidgetView(UI.Stack("root", UI.CollectionList("items", widget.Source, 48, "Items")), "items")
             { FocusGroupEntryRequest = request }.CreateSnapshot("return", 1);
-        Check(snapshot.ProtocolVersion == ProtocolConstants.CollectionReturnViewportVersion &&
-            ViewSnapshotValidator.Validate(snapshot).Count == 0, "Return viewport contract is invalid or unversioned.");
+        // Like ordinary indexed entry above, the parent advertises this SDK's
+        // deferred-template support. The return feature itself still requires
+        // exactly its original minimum, independent of later SDK additions.
+        Check(snapshot.ProtocolVersion == ProtocolConstants.CurrentVersion &&
+            ProtocolVersionRequirements.Calculate(snapshot).RequiredVersion == ProtocolConstants.CollectionReturnViewportVersion &&
+            ViewSnapshotValidator.Validate(snapshot).Count == 0, "Return viewport minimum or deferred-template support is incorrect.");
         Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot)).FocusGroupEntryRequest == request,
             "Return viewport intent was lost in transport.");
         const string generation = "abababababababababababababababab";

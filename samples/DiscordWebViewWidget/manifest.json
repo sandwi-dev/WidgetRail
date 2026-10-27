@@ -1,0 +1,75 @@
+{
+  "manifestVersion": 1,
+  "id": "widgetrail.prototype.discord-webview",
+  "publisher": "widgetrail.prototype",
+  "name": "Discord WebView Prototype",
+  "version": "0.0.14",
+  "pinningSupported": true,
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "full-trust-application-v1",
+    "executable": "payload/DiscordWebViewWidget.exe"
+  },
+  "presentation": {
+    "packageIcon": {
+      "assetId": "discord.voice",
+      "colorMode": "themeTint"
+    },
+    "icon": "connection"
+  },
+  "permissions": [],
+  "optionalPermissions": [
+    "system.apps.windows.capture.v1"
+  ],
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "keep-alive"
+  },
+  "architectures": [
+    "x64"
+  ],
+  "iconAssets": {
+    "discord.refresh": {
+      "path": "assets/icons/refresh.svg"
+    },
+    "discord.pin": {
+      "path": "assets/icons/pin.svg"
+    },
+    "discord.channels": {
+      "path": "assets/icons/channels.svg"
+    },
+    "discord.share": {
+      "path": "assets/icons/share.svg"
+    },
+    "discord.microphone": {
+      "path": "assets/icons/microphone.svg"
+    },
+    "discord.person": {
+      "path": "assets/icons/person.svg"
+    },
+    "discord.muted": {
+      "path": "assets/icons/muted.svg"
+    },
+    "discord.voice": {
+      "path": "assets/icons/voice.svg"
+    },
+    "discord.screen": {
+      "path": "assets/icons/screen.svg"
+    },
+    "discord.activity": {
+      "path": "assets/icons/activity.svg"
+    },
+    "discord.home": {
+      "path": "assets/icons/home.svg"
+    },
+    "discord.account": {
+      "path": "assets/icons/account.svg"
+    },
+    "discord.leave": {
+      "path": "assets/icons/leave.svg"
+    }
+  }
+}

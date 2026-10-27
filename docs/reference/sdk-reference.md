@@ -13,6 +13,9 @@ with authored state and native accessibility/focus recovery.
 | Rich text and inline intent links | [Native rich text](widget-rich-text.md) |
 | Informational time-series graphs | [Native line graphs](line-graphs.md) |
 | Browsing and provider surfaces | [Web browser](widget-web-browser.md) |
+| Persistent hosted pages and website backends | [Hosted web sessions](../developers/hosted-web-sessions.md) |
+| Microphone consent for native call controls | [Backend microphone admission](../developers/hosted-web-sessions.md#microphone-admission-from-native-controls) |
+| Application sharing through a website backend | [Native web capture](../developers/hosted-web-sessions.md#share-an-application-through-a-backend) |
 | Native media playback | [Media player](widget-media-player.md) |
 | Capture and restricted documents | [Capture and Game Help](widget-capture-and-game-help.md) |
 | Quiet notifications, categories and destinations | [Widget notifications](widget-notifications.md) |
@@ -54,6 +57,7 @@ Hiding the overlay and destroying a widget are different events. See
 - [Local companions](community-companion-services.md): exact-port JSON and private secrets.
 - [Media and pinning](../developers/media-and-pinning.md): compact layouts and players.
 - [Pinned layout handles](pinned-layouts.md): stable layout identity and selection lifetimes.
+- [Open a pin from a widget action](pinned-layouts.md#open-a-pin-from-a-widget-action): `HostServices.Pinning.RequestOpenAsync` with host-owned replacement and placement.
 - [Widget tests](widget-tests.md): fake services, scenarios, and operation barriers.
 - [Full-access applications](application-widgets.md): the separate public application bootstrap.
 - [Live window previews](window-previews.md): view-only application content.

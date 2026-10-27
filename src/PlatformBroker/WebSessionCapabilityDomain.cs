@@ -5,9 +5,12 @@ namespace WidgetRail.PlatformBroker;
 
 internal sealed class WebSessionCapabilityDomain(Func<WebSessionCommand, CancellationToken, ValueTask<WebSessionReply>>? execute)
 {
-    internal async ValueTask<JsonElement> ExecuteAsync(JsonElement payload, CancellationToken token)
+    internal async ValueTask<JsonElement> ExecuteAsync(string operation, JsonElement payload, CancellationToken token)
     {
         if (execute is null) throw new BrokerException("platform_unavailable", "Hosted web sessions are unavailable.");
-        return BrokerJson.ToElement(await execute(BrokerJson.ParsePayload<WebSessionCommand>(payload), token).ConfigureAwait(false));
+        var command=BrokerJson.ParsePayload<WebSessionCommand>(payload);
+        if(command is null || (operation=="web-session.microphone") != (command.Operation==WebSessionOperation.RequestMicrophone))
+            throw new BrokerException("invalid_payload","Microphone consent requires its interactive operation.");
+        return BrokerJson.ToElement(await execute(command, token).ConfigureAwait(false));
     }
 }

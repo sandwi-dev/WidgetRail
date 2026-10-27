@@ -73,6 +73,18 @@ $expectedDefaultStepIds = @(
     'widget-scenario-tests',
     'widget-ticker-tests',
     'ytmusic-standalone-tests',
+    'discord-native-prototype-tests',
+    'discord-webview-widget-tests',
+    'discord-provider-adapter-tests',
+    'discord-adapter-invocation-tests',
+    'discord-activity-tests',
+    'discord-webpack-tests',
+    'discord-provider-commands-tests',
+    'discord-native-media-tests',
+    'discord-capture-fixture-tests',
+    'discord-session-backend-tests',
+    'discord-receiver-tests',
+    'discord-minified-backend-tests',
     'youtube-widget-tests',
     'widget-runtime-tests',
     'widget-presentation-session-tests',
@@ -129,6 +141,9 @@ $expectedDefaultStepIds = @(
     'widget-ui-state-tests',
     'winui-motion-tests',
     'winui-shell-tests',
+    'web-capture-policy-build',
+    'web-capture-quality-policy',
+    'web-capture-audio-policy',
     'winui-native-verification',
     'widget-bridge-tests',
     'input-probe-build',
@@ -158,6 +173,9 @@ foreach ($shard in $shards.Values) {
 }
 if ([string]::Join("`n", @($nativeDefaults | ForEach-Object id)) -cne
     [string]::Join("`n", @(
+        'web-capture-policy-build',
+        'web-capture-quality-policy',
+        'web-capture-audio-policy',
         'winui-native-verification',
         'widget-bridge-tests',
         'input-probe-build',
@@ -190,6 +208,14 @@ $probeSmoke = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lan
 if ([string]::Join("`n", @($probeSmoke | ForEach-Object id)) -cne
     [string]::Join("`n", @('input-probe-build', 'input-probe-smoke'))) {
     throw 'Probe smoke selection did not resolve its build prerequisite.'
+}
+$capturePolicies = @(Resolve-VerificationStepSelection -Steps @($manifest.steps) -Lane native `
+    -RequestedStepIds @('web-capture-audio-policy','web-capture-quality-policy') -ExplicitSelection)
+if (($capturePolicies.id -join ',') -cne 'web-capture-policy-build,web-capture-quality-policy,web-capture-audio-policy' -or
+    $capturePolicies[0].arguments -notcontains '-PolicyOnly' -or
+    $capturePolicies[1].arguments -notcontains '--policy-only' -or
+    @($capturePolicies | Where-Object { $_.timeoutSeconds -gt 180 }).Count -ne 0) {
+    throw 'Capture policies must build once and run bounded noninteractive checks without a timing benchmark.'
 }
 function Assert-SelectionRejected([scriptblock]$Action, [string]$ExpectedText) {
     $message = $null

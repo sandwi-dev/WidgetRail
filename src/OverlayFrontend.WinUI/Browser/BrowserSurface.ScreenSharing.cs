@@ -17,6 +17,9 @@ internal sealed partial class BrowserSurface
         // Screen sharing is an explicit, one-shot decision. A website must not
         // summon the Windows capture picker while its widget is hidden.
         args.Handled = true;
+        // Native-capture backends use the host's admitted source. Never fall
+        // through to an unrelated browser picker if their adapter is unavailable.
+        if (SupportsNativeCapture) { args.Cancel = true; return; }
         var origin = BrowserSiteIdentity.Origin(args.OriginalSourceFrameInfo.Source);
         if (Choose is null || !CanQueueSiteDecision(origin)) { args.Cancel = true; return; }
         var deferral = args.GetDeferral();

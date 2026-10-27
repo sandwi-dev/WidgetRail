@@ -3712,7 +3712,7 @@ file sealed class TestWidget : Widget
         else if (action.ActionId is "close-terminal" or "close-terminal-fail")
         {
             using var closeRequest = WidgetActionInvocationContext.Current
-                ?.TryBeginCloseRequest()
+                ?.TryBeginHostEffectRequest()
                 ?? throw new InvalidOperationException(
                     "Close-terminal fixture has no action execution context.");
             if (action.ActionId == "close-terminal-fail")

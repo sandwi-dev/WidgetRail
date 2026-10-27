@@ -34,11 +34,16 @@ public sealed record WebSessionSource
 public sealed record WebSessionDefinition(string Key, string AccessibleName, WebSessionSource Source)
 {
     public WebSessionPageAdapter? PageAdapter { get; init; }
+    /// <summary>Install the host's native-media adapter before document scripts.
+    /// Does not grant capture permission or select a source.</summary>
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingDefault)]
+    public bool NativeCapture { get; init; }
     public WebBrowserOptions Browser { get; init; } = new()
     { Chrome = BrowserChrome.OnDemand, Background = BrowserBackgroundMode.KeepAlive };
     public bool IsWellFormed() => WebSessionContract.IsKey(Key) &&
         AccessibleName is { Length: > 0 and <= 160 } && !string.IsNullOrWhiteSpace(AccessibleName) &&
         !AccessibleName.Any(char.IsControl) && Source?.IsWellFormed() == true && Browser?.IsWellFormed() == true &&
+        (!NativeCapture || PageAdapter?.Mode==WebSessionPageAdapterMode.SessionBackend) &&
         (PageAdapter is null || Source.Kind == WebSessionSourceKind.Remote && PageAdapter.IsWellFormed() &&
             (PageAdapter.Mode != WebSessionPageAdapterMode.SessionBackend ||
                 Browser.Background == BrowserBackgroundMode.KeepAlive && PageAdapter.AllowsPage(Source.Location)));
@@ -51,7 +56,7 @@ public sealed record WebSessionReference(string Id)
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<WebSessionOperation>))]
-public enum WebSessionOperation { Open, PostMessage, ReadMessages, AuthorizeResource, Navigate, Close, OpenAdapted, OpenBackend }
+public enum WebSessionOperation { Open, PostMessage, ReadMessages, AuthorizeResource, Navigate, Close, OpenAdapted, OpenBackend, RequestMicrophone, PrepareWebCapture, StopWebCapture, PrepareWebCaptureConstrained }
 
 public sealed record WebSessionCommand(WebSessionOperation Operation)
 {
@@ -60,16 +65,31 @@ public sealed record WebSessionCommand(WebSessionOperation Operation)
     public string? MessageBase64 { get; init; }
     public string? ResourceUrl { get; init; }
     public string? Destination { get; init; }
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)]
+    public WebCaptureStreamOptions? CaptureOptions { get; init; }
+    private IReadOnlyList<WebCaptureStreamOptions>? captureQualities;
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<WebCaptureStreamOptions>? CaptureQualities
+    {
+        get=>captureQualities;
+        init=>captureQualities=value is null?null:Array.AsReadOnly(value.ToArray());
+    }
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)]
+    public WebCaptureStreamTicket? CaptureTicket { get; init; }
 }
 
 public sealed record WebSessionReply
 {
     public WebSessionReference? Session { get; init; }
     public IReadOnlyList<string> MessagesBase64 { get; init; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WebSessionMicrophoneResult? Microphone { get; init; }
 }
 
 public static class WebSessionContract
 {
+    public const int MaximumPageActionBatchItems = 100;
+    public const int MaximumBackendBatchItems = 1000;
     // Package applications include local scripts, fonts and artwork. Keep these
     // separate from the smaller embedded-media adapter budget. A host batch
     // carries one session; base64 plus envelopes fits the existing bridge frame.

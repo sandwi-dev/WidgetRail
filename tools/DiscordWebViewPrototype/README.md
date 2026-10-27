@@ -1,10 +1,21 @@
 # Discord WebView2 feasibility prototype
 
-This is an isolated, validation-enabled host. It does not replace the installed
-Discord widget, the working Vesktop prototype, or the production overlay.
-The current UI is a native test window with an embedded Discord web client,
-native voice controls, an application/audio chooser, and a floating incoming
-stream receiver. Controller-shell integration is a later gate, not completed here.
+This directory contains capture/adapter tooling and the original standalone
+validation host. The current integrated widget is in
+`samples/DiscordWebViewWidget`, with controller controls, voice/stream pins and
+host-owned capture consent. It remains isolated from the production overlay.
+See `docs/discord-webview-prototype-plan.md` for the current candidate and evidence;
+the standalone build instructions below are for diagnostic fixtures.
+
+The current isolated candidate uses widget0.0.14 / adapter20,
+`artifacts/discord-webview/production-candidate-8`, and
+`artifacts/discord-webview/improvements-runtime-1/Launch-Candidate.ps1`.
+It adds participant audio, voice-device settings, favorite/recent channels,
+connection status and remembered Smoothness/Clarity. The exact-source advertised
+quality correction is verified against the live native receiver's1440p60 label;
+actual encoded dimensions match the smaller selected source window.
+The measured60FPS-source capture now delivers about59FPS locally, while the
+encoder still adapts1440p to720p; see `QUALITY.md` for this remaining limitation.
 
 ## Build and launch
 
@@ -29,20 +40,32 @@ patch or launch Vesktop. The earlier Vesktop prototype remains in
 
 ## Local transport fixture
 
-The build's `native/WindowCaptureFixture.exe` generates only colored graphics.
-`--audio` adds a quiet synthetic tone; `--static` disables its moving marker.
-Run that fixture, then:
+The unattended runners launch their own generated source and bind capture to its
+exact process ID and creation time. They never search for an existing window by
+title. For a short production-worker check with a quiet generated tone:
 
 ```powershell
-./tools/DiscordWebViewPrototype/Start-Prototype.ps1 -Mode Capture -SelfTest -Audio
+./tools/DiscordWebViewPrototype/Test-CaptureWorker.ps1 -CandidateDirectory <candidate-directory> -NativeDirectory <native-directory> -ApplicationAudio
 ```
 
-Automatic selection is restricted to the named repository fixture. This mode
-sends media through a local WebRTC connection; it does not contact Discord.
-Check `assets/capture-result.json` for native result, stop reason, bounded audio
-queue, submitted frames, dropped video frames, and decoded receive-side counts.
-Maximize, restore, minimize, restore and close the synthetic window to exercise
-capture lifecycle. No microphone permission is needed for the generated tone.
+The default source is the native GDI fixture. Add `-SourceKind Browser` to use a
+separate WinUI/WebView2 source rendering an animated canvas and optional WebAudio
+tone. Its fresh profile blocks network and device permission requests; only the
+generated source's autoplay is allowed. This tests a
+Chromium-rendered source, not an existing Chrome window, account, or Discord call.
+The runner records exact source identity and local WebRTC video/audio counts.
+No microphone permission is needed.
+
+For a longer browser-source run:
+
+```powershell
+./tools/DiscordWebViewPrototype/Measure-WebCapture.ps1 -CandidateDirectory <candidate-directory> -NativeDirectory <native-directory> -SourceKind Browser -ApplicationAudio -Seconds 100
+```
+
+`source/source-status.json` records actual canvas draws, page visibility and audio
+clock progress, helping distinguish source rendering pauses from capture failures.
+`Start-Prototype.ps1 -Mode Capture` remains available for manual source selection;
+its old title-based `-SelfTest` route now directs callers to the owned-source runners.
 
 ```powershell
 node --test tools/DiscordWebViewPrototype/*.test.mjs samples/DiscordNativePrototype/adapter.test.mjs

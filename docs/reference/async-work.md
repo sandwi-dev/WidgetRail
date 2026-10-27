@@ -14,6 +14,7 @@ available value and loading/error state.
 | `Refresh()` | Request a fresh result |
 | `Retry()` | Retry after failure |
 | `Publish(value)` | Accept a value from another source, such as an event |
+| `TryPublishUpdate(update)` | Atomically merge a confirmed partial observation into the latest value |
 | `Cancel()` | Stop the current read while retaining its previous value/cache |
 | `Reset()` | Clear resource state |
 
@@ -22,6 +23,15 @@ to retain the last good value. Retaining usable content during refresh often
 gives a better experience than clearing the whole page.
 
 For pages of items, use the separate [collection resources](collections.md).
+
+Use `TryPublishUpdate` when an acknowledgment changes only part of a loaded
+result. Its callback receives the latest value and returns `(Apply, Value)`;
+return `(false, current)` when the observation belongs to an old account or
+selection. Missing values and rejected updates leave the current read intact.
+An accepted update refreshes the cache timestamp and cancels/fences older reads,
+just like `Publish`, without a separate read-modify-publish race. Keep the callback
+quick and side-effect free; do not call other lock-owning APIs inside it.
+This is for confirmed observations, not optimistic guesses or mutation retries.
 
 ## One selected query
 

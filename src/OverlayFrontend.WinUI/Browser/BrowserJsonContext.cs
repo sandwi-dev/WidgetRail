@@ -25,6 +25,7 @@ internal sealed record BrowserDragEvent(string type, double x, double y, JsonEle
 
 [JsonSourceGenerationOptions(DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(string))]
+[JsonSerializable(typeof(string[]))]
 [JsonSerializable(typeof(BrowserPointerEvent))]
 [JsonSerializable(typeof(BrowserEvaluation))]
 [JsonSerializable(typeof(BrowserAttachTarget))]

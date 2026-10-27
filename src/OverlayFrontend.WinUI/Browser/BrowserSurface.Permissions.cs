@@ -53,6 +53,7 @@ internal sealed partial class BrowserSurface
     private void PermissionRequested(CoreWebView2 sender, CoreWebView2PermissionRequestedEventArgs args)
     {
         if (TryHostedPermission(args)) return;
+        if (TryBackendMicrophonePermission(args)) return;
 #if ENABLE_WIDGET_VALIDATION
         if (FixturePermissionTrace.Count < 16)
             FixturePermissionTrace.Add($"kind={args.PermissionKind} canAsk={CanRequestSiteDecision} choose={Choose is not null} dialog={HasDialog} queued={queuedSiteDecisions} secureOrigin={BrowserSiteIdentity.Origin(args.Uri) is not null}");
@@ -79,6 +80,9 @@ internal sealed partial class BrowserSurface
                 if (!CanCompleteSiteDecision || !ReferenceEquals(sender, core)) return;
                 args.State = answer is "once" or "allow" ? CoreWebView2PermissionState.Allow : CoreWebView2PermissionState.Deny;
                 args.SavesInProfile = answer is "allow" or "deny";
+                if(IsBackendSession && args.PermissionKind==CoreWebView2PermissionKind.Microphone &&
+                    args.State==CoreWebView2PermissionState.Allow && CurrentBackendDocumentOrigin==origin)
+                    backendMicrophone.Grant(origin!,pageEpoch,answer=="allow");
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
             finally

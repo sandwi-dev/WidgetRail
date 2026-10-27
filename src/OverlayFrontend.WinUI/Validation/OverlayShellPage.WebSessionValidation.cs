@@ -19,6 +19,8 @@ internal sealed partial class OverlayShellPage
                 step = "open hidden";
                 await Action("open"); await Status("ready");
                 Check(browserOwner!.ResidentCount == 1, "Authenticated worker opens a packaged session without a view");
+                step = "startup ownership";
+                await browserOwner.VerifyHostedStartupOwnershipForValidationAsync("web-session", Check);
                 await Action("increment"); await Status("count:1");
                 Check(true, "Typed request/reply crosses worker, broker, bridge and real WebView");
                 await Action("large");await Status("large-ok");

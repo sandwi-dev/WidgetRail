@@ -25,13 +25,15 @@ function Invoke-NuGetAuditedRestore([string]$Project, [string[]]$Properties = @(
 Invoke-NuGetAuditedRestore -Project 'src/OverlayPlatformInterop/NativeDependencies.csproj'
 $platform = Join-Path $output 'platform'
 $preview = Join-Path $output 'preview'
+$webCapture = Join-Path $output 'web-capture'
 & (Join-Path $PSScriptRoot 'Build-OverlayPlatform.ps1') -Configuration $Configuration -OutputDirectory $platform -NoRestore -TestPolicy -TestForeground -TestProcessLifecycle
 & (Join-Path $PSScriptRoot 'Build-WinUiWindowPreview.ps1') -Configuration $Configuration -OutputDirectory $preview -TestPolicy
+& (Join-Path $PSScriptRoot 'Build-WebCapture.ps1') -OutputDirectory $webCapture -NoRestore
 $Project = 'src/OverlayFrontend.WinUI/OverlayFrontend.WinUI.csproj'
 # Always qualify the shipped trimmed Release frontend, even when native policy checks use Debug.
 $properties = @('-p:Configuration=Release','-p:RuntimeIdentifier=win-x64','-p:SelfContained=true',
     '-p:Platform=x64','-p:EnableWidgetValidation=false','-p:ContinuousIntegrationBuild=true',
-    "-p:OverlayPlatformInteropPath=$platform/OverlayPlatformInterop.dll", "-p:WindowPreviewNativePath=$preview/WinUiWindowPreviewNative.dll")
+    "-p:OverlayPlatformInteropPath=$platform/OverlayPlatformInterop.dll", "-p:WindowPreviewNativePath=$preview/WinUiWindowPreviewNative.dll", "-p:WebCaptureNativeDirectory=$webCapture")
 Invoke-NuGetAuditedRestore -Project $Project -Properties $properties
 $published = Join-Path $output 'published'
 Push-Location $repository
@@ -39,7 +41,7 @@ try {
     & dotnet publish $Project --no-restore @properties -o $published -m:1 -nr:false "-bl:$logs/frontend-publish.binlog"
     if ($LASTEXITCODE -ne 0) { throw 'Trimmed WinUI publication failed.' }
 } finally { Pop-Location }
-foreach ($native in @(@('OverlayPlatformInterop.dll',$platform),@('WinUiWindowPreviewNative.dll',$preview))) {
+foreach ($native in @(@('OverlayPlatformInterop.dll',$platform),@('WinUiWindowPreviewNative.dll',$preview),@('WebRtcCaptureWorker.exe',$webCapture),@('CaptureWorkerHost.dll',$webCapture),@('WebRtcCapturePrototype.dll',$webCapture))) {
     if ((Get-FileHash (Join-Path $published $native[0])).Hash -cne (Get-FileHash (Join-Path $native[1] $native[0])).Hash) { throw "Stale native publication: $($native[0])" }
 }
 foreach ($required in @('OverlayFrontend.WinUI.exe','OverlayFrontend.WinUI.dll','OverlayFrontend.WinUI.pri','coreclr.dll')) {

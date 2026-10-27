@@ -1,7 +1,9 @@
-// Debug-only live media bridge. Production capture/preview exports are unchanged.
+// Native live-media implementation for the isolated web-capture worker and
+// validation harness. Existing Game Capture/preview exports are unchanged.
 #include "../../src/WinUiWindowPreviewNative/ProcessLoopbackCapture.h"
 #include "../../src/WinUiWindowPreviewNative/CaptureGeometry.h"
 #include "CapturePacer.h"
+#include "CaptureQuality.h"
 #include <d3d11.h>
 #include <d2d1_1.h>
 #include <dxgi1_2.h>
@@ -40,9 +42,11 @@ bool Valid(HWND hwnd, DWORD pid, uint64_t created, const wchar_t* name) {
     return ok && ((uint64_t(birth.dwHighDateTime)<<32)|birth.dwLowDateTime)==created;
 }
 }
-extern "C" __declspec(dllexport) int32_t __stdcall WrailLiveCaptureRun(uint64_t window, uint32_t pid, uint64_t created,
-    const wchar_t* className, uint32_t includeAudio, Continue current, Frame deliver) noexcept {
-    if(!window||!pid||!className||!current||!deliver||includeAudio>1)return E_INVALIDARG;
+extern "C" __declspec(dllexport) int32_t __stdcall WrailLiveCaptureRunV2(uint64_t window, uint32_t pid, uint64_t created,
+    const wchar_t* className, uint32_t includeAudio, uint32_t maximumWidth, uint32_t maximumHeight,
+    uint32_t framesPerSecond, Continue current, Frame deliver) noexcept {
+    const LiveCaptureQuality quality{maximumWidth,maximumHeight,framesPerSecond};
+    if(!window||!pid||!className||!current||!deliver||includeAudio>1||!ValidLiveCaptureQuality(quality))return E_INVALIDARG;
     try {
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
         struct Apartment {~Apartment(){winrt::uninit_apartment();}} apartment;
@@ -69,9 +73,9 @@ extern "C" __declspec(dllexport) int32_t __stdcall WrailLiveCaptureRun(uint64_t 
         const auto configureOutput=[&] {
             if(size.Width<=0||size.Height<=0||size.Width>16384||size.Height>16384||int64_t(size.Width)*size.Height>33554432)
                 throw winrt::hresult_error(E_INVALIDARG);
-            // 720 vertical pixels with enough width for an ultrawide game. Output
-            // remains bounded at 2560x720; a resize can grow a previously small source.
-            const auto geometry=ConfiguredCaptureSize(size.Width,size.Height,2560,720,true);
+            // Fit the selected bounded envelope; never upscale or distort the
+            // source. A resize can grow a previously small source within it.
+            const auto geometry=ConfiguredCaptureSize(size.Width,size.Height,quality.maximumWidth,quality.maximumHeight,true);
             if(!geometry.width||!geometry.height)throw winrt::hresult_error(E_INVALIDARG);
             if(width==geometry.width&&height==geometry.height)return;
             drawing->SetTarget(nullptr);targetBitmap.Reset();output.Reset();staging.Reset();
@@ -111,7 +115,7 @@ extern "C" __declspec(dllexport) int32_t __stdcall WrailLiveCaptureRun(uint64_t 
                 }
             }
             if(Clock::now()<next){pacer.Until(audio?std::min(next,nextAudio):next);continue;}
-            const auto nextFrame=Clock::now()+std::chrono::microseconds(33333);
+            const auto nextFrame=Clock::now()+std::chrono::microseconds(LiveCaptureFrameInterval(quality));
             DWORD cloaked{};DwmGetWindowAttribute(hwnd,DWMWA_CLOAKED,&cloaked,sizeof(cloaked));
             if(IsIconic(hwnd)||!IsWindowVisible(hwnd)||cloaked){
                 // Keep the connection alive with black frames while the selected
@@ -158,4 +162,10 @@ extern "C" __declspec(dllexport) int32_t __stdcall WrailLiveCaptureRun(uint64_t 
         }
         return S_OK;
     }catch(...){return winrt::to_hresult();}
+}
+
+// Preserve the original prototype ABI for existing, separately built callers.
+extern "C" __declspec(dllexport) int32_t __stdcall WrailLiveCaptureRun(uint64_t window, uint32_t pid, uint64_t created,
+    const wchar_t* className, uint32_t includeAudio, Continue current, Frame deliver) noexcept {
+    return WrailLiveCaptureRunV2(window,pid,created,className,includeAudio,2560,720,30,current,deliver);
 }

@@ -6,13 +6,14 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.PlatformBroker;
 
 public sealed record HostWebSessionWork(string RequestId, string WidgetId, BrokerWidgetIdentity Identity,
-    WebSessionReference Session, WebSessionCommand Command);
-public sealed record HostWebSessionBatch(IReadOnlyList<HostWebSessionWork> Work, IReadOnlyList<string> LiveSessions);
-public sealed record HostWebSessionResult(string RequestId, string? ErrorCode = null);
-public sealed record HostWebSessionMessages(WebSessionReference Session, IReadOnlyList<string> MessagesBase64, string? ErrorCode = null);
+    WebSessionReference Session, WebSessionCommand Command, bool Cancelled = false, bool CaptureRevoked = false);
+public sealed record HostWebSessionBatch(IReadOnlyList<HostWebSessionWork> Work, IReadOnlyList<string> LiveSessions,
+    IReadOnlyList<string>? LiveRequests = null);
+public sealed record HostWebSessionResult(string RequestId, string? ErrorCode = null, WebSessionMicrophoneResult? Microphone = null, WebCaptureStreamStatus? Capture = null);
+public sealed record HostWebSessionMessages(WebSessionReference Session, IReadOnlyList<string> MessagesBase64, string? ErrorCode = null, WebCaptureStreamStatus? Capture = null);
 
 /// <summary>Bounded rendezvous between authenticated worker services and the frontend owner.</summary>
-public sealed class WebSessionRegistry
+public sealed partial class WebSessionRegistry
 {
     public static WebSessionRegistry Shared { get; } = new();
     private readonly object gate = new();
@@ -20,7 +21,7 @@ public sealed class WebSessionRegistry
     private readonly Dictionary<string, Owner> owners = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Pending> pending = new(StringComparer.Ordinal);
     private readonly Channel<HostWebSessionWork> work = Channel.CreateBounded<HostWebSessionWork>(64);
-    private sealed record Pending(Session Session, TaskCompletionSource Completion);
+    private sealed record Pending(Session Session, WebSessionCommand Command, TaskCompletionSource<HostWebSessionResult> Completion);
     private sealed class Session(Owner owner, WebSessionReference reference, WebSessionDefinition definition)
     {
         internal Owner Owner { get; } = owner;
@@ -28,6 +29,7 @@ public sealed class WebSessionRegistry
         internal WebSessionDefinition Definition { get; } = definition;
         internal Channel<string> Messages { get; } = Channel.CreateBounded<string>(WebSessionContract.MaximumQueuedMessages);
         internal bool Reading;
+        internal CaptureRecord? Capture;
     }
 
     public Owner CreateOwner(string widgetId, BrokerWidgetIdentity identity, bool allowsLocalResources, bool allowsPageBackend = false)
@@ -60,6 +62,10 @@ public sealed class WebSessionRegistry
     private async ValueTask<WebSessionReply> ExecuteAsync(Owner owner, WebSessionCommand command, CancellationToken token)
     {
         if (command is null || !Enum.IsDefined(command.Operation)) throw Failure("invalid_payload");
+        // Capture operations may only enter through the consented capture domain,
+        // never through the intrinsic web-session command capability.
+        if(IsCaptureOperation(command.Operation) || command.CaptureOptions is not null || command.CaptureQualities is not null || command.CaptureTicket is not null)
+            throw Failure("permission_denied");
         Session session;
         lock (gate)
         {
@@ -103,6 +109,9 @@ public sealed class WebSessionRegistry
                     if (!valid) throw Failure("invalid_payload");
                 }
                 else if (command.Destination is not null) throw Failure("invalid_payload");
+                if(command.Operation==WebSessionOperation.RequestMicrophone &&
+                    (!owner.AllowsPageBackend || session.Definition.PageAdapter?.Mode!=WebSessionPageAdapterMode.SessionBackend))
+                    throw Failure("permission_denied");
                 if (command.Operation == WebSessionOperation.ReadMessages)
                 {
                     if (session.Reading) throw Failure("reader_exists");
@@ -129,8 +138,8 @@ public sealed class WebSessionRegistry
         }
         try
         {
-            await EnqueueAsync(session, command, token).ConfigureAwait(false);
-            return new() { Session = session.Reference };
+            var result=await EnqueueAsync(session, command, token).ConfigureAwait(false);
+            return new() { Session = session.Reference, Microphone=result.Microphone };
         }
         catch
         {
@@ -139,21 +148,31 @@ public sealed class WebSessionRegistry
         }
     }
 
-    private async Task EnqueueAsync(Session session, WebSessionCommand command, CancellationToken token)
+    private async Task<HostWebSessionResult> EnqueueAsync(Session session, WebSessionCommand command, CancellationToken token)
     {
         var id = Guid.NewGuid().ToString("N");
-        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completion = new TaskCompletionSource<HostWebSessionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var item=new HostWebSessionWork(id, session.Owner.WidgetId, session.Owner.Identity, session.Reference, command);
         lock (gate)
         {
             if (!sessions.ContainsKey(session.Reference.Id)) throw Failure("session_closed");
             if (pending.Count >= 32 || pending.Values.Count(p => ReferenceEquals(p.Session, session)) >= 8) throw Failure("request_limit");
-            pending.Add(id, new(session, completion));
-            if (!work.Writer.TryWrite(new(id, session.Owner.WidgetId, session.Owner.Identity, session.Reference, command)))
+            if(command.Operation==WebSessionOperation.RequestMicrophone && pending.Values.Any(p=>ReferenceEquals(p.Session,session)&&p.Command.Operation==WebSessionOperation.RequestMicrophone))
+                throw Failure("request_limit");
+            pending.Add(id, new(session, command, completion));
+            if (!work.Writer.TryWrite(item))
             { pending.Remove(id); throw Failure("request_limit"); }
         }
-        try { await completion.Task.WaitAsync(TimeSpan.FromSeconds(30), token).ConfigureAwait(false); }
+        try { return await completion.Task.WaitAsync(TimeSpan.FromSeconds(command.Operation is WebSessionOperation.RequestMicrophone or WebSessionOperation.PrepareWebCapture or WebSessionOperation.PrepareWebCaptureConstrained?90:30), token).ConfigureAwait(false); }
         catch (TimeoutException) { throw Failure("session_timeout"); }
-        finally { lock (gate) pending.Remove(id); }
+        finally
+        {
+            lock(gate)
+                // Host-only retirement work wakes a waiting frontend immediately.
+                // LiveRequests also retires work if the bounded wake queue is full.
+                if(pending.Remove(id) && command.Operation is WebSessionOperation.RequestMicrophone or WebSessionOperation.PrepareWebCapture or WebSessionOperation.PrepareWebCaptureConstrained)
+                    work.Writer.TryWrite(item with{Cancelled=true});
+        }
     }
 
     public async Task<HostWebSessionBatch> TakeAsync(CancellationToken token)
@@ -166,8 +185,8 @@ public sealed class WebSessionRegistry
         {
             var batch = new List<HostWebSessionWork>();
             while (batch.Count < 1 && work.Reader.TryRead(out var item))
-                if (item.Command.Operation == WebSessionOperation.Close || pending.ContainsKey(item.RequestId)) batch.Add(item);
-            return new(batch, sessions.Keys.ToArray());
+                if (item.Cancelled || item.CaptureRevoked || item.Command.Operation == WebSessionOperation.Close || pending.ContainsKey(item.RequestId)) batch.Add(item);
+            return new(batch, sessions.Keys.ToArray(),pending.Keys.ToArray());
         }
     }
     public bool IsCurrent(HostWebSessionWork item)
@@ -181,8 +200,23 @@ public sealed class WebSessionRegistry
     {
         lock (gate)
         {
-            if (!pending.Remove(result.RequestId, out var request)) return;
-            if (result.ErrorCode is null) request.Completion.TrySetResult();
+            if (!pending.Remove(result.RequestId, out var request))
+            { CompleteCaptureCleanupLocked(result);return; }
+            if(result.ErrorCode is null && (request.Command.Operation==WebSessionOperation.RequestMicrophone
+                ? result.Microphone?.IsWellFormed()!=true : result.Microphone is not null) ||
+                result.ErrorCode is null && (IsCaptureOperation(request.Command.Operation)
+                    ? result.Capture?.IsWellFormed()!=true || result.Capture.Ticket!=request.Command.CaptureTicket ||
+                        !IsCaptureQualityAllowedLocked(result.Capture,request.Session.Reference) ||
+                        request.Command.Operation==WebSessionOperation.StopWebCapture && result.Capture.Phase!=WebCaptureStreamPhase.Stopped
+                    : result.Capture is not null))
+                request.Completion.TrySetException(Failure("invalid_host_result"));
+            else if (result.ErrorCode is null)
+            {
+                // Record native confirmation under the same lock as the reply;
+                // session close cannot race and discard a completed Stop.
+                if(result.Capture is { } capture)UpdateCaptureLocked(capture,request.Session.Reference);
+                request.Completion.TrySetResult(result);
+            }
             else request.Completion.TrySetException(Failure(WebSessionContract.IsKey(result.ErrorCode) ? result.ErrorCode : "session_failed"));
         }
     }
@@ -193,6 +227,17 @@ public sealed class WebSessionRegistry
             try { _ = WebSessionContract.DecodeMessage(value); } catch (ArgumentException) { throw Failure("invalid_payload"); }
         lock (gate)
         {
+            if(message.Capture is { } capture)
+            {
+                if(!capture.IsWellFormed())throw Failure("invalid_host_result");
+                if(!IsCaptureQualityAllowedLocked(capture,message.Session))
+                {
+                    if(capture.Ticket is { } ticket&&captures.TryGetValue(ticket.Id,out var record)&&record.Ticket==ticket)
+                        RevokeCaptureLocked(record);
+                    throw Failure("invalid_host_result");
+                }
+                UpdateCaptureLocked(capture,message.Session);
+            }
             if (!sessions.TryGetValue(message.Session.Id, out var session)) return;
             if (message.ErrorCode is not null) { CloseLocked(session, "session_failed"); return; }
             foreach (var value in message.MessagesBase64)
@@ -211,6 +256,7 @@ public sealed class WebSessionRegistry
     private void CloseLocked(Session session, string reason)
     {
         if (!sessions.Remove(session.Reference.Id)) return;
+        if(session.Capture is { } capture)RevokeCaptureLocked(capture);
         session.Messages.Writer.TryComplete();
         while (session.Messages.Reader.TryRead(out _)) { }
         foreach (var pair in pending.Where(p => ReferenceEquals(p.Value.Session, session)).ToArray())

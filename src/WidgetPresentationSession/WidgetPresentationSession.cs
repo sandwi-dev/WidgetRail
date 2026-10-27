@@ -631,7 +631,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     {
         RequireAllowedProperties(payload, new HashSet<string>(StringComparer.Ordinal)
         {
-            "widgetId", "runtimeGeneration", "effect", "sequence", "initiatedAtMilliseconds", "windowPreviews",
+            "widgetId", "runtimeGeneration", "effect", "sequence", "initiatedAtMilliseconds", "windowPreviews", "pinnedLayoutId",
         }, "widgetId", "runtimeGeneration", "effect", "sequence", "initiatedAtMilliseconds");
         var widgetId = ReadHostIdentifier(payload, "widgetId");
         var runtime = ReadHostIdentifier(payload, "runtimeGeneration");
@@ -642,9 +642,19 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         {
             "closeOverlayAfterAppLaunch" => WidgetHostEffectKind.CloseOverlayAfterAppLaunch,
             "activateTaskWindow" => WidgetHostEffectKind.ActivateTaskWindow,
+            "openPinnedLayout" => WidgetHostEffectKind.OpenPinnedLayout,
             _ => WidgetHostEffectKind.Unsupported,
         };
         WidgetHostWindowTarget? target = null;
+        string? pinnedLayout = null;
+        if(kind==WidgetHostEffectKind.OpenPinnedLayout)
+        {
+            pinnedLayout=ReadString(payload,"pinnedLayoutId");
+            if(!new WidgetPinRequest(pinnedLayout).IsWellFormed() || payload.TryGetProperty("windowPreviews",out _))
+                throw new BridgeProtocolException("Invalid pin effect target.");
+        }
+        else if(kind!=WidgetHostEffectKind.Unsupported && payload.TryGetProperty("pinnedLayoutId",out _))
+            throw new BridgeProtocolException("Only a pin effect can carry a pinned layout.");
         if (kind == WidgetHostEffectKind.ActivateTaskWindow)
             target = ReadHostWindowTarget(payload);
         else if (kind == WidgetHostEffectKind.CloseOverlayAfterAppLaunch && payload.TryGetProperty("windowPreviews", out _))
@@ -670,7 +680,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             RecordDiagnostic("stale_host_effect", "A stale or replayed host effect was rejected.", widgetId);
             return;
         }
-        HostEffectReceived?.Invoke(this, new(new(authority, kind, name, sequence, initiatedAt, target)));
+        HostEffectReceived?.Invoke(this, new(new(authority, kind, name, sequence, initiatedAt, target, pinnedLayout)));
     }
 
     private static string ReadHostIdentifier(JsonElement payload, string name)

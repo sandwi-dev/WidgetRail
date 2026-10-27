@@ -1,6 +1,8 @@
+using WidgetRail.OverlayFrontend.WinUI.Browser.Capture;
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.Web.WebView2.Core;
 using WidgetRail.PlatformBroker;
 using WidgetRail.WindowsAppLibraryProvider;
@@ -27,6 +29,7 @@ internal sealed partial class DiscordWebViewPrototypePage : Page, IAsyncDisposab
     private DiscordIncomingProbe? incoming;
     private string? incomingLease, incomingAccount, incomingChannel;
     private string? captureAccount, captureChannel;
+    private LiveCaptureQuality captureQuality = LiveCaptureQuality.Default;
     private JsonElement state;
     private bool disposed, reading, busy, initialized, microphoneAllowed;
     private string? failureText;
@@ -91,7 +94,7 @@ internal sealed partial class DiscordWebViewPrototypePage : Page, IAsyncDisposab
         };
         core.ScreenCaptureStarting += (_, e) => { e.Cancel = true; e.Handled = true; };
         core.DownloadStarting += (_, e) => e.Cancel = true;
-        await core.AddScriptToExecuteOnDocumentCreatedAsync(await File.ReadAllTextAsync(Path.Combine(assets, "native-media.js")));
+        await core.AddScriptToExecuteOnDocumentCreatedAsync("(()=>{"+await File.ReadAllTextAsync(Path.Combine(assets, "native-media.js"))+"\ninitializeWidgetRailNativeCapture(['https://discord.com']);})()");
         core.NavigationCompleted += async (_, e) =>
         {
             if (!e.IsSuccess || disposed) return;
@@ -99,6 +102,7 @@ internal sealed partial class DiscordWebViewPrototypePage : Page, IAsyncDisposab
             {
                 await core.ExecuteScriptAsync(await File.ReadAllTextAsync(Path.Combine(assets, "webpack.js")));
                 await core.ExecuteScriptAsync(await File.ReadAllTextAsync(Path.Combine(assets, "discord-adapter.js")));
+                await core.ExecuteScriptAsync(await File.ReadAllTextAsync(Path.Combine(assets, "discord-sender-stats.js")));
                 timer.Start(); await RefreshAsync();
             }
             catch (Exception error) { Failure("Adapter", error); }
@@ -125,7 +129,7 @@ internal sealed partial class DiscordWebViewPrototypePage : Page, IAsyncDisposab
             var result = await InvokeAsync("snapshot");
             if (!result.GetProperty("ok").GetBoolean()) throw new InvalidOperationException("Adapter unavailable.");
             state = result.GetProperty("value").Clone();
-            var media = await EvaluateAsync("WidgetRailNativeMedia.keep()");
+            var media = await EvaluateAsync("(async()=>({...WidgetRailNativeMedia.status(),outbound:await WidgetRailDiscordSenderStats.read()}))()");
             var discovery = await EvaluateAsync("WidgetRailWebWebpack.diagnostics()");
             var ready = Flag("ready");
             status.Text = !ready ? "Sign in to Discord in this separate profile." : ChannelId is null ? "Connected. Choose a voice channel." : "Voice: " + String("channelName") + (Flag("sharing") ? " · Sharing" : "");
@@ -216,15 +220,24 @@ internal sealed partial class DiscordWebViewPrototypePage : Page, IAsyncDisposab
             foreach (var w in await windows.GetWindowsAsync(CancellationToken.None))
                 if (!w.IsMinimized && w.PreviewTarget is { } t && t.ProcessId != Environment.ProcessId) list.Items.Add(new WindowChoice(w));
             var audio = new ToggleSwitch { Header = "Share application audio", IsOn = false };
+            var quality = new ComboBox { Header = "Stream quality", HorizontalAlignment = HorizontalAlignment.Stretch,
+                ItemsSource = LiveCaptureQuality.Allowed(null), SelectedItem = captureQuality };
+            AutomationProperties.SetAutomationId(list,"Discord.Share.Application");
+            AutomationProperties.SetAutomationId(audio,"Discord.Share.Audio");
+            AutomationProperties.SetAutomationId(quality,"Discord.Share.Quality");
             var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Share application", PrimaryButtonText = "Start sharing", CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Close, IsPrimaryButtonEnabled = false,
-                Content = new StackPanel { Spacing = 16, Children = { list, audio } } };
+                Content = new StackPanel { Spacing = 16, Children = { list, audio, quality,
+                    new TextBlock { Text = "Keeps the application's shape. Static content uses fewer frames; Discord may adjust delivered quality.", TextWrapping=TextWrapping.Wrap } } } };
             list.SelectionChanged += (_, _) => dialog.IsPrimaryButtonEnabled = list.SelectedItem is WindowChoice;
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary || list.SelectedItem is not WindowChoice choice || disposed) return;
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary || list.SelectedItem is not WindowChoice choice ||
+                quality.SelectedItem is not LiveCaptureQuality selectedQuality || disposed) return;
             // The adapter rechecks account/call after the user closes the chooser.
             captureAccount = account; captureChannel = channel;
-            await capture!.StartAsync(choice.Window.PreviewTarget!, audio.IsOn);
-            var result = await InvokeAsync("share", new { account, channelId = channel });
+            captureQuality=selectedQuality;
+            await capture!.StartAsync(choice.Window.PreviewTarget!, audio.IsOn, selectedQuality);
+            var result = await InvokeAsync("share", new { account, channelId = channel,
+                captureQuality = new { resolution=selectedQuality.MaximumHeight, frameRate=selectedQuality.FrameRate } });
             if (!result.GetProperty("ok").GetBoolean()) { await capture.StopAsync(); failureText = "Sharing unavailable: " + result.GetProperty("code").GetString(); }
         }
         catch (Exception e) { if (capture is not null) await capture.StopAsync(); Failure("Share", e); }

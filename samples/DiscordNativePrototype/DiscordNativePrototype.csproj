@@ -9,6 +9,9 @@
   <ItemGroup>
     <ProjectReference Include="../../src/WidgetApplicationRuntime/WidgetApplicationRuntime.csproj" />
     <EmbeddedResource Include="adapter.js" />
+    <EmbeddedResource Include="activity-provider.js" />
+    <EmbeddedResource Include="adapter-contract.json" />
+    <EmbeddedResource Include="adapter-invocation.js" />
     <None Update="web/**" CopyToOutputDirectory="PreserveNewest" />
     <None Update="manifest.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

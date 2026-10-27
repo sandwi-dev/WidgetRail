@@ -1,6 +1,8 @@
+using WidgetRail.OverlayFrontend.WinUI.Browser.Capture;
 using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.Web.WebView2.Core;
 using WidgetRail.PlatformBroker;
 using WidgetRail.WindowsAppLibraryProvider;
@@ -12,13 +14,16 @@ internal sealed partial class DiscordCaptureProbePage : Page, IAsyncDisposable
     private readonly WebView2 web = new();
     private readonly ComboBox sources = new() { Header = "Application window", HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly ToggleSwitch audio = new() { Header = "Share application audio" };
+    private readonly ComboBox quality = new() { Header="Stream quality",HorizontalAlignment=HorizontalAlignment.Stretch,
+        ItemsSource=LiveCaptureQuality.Supported,SelectedItem=LiveCaptureQuality.Default };
     private readonly Button start = new() { Content = "Start", IsEnabled = false }, stop = new() { Content = "Stop", IsEnabled = false };
     private readonly TextBlock status = new() { Text = "Preparing local WebRTC test…", TextWrapping = TextWrapping.Wrap };
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly WindowsTaskWindowCatalog windows = new();
     private readonly string assets;
-    private WebViewLiveCapture? capture;
+    private IWebViewCaptureTransport? capture;
     private bool ready, initialized, busy, reading, disposed;
+    private DateTimeOffset? stopAfter;
     private readonly bool selfTest = Environment.GetCommandLineArgs().Contains("--capture-probe-selftest");
     private sealed record Choice(TaskWindowSummary Window) { public override string ToString() => Window.ApplicationName + " — " + Window.Title; }
     internal DiscordCaptureProbePage(string assets)
@@ -27,7 +32,8 @@ internal sealed partial class DiscordCaptureProbePage : Page, IAsyncDisposable
         var refresh = new Button { Content = "Refresh applications" };
         var root = new Grid { Padding = new Thickness(16), RowSpacing = 12 };
         root.RowDefinitions.Add(new() { Height = GridLength.Auto }); root.RowDefinitions.Add(new());
-        root.Children.Add(new StackPanel { Spacing = 12, Children = { sources, audio,
+        AutomationProperties.SetAutomationId(quality,"CaptureProbe.Quality");
+        root.Children.Add(new StackPanel { Spacing = 12, Children = { sources, audio, quality,
             new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Children = { refresh, start, stop } }, status } });
         Grid.SetRow(web, 1); root.Children.Add(web); Content = root;
         Loaded += async (_, _) => { if (initialized) return; initialized = true; await GuardAsync(InitializeAsync); };
@@ -39,10 +45,14 @@ internal sealed partial class DiscordCaptureProbePage : Page, IAsyncDisposable
     private async Task GuardAsync(Func<Task> action)
     {
         if (busy || disposed) return;
-        busy = true; start.IsEnabled = stop.IsEnabled = sources.IsEnabled = audio.IsEnabled = false;
+        busy = true; start.IsEnabled = stop.IsEnabled = sources.IsEnabled = audio.IsEnabled = quality.IsEnabled = false;
         try { await action(); }
-        catch (Exception e) { status.Text = $"{e.GetType().Name}: {e.Message}"; }
-        finally { busy = false; start.IsEnabled = ready && !disposed; stop.IsEnabled = capture?.IsRunning == true; sources.IsEnabled = audio.IsEnabled = !disposed; }
+        catch (Exception e)
+        {
+            status.Text = $"{e.GetType().Name}: {e.Message}";
+            if(selfTest)File.WriteAllText(Path.Combine(assets,"probe-error.json"),JsonSerializer.Serialize(new{type=e.GetType().Name,message=e.Message}));
+        }
+        finally { busy = false; start.IsEnabled = ready && !disposed; stop.IsEnabled = capture?.IsRunning == true; sources.IsEnabled = audio.IsEnabled = !disposed; quality.IsEnabled=!disposed&&capture?.IsRunning!=true; }
     }
     private async Task InitializeAsync()
     {
@@ -59,18 +69,37 @@ internal sealed partial class DiscordCaptureProbePage : Page, IAsyncDisposable
             using var doc = JsonDocument.Parse(e.WebMessageAsJson);
             if (doc.RootElement.TryGetProperty("ready", out var value)) loaded.TrySetResult(value.GetBoolean());
         };
-        capture = new(core, DispatcherQueue, "https://capture-probe.widgetrail.test");
+        capture = Environment.GetCommandLineArgs().Contains("--capture-probe-worker")
+            ? new WebViewCaptureWorker(core,DispatcherQueue,"https://capture-probe.widgetrail.test",testBlockedExit:selfTest&&Environment.GetCommandLineArgs().Contains("--capture-probe-worker-block-stop"))
+            : new WebViewLiveCapture(core, DispatcherQueue, "https://capture-probe.widgetrail.test");
         core.Navigate("https://capture-probe.widgetrail.test/capture.html");
         ready = await loaded.Task.WaitAsync(TimeSpan.FromSeconds(20));
         await RefreshAsync(); timer.Start();
         status.Text = "Choose an application. Media stays in this local WebRTC test.";
         if (selfTest)
         {
-            var fixture = sources.Items.Cast<Choice>().SingleOrDefault(c => c.Window.Title == "WidgetRail synthetic capture target");
-            if (fixture is null) throw new InvalidOperationException("The synthetic capture fixture must be running.");
+            var identity = CaptureProbeSourceIdentity.FromArguments(Environment.GetCommandLineArgs());
+            Choice? fixture = null;
+            var sourceDeadline = Environment.TickCount64 + 10000;
+            while (fixture is null)
+            {
+                fixture = sources.Items.Cast<Choice>().SingleOrDefault(c => identity.Matches(c.Window.PreviewTarget));
+                if (fixture is not null) break;
+                if (Environment.TickCount64 >= sourceDeadline) throw new InvalidOperationException("The exact runner-owned capture source is unavailable.");
+                await Task.Delay(50); await RefreshAsync();
+            }
             sources.SelectedItem = fixture;
             audio.IsOn = Environment.GetCommandLineArgs().Contains("--capture-probe-audio");
+            var qualityArgument=Environment.GetCommandLineArgs().SingleOrDefault(a=>a.StartsWith("--capture-probe-quality=",StringComparison.Ordinal));
+            if(qualityArgument is not null)quality.SelectedItem=LiveCaptureQuality.FromId(qualityArgument["--capture-probe-quality=".Length..]);
             await StartAsync();
+            var stopArgument=Environment.GetCommandLineArgs().SingleOrDefault(a=>a.StartsWith("--capture-probe-stop-after=",StringComparison.Ordinal));
+            if(stopArgument is not null)
+            {
+                if(!int.TryParse(stopArgument["--capture-probe-stop-after=".Length..],out var seconds)||seconds is <1 or >610)
+                    throw new InvalidOperationException("Invalid synthetic stop deadline.");
+                stopAfter=DateTimeOffset.UtcNow.AddSeconds(seconds);
+            }
         }
     }
     private async Task RefreshAsync()
@@ -83,7 +112,12 @@ internal sealed partial class DiscordCaptureProbePage : Page, IAsyncDisposable
     private async Task StartAsync()
     {
         if (!ready || sources.SelectedItem is not Choice choice || choice.Window.PreviewTarget is not { } target) return;
-        await capture!.StartAsync(target, audio.IsOn);
+        if(quality.SelectedItem is not LiveCaptureQuality selectedQuality)throw new InvalidOperationException("Select a supported capture quality.");
+        var content=Environment.GetCommandLineArgs().SingleOrDefault(argument=>argument.StartsWith("--capture-probe-content=",StringComparison.Ordinal));
+        if(content is not null)selectedQuality=selectedQuality with{ContentPreference=content["--capture-probe-content=".Length..] switch
+            {"motion"=>WidgetRail.WidgetProtocol.WebCaptureContentPreference.Motion,"detail"=>WidgetRail.WidgetProtocol.WebCaptureContentPreference.Detail,
+                _=>throw new InvalidOperationException("Invalid synthetic content preference.")}};
+        await capture!.StartAsync(target, audio.IsOn, selectedQuality);
         var result = await web.CoreWebView2.CallDevToolsProtocolMethodAsync("Runtime.evaluate", JsonSerializer.Serialize(new { expression = "captureProbe.connect()", awaitPromise = true, returnByValue = true }));
         using var parsed = JsonDocument.Parse(result);
         if (parsed.RootElement.TryGetProperty("exceptionDetails", out _)) { await capture.StopAsync(); throw new InvalidOperationException("WebRTC receiver rejected the stream."); }
@@ -100,7 +134,16 @@ internal sealed partial class DiscordCaptureProbePage : Page, IAsyncDisposable
         try
         {
             using var result = JsonDocument.Parse(await web.CoreWebView2.ExecuteScriptAsync("captureProbe.status()"));
-            File.WriteAllText(Path.Combine(assets, "capture-result.json"), JsonSerializer.Serialize(new { capture = capture?.Statistics, receiver = result.RootElement }));
+            var snapshot=Path.Combine(assets,"capture-result.json");
+            File.WriteAllText(snapshot+".tmp",JsonSerializer.Serialize(new { capture = capture?.Statistics, receiver = result.RootElement }));
+            File.Move(snapshot+".tmp",snapshot,true);
+            if(selfTest&&stopAfter is { } deadline&&DateTimeOffset.UtcNow>=deadline)
+            {
+                stopAfter=null;var started=System.Diagnostics.Stopwatch.StartNew();await StopAsync();
+                var path=Path.Combine(assets,"stop-result.json");
+                File.WriteAllText(path+".tmp",JsonSerializer.Serialize(new{milliseconds=started.ElapsedMilliseconds,capture=capture?.Statistics}));
+                File.Move(path+".tmp",path,true);
+            }
             if (capture?.HasEnded == true) { await StopAsync(); status.Text = "Source capture ended. Choose Start to retry."; }
         }
         catch (Exception e) { status.Text = "Statistics: " + e.GetType().Name; }

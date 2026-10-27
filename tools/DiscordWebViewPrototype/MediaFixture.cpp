@@ -9,8 +9,11 @@
 // Synthetic content only. A quiet generated tone allows browser receive-side
 // statistics to verify PCM transport without recording microphone/user audio.
 int wmain(int argc,wchar_t** argv) {
-    bool audio=false,stationary=false;
-    for(int i=1;i<argc;++i){audio|=wcscmp(argv[i],L"--audio")==0;stationary|=wcscmp(argv[i],L"--static")==0;}
+    bool audio=false,stationary=false,large=false,sized=false;int width=0,height=0;
+    for(int i=1;i<argc;++i){audio|=wcscmp(argv[i],L"--audio")==0;stationary|=wcscmp(argv[i],L"--static")==0;large|=wcscmp(argv[i],L"--large")==0;
+        if(wcsncmp(argv[i],L"--width=",8)==0){width=_wtoi(argv[i]+8);sized=true;}
+        if(wcsncmp(argv[i],L"--height=",9)==0){height=_wtoi(argv[i]+9);sized=true;}}
+    if(sized&&(width<2||height<2||width>8192||height>8192||int64_t(width)*height>33554432))return 2;
     std::vector<uint8_t> wave(44+48000*4);
     if(audio) {
         const auto u32=[&](size_t offset,uint32_t value){memcpy(wave.data()+offset,&value,4);};
@@ -22,7 +25,7 @@ int wmain(int argc,wchar_t** argv) {
         if(!PlaySoundW(reinterpret_cast<const wchar_t*>(wave.data()),nullptr,SND_MEMORY|SND_ASYNC|SND_LOOP|SND_NODEFAULT))return 3;
     }
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    auto hwnd=CreateFixture(656,400);if(!hwnd)return 2;
+    auto hwnd=sized?CreateFixture(width,height,true):large?CreateFixture(1296,840):CreateFixture(656,400);if(!hwnd)return 2;
     // A stationary fixture must repaint its new client area on shrink as well as
     // grow; otherwise Windows can reuse old pixels without a new captured frame.
     SetClassLongPtrW(hwnd,GCL_STYLE,CS_HREDRAW|CS_VREDRAW);

@@ -110,6 +110,7 @@ public static class PlatformCapabilities
     public const string ProviderDocumentDiscard = "document.discard";
     public const string CaptureLibraryReadV1 = "media.capture-library.read.v1";
     public const string WebSessionsV1 = "web.sessions.v1";
+    public const string WidgetPinningV1 = "presentation.pinning.v1";
     public const string WidgetActivityV1 = "widget.activity.v1";
     public const string WidgetNotificationsV1 = "widget.notifications.v1";
     public const string WidgetPermissionsV1 = "widget.permissions.v1";
@@ -280,9 +281,11 @@ public static class PlatformCapabilities
             [CaptureLibraryManageV1] = new(CaptureLibraryManageV1, 1, BrokerCapabilityKind.Control,
                 Set("capture-library.delete", "capture-library.export", "capture-library.open-folder"), Set(), AllowsDashboardGesture: false,
                 InFlightContinuationOperations: Set("capture-library.open-folder")),            [WindowCaptureV1] = new(WindowCaptureV1, 1, BrokerCapabilityKind.Control,
-                Set(WindowCaptureRequest, "capture.request-original", "capture.start", "capture.stop", "capture.capabilities", "capture.recording-capabilities", "capture.validate", WindowCaptureStatus, WindowCaptureCancel, WindowCaptureDiscard, WindowCaptureRead), Set(),
-                ReadOperations: Set(WindowCaptureStatus, WindowCaptureRead, "capture.capabilities", "capture.recording-capabilities", "capture.validate"), AllowsBackground: true,
-                BackgroundOperations: Set(WindowCaptureStatus, WindowCaptureRead, WindowCaptureCancel, WindowCaptureDiscard, "capture.stop", "capture.capabilities", "capture.recording-capabilities", "capture.validate")),
+                Set(WindowCaptureRequest, "capture.request-original", "capture.start", "capture.stop", "capture.capabilities", "capture.recording-capabilities", "capture.validate", WindowCaptureStatus, WindowCaptureCancel, WindowCaptureDiscard, WindowCaptureRead,
+                    "capture.web-prepare","capture.web-prepare-constrained","capture.web-status","capture.web-stop"), Set(),
+                ReadOperations: Set(WindowCaptureStatus, WindowCaptureRead, "capture.capabilities", "capture.recording-capabilities", "capture.validate","capture.web-status"), AllowsBackground: true,
+                InFlightContinuationOperations: Set("capture.web-prepare","capture.web-prepare-constrained"),
+                BackgroundOperations: Set(WindowCaptureStatus, WindowCaptureRead, WindowCaptureCancel, WindowCaptureDiscard, "capture.stop", "capture.capabilities", "capture.recording-capabilities", "capture.validate","capture.web-status","capture.web-stop")),
             [TaskWindowsPreviewV1] = new(TaskWindowsPreviewV1, 1, BrokerCapabilityKind.Read, Set(), Set()),
             [PerformanceReadV1] = new(PerformanceReadV1, 1, BrokerCapabilityKind.Read, Set(PerformanceGet), Set()),
             [PerformanceFpsControlV1] = new(PerformanceFpsControlV1, 1, BrokerCapabilityKind.Control, Set(PerformanceEnableFps, PerformanceDisableFps), Set(), AllowsDashboardGesture: false),
@@ -325,8 +328,11 @@ public static class PlatformCapabilities
                 ReadOperations: Set(PrivateStateRead),
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted,
                 AllowsBackground: true),
-            [WebSessionsV1] = new(WebSessionsV1, 1, BrokerCapabilityKind.Control, Set("web-session.command"), Set(),
-                AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true),
+            [WebSessionsV1] = new(WebSessionsV1, 1, BrokerCapabilityKind.Control, Set("web-session.command", "web-session.microphone"), Set(),
+                AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true,
+                BackgroundOperations: Set("web-session.command")),
+            [WidgetPinningV1] = new(WidgetPinningV1, 1, BrokerCapabilityKind.Control, Set("pin.open"), Set(),
+                AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted),
             [WidgetActivityV1] = new(WidgetActivityV1, 1, BrokerCapabilityKind.Control,
                 Set("activity.report"), Set(), AllowsDashboardGesture: false,
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true),

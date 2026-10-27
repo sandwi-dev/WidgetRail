@@ -48,7 +48,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private bool focusQueued;
     private bool restoreNativeFocus;
     private bool automaticFocusEnabled = true;
-    private Binding? pendingRestore;
+    private sealed record NativeFocusRestore(Binding Target, DependencyObject? NativeFallback);
+    private NativeFocusRestore? pendingRestore;
     private long actionSequence;
     private readonly bool presentationOnly;
     private readonly double nativeBaseFontSize;
@@ -149,6 +150,15 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         // Capture logical focus and enter the publication transaction before any
         // such mutation can trigger WinUI's focused-element-removal recovery.
         var focused = FocusedBinding();
+        TraceFocus("apply-capture");
+        // Several publications may commit before the queued native restoration
+        // runs. Preserve its existing authority while WinUI has no focused leaf
+        // or retains the fallback produced by that structural transaction. A
+        // later real focus choice supersedes that authority instead.
+        var restoreIntent = entryIntentVersion;
+        var pendingFocus = sameOwner && focused is null && pendingRestore is { } pending &&
+            NativeRestoreStillOwnsFocus(pending) ? pending.Target : null;
+        var reconciliationFocus = focused ?? pendingFocus;
         var oldScope = activeScope;
         var collapsedHeader = hasExpandedDisclosures && sameOwner && oldScope == nextPresentation.Scope && presentationActive &&
             presentationInputEnabled && automaticFocusEnabled && !presentationOnly
@@ -263,22 +273,27 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             RefreshReadingFocus();
             needsEntry = needsEntry || !sameOwner || oldScope != nextPresentation.Scope
                 || focused?.Element is WidgetIndexedCollectionView { IsFocusParked: true, IsEntryPending: false }
-                || (focused is not null && (!bindings.TryGetValue(focused.Identity.Id, out var current)
-                    || !ReferenceEquals(current, focused) || !Navigable(current)));
+                || (reconciliationFocus is not null && (!bindings.TryGetValue(reconciliationFocus.Identity.Id, out var current)
+                    || !ReferenceEquals(current, reconciliationFocus) || !Navigable(current)));
             if (!presentationOnly && fragmentRootId is null) UpdateFocusPolicy(nextPresentation.View);
             else needsEntry = false;
-            pendingRestore = !needsEntry && focused is not null && Navigable(focused)
-                && !ReferenceEquals(FocusedBinding(), focused) ? focused : null;
+            // New group/navigation intent can cancel restoration during policy
+            // reconciliation. Never resurrect that cancelled target.
+            var restoreTarget = focused ?? (restoreIntent == entryIntentVersion ? pendingFocus : null);
+            pendingRestore = CaptureNativeRestore(!needsEntry && restoreTarget is not null &&
+                bindings.TryGetValue(restoreTarget.Identity.Id, out var retainedRestore) && ReferenceEquals(retainedRestore, restoreTarget) &&
+                Navigable(restoreTarget) && !ReferenceEquals(FocusedBinding(), restoreTarget) ? restoreTarget : null);
             if (collapsedHeader is { } headerIdentity && pendingGroupEntry is null &&
                 (focused is null || !bindings.TryGetValue(focused.Identity.Id, out var surviving) ||
                     surviving.Identity != focused.Identity || !Navigable(surviving)) &&
                 bindings.TryGetValue(headerIdentity.Id, out var header) && header.Identity == headerIdentity && Navigable(header))
             {
-                pendingRestore = header;
+                pendingRestore = CaptureNativeRestore(header);
                 needsEntry = false;
             }
         }
         finally { applying = false; }
+        TraceFocus($"apply-complete captured={focused?.Identity.Id} pendingRestore={pendingRestore?.Target.Identity.Id}");
         var animateContent = prepareLayout?.Invoke() != false;
         NotifyControllerGuideChanged();
         ValidateTransientControl();
@@ -318,11 +333,21 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             (RememberedBinding() is not { } preferred || ReferenceEquals(preferred, current)) &&
             FocusManager.GetFocusedElement(XamlRoot) is Control leaf && leaf.Focus(FocusState.Keyboard))
             needsEntry = false;
-        if (pendingRestore is { } restore)
+        if (pendingRestore is { } pending)
         {
             pendingRestore = null;
+            // A new native focus choice can arrive after the last publication
+            // but before this callback. Structural fallback focus is the only
+            // outside focus this restoration is allowed to replace.
+            if (!NativeRestoreStillOwnsFocus(pending)) return;
+            var restore = pending.Target;
+            TraceFocus($"restore-pending target={restore.Identity.Id} loaded={restore.Element.IsLoaded} eligible={bindings.ContainsKey(restore.Identity.Id) && Eligible(restore)}");
             if (bindings.TryGetValue(restore.Identity.Id, out var retained) && ReferenceEquals(retained, restore) && Navigable(restore)
-                && !ReferenceEquals(FocusedBinding(), restore)) FocusBinding(restore);
+                && !ReferenceEquals(FocusedBinding(), restore))
+            {
+                var restored = FocusBinding(restore);
+                TraceFocus($"restore-pending-result target={restore.Identity.Id} restored={restored}");
+            }
         }
         if (!needsEntry) return;
         var scope = activeScope;
@@ -337,6 +362,16 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             if (FocusBinding(target)) { needsEntry = false; ClearEntryLayoutWait(); }
             else WaitForEntryLayout(target);
         }
+    }
+
+    private NativeFocusRestore? CaptureNativeRestore(Binding? target) => target is null ? null :
+        new(target, XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject);
+
+    private bool NativeRestoreStillOwnsFocus(NativeFocusRestore restore)
+    {
+        var current = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        return current is null || ReferenceEquals(current, restore.NativeFallback) ||
+            ReferenceEquals(FindBinding(current), restore.Target);
     }
 
     public bool MoveFocus(FocusNavigationDirection direction, bool isRepeat = false)

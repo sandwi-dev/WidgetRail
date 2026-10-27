@@ -23,7 +23,7 @@ try{
     # The fixture flushes this file only after browser teardown completes.
     $data=Get-Content -LiteralPath $result -Raw | ConvertFrom-Json
     if($data.error){throw $data.error}
-    if($data.checks.Count -lt 14){throw 'Fixture did not execute the expected backend and isolated-adapter checks.'}
+    if($data.checks.Count -lt 15){throw 'Fixture did not execute the expected backend and isolated-adapter checks.'}
     $data.checks | ForEach-Object { Write-Output "PASS $_" }
     Write-Output "Evidence: $result"
 }finally{

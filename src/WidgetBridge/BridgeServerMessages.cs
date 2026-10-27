@@ -9,7 +9,9 @@ internal sealed record BridgeHostEffect(
     long Sequence,
     long InitiatedAtMilliseconds = 0,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyDictionary<string, WidgetRail.PlatformBroker.NativeWindowPreviewTarget>? WindowPreviews = null);
+    IReadOnlyDictionary<string, WidgetRail.PlatformBroker.NativeWindowPreviewTarget>? WindowPreviews = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    string? PinnedLayoutId = null);
 
 internal sealed class BridgeStaleControllerInputAuthorityException(string message)
     : Exception(message);

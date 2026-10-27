@@ -51,7 +51,7 @@ backing. Authors must not use DOM visibility as a signal that their widget has i
 focus. A background session can keep page timers/rendering active; dispose it when
 its work is finished. This does not change ordinary declarative browser parking.
 
-## Remote websites in widget modals
+## Remote page actions
 
 Remote sessions can opt into a sealed page adapter (protocol 86). This is separate
 from packaged-page RPC: ordinary remote websites still cannot post widget messages.
@@ -60,7 +60,8 @@ HTTPS `Origins`, and optional `Responses` rules. A response rule names an allowe
 origin and a slash-terminated path prefix. Response access is explicit; declaring
 an origin alone does not grant response bodies.
 
-The script runs in an isolated JavaScript world in the top-level document. It
+The default `IsolatedPageActions` mode runs the script in an isolated JavaScript
+world in the top-level document. It
 receives `host.onResponse(callback)` for declared JSON responses already loaded
 by the site, and `host.addAction(parentElement, actionKey, label, getPayload)` to
 insert a normal, accessible button. Actions require trusted browser clicks and an
@@ -115,6 +116,150 @@ pending response authority. Only matching top-level frame/loader responses are
 delivered; worker and unrelated-frame traffic is not part of this contract.
 `OpenAdapted` fails on older hosts rather than silently opening without the adapter.
 
+## Background website backends
+
+A full-access application widget can use `WebSessionPageAdapterMode.SessionBackend`
+(protocol 102) for native controls backed by a website's own JavaScript application.
+This is a separate trust contract from isolated page actions: the sealed adapter
+runs in the website's main document world and can access its application state.
+The host admits it only for full-trust widgets, exact declared HTTPS origins and
+`BrowserBackgroundMode.KeepAlive`. `Responses` must be empty. Ordinary webapps,
+plain remote sessions and sandboxed widgets do not acquire this authority.
+
+```csharp
+backend = await HostServices.WebSessions.OpenAsync(
+    new("provider", "Provider account", WebSessionSource.Remote("https://provider.example/app"))
+    {
+        Browser = new()
+        {
+            Storage = BrowserStorage.Persistent,
+            ProfileKey = "provider-account",
+            Background = BrowserBackgroundMode.KeepAlive,
+        },
+        PageAdapter = new()
+        {
+            Mode = WebSessionPageAdapterMode.SessionBackend,
+            ScriptAsset = "payload/web/backend.js",
+            Origins = ["https://provider.example"],
+        },
+    }, cancellationToken);
+```
+
+The SDK selects the `OpenBackend` operation from the definition; an unsupported
+host fails instead of falling back to a less capable adapter. Present
+`UI.WebView(backend.Reference, "provider.account")` for sign-in, challenges or
+account management. Removing that view leaves the same backend session alive.
+Opening a remote session starts navigation; it does not prove that the provider
+or its adapter is ready. Handle temporary unavailability without replaying mutations.
+
+The backend receives `host.onRequest(...)` and `host.batchResult(context, items)`.
+Use `backend.RequestAsync<TRequest,TReply>(method, payload, token)` from native
+widget code. Correlation, cancellation and document retirement follow the shared
+request protocol, including the 16-request limit and 30-second deadline. Unlike
+page actions, backend requests remain available while its view is hidden. The
+backend cannot emit unsolicited native actions or register network-response
+observation; site-specific state and commands remain the adapter's responsibility.
+Website data and replies are untrusted, including those produced in this shared
+document world. Validate account, call/item identity and response shape before use.
+
+Backend response batches permit up to 1,000 items. Isolated page-action batches
+remain limited to 100. Both retain the same 2 MiB aggregate item budget, 48 chunks,
+48,000-byte chunk budget and 64 KiB message envelope. The SDK selects the matching
+assembler automatically. Put large participant/item collections in `items`, not
+in `context`, which repeats in every chunk. An invalid or oversized batch fails
+as a whole; the host does not silently truncate it.
+
+## Microphone admission from native controls
+
+For a backend session, `await backend.RequestMicrophoneAsync(token)` (protocol 103)
+opens the host's microphone consent flow for the current document origin and
+browser profile. Request it from an explicit interactive user action, before the
+provider's Join/unmute operation, rather than from a polling loop. Run long consent
+and provider work through `WidgetOperations` so the initiating control stays usable.
+
+The returned `WebSessionMicrophoneResult.State` is `Granted`, `Denied`, `Cancelled`
+or `Unavailable`. `Remembered` describes an existing saved decision or a grant
+the user chose to remember when the document first uses its microphone. Navigation
+before use retires that pending choice. A grant admits the website; it does not
+prove Windows privacy settings, the device or the provider allowed audio capture.
+Revalidate the account and selected call after awaiting consent.
+
+Losing interactive ownership returns `Cancelled`. Explicit caller/session
+cancellation throws `OperationCanceledException`; unavailable/incompatible service
+errors remain capability failures. A hidden backend cannot trigger its own website
+permission prompt. A visible account WebView retains the ordinary website permission
+UI. The widget never chooses the origin, grants itself consent or reads browser
+credentials through this API.
+
+## Share an application through a backend
+
+The host's native web-capture service (protocol 104) delivers one user-selected
+application to a backend session. Set `WebSessionDefinition.NativeCapture = true`
+when opening that session and declare the optional capability
+`system.apps.windows.capture.v1`. The opt-in installs the media adapter; it neither
+grants capture permission nor selects a source.
+
+Request capability consent through `HostServices.Permissions.RequestAsync`, then
+use the typed service:
+
+```csharp
+var prepared = await HostServices.Capture.WebStreams.PrepareAsync(
+    backend.Reference, new WebCaptureStreamOptions(720, 30), token);
+if (prepared.Phase is not (WebCaptureStreamPhase.Prepared or WebCaptureStreamPhase.Capturing)
+    || prepared.Ticket is not { } ticket) return;
+// Retain ticket; use the returned quality/audio choice for the provider's share command.
+var current = await HostServices.Capture.WebStreams.GetStatusAsync(ticket, token);
+await HostServices.Capture.WebStreams.StopAsync(ticket, token);
+```
+
+The native chooser owns application enumeration, source identity, optional
+application audio and quality. Widgets receive no HWND and need no separate
+window-list permission. The original overload above retains exactly 480p or 720p
+at 15 or 30 FPS. Protocol 105 adds a provider-constrained overload:
+
+```csharp
+var prepared = await HostServices.Capture.WebStreams.PrepareAsync(
+    backend.Reference, preferredQuality, providerAllowedQualities, token);
+```
+
+`providerAllowedQualities` must contain 1–12 distinct supported values and include
+`preferredQuality`. Local transport supports 480p, 720p, 1080p and 1440p at 15,30 or60
+FPS. The host intersects that list with local support and rejects any returned
+choice outside the admitted list before capture starts. This uses the distinct
+`capture.web-prepare-constrained` operation, not a silent widening of old callers.
+The widget's adapter owns provider eligibility, revalidation and any saved quality
+preference; the host does not infer account entitlements or persist a cancelled
+chooser selection. Discord uses its own persisted streaming settings and falls
+back to baseline choices if its required policy/settings helpers are unavailable.
+
+The default preference is 720p30. Height is a ceiling and source aspect ratio is
+preserved. Static content can deliver fewer frames than the selected target.
+Audio is optional application audio, not an implicit whole-system fallback.
+
+The host supplies the selected media stream to that document's `getDisplayMedia`
+path. The provider adapter still owns the provider-specific broadcast command;
+choosing a source alone does not start a remote broadcast. Use returned `Quality`
+and `ApplicationAudio`, and combine local `Capturing` with authoritative provider
+state before showing “Sharing.” A delayed preparation reply can already be
+`Capturing`. Do not replay an uncertain provider mutation automatically.
+
+`PrepareAsync` requires interactive ownership. Cancelling its chooser does not
+select anything; after confirmation, the admitted stream can continue while the
+overlay is hidden. `GetStatusAsync` and `StopAsync` remain available in the background.
+Retain the exact opaque ticket until cleanup is confirmed. Backend closure or
+permission retirement requests native cleanup; queued cleanup is not a successful
+Stop. Known ticket status survives backend closure for the same live owner, with
+bounded terminal history. A failed stop must remain visible and retryable rather
+than being reported as success. At most two unconfirmed/live captures are admitted
+globally; uncertain teardown keeps its slot reserved.
+
+These are local capture guarantees, not proof of another participant receiving
+picture or sound. The [Discord WebView sample](../../samples/DiscordWebViewWidget)
+demonstrates consent, account/call checks, provider reconciliation and simultaneous
+incoming pin/outgoing capture. Its provider integration remains under development.
+
+## Remote websites in widget modals
+
 Use the same session API for a website that should open above the widget and
 return to it when dismissed. No cross-widget intent is needed:
 
@@ -160,9 +305,10 @@ before opening their message channel.
 
 ## Messages
 
-Only sealed packaged pages receive the channel; remote HTTP(S) sessions can navigate
-and be presented but cannot exchange widget messages. Include the SDK script before
-registering handlers:
+Sealed packaged pages receive the ordinary page message channel. Plain remote
+HTTP(S) sessions cannot exchange widget messages; the explicit page-action and
+backend adapters above use their scoped request contracts instead. Include the
+SDK script before registering packaged-page handlers:
 
 ```js
 WidgetRailWebSession.handle('increment', (payload, { signal }) => {
@@ -254,6 +400,18 @@ failure and let users close unused applications. Sharing a browser process can s
 create separate renderer processes and does not promise one operating-system process.
 
 ## Validation
+
+The default verification manifest includes a separate `discord` managed shard:
+both Discord widget test executables and the shared provider, module-discovery,
+command, generated-media and backend JavaScript tests. CI provisions Node 22 for
+that shard. These use synthetic providers and media; they never sign in, join a
+real call or broadcast an application. The SDK and broker suites cover shared
+backend, pinning, microphone and capture contracts separately.
+
+Native probes in `tools/DiscordWebViewPrototype` cover backend sessions, pin
+requests, microphone consent and captured-media delivery. They require the matching
+frontend build and an isolated profile. Passing those probes is not evidence of
+remote Discord picture/audio reception or every physical controller path.
 
 `BridgeWebSessionFixture` and the native `--validate-hosted-session` scenario exercise
 the authenticated worker/broker/bridge path and real page messaging. The separate

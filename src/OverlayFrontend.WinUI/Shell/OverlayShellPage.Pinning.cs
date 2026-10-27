@@ -158,9 +158,44 @@ internal sealed partial class OverlayShellPage
         if (choice is not null) await ExecutePinChoiceAsync(descriptor.Id, choice, expected);
     }
 
-    private async Task PinAsync(string widgetId, string layoutId, PinnedSurface? expected = null)
+    private async Task RequestWidgetPinAsync(WidgetPresentationHostEffect effect)
     {
-        if (owner is null || retired || expected is not null && !ReferenceEquals(pinned, expected)) return;
+        var requestOwner=owner;
+        var originalPin=pinned;
+        var selection=selectionVersion;
+        var visibleSession=visibleSince;
+        var pinRevision=pinIntent;
+        var widgetId=effect.Authority.WidgetId;
+        var layoutId=effect.PinnedLayoutId;
+        if(activeWidget!=widgetId && !(PinnedInputActive && pinned?.WidgetId==widgetId))return;
+        bool Current() => requestOwner is not null && ReferenceEquals(owner,requestOwner) && !retired && visible &&
+            !switching && !IsMediaFullscreen && visibleSince==visibleSession && selectionVersion==selection &&
+            effect.InitiatedAtMilliseconds>=visibleSession && requestOwner.Session.IsHostEffectAuthorityCurrent(effect.Authority) &&
+            requestOwner.Session.GetState(widgetId)?.LastGood is { Descriptor.PinningSupported:true } frame &&
+            frame.Snapshot.PinnedLayouts.Any(layout=>layout.Id==layoutId);
+        if(layoutId is null || !Current() || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen || PinnedAdjustmentActive)return;
+        if(originalPin?.WidgetId==widgetId && originalPin.LayoutId==layoutId)return;
+        var failureCurrent=CapturePinIntentFailureGuard(pinRevision);
+        try
+        {
+            if(originalPin is not null && (originalPin.WidgetId!=widgetId || originalPin.Popup is not null))
+            {
+                var answer=await ShowHostChoiceAsync("Replace pinned view?",
+                    originalPin.Popup is not null ? "The additional page will return to its widget. Open this pinned view instead?" :
+                    "Open this view in place of the current pinned widget?",
+                    (HostDialogChoice[])[new("replace","Replace pin")],lifetime.Token);
+                if(answer!="replace")return;
+            }
+            if(!Current() || pinIntent!=pinRevision || !ReferenceEquals(pinned,originalPin))return;
+            await PinAsync(widgetId,layoutId,originalPin,Current);
+        }
+        catch(OperationCanceledException) when(retired) { }
+        catch(Exception error) { ReportOperationFailure(error,failureCurrent); }
+    }
+
+    private async Task PinAsync(string widgetId, string layoutId, PinnedSurface? expected = null, Func<bool>? admission = null)
+    {
+        if (owner is null || retired || admission?.Invoke()==false || expected is not null && !ReferenceEquals(pinned, expected)) return;
         var intent = ++pinIntent;
         var failureCurrent = CapturePinIntentFailureGuard(intent);
         try
@@ -168,10 +203,10 @@ internal sealed partial class OverlayShellPage
             await transitions.WaitAsync(lifetime.Token);
             try
             {
-                if (retired || intent != pinIntent || expected is not null && !ReferenceEquals(pinned, expected)) return;
+                if (retired || intent != pinIntent || admission?.Invoke()==false || expected is not null && !ReferenceEquals(pinned, expected)) return;
                 pendingPinWidget = widgetId;
                 var frame = await owner.Session.EstablishPresentationAsync(owner.Session.GetTarget(widgetId), LifecycleFor(widgetId), lifetime.Token);
-                if (retired || intent != pinIntent) return;
+                if (retired || intent != pinIntent || admission?.Invoke()==false) return;
                 var projection = owner.Session.ResolvePinnedProjection(frame, layoutId);
                 // Resolve first so a withdrawn layout cannot discard the current pin.
                 if (expected is not null && !ReferenceEquals(pinned, expected)) return;
@@ -179,7 +214,7 @@ internal sealed partial class OverlayShellPage
                 // Ordinary layout selections still require retiring the old selection first.
                 var outgoingPage = pinned?.Popup is not null ? pinned : null;
                 if (outgoingPage is null) await RemovePinnedCoreAsync();
-                if (retired || intent != pinIntent) return;
+                if (retired || intent != pinIntent || admission?.Invoke()==false) return;
                 var selection = await owner.Session.SelectPinnedLayoutAsync(projection, cancellationToken: lifetime.Token);
                 // Selection can synchronously publish its demanded content. Use
                 // the latest genuine frame rather than the pre-selection shell.

@@ -62,7 +62,7 @@ internal sealed record WidgetActionExecutionTerminal(
 /// <summary>
 /// Private execution scope for the one action currently owned by the serial
 /// action queue. It is distinct from dashboard gesture authority and tracks
-/// only close-on-launch capability calls that must settle before a successful
+/// host-effect capability calls that must settle before a successful
 /// action terminal can release a host effect.
 /// </summary>
 internal static class WidgetActionInvocationContext
@@ -97,10 +97,10 @@ internal static class WidgetActionInvocationContext
 internal sealed class WidgetActionInvocationState(long executionId)
 {
     private readonly object _gate = new();
-    private TaskCompletionSource? _closeRequestsDrained;
-    private int _activeCloseRequests;
+    private TaskCompletionSource? _hostEffectRequestsDrained;
+    private int _activeHostEffectRequests;
     private bool _accepting = true;
-    private bool _hadCloseRequest;
+    private bool _hadHostEffectRequest;
 
     internal long ExecutionId { get; } = executionId > 0
         ? executionId
@@ -111,19 +111,19 @@ internal sealed class WidgetActionInvocationState(long executionId)
         get { lock (_gate) return _accepting; }
     }
 
-    internal bool HadCloseRequest
+    internal bool HadHostEffectRequest
     {
-        get { lock (_gate) return _hadCloseRequest; }
+        get { lock (_gate) return _hadHostEffectRequest; }
     }
 
-    internal WidgetActionCloseRequestLease? TryBeginCloseRequest()
+    internal WidgetActionHostEffectRequestLease? TryBeginHostEffectRequest()
     {
         lock (_gate)
         {
             if (!_accepting) return null;
-            _hadCloseRequest = true;
-            _activeCloseRequests++;
-            return new WidgetActionCloseRequestLease(this);
+            _hadHostEffectRequest = true;
+            _activeHostEffectRequests++;
+            return new WidgetActionHostEffectRequestLease(this);
         }
     }
 
@@ -132,31 +132,31 @@ internal sealed class WidgetActionInvocationState(long executionId)
         lock (_gate)
         {
             _accepting = false;
-            if (_activeCloseRequests == 0) return Task.CompletedTask;
-            return (_closeRequestsDrained ??= new TaskCompletionSource(
+            if (_activeHostEffectRequests == 0) return Task.CompletedTask;
+            return (_hostEffectRequestsDrained ??= new TaskCompletionSource(
                 TaskCreationOptions.RunContinuationsAsynchronously)).Task;
         }
     }
 
-    private void EndCloseRequest()
+    private void EndHostEffectRequest()
     {
         TaskCompletionSource? drained = null;
         lock (_gate)
         {
-            if (_activeCloseRequests <= 0)
-                throw new InvalidOperationException("Action close-request ownership underflowed.");
-            _activeCloseRequests--;
-            if (!_accepting && _activeCloseRequests == 0)
-                drained = _closeRequestsDrained;
+            if (_activeHostEffectRequests <= 0)
+                throw new InvalidOperationException("Action host-effect request ownership underflowed.");
+            _activeHostEffectRequests--;
+            if (!_accepting && _activeHostEffectRequests == 0)
+                drained = _hostEffectRequestsDrained;
         }
         drained?.TrySetResult();
     }
 
-    internal sealed class WidgetActionCloseRequestLease : IDisposable
+    internal sealed class WidgetActionHostEffectRequestLease : IDisposable
     {
         private WidgetActionInvocationState? _owner;
 
-        internal WidgetActionCloseRequestLease(WidgetActionInvocationState owner)
+        internal WidgetActionHostEffectRequestLease(WidgetActionInvocationState owner)
         {
             _owner = owner;
             ExecutionId = owner.ExecutionId;
@@ -164,7 +164,7 @@ internal sealed class WidgetActionInvocationState(long executionId)
 
         internal long ExecutionId { get; }
 
-        public void Dispose() => Interlocked.Exchange(ref _owner, null)?.EndCloseRequest();
+        public void Dispose() => Interlocked.Exchange(ref _owner, null)?.EndHostEffectRequest();
     }
 }
 
@@ -270,6 +270,7 @@ public sealed class WidgetHostServices
         Activity = new WidgetActivityService(capabilityClient);
         Marketplace = new WidgetMarketplaceService(capabilityClient);
         WebSessions = new WidgetWebSessionService(capabilityClient);
+        Pinning = new WidgetPinningService(capabilityClient);
     }
 
     public IWidgetCapabilityClient Capabilities { get; }
@@ -297,6 +298,7 @@ public sealed class WidgetHostServices
     public WidgetActivityService Activity { get; }
     public WidgetMarketplaceService Marketplace { get; }
     public WidgetWebSessionService WebSessions { get; }
+    public WidgetPinningService Pinning { get; }
 
     internal static WidgetHostServices Unavailable { get; } =
         new(UnavailableWidgetCapabilityClient.Instance);

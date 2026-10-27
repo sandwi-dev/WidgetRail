@@ -62,6 +62,17 @@ matches. Search the whole query; it does not split words. A provider that alread
 ranks matches can return its own results; the host preserves their order and does
 not filter them again. No external fuzzy-matching package is required.
 
+When the same catalog also powers a search-results list, use
+`catalog.FindMatches(text, maximumValueLength, cancellationToken)` to obtain all
+local matches in that same order. The result remains bounded by the catalog's
+10,000-entry limit. `Search` retains the keyboard's maximum of eight results;
+`FindMatches` does not expand keyboard responses or perform remote requests.
+Both methods match and order by display label by default. If labels are
+abbreviated, construct the catalog with `TextSuggestionMatchField.Value` to match
+and order by the complete insertion value instead. Display labels and inserted
+values remain unchanged. The original one-argument constructor keeps label
+matching for existing callers.
+
 ## Host defaults and limits
 
 For remote or expensive providers, override just the options you need:

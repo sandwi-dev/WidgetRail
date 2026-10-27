@@ -71,17 +71,19 @@ function Copy-Assets([string]$Source,[string]$Destination) {
     }
 }
 $platform=Join-Path $output 'native/platform';$preview=Join-Path $output 'native/preview'
+$webCapture=Join-Path $output 'native/web-capture'
 & (Join-Path $PSScriptRoot 'Build-OverlayPlatform.ps1') -Configuration Release -OutputDirectory $platform *> (Join-Path $logs 'native-platform.txt')
 if($LASTEXITCODE -ne 0){throw 'Native platform build failed.'}
 & (Join-Path $PSScriptRoot 'Build-WinUiWindowPreview.ps1') -Configuration Release -OutputDirectory $preview *> (Join-Path $logs 'native-preview.txt')
 if($LASTEXITCODE -ne 0){throw 'Native preview build failed.'}
+& (Join-Path $PSScriptRoot 'Build-WebCapture.ps1') -OutputDirectory $webCapture -NoRestore *> (Join-Path $logs 'native-web-capture.txt')
 $frontend=Join-Path $output 'frontend-published'
 # Release owns trimming/ReadyToRun in the frontend project. A global override
 # propagates trim analysis into unrelated service-library project references.
 $frontendProperties=@('-p:Platform=x64','-p:EnableWidgetValidation=false',
     '-p:WindowsPackageType=None','-p:WindowsAppSDKSelfContained=true','-p:EnableMsixTooling=true',
     '-p:GenerateAppxPackageOnBuild=false','-p:EnableWinAppRunSupport=false',
-    "-p:OverlayPlatformInteropPath=$platform/OverlayPlatformInterop.dll","-p:WindowPreviewNativePath=$preview/WinUiWindowPreviewNative.dll")
+    "-p:OverlayPlatformInteropPath=$platform/OverlayPlatformInterop.dll","-p:WindowPreviewNativePath=$preview/WinUiWindowPreviewNative.dll","-p:WebCaptureNativeDirectory=$webCapture")
 $analyzers=Join-Path $env:USERPROFILE '.codex/skills/winui-dev-workflow/analyzer/Microsoft.WindowsAppSDK.Analyzers.targets'
 if(Test-Path -LiteralPath $analyzers){$frontendProperties+="-p:CustomAfterMicrosoftCommonTargets=$analyzers"}
 Publish 'src/OverlayFrontend.WinUI/OverlayFrontend.WinUI.csproj' $frontend 'frontend' $frontendProperties -SelfContained
@@ -89,7 +91,7 @@ foreach($binary in @('OverlayFrontend.WinUI.exe','OverlayFrontend.WinUI.dll')){
     $metadata=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $frontend $binary))
     if($metadata.FileVersion -cne $fileVersion -or !$metadata.ProductVersion.StartsWith($version,[StringComparison]::Ordinal)){throw "Frontend canonical version mismatch: $binary"}
 }
-foreach($native in @(@('OverlayPlatformInterop.dll',$platform),@('WinUiWindowPreviewNative.dll',$preview))){
+foreach($native in @(@('OverlayPlatformInterop.dll',$platform),@('WinUiWindowPreviewNative.dll',$preview),@('WebRtcCaptureWorker.exe',$webCapture),@('CaptureWorkerHost.dll',$webCapture),@('WebRtcCapturePrototype.dll',$webCapture))){
     if((Get-FileHash -LiteralPath (Join-Path $frontend $native[0])).Hash -cne (Get-FileHash -LiteralPath (Join-Path $native[1] $native[0])).Hash){throw "Published native boundary differs: $($native[0])"}
 }
 $frontendRuntime=Get-Content -LiteralPath (Join-Path $frontend 'OverlayFrontend.WinUI.runtimeconfig.json') -Raw | ConvertFrom-Json

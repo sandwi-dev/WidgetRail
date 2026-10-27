@@ -35,6 +35,7 @@ ctor WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest(string ProfileId, bool
 ctor WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest(bool Enabled)
 ctor WidgetRail.WidgetSdk.SwitchWidgetSavedNetworkProfileRequest(string ProfileId)
 ctor WidgetRail.WidgetSdk.TextSuggestionCatalog(System.Collections.Generic.IEnumerable<WidgetRail.WidgetProtocol.TextSuggestion> suggestions)
+ctor WidgetRail.WidgetSdk.TextSuggestionCatalog(System.Collections.Generic.IEnumerable<WidgetRail.WidgetProtocol.TextSuggestion> suggestions, WidgetRail.WidgetSdk.TextSuggestionMatchField matchField)
 ctor WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest(string DeviceId)
 ctor WidgetRail.WidgetSdk.WebSessionPageActionBatchReader()
 ctor WidgetRail.WidgetSdk.WidgetActionEvent(string ActionId, string SourceElementId, WidgetRail.WidgetProtocol.ControllerButton? ControllerButton = null, WidgetRail.WidgetProtocol.ControllerEventPhase Phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, long Sequence = 0, long MonotonicTimestampMicroseconds = 0, double? RequestedValue = null, string? InputScopeId = null)
@@ -199,6 +200,8 @@ enum WidgetRail.WidgetSdk.StatusTone.Info = WidgetRail.WidgetSdk.StatusTone.Info
 enum WidgetRail.WidgetSdk.StatusTone.Neutral = WidgetRail.WidgetSdk.StatusTone.Neutral
 enum WidgetRail.WidgetSdk.StatusTone.Success = WidgetRail.WidgetSdk.StatusTone.Success
 enum WidgetRail.WidgetSdk.StatusTone.Warning = WidgetRail.WidgetSdk.StatusTone.Warning
+enum WidgetRail.WidgetSdk.TextSuggestionMatchField.Label = WidgetRail.WidgetSdk.TextSuggestionMatchField.Label
+enum WidgetRail.WidgetSdk.TextSuggestionMatchField.Value = WidgetRail.WidgetSdk.TextSuggestionMatchField.Value
 enum WidgetRail.WidgetSdk.ToastTone.Danger = WidgetRail.WidgetSdk.ToastTone.Danger
 enum WidgetRail.WidgetSdk.ToastTone.Info = WidgetRail.WidgetSdk.ToastTone.Info
 enum WidgetRail.WidgetSdk.ToastTone.Neutral = WidgetRail.WidgetSdk.ToastTone.Neutral
@@ -486,6 +489,7 @@ field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.PostJsonOpera
 field const string WidgetRail.WidgetSdk.WidgetMarketplaceCapabilities.Service = "widgets.marketplace.v1"
 field const string WidgetRail.WidgetSdk.WidgetNotificationCapabilities.Service = "widget.notifications.v1"
 field const string WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Service = "widget.permissions.v1"
+field const string WidgetRail.WidgetSdk.WidgetPinningCapabilities.Service = "presentation.pinning.v1"
 field const string WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities.CapabilityId = "storage.private-secrets.v1"
 field const string WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.PreviewPermission = "system.apps.windows.preview.v1"
 field const string WidgetRail.WidgetSdk.WidgetWebSessionCapabilities.CapabilityId = "web.sessions.v1"
@@ -887,6 +891,7 @@ method WidgetRail.WidgetSdk.TextEntryElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.TextEntryElement.Suggest(WidgetRail.WidgetProtocol.TextSuggestionSource source) -> WidgetRail.WidgetSdk.TextEntryElement
 method WidgetRail.WidgetSdk.TextEntryElement.Suggest(string sourceKey, int minimumLength = 1, int maximumResults = 6) -> WidgetRail.WidgetSdk.TextEntryElement
 method WidgetRail.WidgetSdk.TextEntryElement.ToString() -> string
+method WidgetRail.WidgetSdk.TextSuggestionCatalog.FindMatches(string text, int maximumValueLength = 512, System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.TextSuggestion>
 method WidgetRail.WidgetSdk.TextSuggestionCatalog.Search(WidgetRail.WidgetProtocol.TextSuggestionQuery query, System.Threading.CancellationToken cancellationToken = null) -> WidgetRail.WidgetProtocol.TextSuggestionResult
 method WidgetRail.WidgetSdk.TextSuggestionCatalog.Search(string text, int maximumResults = 6, System.Threading.CancellationToken cancellationToken = null) -> WidgetRail.WidgetProtocol.TextSuggestionResult
 method WidgetRail.WidgetSdk.ToastElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
@@ -1593,6 +1598,8 @@ method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.RestoreAsync(string layou
 method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.RevokeAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.RouteActionAsync(WidgetRail.WidgetProtocol.ControllerButton button, string focusedElementId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.SelectAsync(string layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
+method WidgetRail.WidgetSdk.WidgetPinningService.RequestOpenAsync(WidgetRail.WidgetSdk.PinnedLayoutHandle layout, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetPinReceipt>
+method WidgetRail.WidgetSdk.WidgetPinningService.RequestOpenAsync(string layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetPinReceipt>
 method WidgetRail.WidgetSdk.WidgetPowerAvailability.<Clone>$() -> WidgetRail.WidgetSdk.WidgetPowerAvailability
 method WidgetRail.WidgetSdk.WidgetPowerAvailability.Deconstruct(out bool CanShutDown, out bool CanRestart, out bool CanSleep) -> void
 method WidgetRail.WidgetSdk.WidgetPowerAvailability.Equals(object? obj) -> bool
@@ -1669,6 +1676,7 @@ method WidgetRail.WidgetSdk.WidgetResource<TValue>.Publish(TValue value, bool in
 method WidgetRail.WidgetSdk.WidgetResource<TValue>.Refresh() -> WidgetRail.WidgetSdk.WidgetOperationHandle
 method WidgetRail.WidgetSdk.WidgetResource<TValue>.Reset(bool invalidate = true) -> void
 method WidgetRail.WidgetSdk.WidgetResource<TValue>.Retry() -> WidgetRail.WidgetSdk.WidgetOperationHandle
+method WidgetRail.WidgetSdk.WidgetResource<TValue>.TryPublishUpdate(System.Func<TValue,System.ValueTuple<bool,TValue>> update, bool invalidate = true) -> bool
 method WidgetRail.WidgetSdk.WidgetResource<TValue>.WhenIdleAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.Task
 method WidgetRail.WidgetSdk.WidgetResourceError.<Clone>$() -> WidgetRail.WidgetSdk.WidgetResourceError
 method WidgetRail.WidgetSdk.WidgetResourceError.Equals(object? obj) -> bool
@@ -1764,11 +1772,16 @@ method WidgetRail.WidgetSdk.WidgetView.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetView.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetView.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetView.WithModal(WidgetRail.WidgetSdk.WidgetModal modal) -> WidgetRail.WidgetSdk.WidgetView
+method WidgetRail.WidgetSdk.WidgetWebCaptureService.GetStatusAsync(WidgetRail.WidgetProtocol.WebCaptureStreamTicket ticket, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WebCaptureStreamStatus>
+method WidgetRail.WidgetSdk.WidgetWebCaptureService.PrepareAsync(WidgetRail.WidgetProtocol.WebSessionReference session, WidgetRail.WidgetProtocol.WebCaptureStreamOptions preferred, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WebCaptureStreamOptions> allowedQualities, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WebCaptureStreamStatus>
+method WidgetRail.WidgetSdk.WidgetWebCaptureService.PrepareAsync(WidgetRail.WidgetProtocol.WebSessionReference session, WidgetRail.WidgetProtocol.WebCaptureStreamOptions? options = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WebCaptureStreamStatus>
+method WidgetRail.WidgetSdk.WidgetWebCaptureService.StopAsync(WidgetRail.WidgetProtocol.WebCaptureStreamTicket ticket, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetWebSession.AuthorizeLocalResourceAsync(System.Uri resource, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetWebSession.NavigateAsync(string destination, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetWebSession.PostMessageAsync<T>(T? message, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetWebSession.ReadMessagesAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<System.Text.Json.JsonElement>
 method WidgetRail.WidgetSdk.WidgetWebSession.RequestAsync<TRequest,TResponse>(string method, TRequest? payload, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<TResponse?>
+method WidgetRail.WidgetSdk.WidgetWebSession.RequestMicrophoneAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WebSessionMicrophoneResult>
 method WidgetRail.WidgetSdk.WidgetWebSessionService.OpenAsync(WidgetRail.WidgetProtocol.WebSessionDefinition definition, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetWebSession>
 method WidgetRail.WidgetSdk.WidgetWifiRadio.<Clone>$() -> WidgetRail.WidgetSdk.WidgetWifiRadio
 method WidgetRail.WidgetSdk.WidgetWifiRadio.Deconstruct(out WidgetRail.WidgetSdk.WidgetWifiRadioState State, out bool CanControl) -> void
@@ -2909,6 +2922,7 @@ property WidgetRail.WidgetSdk.WidgetPagedResourceStatus WidgetRail.WidgetSdk.Wid
 property WidgetRail.WidgetSdk.WidgetPagedResourceStatus WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.Status { get; set; }
 property WidgetRail.WidgetSdk.WidgetPerformanceService WidgetRail.WidgetSdk.WidgetHostServices.Performance { get; }
 property WidgetRail.WidgetSdk.WidgetPermissionService WidgetRail.WidgetSdk.WidgetHostServices.Permissions { get; }
+property WidgetRail.WidgetSdk.WidgetPinningService WidgetRail.WidgetSdk.WidgetHostServices.Pinning { get; }
 property WidgetRail.WidgetSdk.WidgetPowerService WidgetRail.WidgetSdk.WidgetHostServices.Power { get; }
 property WidgetRail.WidgetSdk.WidgetPrivateSecretService WidgetRail.WidgetSdk.WidgetHostServices.PrivateSecrets { get; }
 property WidgetRail.WidgetSdk.WidgetPrivateStateService WidgetRail.WidgetSdk.WidgetHostServices.PrivateState { get; }
@@ -2920,6 +2934,7 @@ property WidgetRail.WidgetSdk.WidgetResourceError? WidgetRail.WidgetSdk.WidgetRe
 property WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue> WidgetRail.WidgetSdk.WidgetResource<TValue>.Snapshot { get; }
 property WidgetRail.WidgetSdk.WidgetResourceStatus WidgetRail.WidgetSdk.WidgetResourceSnapshot<TValue>.Status { get; set; }
 property WidgetRail.WidgetSdk.WidgetTaskSwitcherService WidgetRail.WidgetSdk.WidgetHostServices.TaskSwitcher { get; }
+property WidgetRail.WidgetSdk.WidgetWebCaptureService WidgetRail.WidgetSdk.WidgetCaptureService.WebStreams { get; }
 property WidgetRail.WidgetSdk.WidgetWebSessionService WidgetRail.WidgetSdk.WidgetHostServices.WebSessions { get; }
 property WidgetRail.WidgetSdk.WidgetWifiRadio WidgetRail.WidgetSdk.WidgetWifiRadioChanged.Radio { get; set; }
 property WidgetRail.WidgetSdk.WidgetWifiRadioState WidgetRail.WidgetSdk.WidgetWifiRadio.State { get; set; }
@@ -3190,13 +3205,19 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureSessionRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Start { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentContent,WidgetRail.WidgetProtocol.ProviderDocumentReference> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Create { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Discard { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebCaptureStreamRequest,WidgetRail.WidgetProtocol.WebCaptureStreamStatus> WidgetRail.WidgetSdk.WidgetWebCaptureCapabilities.Prepare { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebCaptureStreamRequest,WidgetRail.WidgetProtocol.WebCaptureStreamStatus> WidgetRail.WidgetSdk.WidgetWebCaptureCapabilities.PrepareConstrained { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebCaptureStreamTicket,WidgetRail.WidgetProtocol.WebCaptureStreamStatus> WidgetRail.WidgetSdk.WidgetWebCaptureCapabilities.Status { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebCaptureStreamTicket,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetWebCaptureCapabilities.Stop { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebSessionCommand,WidgetRail.WidgetProtocol.WebSessionReply> WidgetRail.WidgetSdk.WidgetWebSessionCapabilities.Command { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebSessionCommand,WidgetRail.WidgetProtocol.WebSessionReply> WidgetRail.WidgetSdk.WidgetWebSessionMicrophoneCapabilities.Request { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetActivity,WidgetRail.WidgetProtocol.WidgetActivityReceipt> WidgetRail.WidgetSdk.WidgetActivityCapabilities.Report { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetNotificationCommand,WidgetRail.WidgetProtocol.WidgetNotificationReceipt> WidgetRail.WidgetSdk.WidgetNotificationCapabilities.Publish { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionQuery,WidgetRail.WidgetProtocol.WidgetPermissionRequestState> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Request { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionQuery,WidgetRail.WidgetProtocol.WidgetPermissionStatuses> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Check { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionTicket,WidgetRail.WidgetProtocol.WidgetPermissionRequestState> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Status { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionTicket,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Cancel { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPinRequest,WidgetRail.WidgetProtocol.WidgetPinReceipt> WidgetRail.WidgetSdk.WidgetPinningCapabilities.Open { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WindowCaptureRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.OriginalScreenshot { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WindowCaptureRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Request { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WindowCaptureTicket,WidgetRail.WidgetProtocol.WindowCaptureStatus> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Status { get; }
@@ -3538,6 +3559,7 @@ type enum WidgetRail.WidgetSdk.ControllerInputOrigin : System.IComparable, Syste
 type enum WidgetRail.WidgetSdk.IconButtonSize : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.IconButtonVariant : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.StatusTone : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum WidgetRail.WidgetSdk.TextSuggestionMatchField : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.ToastTone : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetAppLaunchObservationState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetAppLaunchOverlayBehavior : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -3788,6 +3810,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetPerformanceSnapshot : System.IEquat
 type sealed class WidgetRail.WidgetSdk.WidgetPerformanceTarget : System.IEquatable<WidgetRail.WidgetSdk.WidgetPerformanceTarget>
 type sealed class WidgetRail.WidgetSdk.WidgetPermissionService
 type sealed class WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost
+type sealed class WidgetRail.WidgetSdk.WidgetPinningService
 type sealed class WidgetRail.WidgetSdk.WidgetPowerAvailability : System.IEquatable<WidgetRail.WidgetSdk.WidgetPowerAvailability>
 type sealed class WidgetRail.WidgetSdk.WidgetPowerService
 type sealed class WidgetRail.WidgetSdk.WidgetPrivateSecretExists : System.IEquatable<WidgetRail.WidgetSdk.WidgetPrivateSecretExists>
@@ -3826,6 +3849,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetTestPrivateState
 type sealed class WidgetRail.WidgetSdk.WidgetTimedMutation : System.IDisposable
 type sealed class WidgetRail.WidgetSdk.WidgetTimedMutationFailedEventArgs : System.EventArgs
 type sealed class WidgetRail.WidgetSdk.WidgetView : System.IEquatable<WidgetRail.WidgetSdk.WidgetView>
+type sealed class WidgetRail.WidgetSdk.WidgetWebCaptureService
 type sealed class WidgetRail.WidgetSdk.WidgetWebSession : System.IAsyncDisposable
 type sealed class WidgetRail.WidgetSdk.WidgetWebSessionService
 type sealed class WidgetRail.WidgetSdk.WidgetWifiRadio : System.IEquatable<WidgetRail.WidgetSdk.WidgetWifiRadio>
@@ -3854,6 +3878,7 @@ type static class WidgetRail.WidgetSdk.WidgetNetworkCapabilities
 type static class WidgetRail.WidgetSdk.WidgetNotificationCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPerformanceCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPermissionCapabilities
+type static class WidgetRail.WidgetSdk.WidgetPinningCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPowerCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities
 type static class WidgetRail.WidgetSdk.WidgetRecentActivityCapabilities
@@ -3862,7 +3887,9 @@ type static class WidgetRail.WidgetSdk.WidgetTestHost
 type static class WidgetRail.WidgetSdk.WidgetTextChunks
 type static class WidgetRail.WidgetSdk.WidgetTicker
 type static class WidgetRail.WidgetSdk.WidgetTransitionExtensions
+type static class WidgetRail.WidgetSdk.WidgetWebCaptureCapabilities
 type static class WidgetRail.WidgetSdk.WidgetWebSessionCapabilities
+type static class WidgetRail.WidgetSdk.WidgetWebSessionMicrophoneCapabilities
 type struct WidgetRail.WidgetSdk.NavigationShellContentEntry
 type struct WidgetRail.WidgetSdk.WidgetArtworkHandle : System.IEquatable<WidgetRail.WidgetSdk.WidgetArtworkHandle>
 type struct WidgetRail.WidgetSdk.WidgetCollectionCursor : System.IEquatable<WidgetRail.WidgetSdk.WidgetCollectionCursor>

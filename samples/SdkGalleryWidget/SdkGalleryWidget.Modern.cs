@@ -172,7 +172,17 @@ public sealed partial class SdkGalleryWidget
             JsonSerializer.SerializeToElement(new { provider = "youtube", query = "controller tutorials" }))
             .WithIntentFeedback(WebRequest("https://www.youtube.com/results?search_query=controller%20tutorials")),
         UI.Text(_demo.Value.Status, "gallery.intent.status"),
-        UI.Text("Open the tray command menu to try the Summary or Level controls pin layouts, full-widget pinning, or Replace pin. Pin controls use the same live state as the main view.", "gallery.pin.help"));
+        UI.Row("gallery.pin.actions",
+            UI.Button("Pin summary", "gallery.pin.open.summary", "gallery.pin.open.summary"),
+            UI.Button("Pin level controls", "gallery.pin.open.level", "gallery.pin.open.level")),
+        UI.Text("Open a layout directly, or use the tray menu to manage its placement. Pin controls share the main view’s state.", "gallery.pin.help"));
+
+    private async ValueTask RequestDemoPinAsync(string layoutId,CancellationToken token)
+    {
+        try { await HostServices.Pinning.RequestOpenAsync(layoutId,token); }
+        catch(WidgetCapabilityException) { _demo.Update(state=>state with{Status="This host could not accept the pin request."}); }
+        catch(WidgetCapabilityUnavailableException) { _demo.Update(state=>state with{Status="Pin requests require a supporting WidgetRail host."}); }
+    }
 
     private WidgetView ApplyDemoModal(WidgetView view)
     {

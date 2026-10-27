@@ -74,6 +74,19 @@ internal sealed partial class WebSessionBackendValidationPage : Page, IAsyncDisp
         var first = await Request(backend, "read");
         Check(first.GetProperty("payload").GetString() == "main:/first", "Hidden startup reads the main document without retry", checks);
         Check((await Request(backend, "mutations")).GetProperty("payload").GetInt32()==0, "Cancelled startup request never runs a page mutation", checks);
+        var batchId=Guid.NewGuid().ToString("N");
+        await Send(backend,batchId,"catalogue");
+        var itemCount=0;var nextPart=0;var parts=1;
+        while(nextPart<parts)
+        {
+            var batch=await Read(backend,m=>Kind(m)=="response-batch" && Id(m)==batchId);
+            var payload=batch.GetProperty("payload");
+            if(payload.GetProperty("index").GetInt32()!=nextPart++)throw new InvalidOperationException("Backend batch order changed.");
+            parts=payload.GetProperty("total").GetInt32();
+            foreach(var item in payload.GetProperty("items").EnumerateArray())
+                if(item.GetProperty("id").GetInt32()!=itemCount++)throw new InvalidOperationException("Backend batch lost an item.");
+        }
+        Check(itemCount==1000 && parts>1,"Backend returns 1000 ordered items through bounded native batches",checks);
         Check(!Drain(backend).Any(m => m.TryGetProperty("action", out _)), "Backend cannot publish unsolicited page actions", checks);
         for(var i=0;i<18;i++)
         {
@@ -178,6 +191,7 @@ internal sealed partial class WebSessionBackendValidationPage : Page, IAsyncDisp
           if(globalThis.fixtureWorld)deliver(JSON.stringify({action:'unsolicited',payload:{}}));
           if(method==='mutate')return ++mutations;
           if(method==='mutations')return mutations;
+          if(method==='catalogue')return host.batchResult({version:1},Array.from({length:1000},(_,id)=>({id,text:'x'.repeat(1000)})));
           if(method==='hang'){request.progress({waiting:true});return new Promise(()=>{});}
           if(method==='delay'){
             request.progress({waiting:true});

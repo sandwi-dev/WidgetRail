@@ -183,6 +183,8 @@ public sealed partial class SdkGalleryWidget : Widget
 
         switch (action.ActionId)
         {
+            case "gallery.pin.open.summary": return RequestDemoPinAsync("gallery.summary",cancellationToken);
+            case "gallery.pin.open.level": return RequestDemoPinAsync("gallery.level",cancellationToken);
             case "gallery.tab.overview":
                 ActivatePage(GalleryRoute.Overview);
                 return ValueTask.CompletedTask;

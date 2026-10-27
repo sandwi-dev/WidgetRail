@@ -1446,7 +1446,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         string expectedWorkerFingerprint,
         BrokerHostEffect effect)
     {
-        if (effect.Kind is not (BrokerHostEffectKind.CloseOverlayAfterAppLaunch or BrokerHostEffectKind.ActivateTaskWindow)) return;
+        if (effect.Kind is not (BrokerHostEffectKind.CloseOverlayAfterAppLaunch or BrokerHostEffectKind.ActivateTaskWindow or BrokerHostEffectKind.OpenPinnedLayout)) return;
         _ = PublishHostEffectAsync(widgetId, expectedWorkerFingerprint, effect);
     }
 
@@ -1475,10 +1475,11 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             new BridgeHostEffect(
                 widgetId,
                 descriptor.RuntimeGeneration,
-                effect.Kind == BrokerHostEffectKind.ActivateTaskWindow ? "activateTaskWindow" : "closeOverlayAfterAppLaunch",
+                effect.Kind switch { BrokerHostEffectKind.ActivateTaskWindow => "activateTaskWindow", BrokerHostEffectKind.OpenPinnedLayout => "openPinnedLayout", _ => "closeOverlayAfterAppLaunch" },
                 sequence, effect.InitiatedAtMilliseconds,
                 effect.Kind == BrokerHostEffectKind.ActivateTaskWindow && effect.WindowId is { } id && effect.WindowTarget is { } target
-                    ? new Dictionary<string, NativeWindowPreviewTarget> { [id] = target } : null)).ConfigureAwait(false);
+                    ? new Dictionary<string, NativeWindowPreviewTarget> { [id] = target } : null,
+                effect.Kind==BrokerHostEffectKind.OpenPinnedLayout ? effect.PinnedLayoutId : null)).ConfigureAwait(false);
     }
 
     private async Task SendEventAsync<T>(string type, T payload)

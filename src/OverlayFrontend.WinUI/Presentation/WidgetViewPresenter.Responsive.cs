@@ -56,8 +56,8 @@ internal sealed partial class WidgetViewPresenter
         ValidateTransientControl();
         RefreshReadingFocus();
         if (focused is null || Navigable(focused)) return;
-        pendingRestore = persistence is null ? null : bindings.Values.FirstOrDefault(candidate => Navigable(candidate) &&
-            declarations[candidate.Identity.Id].Node.FocusPersistenceId == persistence);
+        pendingRestore = CaptureNativeRestore(persistence is null ? null : bindings.Values.FirstOrDefault(candidate => Navigable(candidate) &&
+            declarations[candidate.Identity.Id].Node.FocusPersistenceId == persistence));
         needsEntry = pendingRestore is null;
         QueueEntryFocus();
     }

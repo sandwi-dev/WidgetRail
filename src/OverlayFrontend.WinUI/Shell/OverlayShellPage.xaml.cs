@@ -446,6 +446,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private void HostEffectReceived(object? sender, WidgetHostEffectEventArgs args) => DispatcherQueue.TryEnqueue(() =>
     {
         var effect = args.Effect;
+        if(effect.Kind==WidgetHostEffectKind.OpenPinnedLayout)
+        { _=RequestWidgetPinAsync(effect);return; }
         var rejection = retired ? "retired" : !visible ? "hidden" : effect.Authority.WidgetId != activeWidget ? "widget-changed" :
             effect.InitiatedAtMilliseconds < visibleSince ? "old-visible-session" :
             owner?.Session.IsHostEffectAuthorityCurrent(effect.Authority) != true ? "stale-authority" : null;

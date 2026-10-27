@@ -38,14 +38,16 @@ internal sealed class BrokerWidgetCapabilityClient :
         ArgumentNullException.ThrowIfNull(operation);
         ArgumentNullException.ThrowIfNull(request);
         var actionContext = WidgetActionInvocationContext.Current;
-        var closeOnLaunch = IsCloseOnLaunch(operation, request);
-        if (closeOnLaunch && actionContext is { IsActive: false })
+        var pinning = operation.CapabilityId==WidgetPinningCapabilities.Service && operation.OperationId=="pin.open";
+        if(pinning && actionContext is null)throw CapabilityFailure("action_context_required");
+        var tracksHostEffect = IsCloseOnLaunch(operation, request) || pinning;
+        if (tracksHostEffect && actionContext is { IsActive: false })
             throw CapabilityFailure("stale_action_context");
-        using var closeRequest = closeOnLaunch
-            ? actionContext?.TryBeginCloseRequest()
+        using var effectRequest = tracksHostEffect
+            ? actionContext?.TryBeginHostEffectRequest()
             : null;
-        if (actionContext is not null && closeOnLaunch &&
-            closeRequest is null)
+        if (actionContext is not null && tracksHostEffect &&
+            effectRequest is null)
             throw CapabilityFailure("stale_action_context");
         BrokerResponseEnvelope response;
         try
@@ -70,7 +72,7 @@ internal sealed class BrokerWidgetCapabilityClient :
                 // the request to ordinary lifecycle authority.
                 if (activated) activatedGesture = gesture;
             }
-            if (closeOnLaunch && actionContext is { IsActive: false })
+            if (tracksHostEffect && actionContext is { IsActive: false })
                 throw CapabilityFailure("stale_action_context");
             response = await _client.RequestWithActionAsync(
                 operation.CapabilityId,
@@ -78,7 +80,7 @@ internal sealed class BrokerWidgetCapabilityClient :
                 request,
                 activatedGesture?.InputSequence,
                 activatedGesture?.SnapshotSequence,
-                closeRequest?.ExecutionId,
+                effectRequest?.ExecutionId,
                 cancellationToken)
                 .ConfigureAwait(false);
         }

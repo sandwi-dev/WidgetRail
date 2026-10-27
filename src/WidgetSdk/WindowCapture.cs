@@ -22,7 +22,10 @@ public static class WidgetCaptureCapabilities
 public sealed class WidgetCaptureService
 {
     private readonly IWidgetCapabilityClient client;
-    internal WidgetCaptureService(IWidgetCapabilityClient client) => this.client = client;
+    internal WidgetCaptureService(IWidgetCapabilityClient client)
+    { this.client = client; WebStreams = new(client); }
+    /// <summary>Application capture for an owned backend page, selected through the native host chooser.</summary>
+    public WidgetWebCaptureService WebStreams { get; }
     /// <summary>Read advertised options; this does not open a capture prompt or begin recording.</summary>
     public async ValueTask<CaptureCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default)
     {

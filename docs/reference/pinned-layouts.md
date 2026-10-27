@@ -39,6 +39,35 @@ queue view should not eagerly fetch the entire queue while that layout is unused
 Selection demand is not a general permission to issue Windows operations or
 override the widget's other capability/lifecycle rules.
 
+## Open a pin from a widget action
+
+With protocol 103 or later, a widget can request one of its own currently published
+layouts through the intrinsic pinning service. No widget permission is required:
+
+```csharp
+// Inside the admitted OnActionAsync handler, after publishing this layout.
+WidgetPinReceipt receipt = await HostServices.Pinning.RequestOpenAsync(
+    streamLayout, cancellationToken);
+```
+
+`RequestOpenAsync` accepts either a `PinnedLayoutHandle` or its authored string ID
+and returns `ValueTask<WidgetPinReceipt>`. IDs may contain ASCII letters, digits,
+dots, underscores and hyphens, with a maximum length of 128. The `host.` prefix is
+reserved: this API cannot request full-widget pinning, another widget's pin or a
+window/focus target. The widget must declare `pinningSupported` and publish the
+layout in its current view.
+
+Await the request within the original action handler. Moving it to a background
+task or firing it from polling loses user-action authority. The host checks the
+originating widget, scope and current declaration before opening the passive pin;
+it owns replacement dialogs, geometry, focus and saved dimensions per layout.
+
+`receipt.Accepted` reports admission, not proof that a pin is visible. A stale
+layout can be rejected later and the user can cancel replacement. Use
+`IsSelected` and `SelectionCancellationToken` to acquire resources or start a
+receiver; do not start playback simply because the receipt was accepted. Normal
+capability errors and cancellation still apply.
+
 ## Controls and artwork in a pinned root
 
 Use the same declarative controls and action handlers as the main widget:
@@ -66,4 +95,6 @@ template demonstrates a player session with host-owned presentation.
 See [Media and pinning](../developers/media-and-pinning.md) for the broader design.
 
 Source: [`PinnedLayoutHandle.cs`](../../src/WidgetSdk/PinnedLayoutHandle.cs) and
-[`Widget.cs`](../../src/WidgetSdk/Widget.cs).
+[`Widget.cs`](../../src/WidgetSdk/Widget.cs). Direct requests use
+[`Pinning.cs`](../../src/WidgetSdk/Pinning.cs) and
+[`WidgetPinRequest.cs`](../../src/WidgetProtocol/WidgetPinRequest.cs).

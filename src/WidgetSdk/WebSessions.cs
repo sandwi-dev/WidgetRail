@@ -26,12 +26,12 @@ public sealed class WidgetWebSessionService
                 definition.PageAdapter.Mode == WebSessionPageAdapterMode.SessionBackend ? WebSessionOperation.OpenBackend : WebSessionOperation.OpenAdapted)
                 { Definition = definition }, cancellationToken).ConfigureAwait(false);
         if (reply?.Session?.IsWellFormed() != true) throw new WidgetCapabilityException("malformed_response", "Invalid web session reference.");
-        return new(client, reply.Session);
+        return new(client, reply.Session, definition.PageAdapter?.Mode==WebSessionPageAdapterMode.SessionBackend);
     }
 }
 
 /// <summary>A host-owned page. Dispose to close it; use Reference only for optional visual presentation.</summary>
-public sealed class WidgetWebSession : IAsyncDisposable
+public sealed partial class WidgetWebSession : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly IWidgetCapabilityClient client;
@@ -43,8 +43,9 @@ public sealed class WidgetWebSession : IAsyncDisposable
     private readonly SemaphoreSlim requestCapacity = new(16, 16);
     private readonly Task receiver;
     private int disposed;
-    internal WidgetWebSession(IWidgetCapabilityClient client, WebSessionReference reference)
-    { this.client = client; Reference = reference; receiver = ReceiveAsync(); }
+    private readonly int maximumBatchItems;
+    internal WidgetWebSession(IWidgetCapabilityClient client, WebSessionReference reference, bool backend = false)
+    { this.client = client; Reference = reference; maximumBatchItems=backend?WebSessionContract.MaximumBackendBatchItems:WebSessionContract.MaximumPageActionBatchItems; receiver = ReceiveAsync(); }
     public WebSessionReference Reference { get; }
     public Task Completion => receiver;
     /// <summary>Navigate a remote session to HTTP(S), or a packaged session to one of its declared HTML assets.</summary>
@@ -142,7 +143,7 @@ public sealed class WidgetWebSession : IAsyncDisposable
                         if(!pending.TryGetValue(key,out var request))continue;
                         try
                         {
-                            if(responseBatches.GetOrAdd(key,_=>new()).TryRead(value.GetProperty("payload"),out var context,out var items))
+                            if(responseBatches.GetOrAdd(key,_=>new(maximumBatchItems)).TryRead(value.GetProperty("payload"),out var context,out var items))
                             {pending.TryRemove(key,out _);responseBatches.TryRemove(key,out _);request.TrySetResult(JsonSerializer.SerializeToElement(new{context,items}));}
                         }
                         catch(Exception error)when(error is IOException or InvalidOperationException or KeyNotFoundException)

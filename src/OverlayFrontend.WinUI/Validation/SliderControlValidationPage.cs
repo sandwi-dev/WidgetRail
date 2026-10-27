@@ -42,6 +42,7 @@ internal sealed partial class SliderControlValidationPage : Page, IAsyncDisposab
                 await CaptureSliderPixelsAsync(pixels["--slider-pixels=".Length..]);
                 return;
             }
+            await ColdDirectionalEntryAsync();
             await FractionalVolumeAsync();
             actions.Clear();
             minimum = 10; maximum = 21; value = 10; step = 3;
@@ -171,9 +172,9 @@ internal sealed partial class SliderControlValidationPage : Page, IAsyncDisposab
             Check(presenter.CaptureHeldAction(ControllerButton.RightTrigger) is null, "nested input scope blocks the old root shortcut hold");
             await presenter.DisposeAsync();
             if (failure is not null) throw failure;
-            status.Text = $"Passed {checks.Count} slider checks"; WriteResult(new { result = "passed", checks });
+            status.Text = $"Passed {checks.Count} slider checks"; WriteResult(new { result = "passed", checks, directionalEvidence });
         }
-        catch (Exception error) { status.Text = "Slider validation failed: " + error.Message; WriteResult(new { result = "failed", checks, error = error.ToString() }); }
+        catch (Exception error) { status.Text = "Slider validation failed: " + error.Message; WriteResult(new { result = "failed", checks, directionalEvidence, error = error.ToString() }); }
     }
     private void Focus(string id) => ((Control)Find(presenter, "Widget." + id)!).Focus(FocusState.Keyboard);
     private string FocusId => FocusManager.GetFocusedElement(XamlRoot) is DependencyObject element ? AutomationProperties.GetAutomationId(element) : "";
@@ -230,8 +231,12 @@ internal sealed partial class SliderControlValidationPage : Page, IAsyncDisposab
     }
     private static void WriteResult<T>(T result)
     {
-        var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "WinUI", "diagnostics");
-        Directory.CreateDirectory(path); File.WriteAllText(Path.Combine(path, "slider-controls-result.json"), JsonSerializer.Serialize(result));
+        var requested=Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--slider-output");
+        var path=Path.GetFullPath(requested??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "WidgetRail","WinUI","diagnostics","slider-controls-result.json"));
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path+".tmp",JsonSerializer.Serialize(result));
+        File.Move(path+".tmp",path,true);
     }
     public ValueTask DisposeAsync() => presenter.DisposeAsync();
 }

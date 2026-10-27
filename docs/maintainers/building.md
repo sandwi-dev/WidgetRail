@@ -42,6 +42,7 @@ For local UI development, build a workspace and launch the unpackaged frontend:
 ```powershell
 .\scripts\Build-OverlayPlatform.ps1 -Configuration Release
 .\scripts\Build-WinUiWindowPreview.ps1 -Configuration Release
+.\scripts\Build-WebCapture.ps1
 .\scripts\New-WinUiBundledWorkspace.ps1 -WidgetId media-sessions -IncludeSettings -Configuration Release `
   -OutputDirectory .\artifacts\local-widget-workspace
 dotnet run --project .\src\OverlayFrontend.WinUI\OverlayFrontend.WinUI.csproj -c Release -p:Platform=x64 `

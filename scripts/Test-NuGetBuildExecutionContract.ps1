@@ -99,9 +99,16 @@ $fixture = Join-Path $evidence 'guard.proj'
 $present = Join-Path $evidence 'present.dll'
 [IO.File]::WriteAllBytes($present, [byte[]]@(0))
 $absent = Join-Path $evidence 'absent.dll'
+$capture = Join-Path $evidence 'capture'
+New-Item -ItemType Directory -Path $capture | Out-Null
+foreach ($name in @('WebRtcCaptureWorker.exe','CaptureWorkerHost.dll','WebRtcCapturePrototype.dll')) {
+    [IO.File]::WriteAllBytes((Join-Path $capture $name), [byte[]]@(0))
+}
 $cases = @(
     @{ Name='missing-platform'; Target='Build'; Platform=$absent; Preview=$present; Error='Missing OverlayPlatformInterop.dll' },
     @{ Name='missing-preview'; Target='Build'; Platform=$present; Preview=$absent; Error='Missing WinUiWindowPreviewNative.dll' },
+    @{ Name='missing-web-capture'; Target='Build'; Platform=$present; Preview=$present; Capture=$absent; Error='Missing native web capture inputs' },
+    @{ Name='publish-missing-web-capture'; Target='Publish'; Platform=$present; Preview=$present; Capture=$absent; Error='Missing native web capture inputs' },
     @{ Name='publish-no-build'; Target='Publish'; Platform=$absent; Preview=$absent; Error='Missing OverlayPlatformInterop.dll' },
     @{ Name='explicit-inputs'; Target='Build'; Platform=$present; Preview=$present },
     @{ Name='explicit-publish-inputs'; Target='Publish'; Platform=$present; Preview=$present },
@@ -113,6 +120,7 @@ foreach ($case in $cases) {
         "-p:OverlayPlatformInteropPath=$($case.Platform)", "-p:WindowPreviewNativePath=$($case.Preview)",
         "-bl:$evidence/$($case.Name).binlog")
     if ($case.ContainsKey('Extra')) { $arguments += $case.Extra }
+    $arguments += "-p:WebCaptureNativeDirectory=$(if($case.ContainsKey('Capture')){$case.Capture}else{$capture})"
     $result = & dotnet @arguments 2>&1
     $exitCode = $LASTEXITCODE
     $result | Set-Content (Join-Path $evidence "$($case.Name).log")
@@ -124,4 +132,4 @@ foreach ($case in $cases) {
         throw "Native-input guard rejected $($case.Name). See $evidence."
     }
 }
-Write-Output "NuGet build execution contract passed (1 restore owner, audited guidance, 7 native-input build/publish/restore checks). Evidence: $evidence"
+Write-Output "NuGet build execution contract passed (1 restore owner, audited guidance, 9 native-input build/publish/restore checks). Evidence: $evidence"

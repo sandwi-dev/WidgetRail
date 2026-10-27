@@ -15,6 +15,7 @@
     <AssemblyVersion>$(WidgetRailFileVersion)</AssemblyVersion>
     <OverlayPlatformInteropPath Condition="'$(OverlayPlatformInteropPath)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\winui-platform\Release\OverlayPlatformInterop.dll</OverlayPlatformInteropPath>
     <WindowPreviewNativePath Condition="'$(WindowPreviewNativePath)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\winui-preview\Release\WinUiWindowPreviewNative.dll</WindowPreviewNativePath>
+    <WebCaptureNativeDirectory Condition="'$(WebCaptureNativeDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\winui-webcapture\Release</WebCaptureNativeDirectory>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>..\..\assets\branding\widgetrail.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
@@ -73,6 +74,7 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Assets\Words\english.txt" LogicalName="WidgetRail.EnglishWords" />
+    <EmbeddedResource Include="..\..\tools\DiscordWebViewPrototype\native-media.js" LogicalName="WidgetRail.WebCapture.NativeMedia.js" />
     <Content Include="Assets\Words\*-LICENSE.txt;Assets\Words\NOTICE.txt" Link="licenses\WordCompletion\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <EmbeddedResource Include="..\WidgetSdk\EmbeddedMediaAdapterRuntime.js" LogicalName="WidgetRail.MediaValidation.AdapterRuntime.js" Condition="'$(EnableWidgetValidation)' == 'true'" />
     <EmbeddedResource Include="..\WidgetSdk\WebSessionRuntime.js" LogicalName="WidgetRail.SessionFixture.Runtime.js" Condition="'$(EnableWidgetValidation)' == 'true'" />
@@ -92,6 +94,8 @@
     <Content Include="$(WindowPreviewNativePath)"
              Condition="Exists('$(WindowPreviewNativePath)')"
              Link="WinUiWindowPreviewNative.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(WebCaptureNativeDirectory)\WebRtcCaptureWorker.exe;$(WebCaptureNativeDirectory)\CaptureWorkerHost.dll;$(WebCaptureNativeDirectory)\WebRtcCapturePrototype.dll"
+             Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\WinUIEx\LICENSE" Link="licenses\WinUIEx.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <!-- WinApp project-mode run supports the explicit unpackaged configuration. -->

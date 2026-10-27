@@ -1,0 +1,8 @@
+{
+  "name": "widgetrail-discord-backend-build",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "terser": "5.51.2"
+  }
+}

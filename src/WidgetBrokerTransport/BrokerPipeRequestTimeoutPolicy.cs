@@ -7,6 +7,10 @@ internal static class BrokerPipeRequestTimeoutPolicy
     internal static TimeSpan Resolve(
         BrokerPipeTransportOptions options, BrokerRequestEnvelope request)
     {
+        if(request.CapabilityId==BrokerTransportOperations.WindowCaptureV1 && request.Operation is "capture.web-prepare" or "capture.web-prepare-constrained")
+            return options.RequestTimeout>TimeSpan.FromSeconds(95)?options.RequestTimeout:TimeSpan.FromSeconds(95);
+        if (request.CapabilityId == "web.sessions.v1" && request.Operation == "web-session.microphone")
+            return options.RequestTimeout > TimeSpan.FromSeconds(95) ? options.RequestTimeout : TimeSpan.FromSeconds(95);
         if (request.CapabilityId == "web.sessions.v1" && request.Operation == "web-session.command")
             return options.RequestTimeout > TimeSpan.FromSeconds(35) ? options.RequestTimeout : TimeSpan.FromSeconds(35);
         // Opening Explorer uses the host's release-aware handoff, not the ordinary short read deadline.

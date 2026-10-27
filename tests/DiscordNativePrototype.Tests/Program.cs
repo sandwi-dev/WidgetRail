@@ -58,6 +58,33 @@ try
     Check(false, "oversized transport response rejected");
 }
 catch (IOException) { Check(true, "oversized transport response rejected"); }
+// Exercise the actual managed two-stage orchestration without CDP or a real client.
+var evaluations=new List<int>();
+var gatedValue=await AdapterClient.InvokeGuardedAsync("{}",(_,id,_)=>
+{
+    evaluations.Add(id);
+    return Task.FromResult(id==1?JsonSerializer.SerializeToElement(new{needsInstall=true}):
+        JsonSerializer.SerializeToElement(new{needsInstall=false,result=new{ok=true,value=new{accepted=true}}}));
+},CancellationToken.None);
+Check(evaluations.SequenceEqual(new[]{1,2})&&gatedValue.GetProperty("accepted").GetBoolean(),"Missing adapter installs once before its single invocation");
+foreach(var failureCode in new[]{"adapter_newer","adapter_missing","adapter_incompatible"})
+{
+    evaluations.Clear();
+    try
+    {
+        await AdapterClient.InvokeGuardedAsync("{}",(_,id,_)=>{evaluations.Add(id);return Task.FromResult(
+            JsonSerializer.SerializeToElement(new{needsInstall=false,result=new{ok=false,code=failureCode}}));},CancellationToken.None);
+        Check(false,"Guard failure should propagate");
+    }
+    catch(InvalidOperationException error){Check(error.Message==failureCode&&evaluations.SequenceEqual(new[]{1}),"Provider failure "+failureCode+" never replays an action");}
+}
+evaluations.Clear();
+try
+{
+    await AdapterClient.InvokeGuardedAsync("{}",(_,id,_)=>{evaluations.Add(id);throw new IOException("response lost");},CancellationToken.None);
+    Check(false,"Transport loss should propagate");
+}
+catch(IOException){Check(evaluations.SequenceEqual(new[]{1}),"Lost CDP response does not retry a possibly completed action");}
 Console.WriteLine($"Passed: {passed}, Failed: 0, Skipped: 0");
 
 sealed class FakeAdapter : IDiscordAdapter

@@ -70,6 +70,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
 #if ENABLE_WIDGET_VALIDATION || ENABLE_TRIMMED_CONTROL_VALIDATION
     internal static Func<string, string?>? FixturePage { get; set; }
     internal bool FixturePageAdapterReady => pageAdapter?.IsReady == true;
+    internal bool IsRetiredForValidation => retired;
     internal static Func<string, string>? FixtureContentType { get; set; }
     internal Presentation.WidgetTextEntryDialog? FixtureEditor => editDialog;
     internal bool FixtureZoomIdle => !zoomPumping;
@@ -79,6 +80,11 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     internal void CloseControllerForValidation() => web.Close();
     internal List<string> FixturePointerTrace { get; } = [];
     internal async Task<string> EvaluateFixtureAsync(string script) => await core!.ExecuteScriptAsync(script).AsTask().WaitAsync(TimeSpan.FromSeconds(8));
+    internal Func<Task<string>> CaptureDocumentEvaluatorForValidation()
+    {
+        var documentCore = core ?? throw new InvalidOperationException("A ready browser is required.");
+        return () => documentCore.ExecuteScriptAsync("document.title").AsTask().WaitAsync(TimeSpan.FromSeconds(3));
+    }
     internal async Task CrashRendererFixtureAsync()
     {
         try { await core!.CallDevToolsProtocolMethodAsync("Page.crash", "{}").AsTask().WaitAsync(TimeSpan.FromSeconds(3)); }
@@ -381,6 +387,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
                     return;
                 }
                 if (args.Uri != WebBrowserDocument.StartPage && !WebBrowserDocument.IsWebUrl(args.Uri) && !IsAuthorizedExtensionUrl(args.Uri)) { args.Cancel = true; ShowStatus("This link cannot open inside WidgetRail."); return; }
+                RetireDocumentLeases();
                 CancelSiteDecisions();
                 InvalidateNotifications?.Invoke(this);
                 navigationStarted = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -420,6 +427,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
                         ShowStatus("The page is not responding. Reload it or stop its session from the tray menu.");
                     return;
                 }
+                RetireDocumentLeases();
                 faulted = true; DisposeMemoryPolicy(); InvalidateNotifications?.Invoke(this); CancelEdit(); CancelSiteDecisions(); browsing = interacting = false; DrawCursor();
                 ShowStatus("The page disconnected. Press A to reopen it."); UpdateChrome();
                 ActivityChanged?.Invoke();
@@ -521,29 +529,56 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             }
         }
     }
+    private Task? browserActivityDisposal;
     public async ValueTask DisposeAsync()
     {
-        pageAdapter?.Dispose();pageAdapter=null;
-        if (retired) return; hostedMessages.Writer.TryComplete(); SetPresentation(false, false); retired = true; DisposeMemoryPolicy(); ResetPointerVisual(); lifetime.Cancel();
-        InvalidateNotifications?.Invoke(this); ReceiveNotification = null; InvalidateNotifications = null;
-        nativeNotifications?.Dispose(); nativeNotifications = null;
-        if (pendingSiteDecisions.Count != 0) await Task.WhenAll(pendingSiteDecisions.ToArray());
-        await DrainPopupAsync();
-        CloseFiles();
-        Choose = null;
-        ChangeRunning = null; ActivityChanged = null; Recover = null;
-        chromeTheme?.Dispose(); chromeTheme = null;
-        if (dragReceiver is not null)
+        documentLeasesStopping = true;
+        RetireDocumentLeases();
+        backendMicrophone.Retire();
+        Exception? captureFailure = null;
+        try { await DisposeHostedCaptureAsync(); }
+        catch (Exception error) when (error is not OutOfMemoryException) { captureFailure = error; }
+        // Unconfirmed native exit must retain its exact transport and ticket, but
+        // must not leave the Discord page, call, or microphone running. Retrying
+        // disposal still attempts capture cleanup even after browser retirement.
+        try { await (browserActivityDisposal ??= DisposeBrowserActivityAsync()); }
+        catch (Exception error) when (captureFailure is not null && error is not OutOfMemoryException)
+        { throw new AggregateException("Browser and capture teardown did not both complete.", captureFailure, error); }
+        if (captureFailure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(captureFailure).Throw();
+    }
+
+    private async Task DisposeBrowserActivityAsync()
+    {
+        if (retired) return;
+        try
         {
-            try { dragReceiver.DevToolsProtocolEventReceived -= DragIntercepted; }
-            catch (Exception error) when (error is System.Runtime.InteropServices.COMException or ObjectDisposedException) { }
-            dragReceiver = null;
+            if(backendMicrophoneOperations.Count!=0)await Task.WhenAll(backendMicrophoneOperations.ToArray());
+            pageAdapter?.Dispose();pageAdapter=null;
+            hostedMessages.Writer.TryComplete(); SetPresentation(false, false); retired = true; DisposeMemoryPolicy(); ResetPointerVisual(); lifetime.Cancel();
+            InvalidateNotifications?.Invoke(this); ReceiveNotification = null; InvalidateNotifications = null;
+            nativeNotifications?.Dispose(); nativeNotifications = null;
+            if (pendingSiteDecisions.Count != 0) await Task.WhenAll(pendingSiteDecisions.ToArray());
+            await DrainPopupAsync();
+            CloseFiles();
+            Choose = null;
+            ChangeRunning = null; ActivityChanged = null; Recover = null;
+            chromeTheme?.Dispose(); chromeTheme = null;
+            if (dragReceiver is not null)
+            {
+                try { dragReceiver.DevToolsProtocolEventReceived -= DragIntercepted; }
+                catch (Exception error) when (error is System.Runtime.InteropServices.COMException or ObjectDisposedException) { }
+                dragReceiver = null;
+            }
+            if (initializing is not null) await initializing;
+            if (providerAuthorityPump is not null) await providerAuthorityPump;
+            CheckProviderAuthority = null;
         }
-        if (initializing is not null) await initializing;
-        if (providerAuthorityPump is not null) await providerAuthorityPump;
-        CheckProviderAuthority = null;
-        try { web.Close(); }
-        catch (Exception error) when (error is System.Runtime.InteropServices.COMException or ObjectDisposedException) { }
-        audio?.Dispose(); audio = null; core = null; IsInteractionFocused = null; ExitInteraction = null; FocusInteraction = null; InteractionChanged = null; lifetime.Dispose();
+        finally
+        {
+            retired = true;
+            try { web.Close(); }
+            catch (Exception error) when (error is System.Runtime.InteropServices.COMException or ObjectDisposedException) { }
+            audio?.Dispose(); audio = null; core = null; IsInteractionFocused = null; ExitInteraction = null; FocusInteraction = null; InteractionChanged = null; lifetime.Dispose();
+        }
     }
 }

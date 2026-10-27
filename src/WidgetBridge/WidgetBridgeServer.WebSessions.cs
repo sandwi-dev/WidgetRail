@@ -20,7 +20,7 @@ public sealed partial class WidgetBridgeServer
             var result = new List<BridgeWebSessionWork>();
             foreach (var item in batch.Work)
             {
-                if (item.Command.Operation == WebSessionOperation.Close) { result.Add(new(item, [])); continue; }
+                if (item.Cancelled || item.CaptureRevoked || item.Command.Operation == WebSessionOperation.Close) { result.Add(new(item, [])); continue; }
                 if (!registry.IsCurrent(item)) continue;
                 try
                 {
@@ -38,7 +38,7 @@ public sealed partial class WidgetBridgeServer
                 catch (Exception error) when (error is BridgeProtocolException or KeyNotFoundException or InvalidOperationException)
                 { registry.Complete(new(item.RequestId, "session_assets_unavailable")); }
             }
-            await ReplyAsync(request.Type, request.RequestId, new BridgeWebSessionBatch(result, batch.LiveSessions), token).ConfigureAwait(false);
+            await ReplyAsync(request.Type, request.RequestId, new BridgeWebSessionBatch(result, batch.LiveSessions,batch.LiveRequests), token).ConfigureAwait(false);
         }
         else if (request.Type == BridgeMessageTypes.CompleteWebSession)
         {

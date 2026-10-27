@@ -5,11 +5,17 @@ using WidgetRail.PlatformBroker;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Web capture streams source picker filters targets and bounds native identities", WebCaptureSourcePolicyTests.Run),
+    ("Web capture streams synthetic source requires exact process incarnation", CaptureProbeSourceIdentityTests.Run),
+    ("Web capture streams preserve source ownership cancellation and bounds", WebCaptureStreamTests.Ownership),
+    ("Web capture streams require consent and preserve admitted background work", WebCaptureStreamTests.ConsentAndBackground),
+    ("Pinning is intrinsic interactive and restricted to a layout identity", PinningBrokerTests.Contract),
     ("Web sessions bind owner and retire pending authority", WebSessionTests.OwnershipAsync),
     ("Web session canceled startup retires native work", WebSessionTests.CancellationAsync),
     ("Web session sources validate package and network boundaries", WebSessionTests.SourcesAsync),
     ("Web session adapters require explicit operation and retain remote messaging isolation", WebSessionTests.AdaptedAsync),
     ("Web session backends require explicit trusted authority and operation", WebSessionTests.BackendAsync),
+    ("Web session microphone consent is interactive owned typed and cancellable", WebSessionMicrophoneTests.Run),
     ("Widget notifications are intrinsic bounded and available in background", NotificationBrokerTests.Authority),
     ("Widget activity is intrinsic scoped and clears", ActivityBrokerTests.Authority),
     ("Marketplace management is intrinsic narrow and cannot smuggle mutations through reads", MarketplaceBrokerTests.Authority),
@@ -102,7 +108,11 @@ var allTests = new (string Name, Func<Task> Run)[]
 
 var runningRegistrationOnly =
     args.Contains("--running-registration-only", StringComparer.Ordinal);
-var tests = args.Contains("--web-sessions-only", StringComparer.Ordinal)
+var tests = args.Contains("--web-capture-only", StringComparer.Ordinal)
+    ? allTests.Where(test=>test.Name.StartsWith("Web capture streams",StringComparison.Ordinal)).ToArray()
+    : args.Contains("--pinning-only", StringComparer.Ordinal)
+    ? allTests.Where(test=>test.Name.StartsWith("Pinning",StringComparison.Ordinal) || test.Run==CapabilityVocabularyIsClosed || test.Run==CapabilityDomainAuthorityIsSingular || test.Run==CapabilityDomainPoliciesAreBounded).ToArray()
+    : args.Contains("--web-sessions-only", StringComparer.Ordinal)
     ? allTests.Where(test=>test.Name.StartsWith("Web session",StringComparison.Ordinal)).ToArray()
     : args.Contains("--activity-only", StringComparer.Ordinal)
     ? allTests.Where(test => test.Name.StartsWith("Widget activity", StringComparison.Ordinal) || test.Name.StartsWith("Widget notifications", StringComparison.Ordinal) || test.Run == CapabilityDomainAuthorityIsSingular || test.Run == CapabilityVocabularyIsClosed).ToArray()
@@ -470,7 +480,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(52, PlatformCapabilities.All.Count);
+    Assert.Equal(53, PlatformCapabilities.All.Count);
     Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceReadV1, out var performanceRead));
     Assert.Equal(BrokerCapabilityKind.Read, performanceRead.KindForOperation(PlatformCapabilities.PerformanceGet));
     Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceFpsControlV1, out var performanceControl));
@@ -523,9 +533,12 @@ static Task CapabilityVocabularyIsClosed()
             capability.Id != PlatformCapabilities.TaskWindowsSwitchV1 &&
             capability.Id != PlatformCapabilities.DisplaysControlV1 &&
             capability.Id != PlatformCapabilities.CaptureLibraryManageV1 &&
+            capability.Id != PlatformCapabilities.WindowCaptureV1 &&
             capability.Id != PlatformCapabilities.ProviderDocumentsV1)
         .All(capability => capability.InFlightContinuationOperations is null ||
             capability.InFlightContinuationOperations.Count == 0));
+    Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.WindowCaptureV1)
+        .InFlightContinuationOperations!.SetEquals(["capture.web-prepare", "capture.web-prepare-constrained"]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.CaptureLibraryManageV1)
         .InFlightContinuationOperations!.SetEquals(["capture-library.open-folder"]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.AppLibraryLaunchV1)

@@ -163,6 +163,7 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
             if(!Current(current))return;
             var source="(()=>{const deliver=globalThis["+JsonSerializer.Serialize(binding, BrowserJsonContext.Default.String)+"];delete globalThis["+JsonSerializer.Serialize(binding, BrowserJsonContext.Default.String)+"];"+
                 "const requestEndpoint="+JsonSerializer.Serialize(RequestEndpoint,BrowserJsonContext.Default.String)+",cancelEndpoint="+JsonSerializer.Serialize(CancelEndpoint,BrowserJsonContext.Default.String)+";"+
+                "const maximumBatchItems="+(AllowsBackgroundRequests?WebSessionContract.MaximumBackendBatchItems:WebSessionContract.MaximumPageActionBatchItems).ToString(System.Globalization.CultureInfo.InvariantCulture)+";"+
                 BatchPrelude+"\n"+(AllowsBackgroundRequests?BackendPrelude:Prelude)+"\n"+RequestsPrelude+"\n"+script+"\n})()";
             await Evaluate(source,current);
             if(!Current(current))return;
@@ -259,7 +260,7 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
     }
     private const string BatchPrelude="""
         function batchPayloads(value) {
-          if (!value || !Array.isArray(value.items) || value.items.length < 1 || value.items.length > 100) throw new Error('Invalid batch');
+          if (!value || !Array.isArray(value.items) || value.items.length < 1 || value.items.length > maximumBatchItems) throw new Error('Invalid batch');
           const context=value.context??{};
           const size=x=>new TextEncoder().encode(JSON.stringify(x)).length;
           const limit=Math.min(48000,60000-size(globalThis.location?.href??''));

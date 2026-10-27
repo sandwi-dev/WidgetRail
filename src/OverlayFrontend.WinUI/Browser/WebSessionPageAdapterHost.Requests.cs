@@ -43,7 +43,7 @@ internal sealed partial class WebSessionPageAdapterHost
             if(requests.Count>=16||requests.ContainsKey(id))throw new InvalidOperationException("Too many adapter requests.");
             requests[id]=Environment.TickCount64+30000;
         }
-        try{await Evaluate("globalThis["+JsonSerializer.Serialize(RequestEndpoint)+"]?.("+json+")",epoch);}
+        try{await Evaluate("globalThis["+JsonSerializer.Serialize(RequestEndpoint,BrowserJsonContext.Default.String)+"]?.("+json+")",epoch);}
         catch{requests.Remove(id);throw;}
     }
     private void ReceiveReply(JsonElement reply)
@@ -69,7 +69,7 @@ internal sealed partial class WebSessionPageAdapterHost
     }
     private async Task CancelRequestsAsync(long current)
     {
-        try{await Evaluate("globalThis["+JsonSerializer.Serialize(CancelEndpoint)+"]?.()",current);}
+        try{await Evaluate("globalThis["+JsonSerializer.Serialize(CancelEndpoint,BrowserJsonContext.Default.String)+"]?.()",current);}
         catch(Exception error)when(error is not OutOfMemoryException){ }
     }
     private void RetireRequests()

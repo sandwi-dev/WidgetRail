@@ -113,6 +113,9 @@ public sealed class SessionHostEventTests
             };
             await EventAsync(channel, BridgeMessageTypes.HostEffect, activation);
             await EventAsync(channel, BridgeMessageTypes.HostEffect, Effect(descriptor, 5, "futureOptionalEffect"));
+            var pin = Effect(descriptor, 6, "openPinnedLayout");
+            pin["pinnedLayoutId"] = "discord.stream";
+            await EventAsync(channel, BridgeMessageTypes.HostEffect, pin);
             await EventAsync(channel, BridgeMessageTypes.HostEffect, Effect(descriptor, 4));
             await CatalogReplyAsync(channel, barrier.RequestId, descriptor, 1);
             await CatalogAsync(channel, Descriptor(new string('d', 32)), 2);
@@ -125,7 +128,7 @@ public sealed class SessionHostEventTests
             await session.ListWidgetsAsync();
             await session.ListWidgetsAsync();
             var delivered = effects.ToArray();
-            CollectionAssert.AreEqual(new long[] { 1, 4, 5 }, delivered.Select(item => item.Sequence).ToArray());
+            CollectionAssert.AreEqual(new long[] { 1, 4, 5, 6 }, delivered.Select(item => item.Sequence).ToArray());
             Assert.AreEqual(WidgetHostEffectKind.CloseOverlayAfterAppLaunch, delivered[0].Kind);
             Assert.AreEqual(250L, delivered[0].InitiatedAtMilliseconds);
             Assert.IsNull(delivered[0].WindowTarget);
@@ -136,6 +139,9 @@ public sealed class SessionHostEventTests
             Assert.AreEqual(WidgetHostEffectKind.Unsupported, delivered[2].Kind);
             Assert.AreEqual("futureOptionalEffect", delivered[2].WireName);
             Assert.IsNull(delivered[2].WindowTarget);
+            Assert.AreEqual(WidgetHostEffectKind.OpenPinnedLayout, delivered[3].Kind);
+            Assert.AreEqual("discord.stream", delivered[3].PinnedLayoutId);
+            Assert.IsNull(delivered[3].WindowTarget);
             Assert.AreEqual(4, session.Diagnostics.Count(item => item.Code == "stale_host_effect"));
             await session.ListWidgetsAsync();
             Assert.IsFalse(session.IsHostEffectAuthorityCurrent(delivered[0].Authority),

@@ -22,6 +22,41 @@ internal static class WebSessionBatchTests
         try{WebSessionContract.DecodeMessage(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(Nested(WebSessionContract.MaximumMessageDepth+1))));throw new Exception("Over-depth result accepted");}catch(ArgumentException){}
         await Requests();
         await BackendOpening();
+        await BackendBatchBounds();
+    }
+    private static async Task BackendBatchBounds()
+    {
+        foreach(var backend in new[]{false,true})
+        {
+            var messages=new System.Collections.Concurrent.ConcurrentQueue<string>();
+            var widget=WidgetTestHost.Attach(new Probe(),new WidgetTestHostServicesBuilder().WithHandler(WidgetWebSessionCapabilities.Command,async(command,token)=>
+            {
+                if(command.Operation is WebSessionOperation.OpenAdapted or WebSessionOperation.OpenBackend)return new(){Session=new(new string('c',32))};
+                if(command.Operation==WebSessionOperation.ReadMessages){await Task.Delay(1,token);return new(){MessagesBase64=messages.TryDequeue(out var message)?[message]:[]};}
+                if(command.Operation==WebSessionOperation.PostMessage)
+                {
+                    using var parsed=JsonDocument.Parse(Convert.FromBase64String(command.MessageBase64!));
+                    var request=parsed.RootElement;
+                    if(request.GetProperty("kind").GetString()=="request")
+                    {
+                        var count=request.GetProperty("payload").GetProperty("count").GetInt32();
+                        var parts=(count+49)/50;var batchId=Guid.NewGuid().ToString("N");
+                        for(var part=0;part<parts;part++)messages.Enqueue(Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new{
+                            widgetRail=1,kind="response-batch",id=request.GetProperty("id").GetString(),
+                            payload=new{batchId,index=part,total=parts,context=new{account="synthetic"},items=Enumerable.Range(part*50,Math.Min(50,count-part*50)).Select(i=>new{id=i})}})));
+                    }
+                }
+                return new();
+            }).Build());
+            await using var session=await widget.Open(backend?WebSessionPageAdapterMode.SessionBackend:WebSessionPageAdapterMode.IsolatedPageActions);
+            var limit=backend?1000:100;
+            var result=await session.RequestAsync<object,JsonElement>("items",new{count=limit});
+            if(result.GetProperty("items").GetArrayLength()!=limit || result.GetProperty("items")[limit-1].GetProperty("id").GetInt32()!=limit-1)
+                throw new Exception("Mode-specific batching lost loaded items");
+            try{await session.RequestAsync<object,JsonElement>("items",new{count=limit+1});throw new Exception("Mode-specific batch limit was not enforced");}
+            catch(WidgetCapabilityException error)when(error.ErrorCode=="malformed_response") { }
+            await WidgetTestHost.DestroyAsync(widget);
+        }
     }
     private static async Task BackendOpening()
     {

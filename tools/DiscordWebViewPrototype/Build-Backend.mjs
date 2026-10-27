@@ -1,0 +1,44 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import path from 'node:path';
+import { minify } from 'terser';
+
+// Build-time syntax minification only. No property mangling, compression,
+// external fetches or dynamic module loader enter the sealed backend.
+export async function minifySource(source) {
+    const result = await minify(source, {
+        compress: false,
+        mangle: { toplevel: false },
+        keep_fnames: true,
+        format: { comments: /@license|@preserve|SPDX|Copyright/i }
+    });
+    if (!result.code) throw new Error('Backend minification produced no code.');
+    return result.code;
+}
+
+async function build(destination) {
+    const repo = fileURLToPath(new URL('../../', import.meta.url));
+    const read = relative => readFile(path.join(repo, relative), 'utf8');
+    const contract = JSON.parse(await read('samples/DiscordNativePrototype/adapter-contract.json'));
+    if (!Number.isSafeInteger(contract.build) || contract.build < 1) throw new Error('Invalid adapter build.');
+    const adapter = await read('samples/DiscordNativePrototype/adapter.js');
+    const binding = 'globalThis.Vencord?.Webpack';
+    if (adapter.split(binding).length !== 2)
+        throw new Error('Expected exactly one comparison-provider discovery binding. Review WebView composition.');
+    const provider = adapter.replace(binding, 'globalThis.WidgetRailWebWebpack');
+    const source = [await read('tools/DiscordWebViewPrototype/webpack.js'),
+        await read('samples/DiscordNativePrototype/activity-provider.js'), provider,
+        `initializeWidgetRailDiscordAdapter(${contract.build});`,
+        await read('tools/DiscordWebViewPrototype/discord-commands.js'),
+        await read('samples/DiscordWebViewWidget/web/session-backend.js')].join('\n');
+    const output = await minifySource(source);
+    const bytes = Buffer.byteLength(output, 'utf8');
+    if (bytes > 65536) throw new Error(`Sealed backend exceeds 65536 bytes after minification (${bytes}).`);
+    await writeFile(destination, output);
+    console.log(`Sealed backend: ${Buffer.byteLength(source, 'utf8')} source bytes → ${bytes} bytes; adapter ${contract.build}.`);
+}
+
+if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+    if (process.argv.length !== 3) throw new Error('Usage: node Build-Backend.mjs <output-file>');
+    await build(path.resolve(process.argv[2]));
+}

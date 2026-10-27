@@ -227,7 +227,7 @@ public abstract partial class Widget
                     WidgetActionExecutionOutcome.Canceled => "canceled",
                     _ => "failed",
                 });
-                if (actionInvocation.HadCloseRequest)
+                if (actionInvocation.HadHostEffectRequest)
                     ReportActionTerminal(new WidgetActionExecutionTerminal(executionId, outcome));
                 if (failure is not null) ReportActionFailure(queued.Action, failure);
                 if (stop) return;

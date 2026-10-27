@@ -202,18 +202,52 @@ public sealed class WidgetResource<TValue> where TValue : notnull
         lock (_admissionGate)
         {
             lock (_gate)
+                changed = PublishLocked(value);
+            _operations.Cancel(_operationKey);
+        }
+        if (changed && invalidate) _invalidate();
+    }
+
+    /// <summary>
+    /// Atomically merges an authoritative partial observation into the latest
+    /// present value. Returns whether publication was accepted, not whether the
+    /// value changed. Missing values and Apply=false leave reads and cache intact.
+    /// </summary>
+    /// <remarks>
+    /// The updater runs under the resource's admission and state locks. Keep it
+    /// quick, immutable and side-effect free; do not call resource or other
+    /// lock-owning APIs from it. Exceptions and rejected updates publish nothing.
+    /// An accepted update fences and cancels older reads just like Publish.
+    /// </remarks>
+    public bool TryPublishUpdate(Func<TValue, (bool Apply, TValue Value)> update, bool invalidate = true)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+        bool changed;
+        lock (_admissionGate)
+        {
+            lock (_gate)
             {
-                _epoch++;
-                _currentRequest?.Registration.Unregister();
-                _currentRequest = null;
-                _cachedValue = value;
-                _loadedAt = _timeProvider.GetUtcNow();
-                _hasCachedValue = true;
-                changed = SetSnapshotLocked(WidgetResourceStatus.Ready, value, null, hasValue: true);
+                if (!_snapshot.HasValue) return false;
+                var next = update(_snapshot.Value!);
+                if (!next.Apply) return false;
+                ArgumentNullException.ThrowIfNull(next.Value);
+                changed = PublishLocked(next.Value);
             }
             _operations.Cancel(_operationKey);
         }
         if (changed && invalidate) _invalidate();
+        return true;
+    }
+
+    private bool PublishLocked(TValue value)
+    {
+        _epoch++;
+        _currentRequest?.Registration.Unregister();
+        _currentRequest = null;
+        _cachedValue = value;
+        _loadedAt = _timeProvider.GetUtcNow();
+        _hasCachedValue = true;
+        return SetSnapshotLocked(WidgetResourceStatus.Ready, value, null, hasValue: true);
     }
 
     /// <summary>Cancels work and clears all value, cache, and error state.</summary>

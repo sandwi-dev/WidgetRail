@@ -48,18 +48,48 @@ internal static class TextSuggestionTests
             new("a", "Vaal Fireball", "Vaal Fireball"), new("b", "Fireball", "Fireball"),
             new("c", "Ice Tipped Spear", "Ice Tipped Spear"), new("d", "Firestorm", "Firestorm")]);
         Check(catalog.Search("fire").Items.Select(item => item.Id).SequenceEqual(new[] { "b", "d", "a" }), "Prefix/substring order changed");
+        Check(catalog.FindMatches("fire").Select(item => item.Id).SequenceEqual(catalog.Search("fire").Items.Select(item => item.Id)),
+            "Result-list matches and completion disagree on shared ranking");
+        Check(catalog.FindMatches("fire", maximumValueLength: 8).Single().Id == "b",
+            "Result-list matches ignored their value-length bound");
         Check(catalog.Search("ICE TIPPED").Items.Single().Value == "Ice Tipped Spear", "Whole-entry matching lost spaces or case handling");
         Check(catalog.Search(query with { MaximumValueLength = 8 }).Items.Single().Value == "Fireball", "Helper ignored target field length");
         Check(catalog.Search("missing").Items.Count == 0, "No match invented a replacement");
         var gameNames = new TextSuggestionCatalog([new("game", "Elden Ring", "Elden Ring")]);
         var paths = new TextSuggestionCatalog([new("path", "Documents / Builds", "C:\\Documents\\Builds")]);
         Check(gameNames.Search("elden").Items.Count == 1 && paths.Search("builds").Items.Single().Value == "C:\\Documents\\Builds", "Catalog is domain-specific");
+        TextSuggestion[] abbreviated = [new("long", "A long name…", new string('a', 100) + "tail"),
+            new("prefix", "Z label", "tail first"), new("substring", "A label", "other tail")];
+        var displayCatalog = new TextSuggestionCatalog(abbreviated);
+        var valueCatalog = new TextSuggestionCatalog(abbreviated, TextSuggestionMatchField.Value);
+        Check(displayCatalog.Search("tail").Items.Count == 0,
+            "The existing catalog constructor no longer matches display labels by default");
+        Check(valueCatalog.FindMatches("tail").Select(item => item.Id).SequenceEqual(new[] { "prefix", "long", "substring" }) &&
+            valueCatalog.Search("tail").Items.SequenceEqual(valueCatalog.FindMatches("tail")),
+            "Value matching loses hidden suffixes, shared order, or prefix priority");
+        Check(valueCatalog.Search("tail").Items.Single(item => item.Id == "long").Label == "A long name…" &&
+            valueCatalog.FindMatches("tail", 20).All(item => item.Id != "long"),
+            "Value matching changed display labels or ignored the editor's value budget");
+        try { _ = new TextSuggestionCatalog(abbreviated, (TextSuggestionMatchField)999); throw new Exception("Invalid match field accepted"); }
+        catch (ArgumentOutOfRangeException) { }
         var many = new TextSuggestionCatalog(Enumerable.Range(0, 10000).Select(i => new TextSuggestion("entry" + i, "Entry " + i.ToString("D5"), "Entry " + i)));
+        var fullMatches = many.FindMatches("entry");
+        Check(fullMatches.Count == 10000 && fullMatches.Take(6).SequenceEqual(many.Search("entry").Items),
+            "Full local matching truncates results or diverges from bounded completion");
+        try { catalog.Search("fire", 9); throw new Exception("Completion limit was relaxed by list matching"); }
+        catch (ArgumentOutOfRangeException) { }
+        foreach (var invalid in new[] { 0, TextSuggestionContract.MaximumQueryLength + 1 })
+        {
+            try { catalog.FindMatches("fire", invalid); throw new Exception("Invalid list value budget accepted"); }
+            catch (ArgumentOutOfRangeException) { }
+        }
         var timer = Stopwatch.StartNew();
         for (var i = 0; i < 100; i++) Check(many.Search("0999").Items.Count <= 6, "Result cap escaped");
         Console.WriteLine($"PERF suggestions: 100 queries over 10,000 entries in {timer.Elapsed.TotalMilliseconds:F1} ms; bounded to 6 results");
         using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
         try { many.Search("none", cancellationToken: cancellation.Token); throw new Exception("Cancelled catalog search ran"); }
+        catch (OperationCanceledException) { }
+        try { many.FindMatches("none", cancellationToken: cancellation.Token); throw new Exception("Cancelled list matching ran"); }
         catch (OperationCanceledException) { }
         return Task.CompletedTask;
     }

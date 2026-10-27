@@ -37,11 +37,18 @@ internal sealed partial class NativePopupTheme
     {
         var owner = Find(origin);
         var placement = new NativeDialogPresentation(dialog, origin, () => owner?.ApplyDialogParts(dialog));
-        try { return new DialogLease(owner?.Track(() => { owner.Apply(dialog); owner.ApplyDialogParts(dialog); }), placement); }
-        catch { placement.Dispose(); throw; }
+        // Native dialogs leave their origin's visual tree. Nested selection menus
+        // still need the same theme authority for the lifetime of this presentation.
+        if (owner is not null) { Owners.Remove(dialog); Owners.Add(dialog, owner); }
+        void Detach() { if (owner is not null && Owners.TryGetValue(dialog, out var current) && ReferenceEquals(current, owner)) Owners.Remove(dialog); }
+        try { return new DialogLease(owner?.Track(() => { owner.Apply(dialog); owner.ApplyDialogParts(dialog); }), placement, Detach); }
+        catch { Detach(); placement.Dispose(); throw; }
     }
-    private sealed class DialogLease(IDisposable? theme, IDisposable placement) : IDisposable
-    { public void Dispose() { placement.Dispose(); theme?.Dispose(); } }
+    private sealed class DialogLease(IDisposable? theme, IDisposable placement, Action detach) : IDisposable
+    {
+        private bool disposed;
+        public void Dispose() { if (disposed) return; disposed = true; placement.Dispose(); theme?.Dispose(); detach(); }
+    }
     private static NativePopupTheme? Find(FrameworkElement origin)
     {
         for (DependencyObject? current = origin; current is not null; current = PresentationLayers.LogicalParent(current))

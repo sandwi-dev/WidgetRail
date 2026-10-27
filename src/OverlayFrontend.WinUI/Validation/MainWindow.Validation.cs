@@ -374,6 +374,16 @@ public sealed partial class MainWindow
             page.EnableOpeningValidation(openingResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pin-menu") is { } pinMenuResult)
             page.EnablePinnedMenuValidation(pinMenuResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pin-requests") is { } pinRequestResult)
+            page.EnablePinRequestValidation(pinRequestResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-navigation") is { } discordNavigationResult)
+            page.EnableDiscordNavigationValidation(discordNavigationResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-audio") is { } discordAudioResult)
+            page.EnableDiscordAudioValidation(discordAudioResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-voice-pin") is { } discordVoicePinResult)
+            page.EnableDiscordVoicePinValidation(discordVoicePinResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-voice-controls") is { } discordVoiceControlsResult)
+            page.EnableDiscordVoiceControlsValidation(discordVoiceControlsResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-dialog-admission") is { } admissionResult)
             page.EnableDialogAdmissionValidation(admissionResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pinned-placement") is { } pinPlacementResult)
