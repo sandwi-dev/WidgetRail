@@ -15,7 +15,8 @@ service connection. Catalogue listings need a compatible published package.
 | Game Help | Setup | Your Gemini key and available API quota; capture permissions for images/clips | [Game Help guide](../../samples/GameHelpWidget/README.md) |
 | PoE1 / PoE2 Path of Building | Local build creation, editing and calculations | Internet for remote imports/trade; official trade sign-in when required | [PoB guide](../../samples/PobCompanion/README.md) |
 | Display Controls | Display/profile controls after permission | Compatible display hardware and Windows support | [Display Controls guide](../../samples/DisplayProfilesWidget/README.md) |
-| Discord, Twitch, MapGenie and your own webapps | The website's public features | Website accounts/subscriptions where that service requires them | [Webapps](webapps.md) and [browser compatibility](browsing.md#compatibility-and-extensions) |
+| Discord | Sign-in and connection setup | Discord account, full-access approval, microphone/capture consent; client-modification Terms of Service risk | [Discord guide](discord.md) |
+| Twitch, MapGenie and your own webapps | The website's public features | Website accounts/subscriptions where that service requires them | [Webapps](webapps.md) and [browser compatibility](browsing.md#compatibility-and-extensions) |
 
 Service quotas, account restrictions and charges remain the provider's. A
 subscription is not a guarantee that every API or embedded playback route works.

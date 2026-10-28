@@ -6,7 +6,7 @@ $output=[IO.Path]::GetFullPath($OutputDirectory)
 if(Test-Path -LiteralPath $output){throw 'Choose a fresh output directory.'}
 $package=Join-Path $output 'package'
 New-Item -ItemType Directory -Force "$output/logs","$package/styles" | Out-Null
-& dotnet publish "$PSScriptRoot/DiscordWebViewWidget.csproj" -c $Configuration -r win-x64 --self-contained false -m:1 -nr:false -p:UseSharedCompilation=false -o "$package/payload" "-bl:$output/logs/publish-{}.binlog"
+& dotnet publish "$PSScriptRoot/DiscordWebViewWidget.csproj" -c $Configuration -r win-x64 --self-contained false -m:1 -nr:false -p:UseSharedCompilation=false -p:CopyOutputSymbolsToPublishDirectory=false -o "$package/payload" "-bl:$output/logs/publish-{}.binlog"
 if($LASTEXITCODE){throw 'Discord widget publication failed.'}
 # Keep provider behavior shared with the verified comparison prototype. Only the
 # discovery binding and package-host entry point differ in this WebView transport.

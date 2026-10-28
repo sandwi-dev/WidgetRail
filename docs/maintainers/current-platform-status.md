@@ -1,12 +1,20 @@
 # Current platform status
 
-Reviewed against source on 2026-10-22: application `0.1.0-preview.40`, SDK/CLI
-`0.4.7-dev`. The presentation contract is now protocol 105 (2026-10-27), including
+Reviewed against source on 2026-10-28: local application candidate `0.1.0-preview.40.local.1`, SDK/CLI
+`0.4.8-dev`. The presentation contract is protocol 105, including
 backend web sessions, direct pin requests, microphone admission, native web capture
 and capture quality selection.
 These are source versions, not a claim that
 a corresponding release has been published or that every workflow is qualified.
 See [versioning](versioning.md) for the authoritative version files.
+Public release remains preview.40; the current installers are for local testing.
+Discord's accepted WebView2 integration is now Catalogue package
+`widgetrail.samples.discord-controls` `0.1.0`, with a separate full-access identity
+and client-modification Terms of Service warning. It needs a published asset before
+Catalogue can download it; the local candidate is supplied as a `.wrwidget` file.
+The user accepted continued use, with further platform/device coverage to develop
+through testing. The desktop-client migration and later codec/bitrate experiments
+are not included. See the [Discord guide](../users/discord.md).
 
 ## Frontend and distribution
 

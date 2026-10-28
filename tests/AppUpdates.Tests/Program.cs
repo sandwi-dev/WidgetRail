@@ -31,6 +31,8 @@ static Task Versions()
     Assert(BridgeAppUpdates.VersionCompare("0.1.0-preview.30", "0.1.0-preview.9") > 0);
     Assert(BridgeAppUpdates.VersionCompare("0.1.0", "0.1.0-preview.30") > 0);
     Assert(BridgeAppUpdates.VersionCompare("0.1.0-preview.30", "0.1.0") < 0);
+    Assert(BridgeAppUpdates.VersionCompare("0.1.0-preview.40.local.1", "0.1.0-preview.40") > 0);
+    Assert(BridgeAppUpdates.VersionCompare("0.1.0-preview.41", "0.1.0-preview.40.local.1") > 0);
     Assert(BridgeAppUpdates.VersionCompare("0.1.0", "0.1.0") == 0); return Task.CompletedTask;
 }
 static async Task Check()

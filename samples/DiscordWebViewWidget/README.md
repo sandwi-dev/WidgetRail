@@ -1,8 +1,22 @@
-# Discord WebView widget
+# Discord voice, sharing and pins
 
-This is the real SDK-widget integration under development. It owns no external
+This is the maintained Discord SDK-widget integration. It owns no external
 client or debugging port. WidgetRail owns the persistent Discord WebView2
 session, its permissions, the packaged stream receiver and pinned window.
+
+Package: `widgetrail.samples.discord-controls` `0.1.0` (x64, full access).
+Read the [user setup guide](../../docs/users/discord.md). This replaces the
+Catalogue listing for the older sandboxed Discord webapp; it has a separate
+identity because reviewed updates cannot change a package's execution trust.
+Existing profiles are not copied or silently migrated. For local testing, install
+the supplied package file after the matching host installer. Public Catalogue
+download remains unavailable until this package is published.
+
+> **Discord Terms of Service warning:** this unofficial integration modifies
+> Discord's hosted web client and uses private APIs. It may violate
+> [Discord's Terms of Service](https://discord.com/terms), with a risk of account
+> restrictions or termination. Use at your own risk. WidgetRail is not affiliated
+> with or endorsed by Discord. It does not patch the installed desktop client.
 
 The native view combines the current call, participants, incoming screens,
 sharing and friend activity. Without a call, it shows the server/channel picker.
@@ -109,8 +123,8 @@ unknown provider values are not presented as verified settings.
 If local capture ends while Discord still reports a broadcast, the widget keeps
 that distinction and offers explicit Stop. It cannot safely stop an unknown newer
 provider broadcast automatically: Discord's current stream key is reused across
-restarts. The observed live capture termination remains under investigation; a
-synthetic pass is not proof that this failure is fixed.
+restarts. Report unexpected capture termination with the Stream details; a
+synthetic pass is not a guarantee against every device or provider failure.
 
 A separate reproduced failure is corrected: brief renderer stalls could overflow
 the live audio queue and end video as well. The live worker now discards stale
@@ -120,7 +134,9 @@ The native fixture verifies audio/video recovery after a 1.5-second stall and
 normal watchdog shutdown after a four-second stall. This is live-stream behavior;
 the recording/WASAPI policy is unchanged. Remote audio still needs user acceptance.
 
-Build with `./Build-Package.ps1`. Its fresh output includes the package manifest,
+Build a distributable archive with `./Build-CommunityPackage.ps1`. This uses the
+shared validate/pack/checksum flow and does not install or publish. For fixture
+development, `./Build-Package.ps1` prepares a directory containing the package manifest,
 styles and sealed resources. The composed backend reads shared provider sources
 from `../DiscordNativePrototype/{activity-provider.js,adapter.js}` and
 `../../tools/DiscordWebViewPrototype/{webpack.js,discord-commands.js}`; do not
@@ -160,9 +176,9 @@ process audio. Use `tools/DiscordWebViewPrototype/Measure-WebCapture.ps1` for bo
 motion/static runs and CPU, private memory and optional per-process GPU counters.
 The GPU measurement excludes work attributed to DWM/system processes.
 
-Pending physical acceptance: receiver-side application audio, microphone/device
-behavior, real controller navigation, real-game sharing stability and live friend
-action execution. Loaded friend activity and avatars have been observed in the
-current signed-in client without invoking friend actions. The candidate stays isolated until those checks and
-the remaining integration gates are resolved. This development package is not yet
-part of the shipping catalogue.
+The user accepted the merged behavior for continued use on 2026-10-28 and will
+report issues as they use it. This does not establish exhaustive audio-device,
+controller, game or sustained-frame-rate coverage. Motion quality/FPS limitations
+remain documented. The accepted main baseline is being packaged for local
+installers; higher-bitrate/codec experiments and the cancelled desktop-client
+adapter are excluded. See the [verification record](../../docs/discord-webview-prototype-plan.md).

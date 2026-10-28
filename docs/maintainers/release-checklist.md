@@ -56,7 +56,7 @@ From a clean committed checkout with the [development tools](building.md):
 pwsh -NoProfile -File .\scripts\Build-Release.ps1
 pwsh -NoProfile -File .\scripts\Get-InstallerCompiler.ps1
 pwsh -NoProfile -File .\scripts\Build-Installer.ps1 `
-  -ReleaseRoot .\artifacts\releases\0.1.0-preview.40 `
+  -ReleaseRoot .\artifacts\releases\0.1.0-preview.40.local.1 `
   -CompilerPath .\artifacts\tools\installer-compiler\package\tools\ISCC.exe
 ```
 
@@ -102,12 +102,22 @@ or release assets. Discord, Game Help, Display Controls, Twitch and MapGenie rem
 separate downloads. Build their release assets separately:
 
 ```powershell
-./samples/DiscordWidget/Build-CommunityPackage.ps1
+./samples/DiscordWebViewWidget/Build-CommunityPackage.ps1
 ./samples/GameHelpWidget/Build-CommunityPackage.ps1
 ./samples/DisplayProfilesWidget/Build-CommunityPackage.ps1
 ./samples/TwitchWidget/Build-CommunityPackage.ps1
 ./samples/MapGenieWidget/Build-CommunityPackage.ps1
 ```
+
+Discord uses the common archive validation/packing flow with its own backend
+composition step. The older `samples/DiscordWidget` is a source-only webapp.
+For local-only testing, supply the Discord archive beside the installers and
+install it through Settings; do not publish a release or invent a download URL.
+The full-access package has a different identity from the old sandboxed webapp,
+so the user reviews a new installation and signs in rather than changing trust
+through an ordinary update. Keep the Terms of Service warning in the listing and
+user guide. User acceptance for continued testing is not exhaustive hardware or
+performance certification.
 
 The common builder also packages the first-party optional widgets and Browser:
 

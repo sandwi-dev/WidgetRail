@@ -1,9 +1,9 @@
 {
   "manifestVersion": 1,
-  "id": "widgetrail.prototype.discord-webview",
-  "publisher": "widgetrail.prototype",
-  "name": "Discord WebView Prototype",
-  "version": "0.0.14",
+  "id": "widgetrail.samples.discord-controls",
+  "publisher": "widgetrail.samples",
+  "name": "Discord",
+  "version": "0.1.0",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",

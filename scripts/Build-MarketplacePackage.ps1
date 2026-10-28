@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('Discord','GameHelp','DisplayProfiles','Twitch','MapGenie','Browser',
+    [Parameter(Mandatory)][ValidateSet('Discord','DiscordWebApp','GameHelp','DisplayProfiles','Twitch','MapGenie','Browser',
         'AudioMixer','CaptureLibrary','PerformanceMonitor','MediaSessions','GamesApps','NetworkControls','Power')][string]$Widget,
     [ValidateSet('Debug','Release')][string]$Configuration = 'Release',
     [string]$OutputDirectory
@@ -9,32 +9,42 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $firstParty = $Widget -in @('AudioMixer','CaptureLibrary','PerformanceMonitor','MediaSessions','GamesApps','NetworkControls','Power')
-$source = Join-Path $repository $(if ($firstParty) { "src/FirstPartyWidgets/${Widget}Widget" } else { "samples/${Widget}Widget" })
+$source = Join-Path $repository $(if ($Widget -eq 'Discord') { 'samples/DiscordWebViewWidget' }
+    elseif ($Widget -eq 'DiscordWebApp') { 'samples/DiscordWidget' }
+    elseif ($firstParty) { "src/FirstPartyWidgets/${Widget}Widget" } else { "samples/${Widget}Widget" })
 $manifest = Get-Content -LiteralPath (Join-Path $source 'manifest.json') -Raw | ConvertFrom-Json
 $output = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $repository "artifacts/catalogue-addons/$Widget" }
 # Each invocation owns a fresh staging directory; never erase a caller's output tree.
 $work = Join-Path $output ([guid]::NewGuid().ToString('N'))
-$stage = Join-Path $work 'package-root'
+$stage = Join-Path $work $(if ($Widget -eq 'Discord') { 'discord/package' } else { 'package-root' })
 $published = Join-Path $work 'published'
 $logs = Join-Path $work 'logs'
-New-Item -ItemType Directory -Path "$stage/payload",$logs -Force | Out-Null
-$application = $manifest.entrypoint.runtime -eq 'full-trust-application-v1'
-$entry = if ($application) { $manifest.entrypoint.executable } else { $manifest.entrypoint.assembly }
-$assembly = [IO.Path]::GetFileNameWithoutExtension($entry)
-$project = if ($application) { Join-Path $source "Application/$assembly.csproj" } else { Join-Path $source "$assembly.csproj" }
-& dotnet publish $project -c $Configuration --no-self-contained -o $published "-bl:$logs/publish.binlog" -p:UseSharedCompilation=false
-if ($LASTEXITCODE -ne 0) { throw "$Widget publication failed." }
-foreach ($file in Get-ChildItem -LiteralPath $published -File -Recurse) {
-    $relative = [IO.Path]::GetRelativePath($published, $file.FullName)
-    if ((!$application -and $file.Name -in @('WidgetSdk.dll','WidgetProtocol.dll')) -or $file.Extension -in @('.pdb','.xml') -or $relative -match '^(assets|styles)[\\/]' -or $relative -eq 'manifest.json') { continue }
-    $target = Join-Path "$stage/payload" $relative
-    New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null
-    Copy-Item -LiteralPath $file.FullName -Destination $target
-}
-Copy-Item -LiteralPath (Join-Path $source 'manifest.json') -Destination $stage
-foreach ($directory in @('styles','assets')) {
-    $path = Join-Path $source $directory
-    if (Test-Path -LiteralPath $path) { Copy-Item -LiteralPath $path -Destination $stage -Recurse }
+New-Item -ItemType Directory -Path $logs -Force | Out-Null
+if ($Widget -eq 'Discord') {
+    # This package composes a pinned, minified web backend in addition to managed
+    # publication. Reuse its source builder, then the common review/pack path.
+    & (Join-Path $source 'Build-Package.ps1') -Configuration $Configuration -OutputDirectory (Join-Path $work 'discord')
+    if ($LASTEXITCODE -ne 0) { throw 'Discord package preparation failed.' }
+} else {
+    New-Item -ItemType Directory -Path "$stage/payload" -Force | Out-Null
+    $application = $manifest.entrypoint.runtime -eq 'full-trust-application-v1'
+    $entry = if ($application) { $manifest.entrypoint.executable } else { $manifest.entrypoint.assembly }
+    $assembly = [IO.Path]::GetFileNameWithoutExtension($entry)
+    $project = if ($application) { Join-Path $source "Application/$assembly.csproj" } else { Join-Path $source "$assembly.csproj" }
+    & dotnet publish $project -c $Configuration --no-self-contained -o $published "-bl:$logs/publish.binlog" -p:UseSharedCompilation=false
+    if ($LASTEXITCODE -ne 0) { throw "$Widget publication failed." }
+    foreach ($file in Get-ChildItem -LiteralPath $published -File -Recurse) {
+        $relative = [IO.Path]::GetRelativePath($published, $file.FullName)
+        if ((!$application -and $file.Name -in @('WidgetSdk.dll','WidgetProtocol.dll')) -or $file.Extension -in @('.pdb','.xml') -or $relative -match '^(assets|styles)[\\/]' -or $relative -eq 'manifest.json') { continue }
+        $target = Join-Path "$stage/payload" $relative
+        New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null
+        Copy-Item -LiteralPath $file.FullName -Destination $target
+    }
+    Copy-Item -LiteralPath (Join-Path $source 'manifest.json') -Destination $stage
+    foreach ($directory in @('styles','assets')) {
+        $path = Join-Path $source $directory
+        if (Test-Path -LiteralPath $path) { Copy-Item -LiteralPath $path -Destination $stage -Recurse }
+    }
 }
 $cliProject = Join-Path $repository 'tools/WrailCli/WrailCli.csproj'
 & dotnet publish $cliProject -c $Configuration --no-self-contained -o "$work/cli" "-bl:$logs/cli.binlog" -p:UseSharedCompilation=false

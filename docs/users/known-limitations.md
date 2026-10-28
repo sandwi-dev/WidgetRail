@@ -34,6 +34,12 @@ should leave the widget usable.
 Spotify, YouTube, and other services have their own account requirements, quotas,
 and playback policies. Pinning a view does not bypass them.
 
+Discord uses an unofficial modification of its hosted web client and private
+provider APIs. It may violate Discord's Terms of Service and put the account at
+risk. Provider changes can break controls or sharing. Selected resolution/FPS is
+a ceiling, not guaranteed delivery; moving content can show noise or frame drops.
+Read the [Discord guide](discord.md) before installing the full-access package.
+
 ## Distribution and trust
 
 App update checks can be automatic; download and installation are explicit.

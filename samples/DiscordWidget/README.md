@@ -1,7 +1,11 @@
-# Discord webapp
+# Discord webapp (legacy source example)
 
 Use Discord's website from the rail with WidgetRail's controller browsing and a
-persistent sign-in. Install from **Catalogue**; it is not bundled in either edition.
+persistent sign-in. This older sandboxed widget remains buildable but is no longer
+the Catalogue listing. For native call controls, application sharing and incoming
+video pins, use the [current Discord integration](../../docs/users/discord.md).
+Existing installs of this webapp are not automatically replaced or converted to
+full access, and their profiles remain separate.
 Sign in through Discord's page, then open a server or conversation to check that
 your account is connected. There is no WidgetRail API key or companion setup.
 

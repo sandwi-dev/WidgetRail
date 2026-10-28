@@ -237,7 +237,7 @@ static async Task Contracts()
     Check(snapshot.Items.Single(item => item.Id == "widgetrail.samples.poe1-companion").Screenshots.Count > 0 &&
         snapshot.Items.Single(item => item.Id == "widgetrail.samples.poe2-companion").Screenshots.Count >= 2,
         "PoB listing previews are missing");
-    foreach (var package in new[] { "widgetrail.samples.twitch", "widgetrail.samples.discord", "widgetrail.samples.game-help", "widgetrail.samples.display-profiles", "widgetrail.samples.poe1-companion", "widgetrail.samples.poe2-companion" })
+    foreach (var package in new[] { "widgetrail.samples.twitch", "widgetrail.samples.discord-controls", "widgetrail.samples.game-help", "widgetrail.samples.display-profiles", "widgetrail.samples.poe1-companion", "widgetrail.samples.poe2-companion" })
         Check(snapshot.Items.Any(item => item.Id == package), "Marketplace-only listing missing: " + package);
     foreach (var id in new[] { "audio-mixer", "capture-library", "performance-monitor", "media-sessions", "games-apps", "network-controls", "power" })
         Check(snapshot.Items.Count(item => item.Id == "widgetrail.firstparty." + id) == 1,
@@ -255,6 +255,7 @@ static async Task Contracts()
         ("playnite-library", ["Playnite Bridge", "Guided setup", "connects automatically"]),
         ("spotify", ["Client ID", "redirect", "Premium"]),
         ("game-help", ["Gemini API key"]),
+        ("discord-controls", ["Discord account", "WidgetRail update", "Terms of Service", "account at risk", "separate full-access"]),
         ("youtube-video", ["YouTube Data API v3"])
     })
     {
@@ -263,6 +264,8 @@ static async Task Contracts()
     }
     Check(snapshot.Items.Single(item => item.Id == "widgetrail.samples.poe1-companion").Name.EndsWith("(Beta)", StringComparison.Ordinal),
         "PoE1 beta engine is not identified in its listing");
+    Check(!snapshot.Items.Any(item => item.Id == "widgetrail.samples.discord"),
+        "The legacy web-app package must not be advertised as the new full-access integration");
 }
 static async Task SetupRequirements()
 {

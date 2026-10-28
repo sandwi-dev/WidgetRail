@@ -97,7 +97,8 @@ Service integrations may need a separate account, key or companion before use.
 | [YouTube Video](samples/YouTubeWidget/README.md) | Google API key for search; public video links work without a search key. |
 | [YouTube Music](samples/YtMusicWidget/README.md) | Chrome/Edge sign-in for your personal library; supported public search/playback can work without it. Unofficial integration. |
 | [Game Help](samples/GameHelpWidget/README.md) | Your Gemini API key; provider quotas and charges apply. |
-| [Discord](samples/DiscordWidget/README.md) / [Twitch](samples/TwitchWidget/README.md) | Website sign-in for account features; website compatibility varies. |
+| [Discord](docs/users/discord.md) | Discord sign-in, full-access review, microphone/capture consent. Unofficial client modification; read the Terms of Service warning. |
+| [Twitch](samples/TwitchWidget/README.md) | Website sign-in for account features; website compatibility varies. |
 | [Display Controls](samples/DisplayProfilesWidget/README.md) | Supported display hardware and permission for display controls. |
 
 Full-access packages require explicit approval because they run with your Windows
@@ -145,6 +146,14 @@ an external application through [local companion services](docs/reference/commun
 WidgetRail is an independent project, not affiliated with, sponsored by, or
 endorsed by the companies or projects whose products it integrates. Product
 names and trademarks belong to their respective owners.
+
+**Discord client-modification warning:** the Discord integration modifies the
+hosted Discord web client and uses private APIs. This may violate
+[Discord's Terms of Service](https://discord.com/terms) and could result in account
+restrictions or termination. Use it at your own risk; WidgetRail makes no promise
+that Discord will permit or continue supporting this integration. It is not
+affiliated with or endorsed by Discord. This implementation does not patch your
+installed Discord desktop app. See the [Discord guide](docs/users/discord.md).
 
 Game artwork, screenshots, logos, music metadata and other third-party content
 displayed by widgets or shown in this documentation remain subject to their

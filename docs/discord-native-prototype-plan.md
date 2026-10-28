@@ -1,5 +1,10 @@
 # Discord native prototype
 
+Historical Vesktop comparison only. The maintained integration is
+[Discord in WidgetRail's WebView2 session](users/discord.md). The later desktop-client
+migration was cancelled on 2026-10-28. The checklist below records that older
+experiment and is not an active implementation or installer plan.
+
 Base: main 30b77a63. Separate development package; no catalogue or production installer changes.
 
 ## Acceptance gates

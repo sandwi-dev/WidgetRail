@@ -20,6 +20,7 @@ process architecture to use WidgetRail or write your first widget.
 | Banners and pending updates | [Notifications](users/notifications.md) |
 | Add browser capabilities per profile | [Browser extensions](users/extensions.md) |
 | Accounts, keys and companions | [Integration setup and recovery](users/integrations.md) |
+| Voice chat, screen sharing and Discord pins | [Discord setup and limitations](users/discord.md) |
 | What survives hiding, stopping or removal | [Lifecycle and saved data](users/lifecycle.md) |
 
 These guides describe current source behavior. Downloaded releases can lag behind;
