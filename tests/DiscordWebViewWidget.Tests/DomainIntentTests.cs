@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using WidgetRail.Samples.DiscordPrototype;
+using WidgetRail.Samples.DiscordWebView.Domain;
 using WidgetRail.Samples.DiscordWebView;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;

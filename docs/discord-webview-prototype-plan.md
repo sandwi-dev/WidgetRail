@@ -1,9 +1,41 @@
 # Discord integration verification record
 
-Updated: 2026-10-28. Current direction: maintain the accepted WebView2 integration
+Updated: 2026-11-12. Current direction: maintain the accepted WebView2 integration
 from local main (`23d542cb`), with documentation and local installer packaging.
 The desktop-client migration was cancelled. Later bitrate/codec experiments are
 excluded. Earlier investigation notes remain in Git history.
+
+## Source ownership cleanup — 2026-11-12
+
+The retired Vesktop sample, DevTools transport/launcher, prototype-only managed
+tests and two-stage adapter-invocation tests have been removed. Current provider
+sources now live in `samples/DiscordWebViewWidget/web/provider`, domain models in
+its `Domain` directory and incoming receiver assets in its `web` directory.
+Builds use the WebView discovery binding directly, without replacing a Vencord
+expression in source. The obsolete Vesktop window-focus call and `show` command
+are removed; neither was part of the hosted backend's admitted command surface.
+The still-used internal JavaScript adapter name is retained to avoid unrelated
+changes to callers. Capture/host verification tools remain maintained under
+`tools/DiscordWebViewPrototype`; the directory name alone does not imply dead code.
+
+Provider, activity, receiver and packaged-backend checks follow their new sources.
+The direct provider downgrade-rejection check was preserved when removing the
+obsolete transport gate tests. The Discord shard now has ten steps rather than
+twelve because the runnable comparison widget and its transport gate are gone.
+Before cleanup all twelve steps passed. After cleanup all ten remaining steps
+passed, including 408 managed widget checks and source/minified provider checks.
+A fresh 32-file Discord archive was validated and packed; backend, receiver and
+SDK web messaging assets are present. The managed native-fixture harness builds
+with zero warnings/errors; staged provider syntax, verification-runner self-tests
+and documentation contracts (242 Markdown files) also pass. Evidence: `artifacts/discord-cleanup-baseline`,
+`artifacts/discord-cleanup-checks` and `artifacts/discord-cleanup-package`.
+
+Consumer matrix: current Discord widget and its managed fixture/tests migrated;
+backend builder, staged WebView fixture and CI paths migrated; obsolete Vesktop
+consumer removed; other widgets, SDK/protocol and host unchanged. This source-only
+cleanup does not rerun live Discord acceptance. It does not modify installed apps,
+profiles or the previously delivered installers. The separately installed desktop
+diagnostic patch is outside this source cleanup.
 
 ## Acceptance and distribution
 

@@ -17,7 +17,7 @@ $previousBackend=$env:WRAIL_PACKAGED_BACKEND
 try {
     $env:WRAIL_MINIFIED_TESTS='1'
     $env:WRAIL_PACKAGED_BACKEND=Join-Path $output 'backend.js'
-    & node --test "$repo/samples/DiscordNativePrototype/adapter.test.mjs" "$repo/samples/DiscordWebViewWidget/web/session-backend.test.mjs"
+    & node --test "$repo/samples/DiscordWebViewWidget/web/provider/adapter.test.mjs" "$repo/samples/DiscordWebViewWidget/web/session-backend.test.mjs"
     if($LASTEXITCODE){throw 'Minified provider behavior differs from the qualified source.'}
     & node --test "$PSScriptRoot/packaged-backend.check.mjs"
     if($LASTEXITCODE){throw 'Composed sealed backend startup/endpoint verification failed.'}

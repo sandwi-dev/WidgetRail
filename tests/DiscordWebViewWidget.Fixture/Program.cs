@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Collections.Concurrent;
 using WidgetRail.Samples.DiscordWebView;
-using WidgetRail.Samples.DiscordPrototype;
+using WidgetRail.Samples.DiscordWebView.Domain;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetRuntime;

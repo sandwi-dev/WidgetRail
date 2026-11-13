@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs';
 const read=path=>fs.readFileSync(new URL(path,import.meta.url),'utf8');
-const build=JSON.parse(read('../../samples/DiscordNativePrototype/adapter-contract.json')).build;
-const source=read('../../samples/DiscordNativePrototype/activity-provider.js')+'\n'+read('../../samples/DiscordNativePrototype/adapter.js')+`\ninitializeWidgetRailDiscordAdapter(${build});\n`+read('./discord-commands.js');
+const build=JSON.parse(read('../../samples/DiscordWebViewWidget/web/provider/adapter-contract.json')).build;
+const source=read('../../samples/DiscordWebViewWidget/web/provider/activity-provider.js')+'\n'+read('../../samples/DiscordWebViewWidget/web/provider/adapter.js')+`\ninitializeWidgetRailDiscordAdapter(${build});\n`+read('./discord-commands.js');
 const owner='a'.repeat(32);
 function setup(){
  const calls=[],state={account:'1',channelId:null,view:true,connect:true,action:true};
@@ -16,7 +16,7 @@ function setup(){
   VoiceStateStore:{getVoiceStatesForChannel:()=>({})}
  };
  const wp={findStore:name=>stores[name],findByProps:()=>state.action?{selectVoiceChannel:id=>{calls.push(id);state.channelId=id;}}:undefined,findByCode:()=>undefined,Common:{FluxDispatcher:{dispatch(){throw Error('Raw dispatch forbidden');}}}};
- const context={Vencord:{Webpack:wp},WidgetRailWebWebpack:wp,setTimeout,clearTimeout,setInterval,clearInterval};
+ const context={WidgetRailWebWebpack:wp,setTimeout,clearTimeout,setInterval,clearInterval};
  vm.createContext(context);vm.runInContext(source,context);
  return {state,stores,calls,context,invoke:context.WidgetRailDiscordPrototype.invoke,
   join:(args={})=>context.WidgetRailDiscordPrototype.invoke({method:'join',owner,args:{account:'1',channelId:null,target:'20',...args}}),

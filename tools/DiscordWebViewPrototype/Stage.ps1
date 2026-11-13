@@ -8,11 +8,11 @@ New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
 Copy-Item "$PSScriptRoot/capture.html","$PSScriptRoot/capture.js","$PSScriptRoot/capture-timing.js","$PSScriptRoot/capture-policy.js","$PSScriptRoot/native-media.js","$PSScriptRoot/webpack.js","$PSScriptRoot/discord-sender-stats.js","$PSScriptRoot/incoming.html","$PSScriptRoot/incoming.js" $OutputDirectory
 $probePolicy=@{codec=$ProbeCodec;maximumBitrate=$ProbeBitrateMbps*1000000}|ConvertTo-Json -Compress
 [IO.File]::WriteAllText((Join-Path $OutputDirectory 'capture-policy-config.js'),"globalThis.captureProbeConfiguration=$probePolicy;")
-# Reuse the tested domain adapter; only its module-discovery implementation changes.
-$activities=[IO.File]::ReadAllText("$repo/samples/DiscordNativePrototype/activity-provider.js")
-$adapterBuild=([IO.File]::ReadAllText("$repo/samples/DiscordNativePrototype/adapter-contract.json")|ConvertFrom-Json).build
+# Reuse the same hosted provider as the shipping widget.
+$activities=[IO.File]::ReadAllText("$repo/samples/DiscordWebViewWidget/web/provider/activity-provider.js")
+$adapterBuild=([IO.File]::ReadAllText("$repo/samples/DiscordWebViewWidget/web/provider/adapter-contract.json")|ConvertFrom-Json).build
 if(($adapterBuild -isnot [long] -and $adapterBuild -isnot [int]) -or $adapterBuild -lt 1 -or $adapterBuild -gt [int]::MaxValue){throw 'Invalid Discord adapter build contract.'}
-$adapter=[IO.File]::ReadAllText("$repo/samples/DiscordNativePrototype/adapter.js").Replace('globalThis.Vencord?.Webpack','globalThis.WidgetRailWebWebpack')
+$adapter=[IO.File]::ReadAllText("$repo/samples/DiscordWebViewWidget/web/provider/adapter.js")
 $adapter+="`ninitializeWidgetRailDiscordAdapter($adapterBuild);"
 $adapter=$activities+"`n"+$adapter
 $adapter += "`n" + [IO.File]::ReadAllText("$PSScriptRoot/discord-commands.js")

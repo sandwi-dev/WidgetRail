@@ -19,15 +19,11 @@ export async function minifySource(source) {
 async function build(destination) {
     const repo = fileURLToPath(new URL('../../', import.meta.url));
     const read = relative => readFile(path.join(repo, relative), 'utf8');
-    const contract = JSON.parse(await read('samples/DiscordNativePrototype/adapter-contract.json'));
+    const contract = JSON.parse(await read('samples/DiscordWebViewWidget/web/provider/adapter-contract.json'));
     if (!Number.isSafeInteger(contract.build) || contract.build < 1) throw new Error('Invalid adapter build.');
-    const adapter = await read('samples/DiscordNativePrototype/adapter.js');
-    const binding = 'globalThis.Vencord?.Webpack';
-    if (adapter.split(binding).length !== 2)
-        throw new Error('Expected exactly one comparison-provider discovery binding. Review WebView composition.');
-    const provider = adapter.replace(binding, 'globalThis.WidgetRailWebWebpack');
+    const adapter = await read('samples/DiscordWebViewWidget/web/provider/adapter.js');
     const source = [await read('tools/DiscordWebViewPrototype/webpack.js'),
-        await read('samples/DiscordNativePrototype/activity-provider.js'), provider,
+        await read('samples/DiscordWebViewWidget/web/provider/activity-provider.js'), adapter,
         `initializeWidgetRailDiscordAdapter(${contract.build});`,
         await read('tools/DiscordWebViewPrototype/discord-commands.js'),
         await read('samples/DiscordWebViewWidget/web/session-backend.js')].join('\n');

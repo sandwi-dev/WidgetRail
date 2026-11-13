@@ -1,4 +1,4 @@
-namespace WidgetRail.Samples.DiscordPrototype;
+namespace WidgetRail.Samples.DiscordWebView.Domain;
 
 internal sealed record DiscordAudioDevice(string Id,string Name);
 internal sealed record DiscordVoiceSettings(bool InputAvailable,bool OutputAvailable,bool InputVolumeAvailable,

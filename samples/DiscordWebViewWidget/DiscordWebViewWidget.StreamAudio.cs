@@ -1,5 +1,5 @@
 using System.Text.Json;
-using WidgetRail.Samples.DiscordPrototype;
+using WidgetRail.Samples.DiscordWebView.Domain;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 

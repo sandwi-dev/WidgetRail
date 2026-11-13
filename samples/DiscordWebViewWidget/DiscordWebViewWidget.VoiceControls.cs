@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Globalization;
-using WidgetRail.Samples.DiscordPrototype;
+using WidgetRail.Samples.DiscordWebView.Domain;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 

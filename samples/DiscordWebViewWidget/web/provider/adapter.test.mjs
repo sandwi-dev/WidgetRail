@@ -6,7 +6,14 @@ import { EventEmitter } from 'node:events';
 
 const build=JSON.parse(await readFile(new URL('./adapter-contract.json',import.meta.url),'utf8')).build;
 let source = (await readFile(new URL('./activity-provider.js', import.meta.url), 'utf8'))+'\n'+(await readFile(new URL('./adapter.js', import.meta.url), 'utf8'))+`\ninitializeWidgetRailDiscordAdapter(${build});`;
-if(process.env.WRAIL_MINIFIED_TESTS==='1')source=await(await import('../../tools/DiscordWebViewPrototype/Build-Backend.mjs')).minifySource(source);
+if(process.env.WRAIL_MINIFIED_TESTS==='1')source=await(await import('../../../../tools/DiscordWebViewPrototype/Build-Backend.mjs')).minifySource(source);
+
+test('direct domain installer does not downgrade a newer provider',()=>{
+    const newer={build:build+1,dispose(){throw Error('disposed');}};
+    const context=vm.createContext({WidgetRailDiscordPrototype:newer});
+    assert.throws(()=>vm.runInContext(source,context),/adapter_newer/);
+    assert.equal(context.WidgetRailDiscordPrototype,newer);
+});
 function fixture() {
     const events = [], pending = [], captureOptions = [], audioReads = [], demandCalls=[], peers=[], timers = new Map();
     let nextTimer = 0;
@@ -71,8 +78,7 @@ function fixture() {
     const context = vm.createContext({ console, RTCPeerConnection: Peer, Date: class extends Date { static now() { return state.now; } },
         setTimeout: (cb, ms) => { const id = ++nextTimer; timers.set(id, { cb, ms }); return id; },
         clearTimeout: id => timers.delete(id), setInterval: (cb,ms) => {const id=++nextTimer;timers.set(id,{cb,ms,interval:true});return id;}, clearInterval: id => timers.delete(id),
-        VesktopNative: { win: { focus: async () => {} } },
-        Vencord: { Webpack: { findStore: name => stores[name],
+        WidgetRailWebWebpack: { findStore: name => stores[name],
             findByProps: (...names) => names.includes('isIncomingVideoEnabled') ? (state.demandAvailable?visibility:undefined) : names.includes('setLocalVolume') ? (state.audioAvailable?audioActions:undefined) : state.capability ? { selectVoiceChannel: id=>{events.push({type:'VOICE_CHANNEL_SELECT',channelId:id});state.channel=id;},toggleSelfMute: () => { state.muted = !state.muted; events.push('mute'); },
                 toggleSelfDeaf: () => { state.deafened = !state.deafened; events.push('deafen'); } } : undefined,
             findByCode: pattern => {
@@ -85,7 +91,7 @@ function fixture() {
                     events.push('watch');state.viewers=['1'];
                 };
                 return () => events.push(pattern);
-            }, Common: { FluxDispatcher: { dispatch: event => { events.push(event); state.channel = event.channelId; } } } } }
+            }, Common: { FluxDispatcher: { dispatch: event => { events.push(event); state.channel = event.channelId; } } } }
     });
     vm.runInContext(source, context);
     const invoke = (method, args = {}) => context.WidgetRailDiscordPrototype.invoke({ method, owner: 'c'.repeat(32), args: { account: '1', channelId: '20', ...args } });
@@ -202,11 +208,11 @@ test('a lost widget heartbeat rejects late capture even if another probe is aliv
 });
 
 test('packaged receiver loads SDK messaging before its code and reports ready', async () => {
-    const html = await readFile(new URL('./web/receiver.html', import.meta.url), 'utf8');
+    const html = await readFile(new URL('../receiver.html', import.meta.url), 'utf8');
     assert.ok(html.indexOf('src="web-session.js"') < html.indexOf('src="receiver.js"'));
     assert.ok(html.includes('src="web-session.js"'));
-    const runtime = await readFile(new URL('../../src/WidgetSdk/WebSessionRuntime.js', import.meta.url), 'utf8');
-    const receiver = await readFile(new URL('./web/receiver.js', import.meta.url), 'utf8');
+    const runtime = await readFile(new URL('../../../../src/WidgetSdk/WebSessionRuntime.js', import.meta.url), 'utf8');
+    const receiver = await readFile(new URL('../receiver.js', import.meta.url), 'utf8');
     const posted = [], listeners = [];
     const context = vm.createContext({ TextEncoder, Map, AbortController, setTimeout, clearTimeout,
         document: { getElementById: () => ({ srcObject: null, textContent: '', play: async () => {} }) },
@@ -663,7 +669,7 @@ test('failed or malformed confirmation read does not claim a successful write',a
 });
 
 function qualityFixture(){
-    const f=fixture(),wp=f.context.Vencord.Webpack,findCode=wp.findByCode,findProps=wp.findByProps;
+    const f=fixture(),wp=f.context.WidgetRailWebWebpack,findCode=wp.findByCode,findProps=wp.findByProps;
     f.state.qualityAvailable=true;f.state.entitled1080=false;f.state.guildTier=0;
     f.state.qualitySettings={preset:3,resolution:720,fps:30,soundshareEnabled:true};
     const reads=[],writes=[],presets={PRESET_CUSTOM:3,PRESET_AUTO:4};
@@ -1072,14 +1078,14 @@ test('voice audio preserves desktop boosts and unavailable provider state',async
 });
 
 function voiceSettingsFixture(){
-    const f=fixture(),find=f.context.Vencord.Webpack.findByProps;
+    const f=fixture(),find=f.context.WidgetRailWebWebpack.findByProps;
     f.state.input='default';f.state.output='speaker';
     f.inputs={default:{id:'default',name:'System default',disabled:false},mic:{id:'mic',name:'Microphone',disabled:false},off:{id:'off',name:'Hidden',disabled:true}};
     f.outputs={speaker:{id:'speaker',name:'Speakers',disabled:false},headset:{id:'headset',name:'Headset',disabled:false}};
     Object.assign(f.stores.MediaEngineStore,{supports:()=>true,getInputDevices:()=>f.inputs,getOutputDevices:()=>f.outputs,
         getInputDeviceId:()=>f.state.input,getOutputDeviceId:()=>f.state.output,getInputVolume:()=>80});
     f.deviceActions={setInputDevice:id=>{f.events.push(['input',id]);f.state.input=id;},setOutputDevice:id=>{f.events.push(['output',id]);f.state.output=id;},setInputVolume:()=>{throw Error('Browser no-op gain must never be called');}};
-    f.context.Vencord.Webpack.findByProps=(...names)=>names.includes('setInputDevice')?f.deviceActions:find(...names);
+    f.context.WidgetRailWebWebpack.findByProps=(...names)=>names.includes('setInputDevice')?f.deviceActions:find(...names);
     return f;
 }
 
@@ -1131,8 +1137,8 @@ test('selected stream quality is configured and advertised before the first prov
 
 test('unknown resolution-mode constants warn instead of writing an invented provider mode',async()=>{
     for(const constants of [{FIXED:1,SOURCE:0},{FIXED:'renamed',SOURCE:'source'}]){
-        const f=qualityFixture(),find=f.context.Vencord.Webpack.findByProps;
-        f.context.Vencord.Webpack.findByProps=(...names)=>names.includes('SOURCE')?constants:find(...names);
+        const f=qualityFixture(),find=f.context.WidgetRailWebWebpack.findByProps;
+        f.context.WidgetRailWebWebpack.findByProps=(...names)=>names.includes('SOURCE')?constants:find(...names);
         await f.invoke('share',{captureQuality:{resolution:720,frameRate:30}});await settle();f.pending[0]('capture');await settle();
         assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,'share_quality_unconfirmed');
         assert.equal(f.state.ownRtc._connection.input.desktop,f.source,'Unsupported metadata does not prevent normal video attachment');
@@ -1314,10 +1320,10 @@ test('optional quality correction does not regress a previously working baseline
 
 test('cold RTC modules may become available at exact source attachment without executing factories',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;
-    const rtc=f.stores.StreamRTCConnectionStore,find=f.context.Vencord.Webpack.findByCode,findProps=f.context.Vencord.Webpack.findByProps;
+    const rtc=f.stores.StreamRTCConnectionStore,find=f.context.WidgetRailWebWebpack.findByCode,findProps=f.context.WidgetRailWebWebpack.findByProps;
     delete f.stores.StreamRTCConnectionStore;
-    f.context.Vencord.Webpack.findByProps=(...names)=>names.includes('SOURCE')&&!f.state.started?undefined:findProps(...names);
-    f.context.Vencord.Webpack.findByCode=pattern=>pattern==='"STREAM_START",streamType'?((...args)=>{f.stores.StreamRTCConnectionStore=rtc;return find(pattern)(...args);}):find(pattern);
+    f.context.WidgetRailWebWebpack.findByProps=(...names)=>names.includes('SOURCE')&&!f.state.started?undefined:findProps(...names);
+    f.context.WidgetRailWebWebpack.findByCode=pattern=>pattern==='"STREAM_START",streamType'?((...args)=>{f.stores.StreamRTCConnectionStore=rtc;return find(pattern)(...args);}):find(pattern);
     await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();assert.equal(f.state.started,0);
     f.pending[0]('capture');await settle();const state=(await f.invoke('snapshot')).value;
     assert.equal(f.state.started,1);assert.equal(state.shareError,null);assert.equal(state.shareQualityWarning,null);

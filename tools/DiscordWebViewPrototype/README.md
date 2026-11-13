@@ -35,8 +35,8 @@ The source chooser does not preselect an application. Select the window and
 application-audio option yourself before Start sharing.
 
 Close the native prototype to stop its media. The prototype does not install,
-patch or launch Vesktop. The earlier Vesktop prototype remains in
-`samples/DiscordNativePrototype`.
+patch or launch a desktop Discord client. Provider code and receiver assets live in
+`samples/DiscordWebViewWidget`; the retired Vesktop experiment is available in Git history.
 
 ## Local transport fixture
 
@@ -68,7 +68,7 @@ clock progress, helping distinguish source rendering pauses from capture failure
 its old title-based `-SelfTest` route now directs callers to the owned-source runners.
 
 ```powershell
-node --test tools/DiscordWebViewPrototype/*.test.mjs samples/DiscordNativePrototype/adapter.test.mjs
+node --test tools/DiscordWebViewPrototype/*.test.mjs samples/DiscordWebViewWidget/web/provider/adapter.test.mjs
 ```
 
 ## Boundaries and remaining work

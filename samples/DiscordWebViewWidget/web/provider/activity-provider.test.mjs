@@ -21,7 +21,7 @@ function fixture(){
  };
  const wp={findStore:name=>stores[name],findByProps:()=>state.joinAvailable?{selectVoiceChannel:id=>{calls.push(id);state.channel=id;}}:undefined,
   findByCode:()=>state.watchAvailable?()=>{}:undefined,Common:{FluxDispatcher:{dispatch(){throw Error('raw dispatch');}}}};
- const context={Date,Map,Set,Vencord:{Webpack:wp},setTimeout,clearTimeout,setInterval,clearInterval};vm.createContext(context);vm.runInContext(source,context);
+ const context={Date,Map,Set,WidgetRailWebWebpack:wp,setTimeout,clearTimeout,setInterval,clearInterval};vm.createContext(context);vm.runInContext(source,context);
  const provider=context.createWidgetRailDiscordActivities({store:name=>stores[name],me:()=>({id:state.account}),currentChannel:()=>state.channel,voiceActionAvailable:()=>state.joinAvailable,watchAvailable:()=>state.watchAvailable});
  return {state,stores,calls,context,provider,join:(args={})=>provider.validateJoin({account:'1',channelId:null,userId:'2',target:'20',...args}),
   watch:(args={})=>provider.validateWatch({account:'1',channelId:'20',userId:'2',target:'20',key:'guild:10:20:2',...args})};

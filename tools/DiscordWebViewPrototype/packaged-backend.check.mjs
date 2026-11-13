@@ -9,7 +9,7 @@ import { webcrypto } from 'node:crypto';
 const packagedPath = process.env.WRAIL_PACKAGED_BACKEND;
 if (!packagedPath) throw new Error('Run through Test-MinifiedBackend.ps1 with a freshly composed backend.');
 const source = readFileSync(packagedPath, 'utf8');
-const contract = JSON.parse(readFileSync(new URL('../../samples/DiscordNativePrototype/adapter-contract.json', import.meta.url), 'utf8'));
+const contract = JSON.parse(readFileSync(new URL('../../samples/DiscordWebViewWidget/web/provider/adapter-contract.json', import.meta.url), 'utf8'));
 const owner = 'a'.repeat(32);
 
 function fixture() {

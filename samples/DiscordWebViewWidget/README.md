@@ -137,8 +137,8 @@ the recording/WASAPI policy is unchanged. Remote audio still needs user acceptan
 Build a distributable archive with `./Build-CommunityPackage.ps1`. This uses the
 shared validate/pack/checksum flow and does not install or publish. For fixture
 development, `./Build-Package.ps1` prepares a directory containing the package manifest,
-styles and sealed resources. The composed backend reads shared provider sources
-from `../DiscordNativePrototype/{activity-provider.js,adapter.js}` and
+styles and sealed resources. The composed backend reads the widget-owned provider
+from `web/provider/{activity-provider.js,adapter.js}` and
 `../../tools/DiscordWebViewPrototype/{webpack.js,discord-commands.js}`; do not
 copy/fork their domain logic. Compilation alone does not generate that sealed
 backend asset, so launch/install only a directory produced by this script and

@@ -1,4 +1,4 @@
-namespace WidgetRail.Samples.DiscordPrototype;
+namespace WidgetRail.Samples.DiscordWebView.Domain;
 
 /// <summary>Visible, account-scoped friend activity. No provider session secrets or arbitrary URLs.</summary>
 internal sealed record DiscordFriendActivity(string UserId,string Name,string Status,string Kind,string Title,string Details,

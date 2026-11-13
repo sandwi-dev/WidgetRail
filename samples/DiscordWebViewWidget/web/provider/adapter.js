@@ -1,4 +1,4 @@
-// WidgetRail development adapter, v1. No Discord credentials cross this boundary.
+// WidgetRail hosted Discord adapter, v1. No Discord credentials cross this boundary.
 // Internal Discord APIs are feature-probed and may disappear after Discord updates.
 function initializeWidgetRailDiscordAdapter(build) {
 if(!Number.isSafeInteger(build)||build<1)throw new Error('invalid_adapter_build');
@@ -8,7 +8,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
     globalThis.WidgetRailDiscordPrototype = (() => {
         'use strict';
         const revision = 1;
-        const wp = () => globalThis.Vencord?.Webpack;
+        const wp = () => globalThis.WidgetRailWebWebpack;
         const store = name => wp()?.findStore(name);
         const props = (...names) => wp()?.findByProps(...names);
         const code = pattern => wp()?.findByCode(pattern);
@@ -788,14 +788,13 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             const timer = setTimeout(() => {
                 if (epoch === shareEpoch) { ++shareEpoch; sharePending = false; shareError = 'share_picker_timeout'; }
             }, 60000);
-            // Explicitly show Vesktop's source/audio chooser. Never auto-select a
-            // source or approve a permission dialog. Source ID stays inside Vesktop.
+            // Obtain the source through the host-admitted native capture transport.
+            // Permission and source selection remain owned by the host.
             (async () => {
                 let source;
                 let handedOff = false;
                 let qualityBinding = null;
                 try {
-                    await globalThis.VesktopNative?.win?.focus?.();
                     source = await engine.getDesktopSource(sourceOptions, true);
                     if (!current()) return;
                     if(currentShare())fail('share_already_active');
@@ -852,7 +851,6 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                     return { ok: true, value: snapshot() };
                 }
                 if (method === 'diagnostics') return { ok: true, value: lastFailure ?? {} };
-                if (method === 'show') { await globalThis.VesktopNative?.win?.focus?.(); return { ok: true, value: {} }; }
                 authorize(args);
                 switch (method) {
                     case 'voiceMute':case 'voiceVolume':return {ok:true,value:updateVoiceAudio(method,args)};

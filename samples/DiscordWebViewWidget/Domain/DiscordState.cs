@@ -1,4 +1,4 @@
-namespace WidgetRail.Samples.DiscordPrototype;
+namespace WidgetRail.Samples.DiscordWebView.Domain;
 
 internal sealed record DiscordCapabilities(bool Voice, bool Mute, bool Deafen, bool Watch, bool Share, bool StopShare);
 internal sealed record DiscordChannel(string Id, string GuildId, string Name, string Guild);

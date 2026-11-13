@@ -8,8 +8,7 @@ $package=Join-Path $output 'package'
 New-Item -ItemType Directory -Force "$output/logs","$package/styles" | Out-Null
 & dotnet publish "$PSScriptRoot/DiscordWebViewWidget.csproj" -c $Configuration -r win-x64 --self-contained false -m:1 -nr:false -p:UseSharedCompilation=false -p:CopyOutputSymbolsToPublishDirectory=false -o "$package/payload" "-bl:$output/logs/publish-{}.binlog"
 if($LASTEXITCODE){throw 'Discord widget publication failed.'}
-# Keep provider behavior shared with the verified comparison prototype. Only the
-# discovery binding and package-host entry point differ in this WebView transport.
+# Compose the widget-owned provider with the hosted discovery and session entry point.
 Push-Location "$repo/tools/DiscordWebViewPrototype"
 try {
     & npm ci --ignore-scripts --no-audit --no-fund
