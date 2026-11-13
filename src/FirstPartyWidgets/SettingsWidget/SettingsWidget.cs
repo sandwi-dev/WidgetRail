@@ -467,9 +467,18 @@ public sealed partial class SettingsWidget : Widget
                 }).ConfigureAwait(false);
                 return;
             }
-            if (action.ActionId == "controllers.f1-shortcut.toggle" && CurrentPage == SettingsPage.Controllers)
+            if (action.ActionId == "controllers.keyboard-shortcut.edit" && CurrentPage == SettingsPage.Controllers)
             {
-                await ToggleF1ShortcutAsync(cancellationToken).ConfigureAwait(false);
+                // Windows registration and editing are host-owned. The host sends
+                // this declared action after committing the reviewed preference.
+                var saved = await _store.LoadAsync(cancellationToken).ConfigureAwait(false);
+                lock (_stateLock)
+                {
+                    _settings = saved;
+                    _settingsValid = true;
+                    StatusMessage = "Keyboard shortcut updated";
+                }
+                PublishSettingsChanged();
                 return;
             }
             if (action.ActionId == "controllers.hold-scroll.toggle" && CurrentPage == SettingsPage.Controllers &&
@@ -899,32 +908,6 @@ public sealed partial class SettingsWidget : Widget
                 StatusMessage = saved.Controllers.OpenShortcut == ControllerOpenShortcut.Guide
                     ? "Controller shortcut set to Guide"
                     : "Controller shortcut set to View + Menu";
-            }
-        }
-        catch (PlatformSettingsException exception)
-        {
-            SetOperation($"Save failed ({exception.Code})", busy: false, error: true);
-            return;
-        }
-        PublishSettingsChanged();
-    }
-
-    private async Task ToggleF1ShortcutAsync(CancellationToken cancellationToken)
-    {
-        SetOperation("Saving keyboard shortcut…", busy: true, error: false);
-        try
-        {
-            var saved = await _store.UpdateAsync(current => current with
-            {
-                Controllers = current.Controllers with { F1ShortcutEnabled = !current.Controllers.F1ShortcutEnabled },
-            }, cancellationToken).ConfigureAwait(false);
-            lock (_stateLock)
-            {
-                _settings = saved;
-                _settingsValid = true;
-                _busy = false;
-                _error = false;
-                StatusMessage = saved.Controllers.F1ShortcutEnabled ? "F1 shortcut enabled" : "F1 shortcut disabled";
             }
         }
         catch (PlatformSettingsException exception)

@@ -1,9 +1,12 @@
 # Current platform status
 
-Reviewed against source on 2026-10-28: local application candidate `0.1.0-preview.40.local.1`, SDK/CLI
-`0.4.8-dev`. The presentation contract is protocol 105, including
-backend web sessions, direct pin requests, microphone admission, native web capture
-and capture quality selection.
+Reviewed against source on 2026-11-12: local application candidate `0.1.0-preview.40.local.1`, SDK/CLI
+`0.4.8-dev`. The presentation contract is protocol 106, including
+backend web sessions, direct pin requests, microphone admission, native web capture,
+capture quality selection and explicit modal dismissal. The local refinement
+branch also adds a configurable overlay keyboard shortcut, responsive loading
+space for the Playnite poster rail, and Discord media/status improvements; see
+[implementation and qualification](../input-discord-refinements-plan.md).
 These are source versions, not a claim that
 a corresponding release has been published or that every workflow is qualified.
 See [versioning](versioning.md) for the authoritative version files.

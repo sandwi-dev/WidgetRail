@@ -42,6 +42,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
         let shareOwnerDeadline = 0;
         let lastFailure = null;
         let diagnosticsPending = null;
+        let incomingDiagnosticsPending = null;
         let shareQualityBinding = null;
 
         function capabilities() {
@@ -139,6 +140,72 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 if(!['AWAITING_ENDPOINT','AUTHENTICATING','CONNECTING','RTC_DISCONNECTED','RTC_CONNECTING','NO_ROUTE','ICE_CHECKING','DTLS_CONNECTING'].includes(phase))return 'unavailable';
                 return rtc.getWasEverRtcConnected?.()===true?'reconnecting':'connecting';
             }catch{return 'unavailable';}
+        }
+
+        function connectionDiagnostics(args) {
+            sameCall(args);
+            const rtc=store('RTCConnectionStore'),selected=channelId();
+            if(typeof rtc?.getChannelId!=='function'||rtc.getChannelId()!==selected)
+                return {phase:'unavailable',pingMilliseconds:null,averagePingMilliseconds:null,quality:null};
+            const connection=rtc.getRTCConnection?.();
+            const phase=voiceConnection();
+            const ping=method=>{
+                if(phase!=='connected'||typeof rtc[method]!=='function')return null;
+                try{const value=rtc[method]();return Number.isFinite(value)&&value>=0&&value<=60000?value:null;}catch{return null;}
+            };
+            const pingMilliseconds=ping('getLastPing'),averagePingMilliseconds=ping('getAveragePing');
+            let observed=null;
+            try{if(phase==='connected')observed=rtc.getQuality?.();}catch{}
+            sameCall(args);
+            if(store('RTCConnectionStore')!==rtc||rtc.getChannelId()!==selected||rtc.getRTCConnection?.()!==connection)
+                fail('connection_diagnostics_stale');
+            return {phase,pingMilliseconds,averagePingMilliseconds,
+                quality:['bad','average','fine'].includes(observed)?observed:null};
+        }
+
+        async function incomingDiagnostics(args,owner) {
+            sameCall(args);
+            const entry=relay,rtc=entry?.demand?.connection,connection=rtc?._connection;
+            const connections=store('StreamRTCConnectionStore'),engine=store('MediaEngineStore')?.getMediaEngine?.();
+            const exact=()=>entry&&relayCurrent(entry)&&entry.owner===owner&&entry.lease===args.lease&&entry.key===args.key&&
+                entry.account===args.account&&entry.channelId===args.channelId&&entry.demand?.connection===rtc&&
+                streams(args.channelId).some(stream=>stream.key===entry.key)&&watchOwnership(entry.key)?.alreadyWatching===true&&
+                connections?.getRTCConnection?.(entry.key)===rtc&&store('StreamRTCConnectionStore')===connections&&
+                rtc?._connection===connection&&rtc._destroyed===false&&rtc.isOwner===false&&rtc.context==='stream'&&rtc.streamKey===entry.key&&
+                rtc.streamContext?.ownerId===entry.userId&&rtc.streamContext?.channelId===entry.channelId&&
+                connection?.context==='stream'&&connection.streamUserId===entry.userId&&
+                store('MediaEngineStore')?.getMediaEngine?.()===engine&&
+                (typeof engine?.connections?.has==='function'?engine.connections.has(connection):
+                    Array.isArray(engine?.connections)&&engine.connections.length<=100&&engine.connections.includes(connection));
+            if(!exact())fail('incoming_diagnostics_stale');
+            if(typeof connection.getRawStats!=='function')return {available:false};
+            if(incomingDiagnosticsPending)fail('incoming_diagnostics_busy');
+            const read=connection.getRawStats,pending={};incomingDiagnosticsPending=pending;
+            const observed=Promise.resolve().then(()=>read.call(connection));
+            const release=()=>{if(incomingDiagnosticsPending===pending)incomingDiagnosticsPending=null;};
+            observed.then(release,release);
+            const timedOut={};let timer,raw;
+            try{raw=await Promise.race([observed,new Promise(resolve=>timer=setTimeout(()=>resolve(timedOut),1500))]);}
+            finally{clearTimeout(timer);}
+            if(raw===timedOut)fail('incoming_diagnostics_timeout');
+            sameCall(args);
+            if(!exact()||connection.getRawStats!==read)fail('incoming_diagnostics_stale');
+            if(!raw||!Number.isSafeInteger(raw.size)||raw.size<0||raw.size>256||typeof raw.values!=='function')return {available:false};
+            const bounded=(value,max)=>Number.isFinite(value)&&value>=0&&value<=max?value:null;
+            const counter=value=>Number.isSafeInteger(value)?bounded(value,1000000000000):null;
+            let selected=null,inspected=0,count=0;
+            for(const report of raw.values()) {
+                if(++inspected>256)fail('incoming_diagnostics_unavailable');
+                if(report?.type!=='inbound-rtp'||(report.kind??report.mediaType)!=='video'||report.isRemote===true)continue;
+                if(++count>4)fail('incoming_diagnostics_unavailable');
+                const value={available:true,width:counter(report.frameWidth),height:counter(report.frameHeight),
+                    framesPerSecond:bounded(report.framesPerSecond,240),framesReceived:counter(report.framesReceived),
+                    framesDecoded:counter(report.framesDecoded),bytesReceived:counter(report.bytesReceived)};
+                if(value.width>16384||value.height>16384)fail('incoming_diagnostics_unavailable');
+                if(!selected||(value.width??0)*(value.height??0)>(selected.width??0)*(selected.height??0))selected=value;
+            }
+            if(!exact())fail('incoming_diagnostics_stale');
+            return selected??{available:false};
         }
 
         function voiceAudio(userId) {
@@ -857,6 +924,8 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                     case 'voiceSettings':return {ok:true,value:voiceSettings(args)};
                     case 'voiceInputDevice':case 'voiceOutputDevice':case 'voiceInputVolume':return {ok:true,value:updateVoiceSettings(method,args)};
                     case 'streamDiagnostics':return {ok:true,value:await streamDiagnostics(args)};
+                    case 'connectionDiagnostics':return {ok:true,value:connectionDiagnostics(args)};
+                    case 'incomingDiagnostics':return {ok:true,value:await incomingDiagnostics(args,owner)};
                     case 'joinActivity': {
                         if(!activities)fail('activity_unavailable');
                         const target=activities.validateJoin(args);

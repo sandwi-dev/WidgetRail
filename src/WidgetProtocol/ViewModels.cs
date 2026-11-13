@@ -391,6 +391,9 @@ public sealed record VirtualCollectionWindow
 /// <summary>Widget-controlled disclosure state on a button. Expanded content is a separate owned subtree.</summary>
 public sealed record WidgetDisclosure(string ContentId, bool IsExpanded);
 
+/// <summary>Declared cancellation shared by keyboard, controller and optional backdrop dismissal.</summary>
+public sealed record WidgetModalDismissal(string ActionId, bool DismissOnBackdrop = true);
+
 /// <summary>A renderer-neutral node. Properties that do not apply to Kind must be null.</summary>
 public sealed record ViewNode
 {
@@ -485,6 +488,8 @@ public sealed record ViewNode
     /// <summary>Attached placement for a direct child of an explicit Grid.</summary>
     public GridCellPlacement? GridCell { get; init; }
     public AnchoredPresentation? AnchoredPresentation { get; init; }
+    /// <summary>Only valid on a modal layer. Omission preserves legacy keyboard/controller-only dismissal.</summary>
+    public WidgetModalDismissal? ModalDismissal { get; init; }
     /// <summary>
     /// Optional author cap on responsive columns. Omitting it lets the host use
     /// any safe count allowed by the protocol and available width.

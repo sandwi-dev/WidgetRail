@@ -7,7 +7,7 @@ namespace WidgetRail.Samples.DiscordWebView;
 
 public sealed partial class DiscordWebViewWidget : Widget
 {
-    private enum Route { Home, Channels, Account, ParticipantAudio, VoiceSettings }
+    private enum Route { Home, Channels, Account, ParticipantAudio, VoiceSettings, ConnectionDetails }
     private sealed record ViewState(string Query="",string Notice="",string? Account=null,string? Channel=null,
         string? StreamKey=null,string? StreamName=null,Relay? Receiver=null,
         SharePreparation? PreparingShare=null,OutgoingCapture? Outgoing=null,
@@ -33,12 +33,13 @@ public sealed partial class DiscordWebViewWidget : Widget
         view=CreateModel(new ViewState());
         navigation=CreateNavigatorWithOptions("discord.navigation",Route.Home,new()
         {SharedRootScopeId="discord.root",RootRoutes=[Route.Home],RouteScopeIds=new Dictionary<Route,string>{{Route.Account,"discord.account.scope"},{Route.Channels,"discord.channels.scope"},
-            {Route.ParticipantAudio,"discord.participant-dialog.scope"},{Route.VoiceSettings,"discord.voice-settings-dialog.scope"}}});
+            {Route.ParticipantAudio,"discord.participant-dialog.scope"},{Route.VoiceSettings,"discord.voice-settings-dialog.scope"},{Route.ConnectionDetails,"discord.connection-dialog.scope"}}});
         state=CreateResource("discord.state",new WidgetResourceOptions<DiscordState>
         {Load=ReadAsync,MapError=_=>new("discord.unavailable","Discord is unavailable. Open Discord to check the connection, then Refresh."),
             RetainLastGoodValue=false,Lifetime=WidgetOperationLifetime.Widget,CacheDuration=TimeSpan.FromSeconds(1)});
         InitializePicker();
         InitializeVoiceControls();
+        InitializeConnectionDetails();
         participants=CreateLoadedCollection<ParticipantContext,DiscordParticipant>("discord.participants.source","",new("",null),[],new()
         {
             ItemKey=participant=>new("participant."+participant.Id),PreserveOccurrences=true,
@@ -58,6 +59,7 @@ public sealed partial class DiscordWebViewWidget : Widget
     protected override ValueTask OnCreatedAsync(CancellationToken widgetLifetime)
     {
         client??=new DiscordWebSessionClient(HostServices.WebSessions);
+        client.Invalidated+=ProviderInvalidated;
         Operations.RunSingleFlight("discord.poll",async context=>
         {
             while(!context.CancellationToken.IsCancellationRequested)
@@ -74,7 +76,21 @@ public sealed partial class DiscordWebViewWidget : Widget
         },WidgetOperationLifetime.Widget);
         return ValueTask.CompletedTask;
     }
-    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime){state.EnsureLoaded();ResumeVoiceControls();return ValueTask.CompletedTask;}
+    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime){state.EnsureLoaded();ResumeVoiceControls();ResumeConnectionDetails();return ValueTask.CompletedTask;}
+
+    private void ProviderInvalidated(WebSessionReference session)
+    {
+        var current=view.Value;
+        if(LifecycleState==WidgetLifecycleState.Background && !streamPin.IsSelected && !callPin.IsSelected &&
+            current.Outgoing is null && current.PreparingShare is null)return;
+        Operations.RunLatest("discord.provider-change",async context =>
+        {
+            // A change observed during a read must cause a subsequent read, rather
+            // than merely joining a snapshot that could predate the notification.
+            await state.WhenIdleAsync(context.CancellationToken);
+            if(context.IsCurrent && client?.Reference==session)await state.Refresh().Completion;
+        },WidgetOperationLifetime.Widget);
+    }
 
     private async ValueTask<DiscordState> ReadAsync(CancellationToken token)
     {
@@ -82,6 +98,7 @@ public sealed partial class DiscordWebViewWidget : Widget
         var next=await client!.ReadAsync(token);next.Validate();token.ThrowIfCancellationRequested();
         await ReconcileOutgoingAsync(next,readStarted,token);
         ReconcileVoiceDialog(next);
+        ReconcileConnectionDetails(next);
         var selected=view.Value;
         if(selected.StreamKey is not null && (!next.Ready || selected.Account!=next.Account || selected.Channel!=next.ChannelId || selected.StreamSession!=client.Reference ||
             !next.Streams.Any(stream=>stream.Key==selected.StreamKey)))
@@ -96,6 +113,7 @@ public sealed partial class DiscordWebViewWidget : Widget
 
     public override ValueTask OnActionAsync(WidgetActionEvent action,CancellationToken cancellationToken=default)
     {
+        if(TryConnectionDetailsAction(action,cancellationToken,out var connectionAction))return connectionAction;
         if(TryVoiceControlAction(action,cancellationToken,out var voiceAction))return voiceAction;
         if(navigation.TryHandleBack(action,action.FocusedElementId))return ValueTask.CompletedTask;
         if(TryPickerAction(action,cancellationToken,out var pickerAction))return pickerAction;
@@ -286,6 +304,7 @@ public sealed partial class DiscordWebViewWidget : Widget
     {try{using var cleanup=new CancellationTokenSource(TimeSpan.FromSeconds(3));await client!.InvokeAsync("unwatch",new{account,lease},cleanup.Token);}catch(Exception){/* Provider expiry also bounds abandoned relays. */}}
     protected override async ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
+        if(client is not null)client.Invalidated-=ProviderInvalidated;
         try{await CloseReceiverAsync();if(view.Value.Outgoing is { } outgoing)await StopCaptureAsync(outgoing);}
         finally{if(client is not null)await client.DisposeAsync();}
     }

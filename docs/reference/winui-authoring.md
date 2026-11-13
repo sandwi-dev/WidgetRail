@@ -139,6 +139,14 @@ the Star row. Give that content a growing, zero-minimum-height layout within the
 modal. `ShowScrollbar` controls only the default whole-content scroll wrapper;
 custom scroll regions use their own scrollbar setting. Modal scope, dismissal and
 focus return still belong to the same host modal layer.
+
+`WithModal` declares one cancellation action for B, Escape and a primary click on
+the backdrop. Set `WidgetModal.DismissOnBackdrop = false` when the workflow must
+keep outside clicks blocked; Escape and B still use `DismissActionId`. A drag is
+not a backdrop click, and an open native dropdown/text-entry popup gets dismissal
+before its parent. Existing header actions need no extra Close button or widget
+keyboard/pointer handlers. Previously built snapshots without the explicit
+`ModalDismissal` contract retain their legacy blocking backdrop behavior.
 | Media viewport/window preview | Host-owned WebView2 or native preview integration. Keep using typed session/provider contracts, not raw HWNDs, DOM commands or custom drawing. |
 | `WidgetView.PinnedLayout` | An independently declared projection in a host-owned surface. Placement, interaction, opacity and media ownership belong to the host. |
 

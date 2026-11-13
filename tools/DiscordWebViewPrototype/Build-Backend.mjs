@@ -26,6 +26,7 @@ async function build(destination) {
         await read('samples/DiscordWebViewWidget/web/provider/activity-provider.js'), adapter,
         `initializeWidgetRailDiscordAdapter(${contract.build});`,
         await read('tools/DiscordWebViewPrototype/discord-commands.js'),
+        await read('samples/DiscordWebViewWidget/web/provider/observations.js'),
         await read('samples/DiscordWebViewWidget/web/session-backend.js')].join('\n');
     const output = await minifySource(source);
     const bytes = Buffer.byteLength(output, 'utf8');

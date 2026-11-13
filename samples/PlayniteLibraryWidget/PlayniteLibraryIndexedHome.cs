@@ -63,6 +63,15 @@ internal static class PlayniteLibraryIndexedHome
 
     internal static WidgetElement Rail(
         WidgetIndexedCollection<PlayniteLibraryHomeContent, PlayniteLibraryHomeItem> source) =>
-        UI.CollectionList(PlayniteLibraryPresentation.HomeRailId, source, 212, "Games", ScrollAxis.Horizontal)
-            .Classes("playnite-library-rail");
+        // The fixed poster silhouette reserves the row before its lazy range
+        // arrives. It shares the live tile's responsive geometry and the rail's
+        // padding; no loading state, extra item requests or measured-size cache.
+        UI.Grid(PlayniteLibraryPresentation.HomeRailId + ".stage", [], [],
+            UI.Stack(PlayniteLibraryPresentation.HomeRailId + ".reservation",
+                    UI.Spacer(PlayniteLibraryPresentation.HomeRailId + ".poster-size")
+                        .Classes("wrail-poster-tile", "playnite-library-tile", "playnite-library-fixed-tile"))
+                .Classes("playnite-library-rail", "playnite-library-rail-reservation"),
+            UI.CollectionList(PlayniteLibraryPresentation.HomeRailId, source, 162, "Games", ScrollAxis.Horizontal)
+                .Classes("playnite-library-rail"))
+            .Classes("playnite-library-rail-stage");
 }

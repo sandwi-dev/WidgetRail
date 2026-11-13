@@ -95,7 +95,7 @@ public sealed record WidgetView(
         return this with
         {
             Root = new ModalLayerElement(StableIdentifier.Child(modal.Id, "layer"), Root,
-                RootScopeId(Root), dialog, modal.AnchoredPresentation),
+                RootScopeId(Root), dialog, new(modal.DismissActionId, modal.DismissOnBackdrop), modal.AnchoredPresentation),
             ActiveInputScopeId = scope,
             InitialFocusId = modal.InitialFocusId,
             QuickActions = [],

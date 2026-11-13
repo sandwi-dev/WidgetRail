@@ -31,6 +31,7 @@ public sealed class ControllerControlSessionTests
         {
             new ControllerSettings { ExclusiveControl = true, Revision = 12, OpenShortcut = ControllerOpenShortcut.Guide, F1ShortcutEnabled = true },
             new ControllerSettings { Revision = 0, OpenShortcut = ControllerOpenShortcut.ViewMenu },
+            new ControllerSettings { OverlayShortcut = new() { Enabled = true, Key = 0x4A, Modifiers = OverlayShortcutModifiers.Control | OverlayShortcutModifiers.Alt } },
         };
         var status = new ControllerControlStatus(ControllerControlState.Off, true, true, true);
         var service = server.RunAsync(async channel =>
@@ -74,6 +75,8 @@ public sealed class ControllerControlSessionTests
     [DataRow("{\"exclusiveControl\":true,\"revision\":0,\"openShortcut\":\"guide\",\"holdDpadToScroll\":\"false\"}")]
     [DataRow("{\"exclusiveControl\":true,\"revision\":0,\"openShortcut\":\"guide\",\"holdDpadToScroll\":false,\"extra\":1}")]
     [DataRow("{\"exclusiveControl\":true,\"exclusiveControl\":false,\"revision\":0,\"openShortcut\":\"guide\",\"holdDpadToScroll\":false}")]
+    [DataRow("{\"exclusiveControl\":true,\"revision\":0,\"openShortcut\":\"guide\",\"holdDpadToScroll\":false,\"overlayShortcut\":{\"enabled\":true,\"key\":0,\"modifiers\":\"none\"}}")]
+    [DataRow("{\"exclusiveControl\":true,\"revision\":0,\"openShortcut\":\"guide\",\"holdDpadToScroll\":false,\"overlayShortcut\":{\"enabled\":true,\"key\":74,\"modifiers\":16}}")]
     public async Task RejectsMalformedPreferenceWithoutHostEffects(string json)
     {
         await using var server = new ScriptedBridgeServer();

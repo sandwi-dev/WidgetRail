@@ -3,6 +3,7 @@
 #include "../../src/WinUiWindowPreviewNative/ProcessLoopbackCapture.h"
 #include "../../src/WinUiWindowPreviewNative/CaptureGeometry.h"
 #include "CapturePacer.h"
+#include "CaptureFrameSchedule.h"
 #include "CaptureQuality.h"
 #include <d3d11.h>
 #include <d2d1_1.h>
@@ -96,6 +97,14 @@ extern "C" __declspec(dllexport) int32_t __stdcall WrailLiveCaptureRunV2(uint64_
         auto arrival=capture.pool.FrameArrived(winrt::auto_revoke,[frameAvailable](auto&&,auto&&){frameAvailable->Signal();});
         auto closed=capture.item.Closed(winrt::auto_revoke,[frameAvailable](auto&&,auto&&){frameAvailable->Signal();});
         capture.session=capture.pool.CreateCaptureSession(capture.item);capture.session.IsCursorCaptureEnabled(false);
+        // Request borderless capture only through the supported Windows session
+        // API. Windows still enforces the user's screenshot-border permission,
+        // and another capturing application can require the border. Unsupported
+        // or denied optional configuration must not fail an admitted share.
+        if(auto border=capture.session.try_as<IGraphicsCaptureSession3>()) {
+            try { border.IsBorderRequired(false); }
+            catch(const winrt::hresult_error&) { /* Keep ordinary bordered capture. */ }
+        }
         std::unique_ptr<widgetrail::capture::ProcessLoopbackCapture> audio;
         if(includeAudio)audio=std::make_unique<widgetrail::capture::ProcessLoopbackCapture>(pid);
 
@@ -115,7 +124,8 @@ extern "C" __declspec(dllexport) int32_t __stdcall WrailLiveCaptureRunV2(uint64_
                 }
             }
             if(Clock::now()<next){pacer.Until(audio?std::min(next,nextAudio):next);continue;}
-            const auto nextFrame=Clock::now()+std::chrono::microseconds(LiveCaptureFrameInterval(quality));
+            const auto nextFrame=AdvanceCaptureDeadline<Clock>(next,Clock::now(),
+                std::chrono::microseconds(LiveCaptureFrameInterval(quality)));
             DWORD cloaked{};DwmGetWindowAttribute(hwnd,DWMWA_CLOAKED,&cloaked,sizeof(cloaked));
             if(IsIconic(hwnd)||!IsWindowVisible(hwnd)||cloaked){
                 // Keep the connection alive with black frames while the selected

@@ -125,6 +125,8 @@ await PickerTests.RunAsync(Check);
 await ChannelFavoritesTests.RunAsync(Check);
 await VoicePinTests.RunAsync(Check);
 await VoiceControlTests.RunAsync(Check);
+await ProviderInvalidationTests.RunAsync(Check);
+await ConnectionDetailsTests.RunAsync(Check);
 Console.WriteLine($"Discord WebView widget: {passed} checks passed.");
 
 static async Task TransportChecks(Action<bool,string> check)
@@ -180,6 +182,8 @@ sealed class TransportProbe:Widget
 
 sealed class FakeSession:IDiscordSession
 {
+    public event Action<WebSessionReference>? Invalidated;
+    internal void NotifyChanged() { if(Reference is { } session)Invalidated?.Invoke(session); }
     internal sealed record Command(string Method,JsonElement Args);
     internal readonly ConcurrentQueue<Command> Commands=new();
     internal readonly ConcurrentQueue<FakeReceiver> Receivers=new();

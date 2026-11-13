@@ -72,6 +72,8 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         (choices.SelectedItem as Control)?.Focus(FocusState.Keyboard);
     }
     internal void SetListHeight(double height) => choices.MaxHeight = Math.Max(48, height);
+    internal void AddDetails(UIElement element) => details.Children.Add(element);
+    internal void CompleteChoice(string id) => Choose(entries.FindIndex(entry => entry.Id == id));
 
     private CheckBox? rememberChoice;
     private readonly Dictionary<string,CheckBox> booleanOptions=new(StringComparer.Ordinal);

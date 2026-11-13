@@ -74,6 +74,14 @@ internal sealed partial class WebSessionBackendValidationPage : Page, IAsyncDisp
         var first = await Request(backend, "read");
         Check(first.GetProperty("payload").GetString() == "main:/first", "Hidden startup reads the main document without retry", checks);
         Check((await Request(backend, "mutations")).GetProperty("payload").GetInt32()==0, "Cancelled startup request never runs a page mutation", checks);
+        await Request(backend,"invalidate");
+        var changed=await Read(backend,m=>Kind(m)=="backend-invalidated");
+        Check(changed.EnumerateObject().Count()==1,"Backend invalidation contains no provider payload or action authority",checks);
+        await Task.Delay(250);
+        Check(!Drain(backend).Any(m=>Kind(m)=="backend-invalidated"),"Burst of provider changes coalesces to one outstanding invalidation",checks);
+        await Request(backend,"invalidate");
+        await Read(backend,m=>Kind(m)=="backend-invalidated");
+        Check(true,"An admitted subsequent read rearms bounded backend invalidation",checks);
         var batchId=Guid.NewGuid().ToString("N");
         await Send(backend,batchId,"catalogue");
         var itemCount=0;var nextPart=0;var parts=1;
@@ -191,6 +199,7 @@ internal sealed partial class WebSessionBackendValidationPage : Page, IAsyncDisp
           if(globalThis.fixtureWorld)deliver(JSON.stringify({action:'unsolicited',payload:{}}));
           if(method==='mutate')return ++mutations;
           if(method==='mutations')return mutations;
+          if(method==='invalidate'){for(let i=0;i<100;i++)host.invalidate?.();return true;}
           if(method==='catalogue')return host.batchResult({version:1},Array.from({length:1000},(_,id)=>({id,text:'x'.repeat(1000)})));
           if(method==='hang'){request.progress({waiting:true});return new Promise(()=>{});}
           if(method==='delay'){

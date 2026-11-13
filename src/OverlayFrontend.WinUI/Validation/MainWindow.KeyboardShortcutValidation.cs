@@ -50,10 +50,82 @@ public sealed partial class MainWindow
                 finally { if (reclaimed) ValidationUnregisterHotKey(0, 77); }
                 ApplyKeyboardShortcutSettings(new() { F1ShortcutEnabled = true });
                 Check(keyboardShortcut!.IsRegistered, "a fresh owner can register F1 after orderly retirement");
+                await CheckCustomShortcutsAsync();
                 Write(true, null);
             }
             catch (Exception error) { Write(false, error.ToString()); }
             finally { InjectF1(released: true); }
+
+            async Task CheckCustomShortcutsAsync()
+            {
+                var root = Path.Combine(Path.GetTempPath(), "wrail-native-hotkey-" + Guid.NewGuid().ToString("N"));
+                var store = new PlatformSettingsStore(new(root));
+                var first = new OverlayShortcutSettings { Enabled = true };
+                var custom = new OverlayShortcutSettings { Enabled = true, Key = 0x86,
+                    Modifiers = OverlayShortcutModifiers.Control | OverlayShortcutModifiers.Alt };
+                await store.UpdateAsync(document => document with { Controllers = new() { F1ShortcutEnabled = true } });
+                try
+                {
+                    SetKeyboardEditorOpen(true);
+                    var captured = 0;
+                    keyboardCapture = chord => { if (chord.Key == 0x70) captured++; };
+                    var visibility = overlayVisibilityVersion;
+                    InjectF1(false); InjectF1(true);
+                    await Until(() => captured == 1);
+                    Check(overlayVisibilityVersion == visibility, "recording the current shortcut captures its chord without toggling the overlay");
+                    var error = await SaveKeyboardShortcutAsync(root, first, custom, default);
+                    Check(error is null && keyboardShortcut?.Shortcut == custom, "a custom modified key reserves and commits before replacing F1");
+                    Check((await store.LoadAsync()).Controllers.EffectiveOverlayShortcut == custom, "custom shortcut is durable across settings reload");
+                    var oldReclaimed = ValidationRegisterHotKey(0, 78, 0x4000, 0x70) != 0;
+                    try { Check(oldReclaimed, "successful rebind releases F1"); }
+                    finally { if (oldReclaimed) ValidationUnregisterHotKey(0, 78); }
+                    var same = keyboardShortcut;
+                    Check(await SaveKeyboardShortcutAsync(root, custom, custom, default) is null && ReferenceEquals(same, keyboardShortcut),
+                        "saving the current combination keeps its registration rather than conflicting with itself");
+                    var blocked = ValidationRegisterHotKey(0, 79, 0x4003, 0x87) != 0;
+                    try
+                    {
+                        Check(blocked, "native conflict fixture reserves its own unrelated combination");
+                        var conflict = await SaveKeyboardShortcutAsync(root, custom, custom with { Key = 0x87 }, default);
+                        Check(conflict is not null && ReferenceEquals(same, keyboardShortcut) &&
+                            (await store.LoadAsync()).Controllers.EffectiveOverlayShortcut == custom,
+                            "Windows conflict preserves both the active registration and saved preference");
+                    }
+                    finally { if (blocked) ValidationUnregisterHotKey(0, 79); }
+                    var invalidRoot = Path.Combine(root, "not-a-directory");
+                    await File.WriteAllTextAsync(invalidRoot, "fixture");
+                    var saveFailure = await SaveKeyboardShortcutAsync(invalidRoot, custom, custom with { Key = 0x85 }, default);
+                    Check(saveFailure is not null && ReferenceEquals(same, keyboardShortcut), "storage failure preserves the previous registered shortcut");
+                    var candidateReleased = ValidationRegisterHotKey(0, 80, 0x4003, 0x85) != 0;
+                    try { Check(candidateReleased, "storage failure releases its provisional registration"); }
+                    finally { if (candidateReleased) ValidationUnregisterHotKey(0, 80); }
+                    using (var cancelled = new CancellationTokenSource())
+                    {
+                        cancelled.Cancel();
+                        try { await SaveKeyboardShortcutAsync(root, custom, custom with { Key = 0x85 }, cancelled.Token); Check(false, "cancelled save rejected"); }
+                        catch (OperationCanceledException) { Check(ReferenceEquals(same, keyboardShortcut), "cancelled save leaves current registration intact"); }
+                    }
+                    SetKeyboardEditorOpen(false);
+                    InjectKey(0x11, false); InjectKey(0x12, false); InjectKey(0x86, false);
+                    InjectKey(0x86, true); InjectKey(0x12, true); InjectKey(0x11, true);
+                    await Until(() => !AppWindow.IsVisible);
+                    Check(!overlayRequestedVisible && input?.IsActive == false, "modified global shortcut hides the overlay and releases controller admission");
+                    InjectKey(0x11, false); InjectKey(0x12, false); InjectKey(0x86, false);
+                    InjectKey(0x86, true); InjectKey(0x12, true); InjectKey(0x11, true);
+                    await Until(() => AppWindow.IsVisible && input?.IsForeground == true && overlayRequestedVisible);
+                    Check(input?.IsActive == true, "modified global shortcut reopens from hidden state");
+                    await Until(() => overlayMotion?.Playback is { IsCompleted: true });
+                    Check(await SaveKeyboardShortcutAsync(root, custom, custom with { Enabled = false }, default) is null && keyboardShortcut is null,
+                        "disabling a custom binding releases it after persistence");
+                }
+                finally
+                {
+                    InjectKey(0x86, true); InjectKey(0x12, true); InjectKey(0x11, true);
+                    SetKeyboardEditorOpen(false);
+                    ApplyKeyboardShortcutSettings(new());
+                    if (Directory.Exists(root)) Directory.Delete(root, true);
+                }
+            }
 
             async Task Until(Func<bool> condition)
             {
@@ -84,10 +156,13 @@ public sealed partial class MainWindow
         [FieldOffset(12)] internal uint Flags;
     }
     private static void InjectF1(bool released)
+        => InjectKey(0x70, released);
+
+    private static void InjectKey(ushort key, bool released)
     {
-        var value = new KeyboardValidationInput { Type = 1, Key = 0x70, Flags = released ? 2u : 0u };
+        var value = new KeyboardValidationInput { Type = 1, Key = key, Flags = released ? 2u : 0u };
         if (KeyboardValidationSendInput(1, in value, Marshal.SizeOf<KeyboardValidationInput>()) != 1)
-            throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError(), "The isolated F1 input was not delivered.");
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError(), "The isolated shortcut input was not delivered.");
     }
     [LibraryImport("user32.dll", EntryPoint = "SendInput", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

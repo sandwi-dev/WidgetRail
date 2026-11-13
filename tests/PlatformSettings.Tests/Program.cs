@@ -5,6 +5,7 @@ using WidgetRail.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Overlay keyboard shortcuts preserve legacy choices and reject malformed chords", OverlayShortcutTests.Run),
     ("Browser cleanup preserves updates and isolates resets, uninstalls and reinstalls", BrowserProfileLifecycleTests.Run),
     ("All built-in themes remain isolated, selectable and readable", ThemeDesignTests.Run),
     ("Controller glyphs share readable geometry and theme ink", ControllerGlyphThemeTests.Run),

@@ -567,7 +567,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             case ViewNodeKind.Progress: element = new ProgressBar(); break;
             case ViewNodeKind.LineGraph: element = new WidgetLineGraph(); break;
             case ViewNodeKind.LoadingIndicator: element = new ProgressRing { IsActive = true }; break;
-            case ViewNodeKind.Spacer: element = new Border(); break;
+            case ViewNodeKind.Spacer: element = new WidgetSpacer(); break;
             default: throw new NotSupportedException($"WinUI presentation for {node.Kind} is not implemented.");
         }
         element.Tag = declaration.Identity;

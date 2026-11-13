@@ -19,21 +19,26 @@ internal static class ControllerSettingsScenarios
             await widget.InitializeAsync(default);
             await widget.SetLifecycleStateAsync(WidgetLifecycleState.Visible, default);
             await widget.InitializationTask;
-            await widget.OnActionAsync(new("controllers.f1-shortcut.toggle", "controllers.f1-shortcut"));
+            await widget.OnActionAsync(new("controllers.keyboard-shortcut.edit", "controllers.keyboard-shortcut"));
             if ((await store.LoadAsync()).Controllers.F1ShortcutEnabled)
-                throw new Exception("A stale F1 setting action outside Controllers must not change the preference.");
+                throw new Exception("A stale keyboard action outside Controllers must not change the preference.");
             await widget.OnActionAsync(new("open.controllers", "test"));
             var before = (await store.LoadAsync()).Controllers;
             var snapshot = widget.Render().CreateSnapshot("settings", 1);
-            if (!JsonSerializer.Serialize(snapshot).Contains("controllers.f1-shortcut") || ViewSnapshotValidator.Validate(snapshot).Count != 0)
-                throw new Exception("Controllers must expose a valid F1 setting.");
-            await widget.OnActionAsync(new("controllers.f1-shortcut.toggle", "controllers.f1-shortcut"));
+            if (!JsonSerializer.Serialize(snapshot).Contains("controllers.keyboard-shortcut") || ViewSnapshotValidator.Validate(snapshot).Count != 0)
+                throw new Exception("Controllers must expose a valid host keyboard-editor action.");
+            await widget.OnActionAsync(new("controllers.keyboard-shortcut.edit", "controllers.keyboard-shortcut"));
             var saved = (await new PlatformSettingsStore(new(root)).LoadAsync()).Controllers;
-            if (!saved.F1ShortcutEnabled || saved with { F1ShortcutEnabled = false } != before)
-                throw new Exception("F1 opt-in must persist independently of controller shortcut, scrolling, and isolation.");
+            if (saved != before) throw new Exception("The widget must not save before Windows registration succeeds in the host.");
+            var shortcut = new OverlayShortcutSettings { Enabled = true, Key = 0x4A, Modifiers = OverlayShortcutModifiers.Control | OverlayShortcutModifiers.Alt };
+            await store.UpdateAsync(value => value with { Controllers = value.Controllers with { OverlayShortcut = shortcut } });
+            await widget.OnActionAsync(new("controllers.keyboard-shortcut.edit", "controllers.keyboard-shortcut"));
+            static bool ShowsShortcut(ViewNode node) => node.Text?.Contains("Ctrl + Alt + J", StringComparison.Ordinal) == true || node.Children.Any(ShowsShortcut);
+            if (!ShowsShortcut(widget.Render().CreateSnapshot("settings", 2).Root))
+                throw new Exception("A completed host edit must refresh the settings summary.");
             await widget.OnActionAsync(new("controllers.f1-shortcut.toggle", "controllers.f1-shortcut"));
-            if ((await store.LoadAsync()).Controllers.F1ShortcutEnabled)
-                throw new Exception("F1 opt-in must be reversible.");
+            if ((await store.LoadAsync()).Controllers.EffectiveOverlayShortcut != shortcut)
+                throw new Exception("Retired F1 actions must not bypass host registration.");
         }
         finally
         {

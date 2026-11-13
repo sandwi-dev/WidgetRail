@@ -1,5 +1,6 @@
 #include "CaptureQuality.h"
 #include "CapturePacer.h"
+#include "CaptureFrameSchedule.h"
 #include "../../src/WinUiWindowPreviewNative/CaptureGeometry.h"
 #include <cstdio>
 #include <cstring>
@@ -27,6 +28,26 @@ int main(int argc,char** argv) {
     const auto smallerSource=ConfiguredCaptureSize(640,360,5120,1440,true);
     if(fullWide.width!=5120||fullWide.height!=1440||landscape.width!=2560||landscape.height!=1440||smallerSource.width!=640||smallerSource.height!=360)return 4;
     std::puts("PASS twelve bounded presets, 1440p landscape/ultrawide geometry, no upscaling, and invalid option rejection");
+    // Repeated two-millisecond wake jitter must not accumulate into a slower
+    // nominal rate. Also cover long renderer/worker stalls and idle resumes.
+    using Clock=CapturePacer::Clock;
+    for(const uint32_t fps:{15u,30u,60u}){
+        const auto interval=std::chrono::microseconds(1000000/fps);
+        const auto origin=Clock::time_point{};
+        auto deadline=origin;
+        for(int frame=0;frame<300;++frame){
+            const auto woke=deadline+std::chrono::milliseconds(2);
+            deadline=AdvanceCaptureDeadline<Clock>(deadline,woke,interval);
+        }
+        if(deadline!=origin+interval*300)return 6;
+        for(const auto stall:{std::chrono::milliseconds(250),std::chrono::milliseconds(1500)}){
+            const auto woke=deadline+stall;
+            const auto resumed=AdvanceCaptureDeadline<Clock>(deadline,woke,interval);
+            if(resumed<woke+interval/2||resumed>woke+interval)return 7;
+            if(AdvanceCaptureDeadline<Clock>(resumed,resumed,interval)!=resumed+interval)return 8;
+        }
+    }
+    std::puts("PASS accumulated capture deadlines reject wake drift and bound stall recovery without catch-up bursts");
     // Shared CI qualifies deterministic policy. The original no-argument local
     // probe still measures the production pacer, which depends on host load.
     if(policyOnly)return 0;
@@ -36,7 +57,8 @@ int main(int argc,char** argv) {
         auto start=CapturePacer::Clock::now(),next=start;
         const auto intervals=fps*2;
         for(uint32_t frame=0;frame<=intervals;frame++){
-            pacer.Until(next);next=CapturePacer::Clock::now()+std::chrono::microseconds(LiveCaptureFrameInterval(quality));
+            pacer.Until(next);next=AdvanceCaptureDeadline<CapturePacer::Clock>(next,CapturePacer::Clock::now(),
+                std::chrono::microseconds(LiveCaptureFrameInterval(quality)));
         }
         const auto measured=intervals/std::chrono::duration<double>(CapturePacer::Clock::now()-start).count();
         std::printf("Target %u FPS: measured %.3f FPS with the production pacer\n",fps,measured);

@@ -22,7 +22,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 105;
+    public const int CurrentVersion = 106;
+    public const int ModalDismissalVersion = 106;
     public const int WebCaptureQualitySelectionVersion = 105;
     public const int WebCaptureStreamsVersion = 104;
     public const int WidgetPinningAndMicrophoneVersion = 103;

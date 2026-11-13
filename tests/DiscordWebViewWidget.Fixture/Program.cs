@@ -87,6 +87,12 @@ internal sealed class SyntheticDiscordSession:IDiscordSession
     public ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token)
     {
         token.ThrowIfCancellationRequested();var value=JsonSerializer.SerializeToElement(args);
+        if(method=="connectionDiagnostics")
+        {
+            if(value.GetProperty("account").GetString()!=state.Account||value.GetProperty("channelId").GetString()!=state.ChannelId)
+                throw new InvalidDataException("Synthetic connection owner changed.");
+            return ValueTask.FromResult(JsonSerializer.SerializeToElement(new{phase="connected",pingMilliseconds=42,averagePingMilliseconds=45,quality="fine"}));
+        }
         if(voiceControlsMode&&method is "voiceMute" or "voiceVolume")
         {
             if(value.GetProperty("account").GetString()!=state.Account||value.GetProperty("channelId").GetString()!=state.ChannelId)

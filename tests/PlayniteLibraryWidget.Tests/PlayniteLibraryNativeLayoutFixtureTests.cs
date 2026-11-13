@@ -8,6 +8,30 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed partial class PlayniteLibraryLayoutTests
 {
     [TestMethod]
+    public async Task NativeHomeRailLoadingGeometryUsesProductionStyles()
+    {
+        var game = PlayniteLibraryItem.From(Item("loading-app", "loading-game", "Loading geometry game", "Steam", "poster-handle"));
+        var captured = await CapturePresentationAsync(State(Snapshot(WidgetPagedResourceStatus.Ready, [game]),
+            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []));
+        var snapshot = captured.Snapshot;
+        var stage = Nodes(snapshot.Root).Single(node => node.Id == PlayniteLibraryPresentation.HomeRailId + ".stage");
+        Assert.AreEqual(ViewNodeKind.Grid, stage.Kind);
+        Assert.AreEqual(2, stage.Children.Count);
+        var sizing = Nodes(stage.Children[0]).Single(node => node.Kind == ViewNodeKind.Spacer);
+        Assert.IsFalse(Nodes(stage.Children[0]).Any(node => node.IsFocusable || node.ActionId is not null));
+        Assert.AreEqual(ViewNodeKind.IndexedCollection, stage.Children[1].Kind);
+        Assert.AreEqual(0, stage.Children[1].Children.Count, "Reserving geometry must not eagerly publish row trees.");
+        var poster = captured.Ranges.SelectMany(range => range.Items).Single().Root;
+        var theme = CompileStyles();
+        var sizeStyle = theme.Resolve(new("spacer", sizing.Id, sizing.StyleClasses.ToHashSet(StringComparer.Ordinal)));
+        var posterStyle = theme.Resolve(new("actionSurface", poster.Id, poster.StyleClasses.ToHashSet(StringComparer.Ordinal)));
+        foreach (var property in new[] { "width", "min-width", "max-width", "aspect-ratio", "margin", "padding", "border-width" })
+            Assert.AreEqual(posterStyle.Get(property), sizeStyle.Get(property),
+                $"Loading reservation and live poster must share {property}, including theme/package overrides.");
+        ExportFixture("Native-Home-Rail-Loading", snapshot, captured.Ranges);
+    }
+
+    [TestMethod]
     public void NativeDetailsNavigationFixtureCoversOptionalTransitions()
     {
         var game = PlayniteLibraryItem.From(Item("navigation", "saved-navigation", "Navigation game", "Steam"));

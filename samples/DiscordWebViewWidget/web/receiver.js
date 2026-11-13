@@ -7,6 +7,17 @@
     function close() { const old=pc;pc=null;lease=null;old?.close();video.srcObject=null;status.textContent='Stream stopped.'; }
     WidgetRailWebSession.handle('stop', () => { close(); return {}; });
     WidgetRailWebSession.handle('status', () => ({ lease, state: pc?.connectionState ?? 'closed', width: video.videoWidth, height: video.videoHeight }));
+    WidgetRailWebSession.handle('diagnostics', data => {
+        if(!pc||typeof data?.lease!=='string'||data.lease!==lease)throw new Error('Receiver lease changed');
+        const count=value=>Number.isSafeInteger(value)&&value>=0&&value<=1000000000000?value:null;
+        const dimension=value=>Number.isInteger(value)&&value>=0&&value<=16384?value:null;
+        const quality=typeof video.getVideoPlaybackQuality==='function'?video.getVideoPlaybackQuality():null;
+        return {available:true,lease,state:pc.connectionState,
+            width:dimension(video.videoWidth),height:dimension(video.videoHeight),
+            paused:typeof video.paused==='boolean'?video.paused:null,
+            readyState:Number.isInteger(video.readyState)&&video.readyState>=0&&video.readyState<=4?video.readyState:null,
+            totalFrames:count(quality?.totalVideoFrames),droppedFrames:count(quality?.droppedVideoFrames)};
+    });
     WidgetRailWebSession.handle('offer', async (data, { signal }) => {
         if (typeof data?.lease!=='string'||!/^[a-f0-9]{32}$/.test(data.lease) || data.offer?.type !== 'offer' || typeof data.offer.sdp !== 'string' || data.offer.sdp.length > 60000) throw new Error('Invalid offer');
         close();

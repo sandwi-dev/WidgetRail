@@ -11,20 +11,23 @@ internal static class AnchoredPresentationTests
     internal static Task Contract()
     {
         var before = Snapshot(new(new("opener")));
-        Check(before.ProtocolVersion == 92 && before.Root.AnchoredPresentation?.Width == 360);
+        Check(before.ProtocolVersion == ProtocolConstants.ModalDismissalVersion && before.Root.AnchoredPresentation?.Width == 360);
+        var legacyBefore = before with { ProtocolVersion = 92, Root = before.Root with { ModalDismissal = null } };
+        Check(ViewSnapshotValidator.Validate(legacyBefore).Count == 0);
         Check(before.InitialFocusId == "done" && before.ActiveInputScopeId != "page");
         Check(before.Root.Children[1].Shortcuts.Any(shortcut => shortcut.Button == ControllerButton.B && shortcut.ActionId == "close"));
         Check(WinUiPresentationContract.Validate(before).Count == 0);
-        Check(ViewSnapshotValidator.Validate(before with { ProtocolVersion = 91 }).Any(error => error.Code == "feature_requires_version"));
+        Check(ViewSnapshotValidator.Validate(legacyBefore with { ProtocolVersion = 91 }).Any(error => error.Code == "feature_requires_version"));
         var read = SnapshotJson.Deserialize(SnapshotJson.Serialize(before));
         Check(read.Root.AnchoredPresentation == before.Root.AnchoredPresentation);
         Check(read.Root.AnchoredPresentation?.SizeToContentHeight == false);
         Check(!System.Text.Encoding.UTF8.GetString(SnapshotJson.Serialize(before)).Contains("sizeToContentHeight"));
         var fitted = Snapshot(new(new("opener")) { SizeToContentHeight = true });
-        Check(fitted.ProtocolVersion == 93 && WinUiPresentationContract.Validate(fitted).Count == 0);
+        Check(fitted.ProtocolVersion == ProtocolConstants.ModalDismissalVersion && WinUiPresentationContract.Validate(fitted).Count == 0);
         Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(fitted)).Root.AnchoredPresentation?.SizeToContentHeight == true);
-        Check(ViewSnapshotValidator.Validate(fitted with { ProtocolVersion = 92 }).Any(error => error.Code == "feature_requires_version"));
-        Check(Snapshot(null).ProtocolVersion < 92);
+        Check(ViewSnapshotValidator.Validate(fitted with { ProtocolVersion = 92, Root = fitted.Root with { ModalDismissal = null } })
+            .Any(error => error.Code == "feature_requires_version"));
+        Check(ProtocolVersionRequirements.Calculate(Snapshot(null) with { Root = Snapshot(null).Root with { ModalDismissal = null } }).RequiredVersion < 92);
         Check(ViewSnapshotValidator.Validate(Snapshot(new(new("removed-anchor")))).Count == 0);
         // Missing/recycled indexed occurrences fall back without granting index-only authority.
         Check(ViewSnapshotValidator.Validate(Snapshot(new(new(IndexedItem: new("collection", "source", 4, "exact-key", 75))))).Count == 0);

@@ -7,6 +7,7 @@ namespace WidgetRail.Samples.DiscordWebView;
 
 internal interface IDiscordSession : IAsyncDisposable
 {
+    event Action<WebSessionReference>? Invalidated { add { } remove { } }
     WebSessionReference? Reference { get; }
     ValueTask<DiscordState> ReadAsync(CancellationToken token);
     ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token);
@@ -19,10 +20,12 @@ internal interface IDiscordReceiver : IAsyncDisposable
     Task<DiscordReceiverFailure> Failure {get;}
     WebSessionReference Reference { get; }
     ValueTask<JsonElement> AcceptAsync(JsonElement offer,CancellationToken token);
+    ValueTask<JsonElement> ReadDiagnosticsAsync(string lease,CancellationToken token)=>throw new NotSupportedException("Receiver measurements are unavailable.");
 }
 
 internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) : IDiscordSession
 {
+    public event Action<WebSessionReference>? Invalidated;
     internal static readonly JsonSerializerOptions Json=new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim connectionGate=new(1,1);
     private readonly SemaphoreSlim readGate=new(1,1);
@@ -129,9 +132,14 @@ internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) 
         return new DiscordReceiver(receiver);
     }
 
-    private static async Task DrainAsync(WidgetWebSession current,CancellationToken token)
+    private async Task DrainAsync(WidgetWebSession current,CancellationToken token)
     {
-        try { await foreach(var _ in current.ReadMessagesAsync(token)){ } }
+        try { await foreach(var message in current.ReadMessagesAsync(token))
+        {
+            if(!disposed && ReferenceEquals(session,current) && message.ValueKind==JsonValueKind.Object &&
+                message.TryGetProperty("kind",out var kind) && kind.ValueKind==JsonValueKind.String && kind.GetString()=="backend-invalidated")
+                Invalidated?.Invoke(current.Reference);
+        } }
         catch(Exception) { /* Requests and Completion expose the connection failure to its owner. */ }
     }
     public async ValueTask DisposeAsync()
@@ -155,6 +163,8 @@ internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) 
         }
         public WebSessionReference Reference=>session.Reference;
         public Task<DiscordReceiverFailure> Failure=>health.Failure;
+        public ValueTask<JsonElement> ReadDiagnosticsAsync(string lease,CancellationToken token)=>
+            session.RequestAsync<object,JsonElement>("diagnostics",new{lease},token);
         public async ValueTask<JsonElement> AcceptAsync(JsonElement offer,CancellationToken token)
         {
             var lease=offer.GetProperty("lease").GetString()??throw new InvalidDataException("Missing receiver lease.");

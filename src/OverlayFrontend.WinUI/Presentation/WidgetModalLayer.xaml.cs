@@ -1,6 +1,9 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Input;
+using Windows.Foundation;
 using WidgetRail.OverlayFrontend.WinUI.Motion;
 using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetProtocol;
@@ -33,6 +36,11 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
     internal Task<WidgetMotionOutcome> CloseAsync() => motion?.CloseAsync() ?? Task.FromResult(WidgetMotionOutcome.Completed);
     private AppearanceSettings appearance = AppearanceSettings.Default;
     private bool systemAnimationsEnabled = true;
+    internal Func<Action?>? CaptureBackdropDismissal { get; set; }
+    private (uint PointerId, Point Origin, Action Dismiss)? backdropGesture;
+#if ENABLE_WIDGET_VALIDATION
+    internal Action<string>? PointerTrace { get; set; }
+#endif
     internal void ApplyAppearance(AppearanceSettings value, bool animationsEnabled)
     {
         appearance = value; systemAnimationsEnabled = animationsEnabled;
@@ -44,6 +52,20 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
         InitializeComponent();
         Clip = boundsClip;
         SizeChanged += (_, _) => ConstrainDialog();
+        Scrim.PointerPressed += BackdropPressed;
+        Scrim.PointerMoved += BackdropMoved;
+        Scrim.PointerReleased += BackdropReleased;
+        Scrim.PointerCanceled += (_, _) => CancelBackdropGesture();
+        Scrim.PointerCaptureLost += (_, _) => backdropGesture = null;
+#if ENABLE_WIDGET_VALIDATION
+        foreach (var (routed, name) in new[] { (PointerPressedEvent, "pressed"), (PointerMovedEvent, "moved"), (PointerReleasedEvent, "released") })
+            Scrim.AddHandler(routed, new PointerEventHandler((_, args) =>
+            {
+                var point = args.GetCurrentPoint(Scrim);
+                PointerTrace?.Invoke($"{name}: {point.Position.X:0.0},{point.Position.Y:0.0} handled={args.Handled} left={point.Properties.IsLeftButtonPressed} gesture={backdropGesture is not null}");
+            }), true);
+#endif
+        Unloaded += (_, _) => { if (!IsLoaded) CancelBackdropGesture(); };
     }
 
     internal void Configure(FrameworkElement parent, FrameworkElement panel,
@@ -53,6 +75,7 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
         if (!ReferenceEquals(dialog, panel) || anchoredPresentation != anchored) contentHeight.Reset();
         if (!ReferenceEquals(dialog, panel))
         {
+            CancelBackdropGesture();
             motion?.Dispose();
             motion = new(panel, Scrim, appearance, systemAnimationsEnabled);
         }
@@ -107,8 +130,55 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
     }
 
     private void AnchorLayoutUpdated(object? sender, object args) => ConstrainDialog();
+
+    private void BackdropPressed(object sender, PointerRoutedEventArgs args)
+    {
+        // The scrim remains input blocking even when dismissal is unavailable.
+        args.Handled = true;
+        CancelBackdropGesture();
+        var point = args.GetCurrentPoint(Scrim);
+        if (!point.Properties.IsPrimary || args.Pointer.PointerDeviceType == PointerDeviceType.Mouse &&
+                (!point.Properties.IsLeftButtonPressed || point.Properties.IsRightButtonPressed || point.Properties.IsMiddleButtonPressed) ||
+            CaptureBackdropDismissal?.Invoke() is not { } dismiss) return;
+        if (Scrim.CapturePointer(args.Pointer)) backdropGesture = (args.Pointer.PointerId, point.Position, dismiss);
+    }
+
+    private void BackdropMoved(object sender, PointerRoutedEventArgs args)
+    {
+        if (backdropGesture is not { } gesture || gesture.PointerId != args.Pointer.PointerId) return;
+        var point = args.GetCurrentPoint(Scrim).Position;
+        var dx = point.X - gesture.Origin.X; var dy = point.Y - gesture.Origin.Y;
+        // Moving back onto the original point does not turn a drag into a click.
+        if (dx * dx + dy * dy > 25) CancelBackdropGesture();
+    }
+
+    private void BackdropReleased(object sender, PointerRoutedEventArgs args)
+    {
+        args.Handled = true;
+        var gesture = backdropGesture;
+        backdropGesture = null;
+        Scrim.ReleasePointerCapture(args.Pointer);
+        if (gesture is not { } captured || captured.PointerId != args.Pointer.PointerId) return;
+        var point = args.GetCurrentPoint(Scrim).Position;
+        var dx = point.X - captured.Origin.X; var dy = point.Y - captured.Origin.Y;
+        if (dx * dx + dy * dy > 25 || point.X < 0 || point.Y < 0 || point.X >= Scrim.ActualWidth || point.Y >= Scrim.ActualHeight) return;
+        if (dialog is { } panel)
+        {
+            var local = args.GetCurrentPoint(panel).Position;
+            if (local.X >= 0 && local.Y >= 0 && local.X < panel.ActualWidth && local.Y < panel.ActualHeight) return;
+        }
+        captured.Dismiss();
+    }
+
+    private void CancelBackdropGesture()
+    {
+        backdropGesture = null;
+        Scrim.ReleasePointerCaptures();
+    }
+
     public void Dispose()
     {
+        CancelBackdropGesture(); CaptureBackdropDismissal = null;
         if (observingAnchor) LayoutUpdated -= AnchorLayoutUpdated;
         observingAnchor = false; resolveAnchor = null;
         motion?.Dispose(); motion = null;

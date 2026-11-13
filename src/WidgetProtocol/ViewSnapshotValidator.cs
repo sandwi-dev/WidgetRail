@@ -1735,6 +1735,15 @@ public static class ViewSnapshotValidator
                 try { AnchoredPresentationContract.Validate(anchored); }
                 catch (ArgumentException) { Add(path + ".anchoredPresentation", "invalid_anchored_presentation", "Invalid anchor, placement or dimensions."); }
             }
+            if (node.ModalDismissal is { } dismissal)
+            {
+                if (node.Kind != ViewNodeKind.ModalLayer)
+                    Add(path + ".modalDismissal", "modal_dismissal_not_allowed", "Only a modal layer may declare dismissal policy.");
+                CheckIdentifier(dismissal.ActionId, path + ".modalDismissal.actionId", "dismiss action ID", ProtocolValidationIdentifierKind.Action);
+                if (children.Count != 2 || children[1]?.Shortcuts?.Any(shortcut => shortcut.Button == ControllerButton.B &&
+                        shortcut.Phase == ControllerEventPhase.Pressed && shortcut.ActionId == dismissal.ActionId) != true)
+                    Add(path + ".modalDismissal", "modal_dismissal_action_mismatch", "Modal dismissal must match the dialog's B-pressed cancellation action.");
+            }
             if (node.Kind is ViewNodeKind.ModalLayer)
             {
                 if (path != "$.root" || children.Count != 2 ||

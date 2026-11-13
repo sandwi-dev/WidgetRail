@@ -12,11 +12,20 @@ meaningful actions for the currently active view.
 | Open widget | Focus, controls, scoped shortcuts, and Back operate within the widget |
 | Pin controls | Placement and size actions follow the pin-control guide |
 
-F1 is an optional desktop toggle, disabled by default. Enable it in
-**Settings → Controllers → F1 keyboard shortcut**. The preference is persisted
-as `controllers.f1ShortcutEnabled`; profiles that omit it also default to off.
-The WinUI window registers F1 only while enabled, including hidden startup, and
-releases the registration when disabled. Changes apply without restarting.
+The desktop keyboard toggle is disabled by default. Configure it in
+**Settings → Controllers → Overlay keyboard shortcut**. The host records a Windows
+virtual key with optional Ctrl/Alt/Shift/Windows modifiers and persists
+`controllers.overlayShortcut`. Legacy `controllers.f1ShortcutEnabled` profiles
+retain their F1 opt-in until an explicit new preference is saved. An explicit
+disabled preference overrides the legacy value.
+
+The WinUI window owns `RegisterHotKey`, including hidden startup. It reserves a new
+combination before saving and replacing the old one, releases a candidate on save
+failure, and releases the active registration when disabled. No keyboard hook is
+installed. Recording suppresses the toggle and can capture the already-registered
+combination without temporarily releasing its ownership. Native reserved keys and
+external conflicts are reported in the editor; controller and tray opening remain
+available. Changes apply without restarting.
 Settings also lets the user choose one controller opening shortcut at a time;
 View + Menu is the default.
 

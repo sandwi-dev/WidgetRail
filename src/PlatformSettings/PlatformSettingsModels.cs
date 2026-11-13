@@ -150,8 +150,11 @@ public enum ControllerOpenShortcut { Guide, ViewMenu }
 
 public sealed record ControllerSettings
 {
-    /// <summary>Opt-in global F1 overlay toggle. Missing values remain disabled.</summary>
+    /// <summary>Legacy F1 preference, read only when OverlayShortcut is absent.</summary>
     public bool F1ShortcutEnabled { get; init; }
+    public OverlayShortcutSettings? OverlayShortcut { get; init; }
+    [JsonIgnore]
+    public OverlayShortcutSettings EffectiveOverlayShortcut => OverlayShortcut ?? new() { Enabled = F1ShortcutEnabled };
     public bool ExclusiveControl { get; init; }
     public long Revision { get; init; }
     public ControllerOpenShortcut OpenShortcut { get; init; } = ControllerOpenShortcut.ViewMenu;
@@ -257,6 +260,8 @@ public static class PlatformSettingsValidator
             Add("$.controllers.revision", "invalid_revision", "Controller settings revision is invalid.");
         if (document.Controllers is not null && !Enum.IsDefined(document.Controllers.OpenShortcut))
             Add("$.controllers.openShortcut", "invalid_enum", "Controller shortcut is invalid.");
+        if (document.Controllers?.OverlayShortcut is { } shortcut && !shortcut.IsWellFormed())
+            Add("$.controllers.overlayShortcut", "invalid_shortcut", "Keyboard shortcut requires a supported key and modifier combination.");
         if (document.Appearance is null)
         {
             Add("$.appearance", "required", "Appearance settings are required.");

@@ -38,7 +38,8 @@ setup again. See [Troubleshooting](troubleshooting.md) for more help.
 Press **View + Menu** together. Press the same shortcut again to hide it.
 You can choose **Guide** instead in **Settings → Controllers → Controller shortcut**;
 both the Xbox Guide button and PlayStation PS button are supported. For keyboard
-opening, enable **Settings → Controllers → F1 keyboard shortcut**. It is off by default.
+opening, configure **Settings → Controllers → Overlay keyboard shortcut**. It is
+off by default; choose a key combination or keep F1, enable it, then Save.
 
 You can also click the WidgetRail icon in the Windows notification area to open
 the overlay. Right-click it for **Open WidgetRail**, **Restart**, **Restart

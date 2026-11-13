@@ -47,3 +47,22 @@ test('malformed replacement offer leaves the current receiver intact',async()=>{
 test('health events require explicit boolean opt-in',async()=>{
  for(const opt of [false,'true',1,null]){const f=fixture();await f.offer('a'.repeat(32),opt);f.state('failed');assert.equal(f.health().length,0);}
 });
+
+test('receiver diagnostics require the exact current lease and never start playback',async()=>{
+ const f=fixture();await f.offer('a'.repeat(32),true);f.state('connected');
+ f.video.paused=false;f.video.readyState=4;f.video.videoWidth=1920;f.video.videoHeight=1080;
+ f.video.getVideoPlaybackQuality=()=>({totalVideoFrames:120,droppedVideoFrames:3});
+ const value=f.handlers.diagnostics({lease:'a'.repeat(32)});
+ assert.equal(value.state,'connected');assert.equal(value.totalFrames,120);assert.equal(value.droppedFrames,3);assert.equal(value.width,1920);
+ assert.throws(()=>f.handlers.diagnostics({lease:'b'.repeat(32)}),/lease/);
+ await f.offer('b'.repeat(32),true);assert.throws(()=>f.handlers.diagnostics({lease:'a'.repeat(32)}),/lease/);
+ f.handlers.stop();assert.throws(()=>f.handlers.diagnostics({lease:'b'.repeat(32)}),/lease/);
+ assert.equal(f.health().length,0);
+});
+
+test('missing or malformed browser playback counters are unavailable rather than zero',async()=>{
+ const f=fixture();await f.offer();
+ let value=f.handlers.diagnostics({lease:'a'.repeat(32)});assert.equal(value.totalFrames,null);assert.equal(value.paused,null);
+ f.video.getVideoPlaybackQuality=()=>({totalVideoFrames:Infinity,droppedVideoFrames:-1});
+ value=f.handlers.diagnostics({lease:'a'.repeat(32)});assert.equal(value.totalFrames,null);assert.equal(value.droppedFrames,null);
+});

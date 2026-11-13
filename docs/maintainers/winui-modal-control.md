@@ -7,6 +7,10 @@
 
 ## Current automation scope — 2026-09-30
 
+The later [modal dismissal implementation](../modal-dismissal-implementation.md)
+adds explicit backdrop policy and root-owned Escape routing. The historical
+blocking-only pointer behavior described below remains the legacy wire default.
+
 The stable WidgetMotionStage keeps parent and modal as visual siblings. Its native
 automation peer exposes the existing dialog peers while a modal is active, then
 restores the parent's native peers on close. Inactive parents and closing animation

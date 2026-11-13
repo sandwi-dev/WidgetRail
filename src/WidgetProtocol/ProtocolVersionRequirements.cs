@@ -163,6 +163,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.AnchoredPresentation is not null)
                 Add("anchored-presentation", ProtocolConstants.AnchoredPresentationVersion, path + ".anchoredPresentation",
                     "Anchored presentations require protocol version 92 or later.");
+            if (node.ModalDismissal is not null)
+                Add("modal-dismissal", ProtocolConstants.ModalDismissalVersion, path + ".modalDismissal",
+                    $"Explicit modal dismissal requires protocol version {ProtocolConstants.ModalDismissalVersion} or later.");
             if (node.GridLayout is not null || node.GridCell is not null)
                 Add("grid-layout", ProtocolConstants.GridLayoutVersion, path,
                     $"Explicit Grid layout and cell placement require protocol version {ProtocolConstants.GridLayoutVersion} or later.");

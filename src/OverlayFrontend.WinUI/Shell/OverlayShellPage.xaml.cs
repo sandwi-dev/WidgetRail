@@ -728,6 +728,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                     else await ManageUserWebAppsAsync();
                 }
                 else if (request.IndexedLease is not null) await InvokeIntentAsync(request);
+                else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EditKeyboardShortcutAction)
+                    await EditKeyboardShortcutAsync(request);
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.ReplayIntroductionAction)
                 {
                     owner.Session.ValidateIntroductionCommand(request.Displayed, request.Action);

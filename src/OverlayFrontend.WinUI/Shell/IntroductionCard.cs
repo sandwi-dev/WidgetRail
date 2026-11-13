@@ -64,7 +64,7 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
         button.Click += (_, _) => Action?.Invoke(action);
     }
 
-    internal void Present(string step, bool notifications, string openingLabel, ControllerPrompt openingPrompt, bool f1)
+    internal void Present(string step, bool notifications, string openingLabel, ControllerPrompt openingPrompt, string? keyboardShortcut)
     {
         Step = step;
         appearance = null;
@@ -85,7 +85,7 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
             Row(ControllerPrompt.LeftStickMove, "Move focus", "D-pad or left stick · keyboard arrows");
             Row(ControllerPrompt.A, "Select", "Enter or mouse click");
             Row(ControllerPrompt.B, "Go back", "Escape");
-            Row(openingPrompt, openingLabel, f1 ? "F1 also toggles the overlay" : "F1 can be enabled in Settings → Controllers",
+            Row(openingPrompt, openingLabel, keyboardShortcut is not null ? keyboardShortcut + " also toggles the overlay" : "Set a keyboard shortcut in Settings → Controllers",
                 openingPrompt == ControllerPrompt.View ? ControllerPrompt.Menu : null);
         }
         else if (step == "commands") Row(ControllerPrompt.Menu, "Commands", "Right-click a tray item or click Commands in the guide");

@@ -35,6 +35,8 @@ internal sealed partial class WidgetStylesValidationPage
         var rows = ranges.SelectMany(value => value.Range.Items.Select(row => (Row: row, value.Range, value.Styles))).ToArray();
         var descriptor = new BridgeWidgetDescriptor { Id = "playnite.indexed-layout", Name = "Playnite acquired row geometry",
             InstanceId = snapshot.WidgetInstanceId, RuntimeGeneration = "fixture", PresentationGeneration = "fixture", Icon = WidgetGlyph.Play, PackageContentDigest = string.Empty };
+        if (declaration.ScrollAxis == ScrollAxis.Horizontal && parentNodes.FirstOrDefault(node => node.Id == declaration.Id + ".stage") is { } stage)
+            await PlayniteRailLoadingAsync(fixture, snapshot, stage, declaration, rows[0].Row.Root, rows[0].Styles);
         foreach (var index in new[] { 0, rows.Length / 2, rows.Length - 1 }.Distinct())
         {
             var entry = rows[index];

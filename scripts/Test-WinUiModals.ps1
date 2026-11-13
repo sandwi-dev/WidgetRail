@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$OutputDirectory)
+param([Parameter(Mandatory)][string]$OutputDirectory, [switch]$NativeDismissal)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -7,8 +7,9 @@ if (Test-Path -LiteralPath $output) { throw 'Choose a fresh modal evidence direc
 if (Get-Process -Name OverlayFrontend.WinUI -ErrorAction SilentlyContinue) { throw 'Close the current candidate before modal qualification.' }
 $null = New-Item -ItemType Directory -Path $output
 $started = [DateTime]::UtcNow
+$fixtureArguments = if ($NativeDismissal) { '--validate-modals --native-modal-dismissal' } else { '--validate-modals' }
 $launch = winapp run (Join-Path $root 'src/OverlayFrontend.WinUI/OverlayFrontend.WinUI.csproj') `
-    --no-build --arch x64 -p Platform=x64 --detach --json --args '--validate-modals' | ConvertFrom-Json
+    --no-build --arch x64 -p Platform=x64 --detach --json --args $fixtureArguments | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or $launch.ProcessId -le 0) { throw 'Modal fixture failed to launch.' }
 $owned = [int]$launch.ProcessId
 $launch | ConvertTo-Json | Set-Content (Join-Path $output 'launch.json')
@@ -32,6 +33,9 @@ try {
         $result.checks -notcontains 'native modal automation exposes the dialog without inactive parent controls' -or
         $result.checks -notcontains 'native automation restores the parent while excluding the closing dialog') {
         throw "Modal workflow failed: $($result.error)"
+    }
+    if ($NativeDismissal -and $result.checks -notcontains 'Native Escape reaches the modal from sibling shell chrome through its root owner') {
+        throw 'Native modal dismissal scenarios did not run.'
     }
     "Passed $($result.checks.Count) native modal checks."
 } finally {

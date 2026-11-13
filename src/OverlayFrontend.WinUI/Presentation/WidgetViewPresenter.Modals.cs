@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WidgetProtocol;
 
@@ -8,8 +9,27 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
-    private sealed record PendingModalDismissal(WidgetPresentationBinding Owner, object DialogToken, string Action);
-    private PendingModalDismissal? modalKeyboardDismissPending;
+    private sealed record PendingModalDismissal(WidgetPresentationBinding Owner, object LayerToken,
+        object DialogToken, string DialogId, string Action);
+    private PendingModalDismissal? modalDismissPending;
+
+    // A modal is painted beside the shell, outside this presenter's subtree.
+    // Native focus can still be on shell chrome (for example after a pointer
+    // invocation). Claim Escape before sibling chrome's preview handlers, but
+    // retain normal bubbling inside the modal so its controls get first refusal.
+    internal IDisposable AttachModalDismissalInput(UIElement root, Func<bool> isVisible)
+    {
+        KeyEventHandler handler = (sender, args) => { if (isVisible()) ModalKeyDown(sender, args); };
+        KeyEventHandler preview = (sender, args) =>
+        {
+            if (!isVisible() || XamlRoot is null ||
+                FindBinding(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject) is { } focused && focused.Identity.Scope == activeScope) return;
+            ModalKeyDown(sender, args);
+        };
+        root.PreviewKeyDown += preview;
+        root.KeyDown += handler;
+        return new InputRootLease(() => { root.PreviewKeyDown -= preview; root.KeyDown -= handler; });
+    }
 
     private void ModalKeyDown(object sender, KeyRoutedEventArgs args)
     {
@@ -18,28 +38,61 @@ internal sealed partial class WidgetViewPresenter
         if (args.Handled || args.Key != Windows.System.VirtualKey.Escape ||
             Input.GamepadKeyBoundary.Owns(this, args) || HasTransientControl ||
             FocusedBrowser?.Surface?.HasNativeKeyboardFocus == true ||
-            presentation is not { } displayed || !IsBindingCurrent(displayed) || !CanDispatchAction ||
-            effectiveView?.Root is not { Kind: ViewNodeKind.ModalLayer } modal) return;
-        var dialog = modal.Children[1];
-        if (dialog.InputScopeId != activeScope || !bindings.TryGetValue(dialog.Id, out var dialogBinding) ||
-            dialog.Shortcuts.FirstOrDefault(shortcut =>
-                shortcut.Button == ControllerButton.B && shortcut.Phase == ControllerEventPhase.Pressed) is not { } dismiss) return;
+            !TryCaptureModalDismissal(backdrop: false, out var dismissal)) return;
         args.Handled = true;
-        if (args.KeyStatus.WasKeyDown || modalKeyboardDismissPending is { } pending &&
-            pending.Owner.SameInput(displayed) && ReferenceEquals(pending.DialogToken, dialogBinding.Token) &&
-            pending.Action == dismiss.ActionId) return;
-        var dismissal = new PendingModalDismissal(displayed, dialogBinding.Token, dismiss.ActionId);
-        modalKeyboardDismissPending = dismissal;
-        _ = DismissModalFromKeyboardAsync(dismissal, dialog.Id);
+        if (!args.KeyStatus.WasKeyDown) BeginModalDismissal(dismissal);
     }
 
-    private async Task DismissModalFromKeyboardAsync(PendingModalDismissal dismissal, string dialogId)
+    private bool TryCaptureModalDismissal(bool backdrop, out PendingModalDismissal dismissal)
+    {
+        dismissal = null!;
+        if (disposed || applying || presentationOnly || fragmentRootId is not null || !presentationActive ||
+            HasTransientControl || XamlRoot is null || VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot).Any(popup => popup.IsOpen && popup.Child is not ToolTip) ||
+            presentation is not { } displayed || !IsBindingCurrent(displayed) || !CanDispatchAction ||
+            effectiveView?.Root is not { Kind: ViewNodeKind.ModalLayer, Children.Count: 2 } modal ||
+            !bindings.TryGetValue(modal.Id, out var layer)) return false;
+        var dialog = modal.Children[1];
+        if (dialog.InputScopeId != activeScope || dialog.IsDisabled == true || dialog.IsBusy == true ||
+            !bindings.TryGetValue(dialog.Id, out var dialogBinding)) return false;
+        // Older snapshots declare keyboard/controller cancellation through B. Only
+        // the explicit new contract authorizes pointer dismissal of their backdrop.
+        if (backdrop && modal.ModalDismissal?.DismissOnBackdrop != true) return false;
+        var action = modal.ModalDismissal?.ActionId ?? dialog.Shortcuts.FirstOrDefault(shortcut =>
+            shortcut.Button == ControllerButton.B && shortcut.Phase == ControllerEventPhase.Pressed)?.ActionId;
+        if (action is null) return false;
+        dismissal = new(displayed, layer.Token, dialogBinding.Token, dialog.Id, action);
+        return true;
+    }
+
+    private Action? CaptureModalBackdropDismissal(object layerToken)
+    {
+        if (!TryCaptureModalDismissal(backdrop: true, out var captured) ||
+            !ReferenceEquals(captured.LayerToken, layerToken)) return null;
+        return () =>
+        {
+            if (TryCaptureModalDismissal(backdrop: true, out var current) && SameModalDismissal(captured, current))
+                BeginModalDismissal(captured);
+        };
+    }
+
+    private static bool SameModalDismissal(PendingModalDismissal first, PendingModalDismissal second) =>
+        first.Owner.SameInput(second.Owner) && ReferenceEquals(first.LayerToken, second.LayerToken) &&
+        ReferenceEquals(first.DialogToken, second.DialogToken) && first.Action == second.Action;
+
+    private void BeginModalDismissal(PendingModalDismissal dismissal)
+    {
+        if (modalDismissPending is { } pending && SameModalDismissal(pending, dismissal)) return;
+        modalDismissPending = dismissal;
+        _ = DismissModalAsync(dismissal);
+    }
+
+    private async Task DismissModalAsync(PendingModalDismissal dismissal)
     {
         var displayed = dismissal.Owner;
         try
         {
             CancelGroupEntry();
-            await DispatchCapturedActionAsync(displayed, new(dismissal.Action, dialogId, ControllerButton.B,
+            await DispatchCapturedActionAsync(displayed, new(dismissal.Action, dismissal.DialogId, ControllerButton.B,
                 Sequence: ++actionSequence, MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000,
                 InputScopeId: displayed.Scope));
         }
@@ -49,7 +102,7 @@ internal sealed partial class WidgetViewPresenter
         {
             // A newer dialog can dispatch while an older action is still returning.
             // Its in-flight guard belongs to that dialog, not the old completion.
-            if (ReferenceEquals(modalKeyboardDismissPending, dismissal)) modalKeyboardDismissPending = null;
+            if (ReferenceEquals(modalDismissPending, dismissal)) modalDismissPending = null;
         }
     }
 
@@ -60,6 +113,7 @@ internal sealed partial class WidgetViewPresenter
             if (binding.Element is not WidgetModalLayer layer) continue;
             var node = declarations[binding.Identity.Id].Node;
             var dialog = node.Children[1];
+            layer.CaptureBackdropDismissal = () => CaptureModalBackdropDismissal(binding.Token);
             // Dialog motion uses a compositor timeline. External/native surfaces
             // need the page renderer's synchronized placement contract; until a
             // dialog has that contract, keep it stable instead of fading a live

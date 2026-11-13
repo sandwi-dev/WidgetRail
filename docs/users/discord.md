@@ -49,6 +49,14 @@ Select a participant to change that participant's local voice volume or mute.
 **Menu → Voice settings** selects microphone and output devices. Input gain is
 unavailable because the current browser engine does not apply it.
 
+Select the call's connection status or **Menu → Connection details** to inspect
+available ping measurements and a short history. When watching a screen, the same
+panel distinguishes Discord's incoming video from playback in the pin. Measurements
+update only while the panel and overlay are open. An unchanged picture is reported
+as idle or waiting, not automatically as a failure. Use **Refresh** to measure again
+or **Reconnect pin** to explicitly retry the selected screen. The video pin remains
+unobstructed. Ping is not a measurement of end-to-end audio latency.
+
 ## Watch, pin and share
 
 Choose **Watch** to open an incoming stream pin. Stream mute and volume are on

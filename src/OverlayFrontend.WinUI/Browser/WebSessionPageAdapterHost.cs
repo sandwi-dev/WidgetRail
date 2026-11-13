@@ -93,6 +93,7 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
     private void RetireContext()
     {
         if(context is null)return;
+        RetireInvalidations();
         RetireRequests();context=null;installed=false;epoch++;
         ready.TrySetCanceled();ready=new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -113,6 +114,7 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
         if(navigationId is not null && navigationId!=args.NavigationId)
         { ready.TrySetCanceled();ready=new(TaskCreationOptions.RunContinuationsAsynchronously); }
         navigationId=args.NavigationId;installed=false;documentLoaded=false;
+        RetireInvalidations();
         RetireRequests();
         contextWaiter?.Ready.TrySetCanceled();contextWaiter=null;documentContexts.Clear();
         epoch++;context=null;loader=frame=null;responses.Clear();reportedFailure=false;
@@ -182,6 +184,10 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
         // A bounded action may wrap already-validated response metadata in a
         // batch envelope. Match the ordinary web-session JSON depth budget.
         using var data=JsonDocument.Parse(text,new(){MaxDepth=WebSessionContract.MaximumMessageDepth});
+        if(AllowsBackgroundRequests && data.RootElement.ValueKind==JsonValueKind.Object &&
+            data.RootElement.EnumerateObject().Count()==1 && data.RootElement.TryGetProperty("invalidate",out var changed) &&
+            changed.ValueKind==JsonValueKind.Number && changed.TryGetInt32(out var invalidationVersion) && invalidationVersion==1)
+        {InvalidateBackend();return;}
         if(data.RootElement.TryGetProperty("widgetRail",out _)){ReceiveReply(data.RootElement);return;}
         if(AllowsBackgroundRequests){LastAction="unsolicited-action-denied";return;}
         if(!canInvoke()){LastAction="not-interactive";return;}
@@ -250,7 +256,8 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
     }
     public void Dispose()
     {
-        if(disposed)return;RetireRequests();disposed=true;epoch++;responses.Clear();
+        if(disposed)return;RetireInvalidations();RetireRequests();disposed=true;epoch++;responses.Clear();
+        if(invalidationTimer is not null){invalidationTimer.Tick-=PublishInvalidation;invalidationTimer=null;}
         contextWaiter?.Ready.TrySetCanceled();contextWaiter=null;documentContexts.Clear();
         ready.TrySetCanceled();
         core.NavigationStarting-=Starting;core.ContentLoading-=Loading;core.NavigationCompleted-=Completed;
@@ -279,6 +286,7 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
     private const string BackendPrelude="""
         const host=Object.freeze({
           onRequest(callback){requestHandler=callback;},
+          invalidate(){deliver('{"invalidate":1}');},
           batchResult(context,items){return{[batchResultKey]:true,context,items};}
         });
         """;

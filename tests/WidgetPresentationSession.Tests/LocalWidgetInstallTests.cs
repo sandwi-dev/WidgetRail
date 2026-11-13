@@ -84,6 +84,23 @@ public sealed class LocalWidgetInstallTests
     }
 
     [TestMethod]
+    public async Task KeyboardEditorRequiresTheDeclaredCurrentSettingsControl()
+    {
+        var action = new WidgetActionEvent(WidgetPresentationSession.EditKeyboardShortcutAction,
+            "controllers.keyboard-shortcut", InputScopeId: "controllers.page");
+        await Run(_ => Task.CompletedTask, (session, frame) =>
+        {
+            session.ValidateKeyboardShortcutCommand(frame, action);
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateKeyboardShortcutCommand(frame, action with { SourceElementId = "forged" }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateKeyboardShortcutCommand(frame, action with { InputScopeId = "settings-root" }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateKeyboardShortcutCommand(frame, action with { Phase = ControllerEventPhase.Repeated }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateKeyboardShortcutCommand(frame, action with { CommittedText = "Ctrl + A" }));
+            Assert.Throws<WidgetPresentationSessionException>(() => session.ValidateKeyboardShortcutCommand(frame with { Authority = frame.Authority with { WidgetId = "community" } }, action));
+            return Task.CompletedTask;
+        }, action);
+    }
+
+    [TestMethod]
     public async Task IntroductionReplayRequiresTheDeclaredSettingsControl()
     {
         var action = new WidgetActionEvent(WidgetPresentationSession.ReplayIntroductionAction,

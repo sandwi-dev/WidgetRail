@@ -19,7 +19,29 @@ internal static class WidgetModalTests
                 UI.VerticalScroll("details.nested", UI.Button("Nested", "nested", "nested"))),
             "play", "details.close");
         var snapshot = background.WithModal(modal).CreateSnapshot("instance", 1);
-        Equal(55, snapshot.ProtocolVersion);
+        Equal(ProtocolConstants.ModalDismissalVersion, snapshot.ProtocolVersion);
+        Equal(new WidgetModalDismissal("details.close"), snapshot.Root.ModalDismissal);
+        var legacy = snapshot with { ProtocolVersion = 55, Root = snapshot.Root with { ModalDismissal = null } };
+        Equal(0, ViewSnapshotValidator.Validate(legacy).Count);
+        True(ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = 55 }).Any(error => error.Code == "feature_requires_version"));
+        var blocking = background.WithModal(modal with { DismissOnBackdrop = false }).CreateSnapshot("instance", 2);
+        Equal(false, blocking.Root.ModalDismissal!.DismissOnBackdrop);
+        Equal("details.close", blocking.Root.ModalDismissal.ActionId);
+        Equal(0, ViewSnapshotValidator.Validate(blocking).Count);
+        True(ViewSnapshotValidator.Validate(snapshot with { Root = snapshot.Root with { ModalDismissal = new("another.action") } })
+            .Any(error => error.Code == "modal_dismissal_action_mismatch"));
+        True(ViewSnapshotValidator.Validate(snapshot with { Root = snapshot.Root with { ModalDismissal = new("bad action") } }).Count != 0);
+        var misplacedDismissal = background.CreateSnapshot("instance", 2);
+        True(ViewSnapshotValidator.Validate(misplacedDismissal with { ProtocolVersion = ProtocolConstants.ModalDismissalVersion,
+            Root = misplacedDismissal.Root with { ModalDismissal = new("details.close") } })
+            .Any(error => error.Code == "modal_dismissal_not_allowed"));
+        const string generation = "abababababababababababababababab";
+        var update = WidgetPresentationDiff.Create(snapshot, blocking, generation, 1, PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate).Update;
+        True(update is not null);
+        var applied = PresentationUpdateMaterializer.Apply(snapshot, update!, generation);
+        True(SnapshotJson.Serialize(blocking).SequenceEqual(SnapshotJson.Serialize(applied)));
+        True(PresentationPropertyMetadata.Impact(PresentationProperty.ModalDismissal).HasFlag(PresentationPropertyImpact.Authority));
         Equal(ViewNodeKind.ModalLayer, snapshot.Root.Kind);
         Equal("details.scope", snapshot.ActiveInputScopeId);
         Equal("page", snapshot.Root.Children[0].Id);

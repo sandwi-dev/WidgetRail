@@ -1,9 +1,9 @@
 # Modal dismissal and configurable overlay shortcut
 
-Scoped 2026-11-12. These are proposed follow-up changes, not implemented fixes.
-The current task implements Discord prototype cleanup only. Findings below are
-from source inspection; the reported Playnite Escape failure has not yet been
-reproduced in a native session.
+Scoped 2026-11-12. Implementation and qualification now follow
+[the active refinement record](input-discord-refinements-plan.md). The user
+explicitly chose Escape/outside-click dismissal without adding a Close button.
+The original findings below distinguish source evidence from live reproduction.
 
 ## 1. Modal dismissal across input methods
 
@@ -47,12 +47,10 @@ reproduced in a native session.
    only that modal. It never activates the obscured page or tray. Dragging out of
    content, right-click, scroll, focus loss and overlay hiding do not dismiss.
    An open child popup gets the first dismissal; no single event closes both.
-4. Preserve a visible, keyboard-focusable Close/Cancel control in the modal
-   header alongside custom actions. Review the shared SDK header contract and
-   each consumer's available width before changing its current replacement
-   semantics. Do not parse labels, assume child ordering or turn all controller
-   hints into buttons to infer the dismiss action. Header geometry/focus changes
-   require native review; if a compatible SDK extension is needed, make it explicit.
+4. Preserve existing headers without adding a Close button, as directed by the
+   user. Do not parse labels, assume child ordering or turn controller hints into
+   buttons to infer the dismiss action. Escape and backdrop clicks use the
+   explicit domain dismissal contract.
 5. Escape, B and Close dispatch the same domain cancellation action; none may
    imply confirmation. Restore focus/scroll to the invoking item via the existing
    remembered scope, including after refresh, owner retirement and animations.
@@ -172,7 +170,8 @@ without changing controller opening or foreground restoration.
 
 ## Suggested sequence
 
-Finish and verify Discord source cleanup, then fix modal Escape/Close and add the
+Finish and verify Discord source cleanup, then fix modal Escape and add the
 scoped backdrop policy. Implement configurable keyboard activation separately so
 its registration and foreground tests have a clear baseline. Neither scoped feature
-is implemented or claimed runtime-correct by this document.
+is claimed runtime-correct by this scoping document; current implementation and
+evidence are recorded in the linked refinement record.

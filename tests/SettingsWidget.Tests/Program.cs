@@ -82,7 +82,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Controllers page separates input behavior and prerequisite status", ControllerSettingsScenarios.LayoutAndGates),
     ("Host features hide unsupported controller behaviors and reject stale actions", ControllerSettingsScenarios.HostFeatures),
     ("Controller actions gate enable preserve disable and retry recovery", ControllerSettingsScenarios.ActionsAndRecovery),
-    ("F1 shortcut defaults off and persists independently with page authority", ControllerSettingsScenarios.F1ShortcutPreference),
+    ("Keyboard shortcut editing remains host-owned and reloads the committed choice", ControllerSettingsScenarios.F1ShortcutPreference),
     ("Root keeps widget permissions inside Installed Widgets", RootCategories),
     ("Home secondary actions follow the destination cards without stealing focus", HeaderActions),
     ("Initialization publishes loading before slow dependencies complete", LoadingBeforeReady),

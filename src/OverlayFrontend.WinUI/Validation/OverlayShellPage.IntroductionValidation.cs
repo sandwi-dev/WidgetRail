@@ -109,7 +109,7 @@ internal sealed partial class OverlayShellPage
                 {
                     foreach (var step in IntroductionProgress.Steps.Where(step => step != "complete"))
                     {
-                        sizingCard.Present(step, false, "Show or hide", ControllerPrompt.View, false);
+                        sizingCard.Present(step, false, "Show or hide", ControllerPrompt.View, null);
                         var palette = ShellChromePalette.Resolve(ShellPalette, Appearance);
                         sizingCard.Apply(palette, PreviewFrameStyle.Resolve(ShellPalette, palette, Appearance), 1.5, 360);
                         UpdateLayout();

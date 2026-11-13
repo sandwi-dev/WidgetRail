@@ -1,11 +1,15 @@
 // Package-owned endpoint over the shared Discord domain adapter. No transport IDs or manual fragments.
 (() => {
     'use strict';
+    const observation = typeof host.invalidate === 'function' && typeof createWidgetRailDiscordObserver === 'function'
+        ? createWidgetRailDiscordObserver(() => globalThis.WidgetRailWebWebpack, () => host.invalidate()) : null;
+    globalThis.addEventListener?.('pagehide', () => observation?.dispose(), {once:true});
     let fingerprint = null;
     let version = null;
     const validQuality=q=>q&&typeof q==='object'&&!Array.isArray(q)&&[480,720,1080,1440].includes(q.resolution)&&[15,30,60].includes(q.frameRate);
-    const commands = new Set(['joinActivity', 'watchActivity', 'join', 'leave', 'mute', 'deafen', 'streamMute', 'streamVolume', 'streamDiagnostics', 'voiceMute', 'voiceVolume', 'voiceSettings', 'voiceInputDevice', 'voiceOutputDevice', 'voiceInputVolume', 'watch', 'answer', 'keep', 'unwatch', 'share', 'cancelPendingShare', 'stopShare']);
+    const commands = new Set(['joinActivity', 'watchActivity', 'join', 'leave', 'mute', 'deafen', 'streamMute', 'streamVolume', 'streamDiagnostics', 'connectionDiagnostics', 'incomingDiagnostics', 'voiceMute', 'voiceVolume', 'voiceSettings', 'voiceInputDevice', 'voiceOutputDevice', 'voiceInputVolume', 'watch', 'answer', 'keep', 'unwatch', 'share', 'cancelPendingShare', 'stopShare']);
     async function snapshot(owner) {
+        observation?.refresh();
         const response = await WidgetRailDiscordPrototype.invoke({ method: 'snapshot', owner });
         if (!response.ok) throw new Error('Discord unavailable');
         const state = response.value;
@@ -53,7 +57,7 @@
         }
         // Account, call, channel membership, desired-state and stream lease checks remain in the domain adapter.
         const response=await WidgetRailDiscordPrototype.invoke({ method: request.method, args: request.args, owner: request.owner });
-        if(['streamDiagnostics','voiceSettings'].includes(request.method)&&signal.aborted)throw new Error('Cancelled');
+        if(['streamDiagnostics','connectionDiagnostics','incomingDiagnostics','voiceSettings'].includes(request.method)&&signal.aborted)throw new Error('Cancelled');
         return response;
     });
 })();

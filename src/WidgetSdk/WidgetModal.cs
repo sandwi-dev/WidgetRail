@@ -16,6 +16,9 @@ public sealed record WidgetModal(
     /// </summary>
     public WidgetElement? HeaderActions { get; init; }
 
+    /// <summary>A primary click on the modal backdrop invokes DismissActionId. Defaults to true.</summary>
+    public bool DismissOnBackdrop { get; init; } = true;
+
     /// <summary>Optional widget-local popover placement. Missing, stale or off-screen anchors use a centered panel.</summary>
     public AnchoredPresentation? AnchoredPresentation { get; init; }
 
@@ -32,16 +35,18 @@ public sealed record WidgetModal(
 internal sealed record ModalLayerElement : WidgetElement
 {
     internal ModalLayerElement(string id, WidgetElement background, string backgroundScope,
-        WidgetElement dialog, AnchoredPresentation? anchoredPresentation = null) : base(id)
+        WidgetElement dialog, WidgetModalDismissal dismissal, AnchoredPresentation? anchoredPresentation = null) : base(id)
     {
         Background = background;
         BackgroundScope = backgroundScope;
         Dialog = dialog;
+        Dismissal = dismissal;
         AnchoredPresentation = anchoredPresentation;
         RequiredStyleClasses = ["wrail-modal-layer"];
     }
 
     private AnchoredPresentation? AnchoredPresentation { get; }
+    private WidgetModalDismissal Dismissal { get; }
     private WidgetElement Background { get; }
     private string BackgroundScope { get; }
     private WidgetElement Dialog { get; }
@@ -63,6 +68,7 @@ internal sealed record ModalLayerElement : WidgetElement
             Id = Id,
             Kind = ViewNodeKind.ModalLayer,
             AnchoredPresentation = AnchoredPresentation,
+            ModalDismissal = Dismissal,
             StyleClasses = StyleClasses,
             Children = [background, Dialog.ToProtocolNode()],
         };

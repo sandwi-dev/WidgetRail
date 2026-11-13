@@ -234,6 +234,9 @@ The canonical runtime list is `WrssPropertyCatalog.AllowedProperties`. It curren
   `corner-radius`, `shape`, and opacity.
 - Media: `aspect-ratio`, `object-fit`, `object-position`, `image-tint`, and
   `scrim-color`.
+  A `Spacer` with `aspect-ratio` can reserve artwork-shaped space before content
+  loads, using the same width/minimum/maximum and margin classes as a poster.
+  It stays noninteractive; spacers without a ratio retain ordinary sizing.
 - Scroll indicators: `scrollbar-width`, `scrollbar-track-color`, and
   `scrollbar-thumb-color`.
 - Effects: `scale`, `surface-shading`, `background-blur`, shadow color/blur/offset,

@@ -9,7 +9,7 @@ public sealed partial class WidgetPresentationSession
 {
     private readonly SemaphoreSlim _controllerControlExchange = new(1, 1);
     private static readonly IReadOnlySet<string> ControllerPreferenceProperties = new HashSet<string>(StringComparer.Ordinal)
-        { "exclusiveControl", "revision", "openShortcut", "holdDpadToScroll", "f1ShortcutEnabled" };
+        { "exclusiveControl", "revision", "openShortcut", "holdDpadToScroll", "f1ShortcutEnabled", "overlayShortcut" };
 
     /// <summary>
     /// Reports the native controller adapter's actual status and reads the next
@@ -46,7 +46,19 @@ public sealed partial class WidgetPresentationSession
         // Older bridges omit F1; its model default is false. Newer replies must
         // carry a real Boolean, just like the other controller preferences.
         var hasF1 = response.Payload.TryGetProperty("f1ShortcutEnabled", out var f1);
-        if (response.Payload.EnumerateObject().Count() != (hasF1 ? 5 : 4) ||
+        var hasKeyboard = response.Payload.TryGetProperty("overlayShortcut", out var keyboard);
+        if (hasKeyboard && keyboard.ValueKind != JsonValueKind.Null)
+        {
+            RequireObjectProperties(keyboard, "enabled", "key", "modifiers");
+            if (keyboard.GetProperty("enabled").ValueKind is not (JsonValueKind.True or JsonValueKind.False) ||
+                keyboard.GetProperty("key").ValueKind != JsonValueKind.Number ||
+                keyboard.GetProperty("modifiers").ValueKind != JsonValueKind.String ||
+                !Enum.TryParse<OverlayShortcutModifiers>(keyboard.GetProperty("modifiers").GetString(), true, out var modifiers) ||
+                ((int)modifiers & ~15) != 0 ||
+                !keyboard.GetProperty("key").TryGetInt32(out var key) || !OverlayShortcutSettings.IsPrimaryKey(key))
+                throw new BridgeProtocolException("WidgetBridge returned an invalid keyboard shortcut.");
+        }
+        if (response.Payload.EnumerateObject().Count() != 4 + (hasF1 ? 1 : 0) + (hasKeyboard ? 1 : 0) ||
             hasF1 && f1.ValueKind is not (JsonValueKind.True or JsonValueKind.False) ||
             response.Payload.GetProperty("exclusiveControl").ValueKind is not (JsonValueKind.True or JsonValueKind.False) ||
             response.Payload.GetProperty("holdDpadToScroll").ValueKind is not (JsonValueKind.True or JsonValueKind.False) ||
@@ -55,6 +67,9 @@ public sealed partial class WidgetPresentationSession
             response.Payload.GetProperty("openShortcut").ValueKind != JsonValueKind.String ||
             response.Payload.GetProperty("openShortcut").GetString() is not ("guide" or "viewMenu"))
             throw new BridgeProtocolException("WidgetBridge returned invalid controller preferences.");
-        return BridgeJson.FromElement<ControllerSettings>(response.Payload);
+        var result = BridgeJson.FromElement<ControllerSettings>(response.Payload);
+        if (!result.EffectiveOverlayShortcut.IsWellFormed())
+            throw new BridgeProtocolException("WidgetBridge returned an invalid keyboard shortcut.");
+        return result;
     }
 }

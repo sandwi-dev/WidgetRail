@@ -408,6 +408,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.GridLayout, before.GridLayout, after.GridLayout);
         Add(PresentationProperty.GridCell, before.GridCell, after.GridCell);
         Add(PresentationProperty.AnchoredPresentation, before.AnchoredPresentation, after.AnchoredPresentation);
+        Add(PresentationProperty.ModalDismissal, before.ModalDismissal, after.ModalDismissal);
         Add(PresentationProperty.FocusPreview, before.FocusPreview, after.FocusPreview);
         Add(PresentationProperty.FocusPreviewSource, before.FocusPreviewSource, after.FocusPreviewSource);
         Add(PresentationProperty.FocusPreviewKey, before.FocusPreviewKey, after.FocusPreviewKey);

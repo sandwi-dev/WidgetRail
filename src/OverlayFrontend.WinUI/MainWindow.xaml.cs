@@ -237,6 +237,15 @@ public sealed partial class MainWindow : Window
         }
         InitializeOverlaySizing(page);
         page.ControllerSettingsLoaded += ApplyKeyboardShortcutSettings;
+        page.KeyboardShortcutEditorVisibilityChanged = open =>
+        {
+            SetKeyboardEditorOpen(open);
+            if (!open) _ = LoadKeyboardShortcutSettingsAsync(options.SettingsRoot);
+        };
+        page.KeyboardShortcutCaptureChanged = callback => keyboardCapture = callback;
+        page.KeyboardShortcutAvailable = shortcut => keyboardShortcut is { IsRegistered: true } current &&
+            current.Shortcut.Key == shortcut.Key && current.Shortcut.Modifiers == shortcut.Modifiers;
+        page.SaveKeyboardShortcutRequested = (expected, requested, token) => SaveKeyboardShortcutAsync(options.SettingsRoot, expected, requested, token);
         _ = LoadKeyboardShortcutSettingsAsync(options.SettingsRoot);
     }
 
@@ -251,33 +260,31 @@ public sealed partial class MainWindow : Window
             if (!cleanupStarted && version == keyboardSettingsVersion)
                 ApplyKeyboardShortcutSettings(settings.Controllers);
         }
-        catch (Exception error) { Diagnostics.FrontendFailureLog.Current.Write("f1-settings", error); }
+        catch (Exception error) { Diagnostics.FrontendFailureLog.Current.Write("keyboard-shortcut-settings", error); }
     }
 
     private void ApplyKeyboardShortcutSettings(WidgetRail.PlatformSettings.ControllerSettings settings)
     {
         ++keyboardSettingsVersion;
-        if (cleanupStarted) return;
-        if (!settings.F1ShortcutEnabled)
+        if (cleanupStarted || keyboardEditorOpen) return;
+        var shortcut = settings.EffectiveOverlayShortcut;
+        if (!shortcut.IsWellFormed()) return;
+        if (!shortcut.Enabled)
         {
             keyboardShortcut?.Dispose();
             keyboardShortcut = null;
         }
-        else if (keyboardShortcut?.IsRegistered != true)
+        else if (keyboardShortcut?.IsRegistered != true || keyboardShortcut.Shortcut.Key != shortcut.Key || keyboardShortcut.Shortcut.Modifiers != shortcut.Modifiers)
         {
-            keyboardShortcut?.Dispose();
-            InitializeKeyboardShortcut();
+            var candidate = CreateKeyboardShortcut(shortcut);
+            if (candidate.IsRegistered)
+            {
+                var previous = keyboardShortcut;
+                keyboardShortcut = candidate;
+                previous?.Dispose();
+            }
+            else candidate.Dispose();
         }
-    }
-
-    private void InitializeKeyboardShortcut()
-    {
-        keyboardShortcut = new(WinRT.Interop.WindowNative.GetWindowHandle(this), () =>
-        {
-            if (cleanupStarted) return;
-            input?.TraceInput("F1 shortcut toggle received");
-            ToggleOverlay();
-        });
     }
 
     partial void ConfigureValidation(IReadOnlyList<string> arguments, ref bool handled);

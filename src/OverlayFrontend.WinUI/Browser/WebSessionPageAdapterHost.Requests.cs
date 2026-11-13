@@ -42,6 +42,9 @@ internal sealed partial class WebSessionPageAdapterHost
             foreach(var expired in requests.Where(p=>p.Value<Environment.TickCount64).Select(p=>p.Key).ToArray())requests.Remove(expired);
             if(requests.Count>=16||requests.ContainsKey(id))throw new InvalidOperationException("Too many adapter requests.");
             requests[id]=Environment.TickCount64+30000;
+            // This read observes the state that caused the last notification.
+            // Changes during the asynchronous request may queue one more event.
+            if(AllowsBackgroundRequests)invalidationOutstanding=false;
         }
         try{await Evaluate("globalThis["+JsonSerializer.Serialize(RequestEndpoint,BrowserJsonContext.Default.String)+"]?.("+json+")",epoch);}
         catch{requests.Remove(id);throw;}

@@ -80,6 +80,8 @@
 /* Outer breathing room protects the enlarged border without widening item gaps. */
 .playnite-library-browse-scroll { gap: 4px 2px; padding: 8px 4px; }
 .playnite-library-rail { width: 100%; min-width: 0px; gap: 0px; padding: 8px 6px 12px; }
+.playnite-library-rail-stage { width: 100%; min-width: 0px; min-height: 0px; }
+.playnite-library-rail-reservation { opacity: 0; }
 /* Preserve compact spacing; focused posters may overlap their neighbours. */
 .playnite-library-tile { aspect-ratio: 2/3; min-height: 0px; margin: 6px; scale: 1; transition-duration: 140ms; transition-easing: ease-in-out; background: var(--surface-subtle, var(--surface-muted)); border-color: var(--border, var(--surface-muted)); border-width: 1px; corner-radius: 12px; }
 .playnite-library-fixed-tile { width: 28vh; min-width: 112px; max-width: 150px; flex-grow: 0; }

@@ -13,9 +13,13 @@ current focus. A widget can provide its own shortcuts.
 | Menu on the tray | Open widget/pinning options |
 | Y on the tray | Reorder widgets; hold to focus Task Switcher |
 
-With a keyboard, use arrows, Enter and Escape to navigate. To toggle the overlay
-with F1, enable **Settings → Controllers → F1 keyboard shortcut**. This is off by
-default, leaving F1 available to other applications until enabled.
+With a keyboard, use arrows, Enter and Escape to navigate. Configure **Settings →
+Controllers → Overlay keyboard shortcut** to open and close the overlay from other
+applications. It is off by default. The editor can enable the shortcut, record a
+key with optional Ctrl/Alt/Shift/Windows modifiers, or reset the choice to F1.
+Save checks Windows availability; a conflict leaves your previous binding intact.
+Windows-reserved combinations cannot be reassigned. A bare typing key is consumed
+globally while its shortcut is enabled.
 Text fields can use the built-in controller keyboard.
 
 **Stop widget** keeps a widget stopped until you start it again, including across

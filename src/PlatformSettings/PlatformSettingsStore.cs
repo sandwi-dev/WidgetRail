@@ -246,7 +246,11 @@ public sealed class PlatformSettingsStore
                 BackdropOpacity = 0, Motion = default,
             }, JsonContext.AppearanceSettings);
         if (root["controllers"] is JsonObject controllers)
+        {
             FillMissing(controllers, new ControllerSettings(), JsonContext.ControllerSettings);
+            if (controllers["overlayShortcut"] is JsonObject shortcut)
+                FillMissing(shortcut, OverlayShortcutSettings.Default, JsonContext.OverlayShortcutSettings);
+        }
         if (root["builtInWidgets"] is JsonObject builtIns)
             FillMissing(builtIns, new BuiltInWidgetSettings(), JsonContext.BuiltInWidgetSettings);
         return System.Text.Encoding.UTF8.GetBytes(root.ToJsonString());

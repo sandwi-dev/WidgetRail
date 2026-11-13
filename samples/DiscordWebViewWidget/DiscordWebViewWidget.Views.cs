@@ -72,7 +72,7 @@ public sealed partial class DiscordWebViewWidget
         // A dialog route retains the Home background scope. WithModal supplies
         // the dialog scope registered with the navigator, so Back and indexed
         // return focus use the same SDK-owned visit without duplicate scopes.
-        ContainerElement root=route.Route is Route.ParticipantAudio or Route.VoiceSettings?bodyRoot.InputScope("discord.root"):navigation.Scope(route,bodyRoot);
+        ContainerElement root=route.Route is Route.ParticipantAudio or Route.VoiceSettings or Route.ConnectionDetails?bodyRoot.InputScope("discord.root"):navigation.Scope(route,bodyRoot);
         if(route.InitialFocusId is { } restored&&WidgetFocusTargetLookup.Resolve(root,restored,route.InputScopeId).IsEnabled)first=restored;
         if(route.Route==Route.Home&&ready&&data!.ChannelId is not null)
         {
@@ -84,6 +84,7 @@ public sealed partial class DiscordWebViewWidget
                 new(CallAction("deafen",data),data.Deafened?"Undeafen":"Deafen",IsDisabled:!data.Capabilities.Deafen),
                 new(CallAction("pin-call",data),"Pin voice controls"),
                 new(VoiceSettingsAction(data,client?.Reference),"Voice settings"),
+                new(ConnectionDetailsAction(data,client?.Reference),"Connection details"),
                 new("account","Open Discord"),new("refresh","Refresh")};
             if(current.Outgoing is not null&&data.Sharing)commands.Insert(0,new(ShareDetailsAction(data,current,client?.Reference),"Stream details"));
             root=root.ContextMenu(ControllerButton.Menu,commands.ToArray());
@@ -103,7 +104,7 @@ public sealed partial class DiscordWebViewWidget
             Surface:new(){PreferredWidth=1040,PreferredHeight=680,MinimumWidth=420,MinimumHeight=360})
         {FocusGroupEntryRequest=collectionFocus??route.FocusGroupEntryRequest,PinnedLayouts=[streamPin.Present(pin),callPin.Present(VoicePin(data,busy),
             ready&&data!.ChannelId is not null?data.Capabilities.Mute?"discord.pin.mute":data.Capabilities.Deafen?"discord.pin.deafen":"discord.pin.leave":null)]};
-        return ApplyVoiceDialog(result,data);
+        return ApplyConnectionDetails(ApplyVoiceDialog(result,data),data);
     }
 
     private WidgetElement CallPage(DiscordState data,bool busy)
@@ -112,7 +113,8 @@ public sealed partial class DiscordWebViewWidget
         var guild=data.Channels.FirstOrDefault(channel=>channel.Id==data.ChannelId)?.Guild;
         var rows=new List<WidgetElement>{
             UI.Stack("discord.main.heading",
-                UI.Text(VoiceConnectionLabel(data),"discord.main.connected").Classes(data.VoiceConnection=="connected"?"discord-connected":"discord-connecting"),
+                UI.Button(VoiceConnectionLabel(data),ConnectionDetailsAction(data,client?.Reference),"discord.main.connected")
+                    .Classes("discord-connection-link",data.VoiceConnection=="connected"?"discord-connected":"discord-connecting"),
                 UI.Row("discord.main.title.row",UI.Text(data.ChannelName,"discord.main.channel").Classes("discord-call-title","discord-copy"),
                     UI.IconButton(DiscordIcons.Channels,"server-picker","discord.main.servers","Choose a server or voice channel",size:IconButtonSize.Small).Classes("discord-toolbar-button")),
                 UI.Row("discord.main.meta",UI.Text(guild??"Voice call","discord.main.guild").Classes("discord-secondary"),

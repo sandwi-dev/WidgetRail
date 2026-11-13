@@ -97,6 +97,51 @@ function fixture() {
     const invoke = (method, args = {}) => context.WidgetRailDiscordPrototype.invoke({ method, owner: 'c'.repeat(32), args: { account: '1', channelId: '20', ...args } });
     return { state, stores, events, pending, captureOptions, audioReads, audioActions, demandCalls,peers,initial,visibility,makeRtc,timers, invoke, context, engine };
 }
+
+test('connection details expose only bounded current-call ping and quality',async()=>{
+    const f=fixture(),rtc={getChannelId:()=>f.state.channel,getState:()=> 'RTC_CONNECTED',getLastPing:()=>42,
+        getAveragePing:()=>45,getQuality:()=> 'fine',getHostname(){throw Error('must not read hostname');}};
+    f.stores.RTCConnectionStore=rtc;
+    const result=await f.invoke('connectionDiagnostics');assert.equal(result.ok,true);
+    assert.deepEqual(JSON.parse(JSON.stringify(result.value)),{phase:'connected',pingMilliseconds:42,averagePingMilliseconds:45,quality:'fine'});
+    assert.equal(f.events.length,0);assert.equal(f.state.started,0);
+    rtc.getLastPing=()=>Infinity;rtc.getAveragePing=()=>-1;rtc.getQuality=()=> 'unknown';
+    const unavailable=(await f.invoke('connectionDiagnostics')).value;
+    assert.equal(unavailable.pingMilliseconds,null);assert.equal(unavailable.averagePingMilliseconds,null);assert.equal(unavailable.quality,null);
+    rtc.getLastPing=()=>{f.state.account='9';return 42;};
+    assert.equal((await f.invoke('connectionDiagnostics')).ok,false);
+});
+
+test('connection details never reuse previous-call ping while connecting or mismatched',async()=>{
+    const f=fixture();f.stores.RTCConnectionStore={getChannelId:()=> '21',getState:()=> 'RTC_CONNECTED',getLastPing(){throw Error('old call');}};
+    assert.equal((await f.invoke('connectionDiagnostics')).value.phase,'unavailable');
+    f.stores.RTCConnectionStore={getChannelId:()=> '20',getState:()=> 'RTC_CONNECTING',getLastPing(){throw Error('old call');}};
+    const value=(await f.invoke('connectionDiagnostics')).value;assert.equal(value.phase,'connecting');assert.equal(value.pingMilliseconds,null);
+});
+
+test('incoming measurements read only the exact owned stream lease and redact report identity',async()=>{
+    const f=fixture(),lease='a'.repeat(32),key='guild:10:20:2';
+    assert.equal((await f.invoke('watch',{key,lease})).ok,true);
+    let reads=0;f.initial.connection.getRawStats=async()=>{reads++;return new Map([['video',{type:'inbound-rtp',kind:'video',id:'SECRET',ssrc:'SECRET',
+        frameWidth:1920,frameHeight:1080,framesPerSecond:30,framesReceived:90,framesDecoded:88,bytesReceived:1000}]]);};
+    const result=await f.invoke('incomingDiagnostics',{key,lease});assert.equal(result.ok,true);assert.equal(result.value.framesDecoded,88);
+    assert.equal(JSON.stringify(result.value).includes('SECRET'),false);
+    assert.equal((await f.invoke('incomingDiagnostics',{key,lease:'b'.repeat(32)})).ok,false);assert.equal(reads,1);
+    const foreign=await f.context.WidgetRailDiscordPrototype.invoke({method:'incomingDiagnostics',owner:'d'.repeat(32),args:{account:'1',channelId:'20',key,lease}});
+    assert.equal(foreign.ok,false);assert.equal(reads,1);
+    delete f.initial.connection.getRawStats;assert.equal((await f.invoke('incomingDiagnostics',{key,lease})).value.available,false);
+});
+
+test('incoming diagnostics fence delayed reads after stream or account replacement and bound pending work',async()=>{
+    for(const change of ['call','account','lease']) {
+        const f=fixture(),lease='a'.repeat(32),key='guild:10:20:2';await f.invoke('watch',{key,lease});
+        let finish,reads=0;f.initial.connection.getRawStats=()=>{reads++;return new Promise(resolve=>finish=resolve);};
+        const pending=f.invoke('incomingDiagnostics',{key,lease});await new Promise(resolve=>setImmediate(resolve));
+        assert.equal((await f.invoke('incomingDiagnostics',{key,lease})).code,'incoming_diagnostics_busy');assert.equal(reads,1);
+        if(change==='call')f.state.channel='21';else if(change==='account')f.state.account='9';else await f.invoke('unwatch',{lease});
+        finish(new Map());assert.equal((await pending).ok,false);
+    }
+});
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
 test('snapshot is read-only, bounded and does not expose credentials', async () => {

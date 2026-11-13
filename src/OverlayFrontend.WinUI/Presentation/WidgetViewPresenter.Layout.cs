@@ -40,6 +40,7 @@ internal sealed partial class WidgetViewPresenter
         element.MaxHeight = containerOwnsBox ? double.PositiveInfinity : Length(node, "max-height") ?? double.PositiveInfinity;
         element.Margin = containerOwnsBox ? new Thickness(0) :
             NativeComputedStyleAdapter.Spacing(presentation?.RenderStyles.GetValueOrDefault(node.Id)?.Base, "margin") ?? new Thickness(0);
+        if (element is WidgetSpacer spacer) spacer.SetAspectRatio(ComputedStyle(node, "aspect-ratio")?.Number);
     }
 
     private void UpdateContainerLayout(Binding binding, ViewNode node)

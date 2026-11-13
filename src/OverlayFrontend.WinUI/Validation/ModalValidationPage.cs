@@ -27,6 +27,7 @@ internal sealed partial class ModalValidationPage : Page, IAsyncDisposable
     private long owner = 1;
     private string? modal;
     private string detailText = "Details";
+    private bool dismissOnBackdrop = true;
     private Task? running;
     private Exception? failure;
 
@@ -181,6 +182,8 @@ internal sealed partial class ModalValidationPage : Page, IAsyncDisposable
             Check(reducedLayer.OpeningMotion!.IsCompletedSuccessfully && await reducedLayer.OpeningMotion == WidgetMotionOutcome.Completed,
                 "global reduced-motion settings settle a fresh dialog without an animation timer");
             presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Full }, true);
+            if (Environment.GetCommandLineArgs().Contains("--native-modal-dismissal"))
+                await CheckDismissalInputAsync();
             modal = null; Apply();
             Check(presenter.HasClosingModal, "fixture creates an exit for teardown validation");
             await presenter.DisposeAsync();
@@ -207,7 +210,8 @@ internal sealed partial class ModalValidationPage : Page, IAsyncDisposable
             UI.Stack("details.content", UI.Button("Play", "play", "play"), UI.Button("Second", "second", "second"),
                 UI.Select("Completion", (SelectOption[])[new("none", "None", "none", true), new("done", "Done", "done")], "picker"),
                 UI.Stack("long.description", Enumerable.Range(0, 60).Select(index =>
-                    (WidgetElement)UI.Text($"Description line {index}", "line." + index)).ToArray())), "play", "dismiss"));
+                    (WidgetElement)UI.Text($"Description line {index}", "line." + index)).ToArray())), "play", "dismiss")
+            { DismissOnBackdrop = dismissOnBackdrop });
         var snapshot = view.CreateSnapshot("modal.instance", ++sequence);
         var descriptor = new BridgeWidgetDescriptor { Id = "modal", Name = "Modal validation", InstanceId = snapshot.WidgetInstanceId,
             RuntimeGeneration = $"runtime-{owner}", PresentationGeneration = "presentation", Icon = WidgetGlyph.Connection, PackageContentDigest = "" };

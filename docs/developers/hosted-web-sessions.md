@@ -153,6 +153,16 @@ Opening a remote session starts navigation; it does not prove that the provider
 or its adapter is ready. Handle temporary unavailability without replaying mutations.
 
 The backend receives `host.onRequest(...)` and `host.batchResult(context, items)`.
+Current hosts also expose `host.invalidate()` for payload-free state-change
+notifications. Feature-probe this method when supporting older hosts. The host
+coalesces bursts over 100 ms and permits only one outstanding notification until
+the widget issues another admitted backend request. Consume
+`{ "kind": "backend-invalidated" }` through `ReadMessagesAsync` and refresh the
+appropriate resource; changes during an in-flight read need a subsequent read,
+not just joining the old one. The notification authorizes no action and carries
+no provider state. Navigation, context retirement and teardown cancel pending
+notifications. Provider-store subscriptions and their account semantics remain
+the widget adapter's responsibility; remove subscriptions when the document ends.
 Use `backend.RequestAsync<TRequest,TReply>(method, payload, token)` from native
 widget code. Correlation, cancellation and document retirement follow the shared
 request protocol, including the 16-request limit and 30-second deadline. Unlike

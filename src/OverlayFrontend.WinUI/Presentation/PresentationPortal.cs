@@ -18,6 +18,7 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
     private readonly RectangleGeometry clip = new();
     private readonly Grid roundedLayer = new();
     private readonly IDisposable? input;
+    private readonly IDisposable? modalInput;
     private readonly WidgetViewPresenter? owner;
     private readonly Microsoft.UI.Composition.CompositionRoundedRectangleGeometry rounded;
     private readonly Microsoft.UI.Composition.CompositionGeometricClip roundedClip;
@@ -35,7 +36,17 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
         HorizontalAlignment = HorizontalAlignment.Left; VerticalAlignment = VerticalAlignment.Top;
         RenderTransform = placement; Clip = clip;
         for (DependencyObject? item = anchor; item is not null; item = VisualTreeHelper.GetParent(item))
-            if (item is WidgetViewPresenter presenter) { owner = presenter; if (!passive && attachInput) input = presenter.AttachPresentationInput(content); break; }
+            if (item is WidgetViewPresenter presenter)
+            {
+                owner = presenter;
+                if (!passive && attachInput)
+                {
+                    input = presenter.AttachPresentationInput(content);
+                    if (content is WidgetModalLayer) modalInput = presenter.AttachModalDismissalInput(root,
+                        () => !disposed && !paintOnly && IsLoaded && Visibility == Visibility.Visible && IsHitTestVisible);
+                }
+                break;
+            }
         // XAML owns the outer rectangular clip/transform. A separate visual
         // carries the rounded compositor clip; putting both on one visual makes
         // WinUI attempt to treat a geometric clip as an inset clip (E_NOINTERFACE).
@@ -98,7 +109,7 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
         IsHitTestVisible = acceptsInput && !paintOnly;
         Visibility = Visibility.Visible;
     }
-    internal void RetainForExit() { paintOnly = true; IsHitTestVisible = false; input?.Dispose(); }
+    internal void RetainForExit() { paintOnly = true; IsHitTestVisible = false; input?.Dispose(); modalInput?.Dispose(); }
 
     // The presenter's stage exposes the modal peer once, in its logical tree.
     // Root-level paint relocation must not duplicate accessibility descendants.
@@ -117,6 +128,6 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
         ElementCompositionPreview.GetElementVisual(this).StopAnimation("Opacity");
         ElementCompositionPreview.GetElementVisual(roundedLayer).Clip = null;
         roundedClip.Dispose(); rounded.Dispose();
-        input?.Dispose(); roundedLayer.Children.Clear(); Children.Clear(); root.Children.Remove(this);
+        input?.Dispose(); modalInput?.Dispose(); roundedLayer.Children.Clear(); Children.Clear(); root.Children.Remove(this);
     }
 }

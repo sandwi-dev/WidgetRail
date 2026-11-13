@@ -2,8 +2,10 @@
 
 ## The overlay does not open
 
-Use **View + Menu** together on one controller, or try **F1** with a keyboard if
-you enabled **Settings → Controllers → F1 keyboard shortcut** (off by default).
+Use **View + Menu** together on one controller, or your configured keyboard shortcut
+if you enabled **Settings → Controllers → Overlay keyboard shortcut** (off by default).
+The keyboard editor reports whether the saved combination is available. If Windows
+or another app owns it, choose a different combination; the tray icon still opens WidgetRail.
 The opening shortcut can be changed to Guide in Settings. Release both buttons
 after reconnecting a controller before trying the shortcut again.
 

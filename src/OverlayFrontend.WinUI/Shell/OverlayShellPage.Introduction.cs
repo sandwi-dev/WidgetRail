@@ -23,7 +23,7 @@ internal sealed partial class OverlayShellPage
     private string? introductionPendingFocus, introductionError;
     private long introductionNavigation;
     private bool IntroductionRunning => introductionLoaded && !introduction.Paused && !introduction.Finished;
-    private (string Step, bool Notifications, ControllerOpenShortcut Shortcut, bool F1)? introductionContent;
+    private (string Step, bool Notifications, ControllerOpenShortcut Shortcut, string? Keyboard)? introductionContent;
     private (FrameworkElement Target, Rect Bounds)[] introductionBounds = [];
     private Windows.UI.Color introductionOutline;
 
@@ -108,13 +108,14 @@ internal sealed partial class OverlayShellPage
         var show = IntroductionRunning && visible && foreground && !retired && !startupPresentationPending;
         card.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (!show) { introductionHighlights.Children.Clear(); introductionBounds = []; return; }
-        var content = (introduction.Step, HasPendingNotifications, introductionControllers.OpenShortcut, introductionControllers.F1ShortcutEnabled);
+        var keyboard = introductionControllers.EffectiveOverlayShortcut;
+        var content = (introduction.Step, HasPendingNotifications, introductionControllers.OpenShortcut, keyboard.Enabled ? keyboard.DisplayName : null);
         if (introductionContent != content)
         {
             introductionContent = content;
             card.Present(introduction.Step, HasPendingNotifications, "Show or hide the overlay",
                 introductionControllers.OpenShortcut == ControllerOpenShortcut.Guide ? ControllerPrompt.Guide : ControllerPrompt.View,
-                introductionControllers.F1ShortcutEnabled);
+                keyboard.Enabled ? keyboard.DisplayName : null);
         }
         card.ShowStatus(introductionError ?? (introductionBusy || introductionPendingFocus is not null
             ? introduction.Step == "appearance-details" ? "Opening Appearance…" : "Opening Catalogue…" : null));
