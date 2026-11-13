@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 namespace WidgetRail.WidgetProtocol;
 
 [JsonConverter(typeof(JsonStringEnumConverter<WebSessionSourceKind>))]
-public enum WebSessionSourceKind { Remote, Package }
+public enum WebSessionSourceKind { Remote, Package, BackendVideo }
 
 public sealed record WebSessionSource
 {
@@ -15,6 +15,13 @@ public sealed record WebSessionSource
     public IReadOnlyList<string> NetworkOrigins { get; init; } = [];
     public bool AllowAutoplay { get; init; }
 
+    /// <summary>A silent presentation of a video track from an owned backend's current document.</summary>
+    public static WebSessionSource BackendVideo(WebSessionReference backend)
+    {
+        ArgumentNullException.ThrowIfNull(backend);
+        if (!backend.IsWellFormed()) throw new ArgumentException("Invalid backend reference.", nameof(backend));
+        return new() { Kind = WebSessionSourceKind.BackendVideo, Location = backend.Id };
+    }
     public static WebSessionSource Remote(string url) => new() { Kind = WebSessionSourceKind.Remote, Location = url };
     public static WebSessionSource Package(string entryAsset, IReadOnlyList<EmbeddedMediaResource> resources) =>
         new() { Kind = WebSessionSourceKind.Package, Location = entryAsset, Resources = resources };
@@ -22,6 +29,8 @@ public sealed record WebSessionSource
     public bool IsWellFormed() => Enum.IsDefined(Kind) && Resources is not null && NetworkOrigins is not null &&
         (Kind == WebSessionSourceKind.Remote
             ? WebBrowserDocument.IsWebUrl(Location) && Resources.Count == 0 && NetworkOrigins.Count == 0 && !AllowAutoplay
+            : Kind == WebSessionSourceKind.BackendVideo
+                ? new WebSessionReference(Location).IsWellFormed() && Resources.Count == 0 && NetworkOrigins.Count == 0 && !AllowAutoplay
             : WebSessionContract.IsAssetPath(Location) && Resources.Count is > 0 and <= WebSessionContract.MaximumPackageResourceCount &&
               Resources.All(r => r is not null && WebSessionContract.IsAssetPath(r.Path) &&
                   r.ContentType is "text/html" or "text/javascript" or "application/javascript" or "text/css" or
@@ -56,10 +65,12 @@ public sealed record WebSessionReference(string Id)
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<WebSessionOperation>))]
-public enum WebSessionOperation { Open, PostMessage, ReadMessages, AuthorizeResource, Navigate, Close, OpenAdapted, OpenBackend, RequestMicrophone, PrepareWebCapture, StopWebCapture, PrepareWebCaptureConstrained }
+public enum WebSessionOperation { Open, PostMessage, ReadMessages, AuthorizeResource, Navigate, Close, OpenAdapted, OpenBackend, RequestMicrophone, PrepareWebCapture, StopWebCapture, PrepareWebCaptureConstrained, RequestPermission, OpenBackendVideo }
 
 public sealed record WebSessionCommand(WebSessionOperation Operation)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WebSessionPermissionKind? PermissionKind { get; init; }
     public WebSessionDefinition? Definition { get; init; }
     public WebSessionReference? Session { get; init; }
     public string? MessageBase64 { get; init; }
@@ -67,6 +78,8 @@ public sealed record WebSessionCommand(WebSessionOperation Operation)
     public string? Destination { get; init; }
     [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)]
     public WebCaptureStreamOptions? CaptureOptions { get; init; }
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingDefault)]
+    public bool CaptureFixedContentPreference { get; init; }
     private IReadOnlyList<WebCaptureStreamOptions>? captureQualities;
     [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<WebCaptureStreamOptions>? CaptureQualities
@@ -84,6 +97,8 @@ public sealed record WebSessionReply
     public IReadOnlyList<string> MessagesBase64 { get; init; } = [];
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public WebSessionMicrophoneResult? Microphone { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WebSessionPermissionResult? Permission { get; init; }
 }
 
 public static class WebSessionContract

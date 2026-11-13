@@ -63,7 +63,7 @@ public sealed partial class DiscordWebViewWidget
     private static string ShareErrorMessage(string error)=>error switch
     {
         "share_quality_unconfirmed"=>"Discord could not confirm the selected stream quality. Check Stream details.",
-        "share_content_preference_unconfirmed"=>"Discord could not preserve your Smoothness/Clarity preference. Sharing is still active.",
+        "share_content_preference_unconfirmed"=>"Discord could not preserve the clarity setting. Sharing is still active.",
         "share_quality_unavailable"=>"This Discord version could not apply the selected stream quality.",
         "share_quality_unsupported"=>"That stream quality is no longer available for this call.",
         "share_picker_timeout"=>"Sharing setup timed out. Choose Share game to try again.",
@@ -111,9 +111,10 @@ public sealed partial class DiscordWebViewWidget
                 // quality just because this account/call cannot currently use it.
                 var preferred=provider.PreferredShareQuality is { } saved?new WebCaptureStreamOptions(saved.Resolution,saved.FrameRate):new WebCaptureStreamOptions();
                 if(!allowed.Contains(preferred))preferred=allowed.Contains(new WebCaptureStreamOptions())?new():allowed[0];
-                preferred=preferred with{ContentPreference=await PreferredCaptureContentAsync(intent.Account,context.CancellationToken)};
+                preferred=preferred with{ContentPreference=WebCaptureContentPreference.Detail};
                 if(!context.IsCurrent||!OwnsCall(intent))return;
-                var prepared=await HostServices.Capture.WebStreams.PrepareAsync(intent.Session,preferred,allowed,context.CancellationToken);
+                var prepared=await HostServices.Capture.WebStreams.PrepareAsync(intent.Session,preferred,allowed,
+                    allowContentPreferenceSelection:false,context.CancellationToken);
                 if(prepared.Ticket is { } ticket)
                     capture=new(intent,ticket,prepared.Quality??preferred,prepared.ApplicationName??"Selected application",prepared.ApplicationAudio,prepared.Phase);
                 // Capture may already have started while the preparation reply
@@ -139,7 +140,6 @@ public sealed partial class DiscordWebViewWidget
                 var requestedAt=time.GetTimestamp();
                 retained=view.Update(current=>current.Outgoing?.Ticket==capture.Ticket
                     ?(current with{Outgoing=current.Outgoing with{ProviderRequestedAt=requestedAt}},true):(current,false)).Result;
-                if(retained)RememberCaptureContent(intent.Account,capture.Quality.ContentPreference);
             }
             catch(OperationCanceledException) when(context.CancellationToken.IsCancellationRequested) { }
             catch(WidgetCapabilityException error) when(!providerAttempted)

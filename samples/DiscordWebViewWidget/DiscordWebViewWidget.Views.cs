@@ -64,6 +64,9 @@ public sealed partial class DiscordWebViewWidget
                 first=data.ChannelId is null?PickerInitialFocusId(data):data.Capabilities.Mute?"discord.main.mute":"discord.main.servers";
             }
             var children=new List<WidgetElement>{header};
+            if (route.Route == Route.Home && data is { Ready: true, NotificationPermission: "default" or "denied" } && client?.Reference is { } session)
+                children.Add(UI.Button("Enable notifications", DomainAction("notifications", session.Id, data.Account), "discord.notifications.enable")
+                    .Classes("discord-control", "discord-quiet"));
             if(current.Notice.Length>0)children.Add(UI.Text(current.Notice,"discord.notice").Classes("discord-notice"));
             children.Add(body);
             content=UI.Stack("discord.home",children.ToArray()).Classes("discord-page");
@@ -112,22 +115,28 @@ public sealed partial class DiscordWebViewWidget
         participants.Publish(data.Account+"\u001f"+data.ChannelId+"\u001f"+client?.Reference?.Id,new(data.Account,data.ChannelId,client?.Reference),data.Participants);
         var guild=data.Channels.FirstOrDefault(channel=>channel.Id==data.ChannelId)?.Guild;
         var rows=new List<WidgetElement>{
-            UI.Stack("discord.main.heading",
+            UI.Stack("discord.main.call",
+                UI.Row("discord.main.heading",
+                    UI.Icon(DiscordIcons.Voice,"discord.main.voice-icon","Voice call").Classes("discord-call-emblem"),
+                    UI.Stack("discord.main.heading.copy",
+                        UI.Text(data.ChannelName,"discord.main.channel").Classes("discord-call-title"),
+                        UI.Row("discord.main.meta",UI.Text(guild??"Voice call","discord.main.guild").Classes("discord-secondary"),
+                            UI.Text(busy?"Updating…":data.Participants.Length+" in call","discord.main.state").Classes("discord-secondary"))).Classes("discord-copy","discord-call-heading"),
+                    UI.Row("discord.main.tools",
+                        UI.IconButton(DiscordIcons.Pin,CallAction("pin-call",data),"discord.voice.pin","Pin voice controls",size:IconButtonSize.Small).Classes("discord-toolbar-button"),
+                        UI.IconButton(DiscordIcons.Channels,"server-picker","discord.main.servers","Choose a server or voice channel",size:IconButtonSize.Small).Classes("discord-toolbar-button")).Classes("discord-actions"))
+                    .Classes("discord-call-header"),
                 UI.Button(VoiceConnectionLabel(data),ConnectionDetailsAction(data,client?.Reference),"discord.main.connected")
                     .Classes("discord-connection-link",data.VoiceConnection=="connected"?"discord-connected":"discord-connecting"),
-                UI.Row("discord.main.title.row",UI.Text(data.ChannelName,"discord.main.channel").Classes("discord-call-title","discord-copy"),
-                    UI.IconButton(DiscordIcons.Channels,"server-picker","discord.main.servers","Choose a server or voice channel",size:IconButtonSize.Small).Classes("discord-toolbar-button")),
-                UI.Row("discord.main.meta",UI.Text(guild??"Voice call","discord.main.guild").Classes("discord-secondary"),
-                    UI.Text(busy?"Updating…":data.Participants.Length+" in call","discord.main.state").Classes("discord-secondary"))).Classes("discord-call-heading"),
-            UI.CollectionGrid("discord.participants",participants,130,56,"Call participants",maximumColumns:4).Classes("discord-participants"),
-            UI.ResponsiveGrid("discord.main.actions",100,5,
+                UI.ResponsiveGrid("discord.main.actions",132,4,
                 UI.Button(data.Muted?"Unmute":"Mute",CallAction("mute",data),"discord.main.mute").Icon(data.Muted?DiscordIcons.Muted:DiscordIcons.Microphone)
-                    .Disabled(!data.Capabilities.Mute).Selected(data.Muted).Classes("discord-control"),
+                    .Disabled(!data.Capabilities.Mute).Selected(data.Muted).Classes("discord-control","discord-call-toggle"),
                 UI.Button(data.Deafened?"Undeafen":"Deafen",CallAction("deafen",data),"discord.main.deafen").Icon(DiscordIcons.Voice)
-                    .Disabled(!data.Capabilities.Deafen).Selected(data.Deafened).Classes("discord-control"),
+                    .Disabled(!data.Capabilities.Deafen).Selected(data.Deafened).Classes("discord-control","discord-call-toggle"),
                 ShareButton(data),
-                UI.IconButton(DiscordIcons.Pin,CallAction("pin-call",data),"discord.voice.pin","Pin voice controls",size:IconButtonSize.Small).Classes("discord-control"),
-                UI.Button("Leave",CallAction("leave",data),"discord.main.leave").Icon(DiscordIcons.Leave).Classes("discord-control","discord-leave")).Classes("discord-call-actions")};
+                UI.Button("Leave",CallAction("leave",data),"discord.main.leave").Icon(DiscordIcons.Leave).Classes("discord-control","discord-leave"))
+                    .Classes("discord-call-actions")).Classes("discord-call-panel"),
+            UI.CollectionList("discord.participants",participants,176,"Call participants",ScrollAxis.Horizontal).Classes("discord-participants")};
         if(data.Streams.Length>0)
         {
             rows.Add(SectionTitle("discord.streams.heading","Screens in this call",data.Streams.Length.ToString()));
@@ -183,11 +192,14 @@ public sealed partial class DiscordWebViewWidget
     private StackElement VoicePin(DiscordState? data,bool busy)
     {
         const string id="discord.pin";var inCall=data?.Ready==true&&data.ChannelId is not null;
-        var rows=new List<WidgetElement>{
+        var guild=inCall?data!.Channels.FirstOrDefault(channel=>channel.Id==data.ChannelId)?.Guild:null;
+        var summary=new List<WidgetElement>{
             UI.Row(id+".heading",UI.Icon(DiscordIcons.Voice,id+".icon","Voice chat").Classes("discord-voice-icon"),
-                UI.Text(inCall?data!.ChannelName:"Not in voice",id+".channel").Classes("discord-voice-title","discord-copy"),
+                UI.Stack(id+".heading.copy",UI.Text(inCall?data!.ChannelName:"Not in voice",id+".channel").Classes("discord-voice-title"),
+                    UI.Text(guild??"Voice chat",id+".guild").Classes("discord-voice-guild")).Classes("discord-copy"),
                 UI.Text(busy?"Updating…":inCall?data!.VoiceConnection=="connected"?data.Participants.Length+" in call":data.VoiceConnection switch
                     {"connecting"=>"Connecting…","reconnecting"=>"Reconnecting…","disconnected"=>"Disconnected",_=>"Status unavailable"}:"",id+".state").Classes("discord-voice-count")).Classes("discord-voice-heading")};
+        WidgetElement controls;
         if(inCall)
         {
             // Keep provider order stable while speaking changes. Only the small
@@ -196,18 +208,18 @@ public sealed partial class DiscordWebViewWidget
             var avatars=shown.Select(person=>UI.Stack(id+".person."+person.Id,
                 Avatar(person.AvatarUrl,id+".avatar."+person.Id,person.Name+", "+ParticipantStatus(person)).AddClasses("discord-voice-avatar"))
                 .Classes("discord-voice-avatar-frame",person.Speaking&&!person.Muted&&!person.Deafened?"discord-voice-speaking":"discord-voice-listening")).ToArray();
-            rows.Add(UI.Row(id+".people.row",UI.Row(id+".avatars",avatars).Classes("discord-voice-avatars"),
+            summary.Add(UI.Row(id+".people.row",UI.Row(id+".avatars",avatars).Classes("discord-voice-avatars"),
                 UI.Text(string.Join(" · ",shown.Select(person=>person.Name)),id+".people").Classes("discord-voice-names","discord-copy"),
                 UI.Text(data.Participants.Length>shown.Length?"+"+(data.Participants.Length-shown.Length):"",id+".more").Classes("discord-voice-count"))
                 .Classes("discord-voice-people"));
-            rows.Add(UI.Grid(id+".actions",[],[GridTrack.Star(),GridTrack.Star(),GridTrack.Star()],
+            controls=UI.Grid(id+".actions",[],[GridTrack.Star(),GridTrack.Star(),GridTrack.Star()],
                 UI.Button(data!.Muted?"Unmute":"Mute",CallAction("mute",data),id+".mute").Icon(data.Muted?DiscordIcons.Muted:DiscordIcons.Microphone).Disabled(!data.Capabilities.Mute).Selected(data.Muted).Classes("discord-control","discord-voice-button","discord-voice-toggle"),
                 UI.Button(data.Deafened?"Undeafen":"Deafen",CallAction("deafen",data),id+".deafen").Icon(DiscordIcons.Voice).Disabled(!data.Capabilities.Deafen).Selected(data.Deafened).Classes("discord-control","discord-voice-button","discord-voice-toggle").InGrid(column:1),
                 UI.Button("Leave",CallAction("leave",data),id+".leave").Icon(DiscordIcons.Leave).Classes("discord-control","discord-voice-button","discord-leave").InGrid(column:2))
-                .Spacing(0,8).Classes("discord-voice-actions"));
+                .Spacing(0,8).Classes("discord-voice-actions");
         }
-        else rows.Add(UI.Text("Open Discord to join a channel.",id+".idle").Classes("discord-secondary"));
-        return UI.Stack(id+".controls",rows.ToArray()).Classes("discord-voice-pin");
+        else controls=UI.Text("Open Discord to join a channel.",id+".idle").Classes("discord-secondary");
+        return UI.Stack(id+".controls",UI.Stack(id+".summary",summary.ToArray()).Classes("discord-voice-summary"),controls).Classes("discord-voice-pin");
     }
 
     private static WidgetElement ActivityRow(DiscordFriendActivity activity,string id)

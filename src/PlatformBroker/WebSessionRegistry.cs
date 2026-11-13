@@ -9,7 +9,7 @@ public sealed record HostWebSessionWork(string RequestId, string WidgetId, Broke
     WebSessionReference Session, WebSessionCommand Command, bool Cancelled = false, bool CaptureRevoked = false);
 public sealed record HostWebSessionBatch(IReadOnlyList<HostWebSessionWork> Work, IReadOnlyList<string> LiveSessions,
     IReadOnlyList<string>? LiveRequests = null);
-public sealed record HostWebSessionResult(string RequestId, string? ErrorCode = null, WebSessionMicrophoneResult? Microphone = null, WebCaptureStreamStatus? Capture = null);
+public sealed record HostWebSessionResult(string RequestId, string? ErrorCode = null, WebSessionMicrophoneResult? Microphone = null, WebCaptureStreamStatus? Capture = null, WebSessionPermissionResult? Permission = null);
 public sealed record HostWebSessionMessages(WebSessionReference Session, IReadOnlyList<string> MessagesBase64, string? ErrorCode = null, WebCaptureStreamStatus? Capture = null);
 
 /// <summary>Bounded rendezvous between authenticated worker services and the frontend owner.</summary>
@@ -61,20 +61,28 @@ public sealed partial class WebSessionRegistry
 
     private async ValueTask<WebSessionReply> ExecuteAsync(Owner owner, WebSessionCommand command, CancellationToken token)
     {
-        if (command is null || !Enum.IsDefined(command.Operation)) throw Failure("invalid_payload");
+        if (command is null || !Enum.IsDefined(command.Operation) ||
+            (command.Operation == WebSessionOperation.RequestPermission
+                ? command.PermissionKind is not { } kind || !Enum.IsDefined(kind)
+                : command.PermissionKind is not null)) throw Failure("invalid_payload");
         // Capture operations may only enter through the consented capture domain,
         // never through the intrinsic web-session command capability.
-        if(IsCaptureOperation(command.Operation) || command.CaptureOptions is not null || command.CaptureQualities is not null || command.CaptureTicket is not null)
+        if(IsCaptureOperation(command.Operation) || command.CaptureOptions is not null || command.CaptureQualities is not null || command.CaptureTicket is not null || command.CaptureFixedContentPreference)
             throw Failure("permission_denied");
         Session session;
         lock (gate)
         {
             if (owner.Retired) throw Failure("session_closed");
-            if (command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted or WebSessionOperation.OpenBackend)
+            if (command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted or WebSessionOperation.OpenBackend or WebSessionOperation.OpenBackendVideo)
             {
                 if (command.Definition?.IsWellFormed() != true || command.Session is not null || command.MessageBase64 is not null || command.ResourceUrl is not null || command.Destination is not null)
                     throw Failure("invalid_payload");
-                var expectedOpen = command.Definition.PageAdapter is null ? WebSessionOperation.Open :
+                var source = command.Definition.Source;
+                if (source.Kind == WebSessionSourceKind.BackendVideo &&
+                    (!owner.AllowsPageBackend || !sessions.TryGetValue(source.Location, out var parent) ||
+                    !ReferenceEquals(parent.Owner, owner) || parent.Definition.PageAdapter?.Mode != WebSessionPageAdapterMode.SessionBackend))
+                    throw Failure("permission_denied");
+                var expectedOpen = source.Kind == WebSessionSourceKind.BackendVideo ? WebSessionOperation.OpenBackendVideo : command.Definition.PageAdapter is null ? WebSessionOperation.Open :
                     command.Definition.PageAdapter.Mode == WebSessionPageAdapterMode.SessionBackend ? WebSessionOperation.OpenBackend : WebSessionOperation.OpenAdapted;
                 if (command.Operation != expectedOpen)
                     throw Failure("invalid_payload");
@@ -109,7 +117,7 @@ public sealed partial class WebSessionRegistry
                     if (!valid) throw Failure("invalid_payload");
                 }
                 else if (command.Destination is not null) throw Failure("invalid_payload");
-                if(command.Operation==WebSessionOperation.RequestMicrophone &&
+                if(command.Operation is WebSessionOperation.RequestMicrophone or WebSessionOperation.RequestPermission &&
                     (!owner.AllowsPageBackend || session.Definition.PageAdapter?.Mode!=WebSessionPageAdapterMode.SessionBackend))
                     throw Failure("permission_denied");
                 if (command.Operation == WebSessionOperation.ReadMessages)
@@ -139,11 +147,11 @@ public sealed partial class WebSessionRegistry
         try
         {
             var result=await EnqueueAsync(session, command, token).ConfigureAwait(false);
-            return new() { Session = session.Reference, Microphone=result.Microphone };
+            return new() { Session = session.Reference, Microphone=result.Microphone, Permission=result.Permission };
         }
         catch
         {
-            if (command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted or WebSessionOperation.OpenBackend) lock (gate) CloseLocked(session, "session_failed");
+            if (command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted or WebSessionOperation.OpenBackend or WebSessionOperation.OpenBackendVideo) lock (gate) CloseLocked(session, "session_failed");
             throw;
         }
     }
@@ -157,20 +165,20 @@ public sealed partial class WebSessionRegistry
         {
             if (!sessions.ContainsKey(session.Reference.Id)) throw Failure("session_closed");
             if (pending.Count >= 32 || pending.Values.Count(p => ReferenceEquals(p.Session, session)) >= 8) throw Failure("request_limit");
-            if(command.Operation==WebSessionOperation.RequestMicrophone && pending.Values.Any(p=>ReferenceEquals(p.Session,session)&&p.Command.Operation==WebSessionOperation.RequestMicrophone))
+            if(command.Operation is WebSessionOperation.RequestMicrophone or WebSessionOperation.RequestPermission && pending.Values.Any(p=>ReferenceEquals(p.Session,session)&&p.Command.Operation is WebSessionOperation.RequestMicrophone or WebSessionOperation.RequestPermission))
                 throw Failure("request_limit");
             pending.Add(id, new(session, command, completion));
             if (!work.Writer.TryWrite(item))
             { pending.Remove(id); throw Failure("request_limit"); }
         }
-        try { return await completion.Task.WaitAsync(TimeSpan.FromSeconds(command.Operation is WebSessionOperation.RequestMicrophone or WebSessionOperation.PrepareWebCapture or WebSessionOperation.PrepareWebCaptureConstrained?90:30), token).ConfigureAwait(false); }
+        try { return await completion.Task.WaitAsync(TimeSpan.FromSeconds(command.Operation is WebSessionOperation.RequestMicrophone or WebSessionOperation.RequestPermission or WebSessionOperation.PrepareWebCapture or WebSessionOperation.PrepareWebCaptureConstrained?90:30), token).ConfigureAwait(false); }
         catch (TimeoutException) { throw Failure("session_timeout"); }
         finally
         {
             lock(gate)
                 // Host-only retirement work wakes a waiting frontend immediately.
                 // LiveRequests also retires work if the bounded wake queue is full.
-                if(pending.Remove(id) && command.Operation is WebSessionOperation.RequestMicrophone or WebSessionOperation.PrepareWebCapture or WebSessionOperation.PrepareWebCaptureConstrained)
+                if(pending.Remove(id) && command.Operation is WebSessionOperation.RequestMicrophone or WebSessionOperation.RequestPermission or WebSessionOperation.PrepareWebCapture or WebSessionOperation.PrepareWebCaptureConstrained)
                     work.Writer.TryWrite(item with{Cancelled=true});
         }
     }
@@ -204,6 +212,8 @@ public sealed partial class WebSessionRegistry
             { CompleteCaptureCleanupLocked(result);return; }
             if(result.ErrorCode is null && (request.Command.Operation==WebSessionOperation.RequestMicrophone
                 ? result.Microphone?.IsWellFormed()!=true : result.Microphone is not null) ||
+                result.ErrorCode is null && (request.Command.Operation==WebSessionOperation.RequestPermission
+                    ? result.Permission?.IsWellFormed()!=true : result.Permission is not null) ||
                 result.ErrorCode is null && (IsCaptureOperation(request.Command.Operation)
                     ? result.Capture?.IsWellFormed()!=true || result.Capture.Ticket!=request.Command.CaptureTicket ||
                         !IsCaptureQualityAllowedLocked(result.Capture,request.Session.Reference) ||
@@ -256,6 +266,8 @@ public sealed partial class WebSessionRegistry
     private void CloseLocked(Session session, string reason)
     {
         if (!sessions.Remove(session.Reference.Id)) return;
+        foreach (var child in sessions.Values.Where(s => s.Definition.Source.Kind == WebSessionSourceKind.BackendVideo &&
+            s.Definition.Source.Location == session.Reference.Id).ToArray()) CloseLocked(child, reason);
         if(session.Capture is { } capture)RevokeCaptureLocked(capture);
         session.Messages.Writer.TryComplete();
         while (session.Messages.Reader.TryRead(out _)) { }

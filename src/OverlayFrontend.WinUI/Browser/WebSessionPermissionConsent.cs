@@ -2,11 +2,11 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
-internal enum MicrophonePreference { Default, Allow, Deny }
+internal enum SitePermissionPreference { Default, Allow, Deny }
 
 /// <summary>One document's consent. This never touches a device or writes browser preferences.
-/// A remembered choice is applied by WebView2 only when this same document requests microphone use.</summary>
-internal sealed class WebSessionMicrophoneConsent
+/// A remembered choice is applied by WebView2 only when this same document requests that permission.</summary>
+internal sealed class WebSessionPermissionConsent
 {
     private (string Origin,long Document,bool Remember)? grant;
     private CancellationTokenSource? pending;
@@ -23,30 +23,30 @@ internal sealed class WebSessionMicrophoneConsent
         remember=current.Remember;return true;
     }
 
-    internal async Task<WebSessionMicrophoneResult> RequestAsync(string origin,long document,Func<bool> current,
-        Func<CancellationToken,Task<MicrophonePreference>> readPreference,
+    internal async Task<WebSessionPermissionResult> RequestAsync(string origin,long document,Func<bool> current,
+        Func<CancellationToken,Task<SitePermissionPreference>> readPreference,
         Func<CancellationToken,Task<string?>> choose,CancellationToken token)
     {
-        if(pending is not null || !current())return new(WebSessionMicrophoneState.Unavailable);
+        if(pending is not null || !current())return new(WebSessionPermissionState.Unavailable);
         using var cancellation=CancellationTokenSource.CreateLinkedTokenSource(token);
         pending=cancellation;
         try
         {
             var saved=await readPreference(cancellation.Token).WaitAsync(cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
-            if(!current())return new(WebSessionMicrophoneState.Cancelled);
-            if(saved==MicrophonePreference.Deny){grant=null;return new(WebSessionMicrophoneState.Denied,true);}
-            if(saved==MicrophonePreference.Allow){Grant(origin,document,true);return new(WebSessionMicrophoneState.Granted,true);}
-            if(IsGranted(origin,document,out var remembered))return new(WebSessionMicrophoneState.Granted,remembered);
+            if(!current())return new(WebSessionPermissionState.Cancelled);
+            if(saved==SitePermissionPreference.Deny){grant=null;return new(WebSessionPermissionState.Denied,true);}
+            if(saved==SitePermissionPreference.Allow){Grant(origin,document,true);return new(WebSessionPermissionState.Granted,true);}
+            if(IsGranted(origin,document,out var remembered))return new(WebSessionPermissionState.Granted,remembered);
             var answer=await choose(cancellation.Token).WaitAsync(cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
-            if(!current())return new(WebSessionMicrophoneState.Cancelled);
-            if(answer is not ("once" or "allow"))return new(WebSessionMicrophoneState.Cancelled);
+            if(!current())return new(WebSessionPermissionState.Cancelled);
+            if(answer is not ("once" or "allow"))return new(WebSessionPermissionState.Cancelled);
             Grant(origin,document,answer=="allow");
-            return new(WebSessionMicrophoneState.Granted,answer=="allow");
+            return new(WebSessionPermissionState.Granted,answer=="allow");
         }
         catch(OperationCanceledException) when(cancellation.IsCancellationRequested)
-        { return new(WebSessionMicrophoneState.Cancelled); }
+        { return new(WebSessionPermissionState.Cancelled); }
         finally { if(ReferenceEquals(pending,cancellation))pending=null; }
     }
 }

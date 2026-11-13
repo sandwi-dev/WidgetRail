@@ -328,7 +328,7 @@ public static class PlatformCapabilities
                 ReadOperations: Set(PrivateStateRead),
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted,
                 AllowsBackground: true),
-            [WebSessionsV1] = new(WebSessionsV1, 1, BrokerCapabilityKind.Control, Set("web-session.command", "web-session.microphone"), Set(),
+            [WebSessionsV1] = new(WebSessionsV1, 1, BrokerCapabilityKind.Control, Set("web-session.command", "web-session.microphone", "web-session.permission"), Set(),
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true,
                 BackgroundOperations: Set("web-session.command")),
             [WidgetPinningV1] = new(WidgetPinningV1, 1, BrokerCapabilityKind.Control, Set("pin.open"), Set(),

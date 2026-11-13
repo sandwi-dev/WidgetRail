@@ -82,7 +82,7 @@ public sealed partial class DiscordWebViewWidget
                 new{account=owner.Account,channelId=owner.Channel,key=watch.Key,lease=relay.Lease},token));}
             catch(Exception) when(!token.IsCancellationRequested){incoming=new(false);}
             if(!ConnectionDetailsCurrent(owner)||!MeasuredWatchCurrent(watch))throw new OperationCanceledException();
-            try{pin=DiscordPinMeasurement.Read(await relay.Receiver.ReadDiagnosticsAsync(relay.Lease,token),relay.Lease);}
+            try{pin=DiscordPinMeasurement.Read(await client.InvokeAsync("videoPlayback",new{account=owner.Account,channelId=owner.Channel,lease=relay.Lease},token),relay.Lease);}
             catch(Exception) when(!token.IsCancellationRequested){ }
         }
         token.ThrowIfCancellationRequested();

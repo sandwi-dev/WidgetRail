@@ -64,6 +64,7 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
                 count+=await IndexedSourceReentrancyScenarios.RunAsync(DispatcherQueue);
                 count+=await IndexedSourceLifetimeScenarios.RunAsync(DispatcherQueue);
                 count+=await IndexedSourceRetentionScenarios.RunAsync(DispatcherQueue);
+                count+=await GuideRetirementAsync();
             }
             catch(Exception error){failure=error;}
             await File.WriteAllTextAsync(publicationOutput,System.Text.Json.JsonSerializer.Serialize(new{passed=failure is null,checks=count,error=failure?.ToString()}));

@@ -110,3 +110,190 @@ that Windows or another capturing app permits removal. Playnite's actual install
 widget needs the rebuilt package for the new explicit backdrop policy. Physical
 controller/game testing is not replaced by injected native key and fixture checks.
 These limits do not reopen the cancelled native-client migration or codec experiments.
+
+## Follow-up: reported Library and app-wide lag
+
+The default-profile candidate was verified as optimized Release. The local
+Playnite and Discord package updates use revisions 0.2.146.1 and 0.1.0.1 through
+the supported update flow. Investigation of the subsequent scrolling report
+found repeated host guide scans during indexed row publication. The bounded
+host correction, consumer matrix, native before/after measurements and remaining
+cold-scroll limitation are recorded in
+[Library scrolling investigation](playnite-grid-stutter-investigation.md).
+The regular pauses were subsequently traced to retained computer-use/UI Automation
+activity and disappeared after resetting that helper. Controlled reruns, native
+regressions and the user's default-profile physical test passed. The guide fix is
+retained; bounded publication scheduling, guide retirement, Bridge startup ordering
+and a reproducibly packaged Playnite HTTP-response correction are also covered in
+that investigation. Playnite remains selected at 0.2.146. No merge or release was
+performed.
+
+## Discord follow-up and consumer review, 2026-11-13
+
+| Entry point | Applicability and evidence |
+| --- | --- |
+| Discord native controls, `samples/DiscordWebViewWidget/DiscordSession.cs` | Migrated. A missing notification grant in its separate profile was observed in the original investigation. The new explicit action requests host consent. Account/session-bound actions reject stale clicks. The website decides which incoming messages generate notifications. |
+| Discord capture, `DiscordWebViewWidget.Sharing.cs` and `web/provider/adapter.js` | Migrated. Discord owns entitlement and quality persistence. Nine possible presets end at 1080p60 with fixed clarity. Reading a saved 1440p preference projects it to 1080p at the saved rate without mutating provider settings. Existing favorites and recents still use the same account-scoped private store. |
+| Capture Library, SDK Gallery and Game Help | All three start native window captures. `OverlayShellPage.Capture.cs` now contributes the requesting widget ID during capture. Capture Library removed its redundant activity publication. The other two need no widget changes. |
+| Browser, legacy Discord webapp, packaged receivers and isolated page adapters | Existing visible site permissions and browser notification delivery continue through their own profiles. Packaged receivers and isolated adapters cannot obtain backend permissions. Ordinary browser-managed screen shares lack a host-owned teardown signal. |
+| Other shipping widgets, ControllerWidget template and SDK examples | Searched the capture starts, activity reports, session modes and permission entry points. No additional shipping backend consumer or template migration was found. Non-hosted players retain their own activity reports. The developer guide and SDK documentation index now cover the typed request. |
+| Native UI worker and tests | Updated the synthetic Discord worker and session doubles. The SDK baseline has only four additions. Existing microphone callers retain their operation ID and typed receipt. Existing constrained and unconstrained capture callers retain their chooser behavior. |
+
+The framework gap was explicit, interactive consent for a hidden backend
+document. `BrowserSurface.BackendPermissions.cs` now shares the existing
+document lease, retained profile lookup, chooser, cancellation and exact
+permission callback. Only microphone and notifications are admitted. This is a
+bounded SDK/broker/host extension modeled on the existing microphone operation.
+Notifications additionally apply the user decision in an isolated top-frame
+world to make the browser API usable during an existing call. The host remains
+the owner of permission decisions and capture activity, including uncertain
+worker shutdown. No widget traverses host UI or manages badge generations.
+
+The first compact navigation run failed to pin an indexed Watch with the older
+staged Bridge. With the rebuilt Bridge that interaction passed, and the test
+then exposed its obsolete route from Mute to Leave after the grid reflow. The
+fixture now uses the actual adjacent control. The rerun passed 49 native checks
+each at 420×360 and 1040×680. The voice pin passed 49 checks across 320×180 and
+400×180. The indexed failure's precise cause was not isolated.
+
+Native WebView2 validation passed 52 checks including temporary and remembered
+notification decisions, delivery to the host, permission isolation and stale
+document retirement. The real synthetic-source capture run passed 29 checks,
+including capture activity during hidden operation, failed teardown and retry.
+The Discord worker passed 443 checks, the SDK 177, SDK compatibility 17, the
+broker web session/capture suites 10 and the consent lifecycle suite 5. The
+provider and session backend passed 153 JavaScript checks and the packaged
+backend passed its five checks. Evidence is under
+`artifacts/input-discord/followup-*` and the isolated native evidence directories
+`wr-permission-fa7d8c` and `wr-badge-bc417a` under the local temporary directory.
+Live Discord second-account message delivery and remote stream quality remain
+user acceptance checks.
+
+The trimmed, ReadyToRun Release frontend and matching Bridge started the real
+package in an isolated profile. The requested default-profile restart then
+selected Discord 0.1.0.2 through the reviewed local update flow. The catalog
+kept its settings and the new worker reached Interactive. The installed backend
+matches the tested package digest. Playnite Library remains enabled at 0.2.146.
+The Discord package SHA-256 is
+`0e98b7888e0963c08b2cf2eb99221a3bcf31feb9eadf20d439d2090a635169a9`.
+
+## Incoming pin and outgoing stream quality, 2026-11-13
+
+The incoming pin uses the current Discord receiver track as the source of a
+second, video-only local WebRTC connection in `web/provider/adapter.js`.
+`web/receiver.js` plays its decoded track, and the receiver page fits the image
+to the pin. The default-profile Discord stream pin had 100% saved opacity. A
+flat dark background sample in the supplied reference PNG was RGB (24,24,24)
+throughout; the corresponding area in the pin PNG had five colors, most often
+(26,26,26). The captures differ in time and display size. This observation does
+not identify a uniform color conversion or justify a compensating filter.
+
+In isolated Edge 157.0.4341.46, a moving 1280×720/30 text source first crossed
+one WebRTC connection. Two more local senders simultaneously forwarded that
+same decoded track. Frame IDs embedded in the source allowed comparison to the
+direct video. Across two runs with reversed sender creation order, the default
+sender delivered 320×180, targeted 0.6 Mbps, and reported bandwidth limitation.
+The sender with a 20 Mbps ceiling and maintain-resolution delivered 1280×720 at
+about 30 FPS. In the final window of the repeat, red-channel RMS error over a
+text region after fitting to the same size fell from 30.85 to 1.46 levels out
+of 255. These are matched samples at different frame counts. The second encode
+remains lossy. A same-document direct video surface could avoid it, but the
+existing generic hosted-popup entry point expects an interactive visible page.
+A reusable document-scoped pin for media from a hidden session would need host
+ownership, retirement and input/geometry qualification. Defer that larger change.
+
+Only Discord's incoming Watch and Watch-from-activity paths use this relay.
+Adapter 23 sets the local sender parameters after the exact lease's answer
+and rechecks ownership after asynchronous work. Optional tuning failure retains
+negotiated playback. Existing receiver replacement and single audio ownership
+remain in place. The unminified provider/receiver suites passed 146 checks,
+minified provider/backend passed 155, and the composed package passed 5.
+Local package 0.1.0.3 contains only the new adapter bundle and manifest revision
+relative to 0.1.0.2. Visual acceptance in a real Discord call is still pending.
+The script and measurements are under `artifacts/input-discord/quality-pin-comparison`.
+
+Outgoing host-owned web capture uses Windows Graphics Capture → BGRA readback
+→ shared mapping → browser VideoFrame and generated track → Discord's sender.
+There is no intermediate WidgetRail RTP encoder in this path. At
+`tools/DiscordWebViewPrototype/LiveCapture.cpp`, drawing and readback precede
+the video-credit check in `CaptureWorker.cpp`. Each full 1920×1080 BGRA copy at
+60 FPS represents about 498 MB/s of pixel payload. The cached image also
+supports idle refresh. Eliminating a redundant copy or skipping readback under
+backpressure belongs to the shared native transport and would need a native
+benchmark, resize/idle tests and exact-credit lifetime checks. The source audit
+does not establish these copies caused visible artifacts.
+
+The production-worker fixture with generated 1920×1080 moving content, clarity,
+and an 8 Mbps simulated sender ceiling submitted/encoded/decoded
+59.57/59.63/59.54 FPS over 11.10 seconds. It delivered full 1920×1080 with zero
+decoder-reported frame drops in the final report. The worker had 39 cumulative
+video-credit drops, including startup. This local test does not measure a remote
+Discord connection. Evidence is in `artifacts/input-discord/quality-out-1080/result.json`.
+After the approved update the default-profile catalog selected 0.1.0.3. The worker reached Interactive and its installed backend hash matched the tested bundle.
+
+## Direct incoming video, 2026-11-13
+
+The user reproduced blur, compression artifacts and significant stutter in
+0.1.0.3 while the original stream was smooth. The default-profile worker and
+visible native pin were confirmed. The bitrate experiment was insufficient in
+live use. Its browser-only measurements above do not establish the quality of
+the shipping pin. Supersede that path for the native Discord widget.
+
+| Consumer or boundary | Decision and evidence |
+| --- | --- |
+| Discord Watch and friend activity Watch | Migrate both to the actual received video track. The host-owned child references that same browser track. The widget still selects the account, call, exact provider connection and participant, manages its provider subscription, and fences late work by lease. Source replacement updates the existing video element. |
+| SDK, broker, Bridge and WinUI | A bounded new backend-video session uses the existing trusted worker/session/view ownership, document lease and native placement mechanisms. Only an owned backend may create its silent view. An old host rejects the operation. The page has no ordinary navigation, permissions, capture or widget RPC. Native source navigation, retirement or child closure ends its exact view. |
+| Browser and legacy Discord webapp pop-outs | Existing user-opened pages keep independent popup and navigation policies. Browser-managed pop-outs require an interactive visible opener. Only the private, host-initiated video attachment can claim the reserved blank child. |
+| Spotify, standalone YouTube Music, PoB, other widgets, templates and examples | Package players and document renderers have no trusted backend video track. The repository search found no other shipping consumer for this API. Existing profiles, audio providers and capture paths use their existing contracts. |
+| Standalone Discord research prototype | Its caller still consumes SDP offers. Retain that path for the prototype. The shipping backend rejects Watch without an exact video-view reference. The shipped package omits the former receiver page and its scripts. |
+
+The framework gap had moderate implementation complexity. WebView2's
+`NewWindowRequested.NewWindow` lets the host bind a fresh same-profile
+controller to the source. The same-origin blank document lets a muted video
+element use the source track without a local RTP encoder, decoder, raw frame
+copies or widget messages per frame. Host-owned media demand keeps the source
+and visible video view at normal memory priority while they are needed. The
+existing passive-pin policy applies to other browser content.
+
+The two-controller native fixture placed an incoming synthetic WebRTC track in
+an actual passive pin. The source and pin sampled identical colors. Over the
+18-second interval spanning the idle memory deadline, each video reported 526
+frames and the pin reported four dropped frames. Closing the pin preserved the
+source track. Navigating the source invalidated its old child. Results are in
+`wr-video-1e17b75/result.json` under the local temporary directory. Managed
+Discord tests passed 439 checks and broker session tests passed six groups.
+Minified provider, backend and packaged endpoint tests passed 161 checks.
+
+An independent installed-package scenario starts the real worker and Bridge
+with a synthetic provider in an isolated profile. Controller A on Watch opened
+the native passive pin, then Open Discord displayed the original page next
+to it. The pin and original HTML video elements referenced the same track
+object. The pin's playback counters advanced from 7 to 98 with zero reported
+drops in three seconds. Unpinning released the child and preserved source
+playback. Result: `artifacts/input-discord/direct-installed-test/integration-1.json`.
+SDK regression checks passed 177/177, the compatibility suite passed 17/17,
+and the documentation contract passed. The default profile now runs the
+trimmed Release frontend, matching Bridge and Discord 0.1.0.4. The installed
+adapter bundle matches the tested package. A real remote call after the
+restart remains a live acceptance check.
+
+### Direct video loading indicator
+
+The supplied recording shows an indeterminate line moving along the upper edge
+of the playing pin. BrowserSurface configured the navigation progress bar
+before CoreWebView2 was ready. A backend video child skips normal navigation
+and can retain that initial visual. The host now disables the animation for
+backend video and collapses its reserved row when it configures that source.
+The shipping consumer is Discord Watch (including friend activity Watch).
+Ordinary browser pages, package sessions, templates and examples do not create
+backend video sources and require no migration.
+
+The installed-package native Watch test asserts the progress control is
+collapsed, its animation disabled, and the actual WebView starts at Y=0.
+The side-by-side run advanced 90 frames in three seconds with zero reported drops.
+
+The user confirmed the loading bar was gone and accepted the changes on
+2026-11-13. Pre-merge cleanup removed the unused packaged receiver and its CI
+step. The shipping Watch path is covered by direct-track provider, worker
+lifecycle and native pin checks. The standalone research prototype continues
+to use its own receiver for SDP experiments.

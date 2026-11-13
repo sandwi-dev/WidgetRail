@@ -4,7 +4,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
 internal sealed partial class BrowserOwner
 {
-    internal Func<BrowserSurface, WebCaptureStreamOptions, IReadOnlyList<WebCaptureStreamOptions>?, CancellationToken, Task<WebCaptureSourceSelection?>>? ChooseWebCaptureSource { get; set; }
+    internal Func<BrowserSurface, WebCaptureStreamOptions, IReadOnlyList<WebCaptureStreamOptions>?, bool, CancellationToken, Task<WebCaptureSourceSelection?>>? ChooseWebCaptureSource { get; set; }
     // A removed session is not proof that its native worker has exited. Retain
     // its exact owner until teardown succeeds, so Stop can retry a failed close.
     private readonly Dictionary<(string Widget, string Document), Entry> captureRetirements = [];

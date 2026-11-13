@@ -5,7 +5,7 @@ if(!$OutputDirectory){$OutputDirectory=Join-Path $repo ('artifacts/discord-webvi
 $output=[IO.Path]::GetFullPath($OutputDirectory)
 if(Test-Path -LiteralPath $output){throw 'Choose a fresh output directory.'}
 $package=Join-Path $output 'package'
-New-Item -ItemType Directory -Force "$output/logs","$package/styles" | Out-Null
+New-Item -ItemType Directory -Force "$output/logs","$package/styles","$package/payload/web" | Out-Null
 & dotnet publish "$PSScriptRoot/DiscordWebViewWidget.csproj" -c $Configuration -r win-x64 --self-contained false -m:1 -nr:false -p:UseSharedCompilation=false -p:CopyOutputSymbolsToPublishDirectory=false -o "$package/payload" "-bl:$output/logs/publish-{}.binlog"
 if($LASTEXITCODE){throw 'Discord widget publication failed.'}
 # Compose the widget-owned provider with the hosted discovery and session entry point.

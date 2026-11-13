@@ -66,6 +66,27 @@ internal static class WebSessionMicrophoneTests
         Check(cancellation.Work.Single().Cancelled,"Broker lifecycle loss did not retire the native dialog");
         var domain=new WebSessionCapabilityDomain(owner.ExecuteAsync);
         await Reject(()=>domain.ExecuteAsync("web-session.microphone",BrokerJson.ToElement(new WebSessionCommand(WebSessionOperation.ReadMessages){Session=reference}),default).AsTask(),"invalid_payload");
+        var permission = new WebSessionCommand(WebSessionOperation.RequestPermission) { Session=reference, PermissionKind=WebSessionPermissionKind.Notifications };
+        await Reject(()=>owner.ExecuteAsync(permission with {PermissionKind=null}, default).AsTask(),"invalid_payload");
+        await Reject(()=>owner.ExecuteAsync(permission with {PermissionKind=(WebSessionPermissionKind)999}, default).AsTask(),"invalid_payload");
+        await Reject(()=>owner.ExecuteAsync(command with {PermissionKind=WebSessionPermissionKind.Notifications}, default).AsTask(),"invalid_payload");
+        await Reject(()=>other.ExecuteAsync(permission, default).AsTask(),"session_closed");
+        await Reject(()=>owner.ExecuteAsync(permission with {Session=plainReference},default).AsTask(),"permission_denied");
+        var nativePermission = request with {Operation="web-session.permission",Payload=BrokerJson.ToElement(permission)};
+        await Reject(()=>broker.ExecuteAsync(nativePermission),"lifecycle_denied");
+        await Reject(()=>domain.ExecuteAsync("web-session.command",nativePermission.Payload,default).AsTask(),"invalid_payload");
+        await Reject(()=>domain.ExecuteAsync("web-session.microphone",nativePermission.Payload,default).AsTask(),"invalid_payload");
+        broker.SetLifecycle(BrokerLifecycleState.Interactive);
+        var setup=broker.ExecuteAsync(nativePermission);
+        var work=(await registry.TakeAsync(default)).Work.Single();
+        await Reject(()=>owner.ExecuteAsync(command,default).AsTask(),"request_limit");
+        registry.Complete(new(work.RequestId,Permission:new(WebSessionPermissionState.Granted,true)));
+        Check(BrokerJson.ParsePayload<WebSessionReply>(await setup).Permission==new WebSessionPermissionResult(WebSessionPermissionState.Granted,true),
+            "Notification decision did not reach the requesting widget");
+        var mismatched=owner.ExecuteAsync(permission,default).AsTask();
+        work=(await registry.TakeAsync(default)).Work.Single();
+        registry.Complete(new(work.RequestId,Microphone:new(WebSessionMicrophoneState.Granted,true)));
+        await Reject(()=>mismatched,"invalid_host_result");
         var retiring=owner.ExecuteAsync(command,default).AsTask();
         pending=(await registry.TakeAsync(default)).Work.Single();owner.Dispose();
         await Reject(()=>retiring,"session_closed");

@@ -32,11 +32,14 @@ animation.
   level meter or a guarantee that the source contains audible samples.
 - The host owns pending counts, stopped state and failure state. Widget activity
   reports cannot replace these facts or hide host-observed audio.
-- Screen sharing is **not inferred from permission or chooser opening**.
-  WebView2 exposes `ScreenCaptureStarting`, describing a request, without a
+- Native window capture and backend web capture automatically contribute the
+  Recording badge to the owning widget. The host clears it when capture ends.
+  A web capture with unconfirmed teardown keeps its contribution until cleanup
+  succeeds. Opening the source chooser contributes no badge.
+- For a website using its own browser capture chooser, WebView2 exposes `ScreenCaptureStarting`, describing a request, without a
   matching public capture-ended/state event in the supported SDK. A canceled
   chooser or a stream ended by the website would make a latched badge misleading.
-  Automatic website-sharing badges are deferred; no page-specific probes are used.
+  This browser-managed case has no automatic sharing badge.
 
 ## Ordinary widgets
 
@@ -56,8 +59,7 @@ await HostServices.Activity.ClearAsync("recorder", token);
 Use `RemotePlayback: true` when controlling playback elsewhere rather than
 producing local audio. Framework-managed browser/native media needs no manual
 reporting. YouTube Music's standalone player reports its own playback. Capture
-Library reports only after its capture reaches the actual Recording phase and
-clears the contribution on completion, cancellation or failure.
+Library uses the host-owned capture indicator.
 
 Sources are internal component identifiers, not displayed text. A widget may
 have at most 16 nonempty contributions. IDs contain 1–64 ASCII letters, digits,

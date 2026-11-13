@@ -24,6 +24,10 @@ public sealed record WebCaptureStreamRequest(WebSessionReference Session, WebCap
 {
     public const int MaximumAllowedQualities = 12;
     private IReadOnlyList<WebCaptureStreamOptions>? allowedQualities;
+    /// <summary>Keep Options.ContentPreference fixed instead of offering a content selector.
+    /// Opt-in only; older hosts reject the additional strict payload member.</summary>
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingDefault)]
+    public bool FixedContentPreference { get; init; }
     /// <summary>Provider-approved choices, intersected with host support. Null retains legacy choices.</summary>
     [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<WebCaptureStreamOptions>? AllowedQualities
@@ -32,6 +36,7 @@ public sealed record WebCaptureStreamRequest(WebSessionReference Session, WebCap
         init=>allowedQualities=value is null?null:Array.AsReadOnly(value.ToArray());
     }
     public bool IsWellFormed() => Session?.IsWellFormed()==true && Options?.IsWellFormed()==true &&
+        (!FixedContentPreference || AllowedQualities is not null) &&
         (AllowedQualities is null ? WebCaptureStreamOptions.LegacyQualities.Any(Options.IsSameQuality) :
             AllowedQualities.Count is >0 and <=MaximumAllowedQualities &&
             AllowedQualities.All(quality=>quality?.IsWellFormed()==true) &&

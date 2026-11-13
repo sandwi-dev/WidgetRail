@@ -36,14 +36,22 @@ public sealed class WidgetWebCaptureService
     /// <summary>Opens the host chooser restricted to provider-approved quality choices.
     /// A distinct operation makes unsupported older hosts fail closed. The list is
     /// copied; preferred settings must be a member. The host still owns source/audio consent.</summary>
-    public async ValueTask<WebCaptureStreamStatus> PrepareAsync(WebSessionReference session,
+    public ValueTask<WebCaptureStreamStatus> PrepareAsync(WebSessionReference session,
         WebCaptureStreamOptions preferred,IReadOnlyList<WebCaptureStreamOptions> allowedQualities,CancellationToken cancellationToken)
+        =>PrepareAsync(session,preferred,allowedQualities,allowContentPreferenceSelection:true,cancellationToken);
+
+    /// <summary>Restricts provider modes and optionally fixes the content preference.
+    /// With selection disabled, the host omits that selector and preserves the supplied preference.</summary>
+    public async ValueTask<WebCaptureStreamStatus> PrepareAsync(WebSessionReference session,
+        WebCaptureStreamOptions preferred,IReadOnlyList<WebCaptureStreamOptions> allowedQualities,
+        bool allowContentPreferenceSelection,CancellationToken cancellationToken=default)
     {
         ArgumentNullException.ThrowIfNull(allowedQualities);
-        var request=new WebCaptureStreamRequest(session,preferred){AllowedQualities=allowedQualities};
+        var request=new WebCaptureStreamRequest(session,preferred){AllowedQualities=allowedQualities,FixedContentPreference=!allowContentPreferenceSelection};
         if(!request.IsWellFormed())throw new ArgumentException("Supported, distinct quality choices including the preferred setting are required.");
         var result=await client.InvokeAsync(WidgetWebCaptureCapabilities.PrepareConstrained,request,cancellationToken).ConfigureAwait(false);
         Validate(result,session);ValidateChoice(result,request.AllowedQualities!);
+        if(request.FixedContentPreference && result.Quality is { } selected && selected.ContentPreference!=preferred.ContentPreference)throw Malformed();
         return result;
     }
 

@@ -208,12 +208,6 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (acceptTimeout <= TimeSpan.Zero || acceptTimeout > TimeSpan.FromMinutes(1))
             throw new ArgumentOutOfRangeException(nameof(acceptTimeout));
-        if (_catalogMonitor is not null)
-        {
-            _catalogMonitor.Changed += OnCatalogChanged;
-            var catalog = _catalogMonitor.StateSnapshot();
-            ApplyCatalog(catalog.Catalog, catalog.Revision, publishEvent: false);
-        }
         await using var pipe = new NamedPipeServerStream(
             _pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly, 4096, 4096);
@@ -255,6 +249,16 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         var uninstallMaintenance = Task.Run(() => _packageUninstall.MaintainAsync(sessionCancellation.Token));
         try
         {
+            // HelloAccepted must be the first server frame. Progressive catalogue
+            // loading can publish while the pipe is connected but Hello is pending.
+            // Subscribe only after acceptance, then catch up from an atomic snapshot;
+            // revision admission rejects an older snapshot if a callback wins the race.
+            if (_catalogMonitor is not null)
+            {
+                _catalogMonitor.Changed += OnCatalogChanged;
+                var catalog = _catalogMonitor.StateSnapshot();
+                ApplyCatalog(catalog.Catalog, catalog.Revision, publishEvent: false);
+            }
             while (!sessionCancellation.IsCancellationRequested)
             {
                 var request = await _channel.ReadAsync(sessionCancellation.Token)

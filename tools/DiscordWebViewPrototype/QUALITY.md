@@ -17,7 +17,7 @@ overload retains exactly `480p15`, `480p30`, `720p15` and `720p30`. The constrai
 overload accepts a copied, bounded provider-approved list; its preferred setting
 must belong to that list. The host intersects it with local transport support,
 and the SDK/broker reject a returned setting outside the admitted list. Discord's
-widget uses the constrained overload. No 4K or source-resolution option is offered.
+widget supplies up to nine account-eligible modes through 1080p60 and fixes clarity. No 4K or source-resolution option is offered.
 
 The envelope preserves source aspect ratio, including ultrawide windows. A smaller
 source is not upscaled. A portrait source may be narrower; a very wide source may

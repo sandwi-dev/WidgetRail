@@ -43,7 +43,7 @@ internal sealed partial class OverlayShellPage
             RemotePlayback: !widget.IsStopped && activity?.RemotePlayback == true, Stopped: widget.IsStopped,
             Failed: !widget.IsStopped && (owner?.Session.GetState(widget.Id)?.Failure is not null ||
                 browserOwner?.NeedsAttention(widget.Id) == true || mediaOwner?.GetFailure(widget.Id) is not null),
-            Recording: !widget.IsStopped && activity?.Recording == true);
+            Recording: !widget.IsStopped && (activity?.Recording == true || browserOwner?.Capturing(widget.Id) == true || nativeCaptureActivityWidget==widget.Id));
     }
     private void QueueWidgetStatusRefresh()
     {

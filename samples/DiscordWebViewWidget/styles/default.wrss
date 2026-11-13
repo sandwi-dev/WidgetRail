@@ -2,20 +2,15 @@
 .discord-root { width:100%; height:100%; min-width:0px; min-height:0px; padding:20px; gap:16px; color:var(--text); background:var(--surface); background-material:acrylic; background-tint-opacity:.88; background-luminosity-opacity:auto; }
 .discord-body, .discord-list { width:100%; min-width:0px; min-height:0px; flex-grow:1; }
 .discord-page { width:100%; min-width:0px; min-height:0px; flex-grow:1; gap:8px; }
-.discord-shell-scroll { gap:12px; padding:0px 2px; }
-.discord-navigation { width:100%; height:60vh; min-width:0px; min-height:260px; flex-grow:0; }
 .discord-header { width:100%; min-width:0px; align:center; gap:10px; padding:0px 2px 14px; border-bottom-width:1px; border-bottom-color:var(--border, var(--surface-muted)); }
 .discord-brand { width:32px; height:32px; color:var(--data-purple); flex-grow:0; }
 .discord-title { font-family:var(--font-display, Segoe UI); font-size:24px; font-weight:700; color:var(--text); line-height:1.25; max-lines:1; }
 .discord-copy { min-width:0px; flex-grow:1; gap:3px; }
 .discord-card { width:100%; min-width:0px; padding:14px; gap:12px; background:var(--surface-raised); border-color:var(--border, var(--surface-muted)); border-width:1px; corner-radius:14px; }
-.discord-call { gap:8px; padding:10px 12px; }
-.discord-call-icon { width:24px; height:24px; color:var(--accent); flex-grow:0; }
-.discord-call-state { max-lines:1; }
 .discord-actions { min-width:0px; align:center; gap:8px; flex-grow:0; }
 .discord-section-header { width:100%; min-width:0px; align:center; gap:8px; padding:0px 2px; }
 .discord-section-title { color:var(--text); font-size:18px; font-weight:600; line-height:1.3; max-lines:2; }
-.discord-secondary, .discord-muted { color:var(--text-muted); font-size:13px; line-height:1.35; max-lines:2; text-overflow:ellipsis; }
+.discord-secondary { color:var(--text-muted); font-size:13px; line-height:1.35; max-lines:2; text-overflow:ellipsis; }
 .discord-row-title { color:var(--text); font-size:15px; font-weight:600; line-height:1.3; max-lines:1; text-overflow:ellipsis; }
 .discord-row { width:100%; min-width:0px; min-height:60px; padding:10px 14px; margin:3px 2px; gap:12px; align:center; background:var(--surface-raised); border-color:var(--border, var(--surface-muted)); border-width:1px; corner-radius:10px; }
 .discord-row:selected { background:var(--surface-active, var(--surface-muted)); border-color:var(--accent); }
@@ -24,7 +19,6 @@
 .discord-row-icon { width:24px; height:24px; flex-grow:0; color:var(--text-muted); }
 .discord-avatar { width:32px; height:32px; min-width:32px; min-height:32px; flex-grow:0; color:var(--text-muted); corner-radius:16px; overflow:clip; }
 .discord-row-state { color:var(--text-muted); font-size:12px; font-weight:600; max-width:96px; max-lines:2; text-align:end; }
-.discord-speaking { color:var(--accent); font-size:13px; font-weight:700; max-lines:1; }
 .discord-control { min-width:0px; min-height:40px; flex-grow:0; padding:8px 10px; font-size:13px; font-weight:600; background:var(--surface-raised); color:var(--text); border-color:var(--border, var(--surface-muted)); border-width:1px; corner-radius:9px; }
 .discord-control:selected { background:var(--surface-active, var(--surface-muted)); border-color:var(--accent); }
 .discord-control:focused, .discord-toolbar-button:focused { outline-color:var(--focus); outline-width:var(--focus-width, 2px); outline-offset:-2px; border-color:var(--text); }
@@ -57,12 +51,12 @@
 .discord-activity-pane { width:260px; min-width:0px; min-height:0px; gap:14px; padding:4px 0px 0px 18px; border-left-width:1px; border-left-color:var(--border, var(--surface-muted)); }
 .discord-activity-compact { width:100%; min-width:0px; min-height:0px; flex-grow:0; gap:8px; padding:16px 0px 0px; border-top-width:1px; border-top-color:var(--border, var(--surface-muted)); }
 .discord-activity-compact-list { min-width:0px; min-height:0px; height:240px; }
-.discord-call-heading { gap:6px; }
-.discord-call-title { font-family:var(--font-display, Segoe UI); font-size:28px; font-weight:700; color:var(--text); max-lines:2; }
+.discord-call-heading { gap:4px; min-width:0px; }
+.discord-call-title { font-family:var(--font-display, Segoe UI); font-size:26px; font-weight:700; color:var(--text); max-lines:1; text-overflow:ellipsis; }
 .discord-connected { font-size:12px; font-weight:600; color:var(--data-green); }
 .discord-call-actions { width:100%; min-width:0px; gap:8px; }
-.discord-participants { width:100%; min-width:0px; height:116px; min-height:56px; gap:10px; }
-.discord-person { padding:6px; gap:8px; align:center; min-width:0px; corner-radius:8px; }
+.discord-participants { width:100%; min-width:0px; height:88px; min-height:88px; gap:10px; padding:4px 0px; }
+.discord-person { padding:10px; gap:10px; align:center; min-width:168px; corner-radius:12px; width:168px; height:72px; min-height:72px; margin:0px 6px 0px 0px; background:var(--surface-raised); border-width:1px; border-color:var(--border, var(--surface-muted)); }
 .discord-avatar-frame, .discord-avatar-speaking { width:38px; height:38px; padding:2px; corner-radius:19px; border-width:1px; border-color:transparent; }
 .discord-avatar-speaking { border-color:var(--data-green); border-width:2px; }
 .discord-person-state { width:16px; height:16px; color:var(--text-muted); }
@@ -76,25 +70,35 @@
 .discord-activity-row:selected, .discord-activity-row:pressed, .discord-stream-action:pressed { background:var(--surface-active, var(--surface-muted)); }
 .discord-activity-action { font-size:13px; font-weight:600; color:var(--data-purple); }
 .discord-quiet { background:transparent; border-color:transparent; }
-.discord-leave { color:var(--data-red); }
+.discord-leave { color:var(--data-red); background:alpha(var(--data-red), .06); border-color:alpha(var(--data-red), .25); }
 .discord-server { width:100%; min-width:0px; }
-.discord-voice-pin { width:100%; height:100%; min-width:0px; min-height:0px; padding:12px; gap:10px; justify:start; color:var(--text); background:var(--surface); background-material:acrylic; background-tint-opacity:.88; background-luminosity-opacity:auto; }
-.discord-voice-heading { width:100%; min-width:0px; gap:8px; align:center; }
-.discord-voice-icon { width:22px; height:22px; color:var(--data-purple); }
+.discord-voice-pin { width:100%; height:100%; min-width:0px; min-height:0px; padding:12px; gap:10px; justify:space-between; color:var(--text); background:var(--surface); background-material:acrylic; background-tint-opacity:.9; background-luminosity-opacity:auto; }
+.discord-voice-heading { width:100%; min-width:0px; gap:10px; align:start; }
+.discord-voice-icon { width:24px; height:24px; color:var(--data-purple); min-width:24px; margin:2px 0px 0px; }
 .discord-voice-title { font-size:18px; font-weight:600; max-lines:1; text-overflow:ellipsis; }
-.discord-voice-count { font-size:12px; color:var(--text-muted); max-lines:1; flex-grow:0; }
-.discord-voice-people { width:100%; min-width:0px; min-height:32px; gap:8px; align:center; }
-.discord-voice-avatars { gap:4px; align:center; }
-.discord-voice-avatar-frame { width:30px; height:30px; padding:2px; corner-radius:15px; border-width:1px; border-color:transparent; }
+.discord-voice-count { font-size:11px; color:var(--text-muted); max-lines:1; flex-grow:0; padding:3px 0px; }
+.discord-voice-people { width:100%; min-width:0px; min-height:28px; gap:8px; align:center; }
+.discord-voice-avatars { gap:2px; align:center; }
+.discord-voice-avatar-frame { width:26px; height:26px; padding:1px; corner-radius:13px; border-width:1px; border-color:transparent; }
 .discord-voice-speaking { border-color:var(--data-green); border-width:2px; }
-.discord-voice-avatar { width:24px; height:24px; min-width:24px; min-height:24px; corner-radius:12px; }
+.discord-voice-avatar { width:22px; height:22px; min-width:22px; min-height:22px; corner-radius:11px; }
 .discord-voice-names { font-size:13px; color:var(--text-muted); max-lines:1; text-overflow:ellipsis; }
 .discord-voice-actions { width:100%; min-width:0px; }
-.discord-voice-button { width:100%; min-width:0px; min-height:40px; padding:8px 6px; font-size:12px; }
+.discord-voice-button { width:100%; min-width:0px; min-height:40px; padding:8px 4px; font-size:12px; }
 .discord-voice-toggle:selected { color:var(--data-purple); background:alpha(var(--data-purple), .12); border-color:alpha(var(--data-purple), .45); }
 
 .discord-voice-dialog { width:100%; min-width:0px; gap:14px; padding:4px; }
 .discord-voice-select, .discord-voice-volume { width:100%; min-width:0px; gap:6px; }
 .discord-connecting { font-size:12px; font-weight:600; color:var(--text-muted); }
-.discord-connection-link { min-width:0px; min-height:28px; padding:2px 4px; background:transparent; border-width:0px; text-align:start; }
+.discord-connection-link { min-width:0px; min-height:20px; padding:0px; background:transparent; border-width:0px; text-align:start; align:start; }
 .discord-connection-history { width:100%; height:90px; min-height:90px; color:var(--data-green); }
+
+/* Unified call surface: destination, call actions, then a bounded people rail. */
+.discord-call-panel { width:100%; min-width:0px; padding:16px; gap:12px; background:var(--surface-raised); border-width:1px; border-color:alpha(var(--data-purple), .24); corner-radius:16px; }
+.discord-call-header { width:100%; min-width:0px; align:center; gap:12px; }
+.discord-call-emblem { width:32px; height:32px; min-width:32px; color:var(--data-purple); }
+.discord-call-toggle:selected { color:var(--data-purple); background:alpha(var(--data-purple), .14); border-color:alpha(var(--data-purple), .5); }
+.discord-person-self { font-size:11px; color:var(--text-muted); max-lines:1; }
+.discord-leave:pressed { background:alpha(var(--data-red), .14); }
+.discord-voice-summary { width:100%; min-width:0px; gap:8px; }
+.discord-voice-guild { font-size:11px; color:var(--text-muted); max-lines:1; text-overflow:ellipsis; }

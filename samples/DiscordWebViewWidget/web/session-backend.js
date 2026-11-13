@@ -6,8 +6,8 @@
     globalThis.addEventListener?.('pagehide', () => observation?.dispose(), {once:true});
     let fingerprint = null;
     let version = null;
-    const validQuality=q=>q&&typeof q==='object'&&!Array.isArray(q)&&[480,720,1080,1440].includes(q.resolution)&&[15,30,60].includes(q.frameRate);
-    const commands = new Set(['joinActivity', 'watchActivity', 'join', 'leave', 'mute', 'deafen', 'streamMute', 'streamVolume', 'streamDiagnostics', 'connectionDiagnostics', 'incomingDiagnostics', 'voiceMute', 'voiceVolume', 'voiceSettings', 'voiceInputDevice', 'voiceOutputDevice', 'voiceInputVolume', 'watch', 'answer', 'keep', 'unwatch', 'share', 'cancelPendingShare', 'stopShare']);
+    const validQuality=q=>q&&typeof q==='object'&&!Array.isArray(q)&&[480,720,1080].includes(q.resolution)&&[15,30,60].includes(q.frameRate);
+    const commands = new Set(['joinActivity', 'watchActivity', 'join', 'leave', 'mute', 'deafen', 'streamMute', 'streamVolume', 'streamDiagnostics', 'connectionDiagnostics', 'incomingDiagnostics', 'videoPlayback', 'voiceMute', 'voiceVolume', 'voiceSettings', 'voiceInputDevice', 'voiceOutputDevice', 'voiceInputVolume', 'watch', 'keep', 'unwatch', 'share', 'cancelPendingShare', 'stopShare']);
     async function snapshot(owner) {
         observation?.refresh();
         const response = await WidgetRailDiscordPrototype.invoke({ method: 'snapshot', owner });
@@ -18,7 +18,7 @@
             !Array.isArray(state.streams) || state.streams.length > 50) throw new Error('Invalid Discord catalog');
         if(state.activities!==undefined&&(!Array.isArray(state.activities)||state.activities.length>50))throw new Error('Invalid Discord activity');
         if(state.activityAvailability!==undefined&&!['ready','unavailable','disconnected'].includes(state.activityAvailability))throw new Error('Invalid activity availability');
-        if(state.shareQualities!==undefined&&(!Array.isArray(state.shareQualities)||state.shareQualities.length>12||
+        if(state.shareQualities!==undefined&&(!Array.isArray(state.shareQualities)||state.shareQualities.length>9||
             state.shareQualities.some(q=>!validQuality(q))||new Set(state.shareQualities.map(q=>q.resolution+':'+q.frameRate)).size!==state.shareQualities.length))
             throw new Error('Invalid share qualities');
         if(state.shareQualityAvailability!==undefined&&!['ready','unavailable'].includes(state.shareQualityAvailability))throw new Error('Invalid quality availability');
@@ -47,10 +47,14 @@
             return result({ account: state.account, channelVersion: version }, state.channels);
         }
         if (method !== 'command' || !commands.has(request.method)) throw new Error('Command unavailable');
+        if (request.method === 'watch' || request.method === 'watchActivity') {
+            if(typeof request.args?.videoView!=='string'||!/^[a-f0-9]{32}$/.test(request.args.videoView))
+                throw new Error('A live host video view is required');
+        }
         if (request.method === 'share') {
             const quality = request.args?.captureQuality;
             if (!quality || Object.keys(quality).some(key => !['resolution', 'frameRate'].includes(key)) ||
-                ![480,720,1080,1440].includes(quality.resolution) || ![15,30,60].includes(quality.frameRate)) throw new Error('Capture quality unavailable');
+                ![480,720,1080].includes(quality.resolution) || ![15,30,60].includes(quality.frameRate)) throw new Error('Capture quality unavailable');
             // Never fall through to Discord's ordinary browser capture chooser.
             // The host must have installed its native, ticket-bound transport.
             if (typeof globalThis.WidgetRailNativeMedia?.start !== 'function') return { ok:false, code:'native_capture_unavailable' };

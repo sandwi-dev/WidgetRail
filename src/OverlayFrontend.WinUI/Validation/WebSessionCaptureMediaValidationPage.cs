@@ -81,6 +81,7 @@ internal sealed partial class WebSessionCaptureMediaValidationPage : Page, IAsyn
                 var prepared = await browser.PrepareHostedCaptureAsync(ticket, new(), _ =>
                     Task.FromResult<WebCaptureSourceSelection?>(new(target!, "Generated fixture", audio, new())), default);
                 Check(prepared.Phase == WebCaptureStreamPhase.Prepared, "Host preparation arms only the selected synthetic source");
+                Check(browser.HasHostedCaptureActivity,"Every host-owned native capture automatically contributes activity without widget reports");
                 await Request(browser, "consume");
                 await Until(() => Task.FromResult(last?.Ticket == ticket && last.Phase == WebCaptureStreamPhase.Capturing));
                 return ticket;
@@ -111,6 +112,7 @@ internal sealed partial class WebSessionCaptureMediaValidationPage : Page, IAsyn
                 hiddenAfter.GetProperty("audioSamples").GetInt64() > after.GetProperty("audioSamples").GetInt64() + 48000,
                 "Hidden backend sustains video and application audio beyond the delayed memory policy");
             Check((await browser.StopHostedCaptureAsync(first)).Phase == WebCaptureStreamPhase.Stopped, "Explicit stop confirms local capture teardown");
+            Check(!browser.HasHostedCaptureActivity,"Confirmed capture stop clears automatic host activity");
             var second = await Start(false);
             await browser.StopHostedCaptureAsync(first);
             var secondBefore = (await Request(browser, "status")).GetProperty("frames").GetInt64(); await Task.Delay(700);
@@ -165,9 +167,11 @@ internal sealed partial class WebSessionCaptureMediaValidationPage : Page, IAsyn
                 catch (Exception failure) when (failure is System.Runtime.InteropServices.COMException or ObjectDisposedException or InvalidOperationException) { closed = true; }
                 Check(failedStop && closed && retiringBrowser.FixtureRetainedCaptureTicket == retiringTicket,
                     "Unconfirmed active capture retains its ticket while the real browser closes");
+                Check(retiringBrowser.HasHostedCaptureActivity,"Unconfirmed native teardown preserves the host capture indicator");
                 retiringBrowser.FixtureBeforeCaptureStop = null;
                 Check((await retiringBrowser.StopHostedCaptureAsync(retiringTicket)).Phase == WebCaptureStreamPhase.Stopped,
                     "Actual native transport cleanup succeeds after its browser controller closes");
+                Check(!retiringBrowser.HasHostedCaptureActivity,"Successful cleanup clears the retained capture indicator");
             }
             finally
             {

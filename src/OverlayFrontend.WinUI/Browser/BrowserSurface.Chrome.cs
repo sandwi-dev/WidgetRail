@@ -17,6 +17,7 @@ internal sealed partial class BrowserSurface
     internal bool CanEditAddress => IsReady && !IsProviderContent && !IsHostedPackage;
     internal bool CanOpenPageActions => IsReady && !IsProviderContent && !IsHostedPackage && !sessionStopped;
     private readonly Grid header = new() { ColumnSpacing = 4, Padding = new(8, 4, 8, 4) };
+    private readonly RowDefinition progressRow = new() { Height = new(2) };
     private readonly ProgressBar progress = new() { Height = 2, IsIndeterminate = true, IsHitTestVisible = false };
     private Button back = null!, forward = null!, reload = null!, addressButton = null!, bookmark = null!, bookmarks = null!, history = null!, external = null!, siteControls = null!;
     private readonly TextBlock zoomLabel = new() { Text = "100%", VerticalAlignment = VerticalAlignment.Center };
@@ -32,7 +33,7 @@ internal sealed partial class BrowserSurface
     private void CreateChrome()
     {
         RowDefinitions.Add(new() { Height = GridLength.Auto });
-        RowDefinitions.Add(new() { Height = new(2) });
+        RowDefinitions.Add(progressRow);
         RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         RowDefinitions.Add(new() { Height = GridLength.Auto });
         for (var i = 0; i < (isPopup ? 12 : 10); ++i) header.ColumnDefinitions.Add(new() { Width = i == 2 ? new(1, GridUnitType.Star) : GridLength.Auto });
@@ -110,7 +111,7 @@ internal sealed partial class BrowserSurface
         reload.Content = new SymbolIcon(loading ? Symbol.Cancel : Symbol.Refresh);
         var label = sessionStopped ? "Restart webapp" : loading ? "Stop loading" : "Reload";
         AutomationProperties.SetName(reload, label); ToolTipService.SetToolTip(reload, label);
-        progress.IsIndeterminate = (loading || core is null) && !faulted;
+        progress.IsIndeterminate = !IsBackendVideo && (loading || core is null) && !faulted;
         progress.Visibility = progress.IsIndeterminate ? Visibility.Visible : Visibility.Collapsed;
         UpdateBookmark();
         if (external is not null) external.IsEnabled = core is not null && !faulted && WidgetProtocol.WebBrowserDocument.IsWebUrl(core.Source);
@@ -128,7 +129,7 @@ internal sealed partial class BrowserSurface
         var onDemand = document.Options.Chrome == WidgetProtocol.BrowserChrome.OnDemand;
         SetRow(header, onDemand ? 2 : 0);
         header.VerticalAlignment = VerticalAlignment.Top;
-        header.Visibility = !IsProviderContent && (!onDemand || toolbarFocused) ? Visibility.Visible : Visibility.Collapsed;
+        header.Visibility = !IsBackendVideo && !IsProviderContent && (!onDemand || toolbarFocused) ? Visibility.Visible : Visibility.Collapsed;
     }
     private void ArrangeChrome(double width)
     {

@@ -39,10 +39,12 @@ public sealed partial class DiscordWebViewWidget
 
     private WidgetElement ParticipantRow(ParticipantContext context,DiscordParticipant participant,WidgetIndexedItemContext ids)
     {
+        var copy=new List<WidgetElement>{UI.Text(participant.Name,ids.Id("name")).Classes("discord-row-title")};
+        if(participant.Id==context.Account)copy.Add(UI.Text("You",ids.Id("self")).Classes("discord-person-self"));
         var content=new WidgetElement[]{
             UI.Stack(ids.Id("avatar-frame"),Avatar(participant.AvatarUrl,ids.Id("avatar"),participant.Name))
                 .Classes(participant.Speaking&&!participant.Muted&&!participant.Deafened?"discord-avatar-speaking":"discord-avatar-frame"),
-            UI.Text(participant.Name,ids.Id("name")).Classes("discord-copy","discord-row-title"),
+            UI.Stack(ids.Id("copy"),copy.ToArray()).Classes("discord-copy"),
             participant.Muted||participant.Deafened||participant.Audio is {Available:true,Muted:true}?UI.Icon(participant.Deafened?DiscordIcons.Voice:DiscordIcons.Muted,ids.Id("status"),ParticipantStatus(participant)).Classes("discord-person-state"):
                 UI.Spacer(ids.Id("status"))};
         var label=participant.Name+", "+ParticipantStatus(participant);

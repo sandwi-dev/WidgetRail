@@ -122,6 +122,17 @@ internal static class WebSessionTests
         Check(work.Command.Operation==WebSessionOperation.OpenBackend,"Backend uses a distinct operation; old hosts cannot silently downgrade it.");
         registry.Complete(new(work.RequestId));var reference=(await open).Session!;
         await Reject(()=>isolated.ExecuteAsync(new(WebSessionOperation.PostMessage){Session=reference,MessageBase64="e30="},default).AsTask(),"session_closed");
+        var child = new WebSessionCommand(WebSessionOperation.OpenBackendVideo) {Definition=new("video","Video",WebSessionSource.BackendVideo(reference))};
+        await Reject(()=>isolated.ExecuteAsync(child,default).AsTask(),"permission_denied");
+        using var foreign=registry.CreateOwner("other", new("example.other","example.publisher","other"),false,true);
+        await Reject(()=>foreign.ExecuteAsync(child,default).AsTask(),"permission_denied");
+        var childOpening=trusted.ExecuteAsync(child,default).AsTask();
+        registry.Complete(new((await registry.TakeAsync(default)).Work.Single().RequestId));
+        var childRef=(await childOpening).Session!;
+        await Reject(()=>trusted.ExecuteAsync(new(WebSessionOperation.Navigate){Session=childRef,Destination="https://example.com"},default).AsTask(),"invalid_payload");
+        await Reject(()=>trusted.ExecuteAsync(new(WebSessionOperation.PostMessage){Session=childRef,MessageBase64="e30="},default).AsTask(),"messaging_unavailable");
+        await trusted.ExecuteAsync(new(WebSessionOperation.Close){Session=reference},default);
+        Check(!registry.IsOwned("trusted",childRef),"Retiring the source retires its video child");
         trusted.Dispose();
         await Reject(()=>trusted.ExecuteAsync(new(WebSessionOperation.ReadMessages){Session=reference},default).AsTask(),"session_closed");
     }

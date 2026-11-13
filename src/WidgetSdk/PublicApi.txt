@@ -1774,6 +1774,7 @@ method WidgetRail.WidgetSdk.WidgetView.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetView.WithModal(WidgetRail.WidgetSdk.WidgetModal modal) -> WidgetRail.WidgetSdk.WidgetView
 method WidgetRail.WidgetSdk.WidgetWebCaptureService.GetStatusAsync(WidgetRail.WidgetProtocol.WebCaptureStreamTicket ticket, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WebCaptureStreamStatus>
 method WidgetRail.WidgetSdk.WidgetWebCaptureService.PrepareAsync(WidgetRail.WidgetProtocol.WebSessionReference session, WidgetRail.WidgetProtocol.WebCaptureStreamOptions preferred, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WebCaptureStreamOptions> allowedQualities, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WebCaptureStreamStatus>
+method WidgetRail.WidgetSdk.WidgetWebCaptureService.PrepareAsync(WidgetRail.WidgetProtocol.WebSessionReference session, WidgetRail.WidgetProtocol.WebCaptureStreamOptions preferred, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WebCaptureStreamOptions> allowedQualities, bool allowContentPreferenceSelection, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WebCaptureStreamStatus>
 method WidgetRail.WidgetSdk.WidgetWebCaptureService.PrepareAsync(WidgetRail.WidgetProtocol.WebSessionReference session, WidgetRail.WidgetProtocol.WebCaptureStreamOptions? options = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WebCaptureStreamStatus>
 method WidgetRail.WidgetSdk.WidgetWebCaptureService.StopAsync(WidgetRail.WidgetProtocol.WebCaptureStreamTicket ticket, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetWebSession.AuthorizeLocalResourceAsync(System.Uri resource, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
@@ -1782,6 +1783,7 @@ method WidgetRail.WidgetSdk.WidgetWebSession.PostMessageAsync<T>(T? message, Sys
 method WidgetRail.WidgetSdk.WidgetWebSession.ReadMessagesAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Collections.Generic.IAsyncEnumerable<System.Text.Json.JsonElement>
 method WidgetRail.WidgetSdk.WidgetWebSession.RequestAsync<TRequest,TResponse>(string method, TRequest? payload, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<TResponse?>
 method WidgetRail.WidgetSdk.WidgetWebSession.RequestMicrophoneAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WebSessionMicrophoneResult>
+method WidgetRail.WidgetSdk.WidgetWebSession.RequestPermissionAsync(WidgetRail.WidgetProtocol.WebSessionPermissionKind kind, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WebSessionPermissionResult>
 method WidgetRail.WidgetSdk.WidgetWebSessionService.OpenAsync(WidgetRail.WidgetProtocol.WebSessionDefinition definition, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetWebSession>
 method WidgetRail.WidgetSdk.WidgetWifiRadio.<Clone>$() -> WidgetRail.WidgetSdk.WidgetWifiRadio
 method WidgetRail.WidgetSdk.WidgetWifiRadio.Deconstruct(out WidgetRail.WidgetSdk.WidgetWifiRadioState State, out bool CanControl) -> void
@@ -3212,6 +3214,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebCaptureStreamTicket,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetWebCaptureCapabilities.Stop { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebSessionCommand,WidgetRail.WidgetProtocol.WebSessionReply> WidgetRail.WidgetSdk.WidgetWebSessionCapabilities.Command { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebSessionCommand,WidgetRail.WidgetProtocol.WebSessionReply> WidgetRail.WidgetSdk.WidgetWebSessionMicrophoneCapabilities.Request { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebSessionCommand,WidgetRail.WidgetProtocol.WebSessionReply> WidgetRail.WidgetSdk.WidgetWebSessionPermissionCapabilities.Request { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetActivity,WidgetRail.WidgetProtocol.WidgetActivityReceipt> WidgetRail.WidgetSdk.WidgetActivityCapabilities.Report { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetNotificationCommand,WidgetRail.WidgetProtocol.WidgetNotificationReceipt> WidgetRail.WidgetSdk.WidgetNotificationCapabilities.Publish { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionQuery,WidgetRail.WidgetProtocol.WidgetPermissionRequestState> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Request { get; }
@@ -3891,6 +3894,7 @@ type static class WidgetRail.WidgetSdk.WidgetTransitionExtensions
 type static class WidgetRail.WidgetSdk.WidgetWebCaptureCapabilities
 type static class WidgetRail.WidgetSdk.WidgetWebSessionCapabilities
 type static class WidgetRail.WidgetSdk.WidgetWebSessionMicrophoneCapabilities
+type static class WidgetRail.WidgetSdk.WidgetWebSessionPermissionCapabilities
 type struct WidgetRail.WidgetSdk.NavigationShellContentEntry
 type struct WidgetRail.WidgetSdk.WidgetArtworkHandle : System.IEquatable<WidgetRail.WidgetSdk.WidgetArtworkHandle>
 type struct WidgetRail.WidgetSdk.WidgetCollectionCursor : System.IEquatable<WidgetRail.WidgetSdk.WidgetCollectionCursor>

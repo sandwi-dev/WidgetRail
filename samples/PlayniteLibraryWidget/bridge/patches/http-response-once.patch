@@ -1,0 +1,95 @@
+--- a/src/Server/HttpApiServer.cs
++++ b/src/Server/HttpApiServer.cs
+@@ -92,26 +92,26 @@
+         {
+             var req = ctx.Request;
+             var res = ctx.Response;
+-            res.ContentType = "application/json; charset=utf-8";
+-            res.Headers.Add("Access-Control-Allow-Origin", "*");
+-            res.Headers.Add("Access-Control-Allow-Headers", "Authorization, Content-Type");
+-            res.Headers.Add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+-
+-            if (req.HttpMethod == "OPTIONS")
+-            {
+-                res.StatusCode = 204;
+-                res.OutputStream.Close();
+-                return;
+-            }
++            var responseStarted = false;
+ 
+             try
+             {
++                res.ContentType = "application/json; charset=utf-8";
++                res.Headers.Add("Access-Control-Allow-Origin", "*");
++                res.Headers.Add("Access-Control-Allow-Headers", "Authorization, Content-Type");
++                res.Headers.Add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
++                if (req.HttpMethod == "OPTIONS")
++                {
++                    res.StatusCode = 204;
++                    return;
++                }
++
+                 // Auth check
+                 var authHeader = req.Headers["Authorization"];
+                 if (!_auth.ValidateAuth(authHeader))
+                 {
+                     res.StatusCode = 401;
+-                    WriteJson(res, new { error = "Unauthorized. Header required: Authorization: Bearer <token>" });
++                    WriteJson(res, new { error = "Unauthorized. Header required: Authorization: Bearer <token>" }, ref responseStarted);
+                     return;
+                 }
+ 
+@@ -126,21 +126,36 @@
+ 
+                 if (result is ImageResult img)
+                 {
++                    var length = img.Data.Length;
+                     res.ContentType = img.ContentType;
+-                    res.ContentLength64 = img.Data.Length;
++                    responseStarted = true;
++                    res.ContentLength64 = length;
+                     res.Headers.Add("Cache-Control", "public, max-age=86400");
+                     res.OutputStream.Write(img.Data, 0, img.Data.Length);
+                 }
+                 else
+                 {
+-                    WriteJson(res, result);
++                    WriteJson(res, result, ref responseStarted);
+                 }
+             }
+             catch (Exception ex)
+             {
+                 Logger.Error(ex, $"HTTP request error: {req.RawUrl}");
+-                res.StatusCode = 500;
+-                WriteJson(res, new { error = ex.Message });
++                // A failed body write may already have submitted its headers.
++                // Never attempt a second response on that transport.
++                if (!responseStarted)
++                {
++                    try
++                    {
++                        res.StatusCode = 500;
++                        WriteJson(res, new { error = ex.Message }, ref responseStarted);
++                    }
++                    catch (Exception responseError)
++                    {
++                        // The client can disconnect while the error is being sent too.
++                        Logger.Warn("HTTP error response could not be delivered: " + responseError.GetType().Name);
++                    }
++                }
+             }
+             finally
+             {
+@@ -148,10 +163,11 @@
+             }
+         }
+ 
+-        private void WriteJson(HttpListenerResponse res, object obj)
++        private void WriteJson(HttpListenerResponse res, object obj, ref bool responseStarted)
+         {
+             var json = _json.Serialize(obj);
+             var buffer = Encoding.UTF8.GetBytes(json);
++            responseStarted = true;
+             res.ContentLength64 = buffer.Length;
+             res.OutputStream.Write(buffer, 0, buffer.Length);
+         }

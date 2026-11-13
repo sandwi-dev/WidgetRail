@@ -153,8 +153,9 @@ internal sealed partial class OverlayShellPage
                 step="idle picker";
                 Check(surface.FocusHostTarget("discord.main.mute"),"Leave navigation starts at the native mute control");
                 await Until(()=>FocusId()=="Widget.discord.main.mute");
-                if(compact)await MoveUntil(NavigationDirection.Down,()=>FocusId()=="Widget.discord.voice.pin");
-                await MoveUntil(NavigationDirection.Right,()=>FocusId()=="Widget.discord.main.leave");
+                // The responsive action grid wraps below Mute at minimum width.
+                await MoveUntil(compact ? NavigationDirection.Down : NavigationDirection.Right,
+                    () => FocusId() == "Widget.discord.main.leave");
                 await Button(ControllerButton.A);
                 await Until(()=>CurrentPage()=="picker"&&ActionableFocus());
                 Check(Node("discord.channels.server") is not null&&Node("discord.main.mute") is null,

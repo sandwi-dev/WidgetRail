@@ -18,7 +18,7 @@ internal sealed partial class BrowserOwner
         if (retired || !source.CanCompleteSiteDecision || root?.NativeProfile is not { } profile ||
             root.ProfileName != source.ProfileName || !changingProfiles.Add(source.ProfileName)) return false;
         token = lifetime.Token;
-        var parked = entries.Values.Select(entry => entry.Surface).Where(surface => surface.ProfileName == source.ProfileName)
+        var parked = entries.Values.Select(entry => entry.Surface).Where(surface => surface.ProfileName == source.ProfileName && !surface.IsBackendVideo)
             .Select(surface => (Surface: surface, Url: surface.CurrentUrl)).ToArray();
         try
         {

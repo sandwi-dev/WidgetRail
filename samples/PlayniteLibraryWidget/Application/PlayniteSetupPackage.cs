@@ -5,7 +5,7 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal sealed class PlayniteSetupPackage(string directory)
 {
-    internal const string Version = "1.5.3.1";
+    internal const string Version = "1.5.3.2";
     internal string PackagePath => Path.Combine(directory, "PlayniteBridge.WidgetRail.pext");
     internal string DllDigest => Metadata()["dllSha256"]!.GetValue<string>();
     internal string OriginalDigest => Metadata()["knownOriginalDllSha256"]!.GetValue<string>();

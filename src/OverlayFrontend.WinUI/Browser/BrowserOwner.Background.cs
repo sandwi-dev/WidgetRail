@@ -6,6 +6,8 @@ internal sealed partial class BrowserOwner
     internal event Action? ActivityChanged;
     internal bool NeedsAttention(string widgetId) => !retired && entries.Any(pair => pair.Key.Widget == widgetId && pair.Value.Surface.HasFailedDocument);
     internal bool PlayingAudio(string widgetId) => !retired && entries.Any(pair => pair.Key.Widget == widgetId && pair.Value.Surface.PlayingAudio);
+    internal bool Capturing(string widgetId) => !retired && entries.Concat(captureRetirements)
+        .Any(pair=>pair.Key.Widget==widgetId && pair.Value.Surface.HasHostedCaptureActivity);
     internal bool HasRunningSession(string widgetId) => entries.Any(pair => pair.Key.Widget == widgetId && (pair.Value.Retained || pair.Value.Surface.BackgroundFaulted));
     internal int BackgroundSessionCount => entries.Values.Count(entry => entry.Retained && entry.Surface.KeepsBackgroundSession);
     internal int FailedBackgroundSessionCount => entries.Values.Count(entry => entry.Surface.BackgroundFaulted);
@@ -37,7 +39,7 @@ internal sealed partial class BrowserOwner
 
     internal async Task StopWidgetSessionsAsync(string widgetId)
     {
-        foreach (var entry in entries.Where(pair => pair.Key.Widget == widgetId).Select(pair => pair.Value).ToArray())
+        foreach (var entry in entries.Where(pair => pair.Key.Widget == widgetId && !pair.Value.Surface.IsBackendVideo).Select(pair => pair.Value).ToArray())
             await ChangeRunningAsync(entry.Surface, false);
     }
 

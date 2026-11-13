@@ -2,7 +2,7 @@
 
 This is the maintained Discord SDK-widget integration. It owns no external
 client or debugging port. WidgetRail owns the persistent Discord WebView2
-session, its permissions, the packaged stream receiver and pinned window.
+session, its permissions, the direct video view and pinned window.
 
 Package: `widgetrail.samples.discord-controls` `0.1.0` (x64, full access).
 Read the [user setup guide](../../docs/users/discord.md). This replaces the
@@ -57,6 +57,11 @@ The incoming receiver is video-only; Discord's backend session remains the
 voice/stream audio owner. Hiding the overlay does not leave the call or stop an
 admitted capture.
 
+The stream pin displays the original decoded Discord video track in a muted
+host-owned video view. Watch and Watch from friend activity use the same path.
+Changing the selected track updates the existing view. The source session
+retains Discord audio and the user’s original stream subscription.
+
 The separate voice-controls pin keeps its channel header at the top, shows up to
 three passive participant avatars with speaking rings and an overflow count, and
 uses equal-width Mute/Deafen/Leave controls. Entering that pin focuses the first
@@ -87,16 +92,17 @@ Demand is released on unwatch, account/call changes, subscription loss and lease
 expiry. This adapter uses feature-probed private provider APIs; unsupported
 versions report Watch unavailable rather than pretending to keep receiving video.
 
+Use **Enable notifications** on the Discord controls page to grant website
+notifications for the native widget’s Discord profile. The host offers a
+temporary or remembered choice and delivers browser notifications to WidgetRail’s
+notification centre. Website settings can change a saved block.
+
 Outgoing sharing uses the permission-bound host capture service. Its native
 chooser selects one application, optional application audio, and supported
-480p/720p/1080p/1440p at 15/30/60 FPS. Options are restricted to the current
-Discord account/call's reported eligibility. The default remains 720p30;
-the provider's persisted streaming settings remember the chosen resolution/FPS.
-Cancelled choices do not change the preference. The host chooser also offers **Prefer smoothness** and
-**Prefer clarity**, using the browser track's supported content hint. Discord
-defaults to smoothness; the confirmed choice is remembered per account. Other
-capture consumers retain their existing clarity default. Neither mode promises
-the selected resolution/FPS when source size or encoder adaptation limits it.
+480p/720p/1080p at 15/30/60 FPS according to the current Discord account’s
+eligibility. The default is 720p30. Saved 1440p selections map to 1080p at the
+same frame rate when eligible. The provider remembers the confirmed resolution
+and frame rate. Discord requests the clarity content hint on every share.
 The adapter preserves that hint when Discord's motion experiment overwrites it
 during the supported synchronous attachment path. If a changed provider cannot
 confirm the preference, a warning appears while sharing remains available.

@@ -5,7 +5,7 @@ internal sealed partial class BrowserSurface
     internal static readonly TimeSpan HiddenMemoryDelay = Web.HostedWebViewMemoryPolicy.IdleDelay;
     private Web.HostedWebViewMemoryPolicy? memoryPolicy;
     private bool passivePinnedPresentation;
-    private bool RequiresNormalMemory => visible && AttachedPopup is null && !passivePinnedPresentation;
+    private bool RequiresNormalMemory => HasActiveVideoOutput || visible && AttachedPopup is null && (IsBackendVideo || !passivePinnedPresentation);
 #if ENABLE_WIDGET_VALIDATION
     internal bool ManualMemoryTargetForValidation { get; set; }
 #endif

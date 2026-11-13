@@ -83,6 +83,8 @@ internal sealed class SyntheticDiscordSession:IDiscordSession
     // The account route can be entered/backed out without any page, network or login.
     public WebSessionReference? Reference=>new("00000000000000000000000000000000");
     public ValueTask<DiscordState> ReadAsync(CancellationToken token){token.ThrowIfCancellationRequested();return ValueTask.FromResult(state);}
+    public ValueTask<WebSessionPermissionResult> RequestNotificationsAsync(CancellationToken token) =>
+        ValueTask.FromResult(new WebSessionPermissionResult(WebSessionPermissionState.Unavailable));
     public ValueTask<WebSessionMicrophoneResult> RequestMicrophoneAsync(CancellationToken token)=>ValueTask.FromResult(new WebSessionMicrophoneResult(WebSessionMicrophoneState.Granted));
     public ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token)
     {
@@ -116,7 +118,7 @@ internal sealed class SyntheticDiscordSession:IDiscordSession
                 throw new InvalidDataException("Synthetic watch owner changed.");
             var lease=value.GetProperty("lease").GetString()!;
             leases[lease]=stream.Key;
-            return ValueTask.FromResult(JsonSerializer.SerializeToElement(new{lease,offer=new{type="offer",sdp="synthetic-audio-fixture"}}));
+            return ValueTask.FromResult(JsonSerializer.SerializeToElement(new{lease,videoView=value.GetProperty("videoView").GetString()}));
         }
         if(audioMode&&method is "streamMute" or "streamVolume")
         {
@@ -138,11 +140,6 @@ internal sealed class SyntheticDiscordSession:IDiscordSession
             // response exercises the uncertain-write error path, not success.
             return ValueTask.FromResult(JsonSerializer.SerializeToElement(new{audio}));
         }
-        if(audioMode&&method=="answer" && (value.GetProperty("account").GetString()!=state.Account||
-            value.GetProperty("channelId").GetString()!=state.ChannelId||!leases.ContainsKey(value.GetProperty("lease").GetString()!)||
-            value.GetProperty("answer").GetProperty("type").GetString()!="answer"||
-            value.GetProperty("answer").GetProperty("sdp").GetString()!="synthetic-audio-fixture"))
-            throw new InvalidDataException("Synthetic answer owner changed.");
         if(audioMode&&method=="unwatch"&&value.TryGetProperty("lease",out var removed))leases.TryRemove(removed.GetString()!,out _);
         if(method=="mute")state=state with{Muted=value.GetProperty("value").GetBoolean()};
         if(method=="deafen")state=state with{Deafened=value.GetProperty("value").GetBoolean()};
@@ -171,15 +168,6 @@ internal sealed class SyntheticAudioReceiver:IDiscordReceiver
     private readonly TaskCompletionSource<DiscordReceiverFailure> failure=new(TaskCreationOptions.RunContinuationsAsynchronously);
     public Task<DiscordReceiverFailure> Failure=>failure.Task;
     public WebSessionReference Reference{get;}=new(Guid.NewGuid().ToString("N"));
-    public ValueTask<JsonElement> AcceptAsync(JsonElement offer,CancellationToken token)
-    {
-        token.ThrowIfCancellationRequested();
-        if(!Guid.TryParseExact(offer.GetProperty("lease").GetString(),"N",out _)||
-            offer.GetProperty("offer").GetProperty("type").GetString()!="offer"||
-            offer.GetProperty("offer").GetProperty("sdp").GetString()!="synthetic-audio-fixture")
-            throw new InvalidDataException("Invalid synthetic receiver offer.");
-        return ValueTask.FromResult(JsonSerializer.SerializeToElement(new{lease=offer.GetProperty("lease").GetString(),
-            answer=new{type="answer",sdp="synthetic-audio-fixture"}}));
-    }
+    public void Bind(string lease) { if(!Guid.TryParseExact(lease,"N",out _))throw new InvalidDataException("Invalid video lease."); }
     public ValueTask DisposeAsync(){failure.TrySetCanceled();return ValueTask.CompletedTask;}
 }

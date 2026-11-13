@@ -13,14 +13,14 @@ internal interface IDiscordSession : IAsyncDisposable
     ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token);
     ValueTask<IDiscordReceiver> OpenReceiverAsync(CancellationToken token);
     ValueTask<WebSessionMicrophoneResult> RequestMicrophoneAsync(CancellationToken token);
+    ValueTask<WebSessionPermissionResult> RequestNotificationsAsync(CancellationToken token);
 }
 
 internal interface IDiscordReceiver : IAsyncDisposable
 {
     Task<DiscordReceiverFailure> Failure {get;}
     WebSessionReference Reference { get; }
-    ValueTask<JsonElement> AcceptAsync(JsonElement offer,CancellationToken token);
-    ValueTask<JsonElement> ReadDiagnosticsAsync(string lease,CancellationToken token)=>throw new NotSupportedException("Receiver measurements are unavailable.");
+    void Bind(string lease);
 }
 
 internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) : IDiscordSession
@@ -87,6 +87,9 @@ internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) 
         finally{readGate.Release();}
     }
 
+    public ValueTask<WebSessionPermissionResult> RequestNotificationsAsync(CancellationToken token) =>
+        (session ?? throw new InvalidOperationException("Discord is not connected.")).RequestPermissionAsync(WebSessionPermissionKind.Notifications, token);
+
     public ValueTask<WebSessionMicrophoneResult> RequestMicrophoneAsync(CancellationToken token)=>(session??throw new InvalidOperationException("Discord is not connected.")).RequestMicrophoneAsync(token);
 
     public async ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token)
@@ -124,11 +127,8 @@ internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) 
 
     public async ValueTask<IDiscordReceiver> OpenReceiverAsync(CancellationToken token)
     {
-        var receiver=await sessions.OpenAsync(new("discord.receiver","Discord shared screen",
-            WebSessionSource.Package("payload/web/receiver.html",
-                [new(){Path="payload/web/receiver.html",ContentType="text/html"},
-                 new(){Path="payload/web/receiver.js",ContentType="text/javascript"},
-                 new(){Path="payload/web/web-session.js",ContentType="text/javascript"}]) with{AllowAutoplay=true}),token);
+        var parent=session??throw new InvalidOperationException("Discord is not connected.");
+        var receiver=await sessions.OpenAsync(new("discord.receiver","Discord shared screen",WebSessionSource.BackendVideo(parent.Reference)),token);
         return new DiscordReceiver(receiver);
     }
 
@@ -152,45 +152,29 @@ internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) 
     private sealed class DiscordReceiver : IDiscordReceiver
     {
         private readonly WidgetWebSession session;
-        private readonly CancellationTokenSource lifetime=new();
-        private readonly DiscordReceiverHealth health=new();
-        private readonly Task drain,completion;
+        private readonly DiscordReceiverHealth health = new();
+        private readonly Task completion;
         private int disposed;
         internal DiscordReceiver(WidgetWebSession session)
         {
             this.session=session;
-            drain=DrainHealthAsync();completion=ObserveCompletionAsync();
+            completion=ObserveCompletionAsync();
         }
-        public WebSessionReference Reference=>session.Reference;
-        public Task<DiscordReceiverFailure> Failure=>health.Failure;
-        public ValueTask<JsonElement> ReadDiagnosticsAsync(string lease,CancellationToken token)=>
-            session.RequestAsync<object,JsonElement>("diagnostics",new{lease},token);
-        public async ValueTask<JsonElement> AcceptAsync(JsonElement offer,CancellationToken token)
-        {
-            var lease=offer.GetProperty("lease").GetString()??throw new InvalidDataException("Missing receiver lease.");
-            health.Bind(lease);
-            var answer=await session.RequestAsync<object,JsonElement>("offer",new{lease,offer=offer.GetProperty("offer"),healthEvents=true},token);
-            if(health.Failure.IsCompleted)throw new IOException("Receiver ended during negotiation.");
-            return answer;
-        }
-        private async Task DrainHealthAsync()
-        {
-            try{await foreach(var message in session.ReadMessagesAsync(lifetime.Token))health.Read(message);}
-            catch(OperationCanceledException) when(lifetime.IsCancellationRequested){ }
-            catch(Exception error) when(error is not OutOfMemoryException){health.SessionEnded();}
-        }
+        public WebSessionReference Reference => session.Reference;
+        public Task<DiscordReceiverFailure> Failure => health.Failure;
+        public void Bind(string lease) => health.Bind(lease);
         private async Task ObserveCompletionAsync()
         {
-            try{await session.Completion.WaitAsync(lifetime.Token);if(!lifetime.IsCancellationRequested)health.SessionEnded();}
-            catch(OperationCanceledException) when(lifetime.IsCancellationRequested){ }
-            catch(Exception error) when(error is not OutOfMemoryException){health.SessionEnded();}
+            try { await session.Completion; }
+            catch(Exception error) when(error is not OutOfMemoryException) { }
+            finally { health.SessionEnded(); }
         }
         public async ValueTask DisposeAsync()
         {
             if(Interlocked.Exchange(ref disposed,1)!=0)return;
-            health.Retire();lifetime.Cancel();
-            try{await session.DisposeAsync();}
-            finally{await Task.WhenAll(drain,completion);lifetime.Dispose();}
+            health.Retire();
+            try { await session.DisposeAsync(); }
+            finally { await completion; }
         }
     }
 }

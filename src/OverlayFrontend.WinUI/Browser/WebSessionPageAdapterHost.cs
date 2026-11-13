@@ -166,6 +166,7 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
             var source="(()=>{const deliver=globalThis["+JsonSerializer.Serialize(binding, BrowserJsonContext.Default.String)+"];delete globalThis["+JsonSerializer.Serialize(binding, BrowserJsonContext.Default.String)+"];"+
                 "const requestEndpoint="+JsonSerializer.Serialize(RequestEndpoint,BrowserJsonContext.Default.String)+",cancelEndpoint="+JsonSerializer.Serialize(CancelEndpoint,BrowserJsonContext.Default.String)+";"+
                 "const maximumBatchItems="+(AllowsBackgroundRequests?WebSessionContract.MaximumBackendBatchItems:WebSessionContract.MaximumPageActionBatchItems).ToString(System.Globalization.CultureInfo.InvariantCulture)+";"+
+                (AllowsBackgroundRequests ? "const videoEndpoint="+JsonSerializer.Serialize(binding+"Video", BrowserJsonContext.Default.String)+";"+VideoViewPrelude : "")+
                 BatchPrelude+"\n"+(AllowsBackgroundRequests?BackendPrelude:Prelude)+"\n"+RequestsPrelude+"\n"+script+"\n})()";
             await Evaluate(source,current);
             if(!Current(current))return;
@@ -283,9 +284,68 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
           return chunks.map((items,index)=>({batchId,index,total:chunks.length,context,items}));
         }
         """;
+#if ENABLE_WIDGET_VALIDATION
+    internal Task FixtureSetVideoTrackAsync(string id) =>
+        Evaluate($"globalThis.fixtureBindVideo('{id}')", epoch);
+#endif
+
+    internal async Task<bool> VideoViewAsync(string id, string name, bool open, CancellationToken token)
+    {
+        if (!AllowsBackgroundRequests || !IsReady || context is not { } execution) return false;
+        var expected = epoch;
+        // id and name are host-generated hex identifiers. Invoke only in this adapter's top document.
+        var expression = $"globalThis['{binding}Video']('{id}','{name}',{(open ? "true" : "false")})";
+        using var result = JsonDocument.Parse(await Call("Runtime.evaluate", new()
+        { ["expression"] = expression, ["contextId"] = execution, ["userGesture"] = open, ["returnByValue"] = true }).WaitAsync(token));
+        return Current(expected) && result.RootElement.GetProperty("result").TryGetProperty("value", out var value) &&
+            value.ValueKind == JsonValueKind.True;
+    }
+
+    // Only the adapter receives the track binding function. The host supplies a fresh
+    // blank child and keeps the original browser document and media track alive.
+    private const string VideoViewPrelude="""
+        const videoViews=new Map(), openVideoWindow=window.open.bind(window);
+        function setVideoTrack(id,track){
+          const entry=videoViews.get(id);
+          if(!entry || entry.child.closed || (track!==null && !(track instanceof MediaStreamTrack && track.kind==='video' && track.readyState==='live')))return false;
+          if(!track){
+            if(entry.video)entry.video.srcObject=null;
+            entry.track=null;entry.child.close();return true;
+          }
+          const doc=entry.child.document;
+          let video=entry.video;
+          if(!video){
+            video=doc.createElement('video');video.muted=true;video.autoplay=true;video.playsInline=true;
+            doc.documentElement.style.background='black';doc.body.style.margin='0';
+            Object.assign(video.style,{display:'block',width:'100vw',height:'100vh',objectFit:'contain'});
+            doc.body.replaceChildren(video);entry.video=video;
+          }
+          if(entry.track===track)return true;
+          entry.track=track;entry.failed=false;
+          video.srcObject=new MediaStream([track]);
+          video.play().catch(()=>{if(entry.track===track){entry.failed=true;entry.child.close();}});
+          return true;
+        }
+        function videoPlayback(id){
+          const entry=videoViews.get(id),v=entry?.video;
+          if(!entry||entry.child.closed||entry.failed)return null;
+          const q=v?.getVideoPlaybackQuality();
+          return {width:v?.videoWidth??0,height:v?.videoHeight??0,paused:v?.paused??true,readyState:v?.readyState??0,
+              totalFrames:q?.totalVideoFrames??0,droppedFrames:q?.droppedVideoFrames??0};
+        }
+        Object.defineProperty(globalThis,videoEndpoint,{value:(id,name,open)=>{
+          if(!open){const entry=videoViews.get(id);if(entry){videoViews.delete(id);entry.track=null;if(entry.video)entry.video.srcObject=null;entry.child.close();}return true;}
+          if(videoViews.size>=4||videoViews.has(id))return false;
+          const child=openVideoWindow('about:blank',name);
+          if(!child)return false;
+          videoViews.set(id,{child,video:null,track:null,failed:false});return true;
+        }});
+        """;
+
     private const string BackendPrelude="""
         const host=Object.freeze({
           onRequest(callback){requestHandler=callback;},
+          setVideoTrack, videoPlayback,
           invalidate(){deliver('{"invalidate":1}');},
           batchResult(context,items){return{[batchResultKey]:true,context,items};}
         });

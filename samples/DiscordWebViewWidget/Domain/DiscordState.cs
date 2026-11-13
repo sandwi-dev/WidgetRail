@@ -7,25 +7,27 @@ internal sealed record DiscordStreamAudio(bool Available, bool Muted, double? Vo
 internal sealed record DiscordStream(string Key, string UserId, string Name, DiscordStreamAudio? Audio=null);
 internal sealed record DiscordShareQuality(int Resolution,int FrameRate)
 {
-    internal bool IsSupported=>Resolution is 480 or 720 or 1080 or 1440 && FrameRate is 15 or 30 or 60;
+    internal bool IsSupported=>Resolution is 480 or 720 or 1080 && FrameRate is 15 or 30 or 60;
     internal static DiscordShareQuality[] Baseline=>[new(480,15),new(480,30),new(720,15),new(720,30)];
 }
 internal sealed record DiscordState(int Revision, bool Ready, string Account, DiscordCapabilities Capabilities,
     DiscordChannel[] Channels, string? ChannelId, string ChannelName, bool Muted, bool Deafened,
     DiscordParticipant[] Participants, DiscordStream[] Streams, bool Sharing, bool SharePending, string? ShareError, string RelayState, DiscordFriendActivity[]? Activities=null, string ActivityAvailability="unavailable", bool ActivitiesTruncated=false,
     DiscordShareQuality[]? ShareQualities=null,string ShareQualityAvailability="unavailable",DiscordShareQuality? PreferredShareQuality=null,
-    string VoiceConnection="unavailable",string? ShareQualityWarning=null)
+    string VoiceConnection="unavailable",string? ShareQualityWarning=null,string NotificationPermission="unavailable")
 {
     public DiscordFriendActivity[] Activities { get; init; }=Activities??[];
     public DiscordShareQuality[] ShareQualities {get;init;}=ShareQualities??DiscordShareQuality.Baseline;
     internal void Validate()
     {
+        if (NotificationPermission is not ("default" or "granted" or "denied" or "unavailable"))
+            throw new InvalidDataException("invalid_notification_permission");
         if(ShareQualityWarning is not(null or "share_quality_unavailable" or "share_quality_unconfirmed" or "share_content_preference_unconfirmed"))
             throw new InvalidDataException("invalid_share_quality_warning");
         if(VoiceConnection is not("disconnected" or "connecting" or "connected" or "reconnecting" or "unavailable") ||
             VoiceConnection is "connected" or "connecting" or "reconnecting" && ChannelId is null)
             throw new InvalidDataException("invalid_voice_connection_state");
-        if(ShareQualities is null || ShareQualities.Length>12 || ShareQualities.Any(q=>q is null||!q.IsSupported) ||
+        if(ShareQualities is null || ShareQualities.Length>9 || ShareQualities.Any(q=>q is null||!q.IsSupported) ||
             ShareQualities.Distinct().Count()!=ShareQualities.Length || ShareQualityAvailability is not("ready" or "unavailable") ||
             ShareQualityAvailability=="unavailable" && ShareQualities.Any(q=>!DiscordShareQuality.Baseline.Contains(q)) ||
             PreferredShareQuality is {IsSupported:false})

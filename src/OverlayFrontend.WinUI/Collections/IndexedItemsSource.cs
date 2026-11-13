@@ -6,6 +6,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Data;
 using Windows.Foundation;
 using WidgetRail.WidgetUi.State.Collections;
+using WidgetRail.OverlayFrontend.WinUI.Diagnostics;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Collections;
 
@@ -331,6 +332,7 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
 
     private async Task FetchAsync(int page, Fetch fetch)
     {
+        var timing = PresentationPipelineTrace.Log.Begin();
         IndexedRangeResult<T>? items = null;
         Exception? failure = null;
         try
@@ -339,14 +341,19 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
             items = await Task.Run(() => readRange(fetch.Request, fetch.Cancellation.Token), fetch.Cancellation.Token).ConfigureAwait(false);
         }
         catch (Exception error) when (error is not OutOfMemoryException) { failure = error; }
+        PresentationPipelineTrace.Log.End(timing.Id, PipelineStage.RangeData, timing.Started, fetch.Request.Count,
+            fetch.Cancellation.IsCancellationRequested ? PipelineOutcome.Cancelled : failure is null ? PipelineOutcome.Completed : PipelineOutcome.Failed);
+        var queuedAt = PresentationPipelineTrace.Timestamp(timing.Id);
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var retained = false;
         var accepted = false;
         var finished = false;
         KeyedCollectionItem<T>[]? admitted = null;
         var nextIndex = 0;
+        var batchQueuedAt = 0L;
         if (dispatcher.TryEnqueue(() =>
         {
+            PresentationPipelineTrace.Log.End(timing.Id, PipelineStage.RangeUiQueue, queuedAt, fetch.Request.Count, PipelineOutcome.Completed);
             try
             {
                 if (!disposed && fetching.TryGetValue(page, out var current) && ReferenceEquals(current, fetch))
@@ -368,6 +375,7 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
         })) await completion.Task.ConfigureAwait(false);
         else
         {
+            PresentationPipelineTrace.Log.End(timing.Id, PipelineStage.RangeTotal, timing.Started, 0, PipelineOutcome.Retired);
             fetch.Cancellation.Dispose();
             // Even after dispatcher shutdown, a delivered worker range has an
             // explicit owner. The fetch task drains it before it can finish.
@@ -378,6 +386,10 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
         void PublishBatch()
         {
             if (finished) return;
+            if (batchQueuedAt != 0)
+                PresentationPipelineTrace.Log.End(timing.Id, PipelineStage.RangeBatchQueue, batchQueuedAt, 0, PipelineOutcome.Completed);
+            var batchStarted = PresentationPipelineTrace.Timestamp(timing.Id);
+            var firstIndex = nextIndex;
             try
             {
                 var start = Stopwatch.GetTimestamp();
@@ -395,12 +407,32 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
                     GetSlot(fetch.Request.StartIndex + index).SetValue(admitted[index].Key, admitted[index].Value);
                     if (nextIndex < admitted.Length && (++count >= 8 || Stopwatch.GetElapsedTime(start).TotalMilliseconds >= 2))
                     {
-                        if (dispatcher.TryEnqueue(DispatcherQueuePriority.Low, PublishBatch)) return;
+                        if (timing.Id != 0)
+                        {
+                            // Paired diagnostic only: distinguish a busy dispatcher
+                            // from starvation of its Low-priority publication lane.
+                            var probeQueuedAt = PresentationPipelineTrace.Timestamp(timing.Id);
+                            batchQueuedAt = probeQueuedAt;
+                            dispatcher.TryEnqueue(() => PresentationPipelineTrace.Log.End(timing.Id,
+                                PipelineStage.RangeNormalProbe, probeQueuedAt, 0, PipelineOutcome.Completed));
+                        }
+                        // These rows are already demanded by the native view. Low
+                        // priority can starve behind layout/artwork callbacks for
+                        // hundreds of milliseconds even while Normal work runs.
+                        // Keep the bounded batch/yield, but continue at Normal.
+                        var priority = DispatcherQueuePriority.Normal;
+                        ConfigureValidationPublicationPriority(ref priority);
+                        if (dispatcher.TryEnqueue(priority, PublishBatch)) return;
                         break;
                     }
                 }
             }
             catch (Exception error) when (error is not OutOfMemoryException) { failure = error; }
+            finally
+            {
+                PresentationPipelineTrace.Log.End(timing.Id, PipelineStage.RangeBatch, batchStarted, nextIndex - firstIndex,
+                    fetch.Cancellation.IsCancellationRequested ? PipelineOutcome.Cancelled : failure is null ? PipelineOutcome.Completed : PipelineOutcome.Failed);
+            }
             Finish();
         }
 
@@ -408,6 +440,9 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
         {
             if (finished) return;
             finished = true;
+            PresentationPipelineTrace.Log.End(timing.Id, PipelineStage.RangeTotal, timing.Started, nextIndex,
+                fetch.Cancellation.IsCancellationRequested ? PipelineOutcome.Cancelled : failure is not null ? PipelineOutcome.Failed :
+                retained && nextIndex == fetch.Request.Count ? PipelineOutcome.Completed : PipelineOutcome.Retired);
             try
             {
                 if (accepted && !disposed && active && ContentRevision == fetch.Request.ContentRevision &&
@@ -435,6 +470,10 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
             }
         }
     }
+
+    // No implementation in production; lets the native fixture compare the old
+    // lane using the exact same optimized binary and foreground conditions.
+    static partial void ConfigureValidationPublicationPriority(ref DispatcherQueuePriority priority);
 
     private KeyedCollectionItem<T>[] Validate(IndexedRangeRequest request, IndexedRangeResult<T> result)
     {

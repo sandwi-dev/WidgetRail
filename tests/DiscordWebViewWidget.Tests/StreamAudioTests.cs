@@ -340,6 +340,7 @@ internal static class StreamAudioTests
             if(holdNextRead){holdNextRead=false;ReadStarted.TrySetResult();await ReadGate!.Task;}
             return captured;
         }
+        public ValueTask<WebSessionPermissionResult> RequestNotificationsAsync(CancellationToken token)=>Core.RequestNotificationsAsync(token);
         public ValueTask<WebSessionMicrophoneResult> RequestMicrophoneAsync(CancellationToken token)=>Core.RequestMicrophoneAsync(token);
         public ValueTask<IDiscordReceiver> OpenReceiverAsync(CancellationToken token)=>Core.OpenReceiverAsync(token);
         public async ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token)

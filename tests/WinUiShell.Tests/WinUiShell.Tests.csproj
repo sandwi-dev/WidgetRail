@@ -6,7 +6,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\WebSessionMicrophoneConsent.cs" Link="WebSessionMicrophoneConsent.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Diagnostics\PresentationPipelineTrace.cs" Link="PresentationPipelineTrace.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\WebSessionPermissionConsent.cs" Link="WebSessionPermissionConsent.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserSessionStartups.cs" Link="BrowserSessionStartups.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\IntroductionProgress.cs" Link="IntroductionProgress.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\WindowsTaskView.cs" Link="WindowsTaskView.cs" />

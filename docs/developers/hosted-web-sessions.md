@@ -179,7 +179,46 @@ assembler automatically. Put large participant/item collections in `items`, not
 in `context`, which repeats in every chunk. An invalid or oversized batch fails
 as a whole; the host does not silently truncate it.
 
-## Microphone admission from native controls
+## Present a backend video track
+
+Open a video view for an existing backend session and use its reference in an
+ordinary widget or pinned layout.
+
+```csharp
+var view = await HostServices.WebSessions.OpenAsync(new("video", "Shared screen",
+    WebSessionSource.BackendVideo(backend.Reference)), token);
+```
+
+Pass `view.Reference.Id` to the backend's package adapter with the domain command
+that selects the video. In that adapter, `host.setVideoTrack(id, track)` binds a
+live video track to the child. It returns false if the view is missing or closed.
+Call it again when the selected track changes. Passing null ends that video view.
+`host.videoPlayback(id)` returns the current media-element dimensions, playback
+state and frame counters, or null if the view closed or playback failed.
+
+The host creates a muted child in the source profile and binds it to the current
+top-level document. A source navigation or worker shutdown retires the view.
+Disposing the view preserves the source track and audio. A backend video surface
+has no independent navigation, website permissions, script messaging or capture.
+Only a trusted backend's own worker can open its video views. Session count
+limits still apply. Older hosts reject the new operation.
+
+## Website permissions from native controls
+
+From an interactive widget action, call
+`await backend.RequestPermissionAsync(WebSessionPermissionKind.Notifications, token)`
+for the current backend document. The same API accepts `Microphone`. The host
+resolves the current site and profile, checks the interactive owner and presents
+the specific permission to the user. A saved block returns `Denied`. A navigation,
+profile switch or loss of interactive ownership retires the pending decision.
+The hidden page cannot open the host chooser itself.
+
+Notification approval applies the browser permission to the existing document so
+the site can send notifications during a call. The site determines which events
+produce a notification. The host delivers those through its existing inbox and
+banner preferences.
+
+### Microphone admission
 
 For a backend session, `await backend.RequestMicrophoneAsync(token)` (protocol 103)
 opens the host's microphone consent flow for the current document origin and
@@ -241,6 +280,11 @@ The widget's adapter owns provider eligibility, revalidation and any saved quali
 preference; the host does not infer account entitlements or persist a cancelled
 chooser selection. Discord uses its own persisted streaming settings and falls
 back to baseline choices if its required policy/settings helpers are unavailable.
+
+A widget with a fixed capture policy can use the constrained overload with
+`allowContentPreferenceSelection: false` and pass its required
+`WebCaptureStreamOptions.ContentPreference`. The host then offers the admitted
+qualities and audio choices and enforces that content preference.
 
 The default preference is 720p30. Height is a ceiling and source aspect ratio is
 preserved. Static content can deliver fewer frames than the selected target.

@@ -19,7 +19,7 @@ internal static class SharingTests
                 !harness.StopDisabled&&harness.Capture.Stops.IsEmpty,"A late quality warning stays visible without tearing down an active capture and Stop remains available");
             harness.Provider.State=harness.Provider.State with{ShareQualityWarning="share_content_preference_unconfirmed"};
             await harness.Refresh();
-            check(Nodes(harness.Snapshot.Root).Single(node=>node.Id=="discord.share.quality-warning").Text!.Contains("Smoothness/Clarity")&&
+            check(Nodes(harness.Snapshot.Root).Single(node=>node.Id=="discord.share.quality-warning").Text!.Contains("clarity")&&
                 !harness.StopDisabled&&harness.Capture.Stops.IsEmpty,"An unconfirmed content preference explains the limitation without stopping sharing");
         }
         foreach(var (failure,message) in new (Exception,string)[]
@@ -146,7 +146,7 @@ internal static class SharingTests
             var incoming=harness.Provider.Receivers.Single();
             await harness.Act("share");await Wait(()=>harness.ShareCalls==1&&!harness.Preparing);
             var command=harness.Provider.Commands.Single(item=>item.Method=="share");
-            check(harness.Capture.PermissionIds.SequenceEqual([WidgetCaptureCapabilities.Permission])&&harness.Capture.Prepares.Single().Options==(new WebCaptureStreamOptions(){ContentPreference=WebCaptureContentPreference.Motion}),
+            check(harness.Capture.PermissionIds.SequenceEqual([WidgetCaptureCapabilities.Permission])&&harness.Capture.Prepares.Single().Options==(new WebCaptureStreamOptions(){ContentPreference=WebCaptureContentPreference.Detail}),
                 "Outgoing setup requests only capture access and starts with720p30; no window-list permission is requested");
             check(command.Args.GetProperty("captureQuality").GetProperty("resolution").GetInt32()==480&&
                 command.Args.GetProperty("captureQuality").GetProperty("frameRate").GetInt32()==15,
@@ -271,12 +271,12 @@ internal static class SharingTests
     private static async Task QualityTests(Action<bool,string> check)
     {
         var baseline=DiscordShareQuality.Baseline;
-        var all=(from height in new[]{480,720,1080,1440} from fps in new[]{15,30,60} select new DiscordShareQuality(height,fps)).ToArray();
+        var all=(from height in new[]{480,720,1080} from fps in new[]{15,30,60} select new DiscordShareQuality(height,fps)).ToArray();
         var state=new FakeSession().State;state.Validate();
         check(state.ShareQualities.SequenceEqual(baseline),"Legacy provider state retains the four baseline capture choices");
-        (state with{ShareQualities=all,ShareQualityAvailability="ready",PreferredShareQuality=new(1440,60)}).Validate();
+        (state with{ShareQualities=all,ShareQualityAvailability="ready",PreferredShareQuality=new(1080,60)}).Validate();
         foreach(var invalid in new[]{
-            state with{ShareQualities=[new(2160,30)]},state with{ShareQualities=[new(720,120)]},
+            state with{ShareQualities=[new(2160,30)]},state with{ShareQualities=[new(1440,60)]},state with{ShareQualities=[new(720,120)]},
             state with{ShareQualities=[new(720,30),new(720,30)]},state with{ShareQualities=all},
             state with{ShareQualities=null!},state with{ShareQualityAvailability="unknown"},
             state with{PreferredShareQuality=new(2160,60)}})
@@ -285,36 +285,36 @@ internal static class SharingTests
             check(rejected,"Malformed or unverified higher-quality provider state fails closed");
         }
         // Resolution/FPS come from the provider's persisted preference; content
-        // type is a separate account-scoped WidgetRail preference.
+        // preference is fixed to clarity, independently of saved channel preferences.
         for(var lifetime=0;lifetime<2;lifetime++)
         {
-            await using var h=await Harness.CreateAsync(all,new(1440,60));
-            h.Capture.SelectedQuality=h.Capture.ReportedQuality=new(1440,60);
+            await using var h=await Harness.CreateAsync(all,new(1080,60));
+            h.Capture.SelectedQuality=h.Capture.ReportedQuality=new(1080,60);
             await h.Act("share");await Wait(()=>h.ShareCalls==1&&!h.Preparing);
             var request=h.Capture.Prepares.Single();
-            check(request.Options==(new WebCaptureStreamOptions(1440,60){ContentPreference=WebCaptureContentPreference.Motion})&&
-                request.AllowedQualities!.SequenceEqual(all.Select(q=>new WebCaptureStreamOptions(q.Resolution,q.FrameRate))),
+            check(request.Options==(new WebCaptureStreamOptions(1080,60){ContentPreference=WebCaptureContentPreference.Detail})&&
+                request.FixedContentPreference&&request.AllowedQualities!.SequenceEqual(all.Select(q=>new WebCaptureStreamOptions(q.Resolution,q.FrameRate))),
                 "Native chooser receives provider-approved choices and persisted preference on widget lifetime "+lifetime);
             var command=h.Provider.Commands.Single(c=>c.Method=="share");
-            check(command.Args.GetProperty("captureQuality").GetProperty("resolution").GetInt32()==1440&&
+            check(command.Args.GetProperty("captureQuality").GetProperty("resolution").GetInt32()==1080&&
                 command.Args.GetProperty("captureQuality").GetProperty("frameRate").GetInt32()==60,
                 "Provider receives the actual host-approved high-resolution60FPS choice");
         }
-        var localPreferences=new WidgetTestPrivateState();
+        var localPreferences=new WidgetTestPrivateState("""{"SchemaVersion":1,"Accounts":[{"Account":"1","Favorites":["10"],"Recent":["20"],"ContentPreference":"motion"}]}""",1);
         for(var lifetime=0;lifetime<2;lifetime++)
         {
             await using var h=await Harness.CreateAsync(all,new(1080,60),localPreferences);
             h.Capture.SelectedQuality=new(1080,60){ContentPreference=WebCaptureContentPreference.Detail};
             await h.Act("share");await Wait(()=>h.ShareCalls==1&&!h.Preparing);
             await h.Widget.WaitForPreferenceWriteAsync();
-            check(h.Capture.Prepares.Single().Options.ContentPreference==(lifetime==0?WebCaptureContentPreference.Motion:WebCaptureContentPreference.Detail),
-                "New Discord users prefer smoothness and confirmed clarity persists across widget lifetimes: "+lifetime);
+            check(h.Capture.Prepares.Single().Options.ContentPreference==WebCaptureContentPreference.Detail,
+                "Clarity is fixed across widget lifetimes without a saved content setting: "+lifetime);
         }
-        await using(var h=await Harness.CreateAsync(baseline,new(1440,60)))
+        await using(var h=await Harness.CreateAsync(baseline,new(1080,60)))
         {
             await h.Act("share");await Wait(()=>h.ShareCalls==1&&!h.Preparing);
-            check(h.Capture.Prepares.Single().Options==(new WebCaptureStreamOptions(){ContentPreference=WebCaptureContentPreference.Motion})&&
-                h.Provider.State.PreferredShareQuality==new DiscordShareQuality(1440,60),
+            check(h.Capture.Prepares.Single().Options==(new WebCaptureStreamOptions(){ContentPreference=WebCaptureContentPreference.Detail})&&
+                h.Provider.State.PreferredShareQuality==new DiscordShareQuality(1080,60),
                 "Currently ineligible saved quality falls back to720p30 without erasing the provider preference");
         }
         await using(var h=await Harness.CreateAsync(all,new(720,30)))
@@ -324,9 +324,9 @@ internal static class SharingTests
             check(h.ShareCalls==0&&h.Provider.State.PreferredShareQuality==new DiscordShareQuality(720,30),
                 "Canceled source chooser neither broadcasts nor saves its tentative resolution");
         }
-        await using(var h=await Harness.CreateAsync(all,new(1440,60)))
+        await using(var h=await Harness.CreateAsync(all,new(1080,60)))
         {
-            h.Capture.SelectedQuality=new(1440,60);h.Capture.PrepareDelivery=new(TaskCreationOptions.RunContinuationsAsynchronously);
+            h.Capture.SelectedQuality=new(1080,60);h.Capture.PrepareDelivery=new(TaskCreationOptions.RunContinuationsAsynchronously);
             await h.Act("share");await Wait(()=>h.Capture.Prepares.Count==1);
             h.Provider.State=h.Provider.State with{ShareQualities=baseline};await h.Refresh();
             h.Capture.PrepareDelivery.SetResult();await Wait(()=>!h.Preparing&&h.Capture.Stops.Count==1);

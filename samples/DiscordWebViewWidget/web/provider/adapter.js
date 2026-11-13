@@ -1,6 +1,6 @@
 // WidgetRail hosted Discord adapter, v1. No Discord credentials cross this boundary.
 // Internal Discord APIs are feature-probed and may disappear after Discord updates.
-function initializeWidgetRailDiscordAdapter(build) {
+function initializeWidgetRailDiscordAdapter(build,videoHost=null) {
 if(!Number.isSafeInteger(build)||build<1)throw new Error('invalid_adapter_build');
 if(globalThis.WidgetRailDiscordPrototype?.build>build)throw new Error('adapter_newer');
 if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
@@ -114,9 +114,10 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 muted: !!media?.isSelfMute?.(), deafened: !!media?.isSelfDeaf?.(), participants,
                 streams: id ? streams(id).map(({ descriptor, ...value }) => ({...value,audio:streamAudio(value.userId)?.state??
                     {available:false,muted:false,volume:null}})) : [], sharing: !!own && own.state !== 'ENDED',
+                notificationPermission:globalThis.Notification?.permission ?? "unavailable",
                 ...shareQualitySnapshot(user?.id,id),voiceConnection:voiceConnection(),
                 sharePending,shareError:shareErrorOwner?.account===user?.id&&shareErrorOwner?.channel===id?shareError:null,
-                shareQualityWarning:qualityWarningForSnapshot(), relayState: relay?.pc.connectionState ?? 'closed',
+                shareQualityWarning:qualityWarningForSnapshot(), relayState: relay?.viewId ? 'connected' : relay?.pc.connectionState ?? 'closed',
                 ...(activities?.snapshot()??{activities:[],activityAvailability:'unavailable',activitiesTruncated:false}) };
         }
 
@@ -282,7 +283,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             return observed;
         }
 
-        const captureResolutions=[480,720,1080,1440],captureFrameRates=[15,30,60];
+        const captureResolutions=[480,720,1080],captureFrameRates=[15,30,60];
         const isCaptureQuality=quality=>quality&&captureResolutions.includes(quality.resolution)&&captureFrameRates.includes(quality.frameRate);
         function shareQualityPolicy(expectedAccount=me()?.id,expectedChannel=channelId()) {
             const baseline=[{resolution:480,frameRate:15},{resolution:480,frameRate:30},
@@ -298,7 +299,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 const update=code('"STREAM_UPDATE_SETTINGS"'),settings=store('ApplicationStreamingSettingsStore');
                 if(user?.id!==expectedAccount||selected!==expectedChannel)return fallback();
                 if(Number.isSafeInteger(presets?.PRESET_CUSTOM)&&typeof settings?.getState==='function') {
-                    const saved=settings.getState(),candidate={resolution:saved?.resolution,frameRate:saved?.fps};
+                    const saved=settings.getState(),candidate={resolution:saved?.resolution===1440?1080:saved?.resolution,frameRate:saved?.fps};
                     if(saved?.preset===presets.PRESET_CUSTOM&&isCaptureQuality(candidate))preferred=candidate;
                 }
                 if(!user?.id||!selected||channel?.id!==selected||typeof canStream!=='function'||typeof update!=='function'||
@@ -372,7 +373,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             const selectedConstraints=track.getConstraints();
             const bound=value=>typeof value==='number'?value:value?.ideal??value?.max;
             const width=bound(selectedConstraints?.width),height=bound(selectedConstraints?.height);
-            const maximumWidth=({480:1706,720:2560,1080:3840,1440:5120})[quality.resolution];
+            const maximumWidth=({480:1706,720:2560,1080:3840})[quality.resolution];
             if(!Number.isInteger(width)||!Number.isInteger(height)||width<2||height<2||width>maximumWidth||height>quality.resolution)
                 fail('share_quality_unavailable');
             const wrappers=new Map();let closed=false,applied=false,timer,ownedStream=null;
@@ -381,7 +382,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             try{
                 const native=globalThis.WidgetRailNativeMedia?.status?.();
                 if(native?.active===true){
-                    if(['detail','motion'].includes(native.contentPreference)&&track.contentHint===native.contentPreference)contentHint=native.contentPreference;
+                    if(native.contentPreference==='detail'&&track.contentHint==='detail')contentHint='detail';
                     else contentPreferenceUnavailable=true;
                 }
             }catch{contentPreferenceUnavailable=true;}
@@ -619,7 +620,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             const current=relay;
             if(!current||current.owner!==owner||current.account!==args.account||current.channelId!==args.channelId||
                 current.lease!==args.lease||current.key!==args.key||current.userId!==args.userId||
-                Date.now()>current.expires||['closed','failed'].includes(current.pc.connectionState))fail('watch_cancelled');
+                Date.now()>current.expires||['closed','failed'].includes(current.pc?.connectionState))fail('watch_cancelled');
             if(!streams(args.channelId).some(s=>s.key===args.key&&s.userId===args.userId))fail('stream_ended');
             if(watchOwnership(args.key)?.alreadyWatching!==true)fail('watch_cancelled');
             sameCall(args);
@@ -654,7 +655,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
 
         function relayCurrent(entry) {
             return relay===entry&&me()?.id===entry.account&&channelId()===entry.channelId&&Date.now()<=entry.expires&&
-                !['closed','failed'].includes(entry.pc.connectionState);
+                !['closed','failed'].includes(entry.pc?.connectionState);
         }
 
         function refreshWatchDemand(entry) {
@@ -733,6 +734,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             if(!previous)return;
             clearInterval(previous.timer);
             try { previous.demand?.release(); }catch{}
+            if(previous.viewId && previous.viewId!==relay?.viewId)try{videoHost.setVideoTrack(previous.viewId,null);}catch{}
             try { previous.pc?.close(); }catch{}
             // A subscription that predates this adapter belongs to the user.
             if (!preserveSubscription && previous.ownsWatch && me()?.id === previous.account) {
@@ -783,11 +785,16 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             const closeWatch=transfer?relay.closeWatch:ownership.closeWatch;
             // Allocate before relinquishing the old relay/subscription. A local
             // peer-construction failure must leave its existing owner intact.
-            const pc = new RTCPeerConnection({ iceServers: [] });
+            const viewId=args.videoView;
+            if(viewId!==undefined && (typeof viewId!=='string'||!/^[a-f0-9]{32}$/.test(viewId)||
+                typeof videoHost?.setVideoTrack!=='function'||!videoHost.videoPlayback(viewId)))fail('video_view_unavailable');
+            // The standalone research prototype still negotiates an SDP offer.
+            // The shipping widget supplies an already-admitted native video view.
+            const pc = viewId ? null : new RTCPeerConnection({ iceServers: [] });
             const previous=relay,demand=sameStream?previous.demand:null;
             if(demand)previous.demand=null;
             const epoch = ++relayEpoch;
-            const entry = relay = { pc, key: stream.key, userId:stream.userId, owner, lease: args.lease, account: args.account,
+            const entry = relay = { pc, viewId, key: stream.key, userId:stream.userId, owner, lease: args.lease, account: args.account,
                 channelId: args.channelId, ownsWatch: transfer||!alreadyWatching, closeWatch, expires: Date.now() + 25000, timer: null,demand };
             if(demand)demand.entry=entry;
             retireRelay(previous,transfer);
@@ -802,9 +809,14 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 }
                 if (!current()) fail('watch_cancelled');
                 if (!track) fail('video_unavailable');
-                const sender = pc.addTrack(track);
-                await pc.setLocalDescription(await pc.createOffer());
-                await gather(pc);
+                let sender=null;
+                if(viewId){
+                    if(!videoHost.setVideoTrack(viewId,track))fail('video_view_unavailable');
+                }else{
+                    sender=entry.sender=pc.addTrack(track);
+                    await pc.setLocalDescription(await pc.createOffer());
+                    await gather(pc);
+                }
                 if (!current()) fail('watch_cancelled');
                 let changing = false;
                 entry.timer = setInterval(async () => {
@@ -815,7 +827,13 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                         return;
                     }
                     const replacement = refreshWatchDemand(entry)?incomingTrack(entry):null;
-                    if (!changing && replacement && sender.track !== replacement) {
+                    if(viewId){
+                        if(!videoHost.videoPlayback(viewId)||track.readyState==='ended'&&!replacement){stopRelay();return;}
+                        if(replacement && replacement!==track){
+                            if(!videoHost.setVideoTrack(viewId,replacement)){stopRelay();return;}
+                            track=replacement;
+                        }
+                    }else if (!changing && replacement && sender.track !== replacement) {
                         changing = true;
                         try { await sender.replaceTrack(replacement); } catch { if (relay === entry) stopRelay(); }
                         finally { changing = false; }
@@ -825,7 +843,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                     if(relay===entry)stopRelay();
                   }
                 }, 1000);
-                return { lease: args.lease, offer: pc.localDescription.toJSON() };
+                return viewId ? {lease:args.lease,videoView:viewId} : { lease: args.lease, offer: pc.localDescription.toJSON() };
             } catch (error) { if (relay === entry) stopRelay(); throw error; }
         }
 
@@ -838,7 +856,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 !isCaptureQuality(quality)))fail('share_quality_unsupported');
             if(quality!==undefined)requireShareQuality(quality,args);
             const sourceOptions=quality===undefined?{width:1280,height:720}:
-                {width:({480:854,720:1280,1080:1920,1440:2560})[quality.resolution],height:quality.resolution,frameRate:quality.frameRate};
+                {width:({480:854,720:1280,1080:1920})[quality.resolution],height:quality.resolution,frameRate:quality.frameRate};
             const engine = store('MediaEngineStore')?.getMediaEngine?.();
             const start = code('"STREAM_START",streamType');
             if (typeof start !== 'function' || typeof engine?.getDesktopSource !== 'function') fail('share_unavailable');
@@ -994,10 +1012,31 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                         return {ok:true,value:{audio:observed}};
                     }
                     case 'watch': return { ok: true, value: await watch(args,owner) };
-                    case 'answer':
+                    case 'videoPlayback': {
                         sameCall(args);
-                        if (!relay || relay.lease !== args.lease || relay.owner!==owner || !relayCurrent(relay)) fail('watch_cancelled');
-                        await relay.pc.setRemoteDescription(args.answer); break;
+                        if(!relay?.viewId || relay.owner!==owner || relay.lease!==args.lease || !relayCurrent(relay))fail('watch_cancelled');
+                        const stats=videoHost.videoPlayback(relay.viewId);
+                        return {ok:true,value:stats?{...stats,available:true,lease:args.lease,state:'connected'}:{available:false}};
+                    }
+                    case 'answer': {
+                        sameCall(args);
+                        const entry = relay;
+                        if (!entry?.pc || entry.lease !== args.lease || entry.owner !== owner || !relayCurrent(entry)) fail('watch_cancelled');
+                        await entry.pc.setRemoteDescription(args.answer);
+                        if (!relayCurrent(entry)) fail('watch_cancelled');
+                        // Only the local pin encoder. Preserve the resolution of the received
+                        // track; this ceiling allows detailed motion without reserving bandwidth.
+                        try {
+                            const parameters = entry.sender.getParameters();
+                            if (parameters.encodings?.length === 1) {
+                                parameters.encodings[0].maxBitrate = 20_000_000;
+                                parameters.degradationPreference = 'maintain-resolution';
+                                await entry.sender.setParameters(parameters);
+                            }
+                        } catch { /* Keep negotiated playback when the runtime rejects optional tuning. */ }
+                        if (!relayCurrent(entry)) fail('watch_cancelled');
+                        break;
+                    }
                     case 'keep':
                         if (relay?.lease === args.lease && relay.owner===owner && relayCurrent(relay))
                             relay.expires = Date.now() + 12000;

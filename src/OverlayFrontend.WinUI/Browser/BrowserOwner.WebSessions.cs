@@ -71,10 +71,11 @@ internal sealed partial class BrowserOwner
         var key = (Widget: request.WidgetId, Document: request.Session.Id);
         string? errorCode = null;
         WebSessionMicrophoneResult? microphone=null;
+        WebSessionPermissionResult? permission=null;
         WebCaptureStreamStatus? capture=null;
         Entry? openedEntry = null;
         BrowserSurface? unregisteredSurface = null;
-        using var decisionCancellation=request.Command.Operation is WebSessionOperation.RequestMicrophone or WebSessionOperation.PrepareWebCapture or WebSessionOperation.PrepareWebCaptureConstrained
+        using var decisionCancellation=request.Command.Operation is WebSessionOperation.RequestMicrophone or WebSessionOperation.RequestPermission or WebSessionOperation.PrepareWebCapture or WebSessionOperation.PrepareWebCaptureConstrained
             ? CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token):null;
         if(decisionCancellation is not null)hostedDecisionRequests.Add(request.RequestId,decisionCancellation);
         try
@@ -85,31 +86,39 @@ internal sealed partial class BrowserOwner
                 if (entries.TryGetValue(key, out var closed)) await RetireAsync(key, closed);
                 return;
             }
-            if (request.Command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted or WebSessionOperation.OpenBackend)
+            if (request.Command.Operation is WebSessionOperation.Open or WebSessionOperation.OpenAdapted or WebSessionOperation.OpenBackend or WebSessionOperation.OpenBackendVideo)
             {
                 var definition = request.Command.Definition!;
                 if (!definition.IsWellFormed() || entries.ContainsKey(key)) throw new InvalidOperationException("Invalid hosted session request.");
                 using var startup = hostedStartups.TryReserve(key, BrowserResidentKeys, lifetime.Token);
                 if (startup is null)
                 { errorCode = "session_limit"; return; }
+                BrowserSurface? videoParent = null;
+                if (definition.Source.Kind == WebSessionSourceKind.BackendVideo)
+                {
+                    var parentKey = (request.WidgetId, definition.Source.Location);
+                    if (!entries.TryGetValue(parentKey, out var parent) || parent.Hosted?.Id != definition.Source.Location || !parent.Surface.IsBackendSession)
+                        throw new InvalidOperationException("Video source session retired.");
+                    videoParent = parent.Surface;
+                }
                 var originKey = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
                     request.Identity.PackageId + "\n" + request.Identity.PublisherId + "\n" + definition.Key))).ToLowerInvariant();
                 var url = definition.Source.Kind == WebSessionSourceKind.Package
-                    ? "https://app-" + originKey[..32] + ".widgetrail.internal/" + definition.Source.Location : definition.Source.Location;
+                    ? "https://app-" + originKey[..32] + ".widgetrail.internal/" + definition.Source.Location : videoParent?.CurrentUrl ?? definition.Source.Location;
                 var options = definition.Browser.ProfileKey == "default"
                     ? definition.Browser with { ProfileKey = "session-" + (definition.Browser.Storage == BrowserStorage.Private ? request.Session.Id : originKey[..32]) }
                     : definition.Browser;
                 var document = new WebBrowserDocument(request.Session.Id, 1, url, definition.AccessibleName)
-                { Options = options, InteractionMode = BrowserInteractionMode.ActivateToInteract };
+                { Options = videoParent?.VideoViewOptions ?? options, InteractionMode = BrowserInteractionMode.ActivateToInteract };
                 var authority = session.GetState(request.WidgetId)?.LastGood?.Authority ??
                     new WidgetPresentationAuthority(request.WidgetId, "", "", 0, request.Identity.InstanceId, 0, "");
-                var ownedProfile = await RegisterHostedProfileAsync(request, BrowserProfileIdentity.Name(request.WidgetId, document), startup.Token)
-                    ?? throw new InvalidOperationException("This widget was removed.");
+                var profileName = videoParent?.ProfileName ?? (await RegisterHostedProfileAsync(request, BrowserProfileIdentity.Name(request.WidgetId, document), startup.Token)
+                    ?? throw new InvalidOperationException("This widget was removed.")).Name;
                 BrowserSurface surface = null!;
                 Entry entry = null!;
                 if (!startup.TryCommit(() =>
                 {
-                    surface = CreateSurface(request.WidgetId, document, authority, profileName: ownedProfile.Name);
+                    surface = CreateSurface(request.WidgetId, document, authority, profileName: profileName);
                     unregisteredSurface = surface;
 #if ENABLE_WIDGET_VALIDATION
                     BeforeHostedConfigureForValidation?.Invoke(surface);
@@ -117,7 +126,7 @@ internal sealed partial class BrowserOwner
                     surface.ConfigureHostedSession(definition, work.Resources);
                     surface.HostedCaptureChanged += status => _ = PublishHostedCaptureAsync(request.Session, status);
                     entry = new Entry(authority, surface)
-                    { Hosted = request.Session, Retained = definition.Browser.Background == BrowserBackgroundMode.KeepAlive, LastUse = Environment.TickCount64 };
+                    { Hosted = request.Session, Retained = videoParent is null && definition.Browser.Background == BrowserBackgroundMode.KeepAlive, LastUse = Environment.TickCount64 };
                     entries.Add(key, entry); CreatedCount++;
                     openedEntry = entry;
                     unregisteredSurface = null;
@@ -131,7 +140,8 @@ internal sealed partial class BrowserOwner
                 surface.PlacementHost = background;
                 background.UpdateLayout();
                 hostedMessagePumps[request.Session.Id] = ForwardHostedMessagesAsync(request.Session, surface);
-                await surface.StartHostedSessionAsync(startup.Token);
+                if (videoParent is not null) await surface.StartBackendVideoAsync(videoParent, request.Session, startup.Token);
+                else await surface.StartHostedSessionAsync(startup.Token);
                 if (!startup.IsCurrent || !ReferenceEquals(entries.GetValueOrDefault(key), entry)) throw new InvalidOperationException("Hosted session retired while starting.");
                 ActivityChanged?.Invoke();
                 Refresh();
@@ -159,15 +169,21 @@ internal sealed partial class BrowserOwner
                 if (request.Command.Operation == WebSessionOperation.PostMessage) await entry.Surface.PostHostedMessageAsync(request.Command.MessageBase64!);
                 else if (request.Command.Operation == WebSessionOperation.AuthorizeResource) entry.Surface.AuthorizeHostedResource(request.Command.ResourceUrl!);
                 else if (request.Command.Operation == WebSessionOperation.Navigate) await entry.Surface.NavigateHostedAsync(request.Command.Destination!, lifetime.Token);
-                else if(request.Command.Operation==WebSessionOperation.RequestMicrophone)
-                    microphone=RequestMicrophone is { } requestMicrophone
-                        ? await requestMicrophone(entry.Surface,decisionCancellation!.Token)
-                        : new(WebSessionMicrophoneState.Unavailable);
+                else if (request.Command.Operation is WebSessionOperation.RequestMicrophone or WebSessionOperation.RequestPermission)
+                {
+                    var legacy = request.Command.Operation == WebSessionOperation.RequestMicrophone;
+                    var kind = legacy ? WebSessionPermissionKind.Microphone : request.Command.PermissionKind;
+                    var decision = kind is { } requested && Enum.IsDefined(requested) && RequestPermission is { } prompt
+                        ? await prompt(entry.Surface, requested, decisionCancellation!.Token)
+                        : new WebSessionPermissionResult(WebSessionPermissionState.Unavailable);
+                    if (legacy) microphone = new((WebSessionMicrophoneState)decision.State, decision.Remembered);
+                    else permission = decision;
+                }
                 else if (request.Command.Operation is WebSessionOperation.PrepareWebCapture or WebSessionOperation.PrepareWebCaptureConstrained)
                     capture = ChooseWebCaptureSource is { } chooser
                         ? await entry.Surface.PrepareHostedCaptureAsync(request.Command.CaptureTicket!, request.Command.CaptureOptions!,
-                            token => chooser(entry.Surface, request.Command.CaptureOptions!, request.Command.CaptureQualities, token), decisionCancellation!.Token,
-                            request.Command.CaptureQualities)
+                            token => chooser(entry.Surface, request.Command.CaptureOptions!, request.Command.CaptureQualities, request.Command.CaptureFixedContentPreference, token), decisionCancellation!.Token,
+                            request.Command.CaptureQualities,request.Command.CaptureFixedContentPreference)
                         : new(WebCaptureStreamPhase.Unavailable) { Ticket = request.Command.CaptureTicket, Reason = "chooser_unavailable" };
                 else if (request.Command.Operation == WebSessionOperation.StopWebCapture)
                     capture = await entry.Surface.StopHostedCaptureAsync(request.Command.CaptureTicket!);
@@ -178,6 +194,7 @@ internal sealed partial class BrowserOwner
         catch(OperationCanceledException) when(decisionCancellation is not null)
         {
             if (request.Command.Operation == WebSessionOperation.RequestMicrophone) microphone=new(WebSessionMicrophoneState.Cancelled);
+            else if(request.Command.Operation==WebSessionOperation.RequestPermission) permission=new(WebSessionPermissionState.Cancelled);
             else capture=new(WebCaptureStreamPhase.Cancelled) { Ticket=request.Command.CaptureTicket };
         }
         catch (Exception error) when (error is not OutOfMemoryException)
@@ -197,7 +214,7 @@ internal sealed partial class BrowserOwner
                 catch (Exception error) when (error is not OutOfMemoryException)
                 { errorCode = "session_failed"; Diagnostics.FrontendFailureLog.Current.Write("web-session", null, "startup_cleanup_failed"); }
             if (!retired && request.Command.Operation != WebSessionOperation.Close)
-                try { await session.CompleteWebSessionAsync(new(request.RequestId, errorCode,microphone,capture), lifetime.Token); }
+                try { await session.CompleteWebSessionAsync(new(request.RequestId, errorCode,microphone,capture,permission), lifetime.Token); }
                 catch (Exception error) when (error is not OutOfMemoryException)
                 { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("web-session-complete", null, "transport_unavailable"); }
             if(decisionCancellation is not null)hostedDecisionRequests.Remove(request.RequestId);

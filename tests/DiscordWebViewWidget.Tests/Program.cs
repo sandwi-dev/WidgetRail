@@ -22,7 +22,7 @@ static async Task Act(DiscordWebViewWidget widget,string action,string? text=nul
         {CommittedText=text,FocusedElementId=declared?.Id??"discord.account.open"});
 }
 
-var fake=new FakeSession();var pins=new ConcurrentQueue<string>();
+var fake=new FakeSession();fake.State=fake.State with {NotificationPermission="default"};var pins=new ConcurrentQueue<string>();
 var widget=WidgetTestHost.Attach(new DiscordWebViewWidget(fake,refreshInterval:TimeSpan.FromHours(1)),
     new WidgetTestHostServicesBuilder().WithHandler(WidgetPinningCapabilities.Open,(request,token)=>{token.ThrowIfCancellationRequested();pins.Enqueue(request.LayoutId);return ValueTask.FromResult(new WidgetPinReceipt(true));}).Build());
 await WidgetTestHost.InitializeAsync(widget);await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive);
@@ -31,6 +31,12 @@ try
     await Wait(()=>Nodes(Snapshot(widget).Root).Any(node=>node.Id=="discord.main.mute"));
     Check(fake.Commands.IsEmpty&&fake.MicrophoneRequests==0,"Startup reads state without joining, sharing, or prompting for microphone");
     Check(WidgetTestHost.ValidateWinUiPresentation(Snapshot(widget)).Count==0,"Unified call declarations satisfy protocol and WinUI contracts");
+    var enable = Nodes(Snapshot(widget).Root).Single(node => node.Id == "discord.notifications.enable").ActionId!;
+    Check(fake.NotificationRequests == 0, "Rendering the call page never prompts for notification permission");
+    await Act(widget, enable);
+    await Wait(() => !Nodes(Snapshot(widget).Root).Any(node => node.Id == "discord.notifications.enable"));
+    await Act(widget, enable);
+    Check(fake.NotificationRequests == 1 && fake.MicrophoneRequests == 0, "Explicit notification setup disappears after grant and rejects a stale click");
     await Act(widget,"server-picker");
     var all=Snapshot(widget);
     Check(Nodes(all.Root).Single(node=>node.Id=="discord.channels").IndexedCollection!.Count==1000,"All 1,000 loaded channels remain available without eager row rendering");
@@ -93,7 +99,7 @@ try
     var pin=WidgetTestHost.CreatePinnedLayoutHost(widget,"pin",100);
     Check(await pin.SelectAsync("discord.stream"),"Host selection activates the declared stream layout");
     await Wait(()=>fake.Receivers.Count==1&&Nodes(Snapshot(widget).PinnedLayouts.Single(p=>p.Id=="discord.stream").Root!).Any(node=>node.WebBrowser is not null));
-    Check(fake.Commands.Any(command=>command.Method=="answer"),"Selected incoming stream completes offer/answer through provider and packaged receiver seams");
+    Check(fake.Commands.Any(command=>command.Method=="watch" && command.Args.GetProperty("videoView").GetString()==fake.Receivers.Single().Reference.Id),"Selected stream attaches to the exact direct video view");
     var receiver=fake.Receivers.Single();
     await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Background);
     Check(!receiver.Disposed&&!fake.Commands.Any(command=>command.Method is "leave" or "stopShare"),"Overlay background preserves call and selected incoming receiver");
@@ -138,6 +144,11 @@ static async Task TransportChecks(Action<bool,string> check)
     {
         if(command.Operation==WebSessionOperation.OpenBackend)
         {opens++;check(command.Definition?.PageAdapter?.Mode==WebSessionPageAdapterMode.SessionBackend,"Production transport uses the explicit background backend contract");return new(){Session=new(new string('b',32))};}
+        if(command.Operation==WebSessionOperation.OpenBackendVideo)
+        {
+            check(command.Definition?.Source is {Kind:WebSessionSourceKind.BackendVideo} video && video.Location==new string('b',32),"Direct playback opens only for its own backend");
+            return new(){Session=new(new string('c',32))};
+        }
         if(command.Operation==WebSessionOperation.Close){close++;return new();}
         if(command.Operation==WebSessionOperation.ReadMessages){await Task.Delay(2,token);return new(){MessagesBase64=messages.TryDequeue(out var message)?[message]:[]};}
         if(command.Operation==WebSessionOperation.PostMessage)
@@ -158,7 +169,9 @@ static async Task TransportChecks(Action<bool,string> check)
     }).Build());
     await using(var client=new DiscordWebSessionClient(probe.Sessions))
     {
-        var first=await client.ReadAsync(default);var second=await client.ReadAsync(default);
+        var first=await client.ReadAsync(default);
+        await using(var receiver=await client.OpenReceiverAsync(default)){receiver.Bind(new string('a',32));}
+        var second=await client.ReadAsync(default);
         check(opens==1&&catalogs==1&&ReferenceEquals(first.Channels,second.Channels),"Production reads reuse an unchanged account-bound channel catalog");
         check(second.Participants.Length==2&&second.Streams.Length==1,"Role-tagged status items reconstruct every participant and stream");
         account="2";version=Guid.NewGuid().ToString("N");wrongCatalog=true;
@@ -170,7 +183,7 @@ static async Task TransportChecks(Action<bool,string> check)
         await Task.WhenAll(client.ReadAsync(default).AsTask(),client.ReadAsync(default).AsTask());
         check(opens==1&&catalogs==3,"Concurrent status reads retain one backend and do not duplicate catalog fetches");
     }
-    check(close==1,"Production transport closes its host session exactly once");
+    check(close==2,"Production transport closes each owned source and playback session exactly once");
     await WidgetTestHost.DestroyAsync(probe);
 }
 
@@ -202,6 +215,14 @@ sealed class FakeSession:IDiscordSession
         [new("guild:1:10:30","30","Other")],false,false,null,"closed");
     public WebSessionReference Reference{get;set;}=new(new string('a',32));
     public ValueTask<DiscordState> ReadAsync(CancellationToken token){token.ThrowIfCancellationRequested();Interlocked.Increment(ref Reads);return ValueTask.FromResult(State);}
+    internal int NotificationRequests;
+    public ValueTask<WebSessionPermissionResult> RequestNotificationsAsync(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref NotificationRequests);
+        State = State with { NotificationPermission = "granted" };
+        return ValueTask.FromResult(new WebSessionPermissionResult(WebSessionPermissionState.Granted));
+    }
     public async ValueTask<WebSessionMicrophoneResult> RequestMicrophoneAsync(CancellationToken token)
     {Interlocked.Increment(ref MicrophoneRequests);if(MicrophoneGate is { } gate)await gate.Task.WaitAsync(token);return new(Microphone);}
     public async ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token)
@@ -219,7 +240,7 @@ sealed class FakeSession:IDiscordSession
             if(DiagnosticsGate is { } diagnosticsGate)await diagnosticsGate.Task;
             return Diagnostics;
         }
-        return method is "watch" or "watchActivity"?JsonSerializer.SerializeToElement(new{lease=payload.GetProperty("lease").GetString(),offer=new{type="offer",sdp="synthetic"}}):
+        return method is "watch" or "watchActivity"?JsonSerializer.SerializeToElement(new{lease=payload.GetProperty("lease").GetString(),videoView=payload.GetProperty("videoView").GetString()}):
             method=="share"?JsonSerializer.SerializeToElement(new{requested=true}):JsonSerializer.SerializeToElement(new{});
     }
     public async ValueTask<IDiscordReceiver> OpenReceiverAsync(CancellationToken token)
@@ -240,7 +261,6 @@ sealed class FakeReceiver:IDiscordReceiver
     public Task<DiscordReceiverFailure> Failure=>FailureSource.Task;
     internal bool Disposed;
     public WebSessionReference Reference{get;}=new(Guid.NewGuid().ToString("N"));
-    public ValueTask<JsonElement> AcceptAsync(JsonElement offer,CancellationToken token)
-    {token.ThrowIfCancellationRequested();Lease=offer.GetProperty("lease").GetString();return ValueTask.FromResult(JsonSerializer.SerializeToElement(new{lease=Lease,answer=new{type="answer",sdp="synthetic"}}));}
+    public void Bind(string lease)=>Lease=lease;
     public ValueTask DisposeAsync(){Disposed=true;if(!KeepFailurePendingOnDispose)FailureSource.TrySetCanceled();return ValueTask.CompletedTask;}
 }

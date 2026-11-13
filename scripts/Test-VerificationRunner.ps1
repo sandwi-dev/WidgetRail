@@ -81,7 +81,6 @@ $expectedDefaultStepIds = @(
     'discord-native-media-tests',
     'discord-capture-fixture-tests',
     'discord-session-backend-tests',
-    'discord-receiver-tests',
     'discord-minified-backend-tests',
     'youtube-widget-tests',
     'widget-runtime-tests',

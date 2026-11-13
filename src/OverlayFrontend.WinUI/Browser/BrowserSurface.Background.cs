@@ -9,7 +9,7 @@ internal sealed partial class BrowserSurface
             Microsoft.Web.WebView2.Core.CoreWebView2ProcessFailedKind.RenderProcessExited;
     private bool sessionStopped;
     private string? pendingRestartUrl;
-    internal bool RequestsBackgroundSession => !IsProviderContent && document.Options.Background == BrowserBackgroundMode.KeepAlive;
+    internal bool RequestsBackgroundSession => !IsBackendVideo && !IsProviderContent && document.Options.Background == BrowserBackgroundMode.KeepAlive;
     internal bool KeepsBackgroundSession => RequestsBackgroundSession && !sessionStopped && !faulted;
     internal bool SessionStopped => sessionStopped;
     internal bool BackgroundFaulted => RequestsBackgroundSession && faulted && !sessionStopped;

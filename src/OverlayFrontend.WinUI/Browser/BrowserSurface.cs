@@ -162,7 +162,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         // pass. Interaction must restore Normal on that synchronous path too.
         if (acceptsInput) passivePinnedPresentation = false;
         presentationInputRequested = acceptsInput;
-        visible = isVisible && !retired; input = visible && acceptsInput && !faulted && !profileChanging && AttachedPopup is null;
+        visible = isVisible && !retired; input = !IsBackendVideo && visible && acceptsInput && !faulted && !profileChanging && AttachedPopup is null;
         if(!visible&&pageAdapter?.AllowsBackgroundRequests!=true)pageAdapter?.CancelRequests();
         AttachedPopup?.SetPresentation(isVisible, acceptsInput, passivePinnedPresentation);
         if (!visible) CancelSiteDecisions();
@@ -180,8 +180,8 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
                 // Hosted sessions keep a native backing in the offscreen session
                 // host. Collapsing it would defer new media loads indefinitely.
                 // Input admission and Low-memory policy still follow presentation.
-                web.Visibility = (visible || IsHostedSession) && AttachedPopup is null ? Visibility.Visible : Visibility.Collapsed;
-                web.IsHitTestVisible = input || visible && nativeDialogPointerAccess;
+                web.Visibility = (visible || IsHostedSession) && (!IsBackendVideo || videoDocument?.IsCurrent == true) && AttachedPopup is null ? Visibility.Visible : Visibility.Collapsed;
+                web.IsHitTestVisible = !IsBackendVideo && (input || visible && nativeDialogPointerAccess);
                 if (visible && IsLoaded && initializing is null) initializing = InitializeAsync();
                 if (visible) NavigatePending();
             }
@@ -352,6 +352,12 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             ControllerInitializationMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(controllerStarted).TotalMilliseconds;
             if (retired) return;
             core = web.CoreWebView2;
+            if (IsBackendVideo)
+            {
+                ConfigureBackendVideoCore(core);
+                SetPresentation(visible, false);
+                return;
+            }
             if (ExtensionsEligible && !isPopup && RegisterExtensionProfile is { } register)
             {
                 try { await register(this, lifetime.Token); }
@@ -411,7 +417,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
             InitializeNotifications(permissionOwner);
             core.ScreenCaptureStarting += (_, args) => ScreenCaptureStarting(permissionOwner, args);
             core.DownloadStarting += (_, args) => DownloadStarting(permissionOwner, args);
-            core.NewWindowRequested += (_, args) => NewWindowRequested(args);
+            core.NewWindowRequested += (_, args) => { if (!TryBindBackendVideo(args)) NewWindowRequested(args); };
             core.WindowCloseRequested += (_, _) => CloseRequested?.Invoke();
             core.LaunchingExternalUriScheme += (_, args) => args.Cancel = true;
             core.BasicAuthenticationRequested += (_, args) => args.Cancel = true;
@@ -457,7 +463,7 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     }
     private void NavigatePending()
     {
-        if (isPopup || !visible || retired || faulted || profileChanging || sessionStopped || core is null || appliedNavigation >= document.NavigationId) return;
+        if (IsBackendVideo || isPopup || !visible || retired || faulted || profileChanging || sessionStopped || core is null || appliedNavigation >= document.NavigationId) return;
         appliedNavigation = document.NavigationId; NavigationCount++;
         core.Navigate(document.Url);
     }
@@ -534,7 +540,6 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
     {
         documentLeasesStopping = true;
         RetireDocumentLeases();
-        backendMicrophone.Retire();
         Exception? captureFailure = null;
         try { await DisposeHostedCaptureAsync(); }
         catch (Exception error) when (error is not OutOfMemoryException) { captureFailure = error; }
@@ -552,7 +557,8 @@ internal sealed partial class BrowserSurface : Grid, IAsyncDisposable
         if (retired) return;
         try
         {
-            if(backendMicrophoneOperations.Count!=0)await Task.WhenAll(backendMicrophoneOperations.ToArray());
+            if(backendPermissionOperations.Count!=0)await Task.WhenAll(backendPermissionOperations.ToArray());
+            await ReleaseBackendVideoAsync();
             pageAdapter?.Dispose();pageAdapter=null;
             hostedMessages.Writer.TryComplete(); SetPresentation(false, false); retired = true; DisposeMemoryPolicy(); ResetPointerVisual(); lifetime.Cancel();
             InvalidateNotifications?.Invoke(this); ReceiveNotification = null; InvalidateNotifications = null;

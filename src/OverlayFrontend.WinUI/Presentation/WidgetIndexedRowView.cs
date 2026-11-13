@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Collections;
 using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WidgetSdk;
+using WidgetRail.OverlayFrontend.WinUI.Diagnostics;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
@@ -45,6 +46,13 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
         };
     }
     private void ApplyRow()
+    {
+        var timing = PresentationPipelineTrace.Log.Begin();
+        var outcome = PipelineOutcome.Failed;
+        try { ApplyRowCore(); outcome = PipelineOutcome.Completed; }
+        finally { PresentationPipelineTrace.Log.End(timing.Id, PipelineStage.IndexedRowApply, timing.Started, 1, outcome); }
+    }
+    private void ApplyRowCore()
     {
         if (disposed) return;
         if (Row is not WidgetIndexedRow row) { Retire(); return; }
@@ -112,6 +120,13 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
             presenter!.SetIndexedRootInteraction(containerStyle.Interaction.Focused, containerStyle.Interaction.Pressed);
     }
     private void Retire()
+    {
+        var timing = PresentationPipelineTrace.Log.Begin();
+        var outcome = PipelineOutcome.Failed;
+        try { RetireCore(); outcome = PipelineOutcome.Completed; }
+        finally { PresentationPipelineTrace.Log.End(timing.Id, PipelineStage.IndexedRowRetire, timing.Started, 1, outcome); }
+    }
+    private void RetireCore()
     {
         appliedRow = null; appliedPresentation = null; appliedStyles = null;
         if (styledLease is not null) styledLease.RenderStylesChanged -= StylesChanged;

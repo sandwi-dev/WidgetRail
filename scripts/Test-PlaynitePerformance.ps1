@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)][string]$CandidateRoot,
     [Parameter(Mandatory)][string]$FrontendExecutable,
+    [string]$BridgeExecutable,
     [Parameter(Mandatory)][string]$Workspace,
     [Parameter(Mandatory)][string]$RunName,
     [ValidateRange(1,20000)][int]$GameCount=2000,
@@ -14,6 +15,9 @@ param(
     [ValidateRange(1,4)][int]$CacheLength,
     [ValidateRange(0,2000)][int]$ProviderDelayMilliseconds=15,
     [switch]$CaptureComparison,
+    [switch]$LowPriorityBaseline,
+    [switch]$NativeGridBaseline,
+    [switch]$DispatcherProbe,
     [switch]$Prepare
 )
 $ErrorActionPreference='Stop'
@@ -23,7 +27,7 @@ $candidate=(Resolve-Path -LiteralPath $CandidateRoot).Path
 $frontend=(Resolve-Path -LiteralPath $FrontendExecutable).Path
 $workspaceRoot=[IO.Path]::GetFullPath($Workspace)
 $cli=Join-Path $candidate 'supplemental/tools/wrail/wrail.dll'
-$bridge=Join-Path $candidate 'build/runtime/Bridge/WidgetBridge.exe'
+$bridge=if($BridgeExecutable){(Resolve-Path -LiteralPath $BridgeExecutable).Path}else{Join-Path $candidate 'build/runtime/Bridge/WidgetBridge.exe'}
 $catalog=Join-Path $workspaceRoot 'catalog'
 $fixture=Join-Path $workspaceRoot 'fixture'
 $output=Join-Path $workspaceRoot $RunName
@@ -81,11 +85,14 @@ $recording=$null
 $measurements=[Collections.Generic.List[object]]::new()
 try {
     $env:WRAIL_PLAYNITE_PROCESS_FIXTURE_ROOT=$fixture
-    $bridgeProcess=Start-Process $bridge -ArgumentList @('--host-pipe',$pipe,'--catalog',"`"$candidate/build/widget-catalog.json`"",
+    if(!$NativeGridBaseline){$bridgeProcess=Start-Process $bridge -ArgumentList @('--host-pipe',$pipe,'--catalog',"`"$candidate/build/widget-catalog.json`"",
         '--installed-catalog-root',"`"$catalog`"",'--settings-root',"`"$workspaceRoot/profile`"",'--accept-timeout-ms','60000',
         '--startup-widget','widgetrail.samples.playnite-library') -WindowStyle Hidden -PassThru `
-        -RedirectStandardOutput "$output/bridge.log" -RedirectStandardError "$output/bridge-error.log"
-    $frontendArguments=@("--indexed-validation-pipe=$pipe","--playnite-performance-output=`"$output`"")
+        -RedirectStandardOutput "$output/bridge.log" -RedirectStandardError "$output/bridge-error.log"}
+    $frontendArguments=@("--indexed-validation-pipe=$pipe","--playnite-performance-output=`"$output`"",'--validation-platform-activation')
+    if($LowPriorityBaseline){$frontendArguments+='--playnite-low-priority-baseline'}
+    if($NativeGridBaseline){$frontendArguments+='--playnite-native-grid-baseline'}
+    if($DispatcherProbe){$frontendArguments+='--playnite-dispatcher-probe'}
     if($HeapSnapshot){$frontendArguments+='--playnite-performance-heap-pause'}
     if($NavigationChecks){$frontendArguments+='--playnite-performance-navigation'}
     if($NavigationOnly){$frontendArguments+='--playnite-navigation-only'}
@@ -96,18 +103,27 @@ try {
     $frontendProcess=Start-Process $frontend -ArgumentList $frontendArguments `
         -WindowStyle Hidden -PassThru
     $env:WRAIL_PLAYNITE_PROCESS_FIXTURE_ROOT=$oldFixture
-    @{SourceCommit=(& git -C $repository rev-parse HEAD);GameCount=$GameCount;Artwork=!$WithoutArtwork;CacheLength=$CacheLength;ProviderDelayMilliseconds=$ProviderDelayMilliseconds;
-      Frontend=$frontend;Bridge=$bridge;FrontendPid=$frontendProcess.Id;BridgePid=$bridgeProcess.Id;
+    $catalogStatePath=Join-Path $catalog 'catalog-state.json'
+    $selection=(Get-Content -LiteralPath $catalogStatePath -Raw|ConvertFrom-Json).widgets|
+        Where-Object id -eq 'widgetrail.samples.playnite-library'
+    $selectedPackage=Join-Path $catalog "packages/widgetrail.samples.playnite-library/$($selection.activeVersion)"
+    $selectedFiles=@(Get-ChildItem -LiteralPath $selectedPackage -File -Recurse|Sort-Object FullName|ForEach-Object {
+        @{Path=[IO.Path]::GetRelativePath($selectedPackage,$_.FullName);Sha256=(Get-FileHash -LiteralPath $_.FullName).Hash}
+    })
+    @{SourceCommit=(& git -C $repository rev-parse HEAD);GameCount=$GameCount;Artwork=!$WithoutArtwork;CacheLength=$CacheLength;ProviderDelayMilliseconds=$ProviderDelayMilliseconds;LowPriorityBaseline=[bool]$LowPriorityBaseline;
+      NativeGridBaseline=[bool]$NativeGridBaseline;DispatcherProbe=[bool]$DispatcherProbe;Frontend=$frontend;Bridge=$bridge;FrontendPid=$frontendProcess.Id;BridgePid=$(if($bridgeProcess){$bridgeProcess.Id}else{$null});
       FrontendAssemblySha256=(Get-FileHash (Join-Path (Split-Path $frontend) 'OverlayFrontend.WinUI.dll')).Hash;
       ContractsSha256=(Get-FileHash (Join-Path (Split-Path $frontend) 'WidgetBridge.Contracts.dll')).Hash;
-      FixturePackageSha256=(Get-FileHash "$workspaceRoot/playnite-fixture.wrwidget").Hash;
+      BridgeAssemblySha256=(Get-FileHash (Join-Path (Split-Path $bridge) 'WidgetBridge.dll')).Hash;
+      CatalogStateSha256=(Get-FileHash -LiteralPath $catalogStatePath).Hash;
+      SelectedFixtureVersion=$selection.activeVersion;SelectedFixtureFiles=$selectedFiles;
       ArtworkBytes=(Get-ChildItem "$fixture/artwork" -File|Measure-Object Length -Sum).Sum}|ConvertTo-Json|Set-Content "$output/provenance.json"
     $timer=[Diagnostics.Stopwatch]::StartNew()
     while(!(Test-Path "$output/result.json") -and $timer.Elapsed.TotalSeconds -lt 150){
         if($frontendProcess.HasExited){throw 'Native performance fixture exited before reporting.'}
         $processes=Get-CimInstance Win32_Process
         $owned=[Collections.Generic.HashSet[int]]::new()
-        [void]$owned.Add($frontendProcess.Id);[void]$owned.Add($bridgeProcess.Id)
+        [void]$owned.Add($frontendProcess.Id);if($bridgeProcess){[void]$owned.Add($bridgeProcess.Id)}
         foreach($pass in 1..3){foreach($process in $processes){if($owned.Contains([int]$process.ParentProcessId)){[void]$owned.Add([int]$process.ProcessId)}}}
         $phase=if(Test-Path "$output/progress.json"){
             try{(Get-Content "$output/progress.json" -Raw|ConvertFrom-Json).phase}catch{'transition'}

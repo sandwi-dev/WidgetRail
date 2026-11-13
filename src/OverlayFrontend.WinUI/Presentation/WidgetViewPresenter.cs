@@ -518,7 +518,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                         if (!applying && automaticFocusEnabled && presentationActive && presentationInputEnabled)
                             RememberCollectionFocus(declaration.Identity, item);
                     }, PresentationChanged = QueueSurfaceUpdate, ScrollOwnerRetiring = () => RetireCollectionScrolling(declaration.Identity.Id),
-                    ContextChanged = () => { ValidateTransientControl(); NotifyControllerGuideChanged(); } };
+                    ContextChanged = IndexedContextChanged };
                 ConfigureCollectionTrace((WidgetIndexedCollectionView)element);
                 break;
             case ViewNodeKind.BackgroundSurface:

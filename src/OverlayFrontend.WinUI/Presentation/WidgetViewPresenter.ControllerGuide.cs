@@ -9,6 +9,24 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     internal event Action? ControllerGuideChanged;
+    private bool indexedGuideQueued;
+
+    private void IndexedContextChanged()
+    {
+        // Command validity and popup retirement remain synchronous. Readiness is
+        // informational: each materialized row must not rescan every visible row
+        // and refresh every context indicator in the middle of a publication batch.
+        ValidateTransientControl();
+        if (HasTransientControl) ClearFocusPreview();
+        if (disposed || indexedGuideQueued) return;
+        indexedGuideQueued = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            indexedGuideQueued = false;
+            // Read current state, never a captured row, lease or input scope.
+            if (!disposed && presentationActive) NotifyControllerGuideChanged();
+        });
+    }
+
     internal object ControllerGuideContext => previewEntered && previewSurface?.Fragment is { } preview ? ("preview", preview.ControllerGuideContext) : (activeScope, HasTransientControl, adjustingSlider?.Identity.Id,
         FocusedBrowser?.IsInteracting, FocusedBrowser?.IsBrowsing, FocusedBrowser?.Surface?.HasDialog, FocusedBrowser?.PresentedInPin, FocusedBrowser?.Surface?.RequiresActivation, FocusedBrowser?.Surface?.IsProviderContent, FocusedBrowser?.Surface?.SessionStopped, FocusedBrowser?.Surface?.NeedsRecovery);
     internal bool IsGuidePresentationReady(bool requireFocus)
@@ -36,7 +54,15 @@ internal sealed partial class WidgetViewPresenter
         return true;
     }
     private void NotifyControllerGuideChanged()
-    { if (HasTransientControl) ClearFocusPreview(); RefreshContextIndicators(); ControllerGuideChanged?.Invoke(); previewOwner?.ControllerGuideChanged?.Invoke(); }
+    {
+        // Native focus/popup callbacks may already be queued when retirement
+        // detaches their subscriptions. A retired presenter owns no guide state.
+        if (disposed) return;
+        if (HasTransientControl) ClearFocusPreview();
+        RefreshContextIndicators();
+        ControllerGuideChanged?.Invoke();
+        if (previewOwner is { disposed: false } owner) owner.ControllerGuideChanged?.Invoke();
+    }
 
     internal IReadOnlyList<ControllerGuideHint> CaptureControllerGuide()
     {

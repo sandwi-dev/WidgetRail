@@ -15,6 +15,11 @@ internal static class WebSessionMicrophoneTests
                 if(command.Operation==WebSessionOperation.ReadMessages)await Task.Delay(100,token);
                 return new();
             })
+            .WithHandler(WidgetWebSessionPermissionCapabilities.Request, (command, _) =>
+            {
+                observed=command;
+                return ValueTask.FromResult(new WebSessionReply {Permission=new(WebSessionPermissionState.Granted,true)});
+            })
             .WithHandler(WidgetWebSessionMicrophoneCapabilities.Request,async(command,token)=>
             {
                 observed=command;
@@ -24,6 +29,10 @@ internal static class WebSessionMicrophoneTests
             }).Build());
         await using(var session=await widget.Open())
         {
+            var notification=await session.RequestPermissionAsync(WebSessionPermissionKind.Notifications);
+            if (!notification.Remembered || notification.State!=WebSessionPermissionState.Granted ||
+                observed?.Operation!=WebSessionOperation.RequestPermission || observed.PermissionKind!=WebSessionPermissionKind.Notifications ||
+                observed.Session!=session.Reference) throw new Exception("Typed notification request lost authority or receipt");
             var result=await session.RequestMicrophoneAsync();
             if(result.State!=WebSessionMicrophoneState.Granted || observed?.Operation!=WebSessionOperation.RequestMicrophone || observed.Session!=session.Reference || observed.Destination is not null)
                 throw new Exception("SDK microphone request lost its owned session or supplied an origin");

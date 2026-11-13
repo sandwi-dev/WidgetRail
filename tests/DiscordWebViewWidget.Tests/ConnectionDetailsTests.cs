@@ -149,11 +149,13 @@ internal static class ConnectionDetailsTests
         internal JsonElement Measurement=JsonSerializer.SerializeToElement(new{phase="connected",pingMilliseconds=42,averagePingMilliseconds=45,quality="fine"});
         public WebSessionReference? Reference=>Core.Reference;
         public ValueTask<DiscordState> ReadAsync(CancellationToken token)=>Core.ReadAsync(token);
+        public ValueTask<WebSessionPermissionResult> RequestNotificationsAsync(CancellationToken token)=>Core.RequestNotificationsAsync(token);
         public ValueTask<WebSessionMicrophoneResult> RequestMicrophoneAsync(CancellationToken token)=>Core.RequestMicrophoneAsync(token);
         public async ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token)
         {
             if(method=="connectionDiagnostics")
             {Interlocked.Increment(ref Reads);var result=Measurement;if(Gate is {} gate)await gate.Task;return result;}
+            if(method=="videoPlayback")return await Receivers.Last().ReadDiagnosticsAsync(JsonSerializer.SerializeToElement(args).GetProperty("lease").GetString()!,token);
             if(method=="incomingDiagnostics")return JsonSerializer.SerializeToElement(new{available=true,width=1920,height=1080,framesPerSecond=30,framesReceived=100,framesDecoded=100,bytesReceived=1000});
             return await Core.InvokeAsync(method,args,token);
         }
@@ -167,8 +169,7 @@ internal static class ConnectionDetailsTests
         private readonly TaskCompletionSource<DiscordReceiverFailure> failure=new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<DiscordReceiverFailure> Failure=>failure.Task;
         public WebSessionReference Reference{get;}=new(Guid.NewGuid().ToString("N"));
-        public ValueTask<JsonElement> AcceptAsync(JsonElement offer,CancellationToken token)
-        {Lease=offer.GetProperty("lease").GetString();return ValueTask.FromResult(JsonSerializer.SerializeToElement(new{lease=Lease,answer=new{type="answer",sdp="synthetic"}}));}
+        public void Bind(string lease)=>Lease=lease;
         public async ValueTask<JsonElement> ReadDiagnosticsAsync(string lease,CancellationToken token)
         {Interlocked.Increment(ref Reads);if(Gate is {} gate)await gate.Task;return JsonSerializer.SerializeToElement(new{available=true,lease,state="connected",width=1920,height=1080,paused=false,totalFrames=100,droppedFrames=0});}
         public ValueTask DisposeAsync(){Disposed=true;failure.TrySetCanceled();return ValueTask.CompletedTask;}

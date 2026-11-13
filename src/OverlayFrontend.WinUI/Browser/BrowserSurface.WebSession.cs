@@ -26,6 +26,7 @@ internal sealed partial class BrowserSurface
     {
         if (initializing is not null || core is not null) throw new InvalidOperationException("Session must be configured before creating its browser.");
         hostedDefinition = definition;
+        if (IsBackendVideo) progressRow.Height = new(0);
         if (IsHostedPackage) profile = "pkg-" + profile;
         hostedResources = resources;
         UpdateChrome();
@@ -106,7 +107,6 @@ internal sealed partial class BrowserSurface
     private async Task ConfigureHostedCoreAsync(CoreWebView2Environment env)
     {
         if (hostedDefinition is null) return;
-        InitializeBackendMicrophone();
         await ConfigureNativeCaptureAsync();
         core!.NavigationCompleted += (sender, args) =>
         {

@@ -22,7 +22,8 @@ public sealed class WidgetWebSessionService
     {
         if (definition?.IsWellFormed() != true) throw new ArgumentException("Invalid web session definition.", nameof(definition));
         var reply = await client.InvokeAsync(WidgetWebSessionCapabilities.Command,
-            new(definition.PageAdapter is null ? WebSessionOperation.Open :
+            new(definition.Source.Kind == WebSessionSourceKind.BackendVideo ? WebSessionOperation.OpenBackendVideo :
+                definition.PageAdapter is null ? WebSessionOperation.Open :
                 definition.PageAdapter.Mode == WebSessionPageAdapterMode.SessionBackend ? WebSessionOperation.OpenBackend : WebSessionOperation.OpenAdapted)
                 { Definition = definition }, cancellationToken).ConfigureAwait(false);
         if (reply?.Session?.IsWellFormed() != true) throw new WidgetCapabilityException("malformed_response", "Invalid web session reference.");

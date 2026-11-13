@@ -132,6 +132,17 @@ internal static class WebCaptureStreamTests
         await Reject(()=>registry.PrepareWebCaptureAsync(authority,identity,request,default,owner).AsTask(),"capture_already_active");
         registry.Complete(new(cleanup.RequestId,Capture:new(WebCaptureStreamPhase.Stopped){Ticket=work.Command.CaptureTicket}));
 
+        var fixedRequest=request with{FixedContentPreference=true};
+        pending=registry.PrepareWebCaptureAsync(authority,identity,fixedRequest,default,owner).AsTask();
+        work=(await registry.TakeAsync(default)).Work.Single();
+        Check(work.Command.CaptureFixedContentPreference,"Fixed content policy did not reach the native host command");
+        registry.Complete(new(work.RequestId,Capture:Prepared(work.Command.CaptureTicket!) with
+            {Quality=new(){ContentPreference=WebCaptureContentPreference.Motion}}));
+        await Reject(()=>pending,"invalid_host_result");
+        cleanup=(await registry.TakeAsync(default)).Work.Single();
+        Check(cleanup.CaptureRevoked,"A host response violating fixed content did not retire its reserved source");
+        registry.Complete(new(cleanup.RequestId,Capture:new(WebCaptureStreamPhase.Stopped){Ticket=work.Command.CaptureTicket}));
+
         using var cancellation=new CancellationTokenSource();
         pending=registry.PrepareWebCaptureAsync(authority,identity,request,cancellation.Token,owner).AsTask();
         work=(await registry.TakeAsync(default)).Work.Single();

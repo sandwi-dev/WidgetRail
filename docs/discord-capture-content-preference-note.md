@@ -1,6 +1,7 @@
 # Capture content preference and source-qualified FPS evidence
 
-Implementation note for the active Discord plan, 2026-10-27. Native interaction
+Historical implementation note from 2026-10-27. The current Discord widget fixes
+its preference to clarity and offers up to 1080p60. Native interaction
 and high-FPS delivery are not yet qualified by the changes in this note.
 
 ## Ownership and compatibility

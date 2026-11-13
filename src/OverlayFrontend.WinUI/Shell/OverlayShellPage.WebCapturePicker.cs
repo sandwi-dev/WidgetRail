@@ -8,7 +8,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     private async Task<WebCaptureSourceSelection?> ChooseWebCaptureSourceAsync(
-        BrowserSurface browser, WebCaptureStreamOptions options, IReadOnlyList<WebCaptureStreamOptions>? permitted, CancellationToken token)
+        BrowserSurface browser, WebCaptureStreamOptions options, IReadOnlyList<WebCaptureStreamOptions>? permitted, bool fixedContentPreference, CancellationToken token)
     {
         if (!options.IsWellFormed() || retired || !visible || switching || intentCancellation is not null || HostChoiceActive ||
             LocalInstallActive || SystemFilePickerOpen || owner is null || !browser.SupportsNativeCapture)
@@ -57,8 +57,9 @@ internal sealed partial class OverlayShellPage
                     if (candidates.Count == 0) return;
                     selectedQuality = dialog.AddSelectionOption("Quality", "Host.Capture.Quality",
                         qualities.Select(quality => new HostChoiceSelection(quality.Id, quality.Label)).ToArray(), initialQuality);
-                    selectedContent = dialog.AddSelectionOption("Content", "Host.Capture.Content",
-                        (HostChoiceSelection[])[new("motion","Prefer smoothness"),new("detail","Prefer clarity")],initialContent);
+                    if(!fixedContentPreference)
+                        selectedContent = dialog.AddSelectionOption("Content", "Host.Capture.Content",
+                            (HostChoiceSelection[])[new("motion","Prefer smoothness"),new("detail","Prefer clarity")],initialContent);
                     audio = dialog.AddBooleanOption("Share application audio", "Host.Capture.ApplicationAudio", beforeChoices: true);
                     dialog.ConfigurePreferenceList(closeLabel: "Cancel");
                 });

@@ -12,7 +12,7 @@ internal sealed partial class BrowserSurface
     internal bool CanRequestSiteDecision => !retired && !faulted && visible && input && !IsProviderContent && !IsHostedPackage;
     // Native/modal UI temporarily owns input. A confirmed decision may complete
     // before the shell's foreground notification restores browser input.
-    internal bool CanCompleteSiteDecision => !retired && !faulted && visible && !profileChanging && !IsProviderContent && !IsHostedPackage;
+    internal bool CanCompleteSiteDecision => !retired && !faulted && visible && !profileChanging && !IsProviderContent && !IsHostedPackage && !IsBackendVideo;
     private readonly SemaphoreSlim siteDecisionGate = new(1, 1);
     private CancellationTokenSource? siteDecisions;
     private int queuedSiteDecisions;
@@ -53,7 +53,7 @@ internal sealed partial class BrowserSurface
     private void PermissionRequested(CoreWebView2 sender, CoreWebView2PermissionRequestedEventArgs args)
     {
         if (TryHostedPermission(args)) return;
-        if (TryBackendMicrophonePermission(args)) return;
+        if (TryBackendPermission(args)) return;
 #if ENABLE_WIDGET_VALIDATION
         if (FixturePermissionTrace.Count < 16)
             FixturePermissionTrace.Add($"kind={args.PermissionKind} canAsk={CanRequestSiteDecision} choose={Choose is not null} dialog={HasDialog} queued={queuedSiteDecisions} secureOrigin={BrowserSiteIdentity.Origin(args.Uri) is not null}");
@@ -80,9 +80,9 @@ internal sealed partial class BrowserSurface
                 if (!CanCompleteSiteDecision || !ReferenceEquals(sender, core)) return;
                 args.State = answer is "once" or "allow" ? CoreWebView2PermissionState.Allow : CoreWebView2PermissionState.Deny;
                 args.SavesInProfile = answer is "allow" or "deny";
-                if(IsBackendSession && args.PermissionKind==CoreWebView2PermissionKind.Microphone &&
-                    args.State==CoreWebView2PermissionState.Allow && CurrentBackendDocumentOrigin==origin)
-                    backendMicrophone.Grant(origin!,pageEpoch,answer=="allow");
+                if (IsBackendSession && args.State == CoreWebView2PermissionState.Allow && CurrentBackendDocumentOrigin == origin &&
+                    backendPermissions.TryGetValue(args.PermissionKind, out var consent))
+                    consent.Grant(origin!, pageEpoch, answer == "allow");
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
             finally

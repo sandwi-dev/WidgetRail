@@ -178,6 +178,7 @@ internal static class PickerTests
         internal ConfirmingJoinSession()=>Inner.State=Inner.State with{Channels=[new("10","1","Lobby","Server"),new("20","1","Second","Server")],Streams=[]};
         public WebSessionReference? Reference=>Inner.Reference;
         public ValueTask<DiscordState> ReadAsync(CancellationToken token)=>Inner.ReadAsync(token);
+        public ValueTask<WebSessionPermissionResult> RequestNotificationsAsync(CancellationToken token)=>Inner.RequestNotificationsAsync(token);
         public ValueTask<WebSessionMicrophoneResult> RequestMicrophoneAsync(CancellationToken token)=>Inner.RequestMicrophoneAsync(token);
         public ValueTask<IDiscordReceiver> OpenReceiverAsync(CancellationToken token)=>Inner.OpenReceiverAsync(token);
         public async ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token)

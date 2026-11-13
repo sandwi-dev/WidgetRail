@@ -144,9 +144,15 @@ remaining hidden. The UI must not promise an invisible launch. Shutdown uses Pla
 archive hash, and known original DLL hash. `Build-BridgePackage.ps1` builds the
 plugin, includes its MIT license and source attribution, and emits a deterministic
 `.pext` plus its digest metadata. `Build-CommunityPackage.ps1` includes both under
-`payload/bridge`. The temporary manifest version is `1.5.3.1`, retaining upstream's
+`payload/bridge`. The temporary manifest version is `1.5.3.2`, retaining upstream's
 extension ID so later official versions can supersede it. Build downloads are
 cached and verified; setup itself requires no GitHub access.
+
+The response-write correction is a local patch over that pinned source. The build
+verifies the patch and before/after source digests, records them in the package,
+and runs `scripts/Test-PlayniteBridgeResponse.ps1` before producing the bundle.
+The fixture exercises aborted responses and subsequent healthy requests through a
+local HttpListener; it does not use the installed Playnite or its credentials.
 
 Before replacement, the bundle and selected installation are checked again.
 Staging, one rollback copy, and an atomic transaction journal live in

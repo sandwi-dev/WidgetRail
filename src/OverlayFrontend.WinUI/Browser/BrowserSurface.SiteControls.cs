@@ -123,7 +123,6 @@ internal sealed partial class BrowserSurface
         if (core is not { } current || retired || faulted) return null;
         profileChanging = true;
         RetireDocumentLeases();
-        backendMicrophone.Retire();
         SetPresentation(visible, presentationInputRequested);
         ShowStatus("Updating website settings…");
         var url = current.Source;

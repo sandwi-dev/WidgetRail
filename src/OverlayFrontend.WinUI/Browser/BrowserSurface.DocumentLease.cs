@@ -24,6 +24,7 @@ internal sealed partial class BrowserSurface
     private void RetireDocumentLeases()
     {
         if (documentLeasesRetiring) return;
+        RetireBackendPermissions();
         // Cancellation may synchronously dispose a lease. Enumerate a snapshot.
         documentLeasesRetiring = true;
         try { foreach (var lease in documentLeases.ToArray()) lease.Retire(); }

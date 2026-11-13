@@ -7,7 +7,7 @@ namespace WidgetRail.Samples.DiscordWebView;
 
 public sealed partial class DiscordWebViewWidget
 {
-    internal sealed record ChannelAccountPreferences(string Account,string[] Favorites,string[] Recent,string? ContentPreference=null);
+    internal sealed record ChannelAccountPreferences(string Account,string[] Favorites,string[] Recent);
     internal sealed record ChannelPreferenceStore(int SchemaVersion=1,ChannelAccountPreferences[]? Accounts=null);
     private sealed record ChannelPreferenceSnapshot(ChannelPreferenceStore Store,long Revision);
     private WidgetResource<ChannelPreferenceSnapshot> channelPreferences=null!;
@@ -34,7 +34,7 @@ public sealed partial class DiscordWebViewWidget
         return new(1,(store.Accounts??[]).Where(account=>account is not null&&ValidId(account.Account))
             .DistinctBy(account=>account.Account,StringComparer.Ordinal).Take(MaximumPreferenceAccounts)
             .Select(account=>new ChannelAccountPreferences(account.Account,Ids(account.Favorites,MaximumFavoriteChannels),
-                Ids(account.Recent,MaximumRecentChannels),account.ContentPreference is "motion" or "detail"?account.ContentPreference:null)).ToArray());
+                Ids(account.Recent,MaximumRecentChannels))).ToArray());
     }
 
     private ChannelAccountPreferences PreferencesFor(string account)=>
@@ -134,16 +134,4 @@ public sealed partial class DiscordWebViewWidget
     internal Task WaitForChannelPreferencesAsync(CancellationToken token=default)=>channelPreferences.WhenIdleAsync(token);
     internal Task WaitForPreferenceWriteAsync(CancellationToken token=default)=>Operations.WhenIdleAsync(PreferenceWriteOperation,token);
 
-    private async ValueTask<WebCaptureContentPreference> PreferredCaptureContentAsync(string account,CancellationToken token)
-    {
-        await channelPreferences.EnsureLoaded().Completion.WaitAsync(token);
-        return PreferencesFor(account).ContentPreference=="detail"?WebCaptureContentPreference.Detail:WebCaptureContentPreference.Motion;
-    }
-
-    private void RememberCaptureContent(string account,WebCaptureContentPreference preference)
-    {
-        var value=preference==WebCaptureContentPreference.Detail?"detail":"motion";
-        Operations.RunSerial(PreferenceWriteOperation,context=>MutatePreferencesAsync(account,
-            old=>old.ContentPreference==value?old:old with{ContentPreference=value},context.CancellationToken,false));
-    }
 }

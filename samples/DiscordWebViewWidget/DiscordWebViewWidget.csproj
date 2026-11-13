@@ -6,7 +6,5 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/WidgetApplicationRuntime/WidgetApplicationRuntime.csproj" />
-    <None Update="web/receiver.html;web/receiver.js" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../src/WidgetSdk/WebSessionRuntime.js" Link="web/web-session.js" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

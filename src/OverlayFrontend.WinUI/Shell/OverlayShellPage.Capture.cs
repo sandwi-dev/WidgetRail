@@ -9,6 +9,7 @@ internal sealed partial class OverlayShellPage
 {
     internal Func<CancellationToken, Task<bool>>? HideForCaptureRequested { get; set; }
     private Task? capturePump, capturing;
+    private string? nativeCaptureActivityWidget;
     private readonly HashSet<string> captureDiscoveries = [];
     internal Func<string,Func<Task<bool>>,CancellationToken,Task<bool>>? OpenCaptureFolderRequested { get; set; }
     private Task? openingCaptureFolder;
@@ -127,6 +128,8 @@ internal sealed partial class OverlayShellPage
                 }
                 await session.SetCaptureRecordingAsync(request.RequestId, token);
                 recording = true;
+                nativeCaptureActivityWidget=next.WidgetId;
+                QueueWidgetStatusRefresh();
                 indicator?.Show(video ? $"Recording · up to {duration}s · {(applicationAudio ? "application audio" : "no audio")}" : "Taking screenshot…");
                 var result = await NativeWindowCapture.RunAsync(request, token, stop.Token);
                 committed = await session.CompleteCaptureAsync(new(request.RequestId, (int)result.Width, (int)result.Height, result.DurationSeconds, Target: result.Target)
@@ -147,6 +150,8 @@ internal sealed partial class OverlayShellPage
         }
         finally
         {
+            nativeCaptureActivityWidget=null;
+            QueueWidgetStatusRefresh();
             cancellation.Cancel();
             if (renewal is not null) await renewal;
             if (!committed) { try { File.Delete(request.OutputPath); } catch (IOException) { } catch (UnauthorizedAccessException) { } }

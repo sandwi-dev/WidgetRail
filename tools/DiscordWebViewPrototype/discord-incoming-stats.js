@@ -2,22 +2,11 @@
 // Read-only: no subscriptions, visibility overrides, playback, or call actions.
 // The bounded in-page ring contains no IDs, URLs, names, SDP, or media content.
 (() => {
-    const backend = location.origin === 'https://discord.com';
-    const receiver = /^app-[a-f0-9]{32}\.widgetrail\.internal$/.test(location.hostname) &&
-        location.pathname === '/payload/web/receiver.html';
-    if ((!backend && !receiver) || window !== top || globalThis.WidgetRailIncomingStats) return;
+    if (location.origin !== 'https://discord.com' || window !== top || globalThis.WidgetRailIncomingStats) return;
     const samples = [];
     let busy = false;
     const number = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
     async function read() {
-        if (receiver) {
-            const video = document.getElementById('video');
-            const quality = video?.getVideoPlaybackQuality();
-            return { time: Date.now(), hidden: document.hidden, width: innerWidth, height: innerHeight,
-                frames: number(quality?.totalVideoFrames), dropped: number(quality?.droppedVideoFrames),
-                mediaTime: number(video?.currentTime), paused: video?.paused ?? null,
-                ready: number(video?.readyState), videoWidth: number(video?.videoWidth), videoHeight: number(video?.videoHeight) };
-        }
         const wp = globalThis.WidgetRailWebWebpack;
         const visibility = wp?.findByProps('isIncomingVideoEnabled', 'lastIncomingVideoEnabledChangeTime');
         const result = {

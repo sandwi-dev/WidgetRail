@@ -24,7 +24,7 @@ async function build(destination) {
     const adapter = await read('samples/DiscordWebViewWidget/web/provider/adapter.js');
     const source = [await read('tools/DiscordWebViewPrototype/webpack.js'),
         await read('samples/DiscordWebViewWidget/web/provider/activity-provider.js'), adapter,
-        `initializeWidgetRailDiscordAdapter(${contract.build});`,
+        `initializeWidgetRailDiscordAdapter(${contract.build},host);`,
         await read('tools/DiscordWebViewPrototype/discord-commands.js'),
         await read('samples/DiscordWebViewWidget/web/provider/observations.js'),
         await read('samples/DiscordWebViewWidget/web/session-backend.js')].join('\n');

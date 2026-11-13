@@ -10,13 +10,15 @@ public sealed partial class WebSessionRegistry
     // turn an uncertain teardown into a successful Stop acknowledgement.
     private readonly Dictionary<string,CaptureRecord> captures=new(StringComparer.Ordinal);
     private readonly Queue<string> terminalCaptures=new();
-    private sealed class CaptureRecord(Owner owner,object authority,WebCaptureStreamTicket ticket,IReadOnlyList<WebCaptureStreamOptions> allowedQualities)
+    private sealed class CaptureRecord(Owner owner,object authority,WebCaptureStreamTicket ticket,IReadOnlyList<WebCaptureStreamOptions> allowedQualities,
+        WebCaptureContentPreference? fixedContentPreference)
     {
         // Do not retain Session: its sealed page assets and queues can be large.
         internal Owner Owner { get; }=owner;
         internal object Authority { get; }=authority;
         internal WebCaptureStreamTicket Ticket { get; }=ticket;
         internal IReadOnlyList<WebCaptureStreamOptions> AllowedQualities { get; }=Array.AsReadOnly(allowedQualities.ToArray());
+        internal WebCaptureContentPreference? FixedContentPreference { get; }=fixedContentPreference;
         internal WebCaptureStreamOptions? SelectedQuality;
         internal WebCaptureStreamStatus Status=new(WebCaptureStreamPhase.Unavailable){Ticket=ticket};
         internal bool Revoking;
@@ -37,14 +39,16 @@ public sealed partial class WebSessionRegistry
             session=CaptureSessionLocked(identity,request.Session,expectedOwner);
             if(session.Capture is {Terminal:false})throw Failure("capture_already_active");
             if(captures.Values.Count(c=>!c.Terminal)>=MaximumLiveWebCaptures)throw Failure("capture_limit");
-            capture=new(session.Owner,authority,new(request.Session,Guid.NewGuid().ToString("N")),request.AllowedQualities??WebCaptureStreamOptions.LegacyQualities);
+            capture=new(session.Owner,authority,new(request.Session,Guid.NewGuid().ToString("N")),request.AllowedQualities??WebCaptureStreamOptions.LegacyQualities,
+                request.FixedContentPreference?request.Options.ContentPreference:null);
             captures.Add(capture.Ticket.Id,capture);
             session.Capture=capture;
         }
         try
         {
             await EnqueueAsync(session,new(request.AllowedQualities is null?WebSessionOperation.PrepareWebCapture:WebSessionOperation.PrepareWebCaptureConstrained)
-                {Session=request.Session,CaptureOptions=request.Options,CaptureQualities=request.AllowedQualities,CaptureTicket=capture.Ticket},token).ConfigureAwait(false);
+                {Session=request.Session,CaptureOptions=request.Options,CaptureQualities=request.AllowedQualities,CaptureTicket=capture.Ticket,
+                    CaptureFixedContentPreference=request.FixedContentPreference},token).ConfigureAwait(false);
             lock(gate)
             {
                 if(!sessions.ContainsKey(request.Session.Id) || capture.Revoking)throw Failure("capture_retired");
@@ -157,6 +161,7 @@ public sealed partial class WebSessionRegistry
     {
         if(status.Ticket is not { } ticket||ticket.Session!=session||!captures.TryGetValue(ticket.Id,out var capture)||capture.Ticket!=ticket)return true;
         return status.Quality is null || capture.AllowedQualities.Any(status.Quality.IsSameQuality)&&
+            (capture.FixedContentPreference is null || capture.FixedContentPreference==status.Quality.ContentPreference)&&
             (capture.SelectedQuality is null||capture.SelectedQuality==status.Quality);
     }
     private void UpdateCaptureLocked(WebCaptureStreamStatus status,WebSessionReference session)

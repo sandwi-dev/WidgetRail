@@ -18,23 +18,7 @@ public sealed partial class WidgetWebSession
     /// throws OperationCanceledException; unavailable or incompatible services remain errors.</summary>
     public async ValueTask<WebSessionMicrophoneResult> RequestMicrophoneAsync(CancellationToken cancellationToken = default)
     {
-        DemandActive();
-        using var linked=CancellationTokenSource.CreateLinkedTokenSource(cancellationToken,lifetime.Token);
-        linked.Token.ThrowIfCancellationRequested();
-        WebSessionReply reply;
-        try
-        {
-            reply=await client.InvokeAsync(WidgetWebSessionMicrophoneCapabilities.Request,
-                new(WebSessionOperation.RequestMicrophone){Session=Reference},linked.Token).ConfigureAwait(false);
-        }
-        catch(WidgetCapabilityException error) when(error.ErrorCode is "request_canceled" or "lifecycle_denied")
-        {
-            linked.Token.ThrowIfCancellationRequested();
-            return new(WebSessionMicrophoneState.Cancelled);
-        }
-        linked.Token.ThrowIfCancellationRequested();
-        if(reply?.Microphone?.IsWellFormed()!=true)
-            throw new WidgetCapabilityException("malformed_response","Invalid microphone admission response.");
-        return reply.Microphone;
+        var result = await RequestPermissionAsync(WebSessionPermissionKind.Microphone, cancellationToken).ConfigureAwait(false);
+        return new((WebSessionMicrophoneState)result.State, result.Remembered);
     }
 }

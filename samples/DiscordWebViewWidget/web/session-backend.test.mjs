@@ -40,10 +40,10 @@ test('oversized catalogs fail rather than truncate silently',async()=>{
   await assert.rejects(fixture(1001).invoke('snapshot'),/Invalid Discord catalog/);
 });
 test('worst-case Unicode status and1000channels fit the actual host batching budgets without dropping any items',async()=>{
-  const f=fixture();const label='界'.repeat(120);
+  const f=fixture();const label='ç•Œ'.repeat(120);
   f.state.channelName=label;
-  f.state.shareQualities=[480,720,1080,1440].flatMap(resolution=>[15,30,60].map(frameRate=>({resolution,frameRate})));
-  f.state.shareQualityAvailability='ready';f.state.preferredShareQuality={resolution:1440,frameRate:60};
+  f.state.shareQualities=[480,720,1080].flatMap(resolution=>[15,30,60].map(frameRate=>({resolution,frameRate})));
+  f.state.shareQualityAvailability='ready';f.state.preferredShareQuality={resolution:1080,frameRate:60};
   f.state.activityAvailability='ready';f.state.activities=Array.from({length:50},(_,i)=>({userId:String(i+2),name:label,status:'online',kind:'playing',title:label,details:label,channelId:'20',guildId:'10',channelName:label,guildName:label,canJoinVoice:true,streamKey:null,canWatch:false,startedAt:1000}));
   f.state.channels=f.state.channels.map(channel=>({...channel,name:label,guild:label}));
   f.state.participants=Array.from({length:100},(_,i)=>({id:String(i+1),name:label,muted:false,deafened:false,speaking:true}));
@@ -84,16 +84,16 @@ test('share requires explicit supported host-selected quality before provider in
 
 test('bounded high quality requests preserve provider eligibility validation and native source requirement',async()=>{
   const f=fixture();f.enableNativeCapture();
-  for(const resolution of [480,720,1080,1440])for(const frameRate of [15,30,60]){
+  for(const resolution of [480,720,1080])for(const frameRate of [15,30,60]){
     const args={account:'1',channelId:'2',captureQuality:{resolution,frameRate}};
     await f.invoke('command',{owner,method:'share',args});assert.equal(f.calls.at(-1).args,args);
   }
-  assert.equal(f.calls.length,12,'Provider still owns eligibility for each forwarded quality');
+  assert.equal(f.calls.length,9,'Provider still owns eligibility for each forwarded quality');
 });
 
 test('quality metadata is bounded and preserves an ineligible saved preference without changing it',async()=>{
   const f=fixture(0);f.state.shareQualities=[{resolution:720,frameRate:30}];
-  f.state.shareQualityAvailability='ready';f.state.preferredShareQuality={resolution:1440,frameRate:60};
+  f.state.shareQualityAvailability='ready';f.state.preferredShareQuality={resolution:1080,frameRate:60};
   const snapshot=await f.invoke('snapshot');assert.deepEqual(snapshot.context.preferredShareQuality,f.state.preferredShareQuality);
   for(const invalid of [null,{},Array(13).fill({resolution:720,frameRate:30}),[{resolution:2160,frameRate:30}],
     [{resolution:720,frameRate:30},{resolution:720,frameRate:30}]]){
@@ -119,7 +119,7 @@ test('friend activity uses existing bounded batching without duplicating rows in
  f.state.activities.push(f.state.activities[0]);await assert.rejects(f.invoke('snapshot'),/Invalid Discord activity/);
 });
 test('activity commands preserve captured account peer channel and exact stream fields',async()=>{
- const f=fixture();const args={account:'1',channelId:'20',userId:'2',target:'20',key:'guild:10:20:2',lease:'b'.repeat(32)};
+ const f=fixture();const args={account:'1',channelId:'20',userId:'2',target:'20',key:'guild:10:20:2',lease:'b'.repeat(32),videoView:'d'.repeat(32)};
  for(const method of ['joinActivity','watchActivity']){await f.invoke('command',{owner,method,args});assert.equal(f.calls.at(-1).method,method);assert.equal(f.calls.at(-1).args,args);}
 });
 

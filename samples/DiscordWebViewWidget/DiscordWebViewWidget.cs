@@ -127,6 +127,12 @@ public sealed partial class DiscordWebViewWidget : Widget
                 return ValueTask.CompletedTask;
         }
         var selected=view.Value;var data=CurrentState();var session=client?.Reference;
+        if (navigation.Value.Route == Route.Home && data is { NotificationPermission: "default" or "denied" } &&
+            session is not null && action.ActionId == DomainAction("notifications", session.Id, data.Account))
+        {
+            EnableNotifications(data.Account, session);
+            return ValueTask.CompletedTask;
+        }
         if(selected.Outgoing is not null&&data is {ChannelId:not null,Sharing:true}&&action.ActionId==ShareDetailsAction(data,selected,session))
         {ReadShareDetails(data,selected,session);return ValueTask.CompletedTask;}
         if(TryStreamAudioAction(action,data,selected,session,cancellationToken,out var audioAction))return audioAction;
@@ -210,6 +216,33 @@ public sealed partial class DiscordWebViewWidget : Widget
         {view.Update(current=>current with{Notice="This host could not accept the pin request."});}
     }
 
+    private void EnableNotifications(string account, WebSessionReference session)
+    {
+        Operations.RunSingleFlight("discord.notifications", async context =>
+        {
+            bool Current() => context.IsCurrent && client?.Reference == session && CurrentState()?.Account == account;
+            if (!Current()) return;
+            try
+            {
+                var result = await client!.RequestNotificationsAsync(context.CancellationToken);
+                if (!Current()) return;
+                var notice = result.State switch
+                {
+                    WebSessionPermissionState.Granted => "Discord notifications enabled.",
+                    WebSessionPermissionState.Denied => "Notifications are blocked. Open Discord and change Notifications in Website settings.",
+                    WebSessionPermissionState.Unavailable => "Notification setup is unavailable on this host.",
+                    _ => ""
+                };
+                view.Update(current => current with { Notice = notice });
+            }
+            catch (Exception error) when (error is not OutOfMemoryException && !context.CancellationToken.IsCancellationRequested)
+            {
+                if (Current()) view.Update(current => current with { Notice = "Could not enable notifications. Open Discord to check Website settings." });
+            }
+            finally { if (Current()) state.Refresh(); }
+        }, WidgetOperationLifetime.Active);
+    }
+
     private ValueTask JoinAsync(string account,string target,CancellationToken token,string? activityUserId=null)
     {
         token.ThrowIfCancellationRequested();
@@ -272,15 +305,13 @@ public sealed partial class DiscordWebViewWidget : Widget
             receiver=await client!.OpenReceiverAsync(token);
             token.ThrowIfCancellationRequested();
             if(client.Reference!=current.StreamSession)return;
-            var offer=current.StreamActivityUserId is { } userId
-                ?await client.InvokeAsync("watchActivity",new{account=data.Account,channelId=data.ChannelId,target=data.ChannelId,userId,key=current.StreamKey,lease},token)
-                :await client.InvokeAsync("watch",new{account=data.Account,channelId=data.ChannelId,key=current.StreamKey,lease},token);
+            var attached=current.StreamActivityUserId is { } userId
+                ?await client.InvokeAsync("watchActivity",new{account=data.Account,channelId=data.ChannelId,target=data.ChannelId,userId,key=current.StreamKey,lease,videoView=receiver.Reference.Id},token)
+                :await client.InvokeAsync("watch",new{account=data.Account,channelId=data.ChannelId,key=current.StreamKey,lease,videoView=receiver.Reference.Id},token);
             if(client.Reference!=current.StreamSession)return;
-            if(offer.GetProperty("lease").GetString()!=lease)throw new InvalidDataException("Incoming offer belongs to another selection.");
-            var answer=await receiver.AcceptAsync(offer,token);
-            if(answer.GetProperty("lease").GetString()!=lease)throw new InvalidDataException("Incoming answer belongs to another selection.");
-            if(client.Reference!=current.StreamSession)return;
-            await client.InvokeAsync("answer",new{account=data.Account,channelId=data.ChannelId,lease,answer=answer.GetProperty("answer")},token);
+            if(attached.GetProperty("lease").GetString()!=lease || attached.GetProperty("videoView").GetString()!=receiver.Reference.Id)
+                throw new InvalidDataException("Video attachment belongs to another selection.");
+            receiver.Bind(lease);
             var readyRelay=new Relay(data.Account,data.ChannelId!,lease,receiver);
             var published=view.Update(p=>context.IsCurrent&&streamPin.IsSelected&&!token.IsCancellationRequested&&client.Reference==current.StreamSession&&p.StreamSession==current.StreamSession&&p.Account==current.Account&&p.Channel==current.Channel&&p.StreamKey==current.StreamKey
                 ?(p with{Receiver=readyRelay,Notice=""},true):(p,false)).Result;

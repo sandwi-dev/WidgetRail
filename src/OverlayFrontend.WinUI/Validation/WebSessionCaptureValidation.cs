@@ -56,6 +56,11 @@ internal static class WebSessionCaptureValidation
                 new(new("1",1,"1","SyntheticUnopenedWindow"),"Synthetic",false,new(1440,60))),default,(WebCaptureStreamOptions[])[new(720,30)]);
             Check(rejected.Phase==WebCaptureStreamPhase.Failed&&rejected.Reason=="quality_not_allowed"&&await NoMedia(),
                 "A chooser result outside the admitted quality set is rejected before worker/source startup");
+            var wrongContent=await browser.PrepareHostedCaptureAsync(Ticket(),new(),_=>Task.FromResult<WebCaptureSourceSelection?>(
+                new(new("1",1,"1","SyntheticUnopenedWindow"),"Synthetic",false,new(){ContentPreference=WebCaptureContentPreference.Motion})),
+                default,(WebCaptureStreamOptions[])[new(720,30)],fixedContentPreference:true);
+            Check(wrongContent.Phase==WebCaptureStreamPhase.Failed&&wrongContent.Reason=="quality_not_allowed"&&!browser.HasHostedCaptureActivity,
+                "Fixed content policy rejects a mismatched chooser response before native capture or activity begins");
             Check(await browser.EvaluateFixtureAsync("typeof globalThis.WidgetRailNativeMedia") == "\"object\"",
                 "Explicit native-capture backend installs the media hook");
             await browser.EvaluateFixtureAsync("globalThis.captureProbe='pending';navigator.mediaDevices.getDisplayMedia({video:true}).then(s=>{s.getTracks().forEach(t=>t.stop());globalThis.captureProbe='unexpected';},e=>globalThis.captureProbe=e.name+':'+e.message);");
@@ -116,10 +121,10 @@ internal static class WebSessionCaptureValidation
                 catch (InvalidOperationException) { disposalFailed = true; }
                 try { await preparing.WaitAsync(TimeSpan.FromSeconds(5)); }
                 catch (InvalidOperationException) { /* Capture cleanup remains unconfirmed, including preparation cancellation. */ }
-                var microphone = await stoppingBrowser.RequestBackendMicrophoneAsync((_, _) =>
+                var microphone = await stoppingBrowser.RequestBackendPermissionAsync(WebSessionPermissionKind.Microphone, (_, _) =>
                     throw new InvalidOperationException("A retired browser must not reopen microphone consent."), () => true, default);
                 Check(disposalFailed && documentLease.Token.IsCancellationRequested && !documentLease.IsCurrent &&
-                    !stoppingBrowser.IsReady && stoppingBrowser.CaptureDocumentLease(default) is null && microphone.State == WebSessionMicrophoneState.Unavailable,
+                    !stoppingBrowser.IsReady && stoppingBrowser.CaptureDocumentLease(default) is null && microphone.State == WebSessionPermissionState.Unavailable,
                     "Unconfirmed capture stop still revokes browser activity and document authority");
                 var controllerClosed = false;
                 try { await evaluate(); }

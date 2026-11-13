@@ -3,7 +3,16 @@
   "commit": "66a32935703c658bfb5d829dcd8b9fe3b8e96f67",
   "archive": "https://codeload.github.com/sandwi-dev/playnite-bridge/zip/66a32935703c658bfb5d829dcd8b9fe3b8e96f67",
   "archiveSha256": "60980213F522D43197D7BDFA1719D9D05AAEE91EF385E46C14D261C4D801DFFB",
-  "version": "1.5.3.1",
+  "version": "1.5.3.2",
+  "patches": [
+    {
+      "file": "patches/http-response-once.patch",
+      "sha256": "5A722020FA88D7CCDA37B44534CAA52E9BE86C6A9D6DC85F73BB2B11ECAEFADD",
+      "target": "src/Server/HttpApiServer.cs",
+      "beforeSha256": "031BB381BA45039DCB300EF97B0109B7F35E906278FC09B0F71CF688B25E66BB",
+      "afterSha256": "285EB39BBA8D6E743B9F95335C6B127AC3A60ABF0776CD318890A800047C6214"
+    }
+  ],
   "upstreamVersion": "1.5.3",
   "upstreamPullRequest": "https://github.com/rollacode/playnite-bridge/pull/6",
   "knownOriginalDllSha256": "EDDDF2CA645A6F4A69D07DDED35D9BD7AC11C511AA386B749AC5FDD74DEE9353"

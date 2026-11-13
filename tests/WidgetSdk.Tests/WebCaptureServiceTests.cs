@@ -39,6 +39,11 @@ internal static class WebCaptureServiceTests
             var motion=await widget.Capture.PrepareAsync(session,new(720,30){ContentPreference=WebCaptureContentPreference.Motion},[new(720,30),new(1080,60)],default);
             if(prepared?.Options.ContentPreference!=WebCaptureContentPreference.Motion||motion.Quality?.ContentPreference!=WebCaptureContentPreference.Motion)
                 throw new Exception("Content preference must survive preparation and the host's actual selected result independently of provider mode restrictions.");
+            response = expected with { Quality = new(1080,60) };
+            await widget.Capture.PrepareAsync(session,new(720,30),[new(720,30),new(1080,60)],allowContentPreferenceSelection:false);
+            if(prepared?.FixedContentPreference!=true)throw new Exception("Fixed content policy was not sent to the host.");
+            response = expected with {Quality=new(1080,60){ContentPreference=WebCaptureContentPreference.Motion}};
+            await Malformed(async()=>{await widget.Capture.PrepareAsync(session,new(720,30),[new(720,30),new(1080,60)],allowContentPreferenceSelection:false);});
             response = expected with { Quality = new(1440,60) };
             await Malformed(async () => { await widget.Capture.PrepareAsync(session,new(720,30),[new(720,30),new(1080,60)],default); });
             await Malformed(async () => { await widget.Capture.PrepareAsync(session); });
@@ -81,6 +86,10 @@ internal static class WebCaptureServiceTests
         var duplicatePreference=legacy with{AllowedQualities=[new(),new(){ContentPreference=WebCaptureContentPreference.Motion}]};
         if(duplicatePreference.IsWellFormed())throw new Exception("Content preferences cannot duplicate a provider resolution/FPS mode.");
         var request = legacy with { AllowedQualities=all };
+        if(JsonSerializer.Serialize(legacy).Contains("FixedContentPreference") ||
+            (legacy with{FixedContentPreference=true}).IsWellFormed() ||
+            !(request with{FixedContentPreference=true}).IsWellFormed())
+            throw new Exception("Fixed content policy changed legacy wire shape or bypassed constrained preparation.");
         var command = new WebSessionCommand(WebSessionOperation.PrepareWebCaptureConstrained){Session=session,CaptureOptions=new(),CaptureQualities=all};
         all[0]=new(2160,240);
         if (!request.IsWellFormed() || request.AllowedQualities![0]!=new WebCaptureStreamOptions(480,15) || command.CaptureQualities![0]!=new WebCaptureStreamOptions(480,15))

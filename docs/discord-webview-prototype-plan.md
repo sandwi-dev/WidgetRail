@@ -74,8 +74,8 @@ The maintained widget includes the call/activity home, server/channel picker,
 ranked search/suggestions, favorites/recents, participant audio, voice devices,
 independent stream audio, a voice-controls pin and incoming video pin. The host
 owns WebView2 lifecycle, permissions, pin requests, native capture and the chooser.
-The provider owns Discord account/call semantics. Existing quality choices up to
-1440p60 remain account/call gated, with saved resolution/FPS and Smoothness/Clarity.
+The provider owns Discord account/call semantics. Discord offers account-eligible modes up to
+1080p60, saves resolution/FPS and fixes the capture content hint to clarity.
 
 Picture and the corrected 1440p60 receiver quality label were observed live in
 the accepted 0.0.14 baseline. That label is not proof of encoded pixels or sustained

@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.WidgetProtocol;
 using Windows.Foundation;
+using WidgetRail.OverlayFrontend.WinUI.Diagnostics;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
@@ -131,25 +132,45 @@ internal sealed class NativeArtworkDemand : IDisposable
     private async Task LoadAsync(CancellationTokenSource owner, ArtworkPixelSize pixels, ImageFit? imageFit, bool preserveNaturalSize)
     {
         var token = owner.Token;
+        var timing = PresentationPipelineTrace.Log.Begin();
+        var phase = PipelineStage.ArtworkResolve;
+        var phaseStarted = timing.Started;
+        var outcome = PipelineOutcome.Retired;
         try
         {
             var payload = await resolve(token);
             token.ThrowIfCancellationRequested();
+            PresentationPipelineTrace.Log.End(timing.Id, phase, phaseStarted, payload is null ? 0 : 1, PipelineOutcome.Completed);
+            phase = PipelineStage.ArtworkDecode;
+            phaseStarted = PresentationPipelineTrace.Timestamp(timing.Id);
             var decoded = await NativeArtworkDecoder.DecodeAsync(payload, pixels, imageFit, token, preserveNaturalSize);
+            PresentationPipelineTrace.Log.End(timing.Id, phase, phaseStarted, decoded is null ? 0 : 1, PipelineOutcome.Completed);
+            phase = PipelineStage.ArtworkPublish;
+            phaseStarted = PresentationPipelineTrace.Timestamp(timing.Id);
             if (disposed || token.IsCancellationRequested || !ReferenceEquals(request, owner) || !admitted()) return;
             sourceSize = decoded?.Source; decodedSize = decoded?.Decoded; decodedFit = imageFit; LastDecode = decoded;
             completed(true);
             NativeArtworkCounters.Completed();
             publish(decoded?.Image);
+            outcome = PipelineOutcome.Completed;
+            PresentationPipelineTrace.Log.End(timing.Id, phase, phaseStarted, decoded is null ? 0 : 1, outcome);
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { NativeArtworkCounters.Cancelled(); }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            outcome = PipelineOutcome.Cancelled;
+            PresentationPipelineTrace.Log.End(timing.Id, phase, phaseStarted, 0, outcome);
+            NativeArtworkCounters.Cancelled();
+        }
         catch (Exception error)
         {
+            outcome = PipelineOutcome.Failed;
+            PresentationPipelineTrace.Log.End(timing.Id, phase, phaseStarted, 0, outcome);
             if (disposed || token.IsCancellationRequested || !ReferenceEquals(request, owner) || !admitted()) return;
             completed(true); NativeArtworkCounters.Failed(); failed(error);
         }
         finally
         {
+            PresentationPipelineTrace.Log.End(timing.Id, PipelineStage.ArtworkTotal, timing.Started, 1, outcome);
             if (ReferenceEquals(request, owner)) { request = null; owner.Dispose(); }
         }
     }

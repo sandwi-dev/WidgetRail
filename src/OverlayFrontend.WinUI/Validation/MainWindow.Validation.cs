@@ -376,6 +376,8 @@ public sealed partial class MainWindow
             page.EnablePinnedMenuValidation(pinMenuResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pin-requests") is { } pinRequestResult)
             page.EnablePinRequestValidation(pinRequestResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-direct-video") is { } directVideo)
+            page.EnableDiscordDirectVideoValidation(directVideo);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-navigation") is { } discordNavigationResult)
             page.EnableDiscordNavigationValidation(discordNavigationResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-audio") is { } discordAudioResult)

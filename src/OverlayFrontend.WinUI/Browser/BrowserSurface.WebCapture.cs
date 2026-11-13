@@ -18,6 +18,9 @@ internal sealed partial class BrowserSurface
     }
 
     private HostedCapture? hostedCapture;
+    // Retain the indicator until native teardown is confirmed, including source
+    // failure and uncertain Stop. Choosing/cancelling a source alone is inactive.
+    internal bool HasHostedCaptureActivity => hostedCapture?.Transport is not null;
     internal event Action<WebCaptureStreamStatus>? HostedCaptureChanged;
 #if ENABLE_WIDGET_VALIDATION
     // Deterministic fault injection: never starts a native worker or selects a user window.
@@ -42,7 +45,7 @@ internal sealed partial class BrowserSurface
 
     internal async Task<WebCaptureStreamStatus> PrepareHostedCaptureAsync(WebCaptureStreamTicket ticket,
         WebCaptureStreamOptions options, Func<CancellationToken, Task<WebCaptureSourceSelection?>> choose,
-        CancellationToken token,IReadOnlyList<WebCaptureStreamOptions>? permitted=null)
+        CancellationToken token,IReadOnlyList<WebCaptureStreamOptions>? permitted=null,bool fixedContentPreference=false)
     {
         if (!SupportsNativeCapture || !ticket.IsWellFormed() || !options.IsWellFormed() || core is not { } browser ||
             CurrentBackendDocumentOrigin is not { } origin)
@@ -74,13 +77,15 @@ internal sealed partial class BrowserSurface
                 await RetireHostedCaptureAsync(capture, "selection_cancelled");
                 return new(WebCaptureStreamPhase.Cancelled) { Ticket = ticket };
             }
-            if(!selected.Options.IsWellFormed()||!allowed.Any(selected.Options.IsSameQuality))
+            if(!selected.Options.IsWellFormed()||!allowed.Any(selected.Options.IsSameQuality)||
+                fixedContentPreference&&selected.Options.ContentPreference!=options.ContentPreference)
             {
                 await RetireHostedCaptureAsync(capture,"quality_not_allowed");
                 return new(WebCaptureStreamPhase.Failed) {Ticket=ticket,Reason="quality_not_allowed"};
             }
             var transport = capture.Transport = new WebViewCaptureWorker(browser, DispatcherQueue, origin,
                 () => ReferenceEquals(hostedCapture, capture) && capture.Stopping is null && documentLease.IsCurrent);
+            ActivityChanged?.Invoke();
             transport.Ended += () => DispatcherQueue.TryEnqueue(() =>
                 Run(() => RetireHostedCaptureAsync(capture, transport.Reason ?? "source_ended")));
             await transport.StartAsync(selected.Target, selected.ApplicationAudio,
@@ -179,7 +184,8 @@ internal sealed partial class BrowserSurface
         }
     }
 
-    private void PublishHostedCapture(HostedCapture capture) => HostedCaptureChanged?.Invoke(capture.Status);
+    private void PublishHostedCapture(HostedCapture capture)
+    { HostedCaptureChanged?.Invoke(capture.Status); ActivityChanged?.Invoke(); }
 
     private async Task DisposeHostedCaptureAsync()
     {

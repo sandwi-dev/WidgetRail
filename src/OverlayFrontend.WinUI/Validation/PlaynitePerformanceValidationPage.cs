@@ -24,7 +24,14 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
     private readonly List<object> samples=[];
     private readonly List<double> frames=[];
     private readonly List<double> ticks=[];
+    private readonly List<double> timerWaits=[];
+    private readonly List<double> continuationWaits=[];
     private readonly List<string> navigationChecks=[];
+    private readonly List<object> navigationOffsets=[];
+    private readonly WidgetRail.WindowsWindowActivation.WindowsTaskWindowActivation foreground = new();
+    private long guideChecks;
+    private double guideMilliseconds;
+    private double longestGuideMilliseconds;
     private readonly string pipe;
     private readonly string output;
     private PresentationSession? session;
@@ -53,7 +60,19 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
         var root=new Grid();root.Children.Add(presenter);Content=root;
         PresentationLayers.Attach(root);
         presenter.Failed=error=>failure??=error;
+        // Include the production shell's readiness query. Without this consumer,
+        // the fixture misses repeated native grid scans while each row arrives.
+        presenter.ControllerGuideChanged += CheckGuideReadiness;
         Loaded+=async(_,_)=>await RunAsync();
+    }
+
+    private void CheckGuideReadiness()
+    {
+        var started=Stopwatch.GetTimestamp();
+        _=presenter.IsGuidePresentationReady(requireFocus:false);
+        var milliseconds=Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        ++guideChecks;guideMilliseconds+=milliseconds;
+        longestGuideMilliseconds=Math.Max(longestGuideMilliseconds,milliseconds);
     }
 
     private async Task RunAsync()
@@ -63,6 +82,12 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
             Directory.CreateDirectory(output);
             var scale=XamlRoot.RasterizationScale;
             App.Window.AppWindow.Resize(new((int)(1360*scale),(int)(940*scale)));
+            StartDispatcherProbe();
+            if (Environment.GetCommandLineArgs().Contains("--playnite-native-grid-baseline"))
+            {
+                await RunNativeGridBaselineAsync();
+                return;
+            }
             var connected=await PresentationSession.ConnectAsync(pipe,cancellationToken:lifetime.Token);
             session=connected;
             presenter.Session=session;
@@ -84,6 +109,8 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
             await session.SendActionAsync(frame.Authority,new(browse.ActionId!,browse.Id,InputScopeId:frame.Snapshot.ActiveInputScopeId),lifetime.Token);
             await Until(()=>View() is GridView {Items.Count:>0,ActualHeight:>0}&&Descendants(presenter).OfType<WidgetArtworkView>().Any());
             await Task.Delay(3000,lifetime.Token);
+            await Until(()=>foreground.IsOverlayForeground);
+            await Until(()=>presenter.IsGuidePresentationReady(requireFocus:false));
             Sample("ready");
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--playnite-wheel-comparison") is { } wheelMode)
             {
@@ -104,24 +131,33 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
             for(var pass=0;pass<3;pass++)
             {
                 phase="scroll-"+pass;
-                frames.Clear();ticks.Clear();lastFrame=0;scrolling=true;
+                // Tree/bitmap/resource inspection creates WinRT wrappers and can
+                // force native layout. Keep it outside the measured motion loop.
+                Sample(phase+"-start");
+                frames.Clear();ticks.Clear();timerWaits.Clear();continuationWaits.Clear();lastFrame=0;scrolling=true;
                 var scroll=Descendants(View()!).OfType<ScrollViewer>().First();
-                var duration=Stopwatch.StartNew();var previous=Stopwatch.GetTimestamp();var nextSample=0d;
+                var duration=Stopwatch.StartNew();var previous=Stopwatch.GetTimestamp();
                 while(duration.Elapsed.TotalSeconds<20)
                 {
                     if(failure is not null)throw failure;
+                    if(!foreground.IsOverlayForeground)
+                        throw new InvalidOperationException("Performance fixture lost native foreground; frame timing comparison is invalid.");
                     var now=Stopwatch.GetTimestamp();
                     ticks.Add(Stopwatch.GetElapsedTime(previous,now).TotalMilliseconds);previous=now;
                     // Continuous fast travel and reversal; never jump to a single endpoint.
                     var fraction=duration.Elapsed.TotalSeconds/20;
                     scroll.ChangeView(null,scroll.ScrollableHeight*(pass%2==0?fraction:1-fraction),null,true);
-                    if(duration.Elapsed.TotalSeconds>=nextSample){Sample(phase);nextSample+=1;}
-                    await Task.Delay(16,lifetime.Token);
+                    var delayStarted=Stopwatch.GetTimestamp();
+                    var timerReady=await MotionTickAsync(lifetime.Token);
+                    timerWaits.Add(Stopwatch.GetElapsedTime(delayStarted,timerReady).TotalMilliseconds);
+                    continuationWaits.Add(Stopwatch.GetElapsedTime(timerReady).TotalMilliseconds);
                 }
                 scrolling=false;
                 Sample(phase+"-end");
-                await File.WriteAllTextAsync(Path.Combine(output,phase+".json"),JsonSerializer.Serialize(new{frames,ticks}),lifetime.Token);
-                await Task.Delay(3000,lifetime.Token);Sample(phase+"-settled");
+                await File.WriteAllTextAsync(Path.Combine(output,phase+".json"),JsonSerializer.Serialize(new{frames,ticks,timerWaits,continuationWaits}),lifetime.Token);
+                await Task.Delay(3000,lifetime.Token);
+                await Until(()=>presenter.IsGuidePresentationReady(requireFocus:false));
+                Sample(phase+"-settled");
             }
             var checkNavigation=Environment.GetCommandLineArgs().Contains("--playnite-performance-navigation");
             if(checkNavigation)await CheckNavigationAsync();
@@ -143,6 +179,7 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
                 await NativeIndexedFocusProbe.RunAsync(View()!,_=>presenter.MoveFocus(FocusNavigationDirection.Right),
                     steps:1,settleMilliseconds:35,cancellationToken:lifetime.Token);
                 await Until(()=>FocusedIndex(View()!)==1);
+                await Until(()=>presenter.IsGuidePresentationReady(requireFocus:true));
                 navigationChecks.Add("Background/reopen reacquires rows and resumes directional focus");
                 Sample("reopened");
             }
@@ -150,20 +187,33 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
             session.PresentationChanged-=Changed;
             await presenter.DisposeAsync();
             await session.DisposeAsync();session=null;
-            await Task.Delay(3000,lifetime.Token);Sample(phase);
+            var retiredGuideChecks=guideChecks;
+            await Task.Delay(3000,lifetime.Token);
+            if(guideChecks!=retiredGuideChecks)throw new InvalidOperationException("Retired presenter published a delayed guide update.");
+            navigationChecks.Add("Guide readiness settles after scrolling/reopen and retirement publishes no delayed guide update");
+            presenter.ControllerGuideChanged-=CheckGuideReadiness;
+            Sample(phase);
         }
         catch(Exception error){failure??=error;}
         finally
         {
+            await StopDispatcherProbeAsync();
             scrolling=false;CompositionTarget.Rendering-=Rendering;
+            presenter.ControllerGuideChanged-=CheckGuideReadiness;
             if(session is not null)
             {
                 session.PresentationChanged-=Changed;
                 await presenter.DisposeAsync();await session.DisposeAsync();session=null;
             }
-            await File.WriteAllTextAsync(Path.Combine(output,"result.json"),JsonSerializer.Serialize(new{passed=failure is null,error=failure?.ToString(),navigationChecks,samples}));
+            await File.WriteAllTextAsync(Path.Combine(output,"result.json"),JsonSerializer.Serialize(new{passed=failure is null,error=failure?.ToString(),navigationChecks,navigationOffsets,
+                motionSynchronizationContext,externalNormalWaits,dispatcherProbeSkipped,samples}));
         }
     }
+    // Timestamp timer completion on its worker before the awaiting UI continuation.
+    // This distinguishes delayed timer/thread-pool delivery from native UI queue waits.
+    private static Task<long> MotionTickAsync(CancellationToken token) => Task.Delay(16,token).ContinueWith(
+        completed => { completed.GetAwaiter().GetResult(); return Stopwatch.GetTimestamp(); },
+        CancellationToken.None,TaskContinuationOptions.ExecuteSynchronously,TaskScheduler.Default);
     private void Changed(object? sender,WidgetPresentationChangedEventArgs args)=>DispatcherQueue.TryEnqueue(()=>
     {
         if(args.State.PublicationRevision<=publication)return;
@@ -198,6 +248,8 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
                 bounds.Bottom>viewport.Top&&bounds.Top<viewport.Bottom;
         }).ToArray();
         samples.Add(new{phase=name,seconds=elapsed.Elapsed.TotalSeconds,workingSet=process.WorkingSet64,privateBytes=process.PrivateMemorySize64,
+            isForeground=foreground.IsOverlayForeground,
+            guideChecks,guideMilliseconds,longestGuideMilliseconds,
             managedBytes=GC.GetTotalMemory(false),heapSize=gc.HeapSizeBytes,committed=gc.TotalCommittedBytes,fragmented=gc.FragmentedBytes,
             allocated=GC.GetTotalAllocatedBytes(),gen0=GC.CollectionCount(0),gen1=GC.CollectionCount(1),gen2=GC.CollectionCount(2),
             handles=process.HandleCount,count=view?.Items.Count,realized=nodes.Count(n=>n is GridViewItem),
@@ -243,10 +295,13 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
             await Task.Delay(800, lifetime.Token);
             var currentScroll = Descendants(View()!).OfType<ScrollViewer>().First();
             var replacedOffset = currentScroll.VerticalOffset;
+            var replacedFocus = FocusedIndex(View()!);
             await Until(presenter.SettleScrollFocus);
             await Task.Delay(250, lifetime.Token);
+            navigationOffsets.Add(new{ordinal=navigationOffsets.Count,replacedOffset,settledOffset=currentScroll.VerticalOffset,
+                replacedFocus,settledFocus=FocusedIndex(View()!),count=View()!.Items.Count});
             if (Math.Abs(currentScroll.VerticalOffset-replacedOffset)>1)
-                throw new InvalidOperationException("Retired query scrolling moved the replacement collection.");
+                throw new InvalidOperationException($"Retired query scrolling moved replacement {navigationOffsets.Count}: {replacedOffset:F2} to {currentScroll.VerticalOffset:F2}.");
         }
         navigationChecks.Add("Search replacement and restoration during native motion retire old ranges without delayed scrolling");
     }

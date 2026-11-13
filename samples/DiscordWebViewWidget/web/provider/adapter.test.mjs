@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import { EventEmitter } from 'node:events';
 
 const build=JSON.parse(await readFile(new URL('./adapter-contract.json',import.meta.url),'utf8')).build;
-let source = (await readFile(new URL('./activity-provider.js', import.meta.url), 'utf8'))+'\n'+(await readFile(new URL('./adapter.js', import.meta.url), 'utf8'))+`\ninitializeWidgetRailDiscordAdapter(${build});`;
+let source = (await readFile(new URL('./activity-provider.js', import.meta.url), 'utf8'))+'\n'+(await readFile(new URL('./adapter.js', import.meta.url), 'utf8'))+`\ninitializeWidgetRailDiscordAdapter(${build},globalThis.testVideoHost);`;
 if(process.env.WRAIL_MINIFIED_TESTS==='1')source=await(await import('../../../../tools/DiscordWebViewPrototype/Build-Backend.mjs')).minifySource(source);
 
 test('direct domain installer does not downgrade a newer provider',()=>{
@@ -93,9 +93,12 @@ function fixture() {
                 return () => events.push(pattern);
             }, Common: { FluxDispatcher: { dispatch: event => { events.push(event); state.channel = event.channelId; } } } }
     });
+    const videoTracks=new Map();
+    context.testVideoHost={setVideoTrack(id,track){if(!videoTracks.has(id))return false;videoTracks.set(id,track);return true;},
+        videoPlayback(id){return videoTracks.has(id)?{width:1280,height:720,totalFrames:42}:null;}};
     vm.runInContext(source, context);
     const invoke = (method, args = {}) => context.WidgetRailDiscordPrototype.invoke({ method, owner: 'c'.repeat(32), args: { account: '1', channelId: '20', ...args } });
-    return { state, stores, events, pending, captureOptions, audioReads, audioActions, demandCalls,peers,initial,visibility,makeRtc,timers, invoke, context, engine };
+    return { state, stores, events, pending, captureOptions, audioReads, audioActions, demandCalls,videoTracks,peers,initial,visibility,makeRtc,timers, invoke, context, engine };
 }
 
 test('connection details expose only bounded current-call ping and quality',async()=>{
@@ -229,6 +232,38 @@ test('reinjection preserves adapter instead of duplicating timers', () => {
     const f = fixture(); const before = f.context.WidgetRailDiscordPrototype;
     vm.runInContext(source, f.context); assert.equal(before, f.context.WidgetRailDiscordPrototype);
 });
+
+test('pin encoder uses its negotiated parameters without altering the Discord source', async () => {
+    const f=fixture(), lease='a'.repeat(32);
+    assert.equal((await f.invoke('watch',{key:'guild:10:20:2',lease})).ok,true);
+    const peer=f.peers[0], sender=peer.sender, parameters={transactionId:'live',encodings:[{active:true}]};
+    sender.getParameters=()=>{assert.equal(peer.connectionState,'connected');return parameters;};
+    let applied;
+    sender.setParameters=async value=>{applied=value;};
+    assert.equal((await f.invoke('answer',{lease,answer:{}})).ok,true);
+    assert.equal(applied,parameters);
+    assert.equal(applied.encodings[0].maxBitrate,20_000_000);
+    assert.equal(applied.degradationPreference,'maintain-resolution');
+    assert.equal(applied.encodings[0].active,true);
+    assert.equal(f.initial.track.contentHint,undefined);
+});
+
+test('optional pin quality rejection preserves playback and a late answer cannot tune a replacement relay', async () => {
+    const f=fixture(), first='a'.repeat(32), next='b'.repeat(32);
+    await f.invoke('watch',{key:'guild:10:20:2',lease:first});
+    const old=f.peers[0];
+    old.sender.getParameters=()=>({encodings:[{}]});
+    old.sender.setParameters=async()=>{throw Error('unsupported');};
+    assert.equal((await f.invoke('answer',{lease:first,answer:{}})).ok,true);
+    let finish;
+    old.setRemoteDescription=()=>new Promise(resolve=>{finish=resolve;});
+    const late=f.invoke('answer',{lease:first,answer:{}});
+    await settle();
+    await f.invoke('watch',{key:'guild:10:20:2',lease:next});
+    finish();
+    assert.equal((await late).code,'watch_cancelled');
+    assert.equal(f.peers[1].connectionState,'new');
+});
 test('unknown commands are rejected', async () => {
     assert.equal((await fixture().invoke('eval', { code: 'anything' })).code, 'unknown_command');
 });
@@ -250,21 +285,6 @@ test('a lost widget heartbeat rejects late capture even if another probe is aliv
     const f = fixture(); await f.invoke('share'); await settle(); f.state.now += 13000;
     await f.context.WidgetRailDiscordPrototype.invoke({ method: 'snapshot', owner: 'd'.repeat(32) });
     f.pending[0]('capture'); await settle(); assert.equal(f.state.started, 0); assert.equal(f.state.destroyed, 1);
-});
-
-test('packaged receiver loads SDK messaging before its code and reports ready', async () => {
-    const html = await readFile(new URL('../receiver.html', import.meta.url), 'utf8');
-    assert.ok(html.indexOf('src="web-session.js"') < html.indexOf('src="receiver.js"'));
-    assert.ok(html.includes('src="web-session.js"'));
-    const runtime = await readFile(new URL('../../../../src/WidgetSdk/WebSessionRuntime.js', import.meta.url), 'utf8');
-    const receiver = await readFile(new URL('../receiver.js', import.meta.url), 'utf8');
-    const posted = [], listeners = [];
-    const context = vm.createContext({ TextEncoder, Map, AbortController, setTimeout, clearTimeout,
-        document: { getElementById: () => ({ srcObject: null, textContent: '', play: async () => {} }) },
-        chrome: { webview: { postMessage: value => posted.push(value), addEventListener: (...a) => listeners.push(a) } } });
-    context.window = context; context.addEventListener = () => {};
-    vm.runInContext(runtime, context); vm.runInContext(receiver, context);
-    assert.equal(posted.length, 1); assert.equal(posted[0].ready, true); assert.equal(listeners.length, 1);
 });
 
 test('missing or malformed viewer ownership fails closed before opening or closing a provider watch',async()=>{
@@ -771,7 +791,7 @@ const hdQuality={resolution:1080,frameRate:30};
 
 test('quality inspection leaves the source for the provider single ownership transfer',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;
-    await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
     assert.equal(f.state.poolTakes,1,'Only Discord takes the source');
     assert.equal(f.engine.desktopInputPool.pool.capture,undefined,'Discord consumed its queued source');
     assert.equal(f.state.ownRtc._connection.input.desktop,f.source);
@@ -794,12 +814,21 @@ test('quality discovery delegates account and guild eligibility to the exact pro
     assert.equal(read.preset,3);assert.equal(read.resolution,1080);assert.equal(read.fps,30);
     assert.equal(read.user.id,'1');assert.equal(read.tier,0);assert.equal(read.channel.id,'20');
     f.state.entitled1080=true;snapshot=(await f.invoke('snapshot')).value;
-    assert.equal(snapshot.shareQualities.length,12);
-    assert.deepEqual(JSON.parse(JSON.stringify(snapshot.shareQualities.at(-1))),{resolution:1440,frameRate:60});
+    assert.equal(snapshot.shareQualities.length,9);
+    assert.deepEqual(JSON.parse(JSON.stringify(snapshot.shareQualities.at(-1))),{resolution:1080,frameRate:60});
     f.state.entitled1080=false;f.state.guildTier=2;
-    assert.equal((await f.invoke('snapshot')).value.shareQualities.length,12);
+    assert.equal((await f.invoke('snapshot')).value.shareQualities.length,9);
     f.state.guildTier=1;assert.equal((await f.invoke('snapshot')).value.shareQualities.length,6);
     assert.deepEqual(f.qualityWrites,[]);assert.deepEqual(f.events,[]);
+});
+
+test('saved 1440p uses 1080p at the saved frame rate without changing provider settings during discovery',async()=>{
+    const f=qualityFixture(); f.state.entitled1080=true;
+    f.state.qualitySettings={...f.state.qualitySettings,resolution:1440,fps:60};
+    const snapshot=(await f.invoke('snapshot')).value;
+    assert.deepEqual({...snapshot.preferredShareQuality},{resolution:1080,frameRate:60});
+    assert.ok(snapshot.shareQualities.every(mode=>mode.resolution<=1080));
+    assert.deepEqual(f.qualityWrites,[]);
 });
 
 test('missing or malformed quality discovery retains baseline without guessing premium eligibility',async()=>{
@@ -818,20 +847,20 @@ test('missing or malformed quality discovery retains baseline without guessing p
 test('quality discovery retries missing loaded APIs without mounting provider UI or caching failure',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;f.state.qualityAvailable=false;
     assert.equal((await f.invoke('snapshot')).value.shareQualities.length,4);
-    f.state.qualityAvailable=true;assert.equal((await f.invoke('snapshot')).value.shareQualities.length,12);
+    f.state.qualityAvailable=true;assert.equal((await f.invoke('snapshot')).value.shareQualities.length,9);
     assert.deepEqual(f.events,[]);assert.deepEqual(f.qualityWrites,[]);
 });
 
 test('only bounded resolutions and frame rates are considered even for eligible accounts',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;
     for(const captureQuality of [{resolution:2160,frameRate:30},{resolution:0,frameRate:30},
-        {resolution:1080,frameRate:120},{resolution:1440,frameRate:5},{resolution:1600,frameRate:30}])
+        {resolution:1080,frameRate:120},{resolution:1080,frameRate:5},{resolution:1600,frameRate:30}])
         assert.equal((await f.invoke('share',{captureQuality})).code,'share_quality_unsupported');
     assert.equal(f.pending.length,0);assert.deepEqual(f.qualityWrites,[]);
 });
 
 test('all twelve custom quality pairs are advertised and applied only when provider permits them',async()=>{
-    for(const resolution of [480,720,1080,1440])for(const frameRate of [15,30,60]){
+    for(const resolution of [480,720,1080])for(const frameRate of [15,30,60]){
         const f=qualityFixture();f.state.entitled1080=true;
         assert.equal((await f.invoke('share',{captureQuality:{resolution,frameRate}})).ok,true);await settle();
         f.pending[0]('capture');await settle();
@@ -843,15 +872,15 @@ test('saved custom preference comes from provider persisted settings and survive
     const f=qualityFixture();f.state.qualitySettings={preset:3,resolution:1440,fps:60,soundshareEnabled:true};
     let snapshot=(await f.invoke('snapshot')).value;
     assert.equal(snapshot.shareQualities.length,4);
-    assert.deepEqual(JSON.parse(JSON.stringify(snapshot.preferredShareQuality)),{resolution:1440,frameRate:60});
+    assert.deepEqual(JSON.parse(JSON.stringify(snapshot.preferredShareQuality)),{resolution:1080,frameRate:60});
     f.state.entitled1080=true;snapshot=(await f.invoke('snapshot')).value;
-    assert.equal(snapshot.shareQualities.length,12);assert.equal(snapshot.preferredShareQuality.resolution,1440);
+    assert.equal(snapshot.shareQualities.length,9);assert.equal(snapshot.preferredShareQuality.resolution,1080);
     assert.deepEqual(f.qualityWrites,[]);
     // Adapter recreation has no private copy of this preference to restore.
     const previous=f.context.WidgetRailDiscordPrototype;
     vm.runInContext(`initializeWidgetRailDiscordAdapter(${build+1});`,f.context);
     assert.notEqual(f.context.WidgetRailDiscordPrototype,previous);
-    assert.deepEqual(JSON.parse(JSON.stringify((await f.invoke('snapshot')).value.preferredShareQuality)),{resolution:1440,frameRate:60});
+    assert.deepEqual(JSON.parse(JSON.stringify((await f.invoke('snapshot')).value.preferredShareQuality)),{resolution:1080,frameRate:60});
     for(const saved of [null,{}, {preset:1,resolution:1080,fps:60},{preset:3,resolution:2160,fps:60},{preset:3,resolution:720,fps:120}]){
         f.state.qualitySettings=saved;assert.equal((await f.invoke('snapshot')).value.preferredShareQuality,null);
     }
@@ -1171,11 +1200,11 @@ test('malformed and oversized device lists are unavailable, never truncated into
 });
 
 test('selected stream quality is configured and advertised before the first provider Video event',async()=>{
-    const f=qualityFixture();f.state.entitled1080=true;await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();
+    const f=qualityFixture();f.state.entitled1080=true;await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();
     f.pending[0]('capture');await settle();
     assert.equal(f.state.started,1);assert.equal((await f.invoke('snapshot')).value.shareError,null);
-    const observed=f.qualityObserved[0];assert.deepEqual(observed.quality,{capture:{width:2560,height:1440,framerate:60},encode:{width:2560,height:1440,framerate:60}});
-    assert.deepEqual(observed.parameters[0].maxResolution,{type:'fixed',width:2560,height:1440});assert.equal(observed.parameters[0].maxFrameRate,60);
+    const observed=f.qualityObserved[0];assert.deepEqual(observed.quality,{capture:{width:1920,height:1080,framerate:60},encode:{width:1920,height:1080,framerate:60}});
+    assert.deepEqual(observed.parameters[0].maxResolution,{type:'fixed',width:1920,height:1080});assert.equal(observed.parameters[0].maxFrameRate,60);
     assert.equal(f.state.ownRtc._connection.setDesktopInput.name,'setDesktopInput','Instance wrapper is restored immediately after its source handoff');
     assert.equal(f.listeners.size,1);await f.invoke('stopShare');assert.equal(f.listeners.size,0);
 });
@@ -1271,11 +1300,11 @@ test('content hook retirement preserves a later provider method replacement',asy
 test('optional native-status failure warns without rejecting supported high quality',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;
     f.context.WidgetRailNativeMedia={status(){throw Error('Unavailable optional observation');}};
-    await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
     const snapshot=(await f.invoke('snapshot')).value;
     assert.equal(snapshot.shareQualityWarning,'share_content_preference_unconfirmed');
     assert.equal(snapshot.shareError,null);assert.equal(snapshot.sharing,true);
-    assert.equal(f.qualityObserved[0].parameters[0].maxResolution.height,1440);
+    assert.equal(f.qualityObserved[0].parameters[0].maxResolution.height,1080);
 });
 
 test('a provider clone on the owned source warns instead of silently rewriting an unknown track',async()=>{
@@ -1297,8 +1326,8 @@ test('an asynchronous provider attachment warns and preserves its returned promi
 });
 
 test('quality hook ignores unrelated connections and preserves source aspect ratio',async()=>{
-    const f=qualityFixture();f.state.entitled1080=true;f.sourceTrack.getConstraints=()=>({width:{max:3440},height:{max:1440}});
-    await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+    const f=qualityFixture();f.state.entitled1080=true;f.sourceTrack.getConstraints=()=>({width:{max:3440},height:{max:1080}});
+    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
     assert.equal(f.qualityObserved[0].parameters[0].maxResolution.width,3440);
     const other={context:'stream',userId:'1',streamUserId:'2',setDesktopInput(){}};f.engine.connections.push(other);
     const original=other.setDesktopInput;for(const listener of f.listeners)listener(other);assert.equal(other.setDesktopInput,original);
@@ -1307,7 +1336,7 @@ test('quality hook ignores unrelated connections and preserves source aspect rat
 test('stopped, replaced and changed-owner quality hooks cannot rewrite a later connection',async()=>{
     for(const change of ['stop','account','channel','source','share']){
         const f=qualityFixture();f.state.entitled1080=true;f.state.deferDesktop=true;
-        await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+        await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
         const old=f.state.ownRtc._connection,held=old.setDesktopInput;
         if(change==='stop')await f.invoke('stopShare');else if(change==='account')f.state.account='3';else if(change==='channel')f.state.channel='21';
         else if(change==='source')f.engine.desktopInputPool.set('capture',{});else{f.state.share={channelId:'99',ownerId:'1',guildId:'10'};}
@@ -1318,10 +1347,10 @@ test('stopped, replaced and changed-owner quality hooks cannot rewrite a later c
 
 test('missing or changed quality APIs fail clearly without changing an unknown provider connection',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;f.engine.on=undefined;
-    await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
     assert.equal(f.state.started,0);assert.equal(f.state.destroyed,1);assert.equal((await f.invoke('snapshot')).value.shareError,'share_quality_unavailable');
     const delayed=qualityFixture();delayed.state.entitled1080=true;delayed.state.deferDesktop=true;
-    await delayed.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();delayed.pending[0]('capture');await settle();
+    await delayed.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();delayed.pending[0]('capture');await settle();
     delayed.state.ownRtc._connection.videoQualityManager.setGoliveQuality=()=>{};
     delayed.state.ownRtc._connection.setDesktopInput(delayed.source);
     assert.equal((await delayed.invoke('snapshot')).value.shareQualityWarning,'share_quality_unconfirmed');
@@ -1333,18 +1362,18 @@ test('missing or changed quality APIs fail clearly without changing an unknown p
 test('late abandoned source cleanup cannot retire a newer quality binding',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;let abandonedDestroyed=0;
     f.engine.desktopInputPool.set('abandoned',{destroy(){abandonedDestroyed++;}});
-    await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();
+    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();
     await f.invoke('stopShare');
-    await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();
+    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();
     f.pending[1]('capture');await settle();assert.equal(f.listeners.size,1);
     f.pending[0]('abandoned');await settle();
     assert.equal(abandonedDestroyed,1);assert.equal(f.listeners.size,1);assert.equal(f.state.started,1);
-    assert.equal(f.state.ownRtc._connection.videoStreamParameters[0].maxResolution.height,1440);
+    assert.equal(f.state.ownRtc._connection.videoStreamParameters[0].maxResolution.height,1080);
 });
 
 test('quality configuration never overwrites a later user preference',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;f.state.deferDesktop=true;
-    await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
     f.state.qualitySettings={preset:3,resolution:720,fps:30};f.state.ownRtc._connection.setDesktopInput(f.source);
     assert.equal(f.state.ownRtc._connection.videoStreamParameters[0].maxResolution.height,720);
     assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,'share_quality_unconfirmed');assert.equal(f.listeners.size,0);
@@ -1369,10 +1398,10 @@ test('cold RTC modules may become available at exact source attachment without e
     delete f.stores.StreamRTCConnectionStore;
     f.context.WidgetRailWebWebpack.findByProps=(...names)=>names.includes('SOURCE')&&!f.state.started?undefined:findProps(...names);
     f.context.WidgetRailWebWebpack.findByCode=pattern=>pattern==='"STREAM_START",streamType'?((...args)=>{f.stores.StreamRTCConnectionStore=rtc;return find(pattern)(...args);}):find(pattern);
-    await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();assert.equal(f.state.started,0);
+    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();assert.equal(f.state.started,0);
     f.pending[0]('capture');await settle();const state=(await f.invoke('snapshot')).value;
     assert.equal(f.state.started,1);assert.equal(state.shareError,null);assert.equal(state.shareQualityWarning,null);
-    assert.equal(f.qualityObserved[0].parameters[0].maxResolution.height,1440);
+    assert.equal(f.qualityObserved[0].parameters[0].maxResolution.height,1080);
 });
 
 test('safe sender diagnostics report real encoding controls without codec SDP or identity data',async()=>{
@@ -1405,7 +1434,7 @@ test('quality warnings retire with account call source and exact stream instead 
 
 test('post-attachment warning survives binding cleanup but not a later stream',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;f.state.deferDesktop=true;
-    await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
     f.state.ownRtc._connection.videoQualityManager.setGoliveQuality=()=>{};f.state.ownRtc._connection.setDesktopInput(f.source);
     assert.equal(f.listeners.size,0);assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,'share_quality_unconfirmed');
     f.state.share={channelId:'20',guildId:'10',ownerId:'1'};
@@ -1415,9 +1444,30 @@ test('post-attachment warning survives binding cleanup but not a later stream',a
 test('fatal share errors also clear on account or call departure',async()=>{
     for(const change of ['account','call']){
         const f=qualityFixture();f.state.entitled1080=true;f.engine.on=undefined;
-        await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+        await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
         assert.equal((await f.invoke('snapshot')).value.shareError,'share_quality_unavailable');
         f.state[change==='account'?'account':'channel']='99';assert.equal((await f.invoke('snapshot')).value.shareError,null);
         f.state.account='1';f.state.channel='20';assert.equal((await f.invoke('snapshot')).value.shareError,null);
     }
+});
+
+test('direct pin binds the original track with no peer allocation, tracks replacement and releases only its view',async()=>{
+    const f=fixture(), videoView='d'.repeat(32), args={...streamTarget,videoView};
+    f.state.failPeer=true;
+    assert.equal((await f.invoke('watch',args)).code,'video_view_unavailable');
+    assert.equal(f.events.length,0);
+    f.videoTracks.set(videoView,null);
+    const connected=await f.invoke('watch',args);
+    assert.deepEqual({...connected.value},{lease:args.lease,videoView});
+    assert.equal(f.videoTracks.get(videoView),f.initial.track);
+    assert.equal(f.peers.length,0);
+    const stats=await f.invoke('videoPlayback',args);
+    assert.equal(stats.value.totalFrames,42);
+    assert.equal((await f.invoke('videoPlayback',{...args,lease:'e'.repeat(32)})).code,'watch_cancelled');
+    const replacement=f.makeRtc('restart');f.state.rtc=replacement.rtc;
+    await [...f.timers.values()].find(timer=>timer.interval&&timer.ms===1000).cb();
+    assert.equal(f.videoTracks.get(videoView),replacement.track);
+    await f.invoke('unwatch',args);
+    assert.equal(f.videoTracks.get(videoView),null);
+    assert.equal(replacement.track.readyState,'live');
 });

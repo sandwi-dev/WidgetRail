@@ -37,6 +37,11 @@ profiles remain intact. Sign in once in the new widget, then disable or remove
 the older widget if you no longer need it. The older webapp remains buildable
 from [its source](../../samples/DiscordWidget/README.md).
 
+Choose **Enable notifications** on the native controls page to receive Discord’s
+website notifications in WidgetRail. Choose **Remember for this profile** to keep
+the decision across restarts. The native widget and the older website wrapper have
+separate Discord profiles. A saved block can be changed in **Website settings**.
+
 ## Calls and controls
 
 Without a call, the home view shows the server/channel picker. Search and keyboard
@@ -59,7 +64,8 @@ unobstructed. Ping is not a measurement of end-to-end audio latency.
 
 ## Watch, pin and share
 
-Choose **Watch** to open an incoming stream pin. Stream mute and volume are on
+Choose **Watch** to open an incoming stream pin. Discord’s page and the pin can
+display the same decoded video track side by side. Stream mute and volume are on
 the shared-screen card in the main widget; they are independent of participant
 voice volume. Deafen also silences received audio. The video pin has no audio
 controls and does not play a second copy of stream audio.
@@ -71,9 +77,10 @@ stop watching or Stop sharing; closing WidgetRail ends its hosted session.
 
 Sharing requires selecting an application and explicitly choosing whether to
 include application audio. Available quality options depend on Discord's account
-and call eligibility, up to 1440p at 60 FPS. The default is 720p30. Resolution/FPS
-and the Smoothness/Clarity preference are remembered; cancelling the chooser does
-not change them. **Menu → Stream details** distinguishes captured pixels, outbound
+and call eligibility, up to 1080p at 60 FPS. The default is 720p30. Discord
+remembers the selected resolution and frame rate and always requests clarity.
+WidgetRail shows the capture badge on the widget icon while the host captures.
+**Menu → Stream details** distinguishes captured pixels, outbound
 resolution/FPS and Discord's advertised quality label.
 
 Requested quality is not a delivery guarantee. Source size, motion, encoder load

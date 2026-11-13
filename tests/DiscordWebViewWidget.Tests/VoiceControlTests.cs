@@ -205,6 +205,7 @@ internal static class VoiceControlTests
         public WebSessionReference? Reference=>Core.Reference;
         public ValueTask<DiscordState> ReadAsync(CancellationToken token)=>Core.ReadAsync(token);
         public ValueTask<IDiscordReceiver> OpenReceiverAsync(CancellationToken token)=>Core.OpenReceiverAsync(token);
+        public ValueTask<WebSessionPermissionResult> RequestNotificationsAsync(CancellationToken token)=>Core.RequestNotificationsAsync(token);
         public ValueTask<WebSessionMicrophoneResult> RequestMicrophoneAsync(CancellationToken token)=>Core.RequestMicrophoneAsync(token);
         public ValueTask DisposeAsync()=>Core.DisposeAsync();
         public async ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token)
