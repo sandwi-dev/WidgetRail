@@ -75,6 +75,8 @@ internal sealed class SyntheticDiscordSession:IDiscordSession
     {
         this.audioMode=audioMode;
         this.voiceControlsMode=voiceControlsMode;
+        state=state with{Channels=[..state.Channels,..Enumerable.Range(40,20)
+            .Select(id=>new DiscordChannel(id.ToString(),"300","Voice "+id,"After hours"))]};
         if(voiceControlsMode)state=state with{Participants=state.Participants.Select(person=>person.Id==state.Account?person:person with{Audio=new(true,false,50)}).ToArray()};
         if(audioMode)state=state with{Streams=state.Streams.Select(stream=>stream with{Audio=new(true,false,100)}).ToArray()};
         if(voicePinMode)state=state with{ChannelName="A very long voice channel name for compact controller pin layout checks",Muted=true,Deafened=true};
@@ -143,7 +145,8 @@ internal sealed class SyntheticDiscordSession:IDiscordSession
         if(audioMode&&method=="unwatch"&&value.TryGetProperty("lease",out var removed))leases.TryRemove(removed.GetString()!,out _);
         if(method=="mute")state=state with{Muted=value.GetProperty("value").GetBoolean()};
         if(method=="deafen")state=state with{Deafened=value.GetProperty("value").GetBoolean()};
-        if(method=="leave")state=state with{ChannelId=null,Participants=[],Streams=[],Activities=[],VoiceConnection="disconnected"};
+        if(method=="leave")state=state with{ChannelId=null,Participants=[],Streams=[],VoiceConnection="disconnected",
+            Activities=state.Activities.Where(activity=>activity.CanJoinVoice).ToArray()};
         if(method is "join" or "joinActivity")
         {
             var channel=state.Channels.Single(c=>c.Id==value.GetProperty("target").GetString());

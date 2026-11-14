@@ -7,7 +7,7 @@ namespace WidgetRail.Samples.DiscordWebView;
 
 public sealed partial class DiscordWebViewWidget : Widget
 {
-    private enum Route { Home, Channels, Account, ParticipantAudio, VoiceSettings, ConnectionDetails }
+    private enum Route { Home, Channels, Account, ParticipantAudio, VoiceSettings, ConnectionDetails, Friends }
     private sealed record ViewState(string Query="",string Notice="",string? Account=null,string? Channel=null,
         string? StreamKey=null,string? StreamName=null,Relay? Receiver=null,
         SharePreparation? PreparingShare=null,OutgoingCapture? Outgoing=null,
@@ -33,7 +33,8 @@ public sealed partial class DiscordWebViewWidget : Widget
         view=CreateModel(new ViewState());
         navigation=CreateNavigatorWithOptions("discord.navigation",Route.Home,new()
         {SharedRootScopeId="discord.root",RootRoutes=[Route.Home],RouteScopeIds=new Dictionary<Route,string>{{Route.Account,"discord.account.scope"},{Route.Channels,"discord.channels.scope"},
-            {Route.ParticipantAudio,"discord.participant-dialog.scope"},{Route.VoiceSettings,"discord.voice-settings-dialog.scope"},{Route.ConnectionDetails,"discord.connection-dialog.scope"}}});
+            {Route.ParticipantAudio,"discord.participant-dialog.scope"},{Route.VoiceSettings,"discord.voice-settings-dialog.scope"},{Route.ConnectionDetails,"discord.connection-dialog.scope"},
+            {Route.Friends,"discord.friends.scope"}}});
         state=CreateResource("discord.state",new WidgetResourceOptions<DiscordState>
         {Load=ReadAsync,MapError=_=>new("discord.unavailable","Discord is unavailable. Open Discord to check the connection, then Refresh."),
             RetainLastGoodValue=false,Lifetime=WidgetOperationLifetime.Widget,CacheDuration=TimeSpan.FromSeconds(1)});
@@ -120,6 +121,10 @@ public sealed partial class DiscordWebViewWidget : Widget
         switch(action.ActionId)
         {
             case "refresh":state.Refresh();return ValueTask.CompletedTask;
+            case "friends":
+                if(navigation.Value.Route==Route.Home&&CurrentState() is {ChannelId:null})
+                    PushRoute(Route.Friends,action);
+                return ValueTask.CompletedTask;
             case "account":if(client?.Reference is not null)PushRoute(Route.Account,action);return ValueTask.CompletedTask;
             case "server-picker":
                 if(navigation.Value.Route==Route.Home&&CurrentState()?.ChannelId is not null)
@@ -273,7 +278,7 @@ public sealed partial class DiscordWebViewWidget : Widget
             {if(context.IsCurrent)view.Update(current=>current with{Notice="Discord could not join the channel. Check microphone setup and connection, then try again."});return;}
             finally{if(LifecycleState!=WidgetLifecycleState.Destroying)await state.Refresh().Completion;}
             if(context.IsCurrent&&client!.Reference==session&&CurrentState() is { } joined&&joined.Account==account&&joined.ChannelId==target&&
-                origin.Route==Route.Channels&&ReferenceEquals(origin,navigation.Value))navigation.Back();
+                origin.Route is (Route.Channels or Route.Friends)&&ReferenceEquals(origin,navigation.Value))navigation.Back();
         },WidgetOperationLifetime.Widget);
         return ValueTask.CompletedTask;
     }

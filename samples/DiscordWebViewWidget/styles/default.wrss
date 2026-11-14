@@ -47,7 +47,6 @@
 .discord-primary-pane { min-width:0px; min-height:0px; flex-grow:1; gap:20px; padding:4px; }
 .discord-main-content { min-width:0px; min-height:0px; flex-grow:0; }
 .discord-call-content { width:100%; min-width:0px; gap:16px; }
-.discord-picker-list { height:45vh; min-height:144px; max-height:420px; }
 .discord-activity-pane { width:260px; min-width:0px; min-height:0px; gap:14px; padding:4px 0px 0px 18px; border-left-width:1px; border-left-color:var(--border, var(--surface-muted)); }
 .discord-activity-compact { width:100%; min-width:0px; min-height:0px; flex-grow:0; gap:8px; padding:16px 0px 0px; border-top-width:1px; border-top-color:var(--border, var(--surface-muted)); }
 .discord-activity-compact-list { min-width:0px; min-height:0px; height:240px; }

@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][string]$CliPath,
     [Parameter(Mandatory)][string]$InstallationRoot,
     [Parameter(Mandatory)][string]$OutputDirectory,
-    [ValidateSet('Both','Minimum','Expanded')][string]$Surface='Both'
+    [ValidateSet('Both','Minimum','Expanded')][string]$Surface='Both',
+    [switch]$PickerOnly
 )
 $ErrorActionPreference='Stop'
 $output=[IO.Path]::GetFullPath($OutputDirectory)
@@ -19,7 +20,7 @@ foreach($scenario in $scenarios){
     if($Surface -ne 'Both' -and $scenario.Selection -ne $Surface){continue}
     $scenarioOutput=Join-Path $output $scenario.Name
     & "$PSScriptRoot/Stage.ps1" -PublishedPayload $PublishedPayload -CliPath $CliPath -InstallationRoot $InstallationRoot -OutputDirectory $scenarioOutput
-    @{width=$scenario.Width;height=$scenario.Height}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $scenarioOutput 'expected-surface.json')
+    @{width=$scenario.Width;height=$scenario.Height;pickerOnly=$PickerOnly.IsPresent}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $scenarioOutput 'expected-surface.json')
     $result=Join-Path $scenarioOutput 'result.json'
     $process=Start-Process -FilePath $exe -ArgumentList @(('"--shell-config='+$scenarioOutput+'/shell.json"'),'--shell-no-controller',
         ('--validation-viewport-dips='+$scenario.Viewport),('"--validate-discord-navigation='+$result+'"')) -WindowStyle Hidden -PassThru
@@ -32,7 +33,7 @@ foreach($scenario in $scenarios){
         }
         $data=Get-Content -LiteralPath $result -Raw|ConvertFrom-Json
         if(!$data.passed){throw $data.error}
-        if($data.checks.Count -lt 35){throw 'Navigation fixture did not complete all expected checks.'}
+        if(!$PickerOnly -and $data.checks.Count -lt 35){throw 'Navigation fixture did not complete all expected checks.'}
         $data.checks|ForEach-Object{Write-Output "PASS [$($scenario.Name)] $_"}
         Write-Output "Evidence: $result"
     } finally {

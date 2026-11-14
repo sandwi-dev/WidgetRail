@@ -54,6 +54,11 @@ internal sealed partial class OverlayShellPage
                 RecordIcons("initial");
                 Check(Node("discord.navigation.shell") is null&&Node("discord.call.page") is not null,
                     "Call controls render together without the retired section rail");
+                if(dimensions.RootElement.TryGetProperty("pickerOnly",out var pickerOnly)&&pickerOnly.GetBoolean())
+                {
+                    await VerifyIdlePicker();
+                    return;
+                }
                 step="root shortcuts";
                 var muted=Node("discord.main.mute")!.IsSelected==true;
                 await Button(ControllerButton.X);
@@ -150,20 +155,52 @@ internal sealed partial class OverlayShellPage
                 await Until(()=>Node("discord.notice") is null && PinText("discord.pin.status.title")=="No screen selected");
                 Check(true,"Native Stop watching clears failed selection and recovery notice");
                 await UnpinAsync(save:true);
-                step="idle picker";
-                Check(surface.FocusHostTarget("discord.main.mute"),"Leave navigation starts at the native mute control");
-                await Until(()=>FocusId()=="Widget.discord.main.mute");
-                // The responsive action grid wraps below Mute at minimum width.
-                await MoveUntil(compact ? NavigationDirection.Down : NavigationDirection.Right,
-                    () => FocusId() == "Widget.discord.main.leave");
-                await Button(ControllerButton.A);
-                await Until(()=>CurrentPage()=="picker"&&ActionableFocus());
-                Check(Node("discord.channels.server") is not null&&Node("discord.main.mute") is null,
-                    "Leaving voice automatically shows the server picker rather than an empty call tab");
-                Check(!Nodes(surface.CurrentBinding!.View.Root).SelectMany(n=>n.Shortcuts).Any(s=>s.Button is ControllerButton.X or ControllerButton.Y),
-                    "Idle server picker does not expose voice or share shortcuts");
-                Check(VisibleFocus(),"Idle transition retains a visible enabled native picker control");
-                Check(validationFailure is null,"Scenario never enters host recovery");
+                await VerifyIdlePicker();
+
+                async Task VerifyIdlePicker()
+                {
+                    step="idle picker";
+                    Check(surface.FocusHostTarget("discord.main.mute"),"Leave navigation starts at the native mute control");
+                    await Until(()=>FocusId()=="Widget.discord.main.mute");
+                    // The responsive action grid wraps below Mute at minimum width.
+                    await MoveUntil(compact ? NavigationDirection.Down : NavigationDirection.Right,
+                        () => FocusId() == "Widget.discord.main.leave");
+                    await Button(ControllerButton.A);
+                    await Until(()=>CurrentPage()=="picker"&&ActionableFocus());
+                    Check(Node("discord.channels.server") is not null&&Node("discord.main.mute") is null,
+                        "Leaving voice automatically shows the server picker rather than an empty call tab");
+                    Check(!Nodes(surface.CurrentBinding!.View.Root).SelectMany(n=>n.Shortcuts).Any(s=>s.Button is ControllerButton.X or ControllerButton.Y),
+                        "Idle server picker does not expose voice or share shortcuts");
+                    Check(VisibleFocus(),"Idle transition retains a visible enabled native picker control");
+                    var leftPane=Bounds("discord.primary");
+                    var results=Bounds("discord.channels");
+                    var bottomGap=leftPane.Bottom-results.Bottom;
+                    Check(results.Height>40&&bottomGap>=-1&&bottomGap<=5,
+                        $"Picker results fill the column below the filters (height {results.Height:F1}, bottom inset {bottomGap:F1} DIPs)");
+                    var searchTop=Bounds("discord.channels.search").Top;
+                    var serverTop=Bounds("discord.channels.server").Top;
+                    Check(surface.FocusHostTarget("discord.channels.server"),"Server selector receives native focus");
+                    await MoveUntil(NavigationDirection.Down,()=>FocusId()=="Widget.discord.channels.Item.10");
+                    Check(VisibleFocus()&&Math.Abs(Bounds("discord.channels.search").Top-searchTop)<1&&
+                        Math.Abs(Bounds("discord.channels.server").Top-serverTop)<1,
+                        "Scrolling ten channels keeps the focused row visible and both filter controls stationary");
+                    if(compact)
+                    {
+                        await MoveUntil(NavigationDirection.Up,()=>FocusId()=="Widget.discord.channels.search");
+                        await MoveUntil(NavigationDirection.Up,()=>FocusId().StartsWith("Widget.discord.")&&
+                            FocusId() is "Widget.discord.refresh" or "Widget.discord.friends.open" or "Widget.discord.account.open");
+                        if(FocusId()=="Widget.discord.refresh")await Move(NavigationDirection.Right);
+                        if(FocusId()=="Widget.discord.account.open")await Move(NavigationDirection.Left);
+                        Check(FocusId()=="Widget.discord.friends.open","D-pad reaches Friends in the compact header");
+                        await Button(ControllerButton.A);
+                        await Until(()=>FocusId()=="Widget.discord.friends.back");
+                        await MoveUntil(NavigationDirection.Down,()=>FocusId()=="Widget.discord.activities.Item.0");
+                        Check(VisibleFocus(),"Compact friend activity is visible and actionable");
+                        await Button(ControllerButton.B);
+                        await Until(()=>FocusId()=="Widget.discord.friends.open"&&CurrentPage()=="picker");
+                    }
+                    Check(validationFailure is null,"Scenario never enters host recovery");
+                }
             }
             catch(Exception error){failure=error.ToString();}
             finally
@@ -207,6 +244,11 @@ internal sealed partial class OverlayShellPage
                 for(DependencyObject? parent=element;parent is not null;parent=VisualTreeHelper.GetParent(parent))
                     if(parent is ScrollViewer scroll)outer=scroll;
                 return outer is null || WidgetReadingScrollFocus.IsVisible(element,outer);
+            }
+            Windows.Foundation.Rect Bounds(string id)
+            {
+                var element=Walk(surface!).OfType<FrameworkElement>().First(item=>AutomationProperties.GetAutomationId(item)=="Widget."+id);
+                return element.TransformToVisual(surface).TransformBounds(new(0,0,element.ActualWidth,element.ActualHeight));
             }
             string FocusId()=>FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused?AutomationProperties.GetAutomationId(focused):"";
             bool OwnsNativeForeground()=>App.Window is {} window&&DiscordValidationForegroundWindow()==WinRT.Interop.WindowNative.GetWindowHandle(window);

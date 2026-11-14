@@ -23,17 +23,23 @@ public sealed partial class DiscordWebViewWidget
         }
         else
         {
-            var header=UI.Row("discord.header",
+            var headerControls=new List<WidgetElement>
+            {
                 UI.Icon(DiscordIcons.Voice,"discord.brand","Discord").Classes("discord-brand"),
                 UI.Text("Discord","discord.title").Classes("discord-title","discord-copy"),
-                UI.IconButton(DiscordIcons.Refresh,"refresh","discord.refresh","Refresh Discord",size:IconButtonSize.Small).Classes("discord-toolbar-button"),
-                UI.Button("Open Discord","account","discord.account.open").Icon(DiscordIcons.Account)
-                    .Disabled(client?.Reference is null).Classes("discord-control","discord-quiet")).Classes("discord-header");
+                UI.IconButton(DiscordIcons.Refresh,"refresh","discord.refresh","Refresh Discord",size:IconButtonSize.Small).Classes("discord-toolbar-button")
+            };
+            if(route.Route==Route.Home&&ready&&data!.ChannelId is null)
+                headerControls.Add(UI.Button("Friends","friends","discord.friends.open").Classes("discord-control","discord-quiet")
+                    .VisibleWhen(ResponsiveVisibility.CompactOnly));
+            headerControls.Add(UI.Button("Open Discord","account","discord.account.open").Icon(DiscordIcons.Account)
+                .Disabled(client?.Reference is null).Classes("discord-control","discord-quiet"));
+            var header=UI.Row("discord.header",headerControls.ToArray()).Classes("discord-header");
             WidgetElement body;
             if(!ready)
             {
                 body=UI.VerticalScroll("discord.connecting",
-                    route.Route==Route.Channels?UI.Button("Back",route.BackActionId!,"discord.picker.back").Classes("discord-control","discord-quiet"):
+                    route.Route is Route.Channels or Route.Friends?UI.Button("Back",route.BackActionId!,"discord.picker.back").Classes("discord-control","discord-quiet"):
                         UI.Spacer("discord.connecting.header"),
                     Empty("discord.connection",state.Snapshot.Error is not null?"Discord is unavailable":data is null?"Connecting to Discord…":"Sign in to Discord",
                         state.Snapshot.Error?.Message??(data is null?"":"Open Discord to sign in."),DiscordIcons.Account),
@@ -41,9 +47,17 @@ public sealed partial class DiscordWebViewWidget
                     current.Outgoing is not null||current.PreparingShare is not null?SharingControls(data):UI.Spacer("discord.share.inactive")).Classes("discord-page-scroll");
                 first=client?.Reference is not null?"discord.setup.open":"discord.refresh";
             }
+            else if(route.Route==Route.Friends)
+            {
+                PublishActivities(data!);
+                body=UI.Stack("discord.friends.page",
+                    UI.Button("Back",route.BackActionId!,"discord.friends.back").Classes("discord-control","discord-quiet"),
+                    ActivityPanel(data!,"discord.activities",false).Classes("discord-page")).Classes("discord-page");
+                first="discord.friends.back";
+            }
             else if(route.Route==Route.Channels)
             {
-                body=UI.VerticalScroll("discord.picker.page",
+                body=UI.Stack("discord.picker.page",
                     UI.Row("discord.picker.header",UI.Text("Servers & voice channels","discord.picker.title").Classes("discord-section-title","discord-copy"),
                         UI.Button("Back",route.BackActionId!,"discord.picker.back").Classes("discord-control","discord-quiet")),
                     PickerPage(data!)).Classes("discord-page-scroll");
@@ -52,14 +66,20 @@ public sealed partial class DiscordWebViewWidget
             else
             {
                 PublishActivities(data!);
-                // Existing host breakpoints own reflow. Only the secondary
-                // activity projection changes; both use one indexed source.
-                WidgetElement main=data!.ChannelId is null?PickerPage(data):CallPage(data,busy);
-                if(data.ChannelId is null&&CanStopSharing(current,data))
-                    main=UI.Stack("discord.idle.recovery",SharingControls(data),main).Classes("discord-page");
-                body=UI.Row("discord.unified",
-                    UI.VerticalScroll("discord.primary",main.AddClasses("discord-main-content"),
-                        ActivityPanel(data,"discord.activities.compact",true).VisibleWhen(ResponsiveVisibility.CompactOnly)).Classes("discord-primary-pane"),
+                WidgetElement primary;
+                if(data!.ChannelId is null)
+                {
+                    var picker=PickerPage(data);
+                    primary=CanStopSharing(current,data)
+                        ?UI.Stack("discord.primary",SharingControls(data),picker)
+                        :UI.Stack("discord.primary",picker);
+                }
+                else
+                {
+                    primary=UI.VerticalScroll("discord.primary",CallPage(data,busy).AddClasses("discord-main-content"),
+                        ActivityPanel(data,"discord.activities.compact",true).VisibleWhen(ResponsiveVisibility.CompactOnly));
+                }
+                body=UI.Row("discord.unified",primary.AddClasses("discord-primary-pane"),
                     ActivityPanel(data,"discord.activities",false).VisibleWhen(ResponsiveVisibility.ExpandedOnly)).Classes("discord-body","discord-columns");
                 first=data.ChannelId is null?PickerInitialFocusId(data):data.Capabilities.Mute?"discord.main.mute":"discord.main.servers";
             }

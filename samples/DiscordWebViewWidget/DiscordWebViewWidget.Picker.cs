@@ -82,7 +82,7 @@ public sealed partial class DiscordWebViewWidget
         if(channelPreferences.Snapshot.Error is { } preferenceError)
             children.Add(UI.Text(preferenceError.Message,"discord.channels.preferences-error").Classes("discord-secondary"));
         children.Add(SectionTitle("discord.channels.heading",query.Length>0?"Search results":selected.ShowServers?"Servers":"Voice channels",values.Length.ToString()));
-        if(values.Length>0)children.Add(UI.CollectionList("discord.channels",pickerItems,72,"Servers and voice channels").Classes("discord-list","discord-picker-list"));
+        if(values.Length>0)children.Add(UI.CollectionList("discord.channels",pickerItems,72,"Servers and voice channels").Classes("discord-list"));
         else children.Add(Empty("discord.channels.empty",query.Length>0?"No matches":"No voice channels",
             query.Length>0?"Try another server or channel name.":"Check your channel access in Discord.",DiscordIcons.Channels));
         return UI.Stack("discord.channels.page",children.ToArray()).Classes("discord-page");
