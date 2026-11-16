@@ -201,7 +201,7 @@ public sealed partial class PerformanceMonitorWidget : Widget
             items.Add(UI.Text(status, "performance.status").Classes("performance-help"));
         items.Add(UI.Button("Refresh", "performance.refresh", "performance.refresh").Busy(busy));
         var root = UI.VerticalScroll("performance.page", items.ToArray()).InputScope("performance.page")
-            .Shortcut(ControllerButton.Y, "performance.refresh", label: "Refresh").Classes("performance-widget");
+            .Shortcut(ControllerButton.Y, "performance.refresh", label: "Refresh").Classes("performance-widget", "performance-dashboard");
         var pin = UI.Stack("performance.pin",
             UI.Text(target?.ApplicationName ?? "Performance", "performance.pin.name").Classes("performance-subtitle"),
             UI.Text(Number(snapshot?.FramesPerSecond) + " FPS", "performance.pin.fps").Classes("performance-value"),
@@ -213,6 +213,7 @@ public sealed partial class PerformanceMonitorWidget : Widget
         {
             Mode = WidgetSurfaceMode.Standard, WidthMode = WidgetSurfaceAxisMode.Preferred, HeightMode = WidgetSurfaceAxisMode.Preferred,
             PreferredWidth = 720, PreferredHeight = 660, MinimumWidth = 380, MinimumHeight = 380,
+            Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
         }) { PinnedLayouts = [_compact.Present(pin)] };
     }
 

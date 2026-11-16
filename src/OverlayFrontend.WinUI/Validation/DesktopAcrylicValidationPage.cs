@@ -48,6 +48,14 @@ internal sealed partial class DesktopAcrylicValidationPage : Page, IAsyncDisposa
                 await Task.Run(()=>{GC.Collect();GC.WaitForPendingFinalizers();GC.Collect();});
                 Check(pins.All(pin=>pin.IsVisible),"Backdrop targets survive forced collection while all six pins remain visible");
                 var first=pins[0];var layer=first.WindowlessMaterial();var original=layer.Backdrop.SystemBackdrop;
+                OverlaySurfacePaint.Apply(first.SurfaceBackground,OverlayAppearancePolicy.Resolve(settings with {AcrylicEffects=false},"fixture",WidgetSurfaceAppearance.DesktopAcrylic,false),null);
+                Check(!layer.HasDesktopAcrylic && first.SurfaceBackground.Background is SolidColorBrush {Color.A:255},
+                    "Acrylic off detaches the desktop effect and leaves an opaque fallback");
+                OverlaySurfacePaint.Apply(first.SurfaceBackground,OverlayAppearancePolicy.Resolve(settings with {AcrylicEffects=false},"fixture",WidgetSurfaceAppearance.Transparent,false),null);
+                Check(!layer.HasDesktopAcrylic && first.SurfaceBackground.Background is SolidColorBrush {Color.A:0},
+                    "Acrylic off preserves intentionally transparent pins");
+                OverlaySurfacePaint.Apply(first.SurfaceBackground,policy,null);
+                original=layer.Backdrop.SystemBackdrop;
                 var bounds=first.Bounds;
                 first.Place(bounds with {Width=bounds.Width+20});
                 await Task.Delay(100);
@@ -89,6 +97,10 @@ internal sealed partial class DesktopAcrylicValidationPage : Page, IAsyncDisposa
                 Check(Math.Abs(region.X-NotificationBannerChrome.ShadowGutter)<1&&Math.Abs(region.Y-NotificationBannerChrome.ShadowGutter)<1&&
                     Math.Abs(region.Width-banner.CardSurface.ActualWidth)<1&&Math.Abs(region.Height-banner.CardSurface.ActualHeight)<1,
                     "Desktop blur is confined to the banner card and excludes its shadow gutter");
+                banner.Apply(palette,55,acrylicEffects:false);
+                Check(!bannerMaterial.HasDesktopAcrylic && ((Border)banner.CardSurface).Background is LinearGradientBrush plain &&
+                    plain.GradientStops.All(stop=>stop.Color.A==140) && banner.CardSurface.Opacity==1,
+                    "Acrylic off detaches banner blur while preserving category opacity and foreground text");
                 banner.Apply(palette,55,reducedTransparency:true);
                 Check(((Border)banner.CardSurface).Background is LinearGradientBrush solid&&solid.GradientStops.All(stop=>stop.Color.A==255),"Reduced-transparency banners use a solid fallback");
                 banner.Apply(palette,55);

@@ -3,10 +3,10 @@ using WidgetRail.PlatformSettings;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 /// <summary>Saved accessibility preferences apply after authored styles.</summary>
-internal readonly record struct WidgetAccessibilityPolicy(ContrastPreference Contrast, bool BoldText, bool ReducedTransparency)
+internal readonly record struct WidgetAccessibilityPolicy(ContrastPreference Contrast, bool BoldText, bool ReducedTransparency, bool AcrylicEffects = true)
 {
     internal static WidgetAccessibilityPolicy From(AppearanceSettings settings) =>
-        new(settings.Contrast, settings.BoldText, settings.Transparency == TransparencyPreference.Reduced);
+        new(settings.Contrast, settings.BoldText, settings.Transparency == TransparencyPreference.Reduced, settings.AcrylicEffects);
 
     internal bool HighContrast(bool system) => Contrast switch
     {

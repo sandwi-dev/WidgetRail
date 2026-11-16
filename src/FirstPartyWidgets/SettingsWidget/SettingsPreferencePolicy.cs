@@ -16,6 +16,7 @@ internal enum SettingsPreferenceKind
     ContrastHigh,
     BoldText,
     ReducedTransparency,
+    AcrylicEffects,
     AnimateWidgetSwitching,
     FocusAnimation,
     SectionAnimation,
@@ -136,6 +137,7 @@ internal readonly record struct SettingsPreferenceMutation(
         {
             BoldText = !appearance.BoldText,
         },
+        SettingsPreferenceKind.AcrylicEffects => appearance with { AcrylicEffects = !appearance.AcrylicEffects },
         SettingsPreferenceKind.ReducedTransparency => appearance with
         {
             Transparency = appearance.Transparency == TransparencyPreference.Reduced
@@ -247,6 +249,7 @@ internal static class SettingsPreferencePolicy
                 SettingsPreferenceKind.ContrastHigh, "Contrast preference saved"),
             "bold-text.toggle" => new(
                 SettingsPreferenceKind.BoldText, "Bold text preference saved"),
+            "acrylic-effects.toggle" => new(SettingsPreferenceKind.AcrylicEffects, "Acrylic effects preference saved"),
             "transparency.reduced" => new(
                 SettingsPreferenceKind.ReducedTransparency,
                 "Transparency preference saved"),

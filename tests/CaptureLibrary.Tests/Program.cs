@@ -69,6 +69,12 @@ static Task Style()
     Check(compiled.IsValid,string.Join("; ",compiled.Diagnostics.Select(d=>d.Message)));
     var modal = compiled.Theme!.Resolve(new("stack", "capture-library.confirm", new HashSet<string> { "wrail-modal" }, new HashSet<WidgetRail.WidgetStyling.WrssPseudoState>())).Properties;
     Check(modal["width"].Number == 560 && modal["height"].Number == 320, "Confirmation geometry must apply to the actual SDK modal class");
+    var gallery = compiled.Theme.Resolve(new("scroll", StyleClasses: new HashSet<string> { "capture-library", "capture-library-base" }));
+    var preview = compiled.Theme.Resolve(new("stack", StyleClasses: new HashSet<string> { "capture-library" }));
+    var card = compiled.Theme.Resolve(new("stack", StyleClasses: new HashSet<string> { "capture-settings-section" }));
+    Check(gallery.Get("background")?.Text == "transparent", "Gallery and settings must expose the host acrylic base");
+    Check(preview.Get("background") is not null && preview.Get("background")?.Text != "transparent", "Media preview must retain its opaque root fill");
+    Check(card.Get("background") is not null && card.Get("background")?.Text != "transparent", "Settings cards must retain their existing fill");
     return Task.CompletedTask;
 }
 static async Task Reject(Func<Task> action) { try { await action(); } catch (Exception error) when (error is BrokerException or IOException) { return; } throw new Exception("Operation should have been refused"); }
@@ -383,14 +389,21 @@ static async Task WidgetFlow()
     {
         await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
         await Until(() => Node("capture-library.empty") is not null && Node("capture-library.photo")?.IsBusy != true);
+        Check(View().Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic && View().Root.StyleClasses.Contains("capture-library-base"), "Gallery must expose a desktop acrylic base");
+        Check(View().Surface is { PreferredWidth: 1180, PreferredHeight: 700, WidthMode: WidgetSurfaceAxisMode.Preferred, HeightMode: WidgetSurfaceAxisMode.Preferred }, "Material changes must preserve the library, preview and settings extent");
+        Check(View().ProtocolVersion == ProtocolConstants.DesktopAcrylicVersion, "Gallery must declare desktop acrylic protocol support");
         await widget.OnActionAsync(new("capture-library.photo", "capture-library.photo")); await Until(() => Node("capture-library.save") is not null && Node("capture-library.save")?.IsBusy != true);
         Check(saves == 0, "Capture saved without review");
+        Check(View().Surface?.Appearance == WidgetSurfaceAppearance.Theme && !View().Root.StyleClasses.Contains("capture-library-base"), "Unsaved capture preview must retain its plain surface");
+        Check(View().Surface is { PreferredWidth: 1180, PreferredHeight: 700, WidthMode: WidgetSurfaceAxisMode.Preferred, HeightMode: WidgetSurfaceAxisMode.Preferred }, "Material changes must preserve the library, preview and settings extent");
         Check(View().Root.Transition is { Kind: WidgetTransitionKind.Page, Key: "preview", Navigation: WidgetNavigationOperation.Forward }, "Review must be forward page navigation");
         Check(ViewSnapshotValidator.Validate(View()).Count == 0 && WinUiPresentationContract.Validate(View()).Count == 0);
         await widget.OnActionAsync(new("capture-library.save", "capture-library.save")); await Until(() => saves == 1);
         Check(Node("capture-library.save")?.IsBusy == true && Node("capture-library.save")?.IsDisabled != true);
         saveGate.TrySetResult(); await Until(() => Node("capture-library.delete") is not null && Node("capture-library.delete")?.IsBusy != true);
         Check(View().Root.Transition?.Key == "preview", "Saving must not navigate away from the current preview");
+        Check(View().Surface?.Appearance == WidgetSurfaceAppearance.Theme && !View().Root.StyleClasses.Contains("capture-library-base"), "Saved detail must retain its plain surface");
+        Check(View().Surface is { PreferredWidth: 1180, PreferredHeight: 700, WidthMode: WidgetSurfaceAxisMode.Preferred, HeightMode: WidgetSurfaceAxisMode.Preferred }, "Material changes must preserve the library, preview and settings extent");
         await widget.OnActionAsync(new("capture-library.delete", "capture-library.delete"));
         Check(View().InitialFocusId == "capture-library.delete.cancel" && deletes == 0);
         Check(Node("capture-library.confirm")!.Shortcuts.Single(shortcut => shortcut.Button == ControllerButton.B).ActionId == "capture-library.delete.cancel",
@@ -412,6 +425,8 @@ static async Task WidgetFlow()
         Check(deletes == 1, "Busy confirmation must not delete twice");
         deleteGate.TrySetResult();
         await Until(() => Node("capture-library.empty") is not null); Check(deletes == 1);
+        Check(View().Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic && View().Root.StyleClasses.Contains("capture-library-base"), "Returning to the gallery must restore acrylic");
+        Check(View().Surface is { PreferredWidth: 1180, PreferredHeight: 700, WidthMode: WidgetSurfaceAxisMode.Preferred, HeightMode: WidgetSurfaceAxisMode.Preferred }, "Material changes must preserve the library, preview and settings extent");
         Check(View().Root.Transition is { Key: "home", Navigation: WidgetNavigationOperation.Back }, "Deleting returns to the library with Back navigation");
     }
     finally { saveGate.TrySetResult(); deleteGate.TrySetResult(); await WidgetTestHost.DestroyAsync(widget); }
@@ -546,6 +561,9 @@ static async Task SettingsFlow()
     try
     {
         await Start(); await Action("capture-library.settings");
+        Check(View().Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic && View().Root.StyleClasses.Contains("capture-library-base"), "Settings must expose a desktop acrylic base");
+        Check(View().Surface is { PreferredWidth: 1180, PreferredHeight: 700, WidthMode: WidgetSurfaceAxisMode.Preferred, HeightMode: WidgetSurfaceAxisMode.Preferred }, "Material changes must preserve the library, preview and settings extent");
+        Check(View().ProtocolVersion == ProtocolConstants.DesktopAcrylicVersion, "Settings must declare desktop acrylic protocol support");
         Check(Node("capture-library.setting.profile") is not null);
         Check(ViewSnapshotValidator.Validate(View()).Count == 0 && WinUiPresentationContract.Validate(View()).Count == 0, "Settings snapshot is invalid");
         Check(Node("capture-library.setting.audio")!.SelectOptions.Select(o => o.Id).SequenceEqual(new[] { "audio.None", "audio.Application" }),

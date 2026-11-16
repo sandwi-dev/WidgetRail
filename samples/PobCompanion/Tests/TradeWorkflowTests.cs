@@ -122,6 +122,7 @@ internal static class TradeWorkflowTests
             await Action("trade-budget","10");
             var saved=File.ReadAllText(Path.Combine(directory,id+".xml"));
             var before=View();
+            check(before.Surface?.Appearance==WidgetSurfaceAppearance.DesktopAcrylic,"Native trade controls use the desktop base");
             await widget.OnActionAsync(new("trade-open","trade-workflow"));
             var during=View();
             check(Nodes(during.Root).Any(n=>n.Id=="pob.cancel-operation")&&before.ActiveInputScopeId==during.ActiveInputScopeId,"Search shows cancellable progress without changing the input scope");
@@ -129,6 +130,7 @@ internal static class TradeWorkflowTests
             check(opened.Count==1&&opened[0].Source.Location.StartsWith($"https://www.pathofexile.com/trade{(game==2?"2":"")}/search/Standard",StringComparison.Ordinal),"Search opens the calculated URL in the overlay even with Windows browser preference");
             check(File.ReadAllText(Path.Combine(directory,id+".xml"))==saved&&!Nodes(View().Root).Any(n=>n.Id=="pob.cancel-operation"),"Search leaves saved build contents unchanged and clears progress");
             var modal=View();var web=Nodes(modal.Root).Single(n=>n.Id=="pob.website");
+            check(modal.Surface?.Appearance==WidgetSurfaceAppearance.Theme,"Full browser content does not keep a hidden desktop material active");
             check(Nodes(modal.Root).Any(n=>n.Text==$"PoE{game} Trade"),"Trade modal renders its site-specific heading");
             check(modal.Root.Kind==ViewNodeKind.ModalLayer&&web.WebBrowser?.HostedSession?.Id==new string('a',32)&&ViewSnapshotValidator.Validate(modal).Count==0,"Calculated search attaches the existing web session to a valid widget modal");
             check(opened.Count==1&&opened[0].Browser.Storage==BrowserStorage.Persistent&&opened[0].Browser.ProfileKey=="websites"&&opened[0].Browser.Background==BrowserBackgroundMode.Automatic,"Website uses a stable widget-specific persistent profile and automatic background behavior");
@@ -139,6 +141,7 @@ internal static class TradeWorkflowTests
             check(opened.Count==1&&navigated==0,"Location events refresh heading without navigating or replacing the session");
             await Action("website-close");
             check(View().Root.Kind!=ViewNodeKind.ModalLayer&&closed==0,"Closing the modal retains the web session and returns to the build");
+            check(View().Surface?.Appearance==WidgetSurfaceAppearance.DesktopAcrylic,"Closing the retained browser restores the native desktop base");
             await Action("websites.overlay");await Action("trade-open");
             check(opened.Count==1&&navigated==0,"Overlay preference uses the same retained trade session");
             await Action("website-close");await Action("websites.windows");

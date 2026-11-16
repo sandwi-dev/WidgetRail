@@ -5,6 +5,13 @@ using WidgetRail.Samples.PobCompanion;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetProtocol;
 
+if(args is ["--surface-only"])
+{
+    await SurfaceTests.RunAsync();
+    Console.WriteLine("PASS PoE1 and PoE2 loading, native workspace and retained browser surface transitions");
+    return 0;
+}
+
 if(args is ["--operation-admission-only"])
 {
     await OperationAdmissionTests.RunAsync();

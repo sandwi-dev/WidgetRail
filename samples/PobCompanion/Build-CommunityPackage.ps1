@@ -7,7 +7,8 @@ param(
     [string]$OutputDirectory,
     [string]$EngineLockPath = (Join-Path $PSScriptRoot 'engine-lock.json'),
     [string]$Python = 'python',
-    [string]$Version = '0.1.5'
+    [string]$PreparedArtworkPackage,
+    [string]$Version = '0.1.6'
 )
 $ErrorActionPreference='Stop'
 $parsedVersion = $null
@@ -30,8 +31,13 @@ dotnet publish (Join-Path $PSScriptRoot "Applications/Poe$Game/Poe${Game}Compani
 if($LASTEXITCODE -ne 0){throw 'Companion publish failed.'}
 foreach($dir in @('Engine','web')){Copy-Item (Join-Path $PSScriptRoot $dir) -Destination $payload -Recurse}
 Copy-Item (Join-Path $root 'src/WidgetSdk/WebSessionRuntime.js') (Join-Path $payload 'web/web-session.js')
-& $Python (Join-Path $PSScriptRoot 'Build-TreeArtwork.py') --engine $EngineCheckout --runtime $RuntimeDirectory --output (Join-Path $payload 'web/art')
-if($LASTEXITCODE -ne 0){throw 'Tree artwork preparation failed. Install requirements-artwork.txt into your build Python environment.'}
+if($PreparedArtworkPackage){
+    & $Python (Join-Path $PSScriptRoot 'Reuse-TreeArtwork.py') --package $PreparedArtworkPackage --game $Game --engine $EngineCheckout --engine-lock $EngineLockPath --output (Join-Path $payload 'web/art')
+    if($LASTEXITCODE -ne 0){throw 'Prepared artwork verification failed.'}
+}else{
+    & $Python (Join-Path $PSScriptRoot 'Build-TreeArtwork.py') --engine $EngineCheckout --runtime $RuntimeDirectory --output (Join-Path $payload 'web/art')
+    if($LASTEXITCODE -ne 0){throw 'Tree artwork preparation failed. Install requirements-artwork.txt into your build Python environment.'}
+}
 Copy-Item (Join-Path $PSScriptRoot 'styles/default.wrss') (Join-Path $stage 'styles/default.wrss')
 Copy-Item (Join-Path $PSScriptRoot 'assets/companion.svg') (Join-Path $stage 'assets/icons/companion.svg')
 $iconAssets=@{'companion.mark'=@{path='assets/icons/companion.svg'}}

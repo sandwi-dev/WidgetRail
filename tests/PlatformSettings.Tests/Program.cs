@@ -13,6 +13,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Shipping first-party and built-in themes use supported WinUI layout declarations", WinUiShippingStylesTests.Run),
     ("Display sizing preserves defaults and isolates persisted monitors", DisplayScaleTests.Run),
     ("Startup registration respects ownership Windows approval and failures", StartupRegistrationTests.Run),
+    ("Acrylic preference defaults on and persists independently of transparency", AcrylicPreference),
     ("Missing settings use safe appearance defaults", DefaultsAreSafe),
     ("Default paths use only the WidgetRail local state root", DefaultPathsUseWidgetRail),
     ("Settings round trip through strict canonical JSON", SettingsRoundTrip),
@@ -140,6 +141,23 @@ static async Task DefaultsAreSafe()
         await store.UpdateAsync(current => current with { Appearance = current.Appearance with { FocusAnimation = WidgetFocusAnimation.Fade } });
         Assert.Equal(WidgetFocusAnimation.Fade, (await store.LoadAsync()).Appearance.FocusAnimation);
     }
+}
+
+static async Task AcrylicPreference()
+{
+    using var temp = new TemporaryDirectory();
+    var store = new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path));
+    Assert.Equal(true, (await store.LoadAsync()).Appearance.AcrylicEffects);
+    await File.WriteAllTextAsync(store.Paths.SettingsFile, SettingsJson());
+    Assert.Equal(true, (await store.LoadAsync()).Appearance.AcrylicEffects);
+    var changed = await store.UpdateAsync(current => current with
+    { Appearance = current.Appearance with { AcrylicEffects = false } });
+    var restored = (await new PlatformSettingsStore(store.Paths).LoadAsync()).Appearance;
+    Assert.Equal(false, restored.AcrylicEffects);
+    Assert.Equal(TransparencyPreference.Full, restored.Transparency);
+    Assert.Equal(changed.Appearance.BackdropOpacity, restored.BackdropOpacity);
+    await store.UpdateAsync(current => current with { Appearance = current.Appearance with { TextScale = 1.1 } });
+    Assert.Equal(false, (await store.LoadAsync()).Appearance.AcrylicEffects);
 }
 
 static async Task WidgetStopState()

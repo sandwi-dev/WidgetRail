@@ -43,6 +43,7 @@ internal static class GamesAppsPresentation
     private static readonly WidgetSurfaceHints LibrarySurface = new()
     {
         Mode = WidgetSurfaceMode.Standard,
+        Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
         PreferredWidth = 820,
         PreferredHeight = 600,
         MinimumWidth = 420,

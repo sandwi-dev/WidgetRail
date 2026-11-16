@@ -9,6 +9,13 @@ public sealed partial class CaptureLibraryWidget : Widget
     private sealed record State(CaptureLibraryPage? Page = null, CaptureAttachment? Preview = null, bool FromLibrary = false,
         string? SelectedId = null, bool Detail = false, bool Busy = false, bool Capturing = false, bool ConfirmDelete = false, string? Message = null, long FocusRequest = 0,
         WidgetNavigationOperation Navigation = WidgetNavigationOperation.Forward, bool Settings = false, CapturePreferences? Preferences = null, CaptureCapabilities? Capabilities = null, long PreferencesRevision = 0);
+    // Before declaring material, all library routes used the host's 1180 x 700
+    // legacy extent. An appearance-only hint would otherwise select 880 x 520.
+    private static WidgetSurfaceHints Surface(WidgetSurfaceAppearance appearance) => new()
+    {
+        Appearance = appearance, PreferredWidth = 1180, PreferredHeight = 700,
+    };
+
     private readonly WidgetModel<State> model;
     public CaptureLibraryWidget() => model = CreateModel(new State());
     protected override ValueTask OnActivatedAsync(CancellationToken token)
@@ -228,6 +235,7 @@ public sealed partial class CaptureLibraryWidget : Widget
             ? UI.Stack("capture-library.page", items.ToArray())
             : UI.VerticalScroll("capture-library.page", items.ToArray());
         root = root.InputScope("capture-library.page").Classes("capture-library");
+        if (state.Preview is null && !state.Detail) root = root.AddClasses("capture-library-base");
         if (state.Preview is not null || state.Detail) root = root.Shortcut(ControllerButton.B, "capture-library.back", label: "Library");
         else if (!state.Busy) root = root.Shortcut(ControllerButton.Y, "capture-library.photo", label: "Screenshot").Shortcut(ControllerButton.X, "capture-library.video", label: "Record clip");
         if (state.Preview is null && !state.Detail && !state.Busy && state.Page is { } pages)
@@ -237,6 +245,8 @@ public sealed partial class CaptureLibraryWidget : Widget
         }
         var view = new WidgetView(root.TransitionPage("capture-library.pages", state.Preview is not null || state.Detail ? "preview" : "home", state.Navigation), initial)
         {
+            Surface = Surface(state.Preview is not null || state.Detail
+                ? WidgetSurfaceAppearance.Theme : WidgetSurfaceAppearance.DesktopAcrylic),
             FocusGroupEntryRequest = state.Preview is null && !state.Detail && state.Page?.Items.Count > 0 && state.FocusRequest > 0
                 ? new() { RequestId = state.FocusRequest, GroupId = "capture-library.entries" } : null,
         };

@@ -35,3 +35,7 @@ TestResults/
 # Personal development notes retained locally after the docs reorganization
 docs/controller-isolation-architecture-reference.md
 docs/cursor-resource-redesign.md
+
+# Python build/test caches
+__pycache__/
+*.py[cod]

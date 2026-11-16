@@ -32,6 +32,7 @@ public sealed partial class GameHelpWidget
 
     private static WidgetSurfaceHints Surface => new()
     {
+        Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
         Mode = WidgetSurfaceMode.Standard, WidthMode = WidgetSurfaceAxisMode.Preferred,
         HeightMode = WidgetSurfaceAxisMode.Preferred, PreferredWidth = 1040, PreferredHeight = 800,
         MinimumWidth = 560, MinimumHeight = 440,

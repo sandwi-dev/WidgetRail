@@ -240,6 +240,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             Surface: new WidgetSurfaceHints
             {
                 Mode = WidgetSurfaceMode.Standard,
+                Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
                 PreferredWidth = 760,
                 PreferredHeight = 680,
                 MinimumWidth = 420,

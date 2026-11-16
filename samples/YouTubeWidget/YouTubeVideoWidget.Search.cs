@@ -341,6 +341,7 @@ public sealed partial class YouTubeVideoWidget
             ActiveInputScopeId: RootScopeId, Surface: new WidgetSurfaceHints
         {
             Mode = WidgetSurfaceMode.Standard,
+            Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
             WidthMode = WidgetSurfaceAxisMode.Preferred,
             HeightMode = !hasQuery
                 ? WidgetSurfaceAxisMode.Content
@@ -486,6 +487,7 @@ public sealed partial class YouTubeVideoWidget
             Surface: new WidgetSurfaceHints
             {
                 Mode = WidgetSurfaceMode.Standard,
+                Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
                 WidthMode = WidgetSurfaceAxisMode.Preferred,
                 HeightMode = heightMode,
                 PreferredWidth = 620,
@@ -508,6 +510,7 @@ public sealed partial class YouTubeVideoWidget
             ActiveInputScopeId: "youtube.application.root", Surface: new WidgetSurfaceHints
         {
             Mode = WidgetSurfaceMode.Standard,
+            Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
             WidthMode = WidgetSurfaceAxisMode.Preferred,
             HeightMode = WidgetSurfaceAxisMode.Content,
             PreferredWidth = 760,

@@ -22,6 +22,7 @@ internal static class SpotifyPresentation
     private static readonly WidgetSurfaceHints StandardSurface = new()
     {
         Mode = WidgetSurfaceMode.Adaptive,
+        Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
         PreferredWidth = 840,
         PreferredHeight = 580,
         MinimumWidth = 620,
@@ -30,6 +31,7 @@ internal static class SpotifyPresentation
     internal static readonly WidgetSurfaceHints CompactPinnedSurface = new()
     {
         Mode = WidgetSurfaceMode.Compact,
+        Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
         PreferredWidth = 360,
         PreferredHeight = 360,
         MinimumWidth = 320,
@@ -38,6 +40,7 @@ internal static class SpotifyPresentation
     internal static readonly WidgetSurfaceHints UpNextPinnedSurface = new()
     {
         Mode = WidgetSurfaceMode.Wide,
+        Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
         PreferredWidth = 760,
         PreferredHeight = 420,
         MinimumWidth = 640,

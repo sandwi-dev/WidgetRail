@@ -90,6 +90,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Explicit connect requests implemented playback and library scopes", ExplicitConnect),
     ("Ready UI exposes native controller transport and attribution", ReadyControllerUi),
     ("Ready UI publishes responsive wide and compact navigation", ResponsiveNavigation),
+    ("Desktop acrylic covers every Spotify state and both pins without clearing content panels", SpotifyResponsiveLayoutTests.DesktopAcrylicBoundaries),
     ("Ready UI publishes persistent player navigation metadata and WRSS contracts", SpotifyResponsiveLayoutTests.PersistentPlayerNavigationAndMetadataContract),
     ("Collection pages load lazily and remain cached", LazyPageLoading),
     ("Pinned Up Next is a finite native scroll with exact duplicate queue actions", PinnedUpNextFiniteActions),

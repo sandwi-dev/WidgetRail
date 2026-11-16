@@ -4,7 +4,7 @@
   min-width: 0px;
   gap: 8px;
   padding: 14px 16px;
-  background: var(--surface);
+  background: transparent;
   color: var(--text);
   overflow: clip;
 }
@@ -18,7 +18,7 @@
   min-height: 0px;
   gap: 10px;
   padding: 12px;
-  background: var(--surface);
+  background: transparent;
   color: var(--text);
   overflow: clip;
 }

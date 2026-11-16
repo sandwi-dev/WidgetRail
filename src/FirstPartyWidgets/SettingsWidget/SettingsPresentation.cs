@@ -162,6 +162,7 @@ internal static partial class SettingsPresentation
             Surface: new WidgetSurfaceHints
             {
                 Mode = WidgetSurfaceMode.Standard,
+                Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
                 PreferredWidth = 880,
                 PreferredHeight = 520,
                 MinimumWidth = 520,
@@ -178,6 +179,7 @@ internal static partial class SettingsPresentation
             Surface: new WidgetSurfaceHints
             {
                 Mode = WidgetSurfaceMode.Standard,
+                Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
                 WidthMode = WidgetSurfaceAxisMode.Preferred,
                 // Loading and ready content share one stable home surface.
                 HeightMode = WidgetSurfaceAxisMode.Preferred,
@@ -246,6 +248,9 @@ internal static partial class SettingsPresentation
                 null, null, busy || string.IsNullOrEmpty(display?.Id))),
             Field("Backdrop darkness", LinkStepper(UI.Stepper("Backdrop darkness", Percent(appearance.BackdropOpacity), "opacity.decrease", "opacity.increase", "opacity.stepper",
                 appearance.BackdropOpacity > AppearanceSettings.MinimumBackdropOpacity, appearance.BackdropOpacity < AppearanceSettings.MaximumBackdropOpacity, showLabel: false), null, null, busy)),
+            Field("Acrylic effects", UI.Switch("Acrylic effects", appearance.AcrylicEffects,
+                "acrylic-effects.toggle", "appearance.acrylic-effects", isDisabled: false, showLabel: false).Busy(busy),
+                "Disable background blur to reduce graphics work."),
             UI.Text("Animations", "appearance.animations.heading").Classes("section-heading"),
             UI.Text("Reduced motion in Accessibility overrides these effects.", "appearance.motion.help").Classes("page-help"),
             Field("Animate widget switching", UI.Switch("Animate widget switching", appearance.AnimateWidgetSwitching, "widget-switch-animation.toggle", "appearance.animate-widget-switching", isDisabled: false, showLabel: false).Busy(busy)),

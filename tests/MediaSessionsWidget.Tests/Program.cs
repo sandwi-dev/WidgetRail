@@ -83,6 +83,8 @@ static async Task HonestTransportStates()
     await WaitUntil(() => widget.ViewState == MediaSessionsViewState.Ready);
     var snapshot = widget.RenderSnapshot("media.test", 1);
     Assert.Equal(WidgetSurfaceMode.Compact, snapshot.Surface!.Mode);
+    Assert.Equal(WidgetSurfaceAppearance.DesktopAcrylic, snapshot.Surface.Appearance);
+    Assert.Equal(ProtocolConstants.DesktopAcrylicVersion, snapshot.ProtocolVersion);
     Assert.Equal(WidgetSurfaceAxisMode.Content, snapshot.Surface.HeightMode);
     Assert.Equal(260d, snapshot.Surface.MinimumHeight!.Value);
     Assert.Equal("media-sessions", snapshot.ActiveInputScopeId);
@@ -336,6 +338,7 @@ static Task SessionSelectorStylesStayBounded()
     var style = File.ReadAllText(Path.Combine(ProjectDirectory(), "styles", "default.wrss"))
         .Replace("\r\n", "\n", StringComparison.Ordinal);
     var list = StyleBlock(style, ".media-session-list");
+    Assert.True(StyleBlock(style, ".media-sessions-widget").Contains("background: transparent;", StringComparison.Ordinal));
     Assert.True(list.Contains("width: 100%;", StringComparison.Ordinal));
     Assert.True(list.Contains("min-width: 0px;", StringComparison.Ordinal));
     Assert.True(list.Contains("max-height: 46px;", StringComparison.Ordinal));

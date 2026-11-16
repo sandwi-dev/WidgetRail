@@ -43,6 +43,7 @@ public sealed partial class MediaSessionsWidget : Widget
     private static readonly WidgetSurfaceHints CompactSurface = new()
     {
         Mode = WidgetSurfaceMode.Compact,
+        Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
         PreferredWidth = 580,
         PreferredHeight = 400,
         HeightMode = WidgetSurfaceAxisMode.Content,

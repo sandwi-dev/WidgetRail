@@ -27,12 +27,15 @@ static async Task Confirm()
 {
     var fake = new Fake(); var widget = fake.Create(); await Open(widget);
     Check(Snapshot(widget).InitialFocusId == "power.sleep");
+    Check(Snapshot(widget).Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic);
+    Check(Snapshot(widget).ProtocolVersion == ProtocolConstants.DesktopAcrylicVersion);
     foreach (var command in new[] { "shutdown", "restart" })
     {
         await Action(widget, "confirm." + command); Check(fake.Commands.Count == 0);
         await Action(widget, command);
         Check(fake.Commands.Count == 0 && Snapshot(widget).InitialFocusId == "power.cancel");
         Check(Snapshot(widget).Root.Shortcuts.Single().ActionId == "cancel");
+        Check(Snapshot(widget).Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic);
         await Action(widget, "cancel"); Check(Snapshot(widget).ActiveInputScopeId == "power");
     }
     await Action(widget, "shutdown"); await Action(widget, "confirm.restart"); Check(fake.Commands.Count == 0);
@@ -166,6 +169,8 @@ static async Task Assets()
     var compiled = WrssThemeCompiler.Compile(WrssPackageLoader.LoadFile(Path.Combine(root, "styles/default.wrss"),
         Path.Combine(root, "styles")));
     Check(compiled.IsValid, string.Join("\n", compiled.Diagnostics));
+    Check(compiled.Theme!.Resolve(new WrssElement("stack", StyleClasses: new HashSet<string> { "power-widget" })).Get("background")?.Text == "transparent");
+    Check(compiled.Theme.Resolve(new WrssElement("action-surface", StyleClasses: new HashSet<string> { "power-option" })).Get("background")?.Text != "transparent");
 }
 
 static ValueTask Action(PowerWidget widget, string action) => widget.OnActionAsync(new(action, "power.test"));

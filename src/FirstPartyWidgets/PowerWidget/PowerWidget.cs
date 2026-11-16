@@ -182,6 +182,7 @@ public sealed partial class PowerWidget : Widget
             return new(root.TransitionContent("power.pages", scope, _pending is null ? 0 : 1), _focus, Surface: new WidgetSurfaceHints
             {
                 Mode = WidgetSurfaceMode.Standard, PreferredWidth = 680, PreferredHeight = 380,
+                Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
                 MinimumWidth = 540, MinimumHeight = 380,
             });
         }

@@ -100,6 +100,40 @@ internal static class SpotifyResponsiveLayoutTests
         return Task.CompletedTask;
     }
 
+    internal static Task DesktopAcrylicBoundaries()
+    {
+        var theme = CompileTheme();
+        var handles = new SpotifyPresentationHandleFixture();
+        foreach (var state in Enum.GetValues<SpotifyWidgetViewState>())
+        {
+            var snapshot = SpotifyPresentation.Render(ReadyState() with { ViewState = state },
+                handles.Compact, handles.UpNext).CreateSnapshot("spotify.acrylic", 1);
+            Equal(WidgetSurfaceAppearance.DesktopAcrylic, snapshot.Surface!.Appearance);
+            True(snapshot.ProtocolVersion >= ProtocolConstants.DesktopAcrylicVersion,
+                "Desktop acrylic must advertise its protocol requirement.");
+            True(ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = ProtocolConstants.DesktopAcrylicVersion - 1 })
+                .Any(error => error.Path == "$.surface" && error.Code == "feature_requires_version"),
+                "Older protocols must reject the desktop acrylic declaration.");
+            Equal(2, snapshot.PinnedLayouts.Count);
+            foreach (var pin in snapshot.PinnedLayouts)
+            {
+                Equal(WidgetSurfaceAppearance.DesktopAcrylic, pin.Surface.Appearance);
+                Equal("transparent", Resolve(theme, "stack", pin.Root!.Id,
+                    pin.Root.StyleClasses.ToArray()).Get("background")?.Text);
+            }
+            Equal("transparent", Resolve(theme, "stack", snapshot.Root.Id,
+                snapshot.Root.StyleClasses.ToArray()).Get("background")?.Text);
+            var roundTrip = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
+            Equal(WidgetSurfaceAppearance.DesktopAcrylic, roundTrip.Surface!.Appearance);
+            True(roundTrip.PinnedLayouts.All(pin => pin.Surface.Appearance == WidgetSurfaceAppearance.DesktopAcrylic),
+                "Serialization lost a pinned material declaration.");
+        }
+        foreach (var panel in new[] { "spotify-player-card", "spotify-page", "spotify-state-card" })
+            True(Resolve(theme, "stack", "panel", panel).Get("background")?.Text is not null and not "transparent",
+                $"The {panel} content fill must remain visible over the acrylic base.");
+        return Task.CompletedTask;
+    }
+
     private static SpotifyPresentationState ReadyState()
     {
         var playlist = new SpotifyPlaylistSummary(

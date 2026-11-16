@@ -24,7 +24,7 @@ internal sealed partial class OverlayShellPage
         var palette = ShellChromePalette.Resolve(ShellPalette,Appearance);
         var opacity = notificationCenter.Preferences.Category(entry.Widget,entry.Content?.CategoryId ?? WidgetNotificationContract.DefaultCategoryId).Opacity
             ?? entry.Content?.BackgroundOpacityPercent ?? 100;
-        notificationBannerContent?.Apply(palette,opacity,Appearance.Transparency == PlatformSettings.TransparencyPreference.Reduced);
+        notificationBannerContent?.Apply(palette,opacity,Appearance.Transparency == PlatformSettings.TransparencyPreference.Reduced, Appearance.AcrylicEffects);
         notificationCard?.ApplyBannerPalette(palette);
     }
     private long bannerFadeEnds;
@@ -57,7 +57,7 @@ internal sealed partial class OverlayShellPage
             notificationBanner.InterfaceScale = Appearance.InterfaceScale;
             var opacity = notificationCenter.Preferences.Category(entry.Widget, entry.Content?.CategoryId ?? WidgetNotificationContract.DefaultCategoryId).Opacity
                 ?? entry.Content?.BackgroundOpacityPercent ?? 100;
-            notificationBannerContent!.Apply(palette, opacity, Appearance.Transparency == PlatformSettings.TransparencyPreference.Reduced);
+            notificationBannerContent!.Apply(palette, opacity, Appearance.Transparency == PlatformSettings.TransparencyPreference.Reduced, Appearance.AcrylicEffects);
             notificationCard!.ApplyBannerPalette(palette);
             notificationCard.Update(entry, catalogItems.FirstOrDefault(widget => widget.Id == entry.Widget), Appearance.TextScale);
             var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow((nint)hostWindow);

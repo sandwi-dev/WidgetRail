@@ -57,6 +57,11 @@ internal sealed partial class WidgetStylesValidationPage
             var adapter = NativeComputedStyleAdapter.For(target)!;
             adapter.Update(acrylicStyle);
             Check(ReferenceEquals(brush, Background()), $"{kind} reuses its brush on repeated publication");
+            presenter.ApplyAppearance(appearance with { AcrylicEffects = false }, false);
+            await Wait(() => Background() is SolidColorBrush { Color.A: 255 });
+            Check(button.Opacity == 1, $"{kind} acrylic toggle preserves control opacity");
+            presenter.ApplyAppearance(appearance, false);
+            await Wait(() => Background() is AcrylicBrush);
             presenter.ApplyAppearance(appearance with { Transparency = TransparencyPreference.Reduced }, false);
             await Wait(() => Background() is SolidColorBrush { Color.A: 255 });
             presenter.ApplyAppearance(appearance, false);
@@ -70,5 +75,16 @@ internal sealed partial class WidgetStylesValidationPage
             Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), button),
                 $"{kind} material and accessibility changes preserve native focus");
         }
+        var previewStyles = new Dictionary<string, BridgeNodeRenderStyles>
+        {
+            ["preview"] = Compute("preview { background: rgba(38,53,46,.4); background-material: acrylic; }", "preview", "preview"),
+        };
+        var palette = Shell.ShellChromePalette.Resolve(null, appearance);
+        using var frame = new WidgetPreviewFrame();
+        frame.Apply(PreviewFrameStyle.Resolve(previewStyles, palette, appearance));
+        Check(frame.Surface.Background is AcrylicBrush, "Rich preview frame admits its declared acrylic");
+        frame.Apply(PreviewFrameStyle.Resolve(previewStyles, palette, appearance with { AcrylicEffects = false }));
+        Check(frame.Surface.Background is LinearGradientBrush plain && plain.GradientStops.All(stop => stop.Color.A == 255),
+            "Rich preview acrylic off uses solid paint without retaining the blur brush");
     }
 }

@@ -3,7 +3,7 @@
   min-width: 0;
   min-height: 0;
   gap: 0;
-  background: var(--surface);
+  background: transparent;
 }
 
 .audio-toast {
@@ -17,7 +17,7 @@
   min-width: 280px;
   gap: 8px;
   padding: 14px;
-  background: var(--surface);
+  background: transparent;
   color: var(--text);
   overflow: clip;
 }

@@ -1,4 +1,4 @@
-.display-widget { padding: 18px; gap: 14px; background: var(--surface); color: var(--text); }
+.display-widget { padding: 18px; gap: 14px; color: var(--text); }
 .display-header { align: center; gap: 14px; }
 .display-title { font-size: 26px; font-weight: 700; flex-grow: 1; min-width: 0; }
 .display-save { min-height: 44px; padding: 6px 12px; background: var(--surface-raised); corner-radius: 10px; }

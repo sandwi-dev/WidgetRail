@@ -1,4 +1,4 @@
-.youtube-root { width: 100vw; min-width: 0px; gap: 12px; padding: 14px 16px; background: var(--surface); color: var(--text); overflow: clip; }
+.youtube-root { width: 100vw; min-width: 0px; gap: 12px; padding: 14px 16px; background: transparent; color: var(--text); overflow: clip; }
 .youtube-player-page, .youtube-search-root { width: 100%; min-width: 0px; min-height: 0px; gap: 12px; flex-grow: 1; overflow: clip; }
 .youtube-section-header { width: 100%; min-width: 0px; align: center; justify: end; gap: 12px; }
 .youtube-section-navigation { min-width: 0px; flex-grow: 1; }
@@ -78,7 +78,7 @@
 .youtube-result-action { min-width: 72px; min-height: 34px; padding: 5px 10px; background: var(--surface); border-color: var(--text-subdued); border-width: 1px; corner-radius: 7px; }
 .youtube-result-action:focused, .youtube-now-playing:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 .youtube-now-playing { width: 100%; min-height: 42px; padding: 8px 12px; color: var(--text); background: var(--surface-muted); border-color: var(--accent); border-width: 1px; corner-radius: 9px; }
-.youtube-player-settings { width: 100%; min-width: 0px; min-height: 0px; max-height: 620px; gap: 10px; padding: 14px 16px; background: var(--surface); color: var(--text); overflow: clip; }
+.youtube-player-settings { width: 100%; min-width: 0px; min-height: 0px; max-height: 620px; gap: 10px; padding: 14px 16px; background: transparent; color: var(--text); overflow: clip; }
 .wrail-dialog__content { min-height: 0px; flex-grow: 1; }
 .youtube-player-settings-scroll { width: 100%; min-width: 0px; min-height: 0px; flex-grow: 1; gap: 0px; padding: 2px 8px 10px 2px; overflow: clip; }
 

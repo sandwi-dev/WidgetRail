@@ -50,6 +50,7 @@ internal static class AudioMixerPresentation
     private static readonly WidgetSurfaceHints CompactSurface = new()
     {
         Mode = WidgetSurfaceMode.Compact,
+        Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
         PreferredWidth = 520,
         PreferredHeight = 580,
         MinimumWidth = 320,

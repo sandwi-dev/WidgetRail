@@ -295,6 +295,7 @@ public sealed partial class MarketplaceWidget : Widget
         var view = new WidgetView(root,initial, Surface: new WidgetSurfaceHints
         {
             PreferredWidth = 1000, PreferredHeight = 640, MinimumWidth = 520, MinimumHeight = 400,
+            Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
             HeightMode = WidgetSurfaceAxisMode.Preferred,
         })
         {

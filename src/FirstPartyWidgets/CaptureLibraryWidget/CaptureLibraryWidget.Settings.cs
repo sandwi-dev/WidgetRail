@@ -173,7 +173,8 @@ public sealed partial class CaptureLibraryWidget
             if (message == Explain("permission_denied")) items.Add(PermissionsButton());
         }
         return new(UI.VerticalScroll("capture-library.settings.page", items.ToArray()).InputScope("capture-library.settings.page")
-            .Shortcut(ControllerButton.B, "capture-library.settings.back", label: "Library").Classes("capture-library"), "capture-library.settings.back");
+            .Shortcut(ControllerButton.B, "capture-library.settings.back", label: "Library").Classes("capture-library", "capture-library-base"), "capture-library.settings.back",
+            Surface: Surface(WidgetSurfaceAppearance.DesktopAcrylic));
     }
 
     private static WidgetElement PermissionsButton() => UI.Button("Open permissions", "unused", "capture-library.permissions")

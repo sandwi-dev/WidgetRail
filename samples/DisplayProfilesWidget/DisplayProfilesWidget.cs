@@ -440,7 +440,7 @@ public sealed partial class DisplayProfilesWidget : Widget
             return new(root.TransitionContent("display.pages", scope,
                 _state?.PendingRestore is not null ? 2 : _editor is not null || _confirm is not null ? 1 : 0),
                 _focus, ActiveInputScopeId: scope, Surface: new WidgetSurfaceHints
-            { HeightMode = WidgetSurfaceAxisMode.Content, PreferredWidth = 780, PreferredHeight = 700, MinimumWidth = 640, MinimumHeight = 420 });
+            { Appearance = WidgetSurfaceAppearance.DesktopAcrylic, HeightMode = WidgetSurfaceAxisMode.Content, PreferredWidth = 780, PreferredHeight = 700, MinimumWidth = 640, MinimumHeight = 420 });
         }
     }
     private WidgetElement ProfileCard(WidgetDisplayProfileSummary profile)

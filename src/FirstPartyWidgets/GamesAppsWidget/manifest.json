@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.games-apps",
   "publisher": "widgetrail.firstparty",
   "name": "Games & Apps",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1

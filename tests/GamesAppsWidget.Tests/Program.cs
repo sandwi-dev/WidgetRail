@@ -1469,6 +1469,8 @@ static async Task SharedStateSurfaces()
     };
     var loadingWidget = Create(loadingHost);
     var initial = Snapshot(loadingWidget, 230);
+    Assert.Equal(WidgetSurfaceAppearance.DesktopAcrylic, initial.Surface!.Appearance);
+    Assert.Equal(ProtocolConstants.DesktopAcrylicVersion, initial.ProtocolVersion);
     Assert.True(Nodes(initial.Root).Single(node => node.Id == "games.state")
         .StyleClasses.Contains("wrail-card", StringComparer.Ordinal));
     Assert.Equal<string?>(null, initial.InitialFocusId);
@@ -1527,6 +1529,8 @@ static async Task RendersControllerStrip()
     await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready);
     var snapshot = Snapshot(widget, 3);
     Assert.Equal(WidgetSurfaceMode.Standard, snapshot.Surface!.Mode);
+    Assert.Equal(WidgetSurfaceAppearance.DesktopAcrylic, snapshot.Surface.Appearance);
+    Assert.Equal(ProtocolConstants.DesktopAcrylicVersion, snapshot.ProtocolVersion);
     Assert.Equal(420d, snapshot.Surface.MinimumWidth);
     Assert.Equal(600d, snapshot.Surface.PreferredHeight);
     Assert.Equal(300d, snapshot.Surface.MinimumHeight);
@@ -4001,6 +4005,7 @@ static Task PackageValidates()
         "stack", StyleClasses: new HashSet<string>(["games-route-progress"])))!;
     Assert.Equal("center", stateTitle.Get("text-align")?.Text);
     Assert.Equal("100vh", rootStyle.Get("height")?.Text);
+    Assert.Equal("transparent", rootStyle.Get("background")?.Text);
     Assert.Equal("0px", rootStyle.Get("min-height")?.Text);
     Assert.Equal("0px", contentStyle.Get("min-height")?.Text);
     Assert.Equal("1", contentStyle.Get("flex-grow")?.Text);

@@ -1563,7 +1563,8 @@ static ViewSnapshot Snapshot(NetworkControlsWidget widget, long sequence)
                 : ProtocolConstants.ScrollContainerVersion;
     if (Nodes(snapshot.Root).Any(node => node.PackageIcon is not null))
         expectedProtocol = Math.Max(expectedProtocol, ProtocolConstants.PackageSvgIconVersion);
-    Assert.Equal(expectedProtocol, snapshot.ProtocolVersion);
+    Assert.Equal(WidgetSurfaceAppearance.DesktopAcrylic, snapshot.Surface!.Appearance);
+    Assert.Equal(Math.Max(expectedProtocol, ProtocolConstants.DesktopAcrylicVersion), snapshot.ProtocolVersion);
     Assert.Equal(WidgetSurfaceMode.Compact, snapshot.Surface!.Mode);
     Assert.Equal(560D, snapshot.Surface.PreferredWidth);
     Assert.Equal(700D, snapshot.Surface.PreferredHeight);

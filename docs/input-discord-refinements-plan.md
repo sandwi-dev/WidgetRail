@@ -1767,3 +1767,188 @@ consumer matrices above remain applicable; no new UI behavior was introduced in 
 The reported Discord webpage freeze remains unconfirmed: the user restarted the
 worker at17:22:13 local time; no browser-failure event was recorded and detailed
 request tracing was off. No speculative recovery change is included in this merge.
+
+### Desktop acrylic bases and independent effects preference — completed
+
+The user clarified that the reverted navigation panels became fully transparent
+during transitions. Treat that as a rendering defect requiring native evidence,
+not merely a style preference. This pass does not restore the nested-panel
+experiment: four shipping widgets use the existing host-owned base surface.
+
+Consumer matrix:
+- Audio Mixer, Network Controls, Settings and Catalogue: declare DesktopAcrylic
+  on their shared surface hints; clear only their root fills. Cards/controls retain
+  theme paint. Their package versions advance to0.1.8/0.1.10/0.1.13/0.1.2.
+- Discord main/voice pin, Playnite Achievements, SDK Gallery acrylic pin:
+  already opt into desktop material; adopt the shared effects policy automatically.
+- Transparent participant/video/media surfaces: preserved by the acrylic-only
+  switch. Existing high-contrast/reduced-transparency policy retains precedence.
+- In-app WRSS panels/modal bodies and rich-preview/introduction/utility frames:
+  shared host paint paths disable their acrylic brush and use plain fallback fill.
+- Banner notifications: shared native material disconnects; category opacity and
+  foreground opacity keep their existing meanings.
+- Other shipping widgets, templates, examples and browser-owned CSS: no forced
+  material migration. Host-owned declared effects receive policy; web content's
+  own rendering is not rewritten.
+
+Ownership: AppearanceSettings.AcrylicEffects is an additive persisted boolean,
+defaulting true for old/missing files. SettingsPreferencePolicy owns the explicit
+user mutation. OverlayAppearancePolicy owns desktop fallback; native style/preview
+paint and NotificationBannerChrome own effect lifetime. No new SDK/protocol contract.
+No widget-managed animation, lifecycle counter or visual-tree rewriting is added.
+
+Verification includes preference roundtrip/independence, actual Settings toggle,
+desktop/pinned/banner target detachment, in-app/preview brush removal, and a native
+screen-pixel probe over a bright isolated fixture window while real widget bases
+switch and resize. Pixel evidence must accompany attachment/state checks because
+an attached backdrop alone cannot establish visible rendering during animation.
+Completed and applied: the normal profile runs artifacts/acrylic-base/release with
+candidate-final/installation; process/config/hash are recorded in installed.json.
+All four widget bases were visually checked. The Settings help text is only
+"Disable background blur to reduce graphics work." as requested.
+
+Eight targeted managed verification steps pass (settings/storage, four widget
+consumers, shell policy and styling). Native checks pass:18 desktop/pin/banner,
+32 in-app/preview,4 actual Settings-toggle checks, and12 base-transition checks on
+each display. The base screen-pixel probe sampled497 frames at2560px and497 at
+5120px; the ultrawide used90% interface size and125% raster scaling. The bright
+underlying-window reference was distinguishable from acrylic throughout switching
+and resize. This is bounded transition evidence, not a universal GPU/performance
+claim or a retrospective diagnosis of the reverted navigation-panel defect.
+The Release verifier passes302 local managed references and balanced async cleanup.
+
+The full preexisting Settings appearance fixture times out on focus-animation
+Option.none in both the previous build and this build. This is recorded separately
+from the passing focused acrylic-control scenario; its assertions were not weakened.
+The first ultrawide fixture attempt exposed a WinRT IEnumerable projection failure
+in test-only monitor enumeration; indexed vector access fixed the fixture. It was
+not a product-rendering failure.
+
+Evidence: artifacts/acrylic-base/managed, desktop-result.json, in-app-native.json,
+settings-toggle-native/result.json, base-native/result.json,
+wide-native-final/result.json, and installed-settings.png. Transparent media and
+participant policies remain unchanged; all material toggles use shared host paths.
+No new changes have been committed or merged in this pass.
+
+### Remaining widget base-material audit — proposed, not implemented
+
+Source audit of shipping catalogue entries and production widgets, including the
+PoE1/PoE2 application entry points (both use PobCompanion/PobWidget) and YouTube
+Music's standalone application. Exclude legacy DiscordWidget, Clock, SDK Gallery,
+EmbeddedMedia and FullApplication reference fixtures from the rollout inventory.
+
+| Consumer | Recommendation and boundary | Source evidence |
+|---|---|---|
+| Power | Desktop acrylic base for choices and confirmation state; retain option cards. | PowerWidget.cs:182; styles/default.wrss .power-widget |
+| Display Controls | Desktop acrylic base for profile/control pages; keep profile cards and timed confirmation readable. | DisplayProfilesWidget.cs Render; .display-widget |
+| Now Playing | Desktop acrylic base; retain bounded album artwork and transport card fills. | MediaSessionsWidget.cs CompactSurface; .media-sessions-widget |
+| Games & Apps | Desktop acrylic base; preserve posters and application cards. Unlike Playnite, this root does not declare game-wallpaper focus backgrounds. | GamesAppsPresentation.cs:43; .games-apps-widget |
+| Capture Library | Gallery/settings chrome can use acrylic. Keep image/video inspection on its existing stable background. | CaptureLibraryWidget.cs:238 distinguishes preview/detail versus home; .capture-library |
+| Spotify | Main browsing/player base and authored Compact/Up Next pin bases are candidates; retain cover art and inner card fills. | SpotifyWidget.Presentation.cs:22/30/38; .spotify-widget/.spotify-pinned-root |
+| YouTube Music | Standalone main base and compact music pin are candidates; cover art is bounded content. | StandaloneMusicWidget.Presentation.cs:52; .music-root |
+| YouTube Video | Native search/library/settings/player-control shell can use acrylic. Preserve video viewport and the host-owned transparent compact media pin. | YouTubeVideoWidget.cs:240 and Search.cs:341; .youtube-root/.youtube-viewport |
+| Game Help | Acrylic outer base, with opaque conversation, reading/code and capture-review surfaces. | GameHelpWidget.Presentation.cs shared Surface; .help-root/.help-conversation/.help-section |
+| PoB1 and PoB2 | Acrylic outer workspace is a candidate. Preserve opaque panels/tooltips/tree canvas and clear colored-stat contrast; browser-owned trade content is not rewritten. | PobWidget.cs:221; .pob-root/.pob-panel/.pob-card |
+| Performance Monitor | Acrylic main dashboard with opaque graph cards. Defer compact FPS pin until composition cost/readability are measured. | PerformanceMonitorWidget.cs:212; separate _compact declaration:25 |
+| Playnite | Achievements already uses desktop acrylic. Retain Home/Library/details cinematic layering; setup/connection screens can be evaluated independently. Progress tracker is a separate review because its transparent host contains a painted card. | PlayniteLibraryPresentation.cs:551/580/612/650; Progress.cs:23 |
+| Browser, Twitch, MapGenie | Keep current treatment: their web content occupies the surface, hiding an underlying acrylic base. | Their production UI.WebBrowser roots |
+| Discord | Main/voice-control surfaces already migrated. Keep participants and live stream surfaces transparent. | DiscordWebViewWidget.cs:72/74 and Views.cs |
+| Audio Mixer, Network Controls, Settings, Catalogue | Already migrated and qualified in the previous section. | Previous native frame/policy evidence |
+
+All proposed base changes can use the existing SDK surface hint and the host's
+Acrylic effects policy; no new renderer or nested acrylic mechanism is required.
+Root fills currently using var(--surface) must be removed only where they cover
+the intended host material. This is widget presentation policy, not a framework
+gap. Do not change media/canvas backgrounds merely because they share a root class.
+The table is a source-based design recommendation; it does not establish visual
+acceptance, performance, or transition correctness for the proposed consumers.
+
+### Expanded native widget bases — implementation/qualification
+
+User authorized remaining recommendations with existing content backgrounds retained.
+Work was split into first-party, music/video, and companion groups with isolated
+test outputs; default-output package builds were serialized to avoid graph conflicts.
+
+Migrated: Power, Now Playing, Games & Apps, Capture Library gallery/settings,
+Performance Monitor main dashboard, Spotify main/Compact/Up Next, shipping standalone
+YouTube Music main/compact pin, YouTube Video native shell routes, Game Help,
+Display Controls, and PoE1/PoE2 native workspaces/loading/import states.
+
+Preserved: all existing inner reading/card/artwork/media/tree backgrounds;
+Capture Library media preview/detail base; compact performance pin; YouTube's
+embedded media definition and host-owned transparent video pin; PoB browser modal.
+The root-only CSS changes and conditional surface declarations use the existing
+DesktopAcrylic API and Acrylic effects policy, with no new host rendering behavior.
+
+Narrowed after implementation inspection: Playnite connection/setup screens remain
+unchanged. PlayniteLibraryConnection.cs:130 and Connection.Setup.cs:128 use a
+transparent FillAvailable host around a centered max900x620 painted shell
+(default.wrss:105-106). A host-base-only migration would paint unused surrounding
+space. Retain that working layout until a separate card-sized surface adjustment
+is agreed. Home/Library/details cinematic layering, progress pin, and already-acrylic
+Achievements are also unchanged.
+
+Managed results: Power 8, Now Playing 31, Games & Apps 94, Capture Library 27, Performance 13;
+Spotify 89, standalone YouTube Music 44, YouTube 65; Game Help 48 and Display Controls 25
+passed, plus engine-independent PoE1/PoE2 surface/browser fixtures. Original behavior
+assertions retained; explicit protocol assertions now account for desktop material
+v108. Native nine-base screen sampling passed 1,222 frames at 100% interface size and
+1,186 frames at 90% on the 5,120px display, with live effects toggle and hide/reopen.
+
+PoB packaging encountered an existing missing legacy upstream sprite
+(src/TreeData/3_19/ascendancy-3.png) in the pinned commit. A narrow explicit
+PreparedArtworkPackage build input reuses only verified installed art when the
+content-tree seal, engine lock, six rendering contracts, complete tree-version set,
+bounded resource checks and copy hashes match. Default fresh generation is unchanged.
+Eleven rejection/acceptance checks cover altered data, changed identity and links/
+junctions before traversal. PoE1/2 engine archives and 375/46 artwork files match the
+previous installation byte-for-byte; no runtime fallback or engine change was added.
+Generated Python bytecode remains local and is excluded through .gitignore.
+
+New package versions: Power0.1.2, NowPlaying0.1.4, GamesApps0.1.6, CaptureLibrary0.1.3,
+Performance0.1.4, Spotify0.3.97, YouTubeMusic0.3.48, YouTubeVideo0.3.47,
+GameHelp0.1.7, DisplayControls0.1.4, PoE1/PoE2 0.1.6.
+Installed all seven community updates and the coherent bundled runtime into the
+normal profile; preserved each enabled state, including disabled PoE1. Restarted
+the existing qualified production host with the new installation root. Verified
+installed native views for Game Help, Display Controls (permission-required view),
+Spotify (connected devices), YouTube Music (connected library), YouTube Video
+(discovery), and PoE2 (saved build, item panels). Captured and reviewed screen-based
+images; inner fills and text remained intact. PoE1 remained disabled and was covered
+by the shared production surface fixtures, not a normal-profile launch.
+
+This visual pass did not exercise playback, display mutations, cloud chat, or the
+full PoB trade/engine suite. The latter still depends on older authored fixtures
+absent from the pinned engines. No production host rendering change was needed
+for this expansion. Documentation checks passed (249 Markdown files); final diff
+review and whitespace checks passed. Evidence lives under the ignored
+artifacts/acrylic-expansion directory, including installation metadata, catalog
+before/after, native results, and installed UI captures. Accepted for main integration on 2026-11-15.
+
+### Capture Library sizing regression — corrected
+
+The acrylic migration introduced a non-null Surface declaration in gallery,
+preview, and settings. OverlaySurfaceSizing.cs:23 uses 1180 x 700 for an absent
+hint, whereas an authored hint without dimensions uses 880 x 520. This is a
+reproduced widget migration error, not an acrylic compositor size change.
+CaptureLibraryWidget.cs now declares its prior 1180 x 700 extent explicitly for
+all three routes, retaining the intended material on each. Package 0.1.4 is
+installed in the coherent bundled runtime.
+
+Consumer check: Audio Mixer, Network Controls, Settings, Catalogue, Power,
+Now Playing, Games & Apps, Performance Monitor, Spotify, YouTube Music,
+YouTube Video, Game Help, Display Controls, and PoB already had authored sizing
+hints; their migration changed appearance only. Playnite was not migrated.
+No shared sizing default changed. The API coupling between optional material and
+sizing is a broader source-inferred authoring hazard: a future SDK/protocol design
+could provide explicit independent inheritance, with compatibility for consumers
+of both defaults. That is deferred rather than changing current defaults globally.
+
+Qualification: all 27 Capture Library checks pass, now asserting preserved size
+in gallery, unsaved preview, saved detail, return, and settings. Native comparison
+on the same 125% DPI / 90% interface-size monitor measured 989 x 585 physical pixels
+before and 1327 x 787 after (rounding of 880 x 520 and 1180 x 700 respectively).
+Settings matched the restored gallery extent, and both screenshots were reviewed.
+The initial acrylic qualification checked painting/transition continuity but did
+not compare pre-migration geometry; these assertions cover that missed regression.
+Evidence: artifacts/capture-sizing-fix. Accepted for main integration on 2026-11-15.

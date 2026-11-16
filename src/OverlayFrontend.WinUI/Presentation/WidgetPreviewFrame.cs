@@ -98,10 +98,11 @@ internal sealed record PreviewFrameStyle(Color Surface, double Shading, float Ra
         if (palette.HighContrast)
             return new(palette.Surface, 0, radius, 2, palette.Text, palette.Text, palette.Text,
                 Microsoft.UI.Colors.Transparent, 0, Vector2.Zero, true);
-        var material = role?.GetValueOrDefault("background-material")?.Text == "acrylic" &&
+        var authoredAcrylic = role?.GetValueOrDefault("background-material")?.Text == "acrylic";
+        var material = authoredAcrylic && appearance.AcrylicEffects &&
             appearance.Transparency != TransparencyPreference.Reduced ? PreviewBackgroundMaterial.Acrylic : PreviewBackgroundMaterial.Standard;
         var fill = ColorValue("background", palette.Surface);
-        fill.A = material == PreviewBackgroundMaterial.Acrylic || appearance.Transparency == TransparencyPreference.Reduced ? byte.MaxValue :
+        fill.A = material == PreviewBackgroundMaterial.Acrylic || authoredAcrylic && !appearance.AcrylicEffects || appearance.Transparency == TransparencyPreference.Reduced ? byte.MaxValue :
             (byte)Math.Round(fill.A * Number("opacity", .92, 0, 1));
         var border = ColorValue("border-color", ShellChromePalette.Blend(palette.Surface, palette.Text, .16));
         return new(fill, Number("surface-shading", .035, -.25, .25), radius, Number("border-width", 1, 0, 4),

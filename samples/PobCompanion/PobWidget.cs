@@ -161,7 +161,7 @@ public sealed partial class PobWidget : Widget
                     Button("Cancel","cancel-operation"))
                     .Classes("pob-root").InputScope("pob.loading").Shortcut(ControllerButton.B,"cancel-operation");
                 return new(loading,"pob.cancel-operation",ActiveInputScopeId:"pob.loading",
-                    Surface:new(){Mode=WidgetSurfaceMode.Standard,PreferredWidth=760,PreferredHeight=440,MinimumWidth=620,MinimumHeight=360});
+                    Surface:new(){Appearance=WidgetSurfaceAppearance.DesktopAcrylic,Mode=WidgetSurfaceMode.Standard,PreferredWidth=760,PreferredHeight=440,MinimumWidth=620,MinimumHeight=360});
             }
             var children = new List<WidgetElement>();
             if (result is null && detailKind=="library")
@@ -221,6 +221,8 @@ public sealed partial class PobWidget : Widget
                 Surface: new WidgetSurfaceHints
                 {
                     Mode = WidgetSurfaceMode.Standard,
+                    // The website modal covers the native base with browser content.
+                    Appearance = websiteVisible ? WidgetSurfaceAppearance.Theme : WidgetSurfaceAppearance.DesktopAcrylic,
                     // Keep planning sections stable, including the tree and trade modals.
                     // Preferred width bounds ultrawide layouts; the host still clamps to the display.
                     PreferredWidth = ManagementView && detailKind != "build-comparison" ? (detailKind == "library" ? 1040 : 840) : 1320,

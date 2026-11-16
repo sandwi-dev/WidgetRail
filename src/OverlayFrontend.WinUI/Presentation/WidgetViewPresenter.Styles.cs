@@ -208,6 +208,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private readonly Dictionary<string, (Color Color, SolidColorBrush Brush)> brushes = new(StringComparer.Ordinal);
     private (Color Color, double Amount, LinearGradientBrush Brush)? shadedBackground;
     private AcrylicBrush? surfaceAcrylic;
+    private SolidColorBrush? acrylicFallback;
     private FontFamily? fontFamily;
     internal TextBlock? TextContent { get; set; }
     private TextBlock? styledText;
@@ -658,7 +659,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     }
     private Brush? SurfaceBackground(SolidColorBrush? background, IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, bool contrast)
     {
-        if (SupportsBackgroundMaterial && background is not null && !contrast && !accessibility.ReducedTransparency &&
+        if (SupportsBackgroundMaterial && background is not null && !contrast && accessibility.AcrylicEffects && !accessibility.ReducedTransparency &&
             style?.GetValueOrDefault("background-material")?.Text == "acrylic")
         {
             // In-app acrylic samples the content behind the opted-in panel. Native Windows
@@ -672,6 +673,13 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             return surfaceAcrylic;
         }
         surfaceAcrylic = null;
+        if (SupportsBackgroundMaterial && !accessibility.AcrylicEffects && background is not null &&
+            style?.GetValueOrDefault("background-material")?.Text == "acrylic")
+        {
+            acrylicFallback ??= new();
+            acrylicFallback.Color = background.Color with { A = byte.MaxValue };
+            background = acrylicFallback;
+        }
         var amount = contrast ? 0 : Math.Clamp(Number(style, "surface-shading") ?? 0, -.25, .25);
         if (background is null || amount == 0 || background.Color.A == 0) { shadedBackground = null; return background; }
         if (shadedBackground is { } cached && cached.Color == background.Color && cached.Amount == amount) return cached.Brush;
@@ -782,7 +790,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         selectorPaint?.Dispose(); selectorPaint = null;
         focusDecoration?.Dispose(); focusDecoration = null;
         foreach (var property in originals.Keys.ToArray()) Put(property, null);
-        surfaceAcrylic = null;
+        surfaceAcrylic = null; acrylicFallback = null;
         shadedBackground = null;
         RestoreResources();
         if (interactive) { element.GotFocus -= Changed; element.LostFocus -= Changed; }

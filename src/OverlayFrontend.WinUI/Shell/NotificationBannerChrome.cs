@@ -33,7 +33,7 @@ internal sealed partial class NotificationBannerChrome : Grid, IDisposable
         depth = new(surface, (shadow, edges), outerShadowOnly: true);
     }
 
-    internal void Apply(ShellChromePalette palette, int opacity, bool reducedTransparency = false)
+    internal void Apply(ShellChromePalette palette, int opacity, bool reducedTransparency = false, bool acrylicEffects = true)
     {
         var alpha = (byte)Math.Clamp(255 * opacity / 100, 0, 255);
         if (palette.HighContrast)
@@ -45,7 +45,7 @@ internal sealed partial class NotificationBannerChrome : Grid, IDisposable
             return;
         }
         // Only the material fades with category opacity; text remains fully opaque.
-        var acrylic = material.ApplyMaterial(!reducedTransparency,palette.Surface);
+        var acrylic = material.ApplyMaterial(acrylicEffects && !reducedTransparency,palette.Surface);
         material.MaterialOpacity = Math.Clamp(opacity / 100d,0,1);
         if (reducedTransparency) alpha = 255;
         surface.Background = new LinearGradientBrush

@@ -152,7 +152,7 @@ public sealed class GameHelpTests
             Assert.AreEqual(WidgetIntentContracts.OpenWebPage, request.Fallback!.ContractId);
             Assert.AreEqual(WidgetIntentRouting.WidgetPreferred, request.Fallback.Routing);
             Assert.AreEqual(TextEntryInputKind.Prose, Walk(snapshot.Root).Single(n => n.Id == "help.composer").TextEntryInputKind);
-            Assert.AreEqual(ProtocolConstants.TextEntryPurposeVersion, snapshot.ProtocolVersion);
+            Assert.AreEqual(ProtocolConstants.DesktopAcrylicVersion, snapshot.ProtocolVersion);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
             await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
             foreach (var status in Enum.GetValues<WidgetIntentStatus>())
@@ -348,7 +348,7 @@ public sealed class GameHelpTests
             Assert.AreEqual(0,service.Requests.Count);
             var preview = Snapshot(widget);
             Assert.IsTrue(Walk(preview.Root).Any(node => node.ModalDismissal is not null));
-            Assert.AreEqual(ProtocolConstants.ModalDismissalVersion, preview.ProtocolVersion);
+            Assert.AreEqual(ProtocolConstants.DesktopAcrylicVersion, preview.ProtocolVersion);
             Assert.IsTrue(Walk(Snapshot(widget).Root).Any(n=>n.Kind==ViewNodeKind.MediaPlayer&&n.MediaPlayer!.Source.Attachment==attachment));
             Assert.AreEqual(ViewNodeKind.TextEntry, Walk(Snapshot(widget).Root).Single(n => n.Id == "help.preview-question").Kind);
             await widget.OnActionAsync(new("preview.question", "help.preview-question") { CommittedText = "How do I reach the office?" });
@@ -430,6 +430,11 @@ public sealed class GameHelpTests
         Assert.IsTrue(style.IsValid, string.Join("; ", style.Diagnostics));
         var compiledStyle = WidgetRail.WidgetStyling.WrssThemeCompiler.Compile(style);
         Assert.IsTrue(compiledStyle.IsValid, string.Join("; ", compiledStyle.Diagnostics));
+        WidgetRail.WidgetStyling.WrssComputedValue? Background(string role, string styleClass) => compiledStyle.Theme!.Resolve(
+            new WidgetRail.WidgetStyling.WrssElement(role, null, new HashSet<string>([styleClass]))).Get("background");
+        Assert.IsNull(Background("grid", "help-root"), "The authored root must expose the desktop base.");
+        foreach (var styleClass in new[] { "help-setup-card", "help-conversation", "help-section", "help-prompt", "help-footer" })
+            Assert.IsNotNull(Background("stack", styleClass), styleClass + " must retain its content fill.");
         var manifest=ManifestJson.Deserialize(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory,"manifest.json")));
         Assert.AreEqual(0,WidgetManifestValidator.Validate(manifest).Count,string.Join("; ",WidgetManifestValidator.Validate(manifest)));
         Assert.Throws<GameHelpException>(()=>GeminiGameHelpClient.ParseResponse("{\"steps\":[]}"u8.ToArray(),false));
@@ -483,6 +488,10 @@ public sealed class GameHelpTests
 
         static void AssertValid(ViewSnapshot snapshot)
         {
+            Assert.AreEqual(WidgetSurfaceAppearance.DesktopAcrylic, snapshot.Surface?.Appearance);
+            Assert.IsTrue(snapshot.ProtocolVersion >= ProtocolConstants.DesktopAcrylicVersion);
+            Assert.IsTrue(ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = ProtocolConstants.DesktopAcrylicVersion - 1 })
+                .Any(error => error.Path == "$.surface" && error.Code == "feature_requires_version"));
             var diagnostics = ViewSnapshotValidator.Validate(snapshot);
             Assert.AreEqual(0, diagnostics.Count, string.Join("; ", diagnostics));
         }

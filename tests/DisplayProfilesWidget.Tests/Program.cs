@@ -812,6 +812,10 @@ static async Task Widget()
     void Valid()
     {
         var snapshot = Snapshot();
+        Check(snapshot.Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic, "Native profiles, naming and timed confirmation retain the desktop base");
+        Check(snapshot.ProtocolVersion >= ProtocolConstants.DesktopAcrylicVersion);
+        Check(ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = ProtocolConstants.DesktopAcrylicVersion - 1 })
+            .Any(error => error.Path == "$.surface" && error.Code == "feature_requires_version"), "Older hosts cannot silently accept the desktop material");
         Check(ViewSnapshotValidator.Validate(snapshot).Count == 0, string.Join("; ", ViewSnapshotValidator.Validate(snapshot)));
     }
     Valid();
@@ -968,6 +972,10 @@ static Task Assets()
     var styles = Path.Combine(root, "styles");
     var compiled = WrssThemeCompiler.Compile(WrssPackageLoader.LoadFile(Path.Combine(styles, "default.wrss"), styles));
     Check(compiled.IsValid, string.Join("; ", compiled.Diagnostics));
+    WrssComputedValue? Background(string styleClass) => compiled.Theme!.Resolve(new WrssElement("stack", null, new HashSet<string>([styleClass]))).Get("background");
+    Check(Background("display-widget") is null, "The native root must expose the desktop base");
+    foreach (var styleClass in new[] { "display-current", "display-card", "display-applying", "display-dialog", "display-name" })
+        Check(Background(styleClass) is not null, styleClass + " must retain its content fill");
     return Task.CompletedTask;
 }
 

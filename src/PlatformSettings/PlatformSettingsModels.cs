@@ -96,6 +96,9 @@ public sealed record AppearanceSettings
     /// <summary>Removes blur, translucent surfaces, and partial node opacity.</summary>
     public TransparencyPreference Transparency { get; init; } = TransparencyPreference.Full;
 
+    /// <summary>Disables acrylic blur without changing intentionally transparent surfaces or content opacity.</summary>
+    public bool AcrylicEffects { get; init; } = true;
+
     /// <summary>
     /// Controls only host-owned transitions between tray-selected widgets.
     /// Existing settings that omit this value retain the legacy disabled behavior.

@@ -1,4 +1,4 @@
-.power-widget { padding: 20px; gap: 10px; background: var(--surface); color: var(--text); }
+.power-widget { padding: 20px; gap: 10px; background: transparent; color: var(--text); }
 .power-title { font-size: 26px; font-weight: 600; }
 .power-subtitle { font-size: 13px; color: var(--text-muted); }
 .power-options { gap: 12px; flex-grow: 1; min-height: 126px; }

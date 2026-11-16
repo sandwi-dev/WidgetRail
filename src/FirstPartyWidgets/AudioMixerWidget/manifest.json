@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.audio-mixer",
   "publisher": "widgetrail.firstparty",
   "name": "Audio Mixer",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1

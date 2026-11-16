@@ -1,5 +1,5 @@
 text { color: var(--text); }
-.marketplace-widget { padding: 16px; gap: 12px; color: var(--text); background: var(--surface); }
+.marketplace-widget { padding: 16px; gap: 12px; color: var(--text); background: transparent; }
 .marketplace-header { gap: 8px; }
 .marketplace-content { gap: 12px; }
 .marketplace-commands { gap: 8px; }

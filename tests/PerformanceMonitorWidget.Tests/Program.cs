@@ -66,6 +66,11 @@ static async Task Presentation()
         Check(WinUiPresentationContract.Validate(snapshot).Count == 0 && ViewSnapshotValidator.Validate(snapshot).Count == 0,
             string.Join("; ", ViewSnapshotValidator.Validate(snapshot)));
         Check(snapshot.PinnedLayouts.Count == 1, "Missing compact pin");
+        Check(snapshot.Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic, "Dashboard must request desktop acrylic");
+        Check(snapshot.ProtocolVersion == ProtocolConstants.DesktopAcrylicVersion, "Dashboard must declare desktop acrylic protocol support");
+        Check(snapshot.PinnedLayouts[0].Surface?.Appearance == WidgetSurfaceAppearance.Theme, "Compact pin must retain its plain surface");
+        Check(snapshot.Root.StyleClasses.Contains("performance-dashboard") &&
+            !snapshot.PinnedLayouts[0].Root!.StyleClasses.Contains("performance-dashboard"), "Transparent dashboard styling must not reach the pin");
         Check(!Walk(snapshot.PinnedLayouts[0].Root!).Any(n => n.IsFocusable), "Pinned display still contains actions");
         Check(Walk(snapshot.Root).Count(n => n.Kind == ViewNodeKind.LineGraph) == 6, "Missing live graphs");
         Check(Node(widget, "performance.fps.metric.value").Text == "—", "Unknown FPS shown as zero");

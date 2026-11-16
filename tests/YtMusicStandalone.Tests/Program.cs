@@ -374,9 +374,9 @@ static async Task PinnedPlayer()
         service.SetPlayback(true);
         var host = WidgetTestHost.CreatePinnedLayoutHost(widget, "music.pin");
         var snapshot = host.CurrentSnapshot;
-        Check(snapshot.Surface is { PreferredWidth: 840, PreferredHeight: 580 }, "Main player proportions changed unexpectedly");
+        Check(snapshot.Surface is { Appearance: WidgetSurfaceAppearance.DesktopAcrylic, PreferredWidth: 840, PreferredHeight: 580 }, "Main player proportions changed unexpectedly");
         var pin = snapshot.PinnedLayouts.Single();
-        Check(pin.Surface is { PreferredWidth: 360, PreferredHeight: 440, MinimumWidth: 320, MinimumHeight: 300 }, "Pin must default to room for artwork while preserving smaller saved sizes");
+        Check(pin.Surface is { Appearance: WidgetSurfaceAppearance.DesktopAcrylic, PreferredWidth: 360, PreferredHeight: 440, MinimumWidth: 320, MinimumHeight: 300 }, "Pin must default to room for artwork while preserving smaller saved sizes");
         Check(pin.InitialFocusId == "player.pinned.toggle", "Pin entry should focus the play control");
         Check(Nodes(pin.Root!).Any(node => node.Id == "player.pinned.artwork" && node.Kind == ViewNodeKind.Image &&
             node.ImageSource == "https://example.invalid/fixture.png"), "Pinned artwork must be declared, not omitted");
@@ -403,6 +403,17 @@ static async Task Snapshots()
             await widget.OnActionAsync(new("tab." + tab, "test"));
             var snapshot = widget.Render().CreateSnapshot("test", 1);
             Check(snapshot.PinnedLayouts.Count == 1, "Missing pinned player");
+            Check(snapshot.Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic,
+                $"The {tab} page lost its host acrylic base");
+            Check(snapshot.ProtocolVersion >= ProtocolConstants.DesktopAcrylicVersion,
+                "Desktop acrylic must advertise its protocol requirement");
+            Check(ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = ProtocolConstants.DesktopAcrylicVersion - 1 })
+                .Any(error => error.Path == "$.surface" && error.Code == "feature_requires_version"),
+                "Older protocols must reject the desktop acrylic declaration");
+            var roundTrip = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
+            Check(roundTrip.Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic &&
+                roundTrip.PinnedLayouts.Single().Surface.Appearance == WidgetSurfaceAppearance.DesktopAcrylic,
+                "Serialization lost the main or compact music material");
             Check(ViewSnapshotValidator.Validate(snapshot).Count == 0, "Invalid parent snapshot");
             Check(Nodes(snapshot.Root).Count() < 140, "Rows expanded into the ordinary page");
         }
@@ -522,6 +533,12 @@ static Task Theme()
     Check(WinUiStyleDiagnostics.Analyze(parsed.Document).Count == 0, "Sample relies on unmapped WinUI layout declarations");
     var compiled = WrssThemeCompiler.Compile([parsed.Document]);
     Check(compiled.IsValid, string.Join("\n", compiled.Diagnostics));
+    foreach (var rootClasses in new[] { new[] { "music-root" }, new[] { "music-root", "music-pinned-root" } })
+        Check(compiled.Theme!.Resolve(new WrssElement("stack", StyleClasses: new HashSet<string>(rootClasses)))
+            .Get("background")?.Text == "transparent", "The authored root obscures the host acrylic base");
+    foreach (var panel in new[] { "music-body", "music-player", "music-setup-card" })
+        Check(compiled.Theme!.Resolve(new WrssElement("stack", StyleClasses: new HashSet<string> { panel }))
+            .Get("background")?.Text is not null and not "transparent", $"The {panel} content fill must be preserved");
     var classes = new HashSet<string> { "music-track" };
     var idle = compiled.Theme!.Resolve(new WrssElement("actionSurface", StyleClasses: classes));
     var current = compiled.Theme.Resolve(new WrssElement("actionSurface", StyleClasses: classes,

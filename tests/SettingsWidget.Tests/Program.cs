@@ -75,6 +75,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Settings labels remain data rather than layout instructions", SettingsUsabilityScenarios.LabelsDoNotDetermineFieldStructure),
     ("Shared setting rows retain control authority and accessible values", SettingsUsabilityScenarios.SettingRowKeepsControlSemantics),
     ("Host-selected Settings profile persists real actions and reloads the matching theme manager", HostSelectedSettingsProfile),
+    ("Acrylic effects toggles independently and remains on Appearance", AcrylicPreference),
     ("Animation controls persist each preset and independent dialog preference", AnimationPreferences),
     ("Package completion produces one themed expiring toast without navigation", SettingsToastScenarios.PackageCompletionUsesToast),
     ("Startup setting preserves focus and gates mutations", StartupSettingsScenarios.Run),
@@ -592,7 +593,8 @@ static async Task ControllerScrollSurface()
     using var temp = new TemporaryDirectory();
     var widget = Create(temp.Path);
     var root = Snapshot(widget);
-    Assert.Equal(ProtocolConstants.PageNavigationVersion, root.ProtocolVersion);
+    Assert.Equal(WidgetSurfaceAppearance.DesktopAcrylic, root.Surface!.Appearance);
+    Assert.Equal(ProtocolConstants.DesktopAcrylicVersion, root.ProtocolVersion);
     Assert.Equal(WidgetSurfaceMode.Standard, root.Surface?.Mode);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.WidthMode);
     Assert.Equal(WidgetSurfaceAxisMode.Preferred, root.Surface?.HeightMode);
@@ -674,6 +676,22 @@ static async Task GameSourceActionsAreRetired()
     Assert.True(!File.Exists(Store(temp.Path).Paths.SettingsFile),
         "A retired game-source action wrote platform settings.");
     Assert.Equal(SettingsPage.Root, widget.CurrentPage);
+}
+
+static async Task AcrylicPreference()
+{
+    using var temp = new TemporaryDirectory();
+    var widget = Create(temp.Path);
+    await Action(widget, "open.appearance");
+    Assert.True(Nodes(Snapshot(widget).Root).Any(node => node.Id == "appearance.acrylic-effects"), "Appearance must expose the acrylic switch.");
+    await Action(widget, "acrylic-effects.toggle");
+    var saved = (await Store(temp.Path).LoadAsync()).Appearance;
+    Assert.Equal(false, saved.AcrylicEffects);
+    Assert.Equal(TransparencyPreference.Full, saved.Transparency);
+    Assert.Equal(SettingsPage.Appearance, widget.CurrentPage);
+    await Action(widget, "acrylic-effects.toggle");
+    Assert.Equal(true, (await Store(temp.Path).LoadAsync()).Appearance.AcrylicEffects);
+    await WidgetTestHost.DestroyAsync(widget);
 }
 
 static async Task AnimationPreferences()

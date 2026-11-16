@@ -61,4 +61,21 @@ public sealed class OverlayAppearancePolicyTests
         Assert.AreEqual("unsupported-composition", OverlayAppearancePolicy.Resolve(settings, "widget", WidgetSurfaceAppearance.Theme, false, false).FallbackReason);
         Assert.AreEqual(WidgetSurfaceAppearance.Theme, OverlayAppearancePolicy.Resolve(settings with { BackdropOpacity = 0, WidgetSurfaceAppearance = WidgetSurfaceAppearanceOverride.Theme }, "widget", WidgetSurfaceAppearance.Theme, false).Effective);
     }
+    [TestMethod]
+    public void AcrylicOffPreservesTransparentSurfacesAndOverridePrecedence()
+    {
+        var settings = AppearanceSettings.Default with { AcrylicEffects = false, BackdropOpacity = .5 };
+        var acrylic = OverlayAppearancePolicy.Resolve(settings, "widget", WidgetSurfaceAppearance.DesktopAcrylic, false);
+        Assert.AreEqual(WidgetSurfaceAppearance.Solid, acrylic.Effective);
+        Assert.AreEqual("acrylic-disabled", acrylic.FallbackReason);
+        Assert.AreEqual(WidgetSurfaceAppearance.DesktopAcrylic, acrylic.Requested);
+        Assert.AreEqual(WidgetSurfaceAppearance.Transparent,
+            OverlayAppearancePolicy.Resolve(settings, "widget", WidgetSurfaceAppearance.Transparent, false).Effective);
+        Assert.AreEqual(WidgetSurfaceAppearance.Transparent, OverlayAppearancePolicy.Resolve(settings with
+            { WidgetSurfaceAppearance = WidgetSurfaceAppearanceOverride.Transparent }, "widget", WidgetSurfaceAppearance.DesktopAcrylic, false).Effective);
+        Assert.AreEqual("high-contrast", OverlayAppearancePolicy.Resolve(settings, "widget", WidgetSurfaceAppearance.DesktopAcrylic, true).FallbackReason);
+        Assert.AreEqual("reduced-transparency", OverlayAppearancePolicy.Resolve(settings with
+            { Transparency = TransparencyPreference.Reduced }, "widget", WidgetSurfaceAppearance.Transparent, false).FallbackReason);
+    }
+
 }

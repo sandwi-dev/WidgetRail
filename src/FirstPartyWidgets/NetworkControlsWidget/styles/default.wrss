@@ -3,7 +3,7 @@
   min-width: 0px;
   gap: 8px;
   padding: 14px;
-  background: var(--surface);
+  background: transparent;
   color: var(--text);
   overflow: clip;
 }

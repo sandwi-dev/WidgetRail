@@ -14,6 +14,13 @@ after preview.37; on that release, use the installer or Windows Startup Apps.
 
 ## Appearance
 
+**Settings → Appearance → Acrylic effects** controls WidgetRail's desktop and
+in-app acrylic blur. Turn it off to use plain material fills while preserving
+transparent participant overlays, video margins, and the separate opacity controls.
+It defaults on. **Reduced transparency** in Accessibility remains a broader option
+that also removes translucent surfaces and partial content opacity.
+
+
 New installations and reset appearance settings start with Mono Ink.
 Changing this default does not replace an existing saved theme selection.
 

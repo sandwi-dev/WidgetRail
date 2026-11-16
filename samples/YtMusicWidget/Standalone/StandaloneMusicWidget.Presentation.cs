@@ -51,6 +51,7 @@ public sealed partial class StandaloneMusicWidget
                 .InputScope("music.pinned").Classes("music-root", "music-pinned-root"));
             return new(root, InitialFocusId: _tab == "queue" && panel is null ? NavigationFocusId : entry, Surface: new()
             {
+                Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
                 Mode = WidgetSurfaceMode.Adaptive, PreferredWidth = compact ? 760 : 840,
                 PreferredHeight = compact ? 440 : 580, MinimumWidth = 620, MinimumHeight = compact ? 360 : 400,
             })
@@ -61,7 +62,7 @@ public sealed partial class StandaloneMusicWidget
                 QuickActions = state.Current is null ? [] :
                     [new(ControllerButton.X, "player.toggle", "Play or pause"), new(ControllerButton.LeftBumper, "player.previous", "Previous song"), new(ControllerButton.RightBumper, "player.next", "Next song")],
                 PinnedLayouts = state.Current is null ? [] : [WidgetView.PinnedLayout("music.compact", "Compact now playing",
-                    new() { Mode = WidgetSurfaceMode.Compact, PreferredWidth = 360, PreferredHeight = 440, MinimumWidth = 320, MinimumHeight = 300 },
+                    new() { Appearance = WidgetSurfaceAppearance.DesktopAcrylic, Mode = WidgetSurfaceMode.Compact, PreferredWidth = 360, PreferredHeight = 440, MinimumWidth = 320, MinimumHeight = 300 },
                     pinned, initialFocusId: "player.pinned.toggle")],
             };
         }

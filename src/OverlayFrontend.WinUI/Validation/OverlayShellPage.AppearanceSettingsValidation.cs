@@ -38,6 +38,20 @@ internal sealed partial class OverlayShellPage
                 await SelectAsync("settings", true);
                 await Invoke("category.appearance");
                 await Wait(() => Ready("interface.stepper.increment") && activeDisplayId.Length > 0);
+                Check(WidgetSurface.HasDesktopAcrylic, "Settings uses desktop acrylic as its base");
+                await Change("appearance.acrylic-effects", value => !value.AcrylicEffects,
+                    () => !Appearance.AcrylicEffects && !WidgetSurface.HasDesktopAcrylic &&
+                        SurfaceBackground.Background is SolidColorBrush { Color.A: 255 },
+                    "Acrylic effects disables the live base material through the real Settings control");
+                await Change("appearance.acrylic-effects", value => value.AcrylicEffects,
+                    () => Appearance.AcrylicEffects && WidgetSurface.HasDesktopAcrylic,
+                    "Acrylic effects reconnects the live base without restarting the widget");
+                if (Environment.GetCommandLineArgs().Contains("--acrylic-settings-only"))
+                {
+                    Check(System.Text.Json.Nodes.JsonNode.DeepEquals(JsonSerializer.SerializeToNode((await store.LoadAsync()).Appearance),
+                        JsonSerializer.SerializeToNode(original.Appearance)), "Acrylic roundtrip preserves every other appearance preference");
+                    return;
+                }
                 var scale = Appearance.InterfaceScale;
                 var textScale = Appearance.TextScale;
                 var document = await store.LoadAsync();

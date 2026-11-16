@@ -27,6 +27,7 @@ internal static class OverlayAppearancePolicy
         };
         var fallback = contrast ? "high-contrast" : settings.Transparency == TransparencyPreference.Reduced ? "reduced-transparency" :
             requested is WidgetSurfaceAppearance.Transparent or WidgetSurfaceAppearance.DesktopAcrylic && !transparentComposition ? "unsupported-composition" :
+            requested == WidgetSurfaceAppearance.DesktopAcrylic && !settings.AcrylicEffects ? "acrylic-disabled" :
             requested == WidgetSurfaceAppearance.Transparent && settings.BackdropOpacity <= 0 ? "zero-backdrop-contrast" : null;
         return new(declared, requested, fallback is null ? requested : WidgetSurfaceAppearance.Solid, fallback, contrast);
     }
