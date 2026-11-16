@@ -49,9 +49,6 @@ internal sealed partial class MediaPlayerView
         var imageState = RememberImageViewport();
         changingPlacement = true;
         expandedHost = host;
-        videoStage?.EnterFullscreen();
-        Content = null;
-        SetExpandedLayout(true);
         return host.ShowAsync(new(this, card, Handle, direction => MoveFocus(direction),
             () =>
             {
@@ -83,7 +80,12 @@ internal sealed partial class MediaPlayerView
             Prepare: () => RestoreImageViewport(imageState), Chrome: [toolbar, imageTools], UseXamlTransform: IsVideo,
             MediaBounds: IsVideo ? () => videoStage?.VideoBounds ?? MediaTransitionGeometry.Fit(video.TransformToVisual(card)
                 .TransformBounds(new(0, 0, video.ActualWidth, video.ActualHeight)), VideoAspectRatio) : null,
-            MotionContent: videoStage));
+            MotionContent: videoStage, Detach: () =>
+            {
+                videoStage?.EnterFullscreen();
+                Content = null;
+                SetExpandedLayout(true);
+            }));
     }
 
     private double VideoAspectRatio => player?.PlaybackSession is { NaturalVideoWidth: > 0, NaturalVideoHeight: > 0 } playback

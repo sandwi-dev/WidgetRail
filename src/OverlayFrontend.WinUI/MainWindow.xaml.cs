@@ -212,7 +212,7 @@ public sealed partial class MainWindow : Window
         page.HostTaskActivationRequested = request => RunHostTaskHandoffAsync(page, request);
         page.SystemTaskViewRequested = () => OpenSystemTaskViewAsync(page);
         page.OpenExternalWebPageRequested = (uri, token) => OpenExternalWebPageAsync(page, uri, token);
-        page.OpenCaptureFolderRequested = (path, current, token) => OpenCaptureFolderAsync(page,path,current,token);
+        page.OpenCaptureFolderRequested = (path, fileName, current, token) => OpenCaptureFolderAsync(page,path,fileName,current,token);
         page.AppearanceLoaded += ApplyOverlayPlacement;
         page.MediaPresentationChanged += () =>
         {

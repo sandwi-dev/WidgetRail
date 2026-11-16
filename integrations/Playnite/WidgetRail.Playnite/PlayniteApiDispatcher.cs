@@ -27,11 +27,12 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
         optionalData = new OptionalPluginData(api.Paths.ExtensionsDataPath);
         api.Database.Games.ItemUpdated += GamesUpdated;
         api.Database.Games.ItemCollectionChanged += GamesChanged;
+        StartCaptureCompanions();
     }
     private void GamesUpdated(object sender, ItemUpdatedEventArgs<Game> args) => LibraryChanged();
     private void GamesChanged(object sender, ItemCollectionChangedEventArgs<Game> args) => LibraryChanged();
     internal void LibraryChanged()
-    { Interlocked.Increment(ref libraryRevision); changes.Publish(new IntegrationEvent("library-changed")); }
+    { Interlocked.Increment(ref libraryRevision); changes.Publish(new IntegrationEvent("library-changed")); captureCompanions?.Invalidate(); }
     internal void GameStateChanged(Guid gameId)
     { Interlocked.Increment(ref libraryRevision); changes.Publish(new IntegrationEvent("game-state", gameId.ToString("D"))); }
 
@@ -53,7 +54,7 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
                     paths = new { application = api.Paths.ApplicationPath, configuration = api.Paths.ConfigurationPath },
                     commandRetentionSeconds = CommandRegistry<LocalApiResponse>.RetentionSeconds,
                     providers = new { playniteAchievements = provider },
-                    capabilities = IntegrationIdentity.RequiredCapabilities.Concat(new[] { "events.v1", "achievements.v1", "achievements.overview.v1", "activity.v1", "diagnostics.v1" }).ToArray(),
+                    capabilities = IntegrationIdentity.RequiredCapabilities.Concat(new[] { "events.v1", "achievements.v1", "achievements.overview.v1", "achievements.capture-settings.v1", "achievements.capture-integration.v1", "activity.v1", "diagnostics.v1" }).ToArray(),
                 });
             }
             if (request.Method == "GET" && request.Path == "/v1/diagnostics")
@@ -67,6 +68,14 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
                         cpuMilliseconds = process.TotalProcessorTime.TotalMilliseconds,
                         generation0Collections = GC.CollectionCount(0), generation1Collections = GC.CollectionCount(1), generation2Collections = GC.CollectionCount(2) });
             }
+            if (request.Method == "GET" && request.Path == "/v1/capture-settings")
+                return WireJson.Response(await OnUiAsync(() => achievements.ReadCaptureSettings(), linked.Token).ConfigureAwait(false));
+            if (request.Method == "PATCH" && request.Path == "/v1/capture-settings")
+                return await RunMutationAsync(request, () => achievements.UpdateCaptureSettings(WireJson.Body(request)), linked.Token).ConfigureAwait(false);
+            if (request.Method == "GET" && request.Path == "/v1/capture-integration")
+                return WireJson.Response(await OnUiAsync(CaptureIntegration, linked.Token).ConfigureAwait(false));
+            if (request.Method == "PUT" && request.Path == "/v1/capture-integration")
+                return await RunMutationAsync(request, () => ConfigureCaptureIntegration(WireJson.Body(request)), linked.Token).ConfigureAwait(false);
             if (request.Method == "GET" && request.Path == "/v1/achievements/overview") return await GetAchievementOverviewAsync(request, linked.Token).ConfigureAwait(false);
             if (request.Method == "GET" && request.Path == "/v1/games") return await GetGamesAsync(request, linked.Token).ConfigureAwait(false);
             if (request.Method == "GET" && request.Path == "/v1/artwork") return await GetArtworkManifestAsync(request, linked.Token).ConfigureAwait(false);
@@ -145,7 +154,7 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
     }
     public void Dispose()
     {
-        if (disposed) return; disposed = true; lifetime.Cancel(); achievements.Dispose(); changes.Dispose();
+        if (disposed) return; disposed = true; lifetime.Cancel(); captureCompanions?.Dispose(); achievements.Dispose(); changes.Dispose();
         api.Database.Games.ItemUpdated -= GamesUpdated;
         api.Database.Games.ItemCollectionChanged -= GamesChanged;
     }

@@ -13,9 +13,12 @@ public sealed partial class WidgetCatalog
         await RecoverPendingAndCleanupRetiredTreesAsync(token).ConfigureAwait(false);
     }
 
-    private async Task RemoveWidgetDataAsync(string widgetId, IEnumerable<string> publishers, string receiptDirectory)
+    private async Task RemoveWidgetDataAsync(string widgetId, IEnumerable<string> publishers, string receiptDirectory,
+        IReadOnlyList<BrokerWidgetIdentity>? sourceOwners = null)
     {
         var settingsRoot = _dataSettingsRoot;
+        if (sourceOwners is not null)
+            await CaptureLibraryStore.RetireSourceOwnersAsync(Path.Combine(settingsRoot, "capture-library-v2"), sourceOwners, CancellationToken.None).ConfigureAwait(false);
         var states = new PrivateStateStore(Path.Combine(settingsRoot, "widget-state"));
         var configuration = new WidgetConfigurationStore(new PlatformSettingsPaths(settingsRoot));
         foreach (var publisher in publishers)

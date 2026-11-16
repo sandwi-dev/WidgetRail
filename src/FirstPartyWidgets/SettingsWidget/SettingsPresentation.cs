@@ -355,6 +355,10 @@ internal static partial class SettingsPresentation
                 new("left", "Bottom left", "position.choose.left", IsSelected: appearance.OverlayPosition == OverlayPosition.BottomLeft),
                 new("right", "Bottom right", "position.choose.right", IsSelected: appearance.OverlayPosition == OverlayPosition.BottomRight)
             ], "overlay.position").Busy(busy) with { ShowLabel = false }), "Corner layouts keep the outside edge fixed as widgets resize."),
+            UI.Text("Captures", "overlay.capture.heading").Classes("section-heading"),
+            Field("Capture confirmations", UI.Button("Restore capture confirmations", "capture-confirmations.restore", "overlay.capture.restore")
+                .Busy(busy).Disabled(settings.CaptureConfirmations.Widgets.Count == 0),
+                "Ask again before taking screenshots or recording clips in every widget."),
             .. hostFeatures.StartupRegistration ? new WidgetElement[] {
                 UI.Text("Startup", "overlay.startup.heading").Classes("section-heading"),
                 Field("Start WidgetRail when I sign in", UI.Switch("Start WidgetRail when I sign in", startup?.Registered == true,

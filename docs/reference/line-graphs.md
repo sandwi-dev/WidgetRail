@@ -16,8 +16,15 @@ Up to 120 samples must have strictly increasing finite X coordinates inside the
 horizontal bounds. Non-null values must be finite and within the vertical bounds.
 Null values break the line; never substitute zero for unavailable measurements.
 An omitted maximum scales above the largest available value, including negative
-series. Empty series show a collecting state. Authors should label the time window
-and meaning outside the graph and use stable element IDs for live updates.
+series. Empty series show a neutral "No samples" state. Authors can set
+`EmptyText` on `LineGraphDefinition` to explain why samples are unavailable, such
+as "FPS collection is off" or "Waiting for frames…". This optional text requires
+protocol 111, must be nonblank single-line text of at most 160 characters, and is
+also exposed as the empty graph's accessible description. Omitting it retains the
+original graph protocol requirement. The host displays the message only when no
+sample has a value; it does not infer provider or collection state. Authors should
+label the time window and meaning outside the graph and use stable element IDs for
+live updates.
 
 The readable name is required. The native graph also exposes latest/min/max values
 as its accessible description. Plot and labels use the control's foreground brush,

@@ -27,6 +27,23 @@ internal static class CaptureApplicationMetadataScenarios
             if (System.Text.Json.JsonSerializer.Deserialize(json, info) is not BridgeCaptureFolderResult decoded || decoded != value)
                 throw new Exception("Generated folder completion did not round-trip.");
         }
+        var copyInfo = BridgeJsonContext.Default.GetTypeInfo(typeof(BridgeCaptureCopyDestination))
+            ?? throw new Exception("Copy completion is missing generated JSON metadata.");
+        foreach (var destination in new string?[] { null, Path.Combine(Path.GetTempPath(), "capture-copy-test") })
+        {
+            var value = new BridgeCaptureCopyDestination(id, destination);
+            var json = System.Text.Json.JsonSerializer.Serialize(value, copyInfo);
+            if (System.Text.Json.JsonSerializer.Deserialize(json, copyInfo) is not BridgeCaptureCopyDestination decoded || decoded != value)
+                throw new Exception("Generated copy destination did not round-trip.");
+        }
+        var copyTake = take with { CopyDestination = new(id, folder.Widget, 256), CopyWidgetId = "example.capture" };
+        var copyJson = System.Text.Json.JsonSerializer.Serialize(copyTake, takeInfo);
+        if (System.Text.Json.JsonSerializer.Deserialize(copyJson, takeInfo) is not BridgeCaptureTake copyDecoded || copyDecoded.CopyDestination != copyTake.CopyDestination)
+            throw new Exception("Generated copy picker request did not round-trip.");
+        var sourceTake = take with { SourceFolder = new(id, folder.Widget, "Capture folder"), SourceWidgetId = "example.capture" };
+        var sourceJson = System.Text.Json.JsonSerializer.Serialize(sourceTake, takeInfo);
+        if (System.Text.Json.JsonSerializer.Deserialize(sourceJson, takeInfo) is not BridgeCaptureTake sourceDecoded || sourceDecoded.SourceFolder != sourceTake.SourceFolder)
+            throw new Exception("Generated source picker request did not round-trip.");
         var pipe = "capture-folder-" + Guid.NewGuid().ToString("N");
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await using var server = new WidgetBridgeServer(pipe, new([]));
@@ -35,6 +52,10 @@ internal static class CaptureApplicationMetadataScenarios
         foreach (var opened in new[] { false, true })
         {
             await session.CompleteCaptureFolderAsync(id, opened, deadline.Token);
+            await session.CompleteCaptureCopyAsync(id, opened ? Path.GetTempPath() : null, deadline.Token);
+            await session.CompleteCaptureSourceAsync(id, opened ? Path.GetTempPath() : null, deadline.Token);
+            if (await session.IsCaptureSourceCurrentAsync(id, deadline.Token)) throw new Exception("An expired source request was revived.");
+            if (await session.IsCaptureCopyCurrentAsync(id, deadline.Token)) throw new Exception("An expired copy request was revived.");
             if (await session.IsCaptureFolderCurrentAsync(id, deadline.Token)) throw new Exception("An expired folder request was revived.");
             _ = await session.TakeCaptureAsync(deadline.Token);
             _ = await session.TakePermissionAsync(deadline.Token);

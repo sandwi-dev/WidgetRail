@@ -10,3 +10,5 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("AdvancedActionFailureFixture")]
 [assembly: InternalsVisibleTo("AudioMixerScrollFixture")]
 [assembly: InternalsVisibleTo("WidgetSwitchFixture")]
+
+[assembly: InternalsVisibleTo("CaptureLibraryWidgetFixture")]

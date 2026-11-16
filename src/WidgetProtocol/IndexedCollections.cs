@@ -7,12 +7,15 @@ public sealed record IndexedCollectionDescriptor(string SourceId, long QueryGene
 {
     /// <summary>Null means a complete finite query. Otherwise Count is only the discovered, addressable prefix.</summary>
     public DiscoveredCollectionState? Discovery { get; init; }
+    /// <summary>Opt-in query-bound key lookup for viewport continuity; grants no item action authority.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool CanLocateItems { get; init; }
 }
 
 public enum DiscoveredCollectionStatus { Ready, Loading, Failed, LimitReached }
 public sealed record DiscoveredCollectionState(long Revision, bool HasMore, DiscoveredCollectionStatus Status,
     int MaximumItems, string? ErrorCode = null, string? ErrorMessage = null);
-public enum IndexedCollectionRequestKind { Range, Continue, Retry, FocusPreview }
+public enum IndexedCollectionRequestKind { Range, Continue, Retry, FocusPreview, Locate }
 
 /// <summary>One contiguous display-only heading and item run in an existing flat indexed query.</summary>
 public sealed record IndexedCollectionGroup(string Key, string Header, int Count);
@@ -28,6 +31,7 @@ public sealed record IndexedCollectionRangeRequest(
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IndexedCollectionRequestKind Kind { get; init; }
     public string? PreviewKey { get; init; }
+    public string? LocateKey { get; init; }
 }
 
 public sealed record IndexedCollectionItem(string Key, ViewNode Root);
@@ -35,7 +39,10 @@ public sealed record IndexedCollectionItem(string Key, ViewNode Root);
 public sealed record IndexedCollectionRange(
     string WidgetInstanceId, string CollectionId, IndexedCollectionDescriptor Source,
     string ScopeId, int StartIndex, string DemandId, IReadOnlyList<IndexedCollectionItem> Items,
-    string? PinnedLayoutId = null);
+    string? PinnedLayoutId = null)
+{
+    public int? LocatedIndex { get; init; }
+}
 
 public static class IndexedCollectionLimits
 {
@@ -131,6 +138,7 @@ public static class IndexedCollectionContract
         ArgumentOutOfRangeException.ThrowIfNegative(source.QueryGeneration);
         ArgumentOutOfRangeException.ThrowIfNegative(source.ContentRevision);
         ArgumentOutOfRangeException.ThrowIfNegative(source.Count);
+        if (source.CanLocateItems && source.Discovery is not null) throw new ArgumentException("Key lookup requires a finite query.", nameof(source));
         if (source.Discovery is { } discovery && (discovery.Revision < 0 || !Enum.IsDefined(discovery.Status) ||
             discovery.MaximumItems is < 1 or > 4096 || source.Count > discovery.MaximumItems ||
             discovery.ErrorCode is { } code && !ProtocolValidationIdentifierContext.IsSafeIdentifier(code) ||
@@ -155,6 +163,14 @@ public static class IndexedCollectionContract
         RequireId(request.DemandId);
         if (request.PinnedLayoutId is { } pinned) RequireId(pinned);
         if (!Enum.IsDefined(request.Kind)) throw new ArgumentException("Unknown indexed request kind.", nameof(request));
+        if (request.Kind == IndexedCollectionRequestKind.Locate)
+        {
+            RequireId(request.LocateKey!);
+            if (!request.Source.CanLocateItems || request.Source.Discovery is not null || request.StartIndex != 0 || request.Count != 0 || request.PreviewKey is not null)
+                throw new ArgumentException("Lookup requires an opted-in finite query and one key.", nameof(request));
+            return;
+        }
+        if (request.LocateKey is not null) throw new ArgumentException("Only locate requests carry a lookup key.", nameof(request));
         if (request.Kind == IndexedCollectionRequestKind.FocusPreview)
         {
             RequireId(request.PreviewKey!);
@@ -188,6 +204,13 @@ public static class IndexedCollectionContract
             || range.ScopeId != binding.Scope || range.StartIndex != request.StartIndex || range.DemandId != request.DemandId
             || range.PinnedLayoutId != request.PinnedLayoutId || range.Items is null || range.Items.Count != request.Count)
             throw new ArgumentException("Indexed response authority does not match its request.", nameof(range));
+        if (request.Kind == IndexedCollectionRequestKind.Locate)
+        {
+            if (range.LocatedIndex is { } found && (found < 0 || found >= request.Source.Count))
+                throw new ArgumentException("Located index is outside the declared query.", nameof(range));
+            return;
+        }
+        if (range.LocatedIndex is not null) throw new ArgumentException("Only a lookup response contains a located index.", nameof(range));
         if (request.Kind == IndexedCollectionRequestKind.FocusPreview)
         {
             var item=range.Items[0];

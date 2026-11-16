@@ -48,7 +48,7 @@ public sealed partial class CaptureLibraryStore
                 metadataWatcher ??= Watch(root); mediaWatcher ??= Watch(captureDirectory);
                 Reconcile(); initialized = true;
             }
-            else if (Interlocked.Exchange(ref rescan, 0) != 0) Reconcile();
+            else if (Interlocked.Exchange(ref rescan, 0) != 0) Reconcile(forceMetadata: true);
             DrainChanges();
             foreach (var path in pendingDeletes.ToArray())
                 TryFinishDelete(path);
@@ -64,6 +64,31 @@ public sealed partial class CaptureLibraryStore
                     CREATE INDEX IF NOT EXISTS capture_order ON captures(saved_at DESC,id);
                     CREATE INDEX IF NOT EXISTS capture_hash ON captures(hash);
                     CREATE INDEX IF NOT EXISTS capture_name ON captures(name);
+                    CREATE TABLE IF NOT EXISTS recycled(id TEXT PRIMARY KEY, name TEXT NOT NULL);
+                    CREATE INDEX IF NOT EXISTS recycled_name ON recycled(name);
+                    CREATE TABLE IF NOT EXISTS library_revision(id INTEGER PRIMARY KEY CHECK(id=1), epoch TEXT NOT NULL, sequence INTEGER NOT NULL);
+                    INSERT OR IGNORE INTO library_revision VALUES(1,lower(hex(randomblob(16))),0);
+                    CREATE TRIGGER IF NOT EXISTS library_revision_added AFTER INSERT ON captures BEGIN
+                      UPDATE library_revision SET sequence=sequence+1 WHERE id=1; END;
+                    CREATE TRIGGER IF NOT EXISTS library_revision_removed AFTER DELETE ON captures BEGIN
+                      UPDATE library_revision SET sequence=sequence+1 WHERE id=1; END;
+                    CREATE TRIGGER IF NOT EXISTS library_revision_changed AFTER UPDATE ON captures BEGIN
+                      UPDATE library_revision SET sequence=sequence+1 WHERE id=1; END;
+                    CREATE TABLE IF NOT EXISTS capture_associations(key_hash TEXT PRIMARY KEY,capture_id TEXT NOT NULL,association_id TEXT NOT NULL UNIQUE,
+                      origin_package TEXT NOT NULL,origin_publisher TEXT NOT NULL,origin_instance TEXT NOT NULL,recorded_at INTEGER NOT NULL,data TEXT NOT NULL);
+                    CREATE INDEX IF NOT EXISTS association_capture ON capture_associations(capture_id,recorded_at DESC,association_id);
+                    CREATE INDEX IF NOT EXISTS association_origin ON capture_associations(origin_package,capture_id);
+                    CREATE TABLE IF NOT EXISTS capture_association_refs(key_hash TEXT NOT NULL,position INTEGER NOT NULL,role INTEGER NOT NULL,
+                      kind TEXT NOT NULL,reference_id TEXT NOT NULL,label TEXT,PRIMARY KEY(key_hash,position));
+                    CREATE INDEX IF NOT EXISTS association_reference ON capture_association_refs(kind,reference_id,role,key_hash);
+                    CREATE TRIGGER IF NOT EXISTS association_added AFTER INSERT ON capture_associations BEGIN UPDATE library_revision SET sequence=sequence+1 WHERE id=1; END;
+                    CREATE TRIGGER IF NOT EXISTS association_changed AFTER UPDATE ON capture_associations BEGIN UPDATE library_revision SET sequence=sequence+1 WHERE id=1; END;
+                    CREATE TRIGGER IF NOT EXISTS association_removed AFTER DELETE ON capture_associations BEGIN UPDATE library_revision SET sequence=sequence+1 WHERE id=1; END;
+                    CREATE INDEX IF NOT EXISTS capture_application ON captures(json_extract(data,'$.Item.Media.SourceApplication.ApplicationName'));
+                    CREATE INDEX IF NOT EXISTS capture_media_kind ON captures(json_extract(data,'$.Item.Media.ContentType'));
+                    CREATE INDEX IF NOT EXISTS capture_favorite ON captures(json_extract(data,'$.Item.IsFavorite'));
+                    CREATE INDEX IF NOT EXISTS capture_source_path ON captures(json_extract(data,'$.Item.SourceId'),json_extract(data,'$.RelativePath') COLLATE NOCASE);
+                    CREATE INDEX IF NOT EXISTS capture_source_id ON captures(json_extract(data,'$.Item.SourceId'),id);
                     CREATE TABLE IF NOT EXISTS totals(id INTEGER PRIMARY KEY CHECK(id=1), count INTEGER NOT NULL, bytes INTEGER NOT NULL);
                     INSERT OR IGNORE INTO totals VALUES(1,0,0);
                     CREATE TRIGGER IF NOT EXISTS capture_added AFTER INSERT ON captures BEGIN
@@ -82,14 +107,24 @@ public sealed partial class CaptureLibraryStore
         var watcher = new FileSystemWatcher(directory) { NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size };
         void Queue(string path)
         {
-            if (Path.GetExtension(path).ToLowerInvariant() is not (".json" or ".png" or ".mp4" or ".pending" or ".deleted")) return;
-            if (changes.Count >= 1024) { Interlocked.Exchange(ref rescan, 1); return; }
-            changes.TryAdd(path, 0);
+            if (Path.GetExtension(path).ToLowerInvariant() is not (".json" or ".png" or ".mp4" or ".pending" or ".deleted" or ".recycled")) return;
+            if (changes.Count >= 1024) { Interlocked.Exchange(ref rescan, 1); NotifyChanged(); return; }
+            if (changes.TryAdd(path, 0)) NotifyChanged();
         }
         watcher.Created += (_, e) => Queue(e.FullPath); watcher.Changed += (_, e) => Queue(e.FullPath);
         watcher.Deleted += (_, e) => Queue(e.FullPath);
-        watcher.Renamed += (_, e) => { if (directory == captureDirectory && renames.Count < 1024) renames.Enqueue((e.OldName!, e.Name!)); else Interlocked.Exchange(ref rescan,1); Queue(e.OldFullPath); Queue(e.FullPath); };
-        watcher.Error += (_, _) => Interlocked.Exchange(ref rescan, 1);
+        watcher.Renamed += (_, e) =>
+        {
+            if (directory == captureDirectory)
+            {
+                if (renames.Count < 1024) renames.Enqueue((e.OldName!, e.Name!));
+                else Interlocked.Exchange(ref rescan, 1);
+            }
+            // Atomic private-sidecar publication is a known pair of paths, not
+            // a reason to rescan every capture and association in the library.
+            Queue(e.OldFullPath); Queue(e.FullPath);
+        };
+        watcher.Error += (_, _) => { Interlocked.Exchange(ref rescan, 1); NotifyChanged(); };
         watcher.EnableRaisingEvents = true; return watcher;
     }
     private void DrainChanges()
@@ -109,19 +144,28 @@ public sealed partial class CaptureLibraryStore
             var name = Path.GetFileName(path);
             if (Path.GetDirectoryName(path)!.Equals(root,StringComparison.OrdinalIgnoreCase))
             {
+                if (AssociationHash(name) is { } association) { RefreshAssociation(association); continue; }
                 var id = Path.GetFileNameWithoutExtension(path);
-                if (CaptureLimits.ValidToken(id) && Path.GetExtension(path) == ".json") RefreshEntry(id);
+                if (CaptureLimits.ValidToken(id) && Path.GetExtension(path) == ".recycled") RefreshRecycled(id);
+                else if (CaptureLimits.ValidToken(id) && Path.GetExtension(path) == ".json" && !File.Exists(Path.Combine(root,id+".recycled"))) RefreshEntry(id);
                 else if (Path.GetExtension(path) == ".deleted" && File.Exists(path)) { pendingDeletes.Add(path); }
             }
             else
             {
                 foreach (var saved in IndexRows("WHERE name=$name", ("$name", name))) RefreshEntry(saved.Item.Id);
+                using var recycled = Command("SELECT id FROM recycled WHERE name=$name", ("$name", name));
+                using var reader = recycled.ExecuteReader(); var restored = new List<string>();
+                while (reader.Read()) restored.Add(reader.GetString(0)); reader.Close();
+                foreach (var id in restored) RefreshRecycled(id);
             }
         }
+        if (!changes.IsEmpty || !renames.IsEmpty) NotifyChanged();
     }
-    private void Reconcile()
+    private void Reconcile(bool forceMetadata = false)
     {
         ++Reconciliations;
+        foreach (var marker in Directory.EnumerateFiles(root,"*.recycled"))
+        { var id = Path.GetFileNameWithoutExtension(marker); if (CaptureLimits.ValidToken(id)) RefreshRecycled(id); }
         foreach (var path in Directory.EnumerateFiles(root,"*.deleted"))
             TryFinishDelete(path);
         foreach (var path in Directory.EnumerateFiles(root,"*.json.pending"))
@@ -129,7 +173,7 @@ public sealed partial class CaptureLibraryStore
             var id = Path.GetFileName(path)[..^13]; if (!CaptureLimits.ValidToken(id)) continue;
             if (!File.Exists(MetadataPath(id)))
             {
-                try { var pending = ReadMetadata(path); if (DeleteOwned(MediaPath(pending))) DeleteOwned(path); }
+                try { var pending = ReadMetadata(path); if (pending.Item.SourceId is not null || DeleteOwned(MediaPath(pending))) DeleteOwned(path); }
                 catch (Exception error) when (error is JsonException or BrokerException) { /* An unreadable marker cannot authorize deleting a public file. */ }
             }
             else DeleteOwned(path);
@@ -138,9 +182,10 @@ public sealed partial class CaptureLibraryStore
         var ids = Directory.EnumerateFiles(root,"*.json").Select(Path.GetFileNameWithoutExtension)
             .Where(CaptureLimits.ValidToken).Select(id => id!).ToHashSet(StringComparer.Ordinal);
         foreach (var saved in IndexRows("")) ids.Add(saved.Item.Id);
-        foreach(var id in ids) RefreshEntry(id);
+        foreach(var id in ids) if (!File.Exists(Path.Combine(root,id+".recycled"))) RefreshEntry(id, forceMetadata);
+        ReconcileAssociations();
     }
-    private void RefreshEntry(string id)
+    private void RefreshEntry(string id, bool forceMetadata = false)
     {
         var previous = IndexRows("WHERE id=$id", ("$id",id)).FirstOrDefault();
         var metadata = MetadataPath(id); PlainPath(metadata);
@@ -149,7 +194,7 @@ public sealed partial class CaptureLibraryStore
         {
             using var stampQuery = Command("SELECT metadata_stamp FROM captures WHERE id=$id", ("$id",id));
             var stamp = stampQuery.ExecuteScalar();
-            saved = previous is { MetadataValid:true } && File.Exists(metadata) && stamp is long recorded && recorded == File.GetLastWriteTimeUtc(metadata).Ticks
+            saved = !forceMetadata && previous is { MetadataValid:true } && File.Exists(metadata) && stamp is long recorded && recorded == File.GetLastWriteTimeUtc(metadata).Ticks
                 ? previous : ReadMetadata(metadata);
 
         }
@@ -158,13 +203,17 @@ public sealed partial class CaptureLibraryStore
             if (previous is null) return;
             saved = previous with { MetadataValid=false };
         }
-        PlainPath(MediaPath(saved));
-        var file = new FileInfo(MediaPath(saved));
+        string mediaPath;
+        try { mediaPath = MediaPath(saved); PlainPath(mediaPath); }
+        catch (BrokerException) when (saved.Item.SourceId is not null)
+        { IndexPut(saved with { Item = saved.Item with { Available = false } }, 0); return; }
+        var file = new FileInfo(mediaPath);
         var unchanged = file.Exists && file.Length == saved.Item.Media.ByteLength && file.LastWriteTimeUtc.Ticks == saved.MediaStamp;
         // Visible artwork/open requests inspect edits lazily; listing never decodes or hashes the whole folder.
         var available = saved.MetadataValid && file.Exists && (unchanged || inspect is not null && file.Length is > 0 and <= CaptureLimits.MaximumAttachmentBytes);
         if (!unchanged) { verified.Remove(id); DeleteOwned(Path.Combine(root,id+".thumbnail")); }
-        IndexPut(saved with { Item = saved.Item with { Available=available,Revision=file.Exists?file.LastWriteTimeUtc.Ticks:saved.MediaStamp } },file.Exists?file.Length:0);
+        IndexPut(saved with { Item = saved.Item with { Available=available,
+            Revision = saved.Item.SourceId is not null ? saved.ExternalIdentity?.ChangeTime ?? saved.Item.Revision : file.Exists ? file.LastWriteTimeUtc.Ticks : saved.MediaStamp } },file.Exists?file.Length:0);
     }
     private Saved ReadMetadata(string path)
     {
@@ -172,7 +221,8 @@ public sealed partial class CaptureLibraryStore
         if(new FileInfo(path).Length>8192) throw Error("capture_library_invalid_media");
         var saved=JsonSerializer.Deserialize<Saved>(File.ReadAllText(path)) ?? throw Error("capture_library_invalid_media");
         if(saved.Schema != 2 || !CaptureLibraryLimits.Valid(saved.Item) || !Path.GetFileName(path).StartsWith(saved.Item.Id+".",StringComparison.Ordinal) || saved.Sha256 is not {Length:64} || !saved.Sha256.All(char.IsAsciiHexDigit) ||
-            (saved.FileName is not { } name || !ValidName(name) || !Path.GetExtension(name).Equals(Extension(saved.Item.Media),StringComparison.OrdinalIgnoreCase))) throw Error("capture_library_invalid_media");
+            (saved.FileName is not { } name || !ValidName(name) || !Path.GetExtension(name).Equals(Extension(saved.Item.Media),StringComparison.OrdinalIgnoreCase)) ||
+            (saved.Item.SourceId is null ? saved.RelativePath is not null : !CaptureLibrarySourceLimits.ValidRelativePath(saved.RelativePath))) throw Error("capture_library_invalid_media");
         return saved;
     }
     private void WriteMetadata(Saved saved)
@@ -188,6 +238,8 @@ public sealed partial class CaptureLibraryStore
     }
     private void FinishDelete(string marker,Saved saved)
     {
+        // Even a stale/corrupt recovery marker must never authorize deleting a linked original.
+        if (saved.Item.SourceId is not null) { DeleteOwned(marker); pendingDeletes.Remove(marker); return; }
         if(DeleteOwned(MediaPath(saved)) && DeleteOwned(Path.Combine(root,saved.Item.Id+".thumbnail")))
         { DeleteOwned(MetadataPath(saved.Item.Id)); IndexRemove(saved.Item.Id); File.Delete(marker); pendingDeletes.Remove(marker); }
         else pendingDeletes.Add(marker);
@@ -205,14 +257,15 @@ public sealed partial class CaptureLibraryStore
     { using var command=Command("SELECT data FROM captures "+suffix,parameters); using var reader=command.ExecuteReader(); var values=new List<Saved>(); while(reader.Read()) values.Add(JsonSerializer.Deserialize<Saved>(reader.GetString(0))!); return values.ToArray(); }
     private (int Count,long Bytes) IndexTotals()
     { using var command=Command("SELECT count,bytes FROM totals WHERE id=1"); using var reader=command.ExecuteReader(); reader.Read(); return(reader.GetInt32(0),reader.GetInt64(1)); }
-    private void IndexPut(Saved saved,long bytes) => Execute("""
+    private void IndexPut(Saved saved,long bytes) { var before = ChangeCount(); Execute("""
         INSERT INTO captures VALUES($id,$time,$hash,$name,$available,$bytes,$stamp,$data)
         ON CONFLICT(id) DO UPDATE SET saved_at=excluded.saved_at,hash=excluded.hash,name=excluded.name,
           available=excluded.available,bytes=excluded.bytes,metadata_stamp=excluded.metadata_stamp,data=excluded.data
           WHERE captures.data<>excluded.data OR captures.bytes<>excluded.bytes OR captures.metadata_stamp<>excluded.metadata_stamp
-        """,("$id",saved.Item.Id),("$time",saved.Item.SavedAtUnixMilliseconds),("$hash",saved.Sha256),
+        """,("$id",saved.Item.Id),("$time",saved.Item.SourceId is not null ? saved.Item.FileModifiedAtUnixMilliseconds ?? saved.Item.SavedAtUnixMilliseconds : saved.Item.SavedAtUnixMilliseconds),("$hash",saved.Sha256),
         ("$name",(object?)saved.FileName??DBNull.Value),("$available",saved.Item.Available?1:0),("$bytes",bytes),
-        ("$stamp",File.Exists(MetadataPath(saved.Item.Id))?File.GetLastWriteTimeUtc(MetadataPath(saved.Item.Id)).Ticks:0),("$data",JsonSerializer.Serialize(saved)));
-    private void IndexRemove(string id) => Execute("DELETE FROM captures WHERE id=$id",("$id",id));
-    public void Dispose() { metadataWatcher?.Dispose(); mediaWatcher?.Dispose(); database?.Dispose(); gate.Dispose(); }
+        ("$stamp",File.Exists(MetadataPath(saved.Item.Id))?File.GetLastWriteTimeUtc(MetadataPath(saved.Item.Id)).Ticks:0),("$data",JsonSerializer.Serialize(saved))); if (ChangeCount() != before) NotifyChanged(); }
+    private long ChangeCount() { using var command = Command("SELECT total_changes()"); return (long)command.ExecuteScalar()!; }
+    private void IndexRemove(string id) { var before = ChangeCount(); Execute("DELETE FROM captures WHERE id=$id",("$id",id)); if (ChangeCount() != before) NotifyChanged(); }
+    public void Dispose() { StopSources(); lock(changeGate) { disposed = 1; changeTimer?.Dispose(); } metadataWatcher?.Dispose(); mediaWatcher?.Dispose(); database?.Dispose(); gate.Dispose(); }
 }

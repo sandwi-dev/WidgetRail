@@ -77,6 +77,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Host-selected Settings profile persists real actions and reloads the matching theme manager", HostSelectedSettingsProfile),
     ("Acrylic effects toggles independently and remains on Appearance", AcrylicPreference),
     ("Animation controls persist each preset and independent dialog preference", AnimationPreferences),
+    ("Capture confirmation reset restores all widget and capture kinds without changing appearance", RestoreCaptureConfirmations),
     ("Package completion produces one themed expiring toast without navigation", SettingsToastScenarios.PackageCompletionUsesToast),
     ("Startup setting preserves focus and gates mutations", StartupSettingsScenarios.Run),
     ("Settings toast replaces feedback expires and retires without taking focus", SettingsToastScenarios.ExpiryAndReplacement),
@@ -676,6 +677,32 @@ static async Task GameSourceActionsAreRetired()
     Assert.True(!File.Exists(Store(temp.Path).Paths.SettingsFile),
         "A retired game-source action wrote platform settings.");
     Assert.Equal(SettingsPage.Root, widget.CurrentPage);
+}
+
+static async Task RestoreCaptureConfirmations()
+{
+    using var temp = new TemporaryDirectory();
+    var store = Store(temp.Path);
+    var settings = await store.UpdateAsync(s => s with
+    {
+        CaptureConfirmations = s.CaptureConfirmations.Remember("capture-library", false, true, true, 0)
+            .Remember("capture-library", true, true, true, 0).Remember("widgetrail.samples.game-help", false, true, true, 0),
+    });
+    var widget = Create(temp.Path);
+    try
+    {
+        await Activate(widget);
+        await Action(widget, "open.overlay");
+        Assert.True(Nodes(Snapshot(widget).Root).Any(n => n.Id == "overlay.capture.restore" && n.IsDisabled != true), "General settings must offer restore when prompts are skipped.");
+        await Action(widget, "capture-confirmations.restore");
+        var saved = await store.LoadAsync();
+        Assert.Equal(0, saved.CaptureConfirmations.Widgets.Count);
+        Assert.Equal(1L, saved.CaptureConfirmations.ResetVersion);
+        Assert.Equal(JsonSerializer.Serialize(settings.Appearance), JsonSerializer.Serialize(saved.Appearance));
+        Assert.Equal(SettingsPage.Overlay, widget.CurrentPage);
+        Assert.True(Nodes(Snapshot(widget).Root).Single(n => n.Id == "overlay.capture.restore").IsDisabled == true, "Restored control should be disabled until a new choice is saved.");
+    }
+    finally { await WidgetTestHost.DestroyAsync(widget); }
 }
 
 static async Task AcrylicPreference()

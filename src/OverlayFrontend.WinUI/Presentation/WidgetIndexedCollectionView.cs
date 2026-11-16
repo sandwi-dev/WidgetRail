@@ -34,7 +34,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         {
             view.IsHitTestVisible = active && inputActive;
             view.IsTabStop = active && inputActive;
-            view.IsItemClickEnabled = active && inputActive;
+            view.IsItemClickEnabled = active && inputActive && !SelectionActive;
             foreach (var (container, item) in containers) container.IsTabStop = active && inputActive && item.Slot.Value is not null;
         }
         var drains = new List<Task>();
@@ -75,15 +75,16 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
         SizeChanged += (_, _) => UpdateGridWidth();
-        GotFocus += (_, _) => { ValidatePendingActivation(); RememberItemFocus(); };
+        GotFocus += (_, _) => { ValidatePendingActivation(); RememberItemFocus(); CompleteSelectionNavigation(); };
         LostFocus += (_, _) => ValidatePendingActivation();
         // Observe departures from both realized rows and the temporary parking
         // owner so an explicit choice outside can cancel a pending handoff.
         LosingFocus += OnLosingFocus;
         Unloaded += (_, _) => { if (!IsLoaded) CancelPendingActivation(); };
         GotFocus += (_, _) => PresentationChanged?.Invoke();
-        AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => { CancelContinuity(); CancelNavigation(); }), true);
+        AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => { extendAfterNavigation = null; CancelContinuity(); CancelNavigation(); }), true);
         AddHandler(PointerWheelChangedEvent, new PointerEventHandler((_, _) => CancelContinuity()), true);
+        AddHandler(TappedEvent, new TappedEventHandler(SelectionTapped), true);
         AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
         {
             // The presenter already handled directional keys during tunneling;
@@ -146,7 +147,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             view.ContainerContentChanging += ContainerChanged;
             view.SizeChanged += NativeViewportSizeChanged;
             view.Loaded += (_, _) => UpdateGridWidth();
-            Content = view;
+            Content = CreateSelectionContent(view, declaration.IndexedSelection is not null);
         }
         if (source is null || replaceSource)
         {
@@ -180,7 +181,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         UpdateDiscoveryFooter();
         view.IsEnabled = declaration.IsDisabled != true && declaration.IsBusy != true;
         if (!CanReceiveInput) CancelNavigation();
-        view.IsItemClickEnabled = active;
+        view.IsItemClickEnabled = active && !SelectionActive;
         foreach (var (container, item) in containers) container.IsTabStop = active && item.Slot.Value is not null;
         view.IsTabStop = active;
         view.IsHitTestVisible = active;
@@ -196,6 +197,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         if (ReferenceEquals(previousSource, source)) RestoreEntry(entry);
         if (continuity is not null) BeginContinuity(continuity);
         ValidatePendingActivation();
+        RefreshSelectionState();
         ContextChanged?.Invoke();
     }
 
@@ -257,12 +259,12 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         // example while old Visible-state rows are disabled during admission).
         // Controller entry continues waiting for its current lease in FinishNavigation.
         // Busy rejects worker actions without removing the user's native focus.
-        // Selection remains authored status: these containers expose item Invoke,
-        // not an independently mutable native selection model.
+        // Ordinary rows retain authored status. Opt-in selection uses controlled
+        // host checkboxes rather than an independently mutable native selection.
         container.IsEnabled = slot.Value is { Item.Root: not { IsDisabled: true } };
         AutomationProperties.SetAutomationId(container, "Widget." + (source?.Declaration.Id ?? "collection") + ".Item." + slot.Index);
         AutomationProperties.SetName(container, slot.Value?.Item.Root.AccessibilityLabel ?? slot.Value?.Item.Root.Text ?? $"Loading item {slot.Index + 1}");
-        AutomationProperties.SetItemStatus(container, WidgetAccessibleState.ItemStatus(slot.Value?.Item.Root));
+        UpdateSelectionAccessibility(container, slot);
         if (pendingIndex == slot.Index) FinishNavigation(null, null!);
         if (FocusedIndex() == slot.Index) { RememberItemFocus(); PresentationChanged?.Invoke(); }
         ContextChanged?.Invoke();
@@ -306,7 +308,11 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     }
     private void Clicked(object sender, ItemClickEventArgs args)
     {
-        if (args.ClickedItem is IndexedItem<WidgetIndexedRow> { Value: { } row }) _ = InvokeAsync(row, ControllerButton.A);
+        if (args.ClickedItem is IndexedItem<WidgetIndexedRow> { Value: { } row })
+        {
+            if (SelectionActive) _ = SelectRowAsync(row, PointerSelectionGesture);
+            else _ = InvokeAsync(row, ControllerButton.A);
+        }
     }
     internal bool ActivateFocused() => ActivateDiscoveryFooter() || InvokeFocused(ControllerButton.A);
     internal bool InvokeFocused(ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed)
@@ -337,6 +343,8 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private async Task<bool> InvokeAsync(WidgetIndexedRow row, ControllerButton button, ControllerEventPhase phase = ControllerEventPhase.Pressed, bool allowDeferredActivation = true)
     {
         if (disposed || !CanReceiveInput || source is null) return true;
+        if (SelectionActive && button == ControllerButton.A)
+        { if (phase == ControllerEventPhase.Pressed) await SelectRowAsync(row, IndexedSelectionGesture.Toggle); return true; }
         if (button == ControllerButton.A && phase == ControllerEventPhase.Pressed)
         {
             if (pendingActivation is not null) return true;

@@ -33,6 +33,12 @@ public sealed partial class WidgetPresentationSession
         int startIndex, int count, string? pinnedLayoutId = null, CancellationToken cancellationToken = default) =>
         (await ReadIndexedCoreAsync(authority, collectionId, source, startIndex, count, pinnedLayoutId, false, cancellationToken).ConfigureAwait(false)).Range;
 
+    /// <summary>Returns a query-bound position only; lookup never creates row action or artwork authority.</summary>
+    public async Task<int?> LocateIndexedItemAsync(WidgetPresentationAuthority authority, string collectionId,
+        IndexedCollectionDescriptor source, string itemKey, string? pinnedLayoutId = null, CancellationToken cancellationToken = default) =>
+        (await ReadIndexedCoreAsync(authority, collectionId, source, 0, 0, pinnedLayoutId, false, cancellationToken,
+            IndexedCollectionRequestKind.Locate, locateKey: itemKey).ConfigureAwait(false)).Range.LocatedIndex;
+
     /// <summary>Retains bounded row action/artwork authority independently of realized controls.</summary>
     public async Task<WidgetPresentationIndexedLease> AcquireIndexedRangeAsync(
         WidgetPresentationAuthority authority, string collectionId, IndexedCollectionDescriptor source,
@@ -66,11 +72,11 @@ public sealed partial class WidgetPresentationSession
     private async Task<IndexedReadResult> ReadIndexedCoreAsync(
         WidgetPresentationAuthority authority, string collectionId, IndexedCollectionDescriptor source,
         int startIndex, int count, string? pinnedLayoutId, bool acquire, CancellationToken cancellationToken,
-        IndexedCollectionRequestKind kind = IndexedCollectionRequestKind.Range, WidgetPinnedSelection? pinnedSelection = null, string? previewKey = null)
+        IndexedCollectionRequestKind kind = IndexedCollectionRequestKind.Range, WidgetPinnedSelection? pinnedSelection = null, string? previewKey = null, string? locateKey = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var range = new IndexedCollectionRangeRequest(collectionId, source, startIndex, count,
-            Guid.NewGuid().ToString("N"), pinnedLayoutId) { Kind = kind, PreviewKey = previewKey };
+            Guid.NewGuid().ToString("N"), pinnedLayoutId) { Kind = kind, PreviewKey = previewKey, LocateKey = locateKey };
         IndexedCollectionContract.ValidateRequest(range);
         IndexedDemand operation;
         using (_gate.Enter())

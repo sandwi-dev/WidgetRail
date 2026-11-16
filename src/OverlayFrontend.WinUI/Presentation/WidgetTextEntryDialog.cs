@@ -354,7 +354,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
             HorizontalAlignment = HorizontalAlignment.Stretch, UseSystemFocusVisuals = true,
             XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Enabled };
         AutomationProperties.SetAutomationId(key, "Widget.TextEntry." + id);
-        if (!string.IsNullOrEmpty(label)) ToolTipService.SetToolTip(key, label);
+        // Visible key labels already name the action; prompted keys keep their explicit accessible names below.
         key.Click += (_, _) => { if (!completed) { keyboardInputStarted = true; action(); } };
         commands.Add(key, action);
         if (prompt is { } semantic)

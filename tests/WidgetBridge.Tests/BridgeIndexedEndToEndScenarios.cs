@@ -7,7 +7,7 @@ using WidgetRail.PlatformSettings;
 
 internal static class BridgeIndexedEndToEndScenarios
 {
-    internal static async Task ServeThemedValidationAsync(string pipe, string settingsRoot, bool returnFixture = false)
+    internal static async Task ServeThemedValidationAsync(string pipe, string settingsRoot, bool returnFixture = false, bool selectionFixture = false)
     {
         var paths = new PlatformSettingsPaths(Path.GetFullPath(settingsRoot));
         var store = new PlatformSettingsStore(paths);
@@ -19,7 +19,7 @@ internal static class BridgeIndexedEndToEndScenarios
             (returnFixture ? " .return-row-tall { min-height: 84px; }" : ""), "native-validation.wrss").Document;
         var configured = new ConfiguredWidget
         {
-            Id = "indexed-owned", Name = "Indexed ownership", InstanceId = returnFixture ? "indexed-return.instance" : "indexed-owned.instance",
+            Id = "indexed-owned", Name = "Indexed ownership", InstanceId = selectionFixture ? "indexed-selection.instance" : returnFixture ? "indexed-return.instance" : "indexed-owned.instance",
             PackageId = "dev.indexed", PublisherId = "dev", WorkerExecutable = Environment.ProcessPath!,
             WorkerFingerprint = new('a', 64), CatalogFingerprint = new('a', 64), StylePackage = new([document], []),
         };
@@ -211,7 +211,7 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
     private readonly WidgetNavigator<int> returnNavigation;
     private FocusGroupEntryRequest? entry;
     private ScrollRevealRequest? reveal;
-    internal IndexedOwnedBridgeProbeWidget(bool returnFixture = false)
+    internal IndexedOwnedBridgeProbeWidget(bool returnFixture = false, bool selectionFixture = false)
     {
         returnNavigation = CreateNavigatorWithOptions("probe-navigation", 0, new WidgetNavigatorOptions<int>
         { RouteScopeIds = new Dictionary<int, string> { [0] = "root", [1] = "detail" } });
@@ -231,15 +231,18 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
         });
         source = CreateIndexedCollection<int, int>("owned", 0, 100, new()
         {
+            EnableSelection = selectionFixture,
+            FindIndex = selectionFixture ? FindProbeIndexAsync : null,
             ReadRange = async (query, start, count, token) =>
             {
                 if (query == 605 && Volatile.Read(ref activationReadGate) is { } continuityGate) await continuityGate.Task.WaitAsync(token);
                 if (query == 500) throw new InvalidOperationException("Native theme fixture provider failure.");
                 if ((query is >= 300 and <= 303 or 97) && Volatile.Read(ref activationReadGate) is { } gate) await gate.Task.WaitAsync(token);
                 await Task.Delay(query == 99 ? 500 : 80, token);
-                return query >= 600 ? ContinuityOrder(query).Skip(start).Take(count).ToArray() : Enumerable.Range(start, count).ToArray();
+                return query >= 800 ? Enumerable.Range(start,count).Select(index => query == 801 ? index == 0 ? 10000 : index - 1 : query == 802 ? 9999-index : index).ToArray() :
+                    query >= 600 ? ContinuityOrder(query).Skip(start).Take(count).ToArray() : Enumerable.Range(start, count).ToArray();
             },
-            OccurrenceKeys = query => query >= 600 ? ContinuityOrder(query).Select(item => new WidgetCollectionItemKey("item." + item)).ToArray() : null,
+            OccurrenceKeys = query => query is >= 600 and < 800 ? ContinuityOrder(query).Select(item => new WidgetCollectionItemKey("item." + item)).ToArray() : null,
             ItemKey = item => new("item." + item),
             RenderItem = (query, item, context) =>
             {
@@ -291,6 +294,13 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
         });
         if (returnFixture) HandleReturnProbe("return-mode");
     }
+    private async ValueTask<int?> FindProbeIndexAsync(int query, WidgetCollectionItemKey key, CancellationToken token)
+    {
+        if (query == 803 && Volatile.Read(ref activationReadGate) is { } gate) await gate.Task;
+        if (!int.TryParse(key.Value.AsSpan("item.".Length), out var item) || item < 0) return null;
+        return query switch { 801 when item == 10000 => 0, 801 when item < 10000 => item+1,
+            802 when item < 10000 => 9999-item, >=800 when item <10000 => item, <600 when item<source.Descriptor.Count => item, _ => null };
+    }
     private static int[] ContinuityOrder(int query) => query switch
     {
         601 => new[] { 999 }.Concat(Enumerable.Range(0, 100)).ToArray(),
@@ -329,6 +339,32 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
     }
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
+        if (action.ActionId.StartsWith("locator-", StringComparison.Ordinal))
+        {
+            if (action.ActionId == "locator-release") activationReadGate?.TrySetResult();
+            else
+            {
+                surfaces = focusPreviews = modalMode = deferredMode = grid = grouped = false; modalItem = null; entry = null;
+                var query = action.ActionId switch { "locator-insert" => 801, "locator-shuffle" => 802, "locator-delayed" => 803, _ => 800 };
+                if (query == 803) activationReadGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                source.PublishQuery(query, query == 801 ? 10001 : 10000); source.EndSelection();
+            }
+            Volatile.Write(ref status, action.ActionId); Invalidate(); return ValueTask.CompletedTask;
+        }
+        if (action.ActionId.StartsWith("selection-", StringComparison.Ordinal))
+        {
+            surfaces = focusPreviews = modalMode = deferredMode = false; modalItem = null; entry = null;
+            if (action.ActionId == "selection-end") source.EndSelection();
+            else if (action.ActionId == "selection-clear") source.ClearSelection();
+            else
+            {
+                grid = action.ActionId is "selection-grid" or "selection-grouped";
+                grouped = action.ActionId == "selection-grouped"; repartitioned = false;
+                source.PublishQuery(0, action.ActionId == "selection-large" ? 100_000 : 100);
+                source.BeginSelection();
+            }
+            Volatile.Write(ref status, action.ActionId); Invalidate(); return ValueTask.CompletedTask;
+        }
         if (action.ActionId.StartsWith("return-", StringComparison.Ordinal))
         { HandleReturnProbe(action.ActionId); return ValueTask.CompletedTask; }
         if (action.ActionId.StartsWith("loaded", StringComparison.Ordinal))

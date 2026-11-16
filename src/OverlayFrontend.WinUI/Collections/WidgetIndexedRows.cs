@@ -183,6 +183,25 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
         }
     }
 
+    internal async Task<int?> LocateAsync(string key, CancellationToken token)
+    {
+        var captured = Volatile.Read(ref presentation);
+        var query = captured.Collection.IndexedCollection!;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token, activity.Token);
+        await admission.WaitAsync(cancellation.Token).ConfigureAwait(false);
+        try
+        {
+            var frame = session.GetState(captured.Frame.Authority.WidgetId)?.LastGood ?? captured.Frame;
+            if (!captured.Binding.IsCurrent || !SameOwner(captured.Frame.Authority, frame.Authority)) throw new OperationCanceledException("Lookup owner retired.");
+            var result = await session.LocateIndexedItemAsync(frame.Authority, captured.Collection.Id, query, key,
+                captured.Binding.PinnedLayoutId, cancellation.Token).ConfigureAwait(false);
+            cancellation.Token.ThrowIfCancellationRequested();
+            if (!captured.Binding.IsCurrent || Declaration.IndexedCollection != query) throw new OperationCanceledException("Lookup query retired.");
+            return result;
+        }
+        finally { admission.Release(); }
+    }
+
     private async Task<IndexedRangeResult<WidgetIndexedRow>> ReadAsync(IndexedRangeRequest request, CancellationToken cancellation)
     {
         var current = Volatile.Read(ref presentation);

@@ -33,13 +33,19 @@ public sealed partial class PlayniteLibraryWidget
                     {
                         PreserveOccurrences = true,
                         ItemKey = entry => new(entry.Key),
-                        RenderItem = (_, entry, ids) => PlayniteAchievementPresentation.Row(entry, ids.Id("row")),
+                        RenderItem = (query, entry, ids) => PlayniteAchievementPresentation.Row(entry, ids.Id("row"), query.State.Achievements?.ProviderKey is { Length: > 0 }),
                         OnAction = async (query, entry, action, token) =>
                         {
                             token.ThrowIfCancellationRequested();
                             if (query.Generation != _model.Value.DetailsGeneration) return;
                             if (action.ActionId == PlayniteAchievementBrowse.Prefix + "achievement.track." + entry.Key)
                             { await TrackAchievementAsync(query, entry, token); return; }
+                            if (action.ActionId == PlayniteAchievementBrowse.Prefix + "achievement.captures." + entry.Key && !entry.Secret)
+                            {
+                                UpdateDetails(query.Generation, value => value with { Tab = PlayniteDetailsTab.Captures,
+                                    CaptureAchievementId = entry.Item.Id, CaptureAchievementName = entry.Name });
+                                LoadDetailsSection(PlayniteDetailsTab.Captures); return;
+                            }
                             await HandleActionAsync(action, null, token);
                         },
                         ResolveArtworkSource = (query, entry, handle, token) =>

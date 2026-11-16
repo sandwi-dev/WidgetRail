@@ -95,5 +95,16 @@ public sealed class WidgetPresentationIndexedLease : IAsyncDisposable
             new(ScopeId, displayed.Authority.SnapshotSequence, sequence, monotonicTimestampMicroseconds), cancellationToken, displayed);
     }
 
+    /// <summary>Routes a host selection gesture through the exact displayed query and leased occurrence.</summary>
+    public Task<WidgetOperationAdmission?> AdmitSelectionAsync(WidgetPresentationFrame displayed, string itemKey,
+        IndexedSelectionInput selection, long sequence = 0, long monotonicTimestampMicroseconds = 0,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(displayed); ArgumentNullException.ThrowIfNull(selection);
+        return owner.AdmitIndexedInputAsync(this, displayed.Authority,
+            new(new(LeaseId, itemKey), ControllerButton.A) { Selection = selection },
+            new(ScopeId, displayed.Authority.SnapshotSequence, sequence, monotonicTimestampMicroseconds), cancellationToken, displayed);
+    }
+
     public ValueTask DisposeAsync() => new(owner.ReleaseIndexedLeaseAsync(this));
 }

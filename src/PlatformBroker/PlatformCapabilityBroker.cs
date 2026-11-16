@@ -208,6 +208,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         _activityDomain = new(activity);
         _webSessionDomain = new(webSessions);
         _backend.EventPublished += OnBackendEvent;
+        if (_backend.CaptureLibrary is { } captureLibrary) captureLibrary.Changed += OnCaptureLibraryChanged;
     }
 
     public BrokerLifecycleState Lifecycle { get { lock (_gate) return _lifecycle; } }
@@ -789,6 +790,20 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         }
     }
 
+    private void OnCaptureLibraryChanged(CaptureLibraryChanged change)
+    {
+        var envelope = new BrokerEventEnvelope(BrokerJson.ProtocolVersion, Interlocked.Increment(ref _eventSequence),
+            PlatformCapabilities.CaptureLibraryReadV1, "capture-library.changed", BrokerJson.ToElement(change));
+        BrokerEventSubscription[] subscribers;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            subscribers = _subscriptions.Where(subscription => subscription.CapabilityId == PlatformCapabilities.CaptureLibraryReadV1 &&
+                subscription.EventType == "capture-library.changed").ToArray();
+        }
+        foreach (var subscriber in subscribers) subscriber.Publish(envelope);
+    }
+
     private void OnBackendEvent(object? sender, BrokerPlatformEvent platformEvent)
     {
         try
@@ -850,6 +865,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             _lifecycle = BrokerLifecycleState.Destroying;
             ClearDashboardGestureAuthoritiesLocked();
             _backend.EventPublished -= OnBackendEvent;
+            if (_backend.CaptureLibrary is { } captureLibrary) captureLibrary.Changed -= OnCaptureLibraryChanged;
             foreach (var subscription in _subscriptions) subscription.Revoke();
             _subscriptions.Clear();
             canceled = _requestLeases.ToList();

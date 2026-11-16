@@ -402,6 +402,10 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         case BridgeMessageTypes.CheckCapture:
         case BridgeMessageTypes.RecordingCapture:
         case BridgeMessageTypes.CompleteCapture:
+        case BridgeMessageTypes.CompleteCaptureSource:
+        case BridgeMessageTypes.CheckCaptureSource:
+        case BridgeMessageTypes.CompleteCaptureCopy:
+        case BridgeMessageTypes.CheckCaptureCopy:
         case BridgeMessageTypes.CompleteCaptureFolder:
         case BridgeMessageTypes.CheckCaptureFolder:
         case BridgeMessageTypes.ResolveCaptureAttachment:

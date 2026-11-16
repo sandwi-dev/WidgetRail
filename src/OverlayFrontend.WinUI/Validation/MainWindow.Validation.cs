@@ -78,6 +78,8 @@ public sealed partial class MainWindow
             }
             catch (Exception error) { input?.Dispose(); page.ReportFailure(error); }
         }
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-capture-reveal") is { } captureRevealResult)
+            EnableCaptureRevealValidation(captureRevealResult);
         else if (Shell.FrontendArguments.Value(arguments, "--validate-line-graph") is { } graphResult)
         {
             AppWindow.Resize(new(900, 600));
@@ -150,6 +152,19 @@ public sealed partial class MainWindow
         else if (Shell.FrontendArguments.Value(arguments, "--validate-webapp-background") is { } backgroundResult)
             RootFrame.Content = new Validation.WebAppBackgroundValidationPage(backgroundResult,
                 Shell.FrontendArguments.Value(arguments, "--webapp-profile") ?? throw new ArgumentException("A test profile is required."));
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-capture-delete-playback") is { } deletePlayback)
+        {
+            AppWindow.Resize(new(1400, 900));
+            RootFrame.Content = new Validation.CaptureLibraryDeleteValidationPage(deletePlayback,
+                Shell.FrontendArguments.Value(arguments, "--capture-mp4") ?? throw new ArgumentException("Missing synthetic MP4."),
+                Shell.FrontendArguments.Value(arguments, "--capture-style") ?? throw new ArgumentException("Missing capture style."));
+        }
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-library-media") is { } libraryMediaResult)
+        {
+            AppWindow.Resize(new(1400, 900));
+            RootFrame.Content = new Validation.LibraryMediaValidationPage(libraryMediaResult,
+                Shell.FrontendArguments.Value(arguments, "--capture-mp4") ?? throw new ArgumentException("Missing synthetic MP4."));
+        }
         else if (Shell.FrontendArguments.Value(arguments, "--validate-captured-media") is { } mediaResult)
         {
             AppWindow.Resize(new(1400, 1050));
@@ -319,6 +334,10 @@ public sealed partial class MainWindow
             page.EnableIntentValidation(intentResult, () => ValidateWebIntentHandoffAsync(page));
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-introduction") is { } introductionResult)
             page.EnableIntroductionValidation(introductionResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-capture-copy") is { } captureCopyResult)
+            page.EnableCaptureCopyValidation(captureCopyResult, arguments.Contains("--capture-picker-source"));
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-capture-confirmations") is { } captureConfirmationsResult)
+            page.EnableCaptureConfirmationValidation(captureConfirmationsResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-acrylic-bases") is { } acrylicBasesResult)
             page.EnableAcrylicBasesValidation(acrylicBasesResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-appearance-settings") is { } appearanceResult)
@@ -343,6 +362,10 @@ public sealed partial class MainWindow
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-foreground-dismissal") is { } foregroundResult &&
             long.TryParse(Shell.FrontendArguments.Value(arguments, "--foreground-test-peer"), out var peer))
             EnableForegroundDismissalValidation(page, foregroundResult, (nint)peer);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-media-collapse") is { } mediaCollapseResult)
+            page.EnableMediaCollapseValidation(mediaCollapseResult,
+                Shell.FrontendArguments.Value(arguments, "--media-collapse-png") ?? throw new ArgumentException("Synthetic PNG required."),
+                Shell.FrontendArguments.Value(arguments, "--media-collapse-mp4") ?? throw new ArgumentException("Synthetic MP4 required."));
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-youtube-volume") is { } volumeResult)
             page.EnableYouTubeVolumeValidation(volumeResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-youtube-fullscreen") is { } fullscreenResult)

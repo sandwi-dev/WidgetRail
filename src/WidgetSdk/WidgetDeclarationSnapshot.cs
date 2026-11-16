@@ -12,6 +12,8 @@ internal static class WidgetDeclarationSnapshot
             throw new ArgumentException("Declaration collections cannot be null.");
         if (node.IndexedOccurrenceKeys is { Count: > IndexedCollectionLimits.MaximumContinuityItems })
             throw new ArgumentException("Declaration exceeds the indexed continuity bound.");
+        if (node.IndexedSelection is { } selectionState && (selectionState.Indices is null || selectionState.Indices.Count > IndexedCollectionSelection.MaximumItems))
+            throw new ArgumentException("Indexed selection exceeds its bound.");
         if (node.IndexedGroups is { Count: > IndexedCollectionLimits.MaximumGroups })
             throw new ArgumentException("Declaration exceeds the indexed group bound.");
         if (node.Children.Count > ProtocolConstants.MaximumNodeCount - count)
@@ -30,6 +32,7 @@ internal static class WidgetDeclarationSnapshot
             SelectOptions = Array.AsReadOnly(node.SelectOptions.ToArray()),
             IndexedOccurrenceKeys = node.IndexedOccurrenceKeys is { } keys ? Array.AsReadOnly(keys.ToArray()) : null,
             IndexedGroups = node.IndexedGroups is { } groups ? Array.AsReadOnly(groups.ToArray()) : null,
+            IndexedSelection = node.IndexedSelection is { } selection ? selection with { Indices = Array.AsReadOnly(selection.Indices.Take(IndexedCollectionSelection.MaximumItems + 1).ToArray()) } : null,
             FocusPresentation = node.FocusPresentation is { } focus ? Freeze(focus, depth + 1, ref count) : null,
             DefaultFocusPresentation = node.DefaultFocusPresentation is { } fallback ? Freeze(fallback, depth + 1, ref count) : null,
         };

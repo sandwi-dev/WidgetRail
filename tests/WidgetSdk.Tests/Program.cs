@@ -20,6 +20,8 @@ if (args is ["--query-resource-probe", var queryProbePath])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Indexed selection bounds inputs and preserves opt-out activation", IndexedSelectionTests.Run),
+    ("Indexed lookup preserves bounded query metadata and stale-result rejection", IndexedSelectionTests.Lookup),
     ("Pinning requests use declared layout handles and bounded identities", PinningServiceTests.Contract),
     ("Web session microphone consent uses the owned interactive host route", WebSessionMicrophoneTests.Run),
     ("Web session capture service rejects foreign tickets and unconfirmed stop results", WebCaptureServiceTests.Run),
@@ -82,6 +84,8 @@ var tests = new (string Name, Func<Task> Run)[]
         ProtocolValidationDiagnosticTests.Run),
     ("SDK snapshots use the shared maximum protocol requirement",
         ProtocolVersionRequirementsTests.SdkSnapshotsUseSharedMaximum),
+    ("Extended saved media negotiates semantic compatibility without widening native captures", ExtendedSavedMediaTests.Contract),
+    ("Capture save prefers modern metadata and falls back only before unsupported operations", CaptureSaveCompatibilityTests.Contract),
     ("Raw snapshots enforce the complete shared protocol requirement matrix",
         ProtocolVersionRequirementsTests.RawSnapshotsUseCompleteRequirementMatrix),
     ("Pinned presentation layouts preserve additive bounded v20 contracts",

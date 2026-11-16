@@ -2,7 +2,7 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.PlayniteLibrary;
 
-internal enum PlayniteDetailsTab { Description, Information, Achievements, Activity, Links }
+internal enum PlayniteDetailsTab { Description, Information, Achievements, Captures, Activity, Links }
 internal sealed record PlayniteGameLink(string Name, string Url);
 internal sealed record PlayniteGameDetails(WidgetAppLibraryItem Item, PlayniteBridgeGame? Game = null);
 internal enum PlayniteAchievementProvider { SuccessStory, PlayniteAchievements }
@@ -28,6 +28,7 @@ internal sealed record PlayniteAchievements(bool Available, int Total, int Unloc
     internal bool CanRefresh { get; init; }
     internal DateTimeOffset? ObservedAt { get; init; }
     internal string? ConnectionId { get; init; }
+    internal string? ProviderKey { get; init; }
     internal string ProviderName => Provider == PlayniteAchievementProvider.PlayniteAchievements ? "PlayniteAchievements" : "SuccessStory";
 }
 internal sealed record PlayniteSession(DateTimeOffset? Date, long Seconds, string? Action);
@@ -47,6 +48,8 @@ internal sealed record PlayniteDetailsExtras
     internal string? ResolveCompletionStatus(string? catalogStatus) =>
         ConfirmedCompletionStatus ?? (Full?.Game is { } game ? game.CompletionStatus : catalogStatus);
     internal PlayniteDetailsTab Tab { get; init; }
+    internal string? CaptureAchievementId { get; init; }
+    internal string? CaptureAchievementName { get; init; }
     internal PlayniteAchievements? Achievements { get; init; }
     internal PlayniteActivity? Activity { get; init; }
     internal bool AchievementsLoading { get; init; }

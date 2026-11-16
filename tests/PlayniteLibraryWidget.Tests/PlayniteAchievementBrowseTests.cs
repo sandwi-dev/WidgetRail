@@ -113,7 +113,7 @@ public sealed partial class PlayniteLibraryTests
         var request = search.FocusGroupEntryRequest.RequestId;
         Assert.AreEqual(request, host.PublishSnapshot().FocusGroupEntryRequest!.RequestId);
         Assert.AreEqual(WidgetOperationAdmission.Enqueued, lease.RouteAction(row.Key, ControllerButton.RightBumper));
-        await WaitIndexed(() => widget.RenderState.Value.DetailsExtras.Tab == PlayniteDetailsTab.Activity);
+        await WaitIndexed(() => widget.RenderState.Value.DetailsExtras.Tab == PlayniteDetailsTab.Captures);
         host.PublishSnapshot();
         Assert.IsNull(host.CurrentSnapshot.FocusGroupEntryRequest);
         await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));

@@ -7,18 +7,22 @@ namespace WidgetRail.PlatformBroker;
 /// <summary>Trusted codec output. No filesystem paths cross widget IPC.</summary>
 public sealed record CaptureImageDimensions(int Width, int Height);
 
-public sealed class CaptureLibraryReadLease : IAsyncDisposable
+public sealed class CaptureLibraryReadLease : IAsyncDisposable, IDisposable
 {
     private readonly string? temporary;
-    internal CaptureLibraryReadLease(CaptureAttachment media, FileStream stream, string? temporary = null)
-    { Media = media; Stream = stream; this.temporary = temporary; }
+    private readonly IDisposable? authority;
+    private readonly Func<bool>? current;
+    internal CaptureLibraryReadLease(CaptureAttachment media, FileStream stream, string? temporary = null, IDisposable? authority = null, Func<bool>? current = null)
+    { Media = media; Stream = stream; this.temporary = temporary; this.authority = authority; this.current = current; }
+    internal bool IsCurrent => current?.Invoke() ?? true;
     public CaptureAttachment Media { get; }
     public FileStream Stream { get; }
-    public async ValueTask DisposeAsync()
+    public void Dispose()
     {
-        await Stream.DisposeAsync().ConfigureAwait(false);
+        Stream.Dispose(); authority?.Dispose();
         if (temporary is not null) try { File.Delete(temporary); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
+    public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
 }
 
 /// <summary>Profile-owned retained media. Writes publish metadata last; saved originals are never transformed.</summary>
@@ -29,8 +33,13 @@ public sealed partial class CaptureLibraryStore : IDisposable
     private readonly Func<string, string, CancellationToken, Task<CaptureImageDimensions>>? normalize;
     private readonly Func<string, string, CancellationToken, Task<CaptureImageDimensions>>? thumbnail;
     private readonly Func<string,CaptureAttachment,CancellationToken,Task<CaptureAttachment>>? inspect;
+    private readonly Func<string, CancellationToken, Task<bool>>? recycle;
     private readonly SemaphoreSlim gate = new(1, 1);
-    private sealed record Saved(int Schema, CaptureLibraryItem Item, string Sha256, string? FileName = null, long MediaStamp = 0, bool MetadataValid = true);
+    private sealed record Saved(int Schema, CaptureLibraryItem Item, string Sha256, string? FileName = null, long MediaStamp = 0, bool MetadataValid = true)
+    {
+        public string? RelativePath { get; init; }
+        public CaptureFileIdentity? ExternalIdentity { get; init; }
+    }
 
     public CaptureLibraryStore(string root, string captureDirectory,
         Func<string, string, CancellationToken, Task<CaptureImageDimensions>>? normalize = null)
@@ -38,8 +47,9 @@ public sealed partial class CaptureLibraryStore : IDisposable
     public CaptureLibraryStore(string root, string captureDirectory,
         Func<string, string, CancellationToken, Task<CaptureImageDimensions>>? normalize,
         Func<string, string, CancellationToken, Task<CaptureImageDimensions>>? thumbnail,
-        Func<string,CaptureAttachment,CancellationToken,Task<CaptureAttachment>>? inspect = null)
-    { this.root = Path.GetFullPath(root); this.captureDirectory = Path.IsPathFullyQualified(captureDirectory) ? Path.GetFullPath(captureDirectory) : string.Empty; this.normalize = normalize; this.thumbnail = thumbnail; this.inspect=inspect; }
+        Func<string,CaptureAttachment,CancellationToken,Task<CaptureAttachment>>? inspect = null,
+        Func<string,CancellationToken,Task<bool>>? recycle = null)
+    { this.root = Path.GetFullPath(root); this.captureDirectory = Path.IsPathFullyQualified(captureDirectory) ? Path.GetFullPath(captureDirectory) : string.Empty; this.normalize = normalize; this.thumbnail = thumbnail; this.inspect=inspect; this.recycle=recycle; }
 
     public async Task<CaptureLibraryThumbnail> ThumbnailAsync(string id, CancellationToken token)
     {
@@ -89,51 +99,72 @@ public sealed partial class CaptureLibraryStore : IDisposable
         try
         {
             using var ownership = Own();
-            if (refresh) Reconcile();
-            var totals = IndexTotals();
-            return new(IndexRows("ORDER BY saved_at DESC,id LIMIT $limit OFFSET $offset", ("$limit", CaptureLibraryLimits.PageSize), ("$offset", offset))
-                .Select(s => s.Item).ToArray(), offset, totals.Count, totals.Bytes);
+            if (refresh) Reconcile(forceMetadata: true);
+            // Older packaged widgets assume every listed item is owned and deletable.
+            using var totalsQuery = Command("SELECT count(*),coalesce(sum(bytes),0) FROM captures " + LegacyListWhere);
+            using var totals = totalsQuery.ExecuteReader(); totals.Read(); var count = totals.GetInt32(0); var bytes = totals.GetInt64(1); totals.Close();
+            return new(IndexRows(LegacyListWhere + " ORDER BY saved_at DESC,id LIMIT $limit OFFSET $offset", ("$limit", CaptureLibraryLimits.PageSize), ("$offset", offset))
+                .Select(s => s.Item).ToArray(), offset, count, bytes);
         }
         finally { gate.Release(); }
     }
-    public async Task<CaptureLibraryItem> SaveAsync(HostCaptureAttachment source, CancellationToken token)
+    // Keep the old closed endpoint inside its original video validation envelope.
+    // In particular, inspecting an edited owned recording supplies decoded facts,
+    // not the encoder telemetry required by older clients for longer video.
+    private const string LegacyListWhere = """
+        WHERE json_extract(data,'$.Item.SourceId') IS NULL AND
+          (json_extract(data,'$.Item.Media.ContentType')<>'video/mp4' OR
+           (json_extract(data,'$.Item.Media.ByteLength')<=134217728 AND
+            ((json_extract(data,'$.Item.Media.Properties') IS NOT NULL AND json_extract(data,'$.Item.Media.DurationSeconds')<=120.25) OR
+             (json_extract(data,'$.Item.Media.Properties') IS NULL AND json_extract(data,'$.Item.Media.DurationSeconds')<=5.25 AND
+              json_extract(data,'$.Item.Media.Width')<=1280 AND json_extract(data,'$.Item.Media.Height')<=720 AND json_extract(data,'$.Item.Media.ByteLength')<=8388608))))
+        """;
+    public Task<CaptureLibraryItem> SaveAsync(HostCaptureAttachment source, CancellationToken token) => SaveAuthenticatedAsync(source, null, token);
+    public Task<CaptureLibraryItem> SaveAsync(HostCaptureAttachment source, BrokerWidgetIdentity origin, CancellationToken token)
+    { origin.Validate(); return SaveAuthenticatedAsync(source, OriginFor(origin), token); }
+    private async Task<CaptureLibraryItem> SaveAuthenticatedAsync(HostCaptureAttachment source, CaptureContextOrigin? origin, CancellationToken token)
     {
-        if (!source.Attachment.IsWellFormed()) throw Error("invalid_payload");
+        if (!source.Attachment.IsWellFormed() || !CaptureContextLimits.Timestamp(source.CapturedAtUnixMilliseconds)) throw Error("invalid_payload");
         await gate.WaitAsync(token).ConfigureAwait(false);
         try
         {
             using var ownership = Own();
-            PlainPath(source.Path);
-            await using var input = new FileStream(source.Path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.Asynchronous);
-            if (input.Length != source.Attachment.ByteLength) throw Error("capture_unavailable");
-            var hash = Convert.ToHexString(await SHA256.HashDataAsync(input, token).ConfigureAwait(false)); input.Position = 0;
-            // Repeated Save (including a lost reply) returns the existing identical item.
-            var existing = IndexRows("WHERE hash=$hash AND available=1", ("$hash", hash)).FirstOrDefault(i => SameMedia(i.Item.Media, source.Attachment));
-            if (existing is not null && File.Exists(MediaPath(existing))) return existing.Item;
-            DemandFreeSpace(input.Length);
-            var id = Guid.NewGuid().ToString("N");
-            var item = new CaptureLibraryItem(id, source.Attachment with { Id = id, ExpiresAtUnixMilliseconds = long.MaxValue }, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-            var saved = new Saved(2, item, hash, PublicName(item));
-            var path = MediaPath(saved);
-            var metadata = MetadataPath(id);
-            var partial = metadata + ".pending";
-            try
-            {
-                await File.WriteAllTextAsync(partial, JsonSerializer.Serialize(saved), token).ConfigureAwait(false);
-                await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, FileOptions.Asynchronous))
-                { await input.CopyToAsync(output, token).ConfigureAwait(false); await output.FlushAsync(token).ConfigureAwait(false); }
-                token.ThrowIfCancellationRequested();
-                var stamp=File.GetLastWriteTimeUtc(path).Ticks;
-                saved = saved with { MediaStamp = stamp, Item=saved.Item with {Revision=stamp} };
-                await File.WriteAllTextAsync(partial, JsonSerializer.Serialize(saved), token).ConfigureAwait(false);
-                File.Move(partial, metadata);
-                IndexPut(saved, input.Length);
-                verified[item.Id] = (input.Length, saved.MediaStamp, hash);
-                return saved.Item;
-            }
-            catch { if (!File.Exists(metadata) && DeleteOwned(path)) DeleteOwned(partial); throw; }
+            return ItemView(await SaveOwnedAsync(source, origin, token).ConfigureAwait(false));
         }
         finally { gate.Release(); }
+    }
+    private async Task<Saved> SaveOwnedAsync(HostCaptureAttachment source, CaptureContextOrigin? origin, CancellationToken token,
+        Action<Saved>? prepareAssociation = null)
+    {
+        PlainPath(source.Path);
+        await using var input = new FileStream(source.Path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.Asynchronous);
+        if (input.Length != source.Attachment.ByteLength) throw Error("capture_unavailable");
+        var hash = Convert.ToHexString(await SHA256.HashDataAsync(input, token).ConfigureAwait(false)); input.Position = 0;
+        // Repeated saves reuse original bytes. Event associations are independent
+        // and may still be appended when this physical-media match is found.
+        var existing = IndexRows("WHERE hash=$hash AND available=1 AND json_extract(data,'$.Item.SourceId') IS NULL", ("$hash", hash)).FirstOrDefault(i => SameMedia(i.Item.Media, source.Attachment));
+        if (existing is not null && File.Exists(MediaPath(existing))) { prepareAssociation?.Invoke(existing); return existing; }
+        DemandFreeSpace(input.Length);
+        var id = Guid.NewGuid().ToString("N");
+        var item = new CaptureLibraryItem(id, source.Attachment with { Id = id, ExpiresAtUnixMilliseconds = long.MaxValue }, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
+            { Origin = origin, CapturedAtUnixMilliseconds = source.CapturedAtUnixMilliseconds };
+        var saved = new Saved(2, item, hash, PublicName(item));
+        var path = MediaPath(saved); var metadata = MetadataPath(id); var partial = metadata + ".pending";
+        prepareAssociation?.Invoke(saved);
+        try
+        {
+            await File.WriteAllTextAsync(partial, JsonSerializer.Serialize(saved), token).ConfigureAwait(false);
+            await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, FileOptions.Asynchronous))
+            { await input.CopyToAsync(output, token).ConfigureAwait(false); await output.FlushAsync(token).ConfigureAwait(false); }
+            token.ThrowIfCancellationRequested();
+            var stamp = File.GetLastWriteTimeUtc(path).Ticks;
+            saved = saved with { MediaStamp = stamp, Item = saved.Item with { Revision = stamp } };
+            await File.WriteAllTextAsync(partial, JsonSerializer.Serialize(saved), token).ConfigureAwait(false);
+            File.Move(partial, metadata); IndexPut(saved, input.Length);
+            verified[item.Id] = (input.Length, saved.MediaStamp, hash);
+            return saved;
+        }
+        catch { if (!File.Exists(metadata) && DeleteOwned(path)) DeleteOwned(partial); throw; }
     }
     public async Task<CaptureLibraryReadLease> OpenAsync(string id, CaptureImageResolution resolution, CancellationToken token)
     {
@@ -144,10 +175,12 @@ public sealed partial class CaptureLibraryStore : IDisposable
             using var ownership = Own();
             var saved = await RefreshEditedAsync(Read(id),token).ConfigureAwait(false);
             var path = MediaPath(saved);
+            if (saved.Item.Media.ContentType == "video/mp4")
+                return await OpenPinnedLeaseAsync(saved, token).ConfigureAwait(false);
             var source = await VerifiedAsync(saved, token).ConfigureAwait(false);
             if (resolution != CaptureImageResolution.Context || saved.Item.Media.ContentType != "image/png" ||
                 saved.Item.Media.Width <= 1920 && saved.Item.Media.Height <= 1080 && saved.Item.Media.ByteLength <= CaptureLimits.MaximumContextBytes)
-                return new(saved.Item.Media, source);
+                return source;
             await using (source.ConfigureAwait(false))
             {
                 if (normalize is null) throw Error("capture_library_codec_unavailable");
@@ -175,6 +208,7 @@ public sealed partial class CaptureLibraryStore : IDisposable
             using var ownership = Own();
             var saved = IndexRows("WHERE id=$id", ("$id", id)).FirstOrDefault();
             if (saved is null) return;
+            if (saved.Item.SourceId is not null) throw Error("capture_library_read_only_source");
             token.ThrowIfCancellationRequested();
             var tombstone = Path.Combine(root, id + ".deleted"); PlainPath(tombstone);
             File.WriteAllText(tombstone, JsonSerializer.Serialize(saved));
@@ -193,7 +227,7 @@ public sealed partial class CaptureLibraryStore : IDisposable
         {
             using var ownership = Own();
             var saved = await RefreshEditedAsync(Read(id),token).ConfigureAwait(false); await using var input = await VerifiedAsync(saved, token).ConfigureAwait(false);
-            return new(Path.GetFileName(MediaPath(saved)), input.Length);
+            return new(Path.GetFileName(MediaPath(saved)), input.Stream.Length);
         }
         finally { gate.Release(); }
     }
@@ -211,37 +245,44 @@ public sealed partial class CaptureLibraryStore : IDisposable
         PlainPath(MediaPath(saved));
         return saved;
     }
-    private async Task<FileStream> VerifiedAsync(Saved saved, CancellationToken token)
+    private async Task<CaptureLibraryReadLease> VerifiedAsync(Saved saved, CancellationToken token)
     {
+        if (saved.Item.SourceId is not null || saved.Item.Media.ContentType == "video/mp4")
+            return await OpenPinnedLeaseAsync(saved, token).ConfigureAwait(false);
         var input = new FileStream(MediaPath(saved), FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.Asynchronous);
         try
         {
             var stamp=File.GetLastWriteTimeUtc(MediaPath(saved)).Ticks;
-            if(verified.TryGetValue(saved.Item.Id,out var cached) && cached==(input.Length,stamp,saved.Sha256)) return input;
+            if(verified.TryGetValue(saved.Item.Id,out var cached) && cached==(input.Length,stamp,saved.Sha256)) return new(saved.Item.Media, input);
             var actual = await SHA256.HashDataAsync(input, token).ConfigureAwait(false);
             if (input.Length != saved.Item.Media.ByteLength || !CryptographicOperations.FixedTimeEquals(Convert.FromHexString(saved.Sha256), actual))
                 throw Error("capture_library_invalid_media");
             if(verified.Count>=256) verified.Clear();
             verified[saved.Item.Id]=(input.Length,stamp,saved.Sha256);
-            input.Position = 0; return input;
+            input.Position = 0; return new(saved.Item.Media, input);
         }
         catch { await input.DisposeAsync().ConfigureAwait(false); throw; }
     }
     private async Task<Saved> RefreshEditedAsync(Saved saved,CancellationToken token)
     {
         var path=MediaPath(saved); var file=new FileInfo(path);
+        if (saved.Item.SourceId is not null)
+            return await RefreshLinkedMediaAsync(saved, path, token).ConfigureAwait(false);
         if(!file.Exists || inspect is null || file.Length==saved.Item.Media.ByteLength && file.LastWriteTimeUtc.Ticks==saved.MediaStamp) return saved;
         await using var input=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read,65536,FileOptions.Asynchronous);
         var media=await inspect(path,saved.Item.Media,token).ConfigureAwait(false);
         if(!media.IsWellFormed() || media.Id!=saved.Item.Id || media.ContentType!=saved.Item.Media.ContentType || media.ByteLength!=input.Length) throw Error("capture_library_invalid_media");
         var hash=Convert.ToHexString(await SHA256.HashDataAsync(input,token).ConfigureAwait(false));
         var stamp=File.GetLastWriteTimeUtc(path).Ticks;
-        var updated=saved with { Item=saved.Item with { Media=media,Available=true,Revision=stamp }, Sha256=hash,MediaStamp=stamp };
+        var updated=saved with { Item=saved.Item with { Media=media,Available=true,Revision=stamp,
+            FileModifiedAtUnixMilliseconds = saved.Item.SourceId is null ? saved.Item.FileModifiedAtUnixMilliseconds : new DateTimeOffset(file.LastWriteTimeUtc).ToUnixTimeMilliseconds() }, Sha256=hash,MediaStamp=stamp };
         DeleteOwned(Path.Combine(root,saved.Item.Id+".thumbnail")); WriteMetadata(updated); IndexPut(updated,input.Length);
         verified[saved.Item.Id]=(input.Length,updated.MediaStamp,hash); return updated;
     }
     private string MetadataPath(string id) => Path.Combine(root, id + ".json");
-    private string MediaPath(Saved saved) => saved.FileName is { } name && ValidName(name) ? Path.Combine(captureDirectory, name) : throw Error("capture_library_invalid_media");
+    private string MediaPath(Saved saved) => saved.Item.SourceId is { } sourceId
+        ? ResolveSourcePath(ReadSource(sourceId), saved.RelativePath ?? string.Empty)
+        : saved.FileName is { } name && ValidName(name) ? Path.Combine(captureDirectory, name) : throw Error("capture_library_invalid_media");
     private static string Extension(CaptureAttachment media) => media.ContentType == "image/png" ? ".png" : ".mp4";
     private static bool SameMedia(CaptureAttachment a, CaptureAttachment b) => a.ContentType == b.ContentType && a.Width == b.Width && a.Height == b.Height && a.ByteLength == b.ByteLength && a.DurationSeconds == b.DurationSeconds && a.SourceApplication == b.SourceApplication;
     private bool DeleteOwned(string path) { try { PlainPath(path); File.Delete(path); return true; } catch (IOException) { return false; } catch (UnauthorizedAccessException) { return false; } }

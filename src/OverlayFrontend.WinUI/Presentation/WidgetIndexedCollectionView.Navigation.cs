@@ -366,6 +366,7 @@ internal sealed partial class WidgetIndexedCollectionView
         if (entering && pendingIndex is not null && CanReceiveInput && args.Direction == FocusNavigationDirection.None &&
             args.InputDevice == FocusInputDeviceKind.Keyboard && args.OldFocusedElement is Control { IsEnabled: false } &&
             args.NewFocusedElement is FrameworkElement replacement && ReferenceEquals(replacement.XamlRoot, view?.XamlRoot)) return;
+        extendAfterNavigation = null;
         CancelContinuity();
         CancelNavigation();
     }

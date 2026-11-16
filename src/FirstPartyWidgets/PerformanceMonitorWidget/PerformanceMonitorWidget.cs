@@ -128,7 +128,10 @@ public sealed partial class PerformanceMonitorWidget : Widget
                     ? await HostServices.Performance.DisableFpsAsync(cancellationToken).ConfigureAwait(false)
                     : await HostServices.Performance.EnableFpsAsync(cancellationToken).ConfigureAwait(false);
                 lock (_gate) if (generation == _generation && _snapshot is { } current)
-                    _snapshot = current with { FpsState = result.State, FramesPerSecond = null };
+                {
+                    _history.ResetTarget();
+                    _snapshot = current with { FpsState = result.State, FramesPerSecond = null, FrameStatistics = null };
+                }
             }
             else await RefreshAsync(generation, cancellationToken, allowBusy: true).ConfigureAwait(false);
         }
@@ -164,7 +167,17 @@ public sealed partial class PerformanceMonitorWidget : Widget
             ramGraph = _history.Graph(s => s.MemoryUsedBytes / 1073741824d, now, "GiB", snapshot?.MemoryTotalBytes / 1073741824d);
             vramGraph = _history.Graph(s => s.DedicatedGpuMemoryBytes / 1073741824d, now, "GiB");
         }
-        var statistics = snapshot?.FrameStatistics;
+        var fpsActive = Enabled(snapshot?.FpsState);
+        var fpsEmpty = FpsEmptyText(snapshot?.FpsState, error is not null);
+        fpsGraph = fpsGraph with { Points = fpsActive ? fpsGraph.Points : [], EmptyText = fpsEmpty };
+        frameGraph = frameGraph with { Points = fpsActive ? frameGraph.Points : [], EmptyText = fpsEmpty };
+        var systemEmpty = snapshot is null ? error is null ? "Reading system usage…" : "System usage unavailable" : "No samples available";
+        cpuGraph = cpuGraph with { EmptyText = systemEmpty };
+        gpuGraph = gpuGraph with { EmptyText = systemEmpty };
+        ramGraph = ramGraph with { EmptyText = systemEmpty };
+        vramGraph = vramGraph with { EmptyText = systemEmpty };
+        var statistics = fpsActive ? snapshot?.FrameStatistics : null;
+        var fps = fpsActive ? snapshot?.FramesPerSecond : null;
         var target = snapshot?.Targets.FirstOrDefault(t => t.Id == snapshot.SelectedTargetId);
         var choices = new List<SelectOption> { new("auto", "Automatic · top application", "performance.auto", IsSelected: selection is null) };
         choices.AddRange(targets.Select(t =>
@@ -177,11 +190,11 @@ public sealed partial class PerformanceMonitorWidget : Widget
                 .Busy(busy || snapshot?.FpsState == "enabling"),
             UI.Text(target?.ApplicationName ?? "No application selected", "performance.app").Classes("performance-subtitle"),
             UI.ResponsiveGrid("performance.frame-metrics", 170, 3,
-                Metric("FPS", Number(snapshot?.FramesPerSecond), "performance.fps.metric", "Application presents per second"),
+                Metric("FPS", Number(fps), "performance.fps.metric", "Application presents per second"),
                 Metric("Average FPS", Number(statistics?.AverageFramesPerSecond), "performance.average", "Up to 60s"),
                 Metric("1% low", statistics?.OnePercentLowFramesPerSecond is { } low ? Number(low) : statistics is null ? "—" : "Collecting…", "performance.low",
                     "Slowest 1% · 1,000+ frames")),
-            UI.Text(statistics is null ? "Frame history is unavailable until FPS collection starts." :
+            UI.Text(statistics is null ? fpsEmpty :
                 $"{statistics.SampleCount:N0} frames · {statistics.WindowSeconds:0}s available · mean frame {statistics.AverageFrameMilliseconds:0.0} ms",
                 "performance.frame-window").Classes("performance-help"),
             UI.ResponsiveGrid("performance.frame-graphs", 260, 2,
@@ -204,7 +217,7 @@ public sealed partial class PerformanceMonitorWidget : Widget
             .Shortcut(ControllerButton.Y, "performance.refresh", label: "Refresh").Classes("performance-widget", "performance-dashboard");
         var pin = UI.Stack("performance.pin",
             UI.Text(target?.ApplicationName ?? "Performance", "performance.pin.name").Classes("performance-subtitle"),
-            UI.Text(Number(snapshot?.FramesPerSecond) + " FPS", "performance.pin.fps").Classes("performance-value"),
+            UI.Text(Number(fps) + " FPS", "performance.pin.fps").Classes("performance-value"),
             UI.Text("1% low " + Number(statistics?.OnePercentLowFramesPerSecond), "performance.pin.low"),
             UI.Text("CPU " + Percent(snapshot?.CpuPercent) + "    GPU " + Percent(snapshot?.GpuPercent), "performance.pin.usage"),
             UI.Text("RAM " + Bytes(snapshot?.MemoryUsedBytes) + "    VRAM " + Bytes(snapshot?.DedicatedGpuMemoryBytes), "performance.pin.memory"))
@@ -227,6 +240,15 @@ public sealed partial class PerformanceMonitorWidget : Widget
     private static string Number(double? value) => value?.ToString("0", CultureInfo.CurrentCulture) ?? "—";
     private static string Percent(double? value) => value is null ? "—" : value.Value.ToString("0", CultureInfo.CurrentCulture) + "%";
     private static string Bytes(long? value) => value is null ? "—" : (value.Value / 1073741824d).ToString("0.0", CultureInfo.CurrentCulture) + " GiB";
+    private static string FpsEmptyText(string? state, bool failed) => failed ? "FPS unavailable" : state switch
+    {
+        null => "Reading FPS status…",
+        "not-enabled" or "declined" => "FPS collection is off",
+        "enabling" or "warming" or "idle" => "Starting FPS collection…",
+        "no-target" => "Select an application",
+        "no-frames" or "collecting" => "Waiting for frames…",
+        _ => "FPS unavailable",
+    };
     private static bool Enabled(string? state) => state is "collecting" or "idle" or "warming" or "no-frames" or "no-target" or "enabling";
     private static string? Status(string? state) => state switch
     {

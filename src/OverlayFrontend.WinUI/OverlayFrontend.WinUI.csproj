@@ -1,4 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup Condition="'$(EnableWidgetValidation)' == 'true'">
+    <ProjectReference Include="..\WidgetBridge\WidgetBridge.csproj" />
+    <ProjectReference Include="..\FirstPartyWidgets\CaptureLibraryWidget\CaptureLibraryWidget.csproj" />
+  </ItemGroup>
   <Import Project="..\..\eng\WinUiNativeInputs.targets" />
   <PropertyGroup>
     <OutputType>WinExe</OutputType>

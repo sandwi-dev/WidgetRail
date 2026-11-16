@@ -21,6 +21,15 @@ internal static class LineGraphPresentationTests
         Check(SnapshotJson.Serialize(applied).SequenceEqual(SnapshotJson.Serialize(after)), "Graph data lost during diff/transport/materialization");
         Check(new LineGraphDefinition([new(0, -1)], -1, 0, -10).EffectiveMaximum > -1,
             "Automatic scale clips a negative-valued series");
+        var emptyBefore = new WidgetView(UI.LineGraph("FPS", new([], -60, 0) { EmptyText = "FPS collection is off" }, "fps"))
+            .CreateSnapshot("empty-test", 1);
+        var emptyAfter = emptyBefore with { Sequence = 2, Root = emptyBefore.Root with { Graph = emptyBefore.Root.Graph! with { EmptyText = "Waiting for frames…" } } };
+        var emptyUpdate = WidgetPresentationDiff.Create(emptyBefore, emptyAfter, generation, 1, PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate).Update;
+        Check(emptyUpdate is not null, "Empty text did not produce an incremental update");
+        var emptyRoundtrip = PresentationUpdateJson.Deserialize(PresentationUpdateJson.Serialize(emptyUpdate!));
+        var emptyApplied = PresentationUpdateMaterializer.Apply(emptyBefore, emptyRoundtrip, generation);
+        Check(emptyApplied.Root.Graph!.EmptyText == "Waiting for frames…", "Empty-state-only update was lost in transport");
         return Task.CompletedTask;
     }
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }

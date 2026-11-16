@@ -15,8 +15,8 @@ internal sealed partial class WidgetLineGraph : UserControl
     private readonly Grid root = new() { RowSpacing = 4 };
     private readonly TextBlock upper = new() { FontSize = 12 };
     private readonly TextBlock lower = new() { FontSize = 12 };
-    private readonly TextBlock empty = new() { Text = "Collecting…", HorizontalAlignment = HorizontalAlignment.Center,
-        VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock empty = new() { Text = "No samples", HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, Margin = new(12, 0, 12, 0) };
     private readonly Grid plot = new();
     private readonly PlotPath line = new() { StrokeThickness = 2 };
     private readonly PlotPath grid = new() { StrokeThickness = 1, Opacity = .25 };
@@ -46,8 +46,9 @@ internal sealed partial class WidgetLineGraph : UserControl
         upper.Text = Label(maximum, definition.Unit);
         lower.Text = Label(definition.Minimum, definition.Unit);
         var values = definition.Points.Where(p => p.Value.HasValue).Select(p => p.Value!.Value).ToArray();
+        empty.Text = definition.EmptyText ?? "No samples";
         empty.Visibility = values.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-        AutomationProperties.SetFullDescription(this, values.Length == 0 ? "No samples available" :
+        AutomationProperties.SetFullDescription(this, values.Length == 0 ? empty.Text :
             $"Latest {Label(values[^1], definition.Unit)}; minimum {Label(values.Min(), definition.Unit)}; maximum {Label(values.Max(), definition.Unit)}.");
         Draw();
     }

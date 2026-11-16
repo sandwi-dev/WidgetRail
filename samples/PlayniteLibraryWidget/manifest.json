@@ -3,52 +3,170 @@
   "id": "widgetrail.samples.playnite-library",
   "publisher": "widgetrail.samples",
   "name": "Playnite Library",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "pinningSupported": true,
-  "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
   "entrypoint": {
     "runtime": "full-trust-application-v1",
     "executable": "payload/PlayniteLibraryApplication.exe"
   },
   "presentation": {
     "icon": "play",
-    "packageIcon": { "assetId": "playnite-library.mark", "colorMode": "originalColor" }
+    "packageIcon": {
+      "assetId": "playnite-library.mark",
+      "colorMode": "originalColor"
+    }
   },
   "iconAssets": {
-    "playnite.home": { "path": "assets/icons/house.svg" },
-    "playnite.library": { "path": "assets/icons/library-big.svg" },
-    "playnite.overview": { "path": "assets/icons/info.svg" },
-    "playnite.information": { "path": "assets/icons/list.svg" },
-    "playnite.links": { "path": "assets/icons/link.svg" },
-    "playnite.achievements": { "path": "assets/icons/trophy.svg" },
-    "playnite.activity": { "path": "assets/icons/history.svg" },
-    "playnite.game": { "path": "assets/icons/gamepad-2.svg" },
-    "playnite.back": { "path": "assets/icons/arrow-left.svg" },
-    "playnite.hidden": { "path": "assets/icons/eye-off.svg" },
-    "playnite-library.mark": { "path": "assets/icons/playnite-library.svg" },
-    "playnite.install": { "path": "assets/icons/install.svg" },
-    "playnite.favorite.outline": { "path": "assets/icons/heart-outline.svg" },
-    "playnite.favorite.filled": { "path": "assets/icons/heart-filled.svg" }
+    "playnite.home": {
+      "path": "assets/icons/house.svg"
+    },
+    "playnite.library": {
+      "path": "assets/icons/library-big.svg"
+    },
+    "playnite.overview": {
+      "path": "assets/icons/info.svg"
+    },
+    "playnite.information": {
+      "path": "assets/icons/list.svg"
+    },
+    "playnite.links": {
+      "path": "assets/icons/link.svg"
+    },
+    "playnite.achievements": {
+      "path": "assets/icons/trophy.svg"
+    },
+    "playnite.activity": {
+      "path": "assets/icons/history.svg"
+    },
+    "playnite.game": {
+      "path": "assets/icons/gamepad-2.svg"
+    },
+    "playnite.back": {
+      "path": "assets/icons/arrow-left.svg"
+    },
+    "playnite.hidden": {
+      "path": "assets/icons/eye-off.svg"
+    },
+    "playnite-library.mark": {
+      "path": "assets/icons/playnite-library.svg"
+    },
+    "playnite.install": {
+      "path": "assets/icons/install.svg"
+    },
+    "playnite.favorite.outline": {
+      "path": "assets/icons/heart-outline.svg"
+    },
+    "playnite.favorite.filled": {
+      "path": "assets/icons/heart-filled.svg"
+    },
+    "playnite.captures": {
+      "path": "assets/icons/camera.svg"
+    }
   },
   "permissions": [],
-  "optionalPermissions": [],
+  "optionalPermissions": [
+    "media.capture-library.read.v1",
+    "media.capture-library.manage.v1"
+  ],
   "intents": {
-    "requests": [{
-      "id": "widgetrail.web.open",
-      "version": 1,
-      "payloadSchema": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": { "url": { "type": "string", "minLength": 1, "maxLength": 2048 } },
-        "required": ["url"]
+    "requests": [
+      {
+        "id": "widgetrail.web.open",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      },
+      {
+        "id": "widgetrail.captures.browse",
+        "payloadSchema": {
+          "additionalProperties": false,
+          "required": [
+            "originPackageId",
+            "referenceKind",
+            "referenceId"
+          ],
+          "properties": {
+            "referenceKind": {
+              "minLength": 1,
+              "type": "string",
+              "maxLength": 48
+            },
+            "originPackageId": {
+              "minLength": 3,
+              "type": "string",
+              "maxLength": 128
+            },
+            "referenceId": {
+              "minLength": 1,
+              "type": "string",
+              "maxLength": 256
+            }
+          },
+          "type": "object"
+        },
+        "version": 1
       }
-    }]
+    ],
+    "handles": [
+      {
+        "id": "widgetrail.related-item.open",
+        "payloadSchema": {
+          "additionalProperties": false,
+          "required": [
+            "packageId",
+            "kind",
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string",
+              "maxLength": 256
+            },
+            "packageId": {
+              "minLength": 3,
+              "type": "string",
+              "maxLength": 128
+            },
+            "kind": {
+              "minLength": 1,
+              "type": "string",
+              "maxLength": 48
+            }
+          },
+          "type": "object"
+        },
+        "version": 1,
+        "hasDynamicAvailability": true
+      }
+    ]
   },
   "residencyPolicy": {
     "schemaVersion": 1,
     "mode": "unload-after-idle",
     "idleSeconds": 300
   },
-  "resourceRequest": { "memoryMb": 48, "updateHz": 4 },
-  "architectures": [ "x64" ]
+  "resourceRequest": {
+    "memoryMb": 48,
+    "updateHz": 4
+  },
+  "architectures": [
+    "x64"
+  ]
 }

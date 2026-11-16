@@ -21,7 +21,7 @@ internal static class PlayniteLibraryDetailsPresentation
         bool loading = false, string? error = null, PlayniteDetailsExtras? extras = null,
         IReadOnlyList<PlayniteLibraryCategory>? categories = null, string? openingId = null,
         bool favorite = false, bool organizationBusy = false, string? completionStatus = null, long generation = 0,
-        WidgetElement? achievementList = null, PlayniteAchievementBrowse? achievementQuery = null)
+        WidgetElement? achievementList = null, PlayniteAchievementBrowse? achievementQuery = null, WidgetElement? captures = null)
     {
         extras ??= new();
         var modalId = openingId ?? "playnite-library.details";
@@ -84,6 +84,7 @@ internal static class PlayniteLibraryDetailsPresentation
                     PlayniteDetailsTab.Description => PlayniteIcons.Overview,
                     PlayniteDetailsTab.Information => PlayniteIcons.Information,
                     PlayniteDetailsTab.Achievements => PlayniteIcons.Achievements,
+                    PlayniteDetailsTab.Captures => PlayniteIcons.Captures,
                     PlayniteDetailsTab.Activity => PlayniteIcons.Activity,
                     PlayniteDetailsTab.Links => PlayniteIcons.Links,
                     _ => throw new ArgumentOutOfRangeException(nameof(tab)),
@@ -122,6 +123,7 @@ internal static class PlayniteLibraryDetailsPresentation
             else if (!loading && error is null) AddLinks(tabContent, game, busy);
         }
         else if (extras.Tab == PlayniteDetailsTab.Achievements) tabContent.Add(PlayniteAchievementPresentation.Page(extras, achievementQuery, achievementList));
+        else if (extras.Tab == PlayniteDetailsTab.Captures) tabContent.Add(captures ?? UI.Text("Loading captures…", Prefix + "captures.loading"));
         else AddActivity(tabContent, extras);
         content.Add(UI.Stack(Prefix + "section.content", tabContent.ToArray()).Classes("playnite-library-details-content"));
         var tabBody = extras.Tab == PlayniteDetailsTab.Achievements

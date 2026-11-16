@@ -115,6 +115,9 @@ internal sealed partial class WidgetViewPresenter
                 else unavailableContext.Add(button);
             }
         var hints = ControllerGuideModel.Resolve(path, context, activation, unavailableContext);
+        if (focused?.Element is WidgetIndexedCollectionView { SelectionActive: true } selectable)
+            hints = hints.Where(hint => hint.Button != ControllerButton.A)
+                .Prepend(new ControllerGuideHint(ControllerPrompt.A, selectable.SelectionActionLabel, ControllerButton.A)).ToArray();
         if (leaf is { Kind: ViewNodeKind.Slider, SliderInteractionMode: SliderInteractionMode.ActivateToAdjust } && focused is not null)
         {
             var adjusting = ReferenceEquals(adjustingSlider, focused);

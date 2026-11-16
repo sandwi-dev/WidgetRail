@@ -14,6 +14,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Display sizing preserves defaults and isolates persisted monitors", DisplayScaleTests.Run),
     ("Startup registration respects ownership Windows approval and failures", StartupRegistrationTests.Run),
     ("Acrylic preference defaults on and persists independently of transparency", AcrylicPreference),
+    ("Capture confirmation choices isolate widgets and types, survive restart, and reject stale resets", CaptureConfirmations),
     ("Missing settings use safe appearance defaults", DefaultsAreSafe),
     ("Default paths use only the WidgetRail local state root", DefaultPathsUseWidgetRail),
     ("Settings round trip through strict canonical JSON", SettingsRoundTrip),
@@ -94,6 +95,43 @@ static async Task RetiredFocusSlide()
         Assert.Contains("\"focusAnimation\": \"fade\"", persisted);
         Assert.Equal(WidgetFocusAnimation.Fade, (await store.LoadAsync()).Appearance.FocusAnimation);
     }
+}
+
+static async Task CaptureConfirmations()
+{
+    using var temp = new TemporaryDirectory();
+    var store = Store(temp.Path);
+    var initial = (await store.LoadAsync()).CaptureConfirmations;
+    Assert.True(initial.ShouldConfirm("capture-library", false) && initial.ShouldConfirm("capture-library", true), "New profiles must confirm both capture kinds.");
+    Assert.Equal(initial, initial.Remember("capture-library", false, false, true, initial.ResetVersion));
+    Assert.Equal(initial, initial.Remember("capture-library", false, true, false, initial.ResetVersion));
+    await store.UpdateAsync(s => s with { CaptureConfirmations = s.CaptureConfirmations.Remember("capture-library", false, true, true, initial.ResetVersion) });
+    var loaded = (await Store(temp.Path).LoadAsync()).CaptureConfirmations;
+    Assert.True(!loaded.ShouldConfirm("capture-library", false) && loaded.ShouldConfirm("capture-library", true) &&
+        loaded.ShouldConfirm("widgetrail.samples.game-help", false), "Remembering one screenshot decision must not grant other widget or recording skips.");
+    await Task.WhenAll(
+        Store(temp.Path).UpdateAsync(s => s with { CaptureConfirmations = s.CaptureConfirmations.Remember("capture-library", true, true, true, initial.ResetVersion) }),
+        Store(temp.Path).UpdateAsync(s => s with { CaptureConfirmations = s.CaptureConfirmations.Remember("widgetrail.samples.game-help", false, true, true, initial.ResetVersion) }));
+    loaded = (await store.LoadAsync()).CaptureConfirmations;
+    Assert.True(!loaded.ShouldConfirm("capture-library", false) && !loaded.ShouldConfirm("capture-library", true) &&
+        !loaded.ShouldConfirm("widgetrail.samples.game-help", false) && loaded.ShouldConfirm("widgetrail.samples.game-help", true), "Independent writes must merge current choices.");
+    await store.UpdateAsync(s => s with { CaptureConfirmations = s.CaptureConfirmations.Reset() });
+    await store.UpdateAsync(s => s with { CaptureConfirmations = s.CaptureConfirmations.Remember("capture-library", true, true, true, initial.ResetVersion) });
+    loaded = (await store.LoadAsync()).CaptureConfirmations;
+    Assert.True(loaded.Widgets.Count == 0 && loaded.ResetVersion == 1, "A dialog opened before reset must not restore a skipped prompt.");
+    var json = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(store.Paths.SettingsFile))!;
+    json.AsObject().Remove("captureConfirmations");
+    await File.WriteAllTextAsync(store.Paths.SettingsFile, json.ToJsonString());
+    Assert.True((await store.LoadAsync()).CaptureConfirmations.ShouldConfirm("capture-library", false), "Existing settings must default to confirming.");
+    foreach (var invalid in new CaptureConfirmationSettings[] {
+        new() { ResetVersion = -1 }, new() { Widgets = null! },
+        new() { Widgets = new Dictionary<string, CaptureConfirmationChoice> { ["../other"] = new(true) } },
+        new() { Widgets = new Dictionary<string, CaptureConfirmationChoice> { ["capture-library"] = null! } },
+        new() { Widgets = Enumerable.Range(0,257).ToDictionary(i => "widget-"+i, _ => new CaptureConfirmationChoice(true)) } })
+        Assert.True(PlatformSettingsValidator.Validate(PlatformSettingsDocument.Default with { CaptureConfirmations = invalid }).Any(e => e.Path == "$.captureConfirmations"), "Malformed preferences must fail validation.");
+    var full = new CaptureConfirmationSettings { Widgets = Enumerable.Range(0,256).ToDictionary(i => "widget-"+i, _ => new CaptureConfirmationChoice(true)) };
+    Assert.Equal(full, full.Remember("another", false, true, true, 0));
+    Assert.True(!full.Remember("widget-1", true, true, true, 0).ShouldConfirm("widget-1", true), "Bounded maps still allow updating an existing widget.");
 }
 
 static async Task DefaultsAreSafe()

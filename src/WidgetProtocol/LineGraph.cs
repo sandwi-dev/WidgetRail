@@ -8,12 +8,16 @@ public sealed record LineGraphDefinition(IReadOnlyList<GraphPoint> Points,
     double XMinimum, double XMaximum, double Minimum = 0, double? Maximum = null, string Unit = "")
 {
     public const int MaximumPoints = 120;
+    /// <summary>Shown when no samples have values. Omit for the host's neutral empty state.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? EmptyText { get; init; }
     public bool IsWellFormed()
     {
         if (Points is null || Points.Count > MaximumPoints || !Finite(XMinimum) || !Finite(XMaximum) ||
             XMaximum <= XMinimum || !Finite(XMaximum - XMinimum) || !Finite(Minimum) ||
             Maximum is { } max && (!Finite(max) || max <= Minimum || !Finite(max - Minimum)) ||
-            Unit is null || Unit.Length > 24 || Unit.Any(char.IsControl)) return false;
+            Unit is null || Unit.Length > 24 || Unit.Any(char.IsControl) ||
+            EmptyText is not null && (string.IsNullOrWhiteSpace(EmptyText) || EmptyText.Length > 160 || EmptyText.Any(char.IsControl))) return false;
         var previous = double.NegativeInfinity;
         foreach (var point in Points)
         {

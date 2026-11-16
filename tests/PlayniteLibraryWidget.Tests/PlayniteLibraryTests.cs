@@ -2613,6 +2613,7 @@ public sealed partial class PlayniteLibraryTests
             "progressPin", "progressData",
             // SDK resource/collection owners and their immutable publication cache; controls live in the model.
             "achievementHub", "achievementGames", "recentAchievements", "publishedAchievementOverview", "publishedAchievementFilter",
+            "captureSetup", "relatedCaptures", "relatedCaptureRows", "publishedCaptures",
             "_actionFeedbackExpiry", "_playniteFeedbackExpiry",
             "_createdCategoriesPendingReconciliation", "_browseReloadAttempt",
             "_livePlayniteAuthority", "_presentationAuthority", "_homeQueryAuthorityGeneration",
@@ -4451,6 +4452,12 @@ public sealed partial class PlayniteLibraryTests
         }
 
         internal Func<CancellationToken, ValueTask<PlayniteAchievementOverview>>? OverviewHandler { get; set; }
+        internal Func<CancellationToken, ValueTask<PlayniteCaptureSettings>>? CaptureSettingsHandler { get; set; }
+        internal Func<PlayniteCaptureSettings,IReadOnlyDictionary<string,System.Text.Json.JsonElement>,CancellationToken,ValueTask<PlayniteCaptureSettings>>? CaptureUpdateHandler { get; set; }
+        internal Func<CancellationToken, ValueTask<PlayniteCaptureIntegration?>>? CaptureIntegrationHandler { get; set; }
+        public ValueTask<PlayniteCaptureSettings> GetCaptureSettingsAsync(CancellationToken token)=>CaptureSettingsHandler?.Invoke(token)??ValueTask.FromResult(PlayniteCaptureSettings.Unavailable);
+        public ValueTask<PlayniteCaptureSettings> UpdateCaptureSettingsAsync(PlayniteCaptureSettings current,IReadOnlyDictionary<string,System.Text.Json.JsonElement> patch,CancellationToken token)=>CaptureUpdateHandler?.Invoke(current,patch,token)??ValueTask.FromException<PlayniteCaptureSettings>(new NotSupportedException());
+        public ValueTask<PlayniteCaptureIntegration?> GetCaptureIntegrationAsync(CancellationToken token)=>CaptureIntegrationHandler?.Invoke(token)??ValueTask.FromResult<PlayniteCaptureIntegration?>(null);
         public ValueTask<PlayniteAchievementOverview> GetAchievementOverviewAsync(CancellationToken token) =>
             OverviewHandler?.Invoke(token) ?? ValueTask.FromResult(PlayniteAchievementOverview.Unavailable);
         internal Func<string, CancellationToken, ValueTask<PlayniteAchievements>>? AchievementsHandler { get; set; }
@@ -4589,6 +4596,7 @@ public sealed partial class PlayniteLibraryTests
 
     private sealed class FakeHost
     {
+        internal Action<WidgetTestHostServicesBuilder>? ConfigureServices { get; set; }
         internal bool YieldQueries { get; init; }
         internal Task<bool>? FavoriteCompletion { get; init; }
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<
@@ -4893,6 +4901,7 @@ public sealed partial class PlayniteLibraryTests
                     ? _state.WriteAsync(request, token)
                     : StateWriteHandler(request, token))
             .WithHandler(WidgetPrivateStateCapabilities.Clear, _state.ClearAsync);
+            ConfigureServices?.Invoke(builder);
             return builder.Build();
         }
 

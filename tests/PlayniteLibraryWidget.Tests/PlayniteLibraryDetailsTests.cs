@@ -71,7 +71,7 @@ public sealed partial class PlayniteLibraryTests
     public void DetailsLinkManifestDeclaresStandardWebIntent()
     {
         var manifest = ManifestJson.Deserialize(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "manifest.json")));
-        var contract = manifest.Intents!.Requests.Single();
+        var contract = manifest.Intents!.Requests.Single(value => value.Id == WidgetIntentContracts.OpenWebPage);
         Assert.AreEqual(WidgetIntentContracts.OpenWebPage, contract.Id);
         Assert.AreEqual(CompiledWidgetIntentContract.Create(WidgetIntentContracts.Web).SchemaDigest,
             CompiledWidgetIntentContract.Create(contract).SchemaDigest);
@@ -727,7 +727,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(ViewNodeKind.Scroll, section.Children[0].Kind);
         Assert.IsTrue(options.Children[1].StyleClasses.Contains("playnite-library-details-tabs"));
         Assert.IsFalse(Nodes(options.Children[1]).Any(node => node.Id == "playnite-library.details." + "poster"));
-        CollectionAssert.AreEqual(new[] { "Overview", "Information", "Achievements", "Activity", "Links" },
+        CollectionAssert.AreEqual(new[] { "Overview", "Information", "Achievements", "Captures", "Activity", "Links" },
             Nodes(options.Children[1]).Where(node => node.ActionId?.StartsWith("playnite-library.details." + "tab.") == true)
                 .Select(node => node.Text).ToArray());
         Assert.IsFalse(nodes.Any(node => node.Kind == ViewNodeKind.Button && node.Text is "Close" or "Refresh"));

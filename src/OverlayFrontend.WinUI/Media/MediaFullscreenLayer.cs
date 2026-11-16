@@ -24,6 +24,8 @@ internal sealed partial class MediaFullscreenLayer : Grid
     private readonly HashSet<MediaPresentationStage> stages = [];
     internal bool IsTransitioning { get; private set; }
     internal bool IsClosing => closing;
+    // Reparenting focused chrome can cause native fallback focus before restoration.
+    internal bool IsRestoringFocus { get; private set; }
     internal bool IsOpen => current is not null;
     internal object? Owner => current?.Owner;
     internal Func<bool>? CanRestoreFocus { get; set; }
@@ -38,7 +40,7 @@ internal sealed partial class MediaFullscreenLayer : Grid
         Func<short, short, bool>? AnalogMove = null, Action? Settled = null,
         Rect? Origin = null, Action? Prepare = null, FrameworkElement[]? Chrome = null,
         bool UseXamlTransform = false, Func<Rect?>? MediaBounds = null, FrameworkElement? MotionContent = null,
-        Func<short, short, bool>? PointerMove = null, Func<Task>? BeforeDetach = null)
+        Func<short, short, bool>? PointerMove = null, Func<Task>? BeforeDetach = null, Action? Detach = null)
     {
         internal TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -99,20 +101,32 @@ internal sealed partial class MediaFullscreenLayer : Grid
         if (IsOpen) throw new InvalidOperationException("A media presentation is already expanded.");
         var version = ++generation;
         current = presentation;
+        IsRestoringFocus = false;
         foreach (var stage in stages)
             stage.SetCovered(!ReferenceEquals(stage, presentation.MotionContent));
         IsTransitioning = true;
-        presentation.Content.IsHitTestVisible = false;
-        var name = AutomationProperties.GetName(presentation.Owner as DependencyObject ?? presentation.Content);
-        AutomationProperties.SetName(this, string.IsNullOrWhiteSpace(name) ? "Fullscreen media" : name);
-        if (ReferenceEquals(presentation.Content.Parent, parking)) parking.Children.Remove(presentation.Content);
-        Children.Add(presentation.Content);
-        IsHitTestVisible = true;
-        backdrop.Visibility = Visibility.Visible;
-        Changed?.Invoke();
-        UpdateLayout();
-        PrepareEntrance(presentation, version);
-        return presentation.Completion.Task;
+        try
+        {
+            // Claim fullscreen ownership before detaching focused inline controls;
+            // native fallback focus must not become an unrelated shell action.
+            presentation.Detach?.Invoke();
+            presentation.Content.IsHitTestVisible = false;
+            var name = AutomationProperties.GetName(presentation.Owner as DependencyObject ?? presentation.Content);
+            AutomationProperties.SetName(this, string.IsNullOrWhiteSpace(name) ? "Fullscreen media" : name);
+            if (ReferenceEquals(presentation.Content.Parent, parking)) parking.Children.Remove(presentation.Content);
+            Children.Add(presentation.Content);
+            IsHitTestVisible = true;
+            backdrop.Visibility = Visibility.Visible;
+            Changed?.Invoke();
+            UpdateLayout();
+            PrepareEntrance(presentation, version);
+            return presentation.Completion.Task;
+        }
+        catch
+        {
+            Close(restoreFocus: false);
+            throw;
+        }
     }
 
     internal void Close(bool restoreFocus = true)
@@ -145,27 +159,42 @@ internal sealed partial class MediaFullscreenLayer : Grid
     private void CompleteClose(Presentation previous, long version, bool restoreFocus)
     {
         if (version != generation || !ReferenceEquals(current, previous)) return;
-        ResetTransition();
-        current = null;
-        closing = false;
-        IsTransitioning = false;
-        previous.Content.IsHitTestVisible = true;
-        Children.Remove(previous.Content);
-        IsHitTestVisible = false;
-        backdrop.Visibility = Visibility.Collapsed;
-        previous.Restore();
-        foreach (var stage in stages) stage.SetCovered(false);
-        Changed?.Invoke();
-        if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        IsRestoringFocus = true;
+        var queued = false;
+        try
         {
+            ResetTransition();
+            current = null;
+            closing = false;
+            IsTransitioning = false;
+            previous.Content.IsHitTestVisible = true;
+            Children.Remove(previous.Content);
+            IsHitTestVisible = false;
+            backdrop.Visibility = Visibility.Collapsed;
+            previous.Restore();
+            foreach (var stage in stages) stage.SetCovered(false);
+            Changed?.Invoke();
+            queued = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
 #if ENABLE_WIDGET_VALIDATION
-            TraceForValidation?.Invoke($"closed restore={restoreFocus} generation={generation == version} empty={current is null} allowed={CanRestoreFocus?.Invoke()}");
+                TraceForValidation?.Invoke($"closed restore={restoreFocus} generation={generation == version} empty={current is null} allowed={CanRestoreFocus?.Invoke()}");
 #endif
-            if (generation == version || !ReferenceEquals(current?.Owner, previous.Owner)) previous.Settled?.Invoke();
-            if (restoreFocus && generation == version && current is null && CanRestoreFocus?.Invoke() != false)
-                previous.ReturnFocus();
+                try
+                {
+                    if (generation == version || !ReferenceEquals(current?.Owner, previous.Owner)) previous.Settled?.Invoke();
+                    if (restoreFocus && generation == version && current is null && CanRestoreFocus?.Invoke() != false)
+                        previous.ReturnFocus();
+                }
+                finally { FinishRestore(); }
+            });
+        }
+        finally { if (!queued) FinishRestore(); }
+
+        void FinishRestore()
+        {
+            if (generation == version) IsRestoringFocus = false;
             previous.Completion.TrySetResult();
-        })) previous.Completion.TrySetResult();
+        }
     }
 
     internal void FocusContent() { if (!IsTransitioning) current?.Focus(); }

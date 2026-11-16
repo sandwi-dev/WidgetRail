@@ -78,7 +78,9 @@ internal sealed class PinnedAdjustmentToolbar:IDisposable
         };
         panel.Child=root;Window.SetContent(panel);
         foreach(var (control,id,name) in new (FrameworkElement,string,string)[]{(Opacity,"Opacity","Pin opacity"),(Save,"Save","Save pin adjustments"),(Cancel,"Cancel","Cancel pin adjustments"),(Close,"Close","Close pin")})
-        {AutomationProperties.SetAutomationId(control,"Overlay.PinAdjustment."+id);AutomationProperties.SetName(control,name);ToolTipService.SetToolTip(control,name);}
+        {AutomationProperties.SetAutomationId(control,"Overlay.PinAdjustment."+id);AutomationProperties.SetName(control,name);}
+        // Labeled controls already explain themselves; only the icon-only close needs a tip.
+        NativePopupTheme.SetToolTip(Close,"Close pin");
         Opacity.ValueChanged+=(_,args)=>{var percent=(int)Math.Round(args.NewValue);value.Text=$"{percent}%";if(!updating)OpacityChanged?.Invoke(percent);};
         Save.Click+=(_,_)=>SaveRequested?.Invoke();Cancel.Click+=(_,_)=>CancelRequested?.Invoke();Close.Click+=(_,_)=>CloseRequested?.Invoke();
         Window.CloseRequested+=()=>CancelRequested?.Invoke();

@@ -418,6 +418,7 @@ public sealed record ViewNode
     public IReadOnlyList<IndexedCollectionGroup>? IndexedGroups { get; init; }
     /// <summary>Optional complete ordered occurrence keys, bounded to 512, for membership-change continuity.</summary>
     public IReadOnlyList<string>? IndexedOccurrenceKeys { get; init; }
+    public IndexedCollectionSelection? IndexedSelection { get; init; }
     /// <summary>Optional host-owned, coordinated section motion.</summary>
     public WidgetTransition? Transition { get; init; }
     public required string Id { get; init; }

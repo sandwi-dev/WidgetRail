@@ -132,6 +132,8 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
             session.PresentationChanged += Changed;
             await session.ListWidgetsAsync(lifetime.Token);
             await session.EstablishPresentationAsync(session.GetTarget("indexed-owned"), WidgetLifecycleState.Interactive, lifetime.Token);
+            if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--indexed-selection-output") is { } selectionOutput)
+            { await ValidateSelectionAsync(selectionOutput); return; }
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--collection-return-output") is { } returnOutput)
             { await ValidateCollectionReturnsAsync(returnOutput); return; }
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--ytm-performance-output") is { } performanceOutput)

@@ -25,7 +25,11 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 110;
+    public const int CurrentVersion = 114;
+    public const int ExtendedSavedMediaVersion = 114;
+    public const int IndexedLookupVersion = 113;
+    public const int IndexedSelectionVersion = 112;
+    public const int LineGraphEmptyTextVersion = 111;
     public const int InteractivePreviewValuesVersion = 110;
     public const int PinnedRestoreVersion = 109;
     public const int PinnedInteractionVersion = 108;

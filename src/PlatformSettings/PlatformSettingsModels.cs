@@ -184,6 +184,7 @@ public sealed record PlatformSettingsDocument
 
     public ControllerSettings Controllers { get; init; } = new();
     public BuiltInWidgetSettings BuiltInWidgets { get; init; } = new();
+    public CaptureConfirmationSettings CaptureConfirmations { get; init; } = new();
 
     public static PlatformSettingsDocument Default { get; } = new()
     {
@@ -254,6 +255,11 @@ public static class PlatformSettingsValidator
             disabled.Any(id => id is "settings" or BuiltInWidgetSettings.SettingsWidgetId || !ThemeIdentity.IsValid(id)) ||
             disabled.Distinct(StringComparer.Ordinal).Count() != disabled.Count)
             Add("$.builtInWidgets.disabledIds", "invalid_widget_ids", "Disabled widget IDs must be unique supported identifiers; Settings cannot be disabled.");
+        if (document.CaptureConfirmations is not { Widgets: { } confirmations } capture ||
+            capture.ResetVersion < 0 || capture.ResetVersion > CaptureConfirmationSettings.MaximumResetVersion ||
+            confirmations.Count > CaptureConfirmationSettings.MaximumWidgets ||
+            confirmations.Any(pair => !ThemeIdentity.IsValid(pair.Key) || pair.Value is null))
+            Add("$.captureConfirmations", "invalid_capture_confirmations", "Capture confirmations must contain bounded valid widget choices and a valid reset version.");
         if (document.SchemaVersion != PlatformSettingsDocument.CurrentSchemaVersion)
             Add("$.schemaVersion", "unsupported_version",
                 $"Expected settings schema version {PlatformSettingsDocument.CurrentSchemaVersion}.");

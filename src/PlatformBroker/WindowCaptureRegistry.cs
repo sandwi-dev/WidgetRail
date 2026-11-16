@@ -13,7 +13,11 @@ public sealed record HostCaptureCompletion(string RequestId, int Width, int Heig
 {
     public CaptureMediaProperties? Properties { get; init; }
 }
-public sealed record HostCaptureAttachment(CaptureAttachment Attachment, string Path, [property: JsonIgnore] string RequiredCapability = PlatformCapabilities.WindowCaptureV1);
+public sealed record HostCaptureAttachment(CaptureAttachment Attachment, string Path, [property: JsonIgnore] string RequiredCapability = PlatformCapabilities.WindowCaptureV1)
+{
+    [JsonIgnore] public long? CapturedAtUnixMilliseconds { get; init; }
+    [JsonIgnore] public long? LeaseExpiresAtUnixMilliseconds { get; init; }
+}
 
 /// <summary>Single-process capability owner. Every operation remains scoped to the original broker object.</summary>
 internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, long maximumBytes = CaptureLimits.MaximumTotalBytes) : IDisposable
@@ -43,6 +47,8 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
         internal string? Error;
         internal string RequiredCapability = PlatformCapabilities.WindowCaptureV1;
         internal bool StopRequested;
+        internal CaptureLibraryReadLease? LibraryLease;
+        internal bool BorrowedOriginal;
     }
     internal CaptureCapabilities Capabilities { get { lock (gate) return capabilities; } }
     internal bool NeedsCapabilities { get { lock (gate) return capabilityWaiters + encodingWaiters > 0 && !capabilityReady.Task.IsCompleted; } }
@@ -91,7 +97,7 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
             ThrowIfDisposed(); Sweep();
             sweeper ??= clock.CreateTimer(_ => { lock (gate) { if (!disposed) Sweep(); } }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
             foreach (var old in entries.Where(pair => ReferenceEquals(pair.Value.Owner, owner) && pair.Value.Phase is WindowCapturePhase.Cancelled or WindowCapturePhase.Failed).ToArray())
-            { entries.Remove(old.Key); Delete(old.Value.Request.OutputPath); }
+            { entries.Remove(old.Key); ReleaseEntry(old.Value); }
             if (!Enum.IsDefined(kind) || !Enum.IsDefined(resolution) || kind == WindowCaptureKind.Video && resolution != CaptureImageResolution.Context) throw Error("invalid_payload");
             if (entries.Values.Any(entry => entry.Phase is WindowCapturePhase.Queued or WindowCapturePhase.Preparing or WindowCapturePhase.Recording)) throw Error("capture_busy");
             if (pendingDeletes.Count + entries.Count >= CaptureLimits.MaximumTotal || entries.Values.Count(entry => ReferenceEquals(entry.Owner, owner)) >= CaptureLimits.MaximumPerWidget) throw Error("capture_limit");
@@ -201,7 +207,7 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
             var entry = Owned(owner, id);
             var reserved = ReservedBytes(entry);
             entry.Phase = WindowCapturePhase.Cancelled; entry.Attachment = null; entry.Error = "cancelled";
-            Delete(entry.Request.OutputPath, reserved);
+            ReleaseEntry(entry, reserved);
         }
     }
     internal void Discard(object owner, string attachmentId, string requiredCapability = PlatformCapabilities.WindowCaptureV1)
@@ -210,7 +216,7 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
         {
             var entry = Attachment(owner, attachmentId);
             if (entry.RequiredCapability != requiredCapability) throw Error("capture_unavailable");
-            entries.Remove(entry.Request.RequestId); Delete(entry.Request.OutputPath, entry.Attachment?.ByteLength);
+            entries.Remove(entry.Request.RequestId); ReleaseEntry(entry);
         }
     }
     internal HostCaptureAttachment ResolveOwned(object owner, CaptureAttachment expected)
@@ -219,7 +225,7 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
         {
             var entry = Attachment(owner, expected.Id);
             if (entry.Attachment != expected) throw Error("capture_unavailable");
-            return new(expected, entry.Request.OutputPath, entry.RequiredCapability);
+            return Resolved(entry);
         }
     }
     internal HostCaptureAttachment Resolve(BrokerWidgetIdentity widget, string id)
@@ -229,7 +235,8 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
             Sweep();
             var entry = entries.Values.SingleOrDefault(item => item.Request.Widget == widget && item.Phase == WindowCapturePhase.Ready && item.Attachment?.Id == id)
                 ?? throw Error("capture_unavailable");
-            return new(entry.Attachment!, entry.Request.OutputPath, entry.RequiredCapability);
+            if (entry.LibraryLease is not null) entry.Expires = clock.GetUtcNow().AddMinutes(2);
+            return Resolved(entry);
         }
     }
     internal CaptureReadChunk Read(object owner, CaptureReadRequest request, string requiredCapability = PlatformCapabilities.WindowCaptureV1)
@@ -240,6 +247,16 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
             if (entry.RequiredCapability != requiredCapability) throw Error("capture_unavailable");
             var length = entry.Attachment!.ByteLength;
             if (request.Offset < 0 || request.Offset >= length) throw Error("invalid_payload");
+            if (entry.LibraryLease is { } lease)
+            {
+                entry.Expires = clock.GetUtcNow().AddMinutes(2);
+                var retained = lease.Stream;
+                if (retained.Length != length) throw Error("capture_unavailable");
+                retained.Position = request.Offset;
+                var bytes = new byte[(int)Math.Min(CaptureLimits.ChunkBytes, length - request.Offset)];
+                retained.ReadExactly(bytes);
+                return new(request.Offset, bytes, retained.Position == length);
+            }
             using var input = new FileStream(entry.Request.OutputPath, FileMode.Open, FileAccess.Read, FileShare.Read);
             if (input.Length != length) throw Error("capture_unavailable");
             input.Position = request.Offset;
@@ -247,6 +264,31 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
             input.ReadExactly(buffer);
             return new(request.Offset, buffer, input.Position == length);
         }
+    }
+    private static HostCaptureAttachment Resolved(Entry entry) => new(entry.Attachment!, entry.Request.OutputPath, entry.RequiredCapability)
+        { LeaseExpiresAtUnixMilliseconds = entry.LibraryLease is null ? null : entry.Expires.ToUnixTimeMilliseconds() };
+    /// <summary>Transfers a verified, path-pinned video lease; no original bytes are copied or owned for deletion.</summary>
+    internal CaptureAttachment AdoptLibraryVideo(object owner, BrokerWidgetIdentity identity, CaptureLibraryReadLease source, CancellationToken token)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed(); Sweep(); token.ThrowIfCancellationRequested();
+            if (source.Media.ContentType != "video/mp4" || !source.Media.IsWellFormed() || !source.IsCurrent || !source.Stream.CanRead || source.Stream.Length != source.Media.ByteLength)
+                throw Error("capture_unavailable");
+            if (pendingDeletes.Count + entries.Count >= CaptureLimits.MaximumTotal || entries.Values.Count(entry => ReferenceEquals(entry.Owner, owner)) >= CaptureLimits.MaximumPerWidget)
+                throw Error("capture_limit");
+            var id = Guid.NewGuid().ToString("N"); var expires = clock.GetUtcNow().AddMinutes(2);
+            var media = source.Media with { Origin = CaptureAttachmentOrigin.SavedLibrary, Id = Guid.NewGuid().ToString("N"), ExpiresAtUnixMilliseconds = expires.ToUnixTimeMilliseconds() };
+            entries.Add(id, new(owner, new(id, identity, WindowCaptureKind.Video, source.Stream.Name), expires)
+                { Phase = WindowCapturePhase.Ready, Attachment = media, RequiredCapability = PlatformCapabilities.CaptureLibraryReadV1, LibraryLease = source, BorrowedOriginal = true });
+            sweeper ??= clock.CreateTimer(_ => { lock (gate) { if (!disposed) Sweep(); } }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+            return media;
+        }
+    }
+    private void ReleaseEntry(Entry entry, long? reserved = null)
+    {
+        if (entry.LibraryLease is { } lease) { entry.LibraryLease = null; lease.Dispose(); }
+        else if (!entry.BorrowedOriginal) Delete(entry.Request.OutputPath, reserved ?? entry.Attachment?.ByteLength);
     }
     internal async Task<CaptureAttachment> ImportAsync(object owner, BrokerWidgetIdentity identity, CaptureLibraryReadLease source, CancellationToken token)
     {
@@ -289,7 +331,7 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
     {
         lock (gate)
             foreach (var pair in entries.Where(pair => ReferenceEquals(pair.Value.Owner, owner) && (requiredCapability is null || pair.Value.RequiredCapability == requiredCapability)).ToArray())
-            { entries.Remove(pair.Key); Delete(pair.Value.Request.OutputPath, pair.Value.Attachment?.ByteLength); }
+            { entries.Remove(pair.Key); ReleaseEntry(pair.Value); }
     }
     private Entry Owned(object owner, string id)
     {
@@ -317,8 +359,8 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
         }
         foreach (var path in pendingDeletes.Keys.ToArray()) Delete(path);
         var now = clock.GetUtcNow();
-        foreach (var pair in entries.Where(pair => pair.Value.Expires <= now).ToArray())
-        { entries.Remove(pair.Key); Delete(pair.Value.Request.OutputPath, pair.Value.Attachment?.ByteLength); }
+        foreach (var pair in entries.Where(pair => pair.Value.Expires <= now || pair.Value.LibraryLease is { IsCurrent: false }).ToArray())
+        { entries.Remove(pair.Key); ReleaseEntry(pair.Value); }
     }
     // A crashed host cannot run Dispose. Delete only expired, unlocked capture
     // sessions and known generated files; never traverse links or recurse.
@@ -357,7 +399,7 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
         return kind == WindowCaptureKind.Screenshot ? header[..8].SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) : header.Slice(4, 4).SequenceEqual("ftyp"u8);
     }
     private static bool ValidError(string value) => value.Length is > 0 and <= 80 && value.All(c => char.IsAsciiLetterOrDigit(c) || c == '_');
-    private static long ReservedBytes(Entry entry) => entry.Attachment?.ByteLength ??
+    private static long ReservedBytes(Entry entry) => entry.BorrowedOriginal ? 0 : entry.Attachment?.ByteLength ??
         (entry.Phase is WindowCapturePhase.Queued or WindowCapturePhase.Preparing or WindowCapturePhase.Recording
             ? entry.Request.Options?.MaximumBytes ?? (entry.Request.Resolution == CaptureImageResolution.Original ? CaptureLimits.MaximumAttachmentBytes : CaptureLimits.MaximumContextBytes) : 0);
     private long UsageBytes(Entry? excluded = null) => entries.Values.Where(entry => !ReferenceEquals(entry, excluded)).Sum(ReservedBytes) + pendingDeletes.Values.Sum();
@@ -377,7 +419,7 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
             capabilityReady.TrySetCanceled(); encodingReady.TrySetCanceled();
             foreach (var discovery in recordingDiscoveries.Values) discovery.Ready.TrySetCanceled();
             recordingDiscoveries.Clear();
-            foreach (var entry in entries.Values) Delete(entry.Request.OutputPath);
+            foreach (var entry in entries.Values) ReleaseEntry(entry);
             entries.Clear();
             foreach (var path in pendingDeletes.Keys.ToArray()) Delete(path);
             directoryLease?.Dispose(); directoryLease = null;

@@ -56,9 +56,57 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
         {
             switch (operation)
             {
+                case "capture-library.sources":
+                    BrokerCapabilityDomains.DemandEmptyPayload(payload);
+                    return BrokerJson.ToElement(await library.SourcesAsync(identity, token).ConfigureAwait(false));
+                case "capture-library.choose-source":
+                    var sourceRequest = BrokerJson.ParsePayload<CaptureLibraryChooseSourceRequest>(payload);
+                    if (!CaptureLibrarySourceLimits.ValidLabel(sourceRequest.Label)) throw new BrokerException("invalid_payload", "Invalid capture source label.");
+                    var sourceFolder = await CaptureLibrarySourceRequests.ChooseAsync(identity, sourceRequest.Label, token).ConfigureAwait(false);
+                    return BrokerJson.ToElement(new CaptureLibrarySourceChoice(sourceFolder is null ? null : await library.AddSourceAsync(sourceFolder, sourceRequest.Label, identity, token).ConfigureAwait(false)));
+                case "capture-library.remove-source":
+                    await library.RemoveSourceAsync(BrokerJson.ParsePayload<CaptureLibrarySourceReference>(payload).SourceId, identity, token).ConfigureAwait(false);
+                    return BrokerCapabilityDomains.Acknowledged();
+                case "capture-library.link":
+                    return BrokerJson.ToElement(await library.LinkAsync(BrokerJson.ParsePayload<CaptureLibraryLinkRequest>(payload), identity, token).ConfigureAwait(false));
+                case "capture-library.remove-link":
+                    await library.RemoveLinkAsync(BrokerJson.ParsePayload<CaptureLibraryMutationReference>(payload), token).ConfigureAwait(false);
+                    return BrokerCapabilityDomains.Acknowledged();
+                case "capture-library.copy":
+                    var copy = BrokerJson.ParsePayload<CaptureLibraryCopyRequest>(payload);
+                    var copyItems = CaptureLibraryStore.ValidateCopy(copy);
+                    var destination = await CaptureLibraryCopyRequests.ChooseAsync(identity, copyItems.Length, token).ConfigureAwait(false);
+                    return BrokerJson.ToElement(destination is null
+                        ? new CaptureLibraryBatchResult(copyItems.Select(item => new CaptureLibraryMutationResult(item.Id, ErrorCode: "cancelled")).ToArray())
+                        : await library.CopyAsync(new(copyItems), destination, token).ConfigureAwait(false));
+                case "capture-library.remove-unavailable":
+                    await library.RemoveUnavailableAsync(BrokerJson.ParsePayload<CaptureLibraryMutationReference>(payload), token).ConfigureAwait(false);
+                    return BrokerCapabilityDomains.Acknowledged();
+                case "capture-library.metadata-batch":
+                    return BrokerJson.ToElement(await library.UpdateMetadataBatchAsync(BrokerJson.ParsePayload<CaptureLibraryBatchMetadataRequest>(payload), token).ConfigureAwait(false));
+                case "capture-library.recycle":
+                    return BrokerJson.ToElement(await library.RecycleAsync(BrokerJson.ParsePayload<CaptureLibraryRecycleRequest>(payload), token).ConfigureAwait(false));
+                case "capture-library.reveal":
+                    var reveal = await library.RevealPathAsync(BrokerJson.ParsePayload<CaptureLibraryReference>(payload).Id, token).ConfigureAwait(false);
+                    if (!await CaptureLibraryFolderRequests.OpenAsync(identity, Path.GetDirectoryName(reveal)!, token, Path.GetFileName(reveal)).ConfigureAwait(false))
+                        throw new BrokerException("capture_library_folder_unavailable", "Windows could not reveal the capture.");
+                    return BrokerCapabilityDomains.Acknowledged();
+                case "capture-library.groups":
+                    return BrokerJson.ToElement(await library.GroupsAsync(BrokerJson.ParsePayload<CaptureLibraryGroupsRequest>(payload), token).ConfigureAwait(false));
+                case "capture-library.applications":
+                    return BrokerJson.ToElement(await library.ApplicationsAsync(BrokerJson.ParsePayload<CaptureLibraryApplicationsRequest>(payload), token).ConfigureAwait(false));
+                case "capture-library.get-metadata":
+                    return BrokerJson.ToElement(await library.GetMetadataAsync(BrokerJson.ParsePayload<CaptureLibraryReference>(payload).Id, token).ConfigureAwait(false));
+                case "capture-library.query":
+                    return BrokerJson.ToElement(await library.QueryAsync(BrokerJson.ParsePayload<CaptureLibraryQueryRequest>(payload), token).ConfigureAwait(false));
+                case "capture-library.find":
+                    return BrokerJson.ToElement(await library.FindAsync(BrokerJson.ParsePayload<CaptureLibraryFindRequest>(payload), token).ConfigureAwait(false));
+                case "capture-library.metadata":
+                    return BrokerJson.ToElement(await library.UpdateMetadataAsync(BrokerJson.ParsePayload<CaptureLibraryMetadataRequest>(payload), token).ConfigureAwait(false));
                 case "capture-library.list":
                     var list = BrokerJson.ParsePayload<CaptureLibraryListRequest>(payload);
-                    return BrokerJson.ToElement(await library.ListAsync(list.Offset, token, list.Refresh).ConfigureAwait(false));
+                    var legacyPage = await library.ListAsync(list.Offset, token, list.Refresh).ConfigureAwait(false);
+                    return BrokerJson.ToElement(new { Items = legacyPage.Items.Select(LegacyItem).ToArray(), legacyPage.Offset, legacyPage.TotalCount, legacyPage.StoredBytes });
                 case "capture-library.open-folder":
                     BrokerCapabilityDomains.DemandEmptyPayload(payload);
                     if (!await CaptureLibraryFolderRequests.OpenAsync(identity,await library.FolderAsync(token).ConfigureAwait(false),token).ConfigureAwait(false))
@@ -71,13 +119,28 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
                     if (thumbnailRequest.Offset >= thumbnail.Bytes.Length) throw new BrokerException("invalid_payload", "Invalid thumbnail offset.");
                     return BrokerJson.ToElement(new CaptureLibraryThumbnailChunk(thumbnail.Width, thumbnail.Height, thumbnail.Bytes.Length, thumbnailRequest.Offset,
                         thumbnail.Bytes.AsSpan(thumbnailRequest.Offset, Math.Min(CaptureLimits.ChunkBytes, thumbnail.Bytes.Length - thumbnailRequest.Offset)).ToArray()));
+                case "capture-library.contexts":
+                    return BrokerJson.ToElement(await library.GetContextsAsync(BrokerJson.ParsePayload<CaptureLibraryContextsRequest>(payload), token).ConfigureAwait(false));
+                case "capture-library.save-context":
+                    var contextualSave = BrokerJson.ParsePayload<CaptureLibrarySaveWithContextRequest>(payload);
+                    if (contextualSave.Attachment?.IsWellFormed() != true || contextualSave.Context?.IsWellFormed() != true) throw new BrokerException("invalid_payload", "Invalid capture context.");
+                    var receipt = await library.FindSavedContextAsync(identity, contextualSave.Context, token).ConfigureAwait(false);
+                    return BrokerJson.ToElement(receipt ?? await library.SaveWithContextAsync(registry.ResolveOwned(this, contextualSave.Attachment), identity, contextualSave.Context, token).ConfigureAwait(false));
                 case "capture-library.save":
+                case "capture-library.save-current":
                     var save = BrokerJson.ParsePayload<CaptureLibrarySaveRequest>(payload);
                     if (save.Attachment is null || !save.Attachment.IsWellFormed()) throw new BrokerException("invalid_payload", "Invalid capture reference.");
-                    return BrokerJson.ToElement(await library.SaveAsync(registry.ResolveOwned(this, save.Attachment), token).ConfigureAwait(false));
+                    var saved = await library.SaveAsync(registry.ResolveOwned(this, save.Attachment), identity, token).ConfigureAwait(false);
+                    return operation == "capture-library.save" ? BrokerJson.ToElement(LegacyItem(saved)) : BrokerJson.ToElement(saved);
                 case "capture-library.open":
                     var open = BrokerJson.ParsePayload<CaptureLibraryOpenRequest>(payload);
-                    await using (var media = await library.OpenAsync(open.Id, open.Resolution, token).ConfigureAwait(false))
+                    var media = await library.OpenAsync(open.Id, open.Resolution, token).ConfigureAwait(false);
+                    if (media.Media.ContentType == "video/mp4")
+                    {
+                        try { return BrokerJson.ToElement(registry.AdoptLibraryVideo(this, identity, media, token)); }
+                        catch { await media.DisposeAsync().ConfigureAwait(false); throw; }
+                    }
+                    await using (media.ConfigureAwait(false))
                         return BrokerJson.ToElement(await registry.ImportAsync(this, identity, media, token).ConfigureAwait(false));
                 case "capture-library.read": return BrokerJson.ToElement(registry.Read(this, BrokerJson.ParsePayload<CaptureReadRequest>(payload), PlatformCapabilities.CaptureLibraryReadV1));
                 case "capture-library.release": registry.Discard(this, BrokerJson.ParsePayload<CaptureAttachmentRequest>(payload).AttachmentId, PlatformCapabilities.CaptureLibraryReadV1); return BrokerCapabilityDomains.Acknowledged();
@@ -95,6 +158,18 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         { throw new BrokerException("capture_library_io_failed", "Capture Library could not read or write its files. Check storage and retry."); }
     }
+    // Independently packaged older clients reject unknown response members.
+    // Enriched metadata belongs only to the new query/get/metadata operations.
+    internal static object LegacyItem(CaptureLibraryItem item)
+    {
+        var media = item.Media;
+        if (media.ContentType == "video/mp4" &&
+            (media.ByteLength > CaptureLimits.MaximumAttachmentBytes || media.DurationSeconds > CaptureLimits.MaximumRecordingSeconds + .25 ||
+             media.Properties is null && (media.Width > 1280 || media.Height > 720 || media.ByteLength > CaptureLimits.MaximumContextBytes || media.DurationSeconds > CaptureLimits.VideoSeconds + .25)))
+            throw new BrokerException("capture_library_client_upgrade_required", "This recording needs an updated capture library client.");
+        return new { item.Id, item.Media, item.SavedAtUnixMilliseconds, item.Available, item.Revision };
+    }
+
     internal void Revoke(string capability)
     {
         WindowCaptureRegistry.Shared.Retire(this, capability);

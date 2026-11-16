@@ -45,8 +45,19 @@ internal sealed partial class LineGraphValidationPage : Page, IAsyncDisposable
                 Check(graph.ValidationBrushMatches, "Plot and labels follow the control's theme/style brush");
                 Apply(null);
                 await Task.Delay(50);
-                Check(AutomationProperties.GetFullDescription(graph) == "No samples available" && graph.ValidationFigureCount == 0,
+                Check(AutomationProperties.GetFullDescription(graph) == "No samples" && graph.ValidationFigureCount == 0,
                     "Unavailable history clears old lines and exposes its empty state");
+                Apply(null, "FPS collection is off");
+                await Task.Delay(50);
+                Check(graph.ValidationEmptyText == "FPS collection is off" && AutomationProperties.GetFullDescription(graph) == "FPS collection is off",
+                    "Authored empty state updates both visible and accessible graph text");
+                Apply(null, "Waiting for frames…");
+                await Task.Delay(50);
+                Check(ReferenceEquals(graph, Find<WidgetLineGraph>(presenter)) && graph.ValidationEmptyText == "Waiting for frames…" && outside.FocusState != FocusState.Unfocused,
+                    "Empty-state transitions retain graph identity and external focus");
+                Apply(10, "Waiting for frames…");
+                await Task.Delay(50);
+                Check(graph.ValidationEmptyText is null && graph.ValidationFigureCount == 2, "New samples replace the authored empty state");
                 status.Text = $"PASS: {checks.Count} native graph checks";
             }
             catch (Exception failure) { error = failure.ToString(); status.Text = "FAIL: " + error; }
@@ -57,11 +68,11 @@ internal sealed partial class LineGraphValidationPage : Page, IAsyncDisposable
         };
     }
 
-    private void Apply(double? value)
+    private void Apply(double? value, string? emptyText = null)
     {
-        var snapshot = new ViewSnapshot { WidgetInstanceId = "graph.instance", Sequence = ++sequence, ActiveInputScopeId = "graphs",
+        var snapshot = new ViewSnapshot { ProtocolVersion = emptyText is null ? ProtocolConstants.LineGraphVersion : ProtocolConstants.LineGraphEmptyTextVersion, WidgetInstanceId = "graph.instance", Sequence = ++sequence, ActiveInputScopeId = "graphs",
             Root = new() { Id = "graphs", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[new() { Id = "history", Kind = ViewNodeKind.LineGraph,
-                AccessibilityLabel = "CPU history", Graph = new((GraphPoint[])[new(-60, value), new(-50, value), new(-30, null), new(-10, value), new(0, value)], -60, 0, 0, 100, "%") }] } };
+                AccessibilityLabel = "CPU history", Graph = new((GraphPoint[])[new(-60, value), new(-50, value), new(-30, null), new(-10, value), new(0, value)], -60, 0, 0, 100, "%") { EmptyText = emptyText } }] } };
         var descriptor = new BridgeWidgetDescriptor { Id = "graph", Name = "Graph", InstanceId = snapshot.WidgetInstanceId,
             RuntimeGeneration = "runtime", PresentationGeneration = "presentation", Icon = WidgetGlyph.Connection, PackageContentDigest = "" };
         presenter.Apply(new(new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, 1,

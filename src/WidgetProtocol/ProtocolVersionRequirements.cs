@@ -194,7 +194,19 @@ internal sealed class ProtocolVersionRequirements
             var scope = node.InputScopeId ?? inheritedScope;
             if (node.Kind == ViewNodeKind.LineGraph || node.Graph is not null)
                 Add("line-graph", ProtocolConstants.LineGraphVersion, path, "Line graphs require protocol version 78 or later.");
+            if (node.Graph?.EmptyText is not null)
+                Add("line-graph-empty-text", ProtocolConstants.LineGraphEmptyTextVersion, path,
+                    "Authored graph empty text requires protocol version 111 or later.");
             var capture = node.CapturedMedia ?? node.MediaPlayer?.Source?.Attachment;
+            // The wire shape predates library playback, but earlier validators
+            // admit only capture-sized video and require native encoder telemetry
+            // outside their small legacy envelope. Negotiate the widened meaning.
+            if (capture is { Origin: CaptureAttachmentOrigin.SavedLibrary, ContentType: "video/mp4" } &&
+                (capture.ByteLength > CaptureLimits.MaximumAttachmentBytes || capture.DurationSeconds > CaptureLimits.MaximumRecordingSeconds + .25 ||
+                 capture.Properties is null && (capture.Width > 1280 || capture.Height > 720 || capture.ByteLength > CaptureLimits.MaximumContextBytes ||
+                    capture.DurationSeconds > CaptureLimits.VideoSeconds + .25)))
+                Add("extended-saved-media", ProtocolConstants.ExtendedSavedMediaVersion, path,
+                    "Extended saved-video metadata requires protocol version 114 or later.");
             if (capture?.Properties is not null)
                 Add("configurable-capture", ProtocolConstants.ConfigurableCaptureVersion, path, "Configured capture metadata requires protocol version 79 or later.");
             if (capture is not null && (capture.Origin == CaptureAttachmentOrigin.SavedLibrary || capture.Width > 1920 || capture.Height > 1080 || capture.ByteLength > 8 * 1024 * 1024))
@@ -234,6 +246,12 @@ internal sealed class ProtocolVersionRequirements
             if (node.Kind == ViewNodeKind.IndexedCollection || node.IndexedCollection is not null)
                 Add("indexed-collection", ProtocolConstants.IndexedCollectionVersion, path,
                     "Indexed collection sources require protocol version 60 or later.");
+            if (node.IndexedCollection?.CanLocateItems == true)
+                Add("indexed-lookup", ProtocolConstants.IndexedLookupVersion, path + ".indexedCollection.canLocateItems",
+                    "Indexed lookup requires protocol version 113 or later.");
+            if (node.IndexedSelection is not null)
+                Add("indexed-selection", ProtocolConstants.IndexedSelectionVersion, path + ".indexedSelection",
+                    "Indexed selection requires protocol version 112 or later.");
             if (node.IndexedOccurrenceKeys is not null)
                 Add("indexed-continuity", ProtocolConstants.IndexedContinuityVersion, path + ".indexedOccurrenceKeys",
                     "Indexed occurrence continuity requires protocol version 91 or later.");

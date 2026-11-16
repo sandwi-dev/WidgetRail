@@ -11,6 +11,7 @@ to play, and launch it with your controller without leaving the overlay.
 
 - Browse installed games on Home, or search your wider library in Library.
 - Browse cached achievement progress and recent unlocks in the Achievements section.
+- Configure PlayniteAchievements screenshots and clips from **Achievements → Capture settings**, then browse related media in each game's **Captures** tab.
 - Filter by favorites, installed status, source, and collections.
 - Open game details over the current page, then launch installed games through Playnite.
 - Read descriptions, metadata, achievements, and play-session history in game details.
@@ -213,3 +214,29 @@ is available. WidgetRail does not produce duplicate unlock banners.
 Only unfinished achievements with measurable progress can be tracked in a pin.
 The pin uses that achievement's artwork when available. Choosing another target
 updates the existing progress pin, retaining its position and opacity.
+
+## Achievement captures
+
+Capture settings use PlayniteAchievements' own recorder, including its clean,
+notification and framed variants. WidgetRail does not start a second recorder.
+Recording duration is pre-roll; the provider determines the clip end from its
+notification lifecycle. Close Playnite's settings window before editing here.
+
+Choose a screenshot or clip folder through the host picker to configure and link
+it. Folder choices and disconnects apply immediately; **Save changes** applies
+format and audio options. Linked folders remain visible in this dialog so older
+locations can be disconnected without deleting their originals. A folder already
+linked by another widget must be disconnected there before linking it here.
+
+The host indexes linked originals without copying them, even after this widget
+unloads. WidgetRail for Playnite maintains small hidden `.widgetrail-context.json`
+companions for unambiguous game/achievement matches. It does not modify original
+media attributes. Manually unhiding a companion remains respected. Ambiguous,
+renamed or unrecognized files still appear in Capture Library without a guessed
+association. Imported file modification time is not claimed as capture time.
+
+Use **Captures** in game details, or **View captures** from an unlocked
+achievement's context menu. The capture library can return to the related game or
+achievement only when its matching local profile and item remain available.
+Missing PlayniteAchievements disables provider setup; Home, Library and existing
+linked captures remain usable.

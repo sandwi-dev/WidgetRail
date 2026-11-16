@@ -186,6 +186,8 @@ public sealed record WidgetActionEvent(
     /// <summary>Worker-validated lazy occurrence that held focus. Ordinary action payloads cannot supply this metadata.</summary>
     [JsonIgnore]
     public IndexedCollectionFocusTarget? FocusedCollectionItem { get; init; }
+    [JsonIgnore]
+    internal IndexedSelectionInput? CollectionSelection { get; init; }
     /// <summary>Host-observed visible collection keys protected by a pagination demand.</summary>
     public IReadOnlyList<string>? VisibleCollectionKeys { get; init; }
     /// <summary>Host-observed nearby collection keys retained when capacity permits. Visible keys take priority.</summary>

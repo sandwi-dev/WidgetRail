@@ -4,6 +4,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetLineGraph
 {
+    internal string? ValidationEmptyText => empty.Visibility == Microsoft.UI.Xaml.Visibility.Visible ? empty.Text : null;
     internal int ValidationFigureCount => (line.Data as PathGeometry)?.Figures.Count ?? 0;
     internal bool ValidationBrushMatches => ReferenceEquals(line.Stroke, Foreground) && ReferenceEquals(upper.Foreground, Foreground);
     internal bool ValidationGeometryFits => line.Data is PathGeometry geometry && geometry.Figures.All(f =>

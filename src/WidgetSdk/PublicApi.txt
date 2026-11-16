@@ -318,6 +318,8 @@ enum WidgetRail.WidgetSdk.WidgetFocusTargetState.Missing = WidgetRail.WidgetSdk.
 enum WidgetRail.WidgetSdk.WidgetFocusTargetState.NotFocusable = WidgetRail.WidgetSdk.WidgetFocusTargetState.NotFocusable
 enum WidgetRail.WidgetSdk.WidgetFocusTargetState.OutsideActiveScope = WidgetRail.WidgetSdk.WidgetFocusTargetState.OutsideActiveScope
 enum WidgetRail.WidgetSdk.WidgetFocusTargetState.Valid = WidgetRail.WidgetSdk.WidgetFocusTargetState.Valid
+enum WidgetRail.WidgetSdk.WidgetIndexedSelectionFailure.Busy = WidgetRail.WidgetSdk.WidgetIndexedSelectionFailure.Busy
+enum WidgetRail.WidgetSdk.WidgetIndexedSelectionFailure.Changed = WidgetRail.WidgetSdk.WidgetIndexedSelectionFailure.Changed
 enum WidgetRail.WidgetSdk.WidgetLifecycleState.Background = WidgetRail.WidgetSdk.WidgetLifecycleState.Background
 enum WidgetRail.WidgetSdk.WidgetLifecycleState.Created = WidgetRail.WidgetSdk.WidgetLifecycleState.Created
 enum WidgetRail.WidgetSdk.WidgetLifecycleState.Destroying = WidgetRail.WidgetSdk.WidgetLifecycleState.Destroying
@@ -1149,16 +1151,35 @@ method WidgetRail.WidgetSdk.WidgetCapabilityQuery.<Clone>$() -> WidgetRail.Widge
 method WidgetRail.WidgetSdk.WidgetCapabilityQuery.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetCapabilityQuery.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetCapabilityQuery.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ApplicationsAsync(WidgetRail.WidgetProtocol.CaptureLibraryQuery query, string? search = null, int limit = 128, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryApplications>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ChooseSourceAsync(string label, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibrarySource?>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.CopyAsync(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.CaptureLibraryMutationReference> items, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryBatchResult>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.DeleteAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ExportAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryExport>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.FindAsync(WidgetRail.WidgetProtocol.CaptureLibraryQuery query, string id, string? revision = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryPosition>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.GetContextsAsync(string id, int offset = 0, int count = 16, string? revision = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryContextsPage>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.GetMetadataAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryItem>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.GetSourcesAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.CaptureLibrarySource>>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.GetThumbnailAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryThumbnail>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.GroupsAsync(WidgetRail.WidgetProtocol.CaptureLibraryQuery query, string? revision = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryGroups>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.LinkAsync(string sourceId, string relativePath, WidgetRail.WidgetProtocol.CaptureSaveContext? context = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryItem>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ListAsync(int offset = 0, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryPage>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.OpenAsync(string id, WidgetRail.WidgetProtocol.CaptureImageResolution resolution = WidgetRail.WidgetProtocol.CaptureImageResolution.Original, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureAttachment>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.OpenChangesAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<WidgetRail.WidgetProtocol.CaptureLibraryChanged>>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.OpenFolderAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.QueryAsync(WidgetRail.WidgetProtocol.CaptureLibraryQuery query, int offset = 0, int count = 40, string? revision = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryQueryPage>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ReadContentAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.Task<byte[]>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.RecycleAsync(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.CaptureLibraryMutationReference> items, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryBatchResult>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.RefreshAsync(int offset = 0, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryPage>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ReleaseAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.RemoveLinkAsync(WidgetRail.WidgetProtocol.CaptureLibraryMutationReference item, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.RemoveSourceAsync(string sourceId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.RemoveUnavailableAsync(WidgetRail.WidgetProtocol.CaptureLibraryMutationReference reference, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.RevealAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.SaveAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryItem>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.SaveWithContextAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, WidgetRail.WidgetProtocol.CaptureSaveContext context, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryContextSaveResult>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.UpdateMetadataAsync(string id, long expectedRevision, string? title, bool isFavorite, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryItem>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.UpdateMetadataBatchAsync(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.CaptureLibraryMetadataRequest> items, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryBatchResult>
 method WidgetRail.WidgetSdk.WidgetCaptureService.CancelAsync(WidgetRail.WidgetProtocol.WindowCaptureTicket ticket, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetCaptureService.CopyContentToAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.IO.Stream destination, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.Task
 method WidgetRail.WidgetSdk.WidgetCaptureService.DiscardAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
@@ -1338,10 +1359,15 @@ method WidgetRail.WidgetSdk.WidgetIdScope.Id(string name) -> string
 method WidgetRail.WidgetSdk.WidgetIdScope.KeyedId(string name, string durableKey) -> string
 method WidgetRail.WidgetSdk.WidgetIdScope.Scope(string segment) -> WidgetRail.WidgetSdk.WidgetIdScope
 method WidgetRail.WidgetSdk.WidgetIdScope.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.BeginSelection() -> void
+method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.ClearSelection() -> void
+method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.EndSelection() -> void
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.Enter(string collectionId, long requestId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.FocusTarget(string collectionId, WidgetRail.WidgetSdk.WidgetCollectionItemKey key, int index) -> WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.PublishQuery(TQuery query, int count) -> void
+method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.ReadSelectedAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<TItem>>
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.Reveal(string collectionId, long requestId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget item) -> WidgetRail.WidgetProtocol.ScrollRevealRequest
+method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.SelectAll() -> bool
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.UpdateContent(TQuery query) -> void
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.<Clone>$() -> WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.Equals(object? obj) -> bool
@@ -1350,12 +1376,14 @@ method WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.ToStrin
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.AcquireAsync(string collectionId, int startIndex, int count, string? pinnedLayoutId = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease>
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.AcquirePreviewAsync(string surfaceId, string key, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease>
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.ContinueAsync(string collectionId, bool retry = false, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.LocateAsync(string collectionId, WidgetRail.WidgetSdk.WidgetCollectionItemKey key, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<int?>
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.PublishSnapshot() -> WidgetRail.WidgetProtocol.ViewSnapshot
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.ResolveArtworkAsync(string itemKey, WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.ResolveArtworkSourceAsync(string itemKey, WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetArtworkSource?>
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.RouteAction(string itemKey, WidgetRail.WidgetProtocol.ControllerButton button, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? contextActionOwnerId = null, string? contextActionId = null, WidgetRail.WidgetProtocol.IndexedCollectionInputContext? context = null) -> WidgetRail.WidgetSdk.WidgetOperationAdmission?
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.RoutePreviewAction(string itemKey, string ownerId, string actionId, WidgetRail.WidgetProtocol.IndexedCollectionInputContext? context = null) -> WidgetRail.WidgetSdk.WidgetOperationAdmission?
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.RoutePreviewValueAction(string itemKey, string ownerId, string actionId, double value, WidgetRail.WidgetProtocol.IndexedCollectionInputContext? context = null) -> WidgetRail.WidgetSdk.WidgetOperationAdmission?
+method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.RouteSelection(string itemKey, WidgetRail.WidgetProtocol.IndexedSelectionInput selection, WidgetRail.WidgetProtocol.IndexedCollectionInputContext? context = null) -> WidgetRail.WidgetSdk.WidgetOperationAdmission?
 method WidgetRail.WidgetSdk.WidgetIndexedItemContext.Id(string name) -> string
 method WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.<Clone>$() -> WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs
 method WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.Deconstruct(out long Revision) -> void
@@ -2674,6 +2702,7 @@ property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,Syste
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>>? WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.ResolveArtwork { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetIndexedItemContext,WidgetRail.WidgetSdk.WidgetElement> WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.RenderItem { get; set; }
 property System.Func<TQuery,TItem,WidgetRail.WidgetSdk.WidgetIndexedItemContext,WidgetRail.WidgetSdk.WidgetElement> WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.RenderItem { get; set; }
+property System.Func<TQuery,WidgetRail.WidgetSdk.WidgetCollectionItemKey,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<int?>>? WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.FindIndex { get; set; }
 property System.Func<TQuery,int,int,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<TItem>>> WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.ReadRange { get; set; }
 property System.Func<TQuery,string?,int,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetDiscoveredPage<TItem>>> WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.LoadNext { get; set; }
 property System.Func<TState,TAuthority,TObservation,bool,bool> WidgetRail.WidgetSdk.WidgetOutOfBandCommandOptions<TState,TRequest,TObservation,TAuthority>.ConfirmsProjection { get; set; }
@@ -2771,6 +2800,8 @@ property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor? WidgetRail.Widge
 property WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget WidgetRail.WidgetSdk.WidgetCollectionReturnFocus.Item { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? WidgetRail.WidgetSdk.WidgetActionEvent.FocusedCollectionItem { get; set; }
 property WidgetRail.WidgetProtocol.IndexedCollectionRange WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.Range { get; }
+property WidgetRail.WidgetProtocol.IndexedCollectionSelection? WidgetRail.WidgetSdk.IndexedCollectionElement.Selection { get; }
+property WidgetRail.WidgetProtocol.IndexedCollectionSelection? WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.Selection { get; }
 property WidgetRail.WidgetProtocol.LineGraphDefinition WidgetRail.WidgetSdk.LineGraphElement.Graph { get; set; }
 property WidgetRail.WidgetProtocol.LoadingIndicatorSize WidgetRail.WidgetSdk.LoadingIndicatorElement.Size { get; set; }
 property WidgetRail.WidgetProtocol.MediaPlayerDefinition WidgetRail.WidgetSdk.MediaPlayerElement.Media { get; set; }
@@ -2897,6 +2928,7 @@ property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.NavigationShellDe
 property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.PickerOption.Icon { get; set; }
 property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.SelectOption.Icon { get; set; }
 property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.ToastElement.Icon { get; }
+property WidgetRail.WidgetSdk.WidgetIndexedSelectionFailure WidgetRail.WidgetSdk.WidgetIndexedSelectionException.Reason { get; }
 property WidgetRail.WidgetSdk.WidgetLoopbackHttpService WidgetRail.WidgetSdk.WidgetHostServices.Loopback { get; }
 property WidgetRail.WidgetSdk.WidgetMarketplaceService WidgetRail.WidgetSdk.WidgetHostServices.Marketplace { get; }
 property WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus WidgetRail.WidgetSdk.WidgetMediaSession.PlaybackStatus { get; set; }
@@ -3015,6 +3047,7 @@ property bool WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.Available { get; 
 property bool WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.MatchesCurrent { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetFileArtwork.PackageRelative { get; }
 property bool WidgetRail.WidgetSdk.WidgetFocusTargetResult.IsEnabled { get; }
+property bool WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.EnableSelection { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.PreserveOccurrences { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.InvalidateBearerSecretOnUnauthorized { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.InvalidateBearerSecretOnUnauthorized { get; set; }
@@ -3189,6 +3222,7 @@ property long? WidgetRail.WidgetSdk.WidgetPerformanceSnapshot.MemoryUsedBytes { 
 property long? WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata.LastWrittenUnixMilliseconds { get; set; }
 property static System.TimeSpan WidgetRail.WidgetSdk.WidgetTimedMutation.MaximumDelay { get; }
 property static WidgetRail.WidgetSdk.NavigationShellContentEntry WidgetRail.WidgetSdk.NavigationShellContentEntry.Unavailable { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetProtocol.CaptureLibraryChanged> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Changed { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioDevicesChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.DevicesChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioInputChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.InputChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioOutputChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.OutputChanged { get; }
@@ -3204,11 +3238,29 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetWifiRadioChanged> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.WifiRadioChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureAttachmentRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Discard { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureAttachmentRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Release { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryApplicationsRequest,WidgetRail.WidgetProtocol.CaptureLibraryApplications> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Applications { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryBatchMetadataRequest,WidgetRail.WidgetProtocol.CaptureLibraryBatchResult> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.UpdateMetadataBatch { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryChooseSourceRequest,WidgetRail.WidgetProtocol.CaptureLibrarySourceChoice> WidgetRail.WidgetSdk.WidgetCaptureLibrarySourceCapabilities.Choose { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryContextsRequest,WidgetRail.WidgetProtocol.CaptureLibraryContextsPage> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.GetContexts { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryCopyRequest,WidgetRail.WidgetProtocol.CaptureLibraryBatchResult> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Copy { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryFindRequest,WidgetRail.WidgetProtocol.CaptureLibraryPosition> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Find { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryGroupsRequest,WidgetRail.WidgetProtocol.CaptureLibraryGroups> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Groups { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryLinkRequest,WidgetRail.WidgetProtocol.CaptureLibraryLinkResult> WidgetRail.WidgetSdk.WidgetCaptureLibrarySourceCapabilities.Link { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryListRequest,WidgetRail.WidgetProtocol.CaptureLibraryPage> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.List { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryMetadataRequest,WidgetRail.WidgetProtocol.CaptureLibraryItem> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.UpdateMetadata { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryMutationReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.RemoveUnavailable { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryMutationReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureLibrarySourceCapabilities.RemoveLink { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryOpenRequest,WidgetRail.WidgetProtocol.CaptureAttachment> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Open { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryQueryRequest,WidgetRail.WidgetProtocol.CaptureLibraryQueryPage> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Query { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryRecycleRequest,WidgetRail.WidgetProtocol.CaptureLibraryBatchResult> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Recycle { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryReference,WidgetRail.WidgetProtocol.CaptureLibraryExport> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Export { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryReference,WidgetRail.WidgetProtocol.CaptureLibraryItem> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.GetMetadata { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Delete { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Reveal { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibrarySaveRequest,WidgetRail.WidgetProtocol.CaptureLibraryItem> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Save { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibrarySaveRequest,WidgetRail.WidgetProtocol.CaptureLibraryItem> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.SaveCurrent { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibrarySaveWithContextRequest,WidgetRail.WidgetProtocol.CaptureLibraryContextSaveResult> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.SaveWithContext { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibrarySourceReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureLibrarySourceCapabilities.Remove { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryThumbnailRequest,WidgetRail.WidgetProtocol.CaptureLibraryThumbnailChunk> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Thumbnail { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureReadRequest,WidgetRail.WidgetProtocol.CaptureReadChunk> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Read { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureReadRequest,WidgetRail.WidgetProtocol.CaptureReadChunk> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Read { get; }
@@ -3272,6 +3324,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetSavedNetworkProfile>> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.GetSavedProfiles { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetTaskWindow>> WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.List { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetProtocol.CaptureCapabilities> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Capabilities { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetProtocol.CaptureLibrarySources> WidgetRail.WidgetSdk.WidgetCaptureLibrarySourceCapabilities.List { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAudioInput> WidgetRail.WidgetSdk.WidgetAudioCapabilities.GetInput { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAudioOutput> WidgetRail.WidgetSdk.WidgetAudioCapabilities.GetOutput { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAudioSpatial> WidgetRail.WidgetSdk.WidgetAudioCapabilities.GetSpatial { get; }
@@ -3599,6 +3652,7 @@ type enum WidgetRail.WidgetSdk.WidgetCommandPolicy : System.IComparable, System.
 type enum WidgetRail.WidgetSdk.WidgetCursorDirection : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetDiscoveredDuplicatePolicy : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetFocusTargetState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum WidgetRail.WidgetSdk.WidgetIndexedSelectionFailure : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetLifecycleState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetLoadedCollectionChange : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetMediaPlaybackStatus : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -3780,6 +3834,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TIt
 type sealed class WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost : System.IDisposable
 type sealed class WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease : System.IDisposable
 type sealed class WidgetRail.WidgetSdk.WidgetIndexedItemContext
+type sealed class WidgetRail.WidgetSdk.WidgetIndexedSelectionException : System.Exception, System.Runtime.Serialization.ISerializable
 type sealed class WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs : System.IEquatable<WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs>
 type sealed class WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem> : WidgetRail.WidgetSdk.IWidgetIndexedCollection
 type sealed class WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>>
@@ -3881,6 +3936,7 @@ type static class WidgetRail.WidgetSdk.WidgetAppLibraryCapabilities
 type static class WidgetRail.WidgetSdk.WidgetAudioCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCaptureCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities
+type static class WidgetRail.WidgetSdk.WidgetCaptureLibrarySourceCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCommunityPlatformLimits
 type static class WidgetRail.WidgetSdk.WidgetDisplayControlsCapabilities
 type static class WidgetRail.WidgetSdk.WidgetDisplayProfilesCapabilities

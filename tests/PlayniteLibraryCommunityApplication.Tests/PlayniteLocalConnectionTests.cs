@@ -11,6 +11,41 @@ namespace PlayniteLibraryCommunityApplication.Tests;
 public sealed class PlayniteLocalConnectionTests
 {
     [TestMethod]
+    public async Task CaptureSettingsCommandsUseTypedRoutesAndFenceCapturedConnectionBeforeDispatch()
+    {
+        using var fixture=new LocalFixture();using var client=PlayniteBridgeClient.CreateLocal(fixture,new Credentials());
+        var writes=0;
+        fixture.CaptureHandler=request=>
+        {
+            if(request.Path!="/v1/capture-settings")return null;
+            if(request.Method=="PATCH")
+            {
+                writes++;Assert.IsTrue(Guid.TryParseExact(request.CommandId,"D",out _));
+                using var body=JsonDocument.Parse(request.Body);
+                Assert.AreEqual(new string('a',64),body.RootElement.GetProperty("expectedRevision").GetString());
+                Assert.IsTrue(body.RootElement.GetProperty("settings").GetProperty("screenshotsEnabled").GetBoolean());
+            }
+            return new(200,JsonSerializer.SerializeToUtf8Bytes(new{availability="ready",revision=new string('a',64),editing=false,
+                settings=new{screenshotsEnabled=request.Method=="PATCH"},options=new{}}));
+        };
+        var settings=await client.GetCaptureSettingsAsync(default);
+        var saved=await client.UpdateCaptureSettingsAsync(settings,new Dictionary<string,JsonElement>{{"screenshotsEnabled",JsonSerializer.SerializeToElement(true)}},default);
+        Assert.IsTrue(saved.Values["screenshotsEnabled"].GetBoolean());Assert.AreEqual(1,writes);
+        fixture.Binding=Guid.NewGuid().ToString("D");client.ResetConnection();
+        await Assert.ThrowsAsync<PlayniteBridgeTransportException>(async()=>await client.UpdateCaptureSettingsAsync(settings,new Dictionary<string,JsonElement>{{"screenshotsEnabled",JsonSerializer.SerializeToElement(true)}},default));
+        await Assert.ThrowsAsync<PlayniteBridgeTransportException>(async()=>await client.GetCaptureSettingsForConnectionAsync(settings.ConnectionId!,default));
+        Assert.AreEqual(1,writes,"A captured old-profile settings edit must never reach the new profile.");
+        Assert.IsFalse(fixture.Paths.Any(path=>path.Contains("eval",StringComparison.Ordinal)));
+    }
+    [TestMethod]
+    public async Task OldPluginCaptureEndpointsProduceNormalUnavailableResults()
+    {
+        using var fixture=new LocalFixture();using var client=PlayniteBridgeClient.CreateLocal(fixture,new Credentials());
+        fixture.CaptureHandler=request=>request.Path.StartsWith("/v1/capture-",StringComparison.Ordinal)?LocalApiResponse.Error(404,"not_found"):null;
+        Assert.AreEqual("unsupported",(await client.GetCaptureSettingsAsync(default)).Availability);
+        Assert.IsNull(await client.GetCaptureIntegrationAsync(default));
+    }
+    [TestMethod]
     public async Task TypedEventsStartAtCurrentCursorAndProviderRefreshIsOneCommand()
     {
         using var fixture = new LocalFixture();
@@ -105,6 +140,7 @@ public sealed class PlayniteLocalConnectionTests
         internal bool BlockGameRead;
         internal int Refreshes;
         internal bool OperationRunning;
+        internal Func<LocalApiRequest,LocalApiResponse?>? CaptureHandler;
         private string? operation;
         internal readonly TaskCompletionSource ReadStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource ReleaseRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -123,6 +159,7 @@ public sealed class PlayniteLocalConnectionTests
         public async Task<LocalApiResponse> DispatchAsync(LocalApiRequest request, CancellationToken token)
         {
             Paths.Add(request.Path);
+            if(CaptureHandler?.Invoke(request) is { } custom)return custom;
             if (request.Path.EndsWith("/achievements/refresh", StringComparison.Ordinal))
             {
                 Refreshes++; operation = request.CommandId;

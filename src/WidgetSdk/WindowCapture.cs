@@ -111,7 +111,8 @@ public sealed class WidgetCaptureService
     /// <summary>Read only this widget's capture; callers must obtain separate consent before uploading it.</summary>
     public async Task<byte[]> ReadContentAsync(CaptureAttachment attachment, CancellationToken cancellationToken = default)
     {
-        if (!attachment.IsWellFormed()) throw new ArgumentException("Invalid capture attachment.", nameof(attachment));
+        if (attachment is null || !attachment.IsWellFormed() || attachment.ByteLength > CaptureLimits.MaximumAttachmentBytes)
+            throw new ArgumentException("Use CopyContentToAsync for media larger than the bounded in-memory capture limit.", nameof(attachment));
         using var output = new MemoryStream((int)attachment.ByteLength);
         await CopyContentToAsync(attachment, output, cancellationToken).ConfigureAwait(false);
         return output.GetBuffer(); // Exact-sized convenience path for small files.

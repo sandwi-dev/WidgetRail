@@ -50,7 +50,7 @@ internal sealed partial class OverlayShellPage
     {
         // Collapsing the retained widget during hide makes XAML choose another
         // focusable control. That fallback is not a user transfer to the tray.
-        if (retired || !visible || FocusedTrayWidget() is not { } descriptor) return;
+        if (retired || !visible || fullscreenLayer.IsOpen || fullscreenLayer.IsRestoringFocus || FocusedTrayWidget() is not { } descriptor) return;
         if (utilityPanel is { } panel && !nativeTrayFocusTransferAllowed)
         {
             if (utilityEntered) panel.RestoreEntryFocus();
@@ -90,6 +90,7 @@ internal sealed partial class OverlayShellPage
     // Removing a pointer-focused control can retain FocusState.Pointer on WinUI's
     // fallback target. It is only user navigation outside a presentation commit.
     private bool AllowsNativeShellFocusTransfer(GettingFocusEventArgs args) =>
-        !interactive || (!switching && surface?.IsApplyingPresentation != true &&
-            (args.FocusState == FocusState.Pointer || args.Direction != FocusNavigationDirection.None));
+        !fullscreenLayer.IsOpen && !fullscreenLayer.IsRestoringFocus &&
+        (!interactive || (!switching && surface?.IsApplyingPresentation != true &&
+            (args.FocusState == FocusState.Pointer || args.Direction != FocusNavigationDirection.None)));
 }

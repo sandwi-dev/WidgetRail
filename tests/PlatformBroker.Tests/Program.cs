@@ -540,7 +540,10 @@ static Task CapabilityVocabularyIsClosed()
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.WindowCaptureV1)
         .InFlightContinuationOperations!.SetEquals(["capture.web-prepare", "capture.web-prepare-constrained"]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.CaptureLibraryManageV1)
-        .InFlightContinuationOperations!.SetEquals(["capture-library.open-folder"]));
+        .InFlightContinuationOperations!.SetEquals(["capture-library.open-folder", "capture-library.reveal", "capture-library.copy", "capture-library.choose-source"]));
+    var captureSave = PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.CaptureLibrarySaveV1);
+    Assert.True(captureSave.Operations.SetEquals(["capture-library.save", "capture-library.save-current", "capture-library.save-context"]));
+    Assert.True(!captureSave.AllowsBackground && !captureSave.AllowsDashboardGesture && (captureSave.InFlightContinuationOperations?.Count ?? 0) == 0);
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.AppLibraryLaunchV1)
         .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.AppLibraryLaunch, PlatformCapabilities.AppLibraryLaunchObserved]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.TaskWindowsSwitchV1)

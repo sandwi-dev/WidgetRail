@@ -19,6 +19,14 @@ public sealed partial class WidgetBridgeServer
             case BridgeMessageTypes.TakeCapture:
                 var pending = captures.Take();
                 var (catalog, _) = _registry.CatalogSnapshot();
+                var sourceFolder = CaptureLibrarySourceRequests.Pending;
+                var sourceWidget = sourceFolder is null ? null : catalog.Widgets.FirstOrDefault(item => item.InstanceId == sourceFolder.Widget.InstanceId);
+                if (sourceFolder is not null && (sourceWidget is null || !await CaptureAllowedAsync(sourceFolder.Widget, token, PlatformCapabilities.CaptureLibraryManageV1).ConfigureAwait(false)))
+                { CaptureLibrarySourceRequests.Complete(sourceFolder.Id, null); sourceFolder = null; }
+                var copy = CaptureLibraryCopyRequests.Pending;
+                var copyWidget = copy is null ? null : catalog.Widgets.FirstOrDefault(item => item.InstanceId == copy.Widget.InstanceId);
+                if (copy is not null && (copyWidget is null || !await CaptureAllowedAsync(copy.Widget, token, PlatformCapabilities.CaptureLibraryManageV1).ConfigureAwait(false)))
+                { CaptureLibraryCopyRequests.Complete(copy.Id, null); copy = null; }
                 var folder = CaptureLibraryFolderRequests.Pending;
                 var folderWidget = folder is null ? null : catalog.Widgets.FirstOrDefault(item=>item.InstanceId==folder.Widget.InstanceId);
                 if(folder is not null && (folderWidget is null || !await CaptureAllowedAsync(folder.Widget,token,PlatformCapabilities.CaptureLibraryManageV1).ConfigureAwait(false)))
@@ -28,7 +36,35 @@ public sealed partial class WidgetBridgeServer
                 { captures.Complete(new(pending.RequestId, 0, 0, 0, "permission_denied")); pending = null; }
                 await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureTake(pending, widget?.Id) {
                     NeedsCapabilities = captures.NeedsCapabilities, NeedsEncodingCapabilities = captures.NeedsEncodingCapabilities,
-                    RecordingDiscoveries = captures.RecordingDiscoveries, OpenFolder=folder, FolderWidgetId=folderWidget?.Id }, token).ConfigureAwait(false);
+                    SourceFolder = sourceFolder, SourceWidgetId = sourceWidget?.Id, RecordingDiscoveries = captures.RecordingDiscoveries, CopyDestination = copy, CopyWidgetId = copyWidget?.Id, OpenFolder=folder, FolderWidgetId=folderWidget?.Id }, token).ConfigureAwait(false);
+                break;
+            case BridgeMessageTypes.CompleteCaptureSource:
+                var sourceResult = BridgeJson.FromElement<BridgeCaptureCopyDestination>(request.Payload);
+                var sourcePending = CaptureLibrarySourceRequests.Pending;
+                var sourceAllowed = sourcePending?.Id == sourceResult.Id && await CaptureAllowedAsync(sourcePending.Widget, token, PlatformCapabilities.CaptureLibraryManageV1).ConfigureAwait(false);
+                CaptureLibrarySourceRequests.Complete(sourceResult.Id, sourceAllowed ? sourceResult.Destination : null);
+                await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureCurrent(sourceAllowed), token).ConfigureAwait(false);
+                break;
+            case BridgeMessageTypes.CheckCaptureSource:
+                var sourceCheck = BridgeJson.FromElement<BridgeCaptureReference>(request.Payload);
+                var sourceChoosing = CaptureLibrarySourceRequests.Pending;
+                var sourceCurrent = sourceChoosing?.Id == sourceCheck.RequestId && await CaptureAllowedAsync(sourceChoosing.Widget, token, PlatformCapabilities.CaptureLibraryManageV1).ConfigureAwait(false);
+                if (!sourceCurrent && sourceChoosing?.Id == sourceCheck.RequestId) CaptureLibrarySourceRequests.Complete(sourceCheck.RequestId, null);
+                await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureCurrent(sourceCurrent), token).ConfigureAwait(false);
+                break;
+            case BridgeMessageTypes.CompleteCaptureCopy:
+                var copyResult = BridgeJson.FromElement<BridgeCaptureCopyDestination>(request.Payload);
+                var copyPending = CaptureLibraryCopyRequests.Pending;
+                var copyAllowed = copyPending?.Id == copyResult.Id && await CaptureAllowedAsync(copyPending.Widget, token, PlatformCapabilities.CaptureLibraryManageV1).ConfigureAwait(false);
+                CaptureLibraryCopyRequests.Complete(copyResult.Id, copyAllowed ? copyResult.Destination : null);
+                await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureCurrent(copyAllowed), token).ConfigureAwait(false);
+                break;
+            case BridgeMessageTypes.CheckCaptureCopy:
+                var copyCheck = BridgeJson.FromElement<BridgeCaptureReference>(request.Payload);
+                var choosing = CaptureLibraryCopyRequests.Pending;
+                var copyCurrent = choosing?.Id == copyCheck.RequestId && await CaptureAllowedAsync(choosing.Widget, token, PlatformCapabilities.CaptureLibraryManageV1).ConfigureAwait(false);
+                if (!copyCurrent && choosing?.Id == copyCheck.RequestId) CaptureLibraryCopyRequests.Complete(copyCheck.RequestId, null);
+                await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureCurrent(copyCurrent), token).ConfigureAwait(false);
                 break;
             case BridgeMessageTypes.CompleteCaptureFolder:
                 var folderResult=BridgeJson.FromElement<BridgeCaptureFolderResult>(request.Payload);

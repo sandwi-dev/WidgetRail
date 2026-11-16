@@ -83,8 +83,6 @@ internal sealed partial class OverlayShellPage
         AutomationProperties.SetName(slot, AutomationProperties.GetName(browser.CompositionRoot));
         var layout = new Grid { RowDefinitions = { new() { Height = new(1, GridUnitType.Star) }, new() { Height = GridLength.Auto } } };
         layout.Children.Add(slot);
-        TrayHelp.Content = null;
-        Grid.SetRow(trayGuide, 1); layout.Children.Add(trayGuide);
         expandedBrowser = slot;
         slot.InteractionChanged = PublishControllerGuide;
         var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -116,7 +114,7 @@ internal sealed partial class OverlayShellPage
                     if (browserOwner is not { } current) return;
                     current.Collapse(slot);
                     await current.ReleaseSlotsAsync((BrowserSlot[])[slot]);
-                }));
+                }, Detach: () => { TrayHelp.Content = null; Grid.SetRow(trayGuide, 1); layout.Children.Add(trayGuide); }));
             // The destination must be loaded and arranged before BrowserOwner
             // can admit it as a display slot or transfer a native controller.
             await settled.Task.WaitAsync(TimeSpan.FromSeconds(5), token);

@@ -23,6 +23,8 @@ internal sealed class GeminiGameHelpService(Func<WidgetHostServices> services) :
             var key = keys.Read(token) ?? throw new GameHelpException("key_required", "Add your Gemini API key in Game Help settings.");
             if (request.Attachment is { } attachment)
             {
+                if (attachment.ByteLength > CaptureLimits.MaximumContextBytes)
+                    throw new GameHelpException("context_too_large", "Choose a shorter clip or a screenshot for game context.");
                 diagnostics.SetStage("capture-read");
                 content = await services().Capture.ReadContentAsync(attachment, token).ConfigureAwait(false);
             }

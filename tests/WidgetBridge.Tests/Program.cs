@@ -77,6 +77,11 @@ if (args is ["--serve-indexed-validation", var validationPipe])
     await BridgeIndexedEndToEndScenarios.ServeValidationAsync(validationPipe);
     return 0;
 }
+if (args is ["--serve-selection-validation", var selectionPipe, var selectionSettingsRoot])
+{
+    await BridgeIndexedEndToEndScenarios.ServeThemedValidationAsync(selectionPipe, selectionSettingsRoot, selectionFixture: true);
+    return 0;
+}
 if (args is ["--serve-themed-indexed-validation", var themedPipe, var themeSettingsRoot])
 {
     await BridgeIndexedEndToEndScenarios.ServeThemedValidationAsync(themedPipe, themeSettingsRoot);
@@ -274,6 +279,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Installed worker local data clears after exact retirement and preserves its neighbor", InstalledWorkerLocalDataClearIsExact),
     ("Built-in local data resolves disabled runtime aliases without touching installed copies", BuiltInLocalDataIsSourceScoped),
     ("Disabled package uninstall is exact revisioned and preserves unrelated files", InstalledPackageUninstallIsExact),
+    ("Capture sources survive reviewed successor and retire exact uninstalled owners", InstalledCaptureSourceLifecycle),
     ("Tampered installed catalogs fail soft to trusted widgets", TamperedInstalledCatalogFailsSoft),
     ("Invalid installed styles fail soft to trusted widgets", InvalidInstalledStyleFailsSoft),
     ("Catalog monitor retains invalid trusted state and fails closed on installed state", CatalogMonitorIsRevisionedAndLastGood),
@@ -521,6 +527,7 @@ static async Task<int> RunWorkerAsync(string[] arguments)
             : instance == "pinned-demand.instance" ? new PinnedDemandBridgeScenarios.Probe()
             : string.Equals(instance, "discovered.instance", StringComparison.Ordinal)
             ? new DiscoveredBridgeWidget()
+            : instance == "indexed-selection.instance" ? new IndexedOwnedBridgeProbeWidget(selectionFixture: true)
             : string.Equals(instance, "indexed-owned.instance", StringComparison.Ordinal)
             ? new IndexedOwnedBridgeProbeWidget()
             : string.Equals(instance, "indexed-return.instance", StringComparison.Ordinal)
@@ -3748,6 +3755,36 @@ static async Task InstalledWorkerLocalDataClearIsExact()
                                                OperationCanceledException or
                                                ObjectDisposedException) { }
     }
+}
+
+static async Task InstalledCaptureSourceLifecycle()
+{
+    using var temporary = new TemporaryDirectory("wrail-capture-source-lifecycle");
+    var profile = temporary.Path;
+    var previousCatalog = new WidgetRail.WidgetCatalog.WidgetCatalog(Path.Combine(profile, "old-catalog"));
+    var currentCatalog = new WidgetRail.WidgetCatalog.WidgetCatalog(Path.Combine(profile, "current-catalog"));
+    const string id = "dev.example.capture-sources";
+    var permissions = new[] { PlatformCapabilities.CaptureLibraryReadV1, PlatformCapabilities.CaptureLibraryManageV1 };
+    var previous = await InstallWidgetAsync(previousCatalog, profile, id, false, permissions: permissions, version: "1.0.0");
+    var current = await InstallWidgetAsync(currentCatalog, profile, id, false, permissions: permissions, version: "2.0.0");
+    var oldIdentity = InstalledWidgetAuthority.Identity(previous);
+    var newIdentity = InstalledWidgetAuthority.Identity(current);
+    Assert.Equal(InstalledWidgetInstanceIdentity.Derive(id, "2.0.0"), newIdentity.InstanceId);
+    using var captures = new CaptureLibraryStore(Path.Combine(profile, "capture-library-v2"), Path.Combine(profile, "owned"));
+    var provider = Directory.CreateDirectory(Path.Combine(profile, "provider")).FullName;
+    var grant = await captures.AddSourceAsync(provider, "Provider captures", oldIdentity, default);
+    await new WidgetSettingsTransfer(Path.Combine(profile, "widget-state"), new ConsentStore(Path.Combine(profile, "consent")))
+        .CopyAsync(previous, current, default);
+    Assert.Equal(grant.Id, (await captures.SourcesAsync(newIdentity, default)).Items.Single().Id);
+    await previousCatalog.UninstallAsync(id);
+    Assert.Equal(0, (await captures.SourcesAsync(oldIdentity, default)).Items.Count);
+    Assert.Equal(grant.Id, (await captures.SourcesAsync(newIdentity, default)).Items.Single().Id);
+    await currentCatalog.UninstallAsync(id);
+    Assert.Equal(0, (await captures.SourcesAsync(newIdentity, default)).Items.Count);
+    var reinstalled = await InstallWidgetAsync(currentCatalog, profile, id, false, permissions: permissions, version: "2.0.0");
+    var fresh = await captures.AddSourceAsync(provider, "Reinstalled provider", InstalledWidgetAuthority.Identity(reinstalled), default);
+    Assert.True(fresh.Id != grant.Id, "Reinstallation inherited a retired folder grant instead of requesting fresh access.");
+    Assert.True(Directory.Exists(provider), "Uninstall removed the provider folder.");
 }
 
 static async Task InstalledPackageUninstallIsExact()

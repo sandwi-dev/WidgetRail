@@ -11,8 +11,8 @@ internal sealed partial class OverlayShellPage
     private Task? capturePump, capturing;
     private string? nativeCaptureActivityWidget;
     private readonly HashSet<string> captureDiscoveries = [];
-    internal Func<string,Func<Task<bool>>,CancellationToken,Task<bool>>? OpenCaptureFolderRequested { get; set; }
-    private Task? openingCaptureFolder;
+    internal Func<string,string?,Func<Task<bool>>,CancellationToken,Task<bool>>? OpenCaptureFolderRequested { get; set; }
+    private Task? openingCaptureFolder, choosingCaptureCopy, choosingCaptureSource;
     private async Task PumpCaptureAsync()
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(350));
@@ -29,6 +29,10 @@ internal sealed partial class OverlayShellPage
                     if (next.NeedsEncodingCapabilities)
                         BeginCaptureDiscovery(null);
                     foreach (var discovery in next.RecordingDiscoveries) BeginCaptureDiscovery(discovery);
+                    if (next.SourceFolder is { } source && choosingCaptureSource is not { IsCompleted: false })
+                        choosingCaptureSource = ChooseCaptureSourceAsync(source, next.SourceWidgetId);
+                    if (next.CopyDestination is { } copy && choosingCaptureCopy is not { IsCompleted: false })
+                        choosingCaptureCopy = ChooseCaptureCopyAsync(copy, next.CopyWidgetId);
                     if(next.OpenFolder is { } folder && openingCaptureFolder is not { IsCompleted:false })
                         openingCaptureFolder=OpenCaptureFolderAsync(folder,next.FolderWidgetId);
                     if (next.Request is not null) capturing = RunCaptureAsync(next);
@@ -47,7 +51,7 @@ internal sealed partial class OverlayShellPage
         try
         {
             if(!retired && visible && foreground && interactive && activeWidget==widgetId && !HostChoiceActive && !LocalInstallActive && !SystemFilePickerOpen && OpenCaptureFolderRequested is { } open)
-                opened=await open(folder.Path,()=>owner!.Session.IsCaptureFolderCurrentAsync(folder.Id,lifetime.Token),lifetime.Token);
+                opened=await open(folder.Path,folder.FileName,()=>owner!.Session.IsCaptureFolderCurrentAsync(folder.Id,lifetime.Token),lifetime.Token);
         }
         catch(Exception error) when(error is not OutOfMemoryException)
         { if(!retired) Diagnostics.FrontendFailureLog.Current.Write("capture-folder",error); }
@@ -96,6 +100,9 @@ internal sealed partial class OverlayShellPage
         {
             if (retired || !visible || !foreground || !interactive || activeWidget != next.WidgetId || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen)
                 throw new OperationCanceledException();
+            var widgetId = next.WidgetId ?? throw new OperationCanceledException();
+            var captureSelection = selectionVersion;
+            bool Current() => !retired && visible && foreground && interactive && activeWidget == widgetId && selectionVersion == captureSelection;
             var video = request.Kind == WindowCaptureKind.Video;
             var delay = preparation.DelaySeconds == 0 ? "after WidgetRail hides" : $"after a {preparation.DelaySeconds}-second countdown";
             var imageSize = request.Options?.Screenshot is { } image ? image.MaximumWidth is null ? "full-resolution" : $"up to {image.MaximumWidth} × {image.MaximumHeight}" :
@@ -104,14 +111,14 @@ internal sealed partial class OverlayShellPage
                 $"\n{settings.MaximumWidth} × {settings.MaximumHeight} maximum · {settings.FramesPerSecond} fps · {settings.Encoder.ToString().ToLowerInvariant()} encoding." : "";
             var applicationAudio = request.Options?.Recording?.Audio == CaptureAudioMode.Application;
             var audioDescription = applicationAudio ? "Application audio will be recorded. The microphone will not be recorded." : "No audio will be recorded.";
-            var selected = await ShowHostChoiceAsync(video ? "Record application?" : "Take screenshot?",
-                "WidgetRail will hide. Bring the application you want to capture to the foreground.\n\n" +
+            var description = "WidgetRail will hide. Bring the application you want to capture to the foreground.\n\n" +
                 (video ? $"Recording starts {delay} and lasts up to {duration} seconds. {audioDescription}{encoding}" :
                     $"A {imageSize} screenshot will be taken {delay}.") +
                 " The application in front when capture begins will be captured." +
-                (video && request.Options is not null ? "\n\nReopen WidgetRail to finish recording and review it." : "\n\nReopen WidgetRail when finished to review your capture."),
-                (HostDialogChoice[])[new("proceed", "Proceed")], token, directDecisionButtons:true);
-            if (selected != "proceed" || HideForCaptureRequested is null || !await session.IsCaptureCurrentAsync(request.RequestId, token) ||
+                (video && request.Options is not null ? "\n\nReopen WidgetRail to finish recording and review it." : "\n\nReopen WidgetRail when finished to review your capture.");
+            if (!await ConfirmCaptureAsync(widgetId, video, description,
+                    async () => Current() && await session.IsCaptureCurrentAsync(request.RequestId, token), token) ||
+                !Current() || HideForCaptureRequested is null || !await session.IsCaptureCurrentAsync(request.RequestId, token) ||
                 !await HideForCaptureRequested(token)) throw new OperationCanceledException();
             renewal = RenewAsync();
             CaptureIndicator? indicator = null;

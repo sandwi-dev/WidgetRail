@@ -82,5 +82,10 @@
   "src/WidgetSdk/DisplayControls.cs": "docs/reference/display-profiles.md",
   "src/WidgetSdk/TextSuggestions.cs": "docs/reference/text-suggestions.md",
   "src/WidgetSdk/WidgetArtworkSource.cs": "docs/reference/collections.md",
-  "src/WidgetSdk/WidgetFocusPreviewSource.cs": "docs/developers/presentation-retention.md"
+  "src/WidgetSdk/WidgetFocusPreviewSource.cs": "docs/developers/presentation-retention.md",
+  "src/WidgetSdk/CaptureLibrary.Copy.cs": "docs/reference/capture-library.md",
+  "src/WidgetSdk/CaptureLibrary.Sources.cs": "docs/reference/capture-library.md",
+  "src/WidgetSdk/WidgetIndexedCollection.Selection.cs": "docs/developers/indexed-collections.md",
+  "src/WidgetSdk/WidgetIndexedCollection.Lookup.cs": "docs/developers/indexed-collections.md",
+  "src/WidgetSdk/CaptureLibrary.Context.cs": "docs/reference/capture-library.md"
 }

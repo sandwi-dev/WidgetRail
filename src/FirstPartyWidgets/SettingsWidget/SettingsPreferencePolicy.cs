@@ -17,6 +17,7 @@ internal enum SettingsPreferenceKind
     BoldText,
     ReducedTransparency,
     AcrylicEffects,
+    RestoreCaptureConfirmations,
     AnimateWidgetSwitching,
     FocusAnimation,
     SectionAnimation,
@@ -51,6 +52,8 @@ internal readonly record struct SettingsPreferenceMutation(
 
     public PlatformSettingsDocument Apply(PlatformSettingsDocument current)
     {
+        if (Kind == SettingsPreferenceKind.RestoreCaptureConfirmations)
+            return current with { CaptureConfirmations = current.CaptureConfirmations.Reset() };
         if (!IsScale || DisplayId is null)
             return current with { Appearance = Apply(current.Appearance) };
         var scale = DisplayScalePolicy.Resolve(current.Appearance, DisplayId);
@@ -249,6 +252,7 @@ internal static class SettingsPreferencePolicy
                 SettingsPreferenceKind.ContrastHigh, "Contrast preference saved"),
             "bold-text.toggle" => new(
                 SettingsPreferenceKind.BoldText, "Bold text preference saved"),
+            "capture-confirmations.restore" => new(SettingsPreferenceKind.RestoreCaptureConfirmations, "Capture confirmations restored"),
             "acrylic-effects.toggle" => new(SettingsPreferenceKind.AcrylicEffects, "Acrylic effects preference saved"),
             "transparency.reduced" => new(
                 SettingsPreferenceKind.ReducedTransparency,

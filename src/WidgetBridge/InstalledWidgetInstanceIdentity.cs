@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 
 namespace WidgetRail.WidgetBridge;
 
@@ -9,7 +7,6 @@ internal static class InstalledWidgetInstanceIdentity
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(version);
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{packageId}@{version}"));
-        return $"installed.{Convert.ToHexString(hash.AsSpan(0, 16)).ToLowerInvariant()}";
+        return WidgetRail.WidgetCatalog.InstalledWidgetAuthority.InstanceId(packageId, version);
     }
 }

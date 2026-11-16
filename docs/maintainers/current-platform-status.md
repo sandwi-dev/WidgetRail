@@ -1,10 +1,11 @@
 # Current platform status
 
-Reviewed against source on 2026-11-15: local application candidate `0.1.0-preview.40.local.1`, SDK/CLI
-`0.4.8-dev`. The presentation contract is protocol 110, including backend web
+Reviewed against source on 2026-11-16: local application candidate `0.1.0-preview.40.local.1`, SDK/CLI
+`0.4.8-dev`. The presentation contract is protocol 114, including backend web
 sessions, native capture, explicit modal dismissal, exact pin-selection identities,
 interactive/passive pin declarations, desktop acrylic surfaces, opted-in pin
-restoration, and numeric values in interactive rich previews. The local refinement
+restoration, numeric values in interactive rich previews, graph empty-state text,
+bounded indexed selection, query-bound occurrence lookup, and extended saved-video metadata. The local refinement
 branch supports up to six pins with shared adjustment controls, three incoming
 Discord streams, and the independent local Playnite integration; see
 [implementation and qualification](../input-discord-refinements-plan.md).

@@ -114,6 +114,7 @@ public sealed partial class CaptureLibraryWidget
         var items = new List<WidgetElement> {
             UI.Text("Capture settings", "capture-library.settings.title").Classes("capture-title"),
             UI.Button("Back to library", "capture-library.settings.back", "capture-library.settings.back"),
+            UI.Button("Capture folders", "capture-library.sources.open", "capture-library.sources.open").Busy(state.Busy),
         };
         if(state.Page is { } library) items.Add(UI.Stack("capture-library.settings.storage",
             UI.Text("Storage","capture-library.settings.storage.title").Classes("capture-heading"),
@@ -181,16 +182,5 @@ public sealed partial class CaptureLibraryWidget
         .OpenIntent(WidgetIntentContracts.WidgetPermissions, JsonSerializer.SerializeToElement(new { packageId = "widgetrail.firstparty.capture-library" }),
             WidgetIntentPresentation.OpenWidget);
 
-    public override async ValueTask<WidgetEncodedArtwork?> OnResolveArtworkAsync(WidgetArtworkHandle handle, CancellationToken cancellationToken = default)
-    {
-        var item=model.Value.Page?.Items.FirstOrDefault(item=>ArtworkKey(item)==handle.Value && item.Available);
-        if(item is null) return null;
-        try
-        {
-            var thumbnail = await HostServices.CaptureLibrary.GetThumbnailAsync(item.Id, cancellationToken);
-            return new(WidgetArtworkContentType.Png, thumbnail.Bytes);
-        }
-        catch (WidgetCapabilityException) { return null; }
-    }
     private static string ArtworkKey(CaptureLibraryItem item)=>item.Id+"."+item.Revision.ToString("x",System.Globalization.CultureInfo.InvariantCulture);
 }

@@ -20,6 +20,10 @@ public sealed record WidgetIndexedCollectionOptions<TQuery, TItem> where TQuery 
     /// Return null for queries that do not opt in. The host retains surviving focus and viewport; this never authorizes stale row actions.</summary>
     public Func<TQuery, IReadOnlyList<WidgetCollectionItemKey>?>? OccurrenceKeys { get; init; }
     public TimeSpan ReadTimeout { get; init; } = TimeSpan.FromSeconds(10);
+    /// <summary>Opt into bounded framework-owned selection; ordinary activation is unchanged until BeginSelection.</summary>
+    public bool EnableSelection { get; init; }
+    /// <summary>Locate a surviving occurrence in this immutable finite query, without fetching or rendering the full collection.</summary>
+    public Func<TQuery, WidgetCollectionItemKey, CancellationToken, ValueTask<int?>>? FindIndex { get; init; }
 }
 
 public sealed class WidgetIndexedItemContext
@@ -41,6 +45,7 @@ internal interface IWidgetIndexedCollection
 {
     IndexedCollectionDescriptor Descriptor { get; }
     ValueTask<WidgetIndexedRead> ReadAsync(IndexedCollectionRangeRequest request, CancellationToken cancellationToken);
+    ValueTask<int?> LocateAsync(IndexedCollectionRangeRequest request, CancellationToken cancellationToken) => throw new NotSupportedException("This source does not support key lookup.");
     ValueTask ContinueAsync(IndexedCollectionRangeRequest request, CancellationToken cancellationToken) =>
         ValueTask.FromException(new InvalidOperationException("This source is a complete indexed query."));
 }
@@ -50,7 +55,7 @@ internal interface IWidgetIndexedCollection
 /// updating content preserves all keys and their positions. Neither method renders
 /// every item. Widget data/provider code stays in the worker process.
 /// </summary>
-public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedCollection where TQuery : notnull where TItem : notnull
+public sealed partial class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedCollection where TQuery : notnull where TItem : notnull
 {
     private sealed class Query(TQuery value, IndexedCollectionDescriptor descriptor, CancellationTokenSource lifetime, IReadOnlyList<string>? keys = null)
     {
@@ -80,7 +85,7 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
         if (options.ReadTimeout < TimeSpan.FromMilliseconds(100) || options.ReadTimeout > TimeSpan.FromSeconds(30))
             throw new ArgumentOutOfRangeException(nameof(options.ReadTimeout));
         this.options = options; this.changed = changed; this.widgetLifetime = widgetLifetime;
-        current = new(query, new(sourceId, 1, 0, count), new(), CaptureKeys(query, count));
+        current = new(query, new IndexedCollectionDescriptor(sourceId, 1, 0, count) { CanLocateItems = options.FindIndex is not null }, new(), CaptureKeys(query, count));
     }
 
     private IReadOnlyList<string>? CaptureKeys(TQuery query, int count)
@@ -97,6 +102,9 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
 
     internal (IndexedCollectionDescriptor Source, IReadOnlyList<string>? Keys) CaptureDeclaration()
     { lock (gate) return (current.Descriptor, current.Keys); }
+
+    internal (IndexedCollectionDescriptor Source, IReadOnlyList<string>? Keys, IndexedCollectionSelection? Selection) CaptureSelectableDeclaration()
+    { lock (gate) return (current.Descriptor, current.Keys, SelectionLocked()); }
 
     public IndexedCollectionDescriptor Descriptor { get { lock (gate) return current.Descriptor; } }
 
@@ -141,6 +149,7 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
             widgetLifetime.ThrowIfCancellationRequested();
             previous = current;
             current = new(query, current.Descriptor with { QueryGeneration = checked(current.Descriptor.QueryGeneration + 1), ContentRevision = 0, Count = count, Discovery = discovery }, new(), keys);
+            ResetSelectionLocked(selectionActive);
         }
         try { Retire(previous); }
         finally { changed(); }
@@ -251,7 +260,9 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
             var declaration = new IndexedCollectionItem(key.Value,
                 WidgetDeclarationSnapshot.Freeze(node with { CollectionItemKey = key.Value }, 1, ref nodeCount));
             result[index] = new(declaration,
-                (action, token) => options.OnAction(captured.Value, item, action, token),
+                (action, token) => action.CollectionSelection is { } selection
+                    ? ApplySelectionAsync(captured, context.Index, selection, token)
+                    : options.OnAction(captured.Value, item, action, token),
                 options.ResolveArtwork is { } resolver ? (handle, token) => resolver(captured.Value, item, handle, token) : null,
                 options.ResolveArtworkSource is { } sourceResolver ? (handle, token) => sourceResolver(captured.Value, item, handle, token) : null);
         }
@@ -267,7 +278,7 @@ public sealed class WidgetIndexedCollection<TQuery, TItem> : IWidgetIndexedColle
 public sealed record IndexedCollectionElement : ContainerElement
 {
     internal IndexedCollectionElement(string id, IndexedCollectionDescriptor source, CollectionLayout layout,
-        ScrollAxis axis, string accessibilityLabel, IReadOnlyList<string>? occurrenceKeys = null) : base(id, [])
+        ScrollAxis axis, string accessibilityLabel, IReadOnlyList<string>? occurrenceKeys = null, IndexedCollectionSelection? selection = null) : base(id, [])
     {
         IndexedCollectionContract.ValidateDescriptor(source);
         ArgumentException.ThrowIfNullOrWhiteSpace(accessibilityLabel);
@@ -283,11 +294,14 @@ public sealed record IndexedCollectionElement : ContainerElement
              layout.MaximumColumns is < 1 or > ProtocolConstants.MaximumGridColumns))
             throw new ArgumentOutOfRangeException(nameof(layout));
         if (occurrenceKeys is not null) IndexedCollectionContract.ValidateOccurrenceKeys(occurrenceKeys, source);
+        if (selection is not null) IndexedSelectionContract.Validate(selection, source);
+        Selection = selection;
         OccurrenceKeys = occurrenceKeys;
         Source = source; Layout = layout; Axis = axis; AccessibilityLabel = accessibilityLabel;
     }
     public IndexedCollectionDescriptor Source { get; }
     internal IReadOnlyList<string>? OccurrenceKeys { get; }
+    public IndexedCollectionSelection? Selection { get; }
     public CollectionLayout Layout { get; }
     public ScrollAxis Axis { get; }
     public string AccessibilityLabel { get; }
@@ -309,7 +323,7 @@ public sealed record IndexedCollectionElement : ContainerElement
     }
     internal override ViewNode ToProtocolNode() => ToContainerProtocolNode(ViewNodeKind.IndexedCollection) with
     {
-        IndexedCollection = Source, IndexedGroups = Groups, IndexedOccurrenceKeys = OccurrenceKeys, CollectionLayout = Layout, ScrollAxis = Axis, AccessibilityLabel = AccessibilityLabel,
+        IndexedCollection = Source, IndexedGroups = Groups, IndexedOccurrenceKeys = OccurrenceKeys, IndexedSelection = Selection, CollectionLayout = Layout, ScrollAxis = Axis, AccessibilityLabel = AccessibilityLabel,
     };
 }
 
@@ -327,8 +341,8 @@ public static partial class UI
     private static IndexedCollectionElement CreateCollection<TQuery, TItem>(string id, WidgetIndexedCollection<TQuery, TItem> source,
         CollectionLayout layout, ScrollAxis axis, string accessibilityLabel) where TQuery : notnull where TItem : notnull
     {
-        var captured = (source ?? throw new ArgumentNullException(nameof(source))).CaptureDeclaration();
-        return new(id, captured.Source, layout, axis, accessibilityLabel, captured.Keys);
+        var captured = (source ?? throw new ArgumentNullException(nameof(source))).CaptureSelectableDeclaration();
+        return new(id, captured.Source, layout, axis, accessibilityLabel, captured.Keys, captured.Selection);
     }
 }
 
@@ -354,6 +368,16 @@ public abstract partial class Widget
         IWidgetIndexedCollection source;
         lock (indexedSourcesGate)
             source = indexedSources.GetValueOrDefault(request.Source.SourceId) ?? throw new InvalidOperationException("Indexed source is not registered.");
+        if (request.Kind == IndexedCollectionRequestKind.Locate)
+        {
+            var found = await source.LocateAsync(request, cancellationToken).ConfigureAwait(false);
+            var located = new IndexedCollectionRange(parent.WidgetInstanceId, request.CollectionId, request.Source, scope,
+                0, request.DemandId, [], request.PinnedLayoutId) { LocatedIndex = found };
+            parent = Volatile.Read(ref _latestSnapshot) ?? throw new InvalidOperationException("Parent presentation retired during lookup.");
+            IndexedCollectionContract.ValidateRange(parent, request, located);
+            cancellationToken.ThrowIfCancellationRequested(); WidgetLifetimeToken.ThrowIfCancellationRequested();
+            return located;
+        }
         if (request.Kind is not (IndexedCollectionRequestKind.Range or IndexedCollectionRequestKind.FocusPreview))
         {
             await source.ContinueAsync(request, cancellationToken).ConfigureAwait(false);

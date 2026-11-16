@@ -77,7 +77,7 @@ internal sealed partial class OverlayShellPage
         icon.GotFocus += (_, _) =>
         {
             WindowActivationDiagnostic?.Invoke($"Utility icon focus kind={kind} visible={visible} switching={switching} radial={RadialOpen} entered={utilityEntered} directional={directionalFocus} state={icon.FocusState}");
-            if (retired || !visible || !foreground || HostChoiceActive || switching || utilityClosing || icon.FocusState == FocusState.Unfocused) return;
+            if (retired || !visible || !foreground || fullscreenLayer.IsOpen || fullscreenLayer.IsRestoringFocus || HostChoiceActive || switching || utilityClosing || icon.FocusState == FocusState.Unfocused) return;
             // Native reactivation can restore the old icon after Up has already
             // entered the list. Only a user transfer or Back may leave that scope.
             if (utilityEntered && shownUtility == kind && !directionalFocus && icon.FocusState != FocusState.Pointer)
@@ -111,6 +111,7 @@ internal sealed partial class OverlayShellPage
     private void ShowUtility(ShellUtility kind)
     {
         if (utilityPanel is not null && shownUtility == kind) return;
+        WindowActivationDiagnostic?.Invoke($"Utility open kind={kind} fullscreen={fullscreenLayer.IsOpen} restoring={fullscreenLayer.IsRestoringFocus}");
         CloseUtilityPanel(); shownUtility = kind;
         var panel = new ShellUtilityPanel(); utilityPanel = panel;
         panel.Configure(kind == ShellUtility.Tasks ? "Task Switcher" : "Notifications", kind == ShellUtility.Tasks ? "Refresh" : "Clear all", iconCommand: kind == ShellUtility.Tasks);

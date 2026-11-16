@@ -13,8 +13,15 @@ internal static class BrokerPipeRequestTimeoutPolicy
             return options.RequestTimeout > TimeSpan.FromSeconds(95) ? options.RequestTimeout : TimeSpan.FromSeconds(95);
         if (request.CapabilityId == "web.sessions.v1" && request.Operation == "web-session.command")
             return options.RequestTimeout > TimeSpan.FromSeconds(35) ? options.RequestTimeout : TimeSpan.FromSeconds(35);
+        if (request.CapabilityId == BrokerTransportOperations.CaptureLibraryManageV1 && request.Operation == "capture-library.copy")
+        {
+            var deadline = TimeSpan.FromSeconds(BrokerTransportLimits.CaptureCopyPickerTimeoutSeconds + BrokerTransportLimits.CaptureCopyTimeoutSeconds + 5);
+            return options.RequestTimeout > deadline ? options.RequestTimeout : deadline;
+        }
+        if (request.CapabilityId == BrokerTransportOperations.CaptureLibraryManageV1 && request.Operation == "capture-library.choose-source")
+            return options.RequestTimeout > TimeSpan.FromSeconds(125) ? options.RequestTimeout : TimeSpan.FromSeconds(125);
         // Opening Explorer uses the host's release-aware handoff, not the ordinary short read deadline.
-        if (request.CapabilityId == BrokerTransportOperations.CaptureLibraryManageV1 && request.Operation == "capture-library.open-folder")
+        if (request.CapabilityId == BrokerTransportOperations.CaptureLibraryManageV1 && request.Operation is "capture-library.open-folder" or "capture-library.reveal")
             return options.RequestTimeout > TimeSpan.FromSeconds(20) ? options.RequestTimeout : TimeSpan.FromSeconds(20);
         // The first configured-capture request can wait for lazy encoder/audio
         // discovery in the frontend. Both pipe ends must outlive that bounded

@@ -80,6 +80,7 @@ internal sealed class PlayniteLibraryActionFeedback(
 
 internal sealed record PlayniteLibraryRenderState
 {
+    internal PlayniteCaptureDraft CaptureSettings { get; init; } = new(false, new Dictionary<string, System.Text.Json.JsonElement>());
     internal PlayniteProgressState Progress { get; init; } = new();
     internal bool SetupDialogOpen { get; init; }
     // Focus-group request IDs are monotonic across every page and modal in

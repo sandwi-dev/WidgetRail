@@ -28,3 +28,34 @@ games API works. Searching/filtering loaded achievements does not call the
 provider. See [development documentation](../../samples/PlayniteLibraryWidget/DEVELOPMENT.md)
 for eval cost, caching, artwork and state ownership, and
 [indexed collections](../developers/indexed-collections.md) for SDK authoring.
+
+## Achievement capture settings API
+
+The local integration advertises `achievements.capture-settings.v1`.
+`GET /v1/capture-settings` returns `availability` (`ready`, `missing`, or
+`unsupported`), and when ready a revision, active-edit state, current settings,
+provider-supported enum options, and effective screenshot/recording roots.
+
+`PATCH /v1/capture-settings` uses the existing `X-WidgetRail-Command` idempotency
+header. Its body contains `expectedRevision` and a nonempty `settings` subset.
+Supported fields are screenshot enablement, clean/toast/framed variants, capture
+delay and resolution; recording enablement, variants, pre-roll seconds, FPS,
+resolution, quality and audio; and screenshot/recording directories. Enum values
+must come from the returned options. Recording seconds describe pre-roll, not a
+fixed total clip duration. Numeric writes accept delay 0–3600 seconds, pre-roll
+5–60 seconds and FPS 10–60; unrelated provider settings remain unchanged.
+
+Directory writes accept existing canonical absolute local directories without
+reparse components. An empty directory retains the provider's default or fallback.
+The widget first obtains a host-owned folder grant for library access, then uses
+that selected path to configure the provider. Setting a provider path alone does
+not grant the host file access. If configuration fails after choosing a new folder,
+the widget can unlink that newly created source without removing provider files.
+
+Writes run on Playnite's UI thread through the public `ISettings` edit/verify/save
+transaction. They reject an already-open provider settings edit and stale revisions.
+The integration reads persisted settings back through public `LoadPluginSettings`
+because a successful live update alone does not prove the settings were saved.
+A failed commit restores prior capture values and attempts persisted rollback;
+`capture_settings_rollback_failed` explicitly reports an unsuccessful recovery.
+The API never writes provider JSON directly or calls private provider methods.

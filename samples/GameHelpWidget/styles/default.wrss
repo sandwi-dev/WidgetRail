@@ -37,3 +37,7 @@
 .help-dialog { gap: 16px; min-width: 0px; }
 .help-preview-media { height: 280px; min-height: 160px; min-width: 0px; }
 .help-attribution { min-height: 64px; max-height: 640px; min-width: 0px; }
+
+.help-library-filters { width: 100%; min-width: 0px; gap: 8px; align: center; }
+.help-library-search { min-width: 0px; flex-grow: 1; }
+.help-library-kind { width: 180px; }

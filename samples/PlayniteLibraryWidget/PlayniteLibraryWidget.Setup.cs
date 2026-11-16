@@ -119,6 +119,8 @@ public sealed partial class PlayniteLibraryWidget
         Operations.Cancel("playnite-library.warm-state");
         Operations.Cancel("playnite-library.launch");
         Operations.Cancel("playnite-library.launch-lifecycle");
+        Operations.Cancel(CaptureWork);
+        captureSetup.Reset();
         CancelDetailsOperations();
         achievementHub.Reset(); _hiddenRows.Reset(); progressData.Reset();
         lock (_gate)
@@ -139,6 +141,7 @@ public sealed partial class PlayniteLibraryWidget
                 HomeGameCount = null, BrowseGameCount = null, SourceObservations = [], ActiveCategoryId = null,
                 HeroSavedId = null, HeroIndex = 0, BrowseHeroSavedId = null, BrowseHeroIndex = 0,
                 DetailsItem = null, DetailsCapturedTarget = null, DetailsExtras = new(), DetailsLoading = false,
+                CaptureSettings = new(false, new Dictionary<string, System.Text.Json.JsonElement>()),
                 DetailsError = null, DetailsGeneration = state.DetailsGeneration + 1, Progress = new(),
                 ActiveBrowseReload = null, BrowseInitialFocusId = null, FilterDraft = null,
                 LaunchingSavedId = null, ContentEntryScopeId = null, PendingRestoredSavedId = null,

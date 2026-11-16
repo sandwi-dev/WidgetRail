@@ -43,10 +43,10 @@ public sealed record CaptureAttachment(string Id, string ContentType, int Width,
     public bool IsWellFormed() => Enum.IsDefined(Origin) && (SourceApplication is null || SourceApplication.IsWellFormed()) && CaptureLimits.ValidToken(Id) && ContentType is "image/png" or "video/mp4" &&
         Width is > 0 and <= CaptureLimits.MaximumWidth && Height is > 0 and <= CaptureLimits.MaximumHeight &&
         ((long)Width * Height <= CaptureLimits.MaximumPixels) &&
-        ByteLength is > 0 and <= CaptureLimits.MaximumAttachmentBytes &&
+        ByteLength > 0 && ByteLength <= (Origin == CaptureAttachmentOrigin.SavedLibrary && ContentType == "video/mp4" ? CaptureLibraryLimits.MaximumVideoBytes : CaptureLimits.MaximumAttachmentBytes) &&
         (Properties is null || Properties.IsWellFormed(ContentType == "video/mp4")) &&
-        (ContentType != "video/mp4" || Properties is not null || Width <= 1280 && Height <= 720 && ByteLength <= CaptureLimits.MaximumContextBytes) && double.IsFinite(DurationSeconds) &&
-        (ContentType == "image/png" ? DurationSeconds == 0 : DurationSeconds > 0 && DurationSeconds <= (Properties is null ? CaptureLimits.VideoSeconds : CaptureLimits.MaximumRecordingSeconds) + 0.25) &&
+        (ContentType != "video/mp4" || Properties is not null || Origin == CaptureAttachmentOrigin.SavedLibrary || Width <= 1280 && Height <= 720 && ByteLength <= CaptureLimits.MaximumContextBytes) && double.IsFinite(DurationSeconds) &&
+        (ContentType == "image/png" ? DurationSeconds == 0 : DurationSeconds > 0 && DurationSeconds <= (Origin == CaptureAttachmentOrigin.SavedLibrary ? CaptureLibraryLimits.MaximumVideoSeconds : Properties is null ? CaptureLimits.VideoSeconds : CaptureLimits.MaximumRecordingSeconds) + 0.25) &&
         ExpiresAtUnixMilliseconds > 0;
 }
 public sealed record CaptureAttachmentRequest(string AttachmentId);

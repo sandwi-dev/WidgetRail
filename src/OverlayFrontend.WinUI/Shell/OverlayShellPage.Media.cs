@@ -79,13 +79,12 @@ internal sealed partial class OverlayShellPage
                 var stage = mediaOwner.FullscreenStage;
                 var origin = fullscreenLayer.BoundsOf(mediaOwner.FullscreenOrigin);
                 if (origin is { } viewport) origin = MediaTransitionGeometry.Fit(viewport, state.Declaration.AspectRatio);
-                stage?.EnterFullscreen();
                 _ = fullscreenLayer.ShowAsync(new(fullscreenView, fullscreenView, HandleEmbeddedFullscreen,
                     fullscreenView.MoveFocus, fullscreenView.Enter,
                     () => { fullscreenView.Hide(); fullscreenLayer.Park(fullscreenView); mediaOwner?.ExitFullscreen(); },
                     () => { if (previous is { IsLoaded: true, IsEnabled: true }) previous.Focus(FocusState.Keyboard); else QueueEntryFocus(); },
                     Origin: origin, Chrome: fullscreenView.TransitionChrome, MediaBounds: () => stage?.VideoBounds ?? fullscreenView.VideoBounds,
-                    MotionContent: stage));
+                    MotionContent: stage, Detach: () => stage?.EnterFullscreen()));
             }
         }
         else if (ReferenceEquals(fullscreenLayer.Owner, fullscreenView)) fullscreenLayer.Close(restoreFocus: false);

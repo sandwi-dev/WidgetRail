@@ -114,6 +114,10 @@ internal static class Program
             await using var communityBackend = new WindowsCommunityPlatformBackend(
                 Path.Combine(settingsPaths.RootDirectory, "widget-state"));
             var applicationBackend = new WidgetRail.WindowsAppLibraryProvider.WindowsAppLibraryProvider(installedCatalogRoot);
+            var captureLibrary = new CaptureLibraryStore(Path.Combine(settingsPaths.RootDirectory, "capture-library-v2"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "WidgetRail", "Captures"),
+                WindowsCaptureImageCodec.CreateContextAsync, WindowsCaptureImageCodec.CreateThumbnailAsync, WindowsCaptureImageCodec.InspectAsync, WindowsFileOperations.RecycleAsync);
+            captureLibrary.StartSources();
             await using var platformBackend = new CompositePlatformBrokerBackend(
                 new WindowsAudioPlatformBackend(),
                 new WindowsNetworkPlatformBackend(),
@@ -130,9 +134,7 @@ internal static class Program
                 performance: new WidgetRail.WindowsPerformanceProvider.WindowsPerformanceBackend(applicationBackend,
                     Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "Performance", "PerformanceCollector.exe")),
                     new WidgetRail.PerformanceTelemetry.FpsDiagnosticLog(Path.Combine(settingsPaths.RootDirectory, "diagnostics", "fps-collector.log")).Write),
-                captureLibrary: new CaptureLibraryStore(Path.Combine(settingsPaths.RootDirectory, "capture-library-v2"),
-                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "WidgetRail", "Captures"),
-                    WindowsCaptureImageCodec.CreateContextAsync, WindowsCaptureImageCodec.CreateThumbnailAsync, WindowsCaptureImageCodec.InspectAsync));
+                captureLibrary: captureLibrary);
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
                 catalogMonitor, residencyBudget,

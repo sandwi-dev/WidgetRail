@@ -58,6 +58,8 @@ internal sealed partial class PlayniteBridgeHttpTransport
                 if (generation != connectionGeneration) throw new PlayniteBridgeTransportException(isMalformed: false);
                 expectedBinding ??= connection.BindingId;
                 if (expectedBinding != connection.BindingId) throw new PlayniteBridgeTransportException(isMalformed: false);
+                if (command.ExpectedConnectionId is { } expectedConnection && expectedConnection != connection.BindingId)
+                    throw new PlayniteBridgeTransportException(isMalformed: false);
                 // Do not transparently move a pending mutation onto a restarted
                 // server. A subsequent connection check/read can establish it.
                 if (IsMutation(command.Kind) && verifiedInstance is not null && verifiedInstance != connection.Descriptor.InstanceId)
@@ -126,12 +128,17 @@ internal sealed partial class PlayniteBridgeHttpTransport
     private static bool IsMutation(PlayniteBridgeCommandKind kind) => kind is PlayniteBridgeCommandKind.Launch or
         PlayniteBridgeCommandKind.Install or PlayniteBridgeCommandKind.Uninstall or PlayniteBridgeCommandKind.SetFavorite or
         PlayniteBridgeCommandKind.SetHidden or PlayniteBridgeCommandKind.SetCategories or PlayniteBridgeCommandKind.SetCompletionStatus or
-        PlayniteBridgeCommandKind.CreateCategory or PlayniteBridgeCommandKind.RefreshAchievements;
+        PlayniteBridgeCommandKind.CreateCategory or PlayniteBridgeCommandKind.RefreshAchievements or
+        PlayniteBridgeCommandKind.UpdateCaptureSettings or PlayniteBridgeCommandKind.ConfigureCaptureIntegration;
     internal static (HttpMethod Method, string RelativePath, int MaximumBytes) ResolveLocal(PlayniteBridgeCommand command)
     {
         string Game() => "v1/games/" + PlayniteBridgeClient.CanonicalGameId(command.GameId ?? "");
         return command.Kind switch
         {
+            PlayniteBridgeCommandKind.CaptureSettings => (HttpMethod.Get, "v1/capture-settings", MaximumJsonBytes),
+            PlayniteBridgeCommandKind.UpdateCaptureSettings => (HttpMethod.Patch, "v1/capture-settings", MaximumJsonBytes),
+            PlayniteBridgeCommandKind.CaptureIntegration => (HttpMethod.Get, "v1/capture-integration", MaximumJsonBytes),
+            PlayniteBridgeCommandKind.ConfigureCaptureIntegration => (HttpMethod.Put, "v1/capture-integration", MaximumJsonBytes),
             PlayniteBridgeCommandKind.AchievementOverview when command.OverviewOffset is >= 0 and <= 10000 && command.Revision?.Length is not > 80 =>
                 (HttpMethod.Get, "v1/achievements/overview?limit=200&offset=" + command.OverviewOffset.ToString(System.Globalization.CultureInfo.InvariantCulture) +
                     (command.Revision is null ? "" : "&revision=" + Uri.EscapeDataString(command.Revision)), MaximumLibraryPageBytes),

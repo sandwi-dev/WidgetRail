@@ -238,6 +238,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private (bool Focused, bool Pressed)? interactionOverride;
     private (bool Focused, bool Pressed)? lastInteraction;
     internal event Action<bool, bool>? InteractionChanged;
+    internal Func<DependencyObject?, bool>? PointerPressAllowed { get; set; }
     internal (bool Focused, bool Pressed) Interaction => lastInteraction ?? (false, false);
     internal IReadOnlyDictionary<string, BridgeComputedStyleValue>? InspectionStyle =>
         Interaction.Pressed ? styles?.Pressed : Interaction.Focused ? styles?.Focused : styles?.Base;
@@ -308,7 +309,12 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         focusRoot = next;
         if (focusRoot is not null) focusRoot.Changed += Apply;
     }
-    private void PointerPressed(object sender, PointerRoutedEventArgs args) { pointerPressed = true; Queue(); }
+    private void PointerPressed(object sender, PointerRoutedEventArgs args)
+    {
+        if (PointerPressAllowed?.Invoke(args.OriginalSource as DependencyObject) == false) return;
+        pointerPressed = true;
+        Queue();
+    }
     private void PointerReleased(object sender, PointerRoutedEventArgs args) { pointerPressed = false; Queue(); }
     private void KeyDown(object sender, KeyRoutedEventArgs args)
     { if (!Input.GamepadKeyBoundary.Owns(element, args) && args.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space) { keyboardPressed = true; Queue(); } }

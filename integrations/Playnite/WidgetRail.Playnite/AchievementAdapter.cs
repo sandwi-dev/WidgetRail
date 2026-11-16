@@ -93,6 +93,7 @@ internal sealed partial class AchievementAdapter : IDisposable
         if (disposed) return;
         Interlocked.Increment(ref revision);
         changes.Publish(new IntegrationEvent("achievements-changed"));
+        CaptureStateChanged?.Invoke();
     }
     private void AchievementUnlocked(object sender, EventArgs args)
     {
@@ -116,6 +117,7 @@ internal sealed partial class AchievementAdapter : IDisposable
             // Names/descriptions are deliberately absent: consumers must obtain
             // the current visible projection before presenting an unlock.
             changes.Publish(new IntegrationEvent("achievement-unlocked", gameId.ToString("D"), provider, achievement));
+            CaptureStateChanged?.Invoke();
         }
         catch (Exception error) when (error is TargetInvocationException || error is ArgumentException || error is InvalidOperationException)
         { /* A provider callback must never throw back into Playnite. */ }
@@ -157,6 +159,7 @@ internal sealed partial class AchievementAdapter : IDisposable
             });
         }
         var projected = new { gameId = gameId.ToString("D"), installed = true, provider = "playnite-achievements",
+            providerKey = WireJson.Text(Value(data, "EffectiveProviderKey") ?? Value(data, "ProviderKey"), 64),
             revision = current, canRefresh = refresh != null, observedAt = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
             total = rows.Count, unlocked = unlockedCount, achievements = rows.ToArray() };
         cached[gameId] = new Cached { Data = projected, Revision = current, Used = ++useSequence, Expires = DateTime.UtcNow.AddSeconds(2) };

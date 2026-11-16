@@ -11,7 +11,8 @@ public sealed partial class GameHelpWidget : Widget
     {
         internal long LibraryFocusRequest;
         internal bool LibraryOpen, LibraryBusy;
-        internal CaptureLibraryPage? LibraryPage;
+        internal CaptureLibraryQueryPage? LibraryPage;
+        internal CaptureLibraryQuery LibraryQuery = new();
         internal bool HasKey, KeyReady, Settings, Busy, Capturing, OfferContext, PreviewReadOnly, CaptureOptions, ConfirmNew, ConfirmDelete;
         internal string? FocusGroup;
         internal long FocusRequest;
@@ -39,6 +40,7 @@ public sealed partial class GameHelpWidget : Widget
     }
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
+        if (model.Value.LibraryOpen) LoadLibrary(model.Value.LibraryQuery, model.Value.LibraryPage?.Offset ?? 0, focusResults: false);
         var revision = Interlocked.Read(ref keyRevision);
         Operations.RunSingleFlight("initialize", async context =>
         {
@@ -201,7 +203,8 @@ public sealed partial class GameHelpWidget : Widget
     {
         var state=model.Value;
         if(!state.HasKey || string.IsNullOrWhiteSpace(state.PendingQuestion) || state.Busy)return;
-        if(attachment?.ExpiresAtUnixMilliseconds<=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
+        if(attachment is not { Origin: CaptureAttachmentOrigin.SavedLibrary, ContentType: "video/mp4" } &&
+            attachment?.ExpiresAtUnixMilliseconds<=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
         { model.Update(s=>s with {Error="This capture expired. Capture again or answer without it.",OfferContext=true}); return; }
         var contextAttachment=attachment;
         var epoch=Interlocked.Increment(ref nextOperation);

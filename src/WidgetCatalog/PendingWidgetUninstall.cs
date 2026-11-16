@@ -19,7 +19,11 @@ internal sealed record PendingWidgetUninstall(
     [property: JsonRequired] int SchemaVersion,
     [property: JsonRequired] string PackageId,
     [property: JsonRequired] IReadOnlyList<string> PublisherAuthorities,
-    bool DataOnly = false);
+    bool DataOnly = false)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<WidgetRail.PlatformBroker.BrokerWidgetIdentity>? SourceOwners { get; init; }
+}
 
 internal static class PendingWidgetUninstallStore
 {
@@ -116,6 +120,15 @@ internal static class PendingWidgetUninstallStore
             throw Invalid();
         if (!WidgetManifestValidator.IsValidPackageIdentity(pending.PackageId))
             throw Invalid();
+        if (pending.SourceOwners is { } owners)
+        {
+            if (owners.Count is < 1 or > 16 || owners.Distinct().Count() != owners.Count) throw Invalid();
+            foreach (var owner in owners)
+            {
+                if (owner is null || owner.PackageId != pending.PackageId || !pending.PublisherAuthorities.Contains(owner.PublisherId)) throw Invalid();
+                try { owner.Validate(); } catch (WidgetRail.PlatformBroker.BrokerException) { throw Invalid(); }
+            }
+        }
     }
 
     private static void RejectDuplicateProperties(ReadOnlySpan<byte> bytes)

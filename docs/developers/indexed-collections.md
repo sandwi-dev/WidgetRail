@@ -350,3 +350,48 @@ Keep the original indexed source for provider paging, engine-owned immutable
 snapshots that intentionally retire every query, or specialized occurrence policies.
 The adapter does not own data fetching, semantic selection, expansion preferences,
 permissions, or provider/account validation.
+
+
+## Optional multi-selection
+
+Set `WidgetIndexedCollectionOptions.EnableSelection` for a finite indexed source.
+Ordinary activation is unchanged until `BeginSelection()`. In selection mode the
+host supplies row checkboxes and selected accessibility status; click, Space and
+controller A toggle selection, Shift-click extends the anchor range, and Ctrl+A
+selects the complete query only when it fits the 256-item bound. A gesture that
+would exceed the bound is rejected in full with an accessible explanation; it
+never means only visible or loaded rows.
+
+`Selection` is an immutable snapshot with `IsActive`, `Indices`, `Count`, and
+`LimitReached`. `ClearSelection()` keeps the mode active; `EndSelection()` clears
+and leaves it. `PublishQuery` clears selection and its anchor while retaining the
+active mode. `UpdateContent` preserves positions in the unchanged query.
+
+Before a domain operation, call `ReadSelectedAsync` to capture at most 256 current
+items in bounded provider reads without rendering row templates. A selection or
+query/content change rejects the result with `WidgetIndexedSelectionException`
+(`Changed`); saturation reports `Busy`. Caller cancellation remains cancellation,
+and a provider timeout remains `TimeoutException`. The widget owns the domain
+operation, authorization and per-item revision checks. Selection is not permission
+to mutate a file or an external account. Larger query-wide bulk operations are not
+implied by this API.
+
+Selection is opt-in protocol v112. Existing lists, grids, previews and discovered
+sources keep their existing activation and input behavior.
+
+## Key lookup for large-query continuity
+
+A finite indexed source may provide `FindIndex(query, key, cancellationToken)`.
+It returns the occurrence's position in that exact immutable query, or null when
+it no longer exists. Use an indexed provider lookup rather than fetching all rows.
+
+With this protocol-v113 declaration, the host can locate the previous viewport and
+focused occurrence when membership/order changes, including collections larger
+than the 512-key complete-order limit. Lookup uses the existing bounded range lane,
+returns metadata only, and creates no row/action/artwork authority. The host still
+acquires a current row lease and verifies its key before restoring it. User scroll,
+navigation, departure, hide, or another replacement cancels pending continuity.
+Focus is restored only when the collection owned it before replacement.
+
+The complete `OccurrenceKeys` path remains available for bounded local collections.
+Providers without `FindIndex` retain their existing query replacement behavior.

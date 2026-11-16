@@ -18,6 +18,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("SDK rejects malformed and nonfinite metrics", Malformed),
     ("Broker scopes targets and gates FPS control behind interactive consent", BrokerAuthority),
     ("Graphs preserve gaps, reject malformed data and require native protocol support", GraphContract),
+    ("Graph empty states reflect FPS availability independently of system usage", EmptyStates),
+    ("Stopping FPS clears frame history and statistics without clearing system samples", StopHistory),
     ("Frame statistics reach the main view and compact read-only pin", StatisticsPresentation),
 };
 var failed = 0;
@@ -67,7 +69,7 @@ static async Task Presentation()
             string.Join("; ", ViewSnapshotValidator.Validate(snapshot)));
         Check(snapshot.PinnedLayouts.Count == 1, "Missing compact pin");
         Check(snapshot.Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic, "Dashboard must request desktop acrylic");
-        Check(snapshot.ProtocolVersion == ProtocolConstants.DesktopAcrylicVersion, "Dashboard must declare desktop acrylic protocol support");
+        Check(snapshot.ProtocolVersion == ProtocolConstants.LineGraphEmptyTextVersion, "Dashboard must declare authored graph empty-state protocol support");
         Check(snapshot.PinnedLayouts[0].Surface?.Appearance == WidgetSurfaceAppearance.Theme, "Compact pin must retain its plain surface");
         Check(snapshot.Root.StyleClasses.Contains("performance-dashboard") &&
             !snapshot.PinnedLayouts[0].Root!.StyleClasses.Contains("performance-dashboard"), "Transparent dashboard styling must not reach the pin");
@@ -158,16 +160,79 @@ static Task GraphContract()
     Check(WinUiPresentationContract.Validate(snapshot).Count == 0 && snapshot.Root.Graph!.Points[1].Value is null, "Gap lost in protocol");
     Check(ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = 77 }).Any(e => e.Code == "feature_requires_version"), "Old host admitted graph");
     foreach (var invalid in new[] {
+        graph with { EmptyText = " " }, graph with { EmptyText = new string('x', 161) }, graph with { EmptyText = "off\nnow" },
         graph with { Points = [new(0, double.NaN)] }, graph with { Points = [new(0, double.PositiveInfinity)] },
         graph with { Points = [new(-1, 1), new(-2, 2)] }, graph with { Points = [new(0, 101)] },
         graph with { Points = [new(0, 1), new(0, 2)] }, graph with { XMaximum = -60 },
         graph with { Points = Enumerable.Range(0, 121).Select(i => new GraphPoint(-60 + i / 2d, 1)).ToArray() } })
         Check(!invalid.IsWellFormed(), "Invalid graph accepted");
+    var labeled = new WidgetView(UI.LineGraph("FPS", graph with { EmptyText = "FPS collection is off" }, "test.graph")).CreateSnapshot("graph-test", 2);
+    Check(labeled.ProtocolVersion == ProtocolConstants.LineGraphEmptyTextVersion &&
+        ViewSnapshotValidator.Validate(labeled).Count == 0, "Authored empty text did not upgrade its protocol");
+    Check(ViewSnapshotValidator.Validate(labeled with { ProtocolVersion = ProtocolConstants.LineGraphEmptyTextVersion - 1 })
+        .Any(e => e.Code == "feature_requires_version"), "Old host admitted authored graph empty text");
+    Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(labeled)).Root.Graph!.EmptyText == "FPS collection is off", "Empty text did not round-trip");
     var forged = snapshot with { Root = snapshot.Root with { Kind = ViewNodeKind.Text } };
     Check(ViewSnapshotValidator.Validate(forged).Any(e => e.Code == "invalid_graph_owner"), "Graph attached to another element");
     Check(PresentationPropertyMetadata.Impact(PresentationProperty.Graph) ==
         (PresentationPropertyImpact.Paint | PresentationPropertyImpact.Accessibility), "Graph sample update unnecessarily changes input/layout authority");
     return Task.CompletedTask;
+}
+static async Task EmptyStates()
+{
+    var fake = new Fake(); var widget = fake.Create(); await Activate(widget);
+    try
+    {
+        foreach (var (state, text) in new[] {
+            ("not-enabled", "FPS collection is off"), ("declined", "FPS collection is off"),
+            ("enabling", "Starting FPS collection…"), ("warming", "Starting FPS collection…"),
+            ("no-target", "Select an application"), ("no-frames", "Waiting for frames…"),
+            ("collecting", "Waiting for frames…"), ("failed", "FPS unavailable"), ("permission-required", "FPS unavailable") })
+        {
+            fake.Sample = fake.Sample with { FpsState = state };
+            await widget.OnActionAsync(new("performance.refresh", "performance.refresh"));
+            Check(Node(widget, "performance.fps.graph").Graph!.EmptyText == text &&
+                Node(widget, "performance.frame.graph").Graph!.EmptyText == text, "Incorrect empty text for " + state);
+            Check(Node(widget, "performance.cpu.graph").Graph!.Points.Any(p => p.Value == 10), "FPS state discarded system samples");
+            Check(Node(widget, "performance.gpu.graph").Graph!.Points.Any(p => p.Value == 0), "Zero usage must remain a measured value");
+        }
+        fake.FailRead = true;
+        await widget.OnActionAsync(new("performance.refresh", "performance.refresh"));
+        Check(Node(widget, "performance.fps.graph").Graph!.EmptyText == "FPS unavailable", "Read failure incorrectly says collecting");
+    }
+    finally { await Hide(widget); }
+}
+static async Task StopHistory()
+{
+    var fake = new Fake();
+    fake.Sample = fake.Sample with { FpsState = "collecting", FramesPerSecond = 120, FrameStatistics = new(100, 50, 10, 20, 5000, 50) };
+    var widget = fake.Create(); await Activate(widget);
+    try
+    {
+        Check(Node(widget, "performance.fps.graph").Graph!.Points.Any(p => p.Value == 120), "Fixture must start with frame history");
+        await widget.OnActionAsync(new("performance.fps", "performance.fps.control"));
+        Check(Node(widget, "performance.fps.graph").Graph!.Points.Count == 0 &&
+            Node(widget, "performance.frame.graph").Graph!.Points.Count == 0, "Stopped FPS retained active-looking graphs");
+        Check(Node(widget, "performance.average.value").Text == "—" && Node(widget, "performance.low.value").Text == "—", "Stopped FPS retained statistics");
+        Check(Node(widget, "performance.cpu.graph").Graph!.Points.Any(p => p.Value == 10), "Stop cleared independent system history");
+        fake.Sample = fake.Sample with { FpsState = "not-enabled", FramesPerSecond = null, FrameStatistics = null };
+        await widget.OnActionAsync(new("performance.refresh", "performance.refresh"));
+        await widget.OnActionAsync(new("performance.fps", "performance.fps.control"));
+        Check(Node(widget, "performance.fps.graph").Graph!.Points.All(p => p.Value is null), "Reenable revived previous capture history");
+        // A fresh enabled epoch can publish values even inside the normal sampling throttle.
+        fake.Sample = fake.Sample with { FpsState = "collecting", FramesPerSecond = 60 };
+        await widget.OnActionAsync(new("performance.refresh", "performance.refresh"));
+        Check(Node(widget, "performance.fps.graph").Graph!.Points.Last().Value == 60 &&
+            !Node(widget, "performance.fps.graph").Graph!.Points.Any(p => p.Value == 120), "New capture joined old frame history");
+        // A collector stopped outside this widget must also invalidate its application history.
+        fake.Sample = fake.Sample with { FpsState = "not-enabled", FramesPerSecond = null };
+        await widget.OnActionAsync(new("performance.refresh", "performance.refresh"));
+        fake.Sample = fake.Sample with { FpsState = "collecting", FramesPerSecond = 45 };
+        await widget.OnActionAsync(new("performance.refresh", "performance.refresh"));
+        Check(Node(widget, "performance.fps.graph").Graph!.Points.Last().Value == 45 &&
+            !Node(widget, "performance.fps.graph").Graph!.Points.Any(p => p.Value == 60), "External collector restart joined old frame history");
+    }
+    finally { await Hide(widget); }
 }
 static async Task StatisticsPresentation()
 {

@@ -12,12 +12,15 @@ internal static class WindowsCaptureImageCodec
     internal static async Task<WidgetProtocol.CaptureAttachment> InspectAsync(string path,WidgetProtocol.CaptureAttachment previous,CancellationToken token)
     {
         var size=new FileInfo(path).Length;
-        if(size<=0 || size>WidgetProtocol.CaptureLimits.MaximumAttachmentBytes) throw new BrokerException("capture_library_invalid_media","Edited capture exceeds the supported media size.");
+        var maximum = previous.ContentType == "video/mp4" && previous.Origin == WidgetProtocol.CaptureAttachmentOrigin.SavedLibrary
+            ? WidgetProtocol.CaptureLibraryLimits.MaximumVideoBytes : WidgetProtocol.CaptureLimits.MaximumAttachmentBytes;
+        if(size<=0 || size>maximum) throw new BrokerException("capture_library_invalid_media","Edited capture exceeds the supported media size.");
         var file=await StorageFile.GetFileFromPathAsync(path).AsTask(token).ConfigureAwait(false);
         if(previous.ContentType=="video/mp4")
         {
             var properties=await file.Properties.GetVideoPropertiesAsync().AsTask(token).ConfigureAwait(false);
-            return previous with { Width=(int)properties.Width,Height=(int)properties.Height,DurationSeconds=properties.Duration.TotalSeconds,ByteLength=size,Properties=null };
+            return previous with { Width=(int)properties.Width,Height=(int)properties.Height,DurationSeconds=properties.Duration.TotalSeconds,ByteLength=size,
+                Properties=null,Origin=WidgetProtocol.CaptureAttachmentOrigin.SavedLibrary };
         }
         using var stream=await file.OpenReadAsync().AsTask(token).ConfigureAwait(false);
         var decoder=await BitmapDecoder.CreateAsync(stream).AsTask(token).ConfigureAwait(false);

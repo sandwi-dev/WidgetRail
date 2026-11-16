@@ -1,4 +1,6 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
 using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetStyling;
@@ -39,6 +41,13 @@ internal sealed partial class OverlayShellPage
                     check(bounds.Width>0&&bounds.Height>0&&bounds.Left>=0&&bounds.Top>=0&&bounds.Right<=root.ActualWidth+1&&bounds.Bottom<=root.ActualHeight+1,
                         $"{variant} {(large?"large text":"normal")} keeps {control.GetType().Name} inside the toolbar");
                 }
+                check(ToolTipService.GetToolTip(toolbar.Save) is null && ToolTipService.GetToolTip(toolbar.Cancel) is null && ToolTipService.GetToolTip(toolbar.Opacity) is null,
+                    $"{variant} {(large?"large text":"normal")} labeled adjustment controls have no redundant tooltips");
+                check(AutomationProperties.GetName(toolbar.Save)=="Save pin adjustments" && AutomationProperties.GetName(toolbar.Cancel)=="Cancel pin adjustments" &&
+                    AutomationProperties.GetName(toolbar.Opacity)=="Pin opacity" && AutomationProperties.GetName(toolbar.Close)=="Close pin",
+                    $"{variant} adjustment controls retain their accessible names");
+                check(ToolTipService.GetToolTip(toolbar.Close) is ToolTip { Content: "Close pin" },
+                    $"{variant} icon-only Close retains its explanatory tooltip");
                 check(toolbar.Window.OpacityPercent==100,$"{variant} controls stay fully opaque at {target.Window.OpacityPercent}% pin opacity");
                 await CapturePinToolbarAsync(toolbar,$"{path}.{variant}-{(large?"large":"normal")}.png");
 

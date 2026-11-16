@@ -1025,6 +1025,16 @@ public static class ViewSnapshotValidator
             }
             else if (node.IndexedCollection is not null)
                 Add(path, "indexed_collection_not_allowed", "Indexed source metadata applies only to an IndexedCollection node.");
+            if (node.IndexedSelection is { } selection)
+            {
+                if (node.Kind != ViewNodeKind.IndexedCollection || node.IndexedCollection is null)
+                    Add(path, "indexed_selection_not_allowed", "Selection applies only to indexed collections.");
+                else
+                {
+                    try { IndexedSelectionContract.Validate(selection, node.IndexedCollection); }
+                    catch (ArgumentException) { Add(path, "invalid_indexed_selection", "Selection requires a bounded ordered set from the current finite query."); }
+                }
+            }
             if (node.IndexedOccurrenceKeys is { } occurrenceKeys)
             {
                 if (node.Kind != ViewNodeKind.IndexedCollection || node.IndexedCollection is null)
@@ -1789,7 +1799,7 @@ public static class ViewSnapshotValidator
                     node.InputScopeId is not null || node.InitialChildFocusId is not null ||
                     node.UsesFocusedDescendantArtwork is not null || node.ScrollAxis is not null || node.ShowScrollbar is not null ||
                     node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
-                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null || node.IndexedCollection is not null || node.IndexedGroups is not null || node.IndexedOccurrenceKeys is not null ||
+                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null || node.IndexedCollection is not null || node.IndexedGroups is not null || node.IndexedOccurrenceKeys is not null || node.IndexedSelection is not null ||
                     node.CollectionResetGeneration is not null || node.CollectionGeneration is not null || node.CollectionLoading is not null || node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||
                     (node.Shortcuts?.Count ?? 0) != 0)
                     Add(path, "focus_presentation_surface_property_not_allowed",
@@ -1962,7 +1972,7 @@ public static class ViewSnapshotValidator
                     node.FocusPreviewKey is not null || node.FocusPreviewSource is not null || node.FocusPreview is not null || node.AnchoredPresentation is not null || node.UsesFocusedDescendantArtwork is not null || node.RetainLastPresentation is not null || node.FocusPresentation is not null ||
                     node.DefaultFocusPresentation is not null || node.Transition is not null || node.ScrollAxis is not null || node.ShowScrollbar is not null ||
                     node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
-                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null || node.IndexedCollection is not null || node.IndexedGroups is not null || node.IndexedOccurrenceKeys is not null ||
+                    node.ScrollPaginationThreshold is not null || node.VirtualCollectionWindow is not null || node.IndexedCollection is not null || node.IndexedGroups is not null || node.IndexedOccurrenceKeys is not null || node.IndexedSelection is not null ||
                     node.CollectionResetGeneration is not null || node.CollectionGeneration is not null || node.CollectionLoading is not null || node.CollectionNavigation is not null || node.CollectionStartIndex is not null || node.CollectionAnchorKey is not null || node.CollectionItemKey is not null ||
                     (node.Shortcuts?.Count ?? 0) != 0)
                 {

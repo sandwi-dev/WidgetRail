@@ -35,6 +35,12 @@ internal sealed record PlayniteLibraryQueryResult(
 
 internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
 {
+    ValueTask<PlayniteCaptureSettings> GetCaptureSettingsAsync(CancellationToken token) => ValueTask.FromResult(PlayniteCaptureSettings.Unavailable);
+    async ValueTask<PlayniteCaptureSettings> GetCaptureSettingsForConnectionAsync(string connectionId,CancellationToken token)
+    {var value=await GetCaptureSettingsAsync(token);return value.ConnectionId==connectionId?value:throw new PlayniteBridgeDataException("capture_connection_changed");}
+    ValueTask<PlayniteCaptureSettings> UpdateCaptureSettingsAsync(PlayniteCaptureSettings current, IReadOnlyDictionary<string, System.Text.Json.JsonElement> patch, CancellationToken token) => ValueTask.FromException<PlayniteCaptureSettings>(new NotSupportedException());
+    ValueTask<PlayniteCaptureIntegration?> GetCaptureIntegrationAsync(CancellationToken token) => ValueTask.FromResult<PlayniteCaptureIntegration?>(null);
+    ValueTask<PlayniteCaptureIntegration> ConfigureCaptureIntegrationAsync(PlayniteCaptureIntegration current, string path, bool enabled, CancellationToken token) => ValueTask.FromException<PlayniteCaptureIntegration>(new NotSupportedException());
     ValueTask<PlayniteProviderRefreshResult> RefreshAchievementsAsync(string gameId, CancellationToken token) =>
         ValueTask.FromResult(PlayniteProviderRefreshResult.Unavailable);
     ValueTask<PlayniteEventBatch?> ReadEventsAsync(long after, CancellationToken token) => ValueTask.FromResult<PlayniteEventBatch?>(null);

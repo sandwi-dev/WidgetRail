@@ -605,7 +605,8 @@ public sealed partial class WidgetCatalog
                     widget.Versions.Select(InstalledWidgetAuthority.PublisherId)
                         .Distinct(StringComparer.Ordinal)
                         .Order(StringComparer.Ordinal)
-                        .ToArray(), DataOnly: _uninstallAuthority is null),
+                        .ToArray(), DataOnly: _uninstallAuthority is null)
+                { SourceOwners = widget.Versions.Select(InstalledWidgetAuthority.Identity).Distinct().ToArray() },
                 cancellationToken).ConfigureAwait(false);
         var priorState = await _stateStore.LoadAsync(cancellationToken);
         var stateMutated = false;
@@ -634,7 +635,8 @@ public sealed partial class WidgetCatalog
             authorityCommitted = true;
             try
             {
-                await RemoveWidgetDataAsync(widgetId, widget.Versions.Select(InstalledWidgetAuthority.PublisherId).Distinct(), retiredDirectory).ConfigureAwait(false);
+                await RemoveWidgetDataAsync(widgetId, widget.Versions.Select(InstalledWidgetAuthority.PublisherId).Distinct(), retiredDirectory,
+                    widget.Versions.Select(InstalledWidgetAuthority.Identity).Distinct().ToArray()).ConfigureAwait(false);
                 if (!cleanupPending) cleanupPending |= !TryDeletePendingMarker(markerPath);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or WidgetRail.PlatformBroker.BrokerException or WidgetRail.PlatformSettings.PlatformSettingsException)
@@ -803,7 +805,7 @@ public sealed partial class WidgetCatalog
                     retirement = _uninstallAuthority is null ? new(true, false) : await _uninstallAuthority.RetirePackageAsync(
                         pending.PackageId, cancellationToken).ConfigureAwait(false);
                     if (retirement.Committed)
-                        await RemoveWidgetDataAsync(pending.PackageId, pending.PublisherAuthorities, retired).ConfigureAwait(false);
+                        await RemoveWidgetDataAsync(pending.PackageId, pending.PublisherAuthorities, retired, pending.SourceOwners).ConfigureAwait(false);
                 }
                 catch (Exception exception) when (exception is IOException or
                     UnauthorizedAccessException or WidgetPackageException or WidgetRail.PlatformBroker.BrokerException or WidgetRail.PlatformSettings.PlatformSettingsException)

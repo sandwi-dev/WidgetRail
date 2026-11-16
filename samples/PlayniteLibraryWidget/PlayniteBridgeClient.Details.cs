@@ -50,7 +50,8 @@ internal sealed partial class PlayniteBridgeClient
         using var typed = read.Document;
         if (typed is null) return PlayniteAchievements.Unavailable;
         return ParseAchievements(typed.RootElement, OptionalString(typed.RootElement, "provider", 64) == "playnite-achievements"
-            ? PlayniteAchievementProvider.PlayniteAchievements : PlayniteAchievementProvider.SuccessStory) with { ConnectionId = read.ConnectionId };
+            ? PlayniteAchievementProvider.PlayniteAchievements : PlayniteAchievementProvider.SuccessStory) with { ConnectionId = read.ConnectionId,
+                ProviderKey = OptionalString(typed.RootElement, "providerKey", 64) };
     }
 
     private static PlayniteAchievements ParseAchievements(JsonElement root, PlayniteAchievementProvider provider)

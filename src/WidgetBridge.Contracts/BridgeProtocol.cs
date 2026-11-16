@@ -33,6 +33,10 @@ internal static class BridgeMessageTypes
     public const string ControllerControl = "controller-control";
     public const string WindowPreviewPermissions = "window-preview-permissions";
     public const string TakeCapture = "capture-take";
+    public const string CompleteCaptureSource = "capture-source-complete";
+    public const string CheckCaptureSource = "capture-source-current";
+    public const string CompleteCaptureCopy = "capture-copy-complete";
+    public const string CheckCaptureCopy = "capture-copy-current";
     public const string CompleteCaptureFolder = "capture-folder-complete";
     public const string CheckCaptureFolder = "capture-folder-current";
     public const string TakePermission = "permission-take";

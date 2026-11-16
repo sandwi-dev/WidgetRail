@@ -9,10 +9,13 @@ internal sealed class PerformanceHistory
     private readonly Queue<(DateTimeOffset At, WidgetPerformanceSnapshot Sample, int Epoch)> samples = new();
     private string? target;
     private int epoch;
+    private bool fpsActive;
 
     internal void Observe(WidgetPerformanceSnapshot sample, DateTimeOffset now)
     {
-        var changed = target != sample.SelectedTargetId;
+        var active = sample.FpsState is "collecting" or "idle" or "warming" or "no-frames" or "no-target" or "enabling";
+        var changed = target != sample.SelectedTargetId || active != fpsActive;
+        fpsActive = active;
         if (changed) { target = sample.SelectedTargetId; ++epoch; }
         if (samples.Count > 0 && now <= samples.Last().At) samples.Clear();
         if (!changed && samples.Count > 0 && (now - samples.Last().At).TotalSeconds < .9) return;

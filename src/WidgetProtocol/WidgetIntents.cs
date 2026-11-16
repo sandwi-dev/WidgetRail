@@ -42,6 +42,22 @@ public static class WidgetIntentContracts
     public const string OpenMarketplace = "widgetrail.marketplace.open";
     public const string OpenAppUpdates = "widgetrail.settings.updates.open";
     public const string OpenAppearance = "widgetrail.settings.appearance.open";
+    public const string OpenCaptureLibrary = "widgetrail.captures.browse";
+    public const string OpenRelatedItem = "widgetrail.related-item.open";
+    public static WidgetIntentContract CaptureLibrary { get; } = new(OpenCaptureLibrary, 1, Schema("""
+        {"type":"object","additionalProperties":false,"properties":{
+          "originPackageId":{"type":"string","minLength":3,"maxLength":128},
+          "referenceKind":{"type":"string","minLength":1,"maxLength":48},
+          "referenceId":{"type":"string","minLength":1,"maxLength":256}
+        },"required":["originPackageId","referenceKind","referenceId"]}
+        """));
+    public static WidgetIntentContract RelatedItem { get; } = new(OpenRelatedItem, 1, Schema("""
+        {"type":"object","additionalProperties":false,"properties":{
+          "packageId":{"type":"string","minLength":3,"maxLength":128},
+          "kind":{"type":"string","minLength":1,"maxLength":48},
+          "id":{"type":"string","minLength":1,"maxLength":256}
+        },"required":["packageId","kind","id"]}
+        """));
     public static WidgetIntentContract Appearance { get; } = new(OpenAppearance, 1, Schema("""
         {"type":"object","additionalProperties":false,"properties":{}}
         """));
@@ -125,7 +141,8 @@ public static class WidgetIntentContracts
                         add(path, "conflicting_intent", "The same intent version has conflicting schemas.");
                     contracts[key] = compiled.SchemaDigest;
                     var standard = compiled.Id switch { OpenWebPage => compiled.Version == 2 ? WebV2 : Web, OpenVideo => Video, SearchVideo => VideoSearch,
-                        OpenWidgetSettings => WidgetSettings, OpenWidgetPermissions => WidgetPermissions, OpenMarketplace => Marketplace, OpenAppUpdates => AppUpdates, OpenAppearance => Appearance, _ => null };
+                        OpenWidgetSettings => WidgetSettings, OpenWidgetPermissions => WidgetPermissions, OpenMarketplace => Marketplace, OpenAppUpdates => AppUpdates, OpenAppearance => Appearance,
+                        OpenCaptureLibrary => CaptureLibrary, OpenRelatedItem => RelatedItem, _ => null };
                     if (compiled.Id.StartsWith("widgetrail.", StringComparison.Ordinal) &&
                         (standard is null || compiled.Version != standard.Version ||
                          compiled.SchemaDigest != CompiledWidgetIntentContract.Create(standard).SchemaDigest))

@@ -11,17 +11,18 @@ public sealed partial class MainWindow
         if (!uri.IsAbsoluteUri || uri.Scheme is not ("http" or "https") || !string.IsNullOrEmpty(uri.UserInfo)) return false;
         return await OpenExternalAsync(page,()=>externalWebLauncher(uri),cancellationToken);
     }
-    private Task<bool> OpenCaptureFolderAsync(OverlayShellPage page,string path,Func<Task<bool>> current,CancellationToken token)
+    private Task<bool> OpenCaptureFolderAsync(OverlayShellPage page,string path,string? fileName,Func<Task<bool>> current,CancellationToken token)
     {
         var known=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),"WidgetRail","Captures");
         if (!Path.IsPathFullyQualified(path) || !string.Equals(Path.GetFullPath(path),Path.GetFullPath(known),StringComparison.OrdinalIgnoreCase)) return Task.FromResult(false);
+        if (!WidgetRail.WidgetProtocol.CaptureLibraryLimits.ValidFileName(fileName)) return Task.FromResult(false);
         return OpenExternalAsync(page,async()=>
         {
             if(!await current()) return false;
-            return LaunchCaptureFolderInExplorer(path);
+            return LaunchCaptureFolderInExplorer(path, fileName);
         },token);
     }
-    private static bool LaunchCaptureFolderInExplorer(string path)
+    private static bool LaunchCaptureFolderInExplorer(string path, string? fileName = null)
     {
         if (!Directory.Exists(path)) return false;
         // Hand the folder request to Explorer itself. LaunchFolderAsync can
@@ -31,7 +32,18 @@ public sealed partial class MainWindow
         var start = new System.Diagnostics.ProcessStartInfo(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"))
         { UseShellExecute = false, CreateNoWindow = true };
-        start.ArgumentList.Add(path);
+        if (fileName is not null)
+        {
+            if (!WidgetRail.WidgetProtocol.CaptureLibraryLimits.ValidFileName(fileName)) return false;
+            var selected = Path.Combine(path, fileName);
+            if (!File.Exists(selected) || (File.GetAttributes(selected) & FileAttributes.ReparsePoint) != 0) return false;
+            if (selected.Contains('"') || selected.Any(char.IsControl)) return false;
+            // Explorer parses /select,"path" as its own comma-delimited grammar.
+            // Separate ArgumentList entries can open the folder without selecting.
+            // This goes directly to the fixed system executable, never a shell.
+            start.Arguments = "/select,\"" + selected + "\"";
+        }
+        else start.ArgumentList.Add(path);
         using var opened = System.Diagnostics.Process.Start(start);
         return opened is not null;
     }

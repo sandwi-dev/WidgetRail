@@ -45,7 +45,7 @@ internal sealed partial class MediaPlayerView
         imageControls = [zoomOut, zoomIn, imageFit, imageExpand];
         Label(zoomOut, "Zoom out", "MediaPlayer.Image.ZoomOut");
         Label(zoomIn, "Zoom in", "MediaPlayer.Image.ZoomIn");
-        Label(imageFit, "Fit image", "MediaPlayer.Image.Fit");
+        Label(imageFit, "Fit image", "MediaPlayer.Image.Fit", showToolTip: false);
         Label(imageExpand, "Expand image", "MediaPlayer.Image.Expand");
         AutomationProperties.SetName(imageViewport, "Image · use triggers to zoom, right stick to pan, and left stick or D-pad to navigate");
         AutomationProperties.SetAutomationId(imageViewport, "MediaPlayer.Image.Viewport");

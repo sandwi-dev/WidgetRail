@@ -6,6 +6,7 @@ internal static partial class Program
     // production switch/replay diagnostics still elect their real settings profile.
     static partial void IsValidationLaunch(IReadOnlyList<string> arguments, ref bool fixture)
     {
+        if (Shell.FrontendArguments.Value(arguments, "--validate-capture-reveal") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--capture-browser-source") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-web-session-capture") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-web-session-microphone") is not null) { fixture = true; return; }
@@ -19,7 +20,8 @@ internal static partial class Program
         if (Shell.FrontendArguments.Value(arguments, "--validate-desktop-acrylic") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-permission-dialog") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-context-capture") is not null) { fixture = true; return; }
-        if (Shell.FrontendArguments.Value(arguments, "--validate-captured-media") is not null) { fixture = true; return; }
+        if (Shell.FrontendArguments.Value(arguments, "--validate-capture-delete-playback") is not null) { fixture = true; return; }
+        if (Shell.FrontendArguments.Value(arguments, "--validate-captured-media") is not null || Shell.FrontendArguments.Value(arguments, "--validate-library-media") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-capture-discovery") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-provider-document") is not null) { fixture = true; return; }
         if (Shell.FrontendArguments.Value(arguments, "--validate-webapp") is not null) { fixture = true; return; }

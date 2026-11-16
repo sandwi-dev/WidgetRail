@@ -10,6 +10,14 @@ namespace WidgetRail.WidgetCatalog;
 /// </summary>
 public static class InstalledWidgetAuthority
 {
+    public static string InstanceId(string packageId, string version)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageId); ArgumentException.ThrowIfNullOrWhiteSpace(version);
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{packageId}@{version}"));
+        return $"installed.{Convert.ToHexString(hash.AsSpan(0, 16)).ToLowerInvariant()}";
+    }
+    internal static WidgetRail.PlatformBroker.BrokerWidgetIdentity Identity(InstalledWidgetVersion version) =>
+        new(version.Id, PublisherId(version), InstanceId(version.Id, version.Version.ToString()));
     public static string PublisherId(InstalledWidgetVersion installedVersion)
     {
         ArgumentNullException.ThrowIfNull(installedVersion);

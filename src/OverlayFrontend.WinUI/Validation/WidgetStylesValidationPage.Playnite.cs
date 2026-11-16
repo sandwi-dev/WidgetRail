@@ -77,12 +77,12 @@ internal sealed partial class WidgetStylesValidationPage
             "production Playnite decoded poster remains inside the modal viewport after focus reveal");
         var tabs = snapshot.Root.Children[1];
         var tabButtons = Walk(tabs).Where(node => node.ActionId?.StartsWith("playnite-library.details.tab.", StringComparison.Ordinal) == true).ToArray();
-        Check(tabButtons.Length == 5 && tabButtons.All(node =>
+        Check(tabButtons.Length == 6 && tabButtons.All(node =>
         {
             var button = Find<Button>("Widget." + node.Id)!;
             var origin = button.TransformToVisual(scroll).TransformPoint(new(0, 0));
             return button.ActualWidth > 20 && origin.X >= 0 && origin.X + button.ActualWidth <= scroll.ViewportWidth + 1;
-        }), "all five production details navigation options fit the finite modal width");
+        }), "all six production details navigation options fit the finite modal width");
         var header = Find<Grid>(prefix + "overview-header")!;
         var headerBefore = header.TransformToVisual(presenter).TransformPoint(new(0, 0));
         var playBefore = play.TransformToVisual(presenter).TransformPoint(new(0, 0));

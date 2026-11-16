@@ -38,8 +38,8 @@ public sealed partial class PlayniteLibraryTests
         foreach (var direction in new[] { ControllerButton.RightBumper, ControllerButton.LeftBumper })
         {
             foreach (var expected in direction == ControllerButton.RightBumper
-                ? new[] { PlayniteDetailsTab.Information, PlayniteDetailsTab.Achievements, PlayniteDetailsTab.Activity, PlayniteDetailsTab.Links, PlayniteDetailsTab.Description }
-                : new[] { PlayniteDetailsTab.Links, PlayniteDetailsTab.Activity, PlayniteDetailsTab.Achievements, PlayniteDetailsTab.Information, PlayniteDetailsTab.Description })
+                ? new[] { PlayniteDetailsTab.Information, PlayniteDetailsTab.Achievements, PlayniteDetailsTab.Captures, PlayniteDetailsTab.Activity, PlayniteDetailsTab.Links, PlayniteDetailsTab.Description }
+                : new[] { PlayniteDetailsTab.Links, PlayniteDetailsTab.Activity, PlayniteDetailsTab.Captures, PlayniteDetailsTab.Achievements, PlayniteDetailsTab.Information, PlayniteDetailsTab.Description })
             {
                 var before = Snapshot(widget, sequence++);
                 var leavingAchievements = widget.RenderState.Value.DetailsExtras.Tab == PlayniteDetailsTab.Achievements;

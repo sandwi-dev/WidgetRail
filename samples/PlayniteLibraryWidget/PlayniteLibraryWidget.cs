@@ -58,6 +58,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         IPlayniteSetupService? setupService = null)
     {
         _application = application ?? throw new ArgumentNullException(nameof(application));
+        captureSetup = CreateCaptureSetup();
+        relatedCaptures = CreateRelatedCaptures();
         _playniteClient = playniteClient;
         _setupService = setupService;
         var clock = timeProvider ?? TimeProvider.System;
@@ -247,6 +249,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             if (homeReturn.QueryGeneration == source.Descriptor.QueryGeneration)
                 page = page with { FocusGroupEntryRequest = source.Enter(homeReturn.CollectionId, local.ContentEntryRequestId, homeReturn) };
         }
+        if (_model.Value.CaptureSettings.Open) return page.WithModal(CaptureSettingsModal());
         if (local.SetupDialogOpen && local.SetupRequired &&
             navigation.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
             return page.WithModal(PlayniteLibraryConnectionPresentation.SetupDialog(local.Setup));
@@ -267,7 +270,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 state.OrganizationBusy || state.BrowseRetained,
                 local.DetailsExtras.ResolveCompletionStatus(
                     state.CompletionStatuses.GetValueOrDefault(details.Value.SavedId)) ?? string.Empty,
-                local.DetailsGeneration, achievementList, achievementBrowse)), local.DetailsExtras);
+                local.DetailsGeneration, achievementList, achievementBrowse, RenderRelatedCaptures(local))), local.DetailsExtras);
         }
         return page;
     }
@@ -429,6 +432,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         PlayniteLibraryGameTarget? capturedTarget, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(action);
+        if (HandleCaptureSettings(action)) return;
+        if (HandleRelatedCaptures(action)) return;
         if (await TryHandleSetupActionAsync(action).ConfigureAwait(false)) return;
         if (_model.Value.Setup.Busy && action.ActionId is PlayniteSaveActionId or PlayniteDeleteActionId or PlayniteRefreshActionId) return;
         if (action.ActionId is not (PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen or PlayniteLibraryActions.AchievementsOpen))
@@ -1975,6 +1980,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         Task.WhenAll(Operations.WhenIdleAsync("playnite-library.details", cancellationToken),
             Operations.WhenIdleAsync("playnite-library.details.achievements", cancellationToken),
             Operations.WhenIdleAsync("playnite-library.details.activity", cancellationToken),
+            relatedCaptures.WhenIdleAsync(cancellationToken),
             Operations.WhenIdleAsync("playnite-library.details.operation", cancellationToken),
             Operations.WhenIdleAsync("playnite-library.details.statuses", cancellationToken));
 

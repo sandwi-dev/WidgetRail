@@ -203,6 +203,7 @@ public sealed class PlayniteBridgeTests
         CollectionAssert.AreEqual(new[]
         {
             nameof(PlayniteBridgeClient.ChangeInstallationAsync),
+            nameof(PlayniteBridgeClient.ConfigureCaptureIntegrationAsync),
             nameof(PlayniteBridgeClient.CreateCategoryAsync),
             nameof(PlayniteBridgeClient.DeleteCredentialAsync),
             nameof(IDisposable.Dispose),
@@ -210,6 +211,9 @@ public sealed class PlayniteBridgeTests
             nameof(PlayniteBridgeClient.GetAchievementOverviewAsync),
             nameof(PlayniteBridgeClient.GetAchievementsAsync),
             nameof(PlayniteBridgeClient.GetActivityAsync),
+            nameof(PlayniteBridgeClient.GetCaptureIntegrationAsync),
+            nameof(PlayniteBridgeClient.GetCaptureSettingsAsync),
+            nameof(PlayniteBridgeClient.GetCaptureSettingsForConnectionAsync),
             nameof(PlayniteBridgeClient.LaunchAsync),
             nameof(PlayniteBridgeClient.ListCategoriesAsync),
             nameof(PlayniteBridgeClient.ListCompletionStatusesAsync),
@@ -225,6 +229,7 @@ public sealed class PlayniteBridgeTests
             nameof(PlayniteBridgeClient.SetCompletionStatusAsync),
             nameof(PlayniteBridgeClient.SetFavoriteAsync),
             nameof(PlayniteBridgeClient.SetHiddenAsync),
+            nameof(PlayniteBridgeClient.UpdateCaptureSettingsAsync),
         }, clientMethods);
         var transportMethod = typeof(IPlayniteBridgeTransport).GetMethod(
             nameof(IPlayniteBridgeTransport.SendAsync))!;
@@ -362,7 +367,7 @@ public sealed class PlayniteBridgeTests
     }
 
     [TestMethod]
-    public void ManifestAndPackageSourceContainNoCapabilityOrCredentialValue()
+    public void ManifestDeclaresOnlyOptionalCaptureAccessAndNoCredentialValue()
     {
         var root = RepositoryRoot();
         var manifestPath = Path.Combine(root, "samples", "PlayniteLibraryWidget", "manifest.json");
@@ -371,7 +376,8 @@ public sealed class PlayniteBridgeTests
         Assert.IsTrue(value.GetProperty("pinningSupported").GetBoolean(), "The authored progress layout requires package pin admission.");
         Assert.IsFalse(value.TryGetProperty("notificationCategories", out _), "PlayniteAchievements owns unlock notifications.");
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
-        Assert.AreEqual(0, value.GetProperty("optionalPermissions").GetArrayLength());
+        CollectionAssert.AreEquivalent(new[]{"media.capture-library.read.v1","media.capture-library.manage.v1"},
+            value.GetProperty("optionalPermissions").EnumerateArray().Select(item=>item.GetString()).ToArray());
         Assert.IsTrue(Version.TryParse(value.GetProperty("version").GetString(), out _),
             "The package must declare a valid version; its patch number is not a trust boundary.");
         var presentation = value.GetProperty("presentation");

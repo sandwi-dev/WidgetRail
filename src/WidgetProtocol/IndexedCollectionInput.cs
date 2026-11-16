@@ -9,6 +9,7 @@ public sealed record IndexedCollectionInputRequest(IndexedCollectionItemReferenc
     string? ContextActionOwnerId = null, string? ContextActionId = null)
 {
     public IndexedCollectionPreviewAction? PreviewAction { get; init; }
+    public IndexedSelectionInput? Selection { get; init; }
 }
 
 /// <summary>An action declared inside the exact leased row's interactive preview.</summary>
@@ -49,6 +50,10 @@ public static class IndexedCollectionInputContract
             request.ContextActionId is { } action && !ProtocolValidationIdentifierContext.IsSafeIdentifier(action) ||
             request.ContextActionOwnerId is { } owner && !ProtocolValidationIdentifierContext.IsSafeIdentifier(owner))
             throw new ArgumentException("Indexed context selection identity is invalid.", nameof(request));
+        if (request.Selection is { } selection &&
+            (selection.Epoch < 0 || !Enum.IsDefined(selection.Gesture) || request.ContextActionId is not null ||
+             request.PreviewAction is not null || request.Button != ControllerButton.A || request.Phase != ControllerEventPhase.Pressed))
+            throw new ArgumentException("Invalid indexed selection input.", nameof(request));
         if (request.PreviewAction is { } preview &&
             (request.ContextActionId is not null || request.Button != ControllerButton.A || request.Phase != ControllerEventPhase.Pressed ||
              preview.OwnerId is null || preview.ActionId is null ||
@@ -96,6 +101,13 @@ public static class IndexedCollectionInputContract
         var path = owners.Append(item).ToArray();
         var collectionAvailable = owners.Where(node => node.Kind == ViewNodeKind.IndexedCollection)
             .All(ControllerShortcutResolutionContract.OwnerAvailable);
+        if (request.Selection is { } selection)
+        {
+            var declared = owners.LastOrDefault(node => node.Kind == ViewNodeKind.IndexedCollection)?.IndexedSelection;
+            return collectionAvailable && ControllerShortcutResolutionContract.OwnerAvailable(item) &&
+                declared is { IsActive: true } && declared.Epoch == selection.Epoch
+                ? new("indexed.selection", item.Id, item.Kind, true) : null;
+        }
         if (request.PreviewAction is { } preview)
         {
             var surface = owners.LastOrDefault(node => node.Kind == ViewNodeKind.FocusPresentationSurface);

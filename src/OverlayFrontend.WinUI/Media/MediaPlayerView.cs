@@ -286,7 +286,12 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         try
         {
             var value = await resolveAuthority!(token);
-            if (!disposed && !token.IsCancellationRequested && definition == expected && value.Media != expected) Fail();
+            if (!disposed && !token.IsCancellationRequested && definition == expected)
+            {
+                if (value.Media != expected || resolved is not { } prior || value.Uri != prior.Uri ||
+                    value.ExpiresAtUnixMilliseconds is { } expiry && expiry <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) Fail();
+                else resolved = value; // Existing authority probes renew a retained library playback lease.
+            }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception error) when (error is not OutOfMemoryException)
@@ -294,8 +299,8 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         finally { checkingAuthority = false; }
     }
     private static string FormatTime(double value) => TimeSpan.FromSeconds(value).ToString(value >= 3600 ? @"h\:mm\:ss" : @"m\:ss");
-    private static void Label(Button button, string name, string id)
-    { AutomationProperties.SetName(button, name); AutomationProperties.SetAutomationId(button, id); ToolTipService.SetToolTip(button, name); }
+    private static void Label(Button button, string name, string id, bool showToolTip = true)
+    { AutomationProperties.SetName(button, name); AutomationProperties.SetAutomationId(button, id); ToolTipService.SetToolTip(button, showToolTip ? name : null); }
     internal void Toggle()
     {
         if (!input || player is null) return;

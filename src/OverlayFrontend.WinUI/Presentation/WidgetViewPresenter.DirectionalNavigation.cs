@@ -12,6 +12,7 @@ internal sealed partial class WidgetViewPresenter
         if (args.Handled || presentationOnly || XamlRoot is null || Input.GamepadKeyBoundary.Owns(this, args) || HasTransientControl ||
             FocusManager.GetFocusedElement(XamlRoot) is TextBox or PasswordBox or RichEditBox ||
             FocusedBrowser?.Surface?.HasNativeKeyboardFocus == true) return;
+        if (FindIndexedCollection()?.HandleSelectionKey(args) == true) return;
         var direction = args.Key switch
         {
             Windows.System.VirtualKey.Up => FocusNavigationDirection.Up, Windows.System.VirtualKey.Down => FocusNavigationDirection.Down,

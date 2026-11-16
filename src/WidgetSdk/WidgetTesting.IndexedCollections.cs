@@ -39,6 +39,20 @@ public sealed class WidgetIndexedCollectionTestHost : IDisposable
         }
     }
 
+    /// <summary>Resolves query metadata without realizing or leasing a row.</summary>
+    public async ValueTask<int?> LocateAsync(string collectionId, WidgetCollectionItemKey key, CancellationToken cancellationToken = default)
+    {
+        IndexedCollectionRangeRequest request;
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            var source = Find(snapshot.Root, collectionId)?.IndexedCollection ?? throw new ArgumentException("Missing collection.", nameof(collectionId));
+            request = new(collectionId, source, 0, 0, Guid.NewGuid().ToString("N")) { Kind = IndexedCollectionRequestKind.Locate, LocateKey = key.Value };
+        }
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, cancellationToken);
+        return (await widget.ReadIndexedRangeAsync(request, cancellation.Token).ConfigureAwait(false)).LocatedIndex;
+    }
+
     /// <summary>Demand one continuation using the current exact parent; publish its updated declaration after completion.</summary>
     public async ValueTask ContinueAsync(string collectionId, bool retry = false, CancellationToken cancellationToken = default)
     {
@@ -196,6 +210,11 @@ public sealed class WidgetIndexedCollectionTestLease : IDisposable
         string? contextActionOwnerId = null, string? contextActionId = null,
         IndexedCollectionInputContext? context = null) =>
         host.Route(this, new(new(LeaseId, itemKey), button, phase, contextActionOwnerId, contextActionId), context);
+
+    /// <summary>Routes a bounded selection gesture through production lease and query admission.</summary>
+    public WidgetOperationAdmission? RouteSelection(string itemKey, IndexedSelectionInput selection,
+        IndexedCollectionInputContext? context = null) =>
+        host.Route(this, new(new(LeaseId, itemKey), ControllerButton.A) { Selection = selection }, context);
 
     /// <summary>Routes an action from the exact retained row's interactive preview.</summary>
     public WidgetOperationAdmission? RoutePreviewAction(string itemKey, string ownerId, string actionId,

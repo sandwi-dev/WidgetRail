@@ -66,7 +66,7 @@ internal static class PlayniteAchievementPresentation
         !item.Unlocked && !item.Hidden && item.Id is { Length: > 0 } &&
         item.Progress is { Current: >= 0, Maximum: > 0 } progress && progress.Current < progress.Maximum;
 
-    internal static WidgetElement Row(PlayniteAchievementEntry entry, string id)
+    internal static WidgetElement Row(PlayniteAchievementEntry entry, string id, bool capturesAvailable = false)
     {
         var item = entry.Item;
         var children = new List<WidgetElement>();
@@ -119,10 +119,14 @@ internal static class PlayniteAchievementPresentation
         var surface = (entry.Secret
             ? UI.ActionSurface(Prefix + "achievement.reveal." + entry.Key, id, label, ActionSurfaceOrientation.Horizontal, children.ToArray())
             : UI.ReadingSurface(id, label, ActionSurfaceOrientation.Horizontal, children.ToArray()));
-        if (!entry.Secret && CanTrack(item)) surface = surface with
+        var actions = new List<WidgetContextAction>();
+        if (!entry.Secret && CanTrack(item)) actions.Add(new(Prefix + "achievement.track." + entry.Key, "Track in progress pin"));
+        if (!entry.Secret && capturesAvailable && item.Unlocked && item.Id is not null)
+            actions.Add(new(Prefix + "achievement.captures." + entry.Key, "View captures"));
+        if (actions.Count > 0) surface = surface with
         {
             ContextMenuButton = ControllerButton.X,
-            ContextActions = [new(Prefix + "achievement.track." + entry.Key, "Track in progress pin")],
+            ContextActions = actions,
         };
         return surface.Classes("playnite-library-achievement-row");
     }

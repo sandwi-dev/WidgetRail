@@ -182,3 +182,15 @@ and profile data.
 ![Illustrative themes from an earlier WidgetRail build](../images/themes.png)
 
 *Earlier-build illustration; the current theme list and settings above are authoritative.*
+
+
+## Capture confirmations
+
+The screenshot and recording confirmation dialogs include a **Don’t ask again**
+checkbox. Choose **Proceed** to remember it; Cancel never saves the choice.
+Each widget remembers screenshots and recordings separately. Capture permissions,
+countdowns and recording controls remain unchanged.
+
+Use **Settings → General → Restore capture confirmations** to ask again in every
+widget. This restores confirmation prompts only; it does not change permissions
+or capture quality settings.

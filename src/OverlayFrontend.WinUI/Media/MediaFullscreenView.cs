@@ -144,7 +144,7 @@ internal sealed partial class MediaFullscreenView : Grid
         Grid.SetColumn(text, 1); content.Children.Add(icon); content.Children.Add(text);
         var button = new Button { Content = content, MinWidth = 0, HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Center, Padding = new Thickness(compact ? 7 : 12, 6, compact ? 7 : 12, 6) };
-        NativePopupTheme.SetToolTip(button, label);
+        NativePopupTheme.SetToolTip(button, compact ? label : null);
         AutomationProperties.SetAutomationId(button, (compact ? "Overlay.MediaCompact." : "Overlay.MediaFullscreen.") + id);
         AutomationProperties.SetName(button, id switch { "Toggle" => "Toggle playback", "Rewind" => "Seek backward", "Forward" => "Seek forward", "Back" => "Return to widget", _ => label });
         button.Click += (_, _) => { RevealControls(); action(); };

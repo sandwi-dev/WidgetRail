@@ -39,6 +39,10 @@ internal static class ConfiguredCaptureTests
         Check(media.IsWellFormed() && !(media with { Properties = null }).IsWellFormed(), "Legacy video bounds were silently broadened");
         using var target = new MemoryStream(); await client.Capture.CopyContentToAsync(media, target);
         Check(target.ToArray().SequenceEqual(bytes), "Streamed media changed or truncated");
+        var longSaved = media with { Origin = CaptureAttachmentOrigin.SavedLibrary, ByteLength = 4L * 1024 * 1024 * 1024, DurationSeconds = 7200, Properties = null };
+        Check(longSaved.IsWellFormed() && !(longSaved with { Origin = CaptureAttachmentOrigin.WindowCapture }).IsWellFormed(), "Long saved video changed recording admission");
+        try { await client.Capture.ReadContentAsync(longSaved); throw new Exception("Large video attempted whole-memory allocation"); }
+        catch (ArgumentException) { }
         var snapshot = new WidgetView(UI.CapturedMedia(media, "preview")).CreateSnapshot("capture-test", 1);
         Check(snapshot.ProtocolVersion == 79 && ViewSnapshotValidator.Validate(snapshot with { ProtocolVersion = 78 }).Count > 0, "Configured media was admitted to old hosts");
         foreach (var invalid in new[] {

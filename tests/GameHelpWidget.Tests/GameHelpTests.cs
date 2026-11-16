@@ -16,10 +16,11 @@ public sealed class GameHelpTests
         var media=new CaptureAttachment(new string('A',32),"image/png",100,100,1000,0,long.MaxValue);
         var client=new WidgetTestHostServicesBuilder()
             .WithResponse(WidgetPermissionCapabilities.Request,new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
-            .WithHandler(WidgetCaptureLibraryCapabilities.List,(request,_)=>
+            .WithEvents(WidgetCaptureLibraryCapabilities.Changed, Array.Empty<CaptureLibraryChanged>())
+            .WithHandler(WidgetCaptureLibraryCapabilities.Query,(request,_)=>
             {
                 offsets.Add(request.Offset);
-                return ValueTask.FromResult(new CaptureLibraryPage([new((request.Offset+1).ToString("x32"),media,1)],request.Offset,240,240000));
+                return ValueTask.FromResult(new CaptureLibraryQueryPage([new((request.Offset+1).ToString("x32"),media,1)],request.Offset,240,240000,"aa-1"));
             }).Build();
         var widget=WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(new FakeService()),client);
         try
@@ -45,7 +46,8 @@ public sealed class GameHelpTests
         var id = new string('B', 32); var requested = CaptureImageResolution.Original;
         var widget = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service), new WidgetTestHostServicesBuilder()
             .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
-            .WithResponse(WidgetCaptureLibraryCapabilities.List, new CaptureLibraryPage([new(id, media, 1)], 0, 1, 1000))
+            .WithEvents(WidgetCaptureLibraryCapabilities.Changed, Array.Empty<CaptureLibraryChanged>())
+            .WithResponse(WidgetCaptureLibraryCapabilities.Query, new CaptureLibraryQueryPage([new(id, media, 1)], 0, 1, 1000,"aa-1"))
             .WithHandler(WidgetCaptureLibraryCapabilities.Open, (request, _) => { requested = request.Resolution; return ValueTask.FromResult(media); })
             .WithResponse(WidgetCaptureLibraryCapabilities.Release, new WidgetCapabilityAcknowledgement(true)).Build());
         try
@@ -67,6 +69,121 @@ public sealed class GameHelpTests
         }
         finally { await WidgetTestHost.DestroyAsync(widget); }
     }
+    [TestMethod]
+    public async Task OversizedSavedVideoCannotBecomeGameContext()
+    {
+        var service = new FakeService(); var opened = 0; var released = 0;
+        var id = new string('b', 32);
+        var media = new CaptureAttachment(new string('a', 32), "video/mp4", 1920, 1080, CaptureLimits.MaximumContextBytes + 1L, 7200, long.MaxValue)
+            { Origin = CaptureAttachmentOrigin.SavedLibrary };
+        var row = media;
+        var widget = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service), new WidgetTestHostServicesBuilder()
+            .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
+            .WithEvents(WidgetCaptureLibraryCapabilities.Changed, Array.Empty<CaptureLibraryChanged>())
+            .WithHandler(WidgetCaptureLibraryCapabilities.Query, (_, _) => ValueTask.FromResult(new CaptureLibraryQueryPage([new(id, row, 1)], 0, 1, row.ByteLength, "aa-1")))
+            .WithHandler(WidgetCaptureLibraryCapabilities.Open, (_, _) => { opened++; return ValueTask.FromResult(media); })
+            .WithHandler(WidgetCaptureLibraryCapabilities.Release, (_, _) => { released++; return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true)); }).Build());
+        try
+        {
+            await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.composer"));
+            await widget.OnActionAsync(new("library.open", "help.add-library"));
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.library.item." + id));
+            await widget.OnActionAsync(new("library.select." + id, "help.library.item." + id));
+            Assert.AreEqual(0, opened, "Oversized selection must be rejected before opening");
+            row = media with { ByteLength = 1000 };
+            await widget.OnActionAsync(new("library.refresh", "help.library.refresh"));
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.library.item." + id && n.IsBusy != true && n.IsDisabled != true));
+            await widget.OnActionAsync(new("library.select." + id, "help.library.item." + id));
+            await Until(() => released == 1);
+            Assert.AreEqual(1, opened);
+            Assert.AreEqual(0, service.Requests.Count);
+            Assert.IsFalse(Walk(Snapshot(widget).Root).Any(n => n.Id == "help.preview-media"), "Changed oversized video became context after opening");
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+
+    [TestMethod]
+    public async Task SavedCaptureSearchFiltersAndLiveChangesKeepQuestionPrivate()
+    {
+        var changes = System.Threading.Channels.Channel.CreateUnbounded<CaptureLibraryChanged>();
+        var requests = new System.Collections.Concurrent.ConcurrentQueue<CaptureLibraryQueryRequest>();
+        var title = "Initial capture";
+        var media = new CaptureAttachment(new string('a', 32), "image/png", 100, 100, 1000, 0, long.MaxValue);
+        var service = new FakeService();
+        var client = new WidgetTestHostServicesBuilder()
+            .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
+            .WithEventStream(WidgetCaptureLibraryCapabilities.Changed, token => changes.Reader.ReadAllAsync(token))
+            .WithHandler(WidgetCaptureLibraryCapabilities.Query, (request, _) =>
+            {
+                requests.Enqueue(request);
+                return ValueTask.FromResult(new CaptureLibraryQueryPage([new(new string('b',32), media, 1) { Title = title }], 0, 1, 1000, "aa-1"));
+            }).Build();
+        var widget = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service), client);
+        try
+        {
+            await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.composer"));
+            await widget.OnActionAsync(new("draft", "help.composer") { CommittedText = "Private unsent question" });
+            await widget.OnActionAsync(new("library.open", "help.add-library"));
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Text?.Contains("Initial capture") == true));
+            await widget.OnActionAsync(new("library.search", "help.library.search") { CommittedText = "boss" });
+            await Until(() => requests.Last().Query.Search == "boss");
+            await widget.OnActionAsync(new("library.kind.Video", "help.library.kind"));
+            await Until(() => requests.Last().Query.MediaKind == CaptureLibraryMediaKind.Video);
+            await widget.OnActionAsync(new("library.favorites", "help.library.favorites"));
+            await Until(() => requests.Last().Query.FavoritesOnly);
+            Assert.IsTrue(requests.All(request => request.Count == CaptureLibraryLimits.PageSize && request.Offset == 0));
+            title = "Updated capture title"; await changes.Writer.WriteAsync(new(1));
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Text?.Contains(title) == true));
+            Assert.AreEqual(0, service.Requests.Count, "Filtering or live updates must not send the private question");
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(Snapshot(widget)).Count);
+            await widget.OnActionAsync(new("library.close", "help.library.back"));
+            var count = requests.Count; await changes.Writer.WriteAsync(new(2)); await Task.Delay(100);
+            Assert.AreEqual(count, requests.Count, "Closed picker must retire its subscription");
+            Assert.IsFalse(Walk(Snapshot(widget).Root).Any(n => n.Id == "help.library"));
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); changes.Writer.TryComplete(); }
+    }
+
+    [TestMethod]
+    public async Task SavedCaptureChangedRevisionRestartsPagingAndLateSearchCannotReopenClosedPicker()
+    {
+        var media = new CaptureAttachment(new string('a', 32), "image/png", 100, 100, 1000, 0, long.MaxValue);
+        var delayed = new TaskCompletionSource<CaptureLibraryQueryPage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var requests = new System.Collections.Concurrent.ConcurrentQueue<CaptureLibraryQueryRequest>();
+        var client = new WidgetTestHostServicesBuilder()
+            .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
+            .WithEvents(WidgetCaptureLibraryCapabilities.Changed, Array.Empty<CaptureLibraryChanged>())
+            .WithHandler(WidgetCaptureLibraryCapabilities.Query, (request, _) =>
+            {
+                requests.Enqueue(request);
+                if (request.Query.Search == "slow") return new ValueTask<CaptureLibraryQueryPage>(delayed.Task);
+                if (request.Revision is not null) throw new WidgetCapabilityException("capture_library_query_changed", "Changed");
+                return ValueTask.FromResult(new CaptureLibraryQueryPage([new(new string('b',32), media, 1)], 0, 40, 1000, "aa-2"));
+            }).Build();
+        var widget = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(new FakeService()), client);
+        try
+        {
+            await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.composer"));
+            await widget.OnActionAsync(new("library.open", "help.add-library"));
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.library.next" && n.IsBusy != true));
+            await widget.OnActionAsync(new("library.next", "help.library.next"));
+            await Until(() => requests.Count == 3);
+            Assert.AreEqual(20, requests.ToArray()[1].Offset);
+            Assert.AreEqual("aa-2", requests.ToArray()[1].Revision);
+            Assert.AreEqual(0, requests.Last().Offset);
+            await widget.OnActionAsync(new("library.search", "help.library.search") { CommittedText = "slow" });
+            await Until(() => requests.Last().Query.Search == "slow");
+            await widget.OnActionAsync(new("library.close", "help.library.back"));
+            delayed.SetResult(new([new(new string('c',32), media, 1) { Title = "Late item" }], 0, 1, 1000, "aa-3"));
+            await Task.Delay(100);
+            Assert.IsFalse(Walk(Snapshot(widget).Root).Any(n => n.Id == "help.library" || n.Text?.Contains("Late item") == true));
+        }
+        finally { delayed.TrySetCanceled(); await WidgetTestHost.DestroyAsync(widget); }
+    }
+
     [TestMethod]
     public async Task SourceIntentsPreferExistingBrowserOrYouTubeSurfaceAndPreserveRedirects()
     {

@@ -43,6 +43,8 @@ internal static class Program
         Directory.CreateDirectory(root);
         try
         {
+            CaptureSettingsChecks.Run(Check, root);
+            await CaptureCompanionChecks.RunAsync(Check, root);
             var game = new Game("Fixture A") { IsInstalled = true, Description = "Details", Playtime = 42 };
             var second = new Game("Fixture B") { IsInstalled = false, Hidden = true };
             var games = new List<Game> { game, second };
@@ -80,6 +82,10 @@ internal static class Program
             {
                 var connection = await dispatcher.DispatchAsync(Request("GET", "/v1/connection"), default);
                 Check(connection.Status == 200 && (string)Json(connection)["pluginId"] == IntegrationIdentity.PluginId, "Typed handshake works without optional providers");
+                var captureSettings = await dispatcher.DispatchAsync(Request("GET", "/v1/capture-settings"), default);
+                Check(captureSettings.Status == 200 && (string)Json(captureSettings)["availability"] == "missing", "Capture settings route reports unavailable addon without breaking library");
+                Check((await dispatcher.DispatchAsync(Request("PATCH", "/v1/capture-settings", "{}"), default)).Status == 400,
+                    "Capture settings mutation requires existing command identity");
                 var page = await dispatcher.DispatchAsync(Request("GET", "/v1/games", query: new NameValueCollection { ["limit"] = "2" }), default);
                 Check(page.Status == 200 && Convert.ToInt32(Json(page)["total"]) == 1, "Library excludes hidden games by default");
                 var revision = (string)Json(page)["revision"];
@@ -200,6 +206,27 @@ internal static class Program
                 categories.AddRange(Enumerable.Range(0, 257).Select(index => new Category("Category " + index)));
                 Check((await dispatcher.DispatchAsync(Request("GET", "/v1/categories"), default)).Status == 413,
                     "Oversized named catalogs are rejected rather than truncated");
+                provider.AchievementDataService.Fail=false;provider.AchievementDataService.Empty=false;
+                var captureRoot=Path.Combine(root,"provider-captures");var captureFolder=Path.Combine(captureRoot,ProviderCaptureCompanions.Segment(game.Name,true));
+                Directory.CreateDirectory(captureFolder);
+                provider.Settings.Persisted.UnlockScreenshotDirectory=captureRoot;
+                provider.GameCustomDataStore.Records=new[]{new FakeCustomCapture{PlayniteGameId=second.Id,CaptureOverride=new FakeCaptureOverride{CaptureDirectory=Path.Combine(root,"custom-captures")}}};
+                provider.Invalidate();
+                var integration=await dispatcher.DispatchAsync(Request("GET","/v1/capture-integration"),default);
+                Check(integration.Status==200&&Guid.TryParse((string)Json(integration)["profileId"],out _),"Capture integration exposes a stable profile namespace");
+                Check(provider.GameCustomDataStore.Queries>0,"Capture roots use the public read-locked projection API");
+                var captureFile=Path.Combine(captureFolder,"001_Fixture achievement_clean.png");File.WriteAllBytes(captureFile,new byte[]{1,2,3});
+                var captureBody=new JavaScriptSerializer().Serialize(new{path=captureRoot,enabled=true});
+                Check((await dispatcher.DispatchAsync(Request("PUT","/v1/capture-integration",captureBody,Guid.NewGuid().ToString("D")),default)).Status==200,"Explicit provider capture root can enable companions");
+                for(var attempt=0;attempt<150&&!File.Exists(captureFile+ProviderCaptureCompanions.Suffix);attempt++)await Task.Delay(20);
+                var associated=IntegrationFiles.Read<ProviderCaptureContext>(captureFile+ProviderCaptureCompanions.Suffix);
+                Check(associated?.References.Length==2&&associated.References.All(reference=>reference.HasRelatedAction),"Public provider projection produces actionable game and achievement companions");
+                Check(associated!.EventAtUnixMilliseconds==null,"Discovered capture does not inherit an unproven historical event timestamp");
+                Check(File.GetAttributes(captureFile+ProviderCaptureCompanions.Suffix).HasFlag(FileAttributes.Hidden),"Provider integration publishes hidden companions");
+                captureBody=new JavaScriptSerializer().Serialize(new{path=root,enabled=true});
+                Check((await dispatcher.DispatchAsync(Request("PUT","/v1/capture-integration",captureBody,Guid.NewGuid().ToString("D")),default)).Status==409,"Unconfigured directories cannot become provider companion roots");
+                captureBody=new JavaScriptSerializer().Serialize(new{path=captureRoot,enabled=false});
+                Check((await dispatcher.DispatchAsync(Request("PUT","/v1/capture-integration",captureBody,Guid.NewGuid().ToString("D")),default)).Status==200,"Capture root disable is an explicit retained mutation");
             }
         }
         finally
@@ -234,6 +261,8 @@ internal static class Program
     {
         public override Guid Id => new Guid("e6aad2c9-6e06-4d8d-ac55-ac3b252b5f7b");
         public FakeData AchievementDataService { get; } = new FakeData();
+        public FakeCaptureOptions Settings { get; } = new FakeCaptureOptions();
+        public FakeCustomCaptureStore GameCustomDataStore { get; } = new FakeCustomCaptureStore();
         public int Refreshes;
         public TaskCompletionSource<bool>? PendingRefresh;
         public static event EventHandler<EventArgs>? SettingsSaved;
@@ -271,7 +300,23 @@ internal static class Program
             return new FakeAchievementData { Achievements = Empty ? Array.Empty<FakeAchievement>() : new[] { new FakeAchievement() } };
         }
     }
-    public sealed class FakeAchievementData { public FakeAchievement[] Achievements { get; set; } = Array.Empty<FakeAchievement>(); }
+    public sealed class FakeAchievementData { public FakeAchievement[] Achievements { get; set; } = Array.Empty<FakeAchievement>();public string EffectiveProviderKey=>"steam"; }
+    public sealed class FakeCaptureOptions {public FakeCapturePersisted Persisted {get;}=new FakeCapturePersisted();}
+    public sealed class FakeCapturePersisted
+    {
+        public string UnlockScreenshotDirectory {get;set;}="";
+        public string UnlockRecordingDirectory {get;set;}="";
+        public string UnlockScreenshotSuffixClean=>"clean";
+        public string UnlockScreenshotSuffixWithToast=>"notification";
+        public string UnlockScreenshotSuffixFramed=>"framed";
+    }
+    public sealed class FakeCustomCaptureStore
+    {
+        public FakeCustomCapture[] Records=Array.Empty<FakeCustomCapture>();public int Queries;
+        public T QueryAll<T>(Func<IEnumerable<FakeCustomCapture>,T> query){Queries++;return query(Records);}
+    }
+    public sealed class FakeCustomCapture {public Guid PlayniteGameId {get;set;}public FakeCaptureOverride CaptureOverride {get;set;}=new FakeCaptureOverride();}
+    public sealed class FakeCaptureOverride {public string CaptureDirectory {get;set;}="";}
     public sealed class FakeAchievement
     {
         public string ApiName => "fixture-achievement";

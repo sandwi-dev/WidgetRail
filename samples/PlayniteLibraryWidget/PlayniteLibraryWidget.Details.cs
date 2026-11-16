@@ -74,6 +74,8 @@ public sealed partial class PlayniteLibraryWidget
 
     private void CancelDetailsOperations(bool retainReadValues = false)
     {
+        if (retainReadValues) relatedCaptures.Cancel(); else relatedCaptures.Reset();
+        Operations.Cancel(RelatedCaptureWatch);
         if (retainReadValues) { _detailsAchievements.Cancel(); _detailsActivity.Cancel(); }
         else { _detailsAchievements.Reset(); _detailsActivity.Reset(); }
         foreach (var key in new[] { "playnite-library.details", "playnite-library.details.operation", "playnite-library.details.statuses", DetailsPrefix + "provider-refresh" }) Operations.Cancel(key);
@@ -127,10 +129,13 @@ public sealed partial class PlayniteLibraryWidget
         if (state.DetailsItem is null) return;
         var key = DetailsKey(state);
         var route = _navigation.Value.RouteCancellationToken;
+        if (tab != PlayniteDetailsTab.Captures) Operations.Cancel(RelatedCaptureWatch);
         if (tab == PlayniteDetailsTab.Achievements)
             _detailsAchievements.EnsureLoaded(key, route, refresh);
         else if (tab == PlayniteDetailsTab.Activity)
             _detailsActivity.EnsureLoaded(key, route, refresh);
+        else if (tab == PlayniteDetailsTab.Captures)
+        { relatedCaptures.EnsureLoaded(RelatedCaptureKey(WithDetailsResources(state)), route, refresh); WatchRelatedCaptures(); }
     }
 
     private async ValueTask<bool> TryHandleDetailsActionAsync(WidgetActionEvent action, CancellationToken token)
@@ -193,7 +198,9 @@ public sealed partial class PlayniteLibraryWidget
         if (name.StartsWith("tab.", StringComparison.Ordinal) &&
             Enum.TryParse<PlayniteDetailsTab>(name[4..], true, out var tab) && Enum.IsDefined(tab))
         {
-            UpdateDetails(state.DetailsGeneration, value => value with { Tab = tab, Page = 0 });
+            UpdateDetails(state.DetailsGeneration, value => value with { Tab = tab, Page = 0,
+                CaptureAchievementId = tab == PlayniteDetailsTab.Captures ? null : value.CaptureAchievementId,
+                CaptureAchievementName = tab == PlayniteDetailsTab.Captures ? null : value.CaptureAchievementName });
             LoadDetailsSection(tab);
             return true;
         }

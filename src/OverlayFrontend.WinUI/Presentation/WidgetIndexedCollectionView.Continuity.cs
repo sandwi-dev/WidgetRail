@@ -15,6 +15,8 @@ internal sealed partial class WidgetIndexedCollectionView
         internal IndexedViewportMemento? Viewport = viewport;
         internal IndexedCollectionFocusTarget? Focus = focus;
         internal bool Requested;
+        internal bool NeedsLookup;
+        internal CancellationTokenSource? Lookup;
         internal double? Offset;
         internal IDisposable? ViewportRetention;
         internal IndexedItemsSource<WidgetIndexedRow>.Retention? FocusRetention;
@@ -27,9 +29,11 @@ internal sealed partial class WidgetIndexedCollectionView
         if (source is null || !source.Presentation.SameSurface(binding) || source.ActiveScope != binding.Scope ||
             source.Declaration.Id != next.Id || source.Declaration.IndexedCollection is not { } previous ||
             next.IndexedCollection is not { } query || previous.SourceId != query.SourceId || query.QueryGeneration <= previous.QueryGeneration ||
-            source.Declaration.IndexedOccurrenceKeys is not { } oldKeys || next.IndexedOccurrenceKeys is not { } keys) return null;
+            (next.IndexedCollection.CanLocateItems != true && (source.Declaration.IndexedOccurrenceKeys is null || next.IndexedOccurrenceKeys is null))) return null;
         var oldViewport = pendingContinuity?.Viewport ?? CaptureViewport(new(binding.Scope, next.Id, ViewNodeKind.IndexedCollection, ""), preferFocused: true);
         var oldFocus = pendingContinuity?.Focus ?? CaptureFocusedItem();
+        if (source.Declaration.IndexedOccurrenceKeys is not { } oldKeys || next.IndexedOccurrenceKeys is not { } keys)
+            return new(oldViewport, oldFocus) { NeedsLookup = true };
         IndexedViewportMemento? viewport = null;
         IndexedCollectionFocusTarget? focus = null;
         if (oldViewport is not null && IndexedCollectionContract.RebaseOccurrence(oldKeys, keys, oldViewport.Key) is var anchor && anchor >= 0)
@@ -54,6 +58,12 @@ internal sealed partial class WidgetIndexedCollectionView
     {
         if (source is null || view is null || pending.Viewport is null && pending.Focus is null) return;
         pendingContinuity = pending;
+        if (pending.NeedsLookup)
+        {
+            pending.Lookup = new();
+            _ = LocateContinuityAsync(pending, source, pending.Lookup.Token);
+            return;
+        }
         if (pending.Viewport is { } viewport) pending.ViewportRetention = RetainViewport(viewport, QueueContinuity, () => pending.Offset = null);
         if (pending.Focus is { } focus)
         {
@@ -63,6 +73,41 @@ internal sealed partial class WidgetIndexedCollectionView
         source.Items.StateChanged += ContinuityDataChanged;
         view.LayoutUpdated += ContinuityLayoutChanged;
         QueueContinuity();
+    }
+
+    private async Task LocateContinuityAsync(Continuity pending, WidgetIndexedRows owner, CancellationToken token)
+    {
+        var viewport = pending.Viewport; var focus = pending.Focus;
+        var query = owner.Declaration.IndexedCollection!;
+        bool Current() => !disposed && presentationActive && ReferenceEquals(source, owner) && ReferenceEquals(pendingContinuity, pending) && !token.IsCancellationRequested;
+        try
+        {
+            int? viewportIndex = viewport is null ? null : await owner.LocateAsync(viewport.Key, token);
+            if (!Current()) return;
+            int? focusIndex = focus is null ? null : focus.ItemKey == viewport?.Key ? viewportIndex : await owner.LocateAsync(focus.ItemKey, token);
+            if (!Current()) return;
+            pending.Viewport = viewport is not null && viewportIndex is { } anchor ? viewport with { Query = query.QueryGeneration, Index = anchor } : null;
+            pending.Focus = focus is not null && focusIndex is { } target ? focus with { QueryGeneration = query.QueryGeneration, Index = target } : null;
+            pending.NeedsLookup = false;
+            pending.Lookup?.Dispose(); pending.Lookup = null;
+            if (pending.Viewport is null && pending.Focus is null)
+            {
+                CancelContinuity();
+                if (focus is not null && IsFocusParked && source!.Items.Count > 0) Enter();
+                return;
+            }
+            BeginContinuity(pending);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested || !Current()) { }
+        catch (Exception error) when (error is not (OutOfMemoryException or StackOverflowException or AccessViolationException))
+        {
+            if (Current())
+            {
+                CancelContinuity();
+                if (focus is not null && IsFocusParked && source!.Items.Count > 0) Enter();
+                Diagnostics.FrontendFailureLog.Current.Write("indexed-anchor-lookup", error);
+            }
+        }
     }
 
     private void ContinuityDataChanged(object? sender, EventArgs args) => QueueContinuity();
@@ -107,6 +152,7 @@ internal sealed partial class WidgetIndexedCollectionView
         if (pendingContinuity is not { } pending) return;
         TraceContinuity("cancel", pending.Viewport);
         pendingContinuity = null;
+        pending.Lookup?.Cancel(); pending.Lookup?.Dispose(); pending.Lookup = null;
         if (source is not null) source.Items.StateChanged -= ContinuityDataChanged;
         if (view is not null) view.LayoutUpdated -= ContinuityLayoutChanged;
         pending.ViewportRetention?.Dispose();

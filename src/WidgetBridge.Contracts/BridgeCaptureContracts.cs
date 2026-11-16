@@ -7,9 +7,14 @@ public sealed record BridgeCaptureTake(HostWindowCapture? Request, string? Widge
     public bool NeedsCapabilities { get; init; }
     public bool NeedsEncodingCapabilities { get; init; }
     public IReadOnlyList<HostCaptureDiscovery> RecordingDiscoveries { get; init; } = [];
+    public HostCaptureSourceRequest? SourceFolder { get; init; }
+    public string? SourceWidgetId { get; init; }
+    public HostCaptureCopyRequest? CopyDestination { get; init; }
+    public string? CopyWidgetId { get; init; }
     public HostCaptureFolderRequest? OpenFolder { get; init; }
     public string? FolderWidgetId { get; init; }
 }
+public sealed record BridgeCaptureCopyDestination(string Id, string? Destination);
 public sealed record BridgeCaptureFolderResult(string Id,bool Opened);
 public sealed record BridgeCaptureCapabilities(WidgetRail.WidgetProtocol.CaptureCapabilities Capabilities, bool EncodingProbed, string? DiscoveryId = null);
 public sealed record BridgeCaptureReference(string RequestId);

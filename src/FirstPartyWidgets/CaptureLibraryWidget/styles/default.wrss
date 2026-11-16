@@ -3,7 +3,7 @@
 .capture-title { font-size: 24px; font-weight: 600; }
 .capture-heading { font-size: 17px; font-weight: 600; text-align: start; }
 .capture-help { font-size: 13px; color: var(--text-muted); text-align: start; }
-.capture-entry { padding: 8px; align: start; gap: 8px; corner-radius: 8px; background: var(--surface-raised); }
+.capture-entry { margin: 4px 6px; padding: 8px; align: start; gap: 8px; corner-radius: 8px; background: var(--surface-raised); }
 .capture-entry-copy { width: 100%; gap: 4px; }
 .capture-preview { flex-grow: 1; min-height: 180px; }
 .capture-thumbnail { width: 100%; height: 180px; }
@@ -19,3 +19,20 @@
 .capture-confirm-button { min-width: 96px; }
 .capture-delete { color: var(--danger, #c98181); border-color: var(--danger, #c98181); border-width: 1px; }
 .capture-delete:focused { color: var(--danger, #c98181); outline-color: var(--focus); }
+
+.capture-library-base { height: 100%; min-height: 0px; }
+.capture-search { flex-grow: 1; min-width: 0px; }
+.capture-gallery-toolbar { width: 100%; justify: space-between; align: center; }
+.capture-gallery-count { flex-grow: 1; color: var(--text-muted); }
+.capture-gallery { flex-grow: 1; min-height: 0px; padding: 4px 8px 8px 4px; gap: 12px; }
+.capture-card-title { max-lines: 1; text-overflow: ellipsis; }
+.capture-density-0 { height: 90px; }
+.capture-density-1 { height: 112px; }
+.capture-density-2 { height: 200px; }
+.capture-row-thumbnail { width: 120px; height: 78px; }
+.capture-empty { flex-grow: 1; color: var(--text-muted); padding: 24px; }
+
+.capture-header-actions { justify: end; align: center; gap: 8px; }
+.capture-card-info { max-lines: 1; text-overflow: ellipsis; }
+
+#capture-library-sources { width: 760px; height: 520px; }

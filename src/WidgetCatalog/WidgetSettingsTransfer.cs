@@ -27,6 +27,8 @@ internal sealed class WidgetSettingsTransfer(string stateRoot, ConsentStore cons
                 .Where(PlatformCapabilities.IsManifestDeclarable).ToArray();
             await consent.CopyUpdateDecisionsAsync(Identity(previous), Identity(replacement),
                 retained, deadline.Token).ConfigureAwait(false);
+            await CaptureLibraryStore.KeepReviewedSourceAccessAsync(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(stateRoot))!, "capture-library-v2"),
+                InstalledWidgetAuthority.Identity(previous), InstalledWidgetAuthority.Identity(replacement), deadline.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {

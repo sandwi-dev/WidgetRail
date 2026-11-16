@@ -1,16 +1,132 @@
 {
-  "manifestVersion": 1, "id": "widgetrail.firstparty.capture-library", "publisher": "widgetrail.firstparty",
-  "name": "Capture Library", "version": "0.1.4", "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
-  "entrypoint": { "runtime": "dotnet-worker", "assembly": "payload/CaptureLibraryWidget.dll", "type": "WidgetRail.FirstPartyWidgets.CaptureLibrary.CaptureLibraryWidget" },
-  "presentation": { "icon": "fullscreen", "packageIcon": { "assetId": "captures.mark", "colorMode": "themeTint" } },
-  "iconAssets": { "captures.mark": { "path": "assets/icons/captures.svg" } },
-  "permissions": ["system.apps.windows.capture.v1", "media.capture-library.read.v1", "media.capture-library.save.v1"],
-  "optionalPermissions": ["media.capture-library.manage.v1"],
-  "intents": { "requests": [
-    { "id": "widgetrail.settings.permissions.open", "version": 1,
-      "payloadSchema": { "type": "object", "additionalProperties": false,
-        "properties": { "packageId": { "type": "string", "minLength": 3, "maxLength": 128 } }, "required": ["packageId"] } }
-  ] },
-  "residencyPolicy": { "schemaVersion": 1, "mode": "unload-after-idle", "idleSeconds": 120 },
-  "resourceRequest": { "memoryMb": 48, "updateHz": 2 }, "architectures": ["x64"]
+  "manifestVersion": 1,
+  "id": "widgetrail.firstparty.capture-library",
+  "publisher": "widgetrail.firstparty",
+  "name": "Capture Library",
+  "version": "0.2.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/CaptureLibraryWidget.dll",
+    "type": "WidgetRail.FirstPartyWidgets.CaptureLibrary.CaptureLibraryWidget"
+  },
+  "presentation": {
+    "icon": "fullscreen",
+    "packageIcon": {
+      "assetId": "captures.mark",
+      "colorMode": "themeTint"
+    }
+  },
+  "iconAssets": {
+    "captures.mark": {
+      "path": "assets/icons/captures.svg"
+    }
+  },
+  "permissions": [
+    "system.apps.windows.capture.v1",
+    "media.capture-library.read.v1",
+    "media.capture-library.save.v1"
+  ],
+  "optionalPermissions": [
+    "media.capture-library.manage.v1"
+  ],
+  "intents": {
+    "requests": [
+      {
+        "id": "widgetrail.settings.permissions.open",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "packageId": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "packageId"
+          ]
+        }
+      },
+      {
+        "id": "widgetrail.related-item.open",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "packageId": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128
+            },
+            "kind": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 48
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "packageId",
+            "kind",
+            "id"
+          ]
+        }
+      }
+    ],
+    "handles": [
+      {
+        "id": "widgetrail.captures.browse",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "originPackageId": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128
+            },
+            "referenceKind": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 48
+            },
+            "referenceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "originPackageId",
+            "referenceKind",
+            "referenceId"
+          ]
+        }
+      }
+    ]
+  },
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "unload-after-idle",
+    "idleSeconds": 120
+  },
+  "resourceRequest": {
+    "memoryMb": 48,
+    "updateHz": 2
+  },
+  "architectures": [
+    "x64"
+  ]
 }

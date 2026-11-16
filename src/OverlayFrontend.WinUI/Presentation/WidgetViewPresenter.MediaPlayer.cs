@@ -16,6 +16,9 @@ internal sealed partial class WidgetViewPresenter
             media.AudioChanged = playing => NativeAudioChanged?.Invoke(media, activityOwner.Frame.Authority.WidgetId, playing);
         media.PresentationReady = activeTransition?.Settled.Task ?? Task.CompletedTask;
         media.SetActive(presentationActive && !disposed, presentationInputEnabled && scope == activeScope && node.IsDisabled != true && !HasTransientControl);
+#if ENABLE_WIDGET_VALIDATION
+        if (TryApplyValidationMedia(media, node)) return;
+#endif
         if (presentationActive && !disposed && !presentationOnly && Session is { } session && presentation is { } binding && MediaPlayerDefinition.FromNode(node) is { } definition)
             media.Apply(token => session.ResolveMediaPlayerSourceAsync(binding.Frame, node.Id, binding.Selection, binding.Projection, token), definition,
                 () =>

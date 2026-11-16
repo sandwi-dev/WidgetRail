@@ -12,6 +12,7 @@ public sealed partial class PlayniteLibraryWidget
         var header = UI.Row(Hub + ".heading",
             PlayniteLibraryPresentation.NavigationTabs(PlayniteLibraryRoute.Achievements),
             UI.Row(Hub + ".utilities",
+                UI.Button("Capture settings", Captures + ".open", Captures + ".open").Classes("playnite-library-control"),
                 UI.Button(busy ? "Updating…" : "Refresh", Hub + ".refresh", Hub + ".refresh").Disabled(busy)
                     .Classes("playnite-library-control")).Classes("playnite-library-home-utilities").VisibleWhen(ResponsiveVisibility.ExpandedOnly))
             .Classes("playnite-library-home-actions");

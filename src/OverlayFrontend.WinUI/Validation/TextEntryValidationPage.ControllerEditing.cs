@@ -16,6 +16,12 @@ internal sealed partial class TextEntryValidationPage
         {
             sensitive = secret; value = secret ? "" : "abcd"; Apply(); await Open();
             var dialog = (WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;
+            foreach (var id in new[] { "Backspace", "Clear", "Paste", "Cancel", "Commit" })
+            {
+                var key = (FrameworkElement)FindDialog("Widget.TextEntry." + id)!;
+                Check(ToolTipService.GetToolTip(key) is null && !string.IsNullOrWhiteSpace(Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(key)),
+                    "Labeled keyboard " + id + " keeps its accessible name without a redundant tooltip");
+            }
             if (secret) ((PasswordBox)Editor()).Password = "abcd";
             await Task.Delay(100);
             if (secret)
