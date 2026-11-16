@@ -80,16 +80,18 @@ internal sealed partial class OverlayShellPage
                         if (selected is null) return false;
                     }
                     cancellation.Token.ThrowIfCancellationRequested();
+                    var destinationPin=pins.OrderByDescending(pin=>ReferenceEquals(pin,pinned))
+                        .FirstOrDefault(pin=>pin.WidgetId==selected && pin.IsCurrent && pin.Window.IsVisible &&
+                            pin.Selection is not null && pin.Presenter?.CurrentBinding is not null);
                     if (prepared.Presentation == WidgetIntentPresentation.PreferExistingSurface &&
                         prepared.Destinations.Single(item => item.WidgetId == selected).SupportsPassiveDelivery &&
-                        pinned is { IsCurrent: true, Window.IsVisible: true, Selection: { } selection, Presenter.CurrentBinding: { } binding } pin &&
-                        pin.WidgetId == selected)
+                        destinationPin is {Selection:{ } selection,Presenter.CurrentBinding:{ } binding} pin)
                     {
                         intentPinnedTarget = pin;
                         var projection = session.ResolvePinnedProjection(binding.Frame, pin.LayoutId);
                         completion = await session.CommitPinnedIntentAsync(prepared, selection, projection, cancellation.Token);
                         cancellation.Token.ThrowIfCancellationRequested();
-                        if (retired || !visible || !(foreground || staysInSourcePin && PinnedInputActive) || !ReferenceEquals(pinned, pin) || !pin.IsCurrent || !pin.Window.IsVisible) return false;
+                        if (retired || !visible || !(foreground || staysInSourcePin && PinnedInputActive) || !pins.Contains(pin) || !pin.IsCurrent || !pin.Window.IsVisible) return false;
                         if (completion.RequiresInteraction)
                         {
                             // The receiver already stored this request. Open its
@@ -229,6 +231,7 @@ internal sealed partial class OverlayShellPage
 #endif
         configure?.Invoke(dialog);
         hostChoicePin = pinnedOwner;
+        if(pinnedOwner is not null)ActivatePinForHostDialog(pinnedOwner);
         pinnedOwner?.SetInput(false);
         original?.SetPresentationInputEnabled(false);
         original?.SetAutomaticFocusEnabled(false);

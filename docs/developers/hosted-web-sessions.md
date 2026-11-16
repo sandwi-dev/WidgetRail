@@ -448,7 +448,7 @@ Address and Page actions; Previous and Forward appear only when navigation histo
 allows them. Reload changes to Stop during loading. These rules also apply to
 ordinary browser pages and use the same availability checks as command handling.
 
-The frontend admits at most four resident browser surfaces across existing browsers
+The frontend admits at most eight resident browser surfaces across existing browsers
 and sessions. Opening beyond capacity returns an error; callers should explain the
 failure and let users close unused applications. Sharing a browser process can still
 create separate renderer processes and does not promise one operating-system process.

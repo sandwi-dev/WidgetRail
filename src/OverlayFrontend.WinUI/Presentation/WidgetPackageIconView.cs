@@ -16,6 +16,7 @@ internal sealed partial class WidgetPackageIconView : ContentControl, IDisposabl
     private readonly List<(Shell.OverlayScaleRoot Root, long Token)> zoomRoots = [];
     private XamlRoot? rasterRoot;
     private bool rasterQueued, disposed, hostVisible;
+    internal bool ShowPendingFallback { get => icon.ShowPendingFallback; set => icon.ShowPendingFallback = value; }
     internal WidgetPackageIconView()
     {
         IsTabStop = false; IsHitTestVisible = false;
@@ -45,16 +46,18 @@ internal sealed partial class WidgetPackageIconView : ContentControl, IDisposabl
     }
     protected override Windows.Foundation.Size MeasureOverride(Windows.Foundation.Size availableSize)
     {
-        if (Content is not Image { Source: SvgImageSource }) return base.MeasureOverride(availableSize);
-        // Original-color artwork is arranged at its final size, not enlarged
-        // from a font-sized ImageIcon render surface. Its *desired* size remains
-        // intrinsic, so removing authored width/height cannot retain a prior slot.
+        if (Content is not (Image { Source: SvgImageSource } or ImageIcon)) return base.MeasureOverride(availableSize);
+        // The desired size stays intrinsic even when the child has been arranged
+        // at an authored size. Removing width/height must release that old slot.
         var extent = Math.Clamp(FontSize, 1, 512);
         var intrinsic = new Windows.Foundation.Size(extent * Math.Min(1, icon.AspectRatio), extent / Math.Max(1, icon.AspectRatio));
+        if (Content is ImageIcon)
+            intrinsic = new(intrinsic.Width + Padding.Left + Padding.Right + BorderThickness.Left + BorderThickness.Right,
+                intrinsic.Height + Padding.Top + Padding.Bottom + BorderThickness.Top + BorderThickness.Bottom);
         // Let Image measure at the real available viewport as well as arrange
         // there; only the owner's unstyled desired size is intrinsic.
         _ = base.MeasureOverride(availableSize);
-        return intrinsic;
+        return new(Math.Min(intrinsic.Width, availableSize.Width), Math.Min(intrinsic.Height, availableSize.Height));
     }
     private void UpdateSizing()
     {
@@ -74,18 +77,19 @@ internal sealed partial class WidgetPackageIconView : ContentControl, IDisposabl
         }
         HorizontalContentAlignment = HorizontalAlignment.Center;
         VerticalContentAlignment = VerticalAlignment.Center;
-        // Keep a stable intrinsic size. Copying the arranged parent size into the
-        // child would retain a former explicit size after its style was removed.
+        // Lay the tint visual out at its paint size. Scaling an oversized child
+        // after layout offsets its paint and clips small icons inside the slot.
+        // MeasureOverride preserves the independent intrinsic desired size.
         var extent = Math.Clamp(FontSize, 1, 512);
         var aspect = icon.AspectRatio;
-        image.Width = extent * Math.Min(1, aspect);
-        image.Height = extent / Math.Max(1, aspect);
-        var factor = Math.Min((ActualWidth > 0 ? ActualWidth : image.Width) / image.Width,
-            (ActualHeight > 0 ? ActualHeight : image.Height) / image.Height);
-        image.RenderTransformOrigin = new Windows.Foundation.Point(.5, .5);
-        if (image.RenderTransform is ScaleTransform transform) transform.ScaleX = transform.ScaleY = factor;
-        else image.RenderTransform = new ScaleTransform { ScaleX = factor, ScaleY = factor };
-        NativePackageIconTint.For(image)?.RefreshSize(extent * factor);
+        var width = ActualWidth > 0 ? Math.Max(0, ActualWidth - Padding.Left - Padding.Right - BorderThickness.Left - BorderThickness.Right)
+            : extent * Math.Min(1, aspect);
+        var height = ActualHeight > 0 ? Math.Max(0, ActualHeight - Padding.Top - Padding.Bottom - BorderThickness.Top - BorderThickness.Bottom)
+            : extent / Math.Max(1, aspect);
+        image.Width = Math.Min(width, height * aspect);
+        image.Height = image.Width / aspect;
+        image.ClearValue(UIElement.RenderTransformProperty);
+        NativePackageIconTint.For(image)?.RefreshSize(Math.Min(image.Width, image.Height));
         QueueRasterSize();
     }
     private void QueueRasterSize()
@@ -196,6 +200,7 @@ internal sealed class WidgetNativePackageIcon : IDisposable
     private Func<WidgetPackageIcon, CancellationToken, Task<WidgetPresentationPackageIcon>>? resolve;
     private string? accessibleName;
     private bool disposed;
+    internal bool ShowPendingFallback { get; set; } = true;
     // Theme-tinted masks retain their square raster contract. Original-color SVGs
     // use their admitted viewBox so wordmarks can fill a rectangular author slot.
     internal double AspectRatio { get; private set; } = 1;
@@ -257,6 +262,10 @@ internal sealed class WidgetNativePackageIcon : IDisposable
         var token = lifetime.Token;
         var icon = new FontIcon();
         WidgetGlyphs.Apply(icon, new() { Id = "package-icon", Kind = ViewNodeKind.Icon, Glyph = fallback, AccessibilityLabel = name }, false);
+        // A paging shell can reserve the slot without flashing unrelated artwork.
+        // Keep the placeholder loaded for native raster admission; reveal it only
+        // on a real failure. Ordinary widget controls retain immediate fallbacks.
+        if (asset is not null && !ShowPendingFallback) icon.Opacity = 0;
         displayed = icon; publish(icon);
         if (asset is null) return;
         retry = LoadAsync;
@@ -281,6 +290,7 @@ internal sealed class WidgetNativePackageIcon : IDisposable
                             continue;
                         }
                         var code = error is WidgetPresentationSessionException sessionError ? sessionError.Code : "package_icon_unavailable";
+                        icon.Opacity = 1;
                         diagnostic?.Invoke(code);
                         // No payloads, labels, paths or exception messages. Keep
                         // enough detail to distinguish native/authority/capacity failures.

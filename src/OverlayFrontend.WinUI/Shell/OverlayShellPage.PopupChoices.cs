@@ -10,27 +10,27 @@ internal sealed partial class OverlayShellPage
     private async Task<BrowserPopupRequest?> ChooseBrowserPopupPlacementAsync(BrowserSurface source, BrowserSurface? replacing, string? origin, BrowserPopupPlacement? requestedPlacement, CancellationToken token)
     {
         if (retired || !visible || !source.CanCompleteSiteDecision) return null;
-        var expected = pinned;
-        var replacingPin = replacing is not null && ReferenceEquals(expected?.Popup?.Child, replacing);
+        var expected = replacing is null?null:pins.FirstOrDefault(pin=>ReferenceEquals(pin.Popup?.Child,replacing));
+        var replacingPin = expected is not null;
+        var placementId = expected?.LayoutId;
+        bool Current()=>expected is null || pins.Contains(expected) && expected.IsCurrent;
         var canPin = source.RequestPopupPin is not null;
         if ((requestedPlacement is not null && requestedPlacement is not (BrowserPopupPlacement.Pinned or BrowserPopupPlacement.InWidget)) ||
             requestedPlacement == BrowserPopupPlacement.Pinned && !canPin) return null;
         var placement = requestedPlacement ?? (replacing is not null ? (replacingPin ? BrowserPopupPlacement.Pinned : BrowserPopupPlacement.InWidget) :
             origin is null ? BrowserPopupPlacement.Ask : await ReadBrowserPopupPlacementAsync(source, origin, token));
         if (!canPin) placement = BrowserPopupPlacement.InWidget;
-        if (replacing is not null || placement == BrowserPopupPlacement.Ask || placement == BrowserPopupPlacement.Pinned && expected is not null)
+        if (replacing is not null || placement == BrowserPopupPlacement.Ask)
         {
             var widget = catalogItems.FirstOrDefault(item => item.Id == source.WidgetId)?.Name ?? source.WidgetId;
-            var pinnedName = expected is null ? null : catalogItems.FirstOrDefault(item => item.Id == expected.WidgetId)?.Name ?? expected.WidgetId;
+
             var message = $"{widget}\n{origin ?? "This website"}";
             if (replacing is not null)
             {
                 var title = string.IsNullOrWhiteSpace(replacing.CurrentTitle) ? "the existing additional page" : replacing.CurrentTitle;
                 message += $"\n\nReplace {title[..Math.Min(title.Length, 160)]}? This closes that page and ends its activity.";
             }
-            if (pinnedName is not null && !replacingPin && canPin && requestedPlacement != BrowserPopupPlacement.InWidget)
-                message += requestedPlacement == BrowserPopupPlacement.Pinned ? $"\n\nThis also replaces the current pin: {pinnedName}." :
-                    $"\n\nChoosing pinned also replaces the current pin: {pinnedName}.";
+
             HostChoiceDialog? dialog = null;
             HostDialogChoice pinChoice = new("pin", replacing is null && expected is null ? "Open in pinned surface" : "Replace in pinned surface");
             HostDialogChoice widgetChoice = new("widget", replacing is null ? "Open over current page" : "Replace over current page");
@@ -43,29 +43,29 @@ internal sealed partial class OverlayShellPage
                 {
                     dialog = choice;
                     if (requestedPlacement is null && replacing is null && origin is not null && canPin) choice.AddRememberChoice("Remember for this website");
-                }, directDecisionButtons: choices.Length == 2);
+                }, directDecisionButtons: true);
             if (selection is not ("pin" or "widget")) return null;
             placement = selection == "pin" ? BrowserPopupPlacement.Pinned : BrowserPopupPlacement.InWidget;
             token.ThrowIfCancellationRequested();
             if (dialog?.RememberChoice == true && origin is not null) await SavePopupPreferenceAsync(source, origin, placement, token);
         }
         token.ThrowIfCancellationRequested();
-        if (retired || !visible || !source.CanCompleteSiteDecision || !ReferenceEquals(pinned, expected)) return null;
+        if (retired || !visible || !source.CanCompleteSiteDecision || !Current()) return null;
         return new(placement, Pin: async child =>
         {
-            if (retired || !ReferenceEquals(pinned, expected)) return false;
-            await PinBrowserPopupAsync(source.WidgetId, expected, child, enforceExpected: true);
-            return pinned?.Popup is { IsCurrent: true } popup && ReferenceEquals(popup.Child, child);
+            if (retired || !Current()) return false;
+            await PinBrowserPopupAsync(source.WidgetId, expected, child, placementId);
+            return pins.Any(pin=>pin.Popup is {IsCurrent:true} popup && ReferenceEquals(popup.Child,child));
         }, BeforeReplace: async () =>
         {
-            if (retired || !visible || !ReferenceEquals(pinned, expected)) return false;
+            if (retired || !visible || !Current()) return false;
             // Return the old borrowed controller before it closes, avoiding a
             // queued stale-pin teardown racing the replacement's pin transaction.
             if (replacingPin && expected is { } previous)
             {
-                await SavePinnedAsync(previous);
+                // The live window may be temporarily displaced from its saved location.
                 await UnpinAsync(save: true, previous);
-                if (pinned is not null) return false;
+                if (pins.Contains(previous)) return false;
                 expected = null;
                 if (placement == BrowserPopupPlacement.InWidget && activeWidget != source.WidgetId)
                     await SelectAsync(source.WidgetId, enterWidget: true);

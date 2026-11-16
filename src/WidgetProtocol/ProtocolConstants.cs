@@ -3,6 +3,9 @@ namespace WidgetRail.WidgetProtocol;
 internal static class PinnedSurfaceContract
 {
     internal const string FullWidgetLayoutId = "host.full-widget";
+    internal static bool AllowsInteraction(ViewSnapshot snapshot, string layoutId) =>
+        layoutId == FullWidgetLayoutId || snapshot.PinnedLayouts.Any(layout =>
+            layout.Id == layoutId && layout.Interaction == PinnedInteractionMode.Interactive);
 
     internal static ViewSnapshot WithoutModal(ViewSnapshot snapshot) =>
         snapshot.Root.Kind == ViewNodeKind.ModalLayer && snapshot.Root.Children.Count == 2
@@ -22,7 +25,12 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 106;
+    public const int CurrentVersion = 110;
+    public const int InteractivePreviewValuesVersion = 110;
+    public const int PinnedRestoreVersion = 109;
+    public const int PinnedInteractionVersion = 108;
+    public const int DesktopAcrylicVersion = 108;
+    public const int PinnedSelectionIdentityVersion = 107;
     public const int ModalDismissalVersion = 106;
     public const int WebCaptureQualitySelectionVersion = 105;
     public const int WebCaptureStreamsVersion = 104;

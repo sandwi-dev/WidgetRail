@@ -60,7 +60,8 @@ internal sealed partial class OverlayShellPage
         await original.EvaluateFixtureAsync("document.body.insertAdjacentHTML('beforeend', '<a href=https://shell.fixture.invalid/new-window style=\"position:fixed;inset:0;z-index:9999\">Replace from child</a>')");
         await original.EvaluateFixtureAsync("window.linkPainted=false;requestAnimationFrame(()=>requestAnimationFrame(()=>window.linkPainted=true))");
         await WebAppUntilScript(original, "window.linkPainted===true");
-        await WebAppUntil(() => original.IsBrowsing);
+        await WebAppUntil(() => original.IsBrowsing && original.CanRequestSiteDecision && !original.HasDialog && !HostChoiceActive && MainFocusEnabled && ReferenceEquals(surface?.ControllerBrowser,original));
+        check(true, "Additional page is controller-ready before opening Page actions");
         await Press(ControllerButton.Menu); await Dialog("Page actions");
         var childOptions = FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!;
         var childAction = childOptions.Items.OfType<ListViewItem>().Single(entry => (string?)entry.Tag == "new.widget");
@@ -124,16 +125,17 @@ internal sealed partial class OverlayShellPage
         await WebAppUntil(() => returned.IsBrowsing && foreground);
         await DirectPinLink(returned); await Dialog("Replace existing page?");
         check(hostChoiceDialog!.PrimaryButtonText == "Replace" && string.IsNullOrEmpty(hostChoiceDialog.SecondaryButtonText),
-            "Direct pinned replacement combines both affected surfaces in a single confirmation");
+            "Direct pinned replacement confirms the additional page being replaced");
         await Press(ControllerButton.B);
         await WebAppUntil(() => !HostChoiceActive && ReferenceEquals(parent.PinnablePopup, returned));
         check(ReferenceEquals(pinned, otherPin) && ReferenceEquals(parent.PinnablePopup, returned),
-            "Cancelling combined replacement preserves both the other widget's pin and the current page");
+            "Cancelling replacement preserves the other widget's pin and the current page");
         await DirectPinLink(returned); await Dialog("Replace existing page?"); await Decide("pin");
         var combined = await Child(returned); await WebAppUntil(() => pinned?.Popup?.Child == combined);
-        check(!ReferenceEquals(pinned, otherPin) && !returned.IsReady && !HostChoiceActive,
-            "One confirmation replaces the existing page and another widget's pin");
-        await UnpinAsync(save: true);
+        check(pins.Contains(otherPin!) && pins.Any(pin=>pin.Popup?.Child==combined) && !returned.IsReady && !HostChoiceActive,
+            "Replacing the additional page creates its own pin and preserves the other widget's pin");
+        await UnpinAsync(save: true,pins.Single(pin=>pin.Popup?.Child==combined));
+        await UnpinAsync(save: true,otherPin);
         await parent.ClosePopupAsync(); await WebAppUntil(() => parent.IsBrowsing && foreground);
         await browserOwner!.StopWidgetSessionsAsync("webapp-b");
         // The subsequent suite starts with one resident root. Restart the

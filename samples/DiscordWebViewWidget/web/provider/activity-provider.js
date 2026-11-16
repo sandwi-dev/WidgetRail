@@ -13,8 +13,14 @@ globalThis.createWidgetRailDiscordActivities = dependenciesInput => {
         }
         return result;
     };
-    function avatarUrl(userId,hash){
-        return id(userId)&&typeof hash==='string'&&/^(?:a_)?[a-f0-9]{32}$/.test(hash)
+    function avatarUrl(userId,hash,discriminator){
+        if(!id(userId))return null;
+        // Public CDN identities only; never call an opaque user-model URL method.
+        if(hash==null&&typeof discriminator==='string'&&/^[0-9]{1,4}$/.test(discriminator)){
+            const index=Number(discriminator)===0?Number((BigInt(userId)>>22n)%6n):Number(discriminator)%5;
+            return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+        }
+        return typeof hash==='string'&&/^(?:a_)?[a-f0-9]{32}$/.test(hash)
             ?`https://cdn.discordapp.com/avatars/${userId}/${hash}.png?size=64`:null;
     }
     const VIEW_CHANNEL=1024n,CONNECT=1048576n; // Discord's documented permission bits.
@@ -83,7 +89,7 @@ globalThis.createWidgetRailDiscordActivities = dependenciesInput => {
             channelId:voice?.channel.id??null,guildId:voice?.guild.id??null,channelName:voice?label(voice.channel.name):null,guildName:voice?label(voice.guild.name):null,
             canJoinVoice:!!voice?.joinable&&voiceActionAvailable()&&currentChannel()!==voice.channel.id,
             streamKey:stream?.key??null,canWatch:!!stream?.watchable,
-            startedAt:Number.isSafeInteger(started)&&started>=0&&started<=Date.now()+60000?started:null,avatarUrl:avatarUrl(userId,user.avatar)};
+            startedAt:Number.isSafeInteger(started)&&started>=0&&started<=Date.now()+60000?started:null,avatarUrl:avatarUrl(userId,user.avatar,user.discriminator)};
     }
     function snapshot(){
         const account=me()?.id;

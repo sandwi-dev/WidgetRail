@@ -130,3 +130,15 @@ test('participant snapshot uses the same avatar whitelist and keeps missing imag
  let s=await f.context.WidgetRailDiscordPrototype.invoke({method:'snapshot',owner:'a'.repeat(32)});assert.equal(s.value.participants[0].avatarUrl,`https://cdn.discordapp.com/avatars/2/${hash}.png?size=64`);
  f.stores.UserStore.getUser=id=>({id,username:'Friend',avatar:'https://example.com/private'});s=await f.context.WidgetRailDiscordPrototype.invoke({method:'snapshot',owner:'a'.repeat(32)});assert.equal(s.value.participants[0].avatarUrl,null);assert.equal(s.ok,true);
 });
+
+
+test('default avatars use documented public CDN identities for both username systems',()=>{
+ const f=fixture();
+ assert.equal(f.provider.avatarUrl('4194304',null,'0'),'https://cdn.discordapp.com/embed/avatars/1.png');
+ assert.equal(f.provider.avatarUrl('20971520',null,'0'),'https://cdn.discordapp.com/embed/avatars/5.png');
+ assert.equal(f.provider.avatarUrl('25165824',null,'0000'),'https://cdn.discordapp.com/embed/avatars/0.png');
+ assert.equal(f.provider.avatarUrl('4194304',null,'1337'),'https://cdn.discordapp.com/embed/avatars/2.png');
+ for(const value of [undefined,'',-1,'-1','6/../2','10000']) assert.equal(f.provider.avatarUrl('2',null,value),null);
+ assert.equal(f.provider.avatarUrl('../2',null,'0'),null);
+ assert.equal(f.provider.avatarUrl('2','bad','0'),null);
+});

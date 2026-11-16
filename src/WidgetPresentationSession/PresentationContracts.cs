@@ -127,6 +127,8 @@ public enum WidgetHostEffectKind
     CloseOverlayAfterAppLaunch,
     ActivateTaskWindow,
     OpenPinnedLayout,
+    ClosePinnedLayout,
+    ManagePinnedSurface,
 }
 
 /// <summary>
@@ -145,7 +147,10 @@ public sealed record WidgetHostWindowTarget(
 public sealed record WidgetPresentationHostEffect(
     WidgetHostEffectAuthority Authority, WidgetHostEffectKind Kind, string WireName,
     long Sequence, long InitiatedAtMilliseconds, WidgetHostWindowTarget? WindowTarget,
-    string? PinnedLayoutId = null);
+    string? PinnedLayoutId = null)
+{
+    public string? PinnedSelectionId { get; init; }
+}
 
 public sealed class WidgetHostEffectEventArgs(WidgetPresentationHostEffect effect) : EventArgs
 {

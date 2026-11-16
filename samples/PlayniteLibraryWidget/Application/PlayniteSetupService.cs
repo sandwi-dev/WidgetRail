@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using WidgetRail.Playnite;
 
 namespace WidgetRail.Samples.PlayniteLibrary;
 
@@ -10,14 +11,17 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
     private readonly IPlayniteCredentialStore credentials;
     private readonly PlayniteSetupDiscoveryService discovery;
     private readonly PlayniteSetupPackage package;
+    private readonly PlayniteLocalConnectionStore connections;
     private readonly SemaphoreSlim gate = new(1, 1);
 
     internal PlayniteSetupService(string stateRoot, string packageDirectory, IPlayniteSetupPlatform? platform = null,
-        IPlayniteSetupConnection? connection = null, IPlayniteCredentialStore? credentials = null)
+        IPlayniteSetupConnection? connection = null, IPlayniteCredentialStore? credentials = null,
+        PlayniteLocalConnectionStore? localConnections = null)
     {
         this.platform = platform ?? new PlayniteSetupPlatform();
         this.connection = connection ?? new PlayniteSetupConnection();
-        this.credentials = credentials ?? new WindowsCredentialPlayniteTokenStore();
+        connections = localConnections ?? new(stateRoot);
+        this.credentials = credentials ?? new PlayniteProfileCredentialStore(connections);
         discovery = new(this.platform, stateRoot);
         package = new(packageDirectory);
     }
@@ -33,17 +37,20 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
             ? found.Installations.SingleOrDefault(item => item.Running && PlayniteSetupPlatform.Matches(running[0], item))
             : running.Count == 0 && found.Message is null && found.Installations.Count == 1 ? found.Installations[0] : null;
         if (selected is null) return new(found, null, true);
-        var plan = await InspectCoreAsync(selected, token, verifyScripts: false).ConfigureAwait(false);
+        var plan = await InspectCoreAsync(selected, token, verifyLibrary: false).ConfigureAwait(false);
         var savedToken = plan.Action == PlayniteSetupAction.Connect ? await credentials.ReadAsync(token).ConfigureAwait(false) : null;
-        var ready = plan.Action == PlayniteSetupAction.Connect && savedToken is not null &&
+        var binding = connections.Read();
+        var ready = plan.Action == PlayniteSetupAction.Connect && savedToken is not null && binding is not null &&
+            string.Equals(binding.DataDirectory, selected.DataDirectory, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(binding.ProgramDirectory, selected.ProgramDirectory, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(savedToken, ReadToken(selected.DataDirectory), StringComparison.Ordinal);
         return new(found, plan, !ready);
     }
 
     public ValueTask<PlayniteSetupPlan> InspectAsync(PlayniteSetupInstallation installation, CancellationToken token) =>
-        InspectCoreAsync(installation, token, verifyScripts: true);
+        InspectCoreAsync(installation, token, verifyLibrary: true);
 
-    private async ValueTask<PlayniteSetupPlan> InspectCoreAsync(PlayniteSetupInstallation installation, CancellationToken token, bool verifyScripts)
+    private async ValueTask<PlayniteSetupPlan> InspectCoreAsync(PlayniteSetupInstallation installation, CancellationToken token, bool verifyLibrary)
     {
         var validated = PlayniteSetupDiscoveryService.Candidate(installation.ProgramDirectory, installation.DataDirectory, installation.Running, installation.Fullscreen);
         if (validated.Id != installation.Id) throw new PlayniteSetupException("The selected installation changed. Find Playnite again.");
@@ -60,7 +67,7 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
             var existingToken = ReadToken(installation.DataDirectory);
             if (installation.Running && existingToken is not null)
             {
-                var existingHealth = await connection.CheckAsync(installation, existingToken, token, verifyScripts).ConfigureAwait(false);
+                var existingHealth = await connection.CheckAsync(installation, existingToken, token, verifyLibrary).ConfigureAwait(false);
                 if (existingHealth == PlayniteSetupConnectionKind.Ready)
                     return Plan(PlayniteSetupAction.Connect, "Ready to connect", "Use the existing integration managed by this Playnite profile. No files need to be installed.", null, null, null);
                 if (existingHealth != PlayniteSetupConnectionKind.Offline)
@@ -71,35 +78,35 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
                 return Plan(PlayniteSetupAction.Manual, "Integration folder needs attention", "The expected integration folder contains an unrecognized installation. Use manual setup so its files are preserved.", null, null, defaultTarget);
             package.Validate();
             return Plan(PlayniteSetupAction.Install, "Connect your Playnite library",
-                "Install the bundled Playnite Bridge integration, start Playnite, and connect automatically. " +
+                "Install WidgetRail for Playnite, start Playnite, and connect automatically. " +
                 (installation.Running ? "Playnite will restart once. " : "") + "Your library and integration settings are preserved.", null, null,
                 Path.Combine(installation.DataDirectory, "Extensions", PlayniteSetupFiles.ExtensionId));
         }
         var manifest = PlayniteSetupFiles.ReadManifest(Path.Combine(extension, "extension.yaml"));
         var version = manifest.GetValueOrDefault("Version");
-        if (manifest.GetValueOrDefault("Module") != "PlayniteBridge.dll")
+        if (manifest.GetValueOrDefault("Module") != IntegrationIdentity.ModuleName)
             return Plan(PlayniteSetupAction.Manual, "Custom integration detected", "This integration uses an unfamiliar entry point. Use manual setup; its files will not be replaced.", version, null, extension);
-        var dll = Path.Combine(extension, "PlayniteBridge.dll");
-        var digest = File.Exists(dll) ? PlayniteSetupFiles.Digest(dll) : null;
+        var digest = PlayniteSetupPackage.InstalledDigest(extension);
+        // A healthy older build still needs an update offer. This check precedes
+        // the health fast path which used to hide available Bridge upgrades.
+        if (NeedsPackageUpdate(version, digest, extension))
+        {
+            package.Validate();
+            return Plan(PlayniteSetupAction.Repair, "Update WidgetRail for Playnite",
+                "Install the bundled local integration while preserving its settings. Playnite will restart if running. The original Bridge is left unchanged.", version, digest, extension);
+        }
         if (Disabled(installation.DataDirectory))
-            return Plan(PlayniteSetupAction.Enable, "Enable Playnite Bridge", "Enable the installed integration and reconnect. Playnite will restart if it is running.", version, digest, extension);
+            return Plan(PlayniteSetupAction.Enable, "Enable WidgetRail for Playnite", "Enable the installed integration and reconnect. Playnite will restart if it is running.", version, digest, extension);
         var localToken = ReadToken(installation.DataDirectory);
         if (installation.Running && localToken is not null)
         {
-            var health = await connection.CheckAsync(installation, localToken, token, verifyScripts).ConfigureAwait(false);
+            var health = await connection.CheckAsync(installation, localToken, token, verifyLibrary).ConfigureAwait(false);
             if (health == PlayniteSetupConnectionKind.Ready)
                 return Plan(PlayniteSetupAction.Connect, "Ready to connect", "Use this installation's existing integration and save the connection securely. No restart is needed.", version, digest, extension);
             if (health is PlayniteSetupConnectionKind.WrongProfile or PlayniteSetupConnectionKind.Authentication)
-                return Plan(PlayniteSetupAction.Manual, "The local service belongs to another connection", "Close other Playnite profiles and check port 19821, then find Playnite again. Existing settings were not changed.", version, digest, extension);
+                return Plan(PlayniteSetupAction.Manual, "The local service belongs to another connection", "Check the selected Playnite profile and reconnect. Existing settings were not changed.", version, digest, extension);
             if (health == PlayniteSetupConnectionKind.Incompatible)
-                return Plan(PlayniteSetupAction.Manual, "The local service is incompatible", "The service on port 19821 does not provide the expected Playnite API. Check the integration in Playnite before reconnecting.", version, digest, extension);
-            if (health == PlayniteSetupConnectionKind.EvalUnavailable && !KnownRepair(version, digest))
-                return Plan(PlayniteSetupAction.Manual, "Integration compatibility check failed", "This Bridge build cannot compile the required read-only scripts. Update it manually; automatic setup will not replace an unfamiliar or newer build.", version, digest, extension);
-        }
-        if (KnownRepair(version, digest))
-        {
-            package.Validate();
-            return Plan(PlayniteSetupAction.Repair, "Update the Playnite integration", "Install the tested WidgetRail build of Playnite Bridge to fix script compatibility, preserving its settings. Playnite will restart if it is running.", version, digest, extension);
+                return Plan(PlayniteSetupAction.Manual, "The local service is incompatible", "The discovered service does not provide the expected WidgetRail API. Check the integration in Playnite before reconnecting.", version, digest, extension);
         }
         return installation.Running
             ? Plan(PlayniteSetupAction.Restart, "Restart to reconnect the integration", "Playnite is running but its integration is not ready. Restart this profile, check the connection, and preserve the installed integration files.", version, digest, extension)
@@ -123,10 +130,16 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
         bool stopped = false;
         bool credentialSaved = false;
         string? oldCredential = null;
+        IPlayniteCredentialStore appliedCredentials = credentials;
+        PlayniteLocalBinding? previousBinding = null, proposedBinding = null;
+        bool bindingSaved = false;
         FileStream? lease = null;
         FileStream? integrationLease = null;
+        FileStream? connectionLease = null;
         try
         {
+            connectionLease = connections.AcquireSetupLease();
+            previousBinding = connections.Read();
             progress("Checking the selected Playnite installation…");
             var validated = PlayniteSetupDiscoveryService.Candidate(installation.ProgramDirectory, installation.DataDirectory, installation.Running, installation.Fullscreen);
             if (validated.Id != installation.Id) throw new PlayniteSetupException("The selected installation changed. Find Playnite again.");
@@ -151,7 +164,6 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
                 try { integrationLease = new FileStream(Path.Combine(sharedLock, "setup.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
                 catch (IOException) { throw new PlayniteSetupException("Another profile is updating this shared Playnite integration. Wait, then retry."); }
             }
-            oldCredential = await credentials.ReadAsync(token).ConfigureAwait(false);
             if (plan.Action == PlayniteSetupAction.Restart)
             {
                 progress("Restarting Playnite safely…");
@@ -174,7 +186,7 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
                         ? new(installation, plan.ExtensionDirectory!, package) : null;
                 }
                 else if (plan.InstalledDigest is { } expected &&
-                         PlayniteSetupFiles.Digest(Path.Combine(plan.ExtensionDirectory!, "PlayniteBridge.dll")) != expected)
+                         PlayniteSetupPackage.InstalledDigest(plan.ExtensionDirectory!) != expected)
                     throw new PlayniteSetupException("The installed integration changed while Playnite was closing. Retry setup.");
                 progress("Preparing the integration and preserving settings…");
                 deployment?.Prepare(plan.Action != PlayniteSetupAction.Enable);
@@ -185,8 +197,14 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
             await platform.StartAsync(installation, token).ConfigureAwait(false);
             progress("Waiting for Playnite and checking the connection…");
             var credential = await WaitForConnectionAsync(installation, token).ConfigureAwait(false);
-            await credentials.SaveAsync(credential, token).ConfigureAwait(false);
+            var auth = PlayniteLocalConnectionStore.ReadCredentials(installation.DataDirectory)
+                ?? throw new PlayniteSetupException("The integration did not publish its profile identity.");
+            proposedBinding = new(1, Guid.NewGuid().ToString("D"), auth.ProfileId, installation.ProgramDirectory, installation.DataDirectory);
+            appliedCredentials = credentials is PlayniteProfileCredentialStore scoped ? scoped.ForBinding(proposedBinding) : credentials;
+            oldCredential = await appliedCredentials.ReadAsync(token).ConfigureAwait(false);
+            await appliedCredentials.SaveAsync(credential, token).ConfigureAwait(false);
             credentialSaved = true;
+            connections.Save(proposedBinding); bindingSaved = true;
             deployment?.Complete();
             try { discovery.Remember(installation); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { /* The verified connection remains usable. */ }
@@ -209,8 +227,9 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
                 }
                 if (credentialSaved)
                 {
-                    if (oldCredential is null) await credentials.DeleteAsync(CancellationToken.None).ConfigureAwait(false);
-                    else await credentials.SaveAsync(oldCredential, CancellationToken.None).ConfigureAwait(false);
+                    if (bindingSaved && proposedBinding is not null) connections.Restore(previousBinding, proposedBinding.BindingId);
+                    if (oldCredential is null) await appliedCredentials.DeleteAsync(CancellationToken.None).ConfigureAwait(false);
+                    else await appliedCredentials.SaveAsync(oldCredential, CancellationToken.None).ConfigureAwait(false);
                 }
                 if (stopped && installation.Running) await platform.StartAsync(installation, CancellationToken.None).ConfigureAwait(false);
             }
@@ -218,7 +237,7 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
             { message += " Automatic recovery could not finish. The backup is retained; close Playnite and retry setup to recover it."; }
             return new(false, "Playnite setup needs attention", message);
         }
-        finally { integrationLease?.Dispose(); lease?.Dispose(); gate.Release(); }
+        finally { connectionLease?.Dispose(); integrationLease?.Dispose(); lease?.Dispose(); gate.Release(); }
     }
 
     private async Task<string> WaitForConnectionAsync(PlayniteSetupInstallation installation, CancellationToken token)
@@ -241,10 +260,9 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
                     if (status != PlayniteSetupConnectionKind.Offline)
                         throw new PlayniteSetupException(status switch
                         {
-                            PlayniteSetupConnectionKind.EvalUnavailable => "The integration is running, but its script compatibility check failed. Use connection setup to repair a supported Bridge build.",
-                            PlayniteSetupConnectionKind.WrongProfile => "Port 19821 is serving a different Playnite profile. Close that instance and retry.",
+                            PlayniteSetupConnectionKind.WrongProfile => "The selected endpoint is serving a different Playnite profile. Reconnect the intended profile.",
                             PlayniteSetupConnectionKind.Authentication => "Playnite rejected this profile's saved token. Check that the correct Playnite instance is running.",
-                            _ => "The local service does not provide the expected Playnite API. Check port 19821 and the integration version.",
+                            _ => "The local service does not provide the expected WidgetRail API. Check the integration version and selected profile.",
                         });
                 }
                 await Task.Delay(TimeSpan.FromSeconds(1), timeout.Token).ConfigureAwait(false);
@@ -254,23 +272,22 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
         { throw new PlayniteSetupException("Playnite did not become ready in time. Finish any startup dialog, then retry. No token copying is needed."); }
     }
 
-    private bool KnownRepair(string? version, string? digest) => version == "1.5.3" && digest is not null &&
-        string.Equals(digest, package.OriginalDigest, StringComparison.OrdinalIgnoreCase);
+    private bool NeedsPackageUpdate(string? version, string? digest, string extension) =>
+        digest is not null && System.Version.TryParse(version, out var installed) &&
+        installed <= System.Version.Parse(PlayniteSetupPackage.Version) && PlayniteSetupPackage.OwnedBuild(extension) &&
+        !string.Equals(digest, package.PayloadDigest, StringComparison.OrdinalIgnoreCase);
 
     internal static string? ReadToken(string dataDirectory)
     {
-        var path = Path.Combine(PlayniteSetupFiles.PluginData(dataDirectory), "auth.json");
-        if (!File.Exists(path)) return null;
-        var value = PlayniteSetupFiles.ReadObject(path, 16 * 1024)["token"]?.GetValue<string>();
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        try { PlayniteBridgeClient.ValidateToken(value); return value; }
-        catch (ArgumentException) { throw new PlayniteSetupException("The selected profile's Bridge token is invalid. Use manual connection settings to repair it."); }
+        return PlayniteLocalConnectionStore.ReadCredentials(dataDirectory)?.Token;
     }
     private static bool Disabled(string dataDirectory)
     {
         var path = Path.Combine(dataDirectory, "config.json");
+        var plugin = Path.Combine(PlayniteSetupFiles.PluginData(dataDirectory), "config.json");
         return File.Exists(path) && PlayniteSetupFiles.ReadObject(path, 32 * 1024 * 1024)["DisabledPlugins"] is JsonArray disabled &&
-            disabled.Any(value => value?.GetValue<string>() is PlayniteSetupFiles.ExtensionId or PlayniteSetupFiles.PluginId);
+            disabled.Any(value => value?.GetValue<string>() is PlayniteSetupFiles.ExtensionId or PlayniteSetupFiles.PluginId) ||
+            File.Exists(plugin) && PlayniteSetupFiles.ReadObject(plugin)["Enabled"]?.GetValue<bool>() == false;
     }
     internal static string? FindExtension(PlayniteSetupInstallation installation)
     {
@@ -288,7 +305,7 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
                 if (++inspected > 1024) throw new PlayniteSetupException("There are too many extension manifests to identify the integration reliably. Use manual setup.");
                 if (PlayniteSetupFiles.ReadManifest(path).GetValueOrDefault("Id") == PlayniteSetupFiles.ExtensionId) matches.Add(Path.GetDirectoryName(path)!);
             }
-            if (matches.Count > 1) throw new PlayniteSetupException("Multiple Playnite Bridge copies were found. Remove the duplicate in Playnite before using automatic setup.");
+            if (matches.Count > 1) throw new PlayniteSetupException("Multiple WidgetRail integration copies were found. Remove the duplicate in Playnite before using automatic setup.");
             if (matches.Count == 1) return matches[0];
         }
         return null;
@@ -297,12 +314,12 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
     {
         foreach (var directory in new[] { installation.DataDirectory, installation.ProgramDirectory }.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var path = Path.Combine(directory, "WidgetRail.Setup", "PlayniteBridge", "transaction.json");
+            var path = Path.Combine(directory, "WidgetRail.Setup", PlayniteSetupFiles.RecoveryDirectory, "transaction.json");
             if (!File.Exists(path)) continue;
             var record = PlayniteSetupFiles.ReadObject(path, 16 * 1024);
             if (record["complete"]?.GetValue<bool>() == true) continue;
             var target = record["target"]?.GetValue<string>();
-            if (target is null || !PlayniteSetupFiles.Within(Path.Combine(directory, "Extensions"), target))
+            if (record["pluginId"]?.GetValue<string>() != PlayniteSetupFiles.PluginId || target is null || !PlayniteSetupFiles.Within(Path.Combine(directory, "Extensions"), target))
                 throw new PlayniteSetupException("The saved integration recovery record is invalid. Use manual setup.");
             return target;
         }

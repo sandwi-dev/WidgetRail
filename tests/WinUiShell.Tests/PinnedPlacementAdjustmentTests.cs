@@ -2,12 +2,113 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using WidgetRail.OverlayFrontend.WinUI.Shell;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.OverlayFrontend.WinUI.Notifications;
 
 namespace WinUiShell.Tests;
 
 [TestClass]
 public sealed class PinnedPlacementAdjustmentTests
 {
+    [TestMethod]
+    public void OpacityAndRevertedGeometryDoNotReplacePreferredPosition()
+    {
+        var monitor=new PinnedMonitor("main",new(0,0,1920,1080),1);
+        var initial=new PinnedBounds(100,120,480,270);
+        var preview=new PinnedPlacementAdjustment(initial,monitor,PinnedPlacementLimits.Default,"compact",100);
+        preview.SetOpacity(45);Assert.IsFalse(preview.GeometryChanged);
+        preview.Step(PinnedPlacementDirection.Right,false);Assert.IsTrue(preview.GeometryChanged);
+        preview.Step(PinnedPlacementDirection.Left,false);Assert.IsFalse(preview.GeometryChanged);
+    }
+
+    [TestMethod]
+    public void ToolbarStaysReachableAtEveryMonitorEdgeAndBesideLargePins()
+    {
+        foreach(var scale in new[]{1d,1.25,2})
+        {
+            var area=new PinnedBounds(-1920,-200,1920,1080);
+            foreach(var pin in new[]{new PinnedBounds(-1800,0,600,400),new(-1920,-200,600,400),new(-600,480,600,400),area})
+            {
+                var toolbar=PinnedAdjustmentToolbarPlacement.Choose(pin,area,(int)(380*scale),(int)(120*scale),(int)(8*scale));
+                Assert.IsTrue(toolbar.X>=area.X&&toolbar.Y>=area.Y&&toolbar.X+toolbar.Width<=area.X+area.Width&&toolbar.Y+toolbar.Height<=area.Y+area.Height);
+                if(pin!=area)Assert.IsFalse(NotificationPlacement.Overlaps(pin,toolbar));
+            }
+        }
+    }
+    [TestMethod]
+    public void PointerResizeKeepsOppositeEdgesAtLimitsAndCancelBaseline()
+    {
+        var monitor=new PinnedMonitor("main",new(-1200,-100,1200,900),1);
+        var original=new PinnedBounds(-1000,100,480,270);
+        var preview=new PinnedPlacementAdjustment(original,monitor,PinnedPlacementLimits.Default,"compact",65);
+        Assert.AreEqual(new PinnedBounds(-760,235,240,135),preview.PreviewPointer(new(-600,300,80,70),4,[monitor]));
+        Assert.AreEqual(new PinnedBounds(-1000,100,960,540),preview.PreviewPointer(new(-1000,100,1800,700),8,[monitor]));
+        Assert.AreEqual(original,PinnedPlacementPolicy.Resolve([monitor],preview.Original,preview.Limits)!.Bounds);
+    }
+
+    [TestMethod]
+    public void PointerMoveCrossesDisplaysPreservingDipsWhileResizeStaysOnDisplay()
+    {
+        var left=new PinnedMonitor("left",new(-1920,0,1920,1080),1);
+        var right=new PinnedMonitor("right",new(0,0,2560,1440),2);
+        var preview=new PinnedPlacementAdjustment(new(-800,100,480,270),left,PinnedPlacementLimits.Default,"compact",100);
+        Assert.AreEqual(new PinnedBounds(100,100,960,540),preview.PreviewPointer(new(100,100,480,270),0,[left,right]));
+        Assert.AreEqual(right,preview.Monitor);
+        Assert.AreEqual(new PinnedBounds(180,140,960,540),preview.PreviewPointer(new(180,140,480,270),0,[left,right]));
+        Assert.AreEqual(new PinnedBounds(220,160,960,540),preview.PreviewPointer(new(220,160,480,270),0,[left,right]));
+        Assert.AreEqual(480d,PinnedPlacementPolicy.Capture(preview.Current,right,preview.Limits,"compact",100).WidthDip);
+        preview.PreviewPointer(new(-1000,100,1960,540),1,[left,right]);
+        Assert.AreEqual(right,preview.Monitor);
+        Assert.AreEqual(0,preview.Current.X);
+        Assert.AreEqual("left",preview.Original.MonitorId);
+    }
+    [TestMethod]
+    public void CrossingDisplayEdgesPreservesLogicalSizeAndCancelBaseline()
+    {
+        var left = new PinnedMonitor("left", new(0, 0, 1920, 1080), 1, true);
+        var right = new PinnedMonitor("right", new(1920, 0, 2560, 1440), 2);
+        var original = new PinnedBounds(1440, 300, 480, 270);
+        var adjustment = new PinnedPlacementAdjustment(original, left, PinnedPlacementLimits.Default, "compact", 65);
+        Assert.IsTrue(adjustment.Step(PinnedPlacementDirection.Right, false, [left, right]));
+        Assert.AreEqual(right, adjustment.Monitor);
+        Assert.AreEqual(new PinnedBounds(1920, 165, 960, 540), adjustment.Current);
+        Assert.AreEqual(original, PinnedPlacementPolicy.Resolve([left, right], adjustment.Original, adjustment.Limits)!.Bounds);
+        var committed = PinnedPlacementPolicy.Capture(adjustment.Current, adjustment.Monitor, adjustment.Limits, "compact", 65);
+        Assert.AreEqual("right", committed.MonitorId);
+        Assert.AreEqual(480d, committed.WidthDip);
+        Assert.IsTrue(adjustment.Step(PinnedPlacementDirection.Left, false, [left, right]));
+        Assert.AreEqual(left, adjustment.Monitor);
+        Assert.AreEqual(original, adjustment.Current);
+    }
+
+    [TestMethod]
+    public void DisplayCrossingFollowsDirectionAndSkipsUnalignedOrTooSmallDisplays()
+    {
+        var main = new PinnedMonitor("main", new(0, 0, 1920, 1080), 1);
+        var above = new PinnedMonitor("above", new(100, -1100, 1600, 1000), 1.25);
+        var far = new PinnedMonitor("far", new(100, -2500, 1600, 1000), 1);
+        var tiny = new PinnedMonitor("tiny", new(100, -80, 1600, 80), 1);
+        var offset = new PinnedMonitor("offset", new(2000, -1080, 1920, 1080), 1);
+        var adjustment = new PinnedPlacementAdjustment(new(500, 0, 480, 270), main, PinnedPlacementLimits.Default, "compact", 100);
+        Assert.IsTrue(adjustment.Step(PinnedPlacementDirection.Up, false, [main, far, tiny, offset, above]));
+        Assert.AreEqual(above, adjustment.Monitor);
+        Assert.AreEqual(new PinnedBounds(440, -438, 600, 338), adjustment.Current);
+        Assert.IsTrue(adjustment.Step(PinnedPlacementDirection.Down, false, [main, above]));
+        Assert.AreEqual(main, adjustment.Monitor);
+        Assert.IsFalse(adjustment.Step(PinnedPlacementDirection.Up, false, [main, offset, tiny]));
+        Assert.AreEqual(main, adjustment.Monitor);
+    }
+
+    [TestMethod]
+    public void ResizingAtDisplayEdgeKeepsTheCurrentMonitor()
+    {
+        var left = new PinnedMonitor("left", new(0, 0, 960, 540), 1);
+        var right = new PinnedMonitor("right", new(960, 0, 1920, 1080), 1);
+        var adjustment = new PinnedPlacementAdjustment(new(0, 0, 960, 540), left, PinnedPlacementLimits.Default, "compact", 100);
+        Assert.IsFalse(adjustment.Step(PinnedPlacementDirection.Right, true, [left, right]));
+        Assert.AreEqual(left, adjustment.Monitor);
+        Assert.AreEqual(new PinnedBounds(0, 0, 960, 540), adjustment.Current);
+    }
+
     [TestMethod]
     public void OpacityPreviewIsBoundedAndDoesNotChangePlacementOrCancelBaseline()
     {

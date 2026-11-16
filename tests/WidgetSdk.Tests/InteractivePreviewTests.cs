@@ -23,6 +23,20 @@ internal static class InteractivePreviewTests
             Check(lease.RoutePreviewAction(row.Key,select.Id,"busy") is null,"busy option rejected");
             Check(lease.RoutePreviewAction(row.Key,select.Id,"select")==WidgetOperationAdmission.Enqueued,"declared option admitted");
             Check(await widget.Next()=="first:0:select","selector retains row identity");
+            var slider=row.Root.FocusPresentation.Children[2];
+            Check(lease.RoutePreviewAction(row.Key,slider.Id,"volume") is null,"preview slider requires a numeric value");
+            foreach(var invalid in new[]{-1d,101d,51d})
+                Check(lease.RoutePreviewValueAction(row.Key,slider.Id,"volume",invalid) is null,"invalid slider value rejected: "+invalid);
+            Check(lease.RoutePreviewValueAction(row.Key,apply.Id,"apply",50) is null,"buttons cannot smuggle numeric values");
+            Check(lease.RoutePreviewValueAction(row.Key,other.Root.FocusPresentation.Children[2].Id,"volume",50) is null,"numeric controls cannot target another row");
+            foreach(var value in new[]{0d,55d,100d})
+            {
+                Check(lease.RoutePreviewValueAction(row.Key,slider.Id,"volume",value)==WidgetOperationAdmission.Enqueued,"valid preview slider value admitted");
+                Check(await widget.Next()=="first:0:volume:"+value.ToString(System.Globalization.CultureInfo.InvariantCulture),"numeric value reaches captured item");
+            }
+            var legacy=widget.Render().CreateSnapshot("preview-version",1) with {ProtocolVersion=109};
+            var projected=legacy with {Root=legacy.Root with {Children=[legacy.Root.Children[0] with {Children=[row.Root]}]}};
+            Check(ProtocolVersionRequirements.Calculate(projected).RequiredVersion==ProtocolConstants.InteractivePreviewValuesVersion,"lazy slider preview requires the value-capable protocol");
             widget.Enabled=false;host.PublishSnapshot();
             Check(lease.RoutePreviewAction(row.Key,apply.Id,"apply") is null,"removing interaction opt-in revokes admission");
             widget.Enabled=true;widget.Source.PublishQuery("second",2);host.PublishSnapshot();
@@ -48,8 +62,10 @@ internal static class InteractivePreviewTests
                 RenderItem=(_,item,context)=>UI.Button("Item "+item,"choose",context.Id("source")).PresentOnFocus(
                     UI.Stack(context.Id("preview"),UI.Button("Apply","apply",context.Id("apply")),
                         UI.Select("Choice",new SelectOption[]{new("selected","Selected","select",true),
-                            new("disabled","Disabled","disabled",IsDisabled:true),new("busy","Busy","busy",IsBusy:true)},context.Id("choice")))),
-                OnAction=(query,item,action,token)=>actions.Writer.WriteAsync(query+":"+item+":"+action.ActionId,token),
+                            new("disabled","Disabled","disabled",IsDisabled:true),new("busy","Busy","busy",IsBusy:true)},context.Id("choice")),
+                        UI.Slider(50,0,100,5,"volume",context.Id("volume"),"Volume").RequireControllerActivation())),
+                OnAction=(query,item,action,token)=>actions.Writer.WriteAsync(query+":"+item+":"+action.ActionId+
+                    (action.RequestedValue is { } value?":"+value.ToString(System.Globalization.CultureInfo.InvariantCulture):""),token),
             });
         }
         internal Task<string> Next()=>actions.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));

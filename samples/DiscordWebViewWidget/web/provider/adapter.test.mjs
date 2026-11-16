@@ -14,10 +14,11 @@ test('direct domain installer does not downgrade a newer provider',()=>{
     assert.throws(()=>vm.runInContext(source,context),/adapter_newer/);
     assert.equal(context.WidgetRailDiscordPrototype,newer);
 });
+function activeWatch(state='ACTIVE',ownerId='2') { return {guildId:'10',channelId:'20',ownerId,state}; }
 function fixture() {
     const events = [], pending = [], captureOptions = [], audioReads = [], demandCalls=[], peers=[], timers = new Map();
     let nextTimer = 0;
-    const state = { account: '1', channel: '20', muted: false, deafened: false, share: null, capability: true, viewers:[],watchClose:true, closed: 0, destroyed: 0, started: 0, now: 1000,
+    const state = { account: '1', channel: '20', muted: false, deafened: false, share: null, capability: true, viewers:[],activeWatch:null,watchClose:true, closed: 0, destroyed: 0, started: 0, now: 1000,
         audioAvailable:true,streamMuted:false,streamGain:18,voiceMuted:false,voiceGain:100,demandAvailable:true,globalVideo:true };
     const pool={capture:{id:'capture',destroy:()=>state.destroyed++}};
     // Discord DesktopInputPool.get transfers ownership: it deletes its entry.
@@ -55,6 +56,7 @@ function fixture() {
         VoiceStateStore: { getVoiceStatesForChannel: () => ({ '2': { userId: '2', selfStream: true } }) },
         StreamRTCConnectionStore:{getRTCConnection:key=>key==='guild:10:20:2'?state.rtc:null},
         ApplicationStreamingStore: { getCurrentUserActiveStream: () => state.share, getViewerIds: () => state.viewers,
+            getActiveStreamForStreamKey: () => state.activeWatch,
             getAllActiveStreamsForChannel: () => [], getAllApplicationStreamsForChannel: () => [] }
     };
     const audioActions={
@@ -84,11 +86,15 @@ function fixture() {
             findByCode: pattern => {
                 if (!state.capability) return undefined;
                 if (pattern.includes('STREAM_START')) return () => { state.started++; state.share = { channelId: state.channel, guildId: '10', ownerId: state.account }; };
-                if (pattern.includes('STREAM_STOP')) return () => { state.share = null; events.push('stop'); };
+                if (pattern.includes('STREAM_STOP')) return state.watchClose?(key,feedback)=>{
+                    if(key?.endsWith(':1')) {state.share=null;events.push('stop');return;}
+                    assert.equal(feedback,false);events.push('close:'+key);
+                    if(!state.deferWatchClose)state.activeWatch=null;
+                }:undefined;
                 if (pattern.includes('STREAM_CLOSE')) return state.watchClose?key=>events.push('close:'+key):undefined;
                 if (pattern.includes('STREAM_WATCH')) return descriptor => {
                     assert.equal(descriptor.streamType, 'guild'); assert.equal(descriptor.ownerId, '2');
-                    events.push('watch');state.viewers=['1'];
+                    events.push('watch');state.viewers=['1'];state.activeWatch=activeWatch('CONNECTING');
                 };
                 return () => events.push(pattern);
             }, Common: { FluxDispatcher: { dispatch: event => { events.push(event); state.channel = event.channelId; } } } }
@@ -100,6 +106,74 @@ function fixture() {
     const invoke = (method, args = {}) => context.WidgetRailDiscordPrototype.invoke({ method, owner: 'c'.repeat(32), args: { account: '1', channelId: '20', ...args } });
     return { state, stores, events, pending, captureOptions, audioReads, audioActions, demandCalls,videoTracks,peers,initial,visibility,makeRtc,timers, invoke, context, engine };
 }
+
+test('outgoing viewer eyes describe who watches our stream, not our incoming subscriptions',async()=>{
+ const f=fixture();f.state.viewers=['1'];
+ assert.equal((await f.invoke('snapshot')).value.outgoingViewers,null);
+ f.state.share={guildId:'10',channelId:'20',ownerId:'1'};
+ f.state.viewers=['1','2','2','99'];
+ const read=await f.invoke('snapshot');
+ assert.deepEqual(JSON.parse(JSON.stringify(read.value.outgoingViewers)),{key:'guild:10:20:1',userIds:['2']});
+ f.state.viewers=[];assert.deepEqual([...((await f.invoke('snapshot')).value.outgoingViewers.userIds)],[]);
+ f.state.share.state='ENDED';assert.equal((await f.invoke('snapshot')).value.outgoingViewers,null);
+});
+
+function notificationFixture(type='NEVER') {
+ const f=fixture();f.state.desktopType=type;f.context.Notification={permission:'granted'};
+ f.stores.NotificationSettingsStore={getDesktopType:()=>f.state.desktopType};
+ const discover=f.context.WidgetRailWebWebpack.findByProps;
+ f.context.WidgetRailWebWebpack.findByProps=(...names)=>names.includes('setDesktopType')?
+  {setDesktopType(value){f.events.push(['desktop-notifications',value]);f.state.desktopType=value;},setTTSType(){throw Error('TTS must not change');}}:discover(...names);
+ return f;
+}
+
+test('notification setup enables Discord only after permission and explicit user command',async()=>{
+ const f=notificationFixture();
+ assert.equal((await f.invoke('snapshot')).value.desktopNotifications,'disabled');assert.deepEqual(f.events,[]);
+ const enabled=await f.invoke('enableNotifications');
+ assert.equal(enabled.value.state,'enabled');assert.deepEqual(f.events,[['desktop-notifications','ALL']]);
+ await f.invoke('enableNotifications');assert.equal(f.events.length,1);
+});
+
+test('notification setup preserves existing policies and fails closed without an exact setting API',async()=>{
+ for(const type of ['ALL','ONLY_MENTIONS']){
+  const f=notificationFixture(type);assert.equal((await f.invoke('enableNotifications')).value.state,'enabled');
+  assert.equal(f.state.desktopType,type);assert.deepEqual(f.events,[]);
+ }
+ for(const type of [undefined,null,true,0,'UNKNOWN']){
+  const f=notificationFixture();f.state.desktopType=type;
+  assert.equal((await f.invoke('enableNotifications')).value.state,'unavailable');assert.deepEqual(f.events,[]);
+ }
+ for(const permission of ['default','denied']){
+  const f=notificationFixture();f.context.Notification.permission=permission;
+  assert.equal((await f.invoke('enableNotifications')).code,'notification_permission_required');assert.deepEqual(f.events,[]);
+ }
+ const f=notificationFixture();f.context.WidgetRailWebWebpack.findByProps=()=>null;
+ assert.equal((await f.invoke('enableNotifications')).value.state,'unavailable');assert.deepEqual(f.events,[]);
+});
+
+test('notification setup rejects account changes before writes and never blindly retries',async()=>{
+ const f=notificationFixture();
+ f.stores.NotificationSettingsStore.getDesktopType=()=>{f.state.account='9';return 'NEVER';};
+ assert.equal((await f.invoke('enableNotifications')).code,'account_changed');assert.deepEqual(f.events,[]);
+ const g=notificationFixture();
+ g.context.WidgetRailWebWebpack.findByProps=()=>({setDesktopType(){g.events.push('attempt');throw Error('unknown outcome');}});
+ assert.equal((await g.invoke('enableNotifications')).ok,false);assert.deepEqual(g.events,['attempt']);
+});
+
+test('outgoing viewers fail closed on stale identity, absent capability and invalid inventories',async()=>{
+ for(const viewers of [null,{},['invalid'],Array(1001).fill('2')]){
+  const f=fixture();f.state.share={guildId:'10',channelId:'20',ownerId:'1'};f.state.viewers=viewers;
+  assert.equal((await f.invoke('snapshot')).value.outgoingViewers,null);
+ }
+ for(const mismatch of [{channelId:'21',ownerId:'1'},{channelId:'20',ownerId:'9'}]){
+  const f=fixture();f.state.share={guildId:'10',...mismatch};f.state.viewers=['2'];
+  assert.equal((await f.invoke('snapshot')).value.outgoingViewers,null);
+ }
+ const f=fixture();f.state.share={guildId:'10',channelId:'20',ownerId:'1'};
+ f.stores.ApplicationStreamingStore.getViewerIds=key=>{if(key.endsWith(':1'))f.state.share=null;return ['2'];};
+ assert.equal((await f.invoke('snapshot')).value.outgoingViewers,null);
+});
 
 test('connection details expose only bounded current-call ping and quality',async()=>{
     const f=fixture(),rtc={getChannelId:()=>f.state.channel,getState:()=> 'RTC_CONNECTED',getLastPing:()=>42,
@@ -146,6 +220,16 @@ test('incoming diagnostics fence delayed reads after stream or account replaceme
     }
 });
 const settle = () => new Promise(resolve => setImmediate(resolve));
+
+test('snapshot reports existing page watch membership without starting a watch',async()=>{
+    const f=fixture();
+    assert.equal((await f.invoke('snapshot')).value.streams[0].watching,false);
+    f.state.activeWatch=activeWatch();
+    assert.equal((await f.invoke('snapshot')).value.streams[0].watching,true);
+    f.state.activeWatch=null;
+    assert.equal((await f.invoke('snapshot')).value.streams[0].watching,false);
+    assert.deepEqual(f.events,[]);
+});
 
 test('snapshot is read-only, bounded and does not expose credentials', async () => {
     const f = fixture(); const result = await f.invoke('snapshot');
@@ -287,19 +371,30 @@ test('a lost widget heartbeat rejects late capture even if another probe is aliv
     f.pending[0]('capture'); await settle(); assert.equal(f.state.started, 0); assert.equal(f.state.destroyed, 1);
 });
 
-test('missing or malformed viewer ownership fails closed before opening or closing a provider watch',async()=>{
- for(const invalid of [undefined,null,{},[null],['not-an-id'],Array(1001).fill('2')]){
-  const f=fixture();f.state.viewers=invalid;const s=await f.invoke('snapshot');assert.equal(s.value.capabilities.watch,false);
+test('missing or malformed local watch ownership fails closed before opening or closing a provider watch',async()=>{
+ for(const invalid of [undefined,{},[],activeWatch('UNKNOWN'),activeWatch('ACTIVE','3')]){
+  const f=fixture();f.state.activeWatch=invalid;const s=await f.invoke('snapshot');assert.equal(s.value.capabilities.watch,false);
   assert.equal((await f.invoke('watch',{key:'guild:10:20:2',lease:'a'.repeat(32)})).code,'watch_ownership_unavailable');assert.deepEqual(f.events,[]);
  }
- const f=fixture();delete f.stores.ApplicationStreamingStore.getViewerIds;assert.equal((await f.invoke('snapshot')).value.capabilities.watch,false);assert.equal((await f.invoke('watch',{key:'guild:10:20:2',lease:'a'.repeat(32)})).ok,false);assert.deepEqual(f.events,[]);
+ const f=fixture();delete f.stores.ApplicationStreamingStore.getActiveStreamForStreamKey;assert.equal((await f.invoke('snapshot')).value.capabilities.watch,false);assert.equal((await f.invoke('watch',{key:'guild:10:20:2',lease:'a'.repeat(32)})).ok,false);assert.deepEqual(f.events,[]);
 });
+test('local watch states distinguish active subscriptions from ended watches without viewer metadata',async()=>{
+ for(const state of ['CONNECTING','ACTIVE','RECONNECTING','PAUSED','ENDED','FAILED']) {
+  const f=fixture();f.state.activeWatch=activeWatch(state);delete f.stores.ApplicationStreamingStore.getViewerIds;
+  const expected=!['ENDED','FAILED'].includes(state),snapshot=(await f.invoke('snapshot')).value;
+  assert.equal(snapshot.capabilities.watch,true);assert.equal(snapshot.streams[0].watching,expected);
+  assert.equal((await f.invoke('watch',{key:'guild:10:20:2',lease:'a'.repeat(32)})).ok,true);
+  await f.invoke('unwatch',{lease:'a'.repeat(32)});
+  assert.deepEqual(f.events,expected?[]:['watch','close:guild:10:20:2']);
+ }
+});
+
 test('new provider watches require an available exact close action',async()=>{
  const f=fixture();f.state.watchClose=false;assert.equal((await f.invoke('snapshot')).value.capabilities.watch,false);
  assert.equal((await f.invoke('watch',{key:'guild:10:20:2',lease:'a'.repeat(32)})).ok,false);assert.deepEqual(f.events,[]);
 });
 test('preexisting user subscription can be relayed without taking ownership or requiring close',async()=>{
- const f=fixture();f.state.viewers=['1'];f.state.watchClose=false;assert.equal((await f.invoke('snapshot')).value.capabilities.watch,true);
+ const f=fixture();f.state.activeWatch=activeWatch();f.state.watchClose=false;assert.equal((await f.invoke('snapshot')).value.capabilities.watch,true);
  assert.equal((await f.invoke('watch',{key:'guild:10:20:2',lease:'a'.repeat(32)})).ok,true);await f.invoke('unwatch',{lease:'a'.repeat(32)});assert.deepEqual(f.events,[]);
 });
 test('owned watch retires with its captured exact close action even if discovery changes',async()=>{
@@ -311,8 +406,132 @@ test('same-stream relay replacement transfers our subscription without a close/r
  assert.equal((await f.invoke('watch',{key:'guild:10:20:2',lease:'b'.repeat(32)})).ok,true);assert.deepEqual(f.events,['watch']);
  await f.invoke('unwatch',{lease:'b'.repeat(32)});assert.deepEqual(f.events,['watch','close:guild:10:20:2']);
 });
+
+test('stop then watch waits for owned subscription retirement instead of borrowing a stale viewer',async()=>{
+ const f=fixture();f.state.deferWatchClose=true;const key='guild:10:20:2',first={key,lease:'a'.repeat(32)},second={key,lease:'b'.repeat(32)};
+ assert.equal((await f.invoke('watch',first)).ok,true);
+ await f.invoke('unwatch',first);
+ // Simulate delayed local close; cached viewer IDs alone must never block reopen.
+ let finished=false;
+ const reopened=f.invoke('watch',second).then(value=>{finished=true;return value;});
+ for(let i=0;i<8;i++)await Promise.resolve();
+ assert.equal(finished,false,'must not report the retiring track as a new watch');
+ assert.equal(f.events.filter(value=>value==='watch').length,1);
+ f.state.activeWatch=null;f.initial.rtc._destroyed=true;f.state.rtc=f.makeRtc('fresh-watch').rtc;
+ const wait=[...f.timers.values()].find(timer=>!timer.interval&&timer.ms===100);
+ assert.ok(wait);wait.cb();
+ assert.equal((await reopened).ok,true);
+ assert.equal(f.events.filter(value=>value==='watch').length,2);
+ assert.equal(f.peers.at(-1).sender.track.id,'fresh-watch');
+ await f.invoke('unwatch',first);
+ assert.equal(f.events.filter(value=>String(value).startsWith('close:')).length,1,'late old lease cannot close replacement');
+});
+
+async function advanceWatchWait(f) {
+ await new Promise(setImmediate);
+ const waiting=[...f.timers].find(([,timer])=>!timer.interval&&timer.ms===100);
+ assert.ok(waiting,'watch has a bounded pending wait');
+ f.timers.delete(waiting[0]);waiting[1].cb();
+ await new Promise(setImmediate);
+}
+
+test('a close that never settles fails visibly without starting or closing another subscription',async()=>{
+ const f=fixture();f.state.deferWatchClose=true;const args={key:'guild:10:20:2',lease:'a'.repeat(32)};
+ await f.invoke('watch',args);await f.invoke('unwatch',args);
+ const pending=f.invoke('watch',{...args,lease:'b'.repeat(32)});
+ for(let i=0;i<80;i++)await advanceWatchWait(f);
+ assert.equal((await pending).code,'watch_close_pending');
+ assert.deepEqual(f.events,['watch','close:'+args.key]);
+});
+
+test('rewatch starts with cached viewer membership and RTC wrapper after local watch closes',async()=>{
+ const f=fixture(),args={key:'guild:10:20:2',lease:'a'.repeat(32)};
+ await f.invoke('watch',args);await f.invoke('unwatch',args);
+ assert.deepEqual(f.state.viewers,['1']);assert.equal(f.state.activeWatch,null); // Real Discord retains audience metadata.
+ assert.equal(f.state.rtc,f.initial.rtc);assert.equal(f.state.rtc._destroyed,false);
+ assert.equal((await f.invoke('watch',{...args,lease:'b'.repeat(32)})).ok,true);
+ assert.equal(f.events.filter(value=>value==='watch').length,2,'A fresh provider watch is still required');
+});
+
+test('a destroyed cached RTC waits for the asynchronously established replacement',async()=>{
+ const f=fixture(),args={key:'guild:10:20:2',lease:'a'.repeat(32)};
+ f.initial.rtc._destroyed=true;
+ const pending=f.invoke('watch',args);
+ await new Promise(setImmediate);
+ assert.deepEqual(f.events,['watch']);
+ f.state.rtc=f.makeRtc('new-connection').rtc;
+ await advanceWatchWait(f);
+ assert.equal((await pending).ok,true);
+ assert.equal(f.peers[0].sender.track.id,'new-connection');
+});
+
+test('incoming-track wait has a wall-clock deadline under timer throttling',async()=>{
+ for(const destroyed of [false,true]){
+  const f=fixture(),args={key:'guild:10:20:2',lease:'a'.repeat(32)};
+  if(destroyed)f.state.rtc._destroyed=true;else f.state.rtc=null;
+  const pending=f.invoke('watch',args);
+  await new Promise(setImmediate);f.state.now+=8000;await advanceWatchWait(f);
+  assert.equal((await pending).code,'video_unavailable');
+  assert.deepEqual(f.events,['watch','close:'+args.key]);
+  assert.equal(Object.hasOwn(f.initial.manager,'onIncomingVideoEnabled'),false);
+ }
+});
+
+test('retirement timeout uses elapsed time when a hidden provider throttles timers',async()=>{
+ const f=fixture();f.state.deferWatchClose=true;const args={key:'guild:10:20:2',lease:'a'.repeat(32)};
+ await f.invoke('watch',args);await f.invoke('unwatch',args);
+ const pending=f.invoke('watch',{...args,lease:'b'.repeat(32)});
+ await new Promise(setImmediate);f.state.now+=8000;await advanceWatchWait(f);
+ assert.equal((await pending).code,'watch_close_pending');
+ assert.deepEqual(f.events,['watch','close:'+args.key]);
+});
+
+test('account change during close wait cannot start a watch or close the new account subscription',async()=>{
+ const f=fixture();f.state.deferWatchClose=true;const args={key:'guild:10:20:2',lease:'a'.repeat(32)};
+ await f.invoke('watch',args);await f.invoke('unwatch',args);
+ const pending=f.invoke('watch',{...args,lease:'b'.repeat(32)});
+ f.state.account='9';await advanceWatchWait(f);
+ assert.equal((await pending).code,'watch_cancelled');
+ assert.deepEqual(f.events,['watch','close:'+args.key]);
+});
+
+test('direct receiver acknowledges attachment before presentation can deliver its first picture',async()=>{
+ const f=fixture(),videoView='d'.repeat(32),args={key:'guild:10:20:2',lease:'a'.repeat(32),videoView};
+ f.videoTracks.set(videoView,null);
+ let frames=0;
+ f.context.testVideoHost.videoPlayback=id=>f.videoTracks.has(id)?{width:1280,height:720,totalFrames:frames}:null;
+ assert.equal((await f.invoke('watch',args)).ok,true);
+ assert.equal(f.videoTracks.get(videoView),f.initial.track);
+ frames=1;
+ const tick=[...f.timers.values()].find(timer=>timer.interval&&timer.ms===1000).cb;
+ await tick();f.state.now+=15000;await f.invoke('keep',args);await tick();
+ assert.equal(f.videoTracks.get(videoView),f.initial.track);
+});
+
+test('an attached direct receiver without a decoded picture retires after its presentation grace period',async()=>{
+ const f=fixture(),videoView='d'.repeat(32),args={key:'guild:10:20:2',lease:'a'.repeat(32),videoView};
+ f.videoTracks.set(videoView,null);
+ f.context.testVideoHost.videoPlayback=id=>f.videoTracks.has(id)?{width:0,height:0,totalFrames:0}:null;
+ assert.equal((await f.invoke('watch',args)).ok,true);
+ const tick=[...f.timers.values()].find(timer=>timer.interval&&timer.ms===1000).cb;
+ f.state.now+=11999;await tick();assert.equal(f.videoTracks.get(videoView),f.initial.track);
+ f.state.now++;await tick();
+ assert.equal(f.videoTracks.get(videoView),null);
+ assert.deepEqual(f.events,['watch','close:'+args.key]);
+ assert.equal((await f.invoke('diagnostics')).value.detail,'video_no_frames');
+});
+
+test('a muted direct track with no replacement retires after a bounded grace period',async()=>{
+ const f=fixture(),videoView='d'.repeat(32),args={key:'guild:10:20:2',lease:'a'.repeat(32),videoView};
+ f.videoTracks.set(videoView,null);await f.invoke('watch',args);
+ f.initial.track.muted=true;
+ const tick=[...f.timers.values()].find(timer=>timer.interval&&timer.ms===1000).cb;
+ await tick();assert.equal(f.videoTracks.get(videoView),f.initial.track);
+ f.state.now+=8000;await tick();
+ assert.equal(f.videoTracks.get(videoView),null);
+});
 test('invalid later ownership read preserves the current relay and subscription',async()=>{
- const f=fixture();await f.invoke('watch',{key:'guild:10:20:2',lease:'a'.repeat(32)});f.state.viewers=null;
+ const f=fixture();await f.invoke('watch',{key:'guild:10:20:2',lease:'a'.repeat(32)});f.state.activeWatch=undefined;
  assert.equal((await f.invoke('watch',{key:'guild:10:20:2',lease:'b'.repeat(32)})).ok,false);assert.equal(f.state.closed,0);assert.deepEqual(f.events,['watch']);
  await f.invoke('unwatch',{lease:'a'.repeat(32)});assert.deepEqual(f.events,['watch','close:guild:10:20:2']);
 });
@@ -438,7 +657,7 @@ test('another adapter caller cannot control audio with a copied relay lease',asy
 });
 
 test('ended subscriptions, expired leases and replaced receivers cannot change audio',async()=>{
-    for(const change of [f=>f.state.viewers=[],f=>f.state.viewers=null,f=>f.state.now+=26000,
+    for(const change of [f=>f.state.activeWatch=null,f=>f.state.activeWatch=undefined,f=>f.state.now+=26000,
         async f=>{await f.invoke('watch',{...streamTarget,lease:'b'.repeat(32)});},
         async f=>{await f.invoke('unwatch',streamTarget);},f=>{f.stores.VoiceStateStore.getVoiceStatesForChannel=()=>({});}]){
         const f=await watchingFixture();await change(f);f.events.length=0;
@@ -448,7 +667,7 @@ test('ended subscriptions, expired leases and replaced receivers cannot change a
 });
 
 test('preexisting user watch permits lease-owned audio controls without taking subscription ownership',async()=>{
-    const f=fixture();f.state.viewers=['1'];f.state.watchClose=false;
+    const f=fixture();f.state.activeWatch=activeWatch();f.state.watchClose=false;
     assert.equal((await f.invoke('watch',streamTarget)).ok,true);
     assert.equal((await f.invoke('streamMute',{...streamTarget,value:true})).ok,true);
     await f.invoke('unwatch',streamTarget);assert.deepEqual(f.events,[['streamMute','2','stream']]);
@@ -503,7 +722,7 @@ test('demand retirement restores current global policy and exact original descri
 
 test('same-stream replacement transfers demand without withdrawing it for owned or preexisting subscriptions',async()=>{
     for(const preexisting of [false,true]){
-        const f=fixture();if(preexisting)f.state.viewers=['1'];
+        const f=fixture();if(preexisting)f.state.activeWatch=activeWatch();
         await f.invoke('watch',streamTarget);f.state.globalVideo=false;
         const wrapper=f.initial.manager.onIncomingVideoEnabled;f.demandCalls.length=0;
         await f.invoke('watch',{...streamTarget,lease:'b'.repeat(32)});
@@ -562,7 +781,7 @@ test('missing demand APIs fail before changing provider subscriptions and disabl
 test('unmatched or unsupported stream-manager identities fail closed and retire the acquired watch',async()=>{
     for(const change of [f=>f.state.rtc.context='default',f=>f.state.rtc.streamKey='guild:10:20:3',
         f=>f.state.rtc.streamContext.ownerId='3',f=>f.state.rtc.streamContext.channelId='21',f=>f.state.rtc.isOwner=true,
-        f=>f.state.rtc._destroyed=true,f=>f.state.rtc._connection.context='default',f=>f.state.rtc._connection.streamUserId='3',
+        f=>f.state.rtc._destroyed=undefined,f=>f.state.rtc._connection.context='default',f=>f.state.rtc._connection.streamUserId='3',
         f=>f.engine.connections=[],f=>f.initial.manager.getUserID=()=> '3',f=>f.initial.manager.incomingVideoEnabled=null,
         f=>f.initial.manager.onIncomingVideoEnabled=null,f=>Object.preventExtensions(f.initial.manager),
         f=>Object.defineProperty(f.initial.manager,'onIncomingVideoEnabled',{value:f.initial.manager.onIncomingVideoEnabled,writable:false,configurable:false})]){
@@ -613,7 +832,7 @@ test('provider freezing the installed wrapper cannot prevent relay cleanup or re
 });
 
 test('closing the provider watch retires demand without automatically subscribing again',async()=>{
-    const f=await watchingFixture();f.state.globalVideo=false;f.state.viewers=[];
+    const f=await watchingFixture();f.state.globalVideo=false;f.state.activeWatch=null;
     await relayTick(f);
     assert.equal(f.state.closed,1);assert.equal(Object.hasOwn(f.initial.manager,'onIncomingVideoEnabled'),false);
     assert.equal(f.initial.manager.incomingVideoEnabled,false);
@@ -703,7 +922,7 @@ test('known provider default-volume snapping is confirmed without masking arbitr
 
 test('audio acknowledgement rejects domain changes during the write or confirmation read',async()=>{
     for(const during of ['write','read'])for(const change of [f=>f.state.account='3',f=>f.state.channel='21',
-        f=>f.context.WidgetRailDiscordPrototype.dispose(),f=>f.state.viewers=[],f=>f.state.now+=26000]){
+        f=>f.context.WidgetRailDiscordPrototype.dispose(),f=>f.state.activeWatch=null,f=>f.state.now+=26000]){
         const f=await watchingFixture(),setter=f.audioActions.toggleLocalMute,read=f.stores.MediaEngineStore.getLocalVolume;
         let written=false;
         f.audioActions.toggleLocalMute=(...args)=>{setter(...args);written=true;if(during==='write')change(f);};
@@ -1191,6 +1410,31 @@ test('voice device read or write cannot cross account changes or unsupported dev
     assert.equal((await f.invoke('voiceOutputDevice',{value:'headset'})).code,'account_changed');assert.deepEqual(f.events,[]);
 });
 
+test('missing voice devices preserve Discord defaults and reject stale choices without writes',async()=>{
+    for(const empty of [{},null,undefined,{off:{id:'off',name:'Unavailable',disabled:true}}]){
+        const f=voiceSettingsFixture();f.inputs=empty;f.outputs=empty;
+        const reply=await f.invoke('voiceSettings');
+        assert.equal(reply.ok,true);
+        assert.equal(reply.value.inputAvailable,false);assert.equal(reply.value.outputAvailable,false);
+        assert.deepEqual(Array.from(reply.value.inputDevices),[]);assert.deepEqual(Array.from(reply.value.outputDevices),[]);
+        assert.equal(reply.value.inputDeviceId,null);assert.equal(reply.value.outputDeviceId,null);
+        assert.equal((await f.invoke('voiceInputDevice',{value:'mic'})).code,'voice_setting_unavailable');
+        assert.equal((await f.invoke('voiceOutputDevice',{value:'headset'})).code,'voice_setting_unavailable');
+        assert.deepEqual(f.events,[]);assert.equal(f.state.input,'default');assert.equal(f.state.output,'speaker');
+    }
+    const f=voiceSettingsFixture();
+    assert.equal((await f.invoke('voiceSettings')).value.inputAvailable,true);
+    f.inputs={}; // Device disappeared after the dialog was populated.
+    const reply=await f.invoke('voiceSettings');
+    assert.equal(reply.value.inputAvailable,false);assert.equal(reply.value.outputAvailable,true);
+    assert.equal((await f.invoke('voiceInputDevice',{value:'mic'})).code,'voice_setting_unavailable');
+    assert.deepEqual(f.events,[]);
+    f.inputs={default:{id:'default',name:'System default',disabled:false}};
+    assert.equal((await f.invoke('voiceSettings')).value.inputAvailable,true);
+    assert.equal((await f.invoke('voiceInputDevice',{value:'default'})).ok,true);
+    assert.deepEqual(f.events,[]); // Discord's default is already selected, so no setter is needed.
+});
+
 test('malformed and oversized device lists are unavailable, never truncated into misleading choices',async()=>{
     for(const mutate of [f=>f.inputs=Array(2),f=>f.inputs=Object.fromEntries(Array.from({length:65},(_,i)=>[String(i),{id:String(i),name:'Device',disabled:false}])),
         f=>f.inputs.mic.id='different',f=>f.inputs.mic.name=12,f=>f.inputs.mic.disabled=undefined]){
@@ -1449,6 +1693,68 @@ test('fatal share errors also clear on account or call departure',async()=>{
         f.state[change==='account'?'account':'channel']='99';assert.equal((await f.invoke('snapshot')).value.shareError,null);
         f.state.account='1';f.state.channel='20';assert.equal((await f.invoke('snapshot')).value.shareError,null);
     }
+});
+
+test('three direct screen slots retain independent tracks, cached viewers and exact teardown',async()=>{
+    const f=fixture(), second=f.makeRtc('second'),third=f.makeRtc('third');
+    const secondKey='guild:10:20:3',thirdKey='guild:10:20:4',existingPageWatch='guild:10:20:5';
+    const watched=new Set([existingPageWatch]),starts=[];
+    f.stores.ApplicationStreamingStore.getViewerIds=()=>['1']; // remains cached after close
+    f.stores.ApplicationStreamingStore.getActiveStreamForStreamKey=key=>watched.has(key)?activeWatch('ACTIVE',key.split(':').at(-1)):null;
+    const findByCode=f.context.WidgetRailWebWebpack.findByCode;
+    f.context.WidgetRailWebWebpack.findByCode=pattern=>{
+        if(pattern.includes('STREAM_WATCH'))return (descriptor,options)=>{
+            if(!options?.forceMultiple)watched.clear();
+            const key=`guild:${descriptor.guildId}:${descriptor.channelId}:${descriptor.ownerId}`;
+            if(key===streamTarget.key&&f.state.rtc?._destroyed)f.state.rtc=f.makeRtc('reopened').rtc;
+            if(key===thirdKey&&third.rtc._destroyed)third.rtc={...third.rtc,_destroyed:false};
+            watched.add(key);starts.push({key,options});
+        };
+        if(pattern.includes('STREAM_STOP'))return (key,feedback)=>{
+            assert.equal(feedback,false);watched.delete(key);
+            const rtc=f.stores.StreamRTCConnectionStore.getRTCConnection(key);
+            if(rtc)rtc._destroyed=true;
+        };
+        return findByCode(pattern);
+    };
+    for(const [entry,key,user] of [[second,secondKey,'3'],[third,thirdKey,'4']]) {
+        entry.rtc.streamKey=key;entry.rtc.streamContext.ownerId=user;
+        entry.manager.getUserID=()=>user;entry.connection.streamUserId=user;
+    }
+    f.stores.VoiceStateStore.getVoiceStatesForChannel=()=>Object.fromEntries(['2','3','4','5'].map(userId=>[userId,{userId,selfStream:true}]));
+    f.stores.StreamRTCConnectionStore.getRTCConnection=key=>key===secondKey?second.rtc:key===thirdKey?third.rtc:key===streamTarget.key?f.state.rtc:null;
+    const first={...streamTarget,slot:1,videoView:'d'.repeat(32)};
+    const other={...streamTarget,key:secondKey,userId:'3',slot:2,lease:'b'.repeat(32),videoView:'e'.repeat(32)};
+    const last={...streamTarget,key:thirdKey,userId:'4',slot:3,lease:'c'.repeat(32),videoView:'f'.repeat(32)};
+    for(const args of [first,other,last]) {
+        f.videoTracks.set(args.videoView,null);assert.equal((await f.invoke('watch',args)).ok,true);
+        assert.equal(watched.has(existingPageWatch),true,'preserves watch opened in Discord');
+    }
+    assert.deepEqual(starts.map(start=>start.key),[first.key,other.key,last.key]);
+    assert.equal(starts.every(start=>start.options.noFocus===true),true);
+    assert.deepEqual([...watched],[existingPageWatch,first.key,other.key,last.key]);
+    for(const timer of [...f.timers.values()].filter(timer=>timer.interval))await timer.cb();
+    assert.equal(f.videoTracks.get(first.videoView),f.initial.track);
+    assert.equal(f.videoTracks.get(other.videoView),second.track);
+    assert.equal(f.videoTracks.get(last.videoView),third.track);assert.equal(f.peers.length,0);
+    assert.equal((await f.invoke('watch',{...first,slot:2,lease:'f'.repeat(32)})).code,'watch_conflict');
+    assert.equal((await f.invoke('watch',{...first,key:existingPageWatch,userId:'5',slot:4,lease:'f'.repeat(32)})).code,'invalid_watch_slot');
+    await f.invoke('unwatch',first);
+    assert.deepEqual([...watched],[existingPageWatch,other.key,last.key]);
+    assert.equal(f.videoTracks.get(first.videoView),null);
+    assert.equal(f.videoTracks.get(other.videoView),second.track);assert.equal(f.videoTracks.get(last.videoView),third.track);
+    const reopened={...first,lease:'f'.repeat(32)};
+    assert.equal((await f.invoke('watch',reopened)).ok,true);
+    await f.invoke('unwatch',first);
+    assert.equal(f.videoTracks.get(first.videoView).id,'reopened');
+    await f.invoke('unwatch',last);
+    const thirdReopened={...last,lease:'9'.repeat(32)};
+    assert.equal((await f.invoke('watch',thirdReopened)).ok,true);await f.invoke('unwatch',last);
+    assert.equal(f.videoTracks.get(last.videoView),third.track);
+    assert.equal(f.videoTracks.get(other.videoView),second.track);
+    f.context.WidgetRailDiscordPrototype.dispose();
+    assert.deepEqual([...watched],[existingPageWatch]);
+    for(const args of [first,other,last])assert.equal(f.videoTracks.get(args.videoView),null);
 });
 
 test('direct pin binds the original track with no peer allocation, tracks replacement and releases only its view',async()=>{

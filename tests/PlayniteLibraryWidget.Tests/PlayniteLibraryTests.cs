@@ -2610,6 +2610,9 @@ public sealed partial class PlayniteLibraryTests
             "_application", "_setupService", "_gate", "_launchGeneration", "_launchStateRecency",
             "_launchStates", "_indexedHome", "_indexedBrowse", "_indexedFavorites",
             "suggestionOwner", "suggestionSource", "gameSuggestions", "achievementBrowse", "achievementRows", "_hiddenRows", "_model", "_navigation", "_organization",
+            "progressPin", "progressData",
+            // SDK resource/collection owners and their immutable publication cache; controls live in the model.
+            "achievementHub", "achievementGames", "recentAchievements", "publishedAchievementOverview", "publishedAchievementFilter",
             "_actionFeedbackExpiry", "_playniteFeedbackExpiry",
             "_createdCategoriesPendingReconciliation", "_browseReloadAttempt",
             "_livePlayniteAuthority", "_presentationAuthority", "_homeQueryAuthorityGeneration",
@@ -3567,7 +3570,7 @@ public sealed partial class PlayniteLibraryTests
         Assert.AreEqual(actionLabel, setup.Text);
         Assert.AreEqual(LauncherWidget.PlayniteOpenActionId, setup.ActionId);
         Assert.AreEqual(setup.Id, home.InitialFocusId);
-        Assert.IsTrue(PageNodes(widget, home.Root).Any(node => (node.Text ?? "").Contains("Playnite Bridge", StringComparison.Ordinal)));
+        Assert.IsTrue(PageNodes(widget, home.Root).Any(node => (node.Text ?? "").Contains("WidgetRail for Playnite", StringComparison.Ordinal)));
         Assert.IsFalse(PageNodes(widget, home.Root).Any(node => node.ActionId == PlayniteLibraryActions.Retry));
         Assert.IsFalse(Encoding.UTF8.GetString(SnapshotJson.Serialize(home)).Contains("private credential detail", StringComparison.Ordinal));
         Assert.AreEqual(0, connection.ProbeCalls, "Rendering setup should not add a connection probe.");
@@ -4447,7 +4450,16 @@ public sealed partial class PlayniteLibraryTests
             return item is null ? null : new(item);
         }
 
+        internal Func<CancellationToken, ValueTask<PlayniteAchievementOverview>>? OverviewHandler { get; set; }
+        public ValueTask<PlayniteAchievementOverview> GetAchievementOverviewAsync(CancellationToken token) =>
+            OverviewHandler?.Invoke(token) ?? ValueTask.FromResult(PlayniteAchievementOverview.Unavailable);
         internal Func<string, CancellationToken, ValueTask<PlayniteAchievements>>? AchievementsHandler { get; set; }
+        internal Func<string, CancellationToken, ValueTask<PlayniteProviderRefreshResult>>? ProviderRefreshHandler { get; set; }
+        internal Func<long, CancellationToken, ValueTask<PlayniteEventBatch?>>? EventsHandler { get; set; }
+        public ValueTask<PlayniteProviderRefreshResult> RefreshAchievementsAsync(string gameId, CancellationToken token) =>
+            ProviderRefreshHandler?.Invoke(gameId, token) ?? ValueTask.FromResult(PlayniteProviderRefreshResult.Unavailable);
+        public ValueTask<PlayniteEventBatch?> ReadEventsAsync(long after, CancellationToken token) =>
+            EventsHandler?.Invoke(after, token) ?? ValueTask.FromResult<PlayniteEventBatch?>(null);
         internal Func<string, CancellationToken, ValueTask<PlayniteActivity>>? ActivityHandler { get; set; }
         internal List<(string Id, bool Install)> InstallationRequests { get; } = [];
 
@@ -4854,6 +4866,8 @@ public sealed partial class PlayniteLibraryTests
         internal WidgetHostServices Services()
         {
             var builder = new WidgetTestHostServicesBuilder()
+            .WithHandler(WidgetPinningCapabilities.Open, (request, token) =>
+            { token.ThrowIfCancellationRequested(); return ValueTask.FromResult(new WidgetPinReceipt(true)); })
             .WithHandler(WidgetAppLibraryCapabilities.GetPage, Query)
             .WithHandler(WidgetAppLibraryCapabilities.ResolveSaved, Resolve)
             .WithHandler(WidgetAppLibraryCapabilities.Launch, Launch)

@@ -45,6 +45,17 @@ internal sealed partial class PlayniteLibraryApplicationService(
         PlayniteLibraryQueryContext Context, PlayniteBridgeGame[] Items);
     private readonly Dictionary<PlayniteLibraryQueryScope, Traversal> _traversals = [];
     private long _catalogMutationRevision;
+    private long _connectionGeneration;
+    private readonly object _connectionGate = new();
+    private CancellationTokenSource _connectionLifetime = new();
+    private CancellationTokenSource ConnectionScope(CancellationToken caller)
+    {
+        lock (_connectionGate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return CancellationTokenSource.CreateLinkedTokenSource(caller, _connectionLifetime.Token, _lifetime.Token);
+        }
+    }
     private long _lastGoodMutationRevision;
     private readonly IPlayniteLibraryArtworkDiagnostics _artworkDiagnostics =
         artworkDiagnostics ?? PlayniteLibraryArtworkDiagnostics.None;
@@ -55,9 +66,29 @@ internal sealed partial class PlayniteLibraryApplicationService(
             "eqhXUAAAAABJRU5ErkJggg=="));
 
     public bool OwnsArtworkContent => true;
-    public void ResetConnectionCache()
+    public async ValueTask ResetConnectionCacheAsync()
     {
-        if (_client is PlayniteBridgeClient bridge) bridge.ResetArtworkPathCache();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        Interlocked.Increment(ref _connectionGeneration);
+        CancellationTokenSource previous;
+        lock (_connectionGate) { previous = _connectionLifetime; _connectionLifetime = new(); }
+        previous.Cancel(); previous.Dispose();
+        if (_client is PlayniteBridgeClient bridge) bridge.ResetConnection();
+        await _gate.WaitAsync(_lifetime.Token).ConfigureAwait(false);
+        try
+        {
+            _lastGood = null;
+            _traversals.Clear();
+            InvalidateCatalog();
+            lock (_artworkGate)
+            {
+                _artwork.Clear();
+                _artworkOrder.Clear();
+                _pinnedArtwork.Clear();
+                _artworkContent.Clear();
+            }
+        }
+        finally { _gate.Release(); }
     }
 
     public async ValueTask<WidgetArtworkSource?> ResolveArtworkSourceAsync(WidgetArtworkHandle handle, CancellationToken token)
@@ -72,9 +103,11 @@ internal sealed partial class PlayniteLibraryApplicationService(
     private async ValueTask<WidgetArtworkSource?> ResolveArtworkSourceCoreAsync(
         WidgetArtworkHandle handle, ArtworkRegistration registration, bool captured, CancellationToken token)
     {
+        if (registration.ConnectionGeneration != Interlocked.Read(ref _connectionGeneration)) return null;
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
         var file = await _client.ResolveArtworkFileAsync(registration.GameId, registration.Kind, lifetime.Token).ConfigureAwait(false);
         lifetime.Token.ThrowIfCancellationRequested();
+        if (registration.ConnectionGeneration != Interlocked.Read(ref _connectionGeneration)) return null;
         if (!captured)
             lock (_artworkGate)
                 if (!_artwork.TryGetValue(handle.Value, out var current) || !ReferenceEquals(current, registration)) return null;
@@ -202,6 +235,8 @@ internal sealed partial class PlayniteLibraryApplicationService(
         IReadOnlyList<string> savedIds,
         CancellationToken cancellationToken)
     {
+        using var connection = ConnectionScope(cancellationToken);
+        cancellationToken = connection.Token;
         ArgumentNullException.ThrowIfNull(savedIds);
         if (savedIds.Count > WidgetAppLibraryService.MaximumSavedItems)
             throw new ArgumentOutOfRangeException(nameof(savedIds));
@@ -242,11 +277,14 @@ internal sealed partial class PlayniteLibraryApplicationService(
         WidgetAppLaunchOverlayBehavior overlayBehavior,
         CancellationToken cancellationToken)
     {
+        using var connection = ConnectionScope(cancellationToken);
+        cancellationToken = connection.Token;
         _ = overlayBehavior;
         try
         {
             var game = await _client.ResolveGameAsync(appId, cancellationToken)
                 .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             if (game is null || !game.IsInstalled)
                 throw new PlayniteBridgeDataException("game_not_found");
             if (!await _client.LaunchAsync(game.Id, cancellationToken).ConfigureAwait(false))
@@ -256,7 +294,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
             return new(WidgetAppLaunchObservationState.RequestAccepted,
                 SupportsRunning: false, SupportsEnded: false);
         }
-        catch (Exception exception) { throw Safe(exception); }
+        catch (Exception exception) when (exception is not OperationCanceledException) { throw Safe(exception); }
     }
 
     public ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(
@@ -284,6 +322,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
         try
         {
             token.ThrowIfCancellationRequested();
+            if (registration.ConnectionGeneration != Interlocked.Read(ref _connectionGeneration)) return null;
             WidgetEncodedArtwork? cached;
             lock (_artworkGate)
             {
@@ -306,6 +345,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
                 .ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             var backgroundNotFound = false;
+            if (registration.ConnectionGeneration != Interlocked.Read(ref _connectionGeneration)) return null;
             if (result.Artwork is null && registration.Kind == PlayniteBridgeArtworkKind.Background &&
                 result.Code == "not-found")
             {
@@ -322,6 +362,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
                     .ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
             }
+            if (registration.ConnectionGeneration != Interlocked.Read(ref _connectionGeneration)) return null;
             if (backgroundNotFound && result.Artwork is null && result.Code == "not-found")
             {
                 CacheArtworkIfCurrent(handle.Value, registration, NeutralArtwork, captured);
@@ -388,12 +429,15 @@ internal sealed partial class PlayniteLibraryApplicationService(
         bool included,
         CancellationToken cancellationToken)
     {
+        using var connection = ConnectionScope(cancellationToken);
+        cancellationToken = connection.Token;
         try
         {
             var normalizedName = NormalizeProviderCategoryName(categoryName) ??
                 throw new ArgumentException("Category is invalid.", nameof(categoryName));
             var current = await _client.ResolveGameAsync(gameId, cancellationToken)
                 .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             if (current is null) return null;
             var categories = current.Categories
                 .Where(name => !string.Equals(
@@ -408,6 +452,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
             InvalidateCatalog();
             var changed = await _client.SetCategoriesAsync(
                     current.Id, categories, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             if (changed is null || !string.Equals(
                     changed.Id, current.Id, StringComparison.Ordinal) ||
                 changed.Categories.Contains(
@@ -415,7 +460,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
                 return null;
             return Project(changed, stale: false);
         }
-        catch (Exception exception) { throw Safe(exception); }
+        catch (Exception exception) when (exception is not OperationCanceledException) { throw Safe(exception); }
     }
 
     public ValueTask<WidgetAppLibraryItem?> SetCompletionStatusAsync(
@@ -429,6 +474,8 @@ internal sealed partial class PlayniteLibraryApplicationService(
         string name,
         CancellationToken cancellationToken)
     {
+        using var connection = ConnectionScope(cancellationToken);
+        cancellationToken = connection.Token;
         try
         {
             var requestedName = NormalizeProviderCategoryName(name) ??
@@ -443,7 +490,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
                 return null;
             return new(CategoryId(id), normalizedName, []);
         }
-        catch (Exception exception) { throw Safe(exception); }
+        catch (Exception exception) when (exception is not OperationCanceledException) { throw Safe(exception); }
     }
 
     public async ValueTask<IReadOnlyList<string>> GetCompletionStatusesAsync(
@@ -455,7 +502,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
                     .ConfigureAwait(false))
                 .Select(value => value.Name).ToArray();
         }
-        catch (Exception exception) { throw Safe(exception); }
+        catch (Exception exception) when (exception is not OperationCanceledException) { throw Safe(exception); }
     }
 
     public ValueTask<WidgetPrivateStateValue<PlayniteLibraryPrivateState>> ReadStateAsync(
@@ -498,6 +545,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
                 _gate.Dispose();
                 _artworkWork.Dispose();
                 _lifetime.Dispose();
+                lock (_connectionGate) _connectionLifetime.Dispose();
             }
         }
     }
@@ -507,24 +555,29 @@ internal sealed partial class PlayniteLibraryApplicationService(
         Func<string, CancellationToken, ValueTask<PlayniteBridgeGame?>> mutation,
         CancellationToken cancellationToken)
     {
+        using var connection = ConnectionScope(cancellationToken);
+        cancellationToken = connection.Token;
         try
         {
             var current = await _client.ResolveGameAsync(gameId, cancellationToken)
                 .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             if (current is null) return null;
             var changed = await mutation(current.Id, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             if (changed is null || !string.Equals(changed.Id, current.Id, StringComparison.Ordinal))
                 return null;
             InvalidateCatalog();
             return Project(changed, stale: false);
         }
-        catch (Exception exception) { throw Safe(exception); }
+        catch (Exception exception) when (exception is not OperationCanceledException) { throw Safe(exception); }
     }
 
     private async Task<Catalog> FetchCatalogAsync(CancellationToken cancellationToken)
     {
         var games = new List<PlayniteBridgeGame>();
         int? expectedTotal = null;
+        string? snapshotRevision = null;
         for (var offset = 0; ; offset += PlayniteBridgeClient.MaximumPageSize)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -532,9 +585,11 @@ internal sealed partial class PlayniteLibraryApplicationService(
                     offset,
                     PlayniteBridgeClient.MaximumPageSize,
                     InstalledOnly: false,
-                    IncludeHidden: true), cancellationToken)
+                    IncludeHidden: true) { Revision = snapshotRevision }, cancellationToken)
                 .ConfigureAwait(false);
             expectedTotal ??= page.Total;
+            if (offset != 0 && page.Revision != snapshotRevision) throw new PlayniteBridgeDataException("invalid_playnite_data");
+            snapshotRevision ??= page.Revision;
             if (page.Total != expectedTotal || page.Offset != offset ||
                 games.Count + page.Games.Count > PlayniteBridgeClient.MaximumGames)
                 throw new PlayniteBridgeDataException("invalid_playnite_data");
@@ -632,7 +687,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
             new WidgetAppLibraryMetadata(
                 revision,
                 new WidgetAppLibraryMetadataAttribution(
-                    "Playnite Bridge", revision, game.Source,
+                    "WidgetRail for Playnite", revision, game.Source,
                     (retrievedAt ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())))
             {
                 Version = game.Version,
@@ -651,7 +706,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
         PlayniteBridgeGame game,
         string gameRevision, bool register)
     {
-        var revision = ContentId("artwork-revision", game.Id, gameRevision);
+        var revision = ArtworkRevision(game);
         var cover = register ? RegisterArtwork(game.Id, revision, PlayniteBridgeArtworkKind.Cover) : ArtworkHandle(game.Id, revision, PlayniteBridgeArtworkKind.Cover);
         var background = register ? RegisterArtwork(game.Id, revision, PlayniteBridgeArtworkKind.Background) : ArtworkHandle(game.Id, revision, PlayniteBridgeArtworkKind.Background);
         return new(Array.AsReadOnly<WidgetAppLibraryArtwork>([
@@ -676,7 +731,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (!_artwork.ContainsKey(handle))
             {
-                _artwork.Add(handle, new(gameId, revision, kind));
+                _artwork.Add(handle, new(gameId, revision, kind, Interlocked.Read(ref _connectionGeneration)));
                 _artworkOrder.Enqueue(handle);
             }
             TrimArtworkLocked(
@@ -739,7 +794,8 @@ internal sealed partial class PlayniteLibraryApplicationService(
         var memoryEvents = new List<PlayniteArtworkMemoryEvent>();
         lock (_artworkGate)
         {
-            if (!_disposed && (captured || _artwork.TryGetValue(handle, out var current) &&
+            if (!_disposed && registration.ConnectionGeneration == Interlocked.Read(ref _connectionGeneration) &&
+                (captured || _artwork.TryGetValue(handle, out var current) &&
                 ReferenceEquals(current, registration)))
             {
                 var stored = _artworkContent.Store(handle, artwork);
@@ -913,11 +969,11 @@ internal sealed partial class PlayniteLibraryApplicationService(
         };
         return new(code, code switch
         {
-            "credential_missing" => "Configure Playnite Bridge before loading the library.",
-            "authentication_required" => "The saved Playnite Bridge token was rejected.",
+            "credential_missing" => "Configure WidgetRail for Playnite before loading the library.",
+            "authentication_required" => "The saved WidgetRail for Playnite token was rejected.",
             "app_not_found" => "The selected Playnite game is no longer current.",
-            "invalid_payload" => "Playnite Bridge returned malformed library data.",
-            _ => "Playnite Bridge is unavailable.",
+            "invalid_payload" => "WidgetRail for Playnite returned malformed library data.",
+            _ => "WidgetRail for Playnite is unavailable.",
         });
     }
 
@@ -931,5 +987,6 @@ internal sealed partial class PlayniteLibraryApplicationService(
     private sealed record ArtworkRegistration(
         string GameId,
         string Revision,
-        PlayniteBridgeArtworkKind Kind);
+        PlayniteBridgeArtworkKind Kind,
+        long ConnectionGeneration);
 }

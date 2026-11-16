@@ -22,7 +22,7 @@ foreach($scenario in $scenarios){
     & "$PSScriptRoot/Stage.ps1" -PublishedPayload $PublishedPayload -CliPath $CliPath -InstallationRoot $InstallationRoot -OutputDirectory $scenarioOutput
     @{width=$scenario.Width;height=$scenario.Height;pickerOnly=$PickerOnly.IsPresent}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $scenarioOutput 'expected-surface.json')
     $result=Join-Path $scenarioOutput 'result.json'
-    $process=Start-Process -FilePath $exe -ArgumentList @(('"--shell-config='+$scenarioOutput+'/shell.json"'),'--shell-no-controller',
+    $process=Start-Process -FilePath $exe -ArgumentList @(('"--shell-config='+$scenarioOutput+'/shell.json"'),'--shell-no-controller','--validation-platform-activation',
         ('--validation-viewport-dips='+$scenario.Viewport),('"--validate-discord-navigation='+$result+'"')) -WindowStyle Hidden -PassThru
     try {
         $deadline=[DateTime]::UtcNow.AddSeconds(180)
@@ -37,7 +37,12 @@ foreach($scenario in $scenarios){
         $data.checks|ForEach-Object{Write-Output "PASS [$($scenario.Name)] $_"}
         Write-Output "Evidence: $result"
     } finally {
-        if(!$process.HasExited){Stop-Process -Id $process.Id}
+        if(!$process.HasExited){
+            & "$PSScriptRoot/../../scripts/Close-WinUiTestShell.ps1" -AppPid $process.Id
+            if(!$process.WaitForExit(30000)){Stop-Process -Id $process.Id;throw 'Navigation fixture did not close normally.'}
+        }
+        @{exitCode=$process.ExitCode}|ConvertTo-Json|Set-Content "$scenarioOutput/shutdown.json"
+        if($process.ExitCode -ne 0){throw "Navigation fixture exited with $($process.ExitCode)."}
         $process.Dispose()
     }
 }

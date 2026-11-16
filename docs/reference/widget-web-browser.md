@@ -40,8 +40,8 @@ protocol 66; existing SDK fields keep their 96-character default and all commits
 remain bounded by the individual control declaration.
 
 The host lazily creates a profile isolated by widget and account. Private storage
-is the ordinary-browser default; persistent storage is explicit. Up to four root
-browser sessions and two hosted popup controllers can be resident. The owner
+is the ordinary-browser default; persistent storage is explicit. Up to eight root
+browser sessions and six hosted popup controllers can be resident. The owner
 retires them with the worker/document lifetime.
 Main and pinned presentations borrow the same controller; crossing XAML roots
 waits for the native child's unload/load lifecycle and the prior composition

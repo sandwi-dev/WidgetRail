@@ -3,7 +3,7 @@
 function createWidgetRailDiscordObserver(discover, invalidate) {
     const names = ['UserStore','SelectedChannelStore','VoiceStateStore','SpeakingStore',
         'MediaEngineStore','RTCConnectionStore','StreamRTCConnectionStore','ApplicationStreamingStore',
-        'RelationshipStore','PresenceStore','GuildStore','GuildChannelStore','ChannelStore','PermissionStore'];
+        'RelationshipStore','PresenceStore','GuildStore','GuildChannelStore','ChannelStore','PermissionStore','NotificationSettingsStore'];
     const subscriptions = new Map();
     let active = true, queued = false;
     const changed = () => {

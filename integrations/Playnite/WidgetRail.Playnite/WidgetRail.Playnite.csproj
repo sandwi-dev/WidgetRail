@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net462</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>WidgetRail.Playnite</AssemblyName>
+    <RootNamespace>WidgetRail.Playnite</RootNamespace>
+    <Version>1.1.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="PlayniteSDK" Version="6.15.0" />
+    <ProjectReference Include="../WidgetRail.Playnite.Core/WidgetRail.Playnite.Core.csproj" />
+    <Reference Include="System.Web.Extensions" />
+    <None Include="extension.yaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

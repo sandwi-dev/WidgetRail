@@ -17,11 +17,21 @@ internal sealed partial class OverlayShellPage
     private NotificationCard? notificationCard;
     private NotificationBannerChrome? notificationBannerContent;
     private bool bannerFading;
+    private void RefreshNotificationBannerAppearance()
+    {
+        if (notificationBanner?.IsVisible != true || notificationBannerState.EntryId is not { } id ||
+            notificationCenter?.Inbox.Find(id) is not { } entry) return;
+        var palette = ShellChromePalette.Resolve(ShellPalette,Appearance);
+        var opacity = notificationCenter.Preferences.Category(entry.Widget,entry.Content?.CategoryId ?? WidgetNotificationContract.DefaultCategoryId).Opacity
+            ?? entry.Content?.BackgroundOpacityPercent ?? 100;
+        notificationBannerContent?.Apply(palette,opacity,Appearance.Transparency == PlatformSettings.TransparencyPreference.Reduced);
+        notificationCard?.ApplyBannerPalette(palette);
+    }
     private long bannerFadeEnds;
     private int bannerWidth, bannerHeight;
     private bool NotificationSourceVisible(string widget) =>
         visible && activeWidget == widget && WidgetSurface.Visibility == Visibility.Visible ||
-        pinned is { Window.IsVisible: true } pin && pin.IsCurrent && pin.WidgetId == widget;
+        pins.Any(pin=>pin.Window.IsVisible && pin.IsCurrent && pin.WidgetId==widget);
     private bool NotificationBannerEligible(NotificationEntry entry) => entry.BannerVisibility switch
     {
         WidgetNotificationVisibility.Always => true,
@@ -47,7 +57,7 @@ internal sealed partial class OverlayShellPage
             notificationBanner.InterfaceScale = Appearance.InterfaceScale;
             var opacity = notificationCenter.Preferences.Category(entry.Widget, entry.Content?.CategoryId ?? WidgetNotificationContract.DefaultCategoryId).Opacity
                 ?? entry.Content?.BackgroundOpacityPercent ?? 100;
-            notificationBannerContent!.Apply(palette, opacity);
+            notificationBannerContent!.Apply(palette, opacity, Appearance.Transparency == PlatformSettings.TransparencyPreference.Reduced);
             notificationCard!.ApplyBannerPalette(palette);
             notificationCard.Update(entry, catalogItems.FirstOrDefault(widget => widget.Id == entry.Widget), Appearance.TextScale);
             var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow((nint)hostWindow);
@@ -78,24 +88,32 @@ internal sealed partial class OverlayShellPage
         var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow((nint)hostWindow);
         if (OverlayDisplayArea.Resolve(id, id)?.WorkArea is not { } area) return false;
         var obstacles = new List<PinnedBounds>();
-        if (pinned is { Window.IsVisible: true } pin) obstacles.Add(pin.Window.Bounds);
+        foreach(var pin in pins)if(pin.Window.IsVisible)obstacles.Add(pin.Window.Bounds);
+        if(pinAdjustmentToolbar?.Window.IsVisible==true)obstacles.Add(pinAdjustmentToolbar.Window.Bounds);
         if (visible || retainingExitPresentation)
         {
             if (SystemFilePickerOpen || nativeBrowserPickerActive || LocalInstallActive) return false;
             var origin = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(id).Position;
             var dpi = XamlRoot?.RasterizationScale ?? 1;
-            void Avoid(FrameworkElement element)
+            void Avoid(FrameworkElement element, PinnedSurface? pin = null)
             {
                 if (!element.IsLoaded || element.Visibility != Visibility.Visible || element.ActualWidth <= 0 || element.ActualHeight <= 0) return;
                 var rect = element.TransformToVisual(null).TransformBounds(new(0, 0, element.ActualWidth, element.ActualHeight));
-                obstacles.Add(new(origin.X + (int)Math.Floor(rect.X * dpi), origin.Y + (int)Math.Floor(rect.Y * dpi),
-                    (int)Math.Ceiling(rect.Width * dpi), (int)Math.Ceiling(rect.Height * dpi)));
+                var scale = pin?.Window.AutomationRoot.XamlRoot?.RasterizationScale ?? dpi;
+                var x = pin?.Window.Bounds.X ?? origin.X;
+                var y = pin?.Window.Bounds.Y ?? origin.Y;
+                obstacles.Add(new(x + (int)Math.Floor(rect.X * scale), y + (int)Math.Floor(rect.Y * scale),
+                    (int)Math.Ceiling(rect.Width * scale), (int)Math.Ceiling(rect.Height * scale)));
             }
-            Avoid(WidgetSurface); Avoid(RailRegion); Avoid(TrayHelp);
+            Avoid(WidgetSurface); Avoid(RailRegion); Avoid(GuideRegion);
             if (utilityPanel is not null) Avoid(utilityPanel);
             if (radialView is not null) Avoid(radialView);
             foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot))
                 if (popup.Child is FrameworkElement child) Avoid(child);
+            foreach (var pin in pins.Where(pin => pin.Window.IsVisible))
+                if (pin.Window.AutomationRoot.XamlRoot is { } root)
+                    foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(root))
+                        if (popup.Child is FrameworkElement child) Avoid(child, pin);
             if (IsMediaFullscreen) return false;
         }
         var placement = NotificationPlacement.Choose(new(area.X, area.Y, area.Width, area.Height), bannerWidth, bannerHeight,
@@ -107,6 +125,7 @@ internal sealed partial class OverlayShellPage
     private PinnedWidgetWindow CreateNotificationBanner()
     {
         var window = new PinnedWidgetWindow("notification", (nint)hostWindow, PeerWindowLayer.Notification);
+        window.ThemeChanged += RefreshNotificationBannerAppearance;
         window.SetHostIdentity("WidgetRail notification", "Overlay.NotificationBanner");
         notificationCard = new(ResolveTrayIconAsync);
         notificationBannerContent = new(notificationCard);

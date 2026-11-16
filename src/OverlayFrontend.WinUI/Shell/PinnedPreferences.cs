@@ -2,19 +2,28 @@ using System.Text.Json;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
+internal sealed record RememberedPin(string WidgetId,string PackageId,string PublisherId,string InstanceId,string LayoutId)
+{
+    internal bool IsValid => new[]{WidgetId,PackageId,PublisherId,InstanceId,LayoutId}.All(ShellPreferences.ValidId)&&
+        !LayoutId.StartsWith("host.",StringComparison.Ordinal);
+}
+
 internal sealed record PinnedPreferences(int Version, IReadOnlyDictionary<string, PinnedPlacement> Placements)
 {
+    public IReadOnlyList<RememberedPin> Remembered { get; init; } = [];
     internal static PinnedPreferences Empty => new(2, new Dictionary<string, PinnedPlacement>());
     internal bool IsValid => Version is 1 or 2 && Placements is { Count: <= ShellPreferences.MaximumWidgets } &&
         Placements.All(pair => pair.Value?.IsValid == true && (Version == 1
-            ? ShellPreferences.ValidId(pair.Key) : ValidKey(pair.Key, pair.Value.LayoutId)));
+            ? ShellPreferences.ValidId(pair.Key) : ValidKey(pair.Key, pair.Value.LayoutId)))&&
+        Remembered is {Count:<=ShellPreferences.MaximumWidgets}&&Remembered.All(item=>item?.IsValid==true)&&
+        Remembered.Select(item=>(item.WidgetId,item.LayoutId)).Distinct().Count()==Remembered.Count;
 
     internal PinnedPlacement? Find(string widgetId, string layoutId) => Version == 1
         ? Placements.GetValueOrDefault(widgetId) is { } legacy && legacy.LayoutId == layoutId ? legacy : null
         : Placements.GetValueOrDefault(Key(widgetId, layoutId));
 
     internal PinnedPreferences Upgrade() => Version == 1
-        ? new(2, Placements.ToDictionary(pair => Key(pair.Key, pair.Value.LayoutId), pair => pair.Value, StringComparer.Ordinal)) : this;
+        ? new(2, Placements.ToDictionary(pair => Key(pair.Key, pair.Value.LayoutId), pair => pair.Value, StringComparer.Ordinal)){Remembered=Remembered} : this;
 
     internal PinnedPreferences WithPlacement(string widgetId, PinnedPlacement placement)
     {
@@ -24,7 +33,15 @@ internal sealed record PinnedPreferences(int Version, IReadOnlyDictionary<string
         values.Remove(key);
         if (values.Count >= ShellPreferences.MaximumWidgets) values.Remove(values.Keys.First());
         values.Add(key, placement);
-        return new(2, values);
+        return Upgrade() with{Placements=values};
+    }
+
+    internal PinnedPreferences WithRemembered(RememberedPin item,bool enabled)
+    {
+        if(!item.IsValid)throw new ArgumentException("Invalid remembered pin identity.");
+        var entries=Remembered.Where(p=>p.WidgetId!=item.WidgetId||p.LayoutId!=item.LayoutId).ToList();
+        if(enabled){if(entries.Count>=ShellPreferences.MaximumWidgets)entries.RemoveAt(0);entries.Add(item);}
+        return Upgrade() with{Remembered=entries.ToArray()};
     }
 
     // IDs cannot contain ':', so the composite key is unambiguous. The stored
@@ -37,7 +54,7 @@ internal sealed record PinnedPreferences(int Version, IReadOnlyDictionary<string
     }
 }
 
-/// <summary>Geometry preferences only. Pin selection and interaction ownership are session-only.</summary>
+/// <summary>Placement and user opt-in restoration preferences; never native selection or input authority.</summary>
 internal sealed class PinnedPreferencesStore(string settingsRoot)
 {
     private const int MaximumBytes = 1024 * 1024;
@@ -85,5 +102,5 @@ internal sealed class PinnedPreferencesStore(string settingsRoot)
         }
     }
     private static PinnedPreferences Freeze(PinnedPreferences value) =>
-        value with { Placements = new Dictionary<string, PinnedPlacement>(value.Placements, StringComparer.Ordinal) };
+        value with { Placements = new Dictionary<string, PinnedPlacement>(value.Placements, StringComparer.Ordinal),Remembered=value.Remembered.ToArray() };
 }

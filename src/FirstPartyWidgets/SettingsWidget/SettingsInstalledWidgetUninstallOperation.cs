@@ -38,6 +38,9 @@ internal sealed class SettingsInstalledWidgetUninstallOperation(
         ArgumentNullException.ThrowIfNull(displayed);
         var current = await InspectAsync(displayed.WidgetId, cancellationToken)
             .ConfigureAwait(false);
+        if(current.StatusCode is "diagnostics_timeout" or "diagnostics_unavailable")
+            return new(current, ReloadCatalog: false, Error: true,
+                "Could not check the installed package. Refresh and try again.");
         if (!SameIdentity(current, displayed))
             return new(
                 current, ReloadCatalog: false, Error: true,
@@ -69,12 +72,38 @@ internal sealed class SettingsInstalledWidgetUninstallOperation(
                     _ => $"Widget uninstall failed ({result.Code})",
                 });
         }
+        catch (PlatformDiagnosticsException exception) when(exception.Code is "diagnostics_timeout" or "diagnostics_unavailable")
+        {
+            return await ReconcileUncertainAsync(displayed).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when(cancellationToken.IsCancellationRequested)
+        {
+            // The request may have crossed its durable commit boundary already.
+            return await ReconcileUncertainAsync(displayed).ConfigureAwait(false);
+        }
         catch (PlatformDiagnosticsException exception)
         {
             return new(
                 current, ReloadCatalog: false, Error: true,
                 $"Widget uninstall failed ({exception.Code})");
         }
+    }
+
+    private async ValueTask<SettingsInstalledWidgetUninstallExecution> ReconcileUncertainAsync(
+        PlatformWidgetPackageUninstallInspection displayed)
+    {
+        // Read once; never replay the mutation or claim that cancellation undid it.
+        using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        PlatformWidgetPackageUninstallInspection current;
+        try{current=await InspectAsync(displayed.WidgetId,timeout.Token).ConfigureAwait(false);}
+        catch(OperationCanceledException){current=displayed;}
+        var status=current.StatusCode switch
+        {
+            "widget_not_found"=>"Widget is no longer installed. Any remaining cleanup will finish automatically.",
+            "pending_uninstall_cleanup" or "uninstall_recovery_pending"=>"Widget removal is still being completed. Refresh to check its status.",
+            _=>"Uninstall completion could not be confirmed. Refresh to check its status before trying again.",
+        };
+        return new(current,ReloadCatalog:true,Error:current.StatusCode!="widget_not_found",status);
     }
 
     private static bool SameIdentity(

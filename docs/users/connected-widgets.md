@@ -10,8 +10,9 @@ works only where the sender and destination provide compatible actions.
 1. Install and enable the destination widget and finish its service setup.
    Start it again if you previously chose **Stop widget**.
 2. Activate the source's link or action. Choose a destination if prompted.
-3. Follow that destination's controls. If the action supports delivery into the
-   current pin, the pinned content may update without moving controller focus.
+3. Follow that destination's controls. For delivery into a pin, the host prefers
+   the selected compatible surface. Its content may update without moving
+   controller focus.
 
 Cancelling a chooser leaves the operation unperformed. If no eligible widget
 handles a normal web link, WidgetRail can use your default Windows browser.

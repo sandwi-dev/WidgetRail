@@ -4,7 +4,6 @@ namespace WidgetRail.WidgetBridge;
 
 internal sealed partial class BridgeClientRegistry
 {
-    private const int MaximumBackgroundBrowsers = 4;
     private sealed record BrowserRetention(ClientRegistration Registration, BridgeWorkerRun Run);
     private readonly Dictionary<(string Widget, string Document), BrowserRetention> browserRetentions = [];
     internal int BackgroundBrowserCount { get { lock (_gate) { PruneBrowserRetentionsLocked(); return browserRetentions.Count; } } }
@@ -36,7 +35,7 @@ internal sealed partial class BridgeClientRegistry
                 if (request.Retain)
                 {
                     if (!DeclaresBackgroundBrowser(registration.CachedSnapshot, request.DocumentId) ||
-                        !browserRetentions.ContainsKey(key) && browserRetentions.Count >= MaximumBackgroundBrowsers) return false;
+                        !browserRetentions.ContainsKey(key) && browserRetentions.Count >= BridgeProtocol.MaximumResidentBrowserCount) return false;
                     browserRetentions[key] = new(registration, request.WorkerRun);
                 }
                 else if (browserRetentions.TryGetValue(key, out var prior) && prior.Run == request.WorkerRun)

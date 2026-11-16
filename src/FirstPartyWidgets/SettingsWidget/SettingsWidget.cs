@@ -1723,6 +1723,7 @@ public sealed partial class SettingsWidget : Widget
             }
             if (!displayed.CanUninstall || displayed.ConfirmationToken is null)
             { SetOperation("Uninstall is not available yet. Open this widget again and retry.", false, true); return; }
+            SetOperation("Uninstalling widget…",busy:true,error:false);
             var execution = await _packageUninstall.ExecuteAsync(displayed, cancellationToken)
                 .ConfigureAwait(false);
             string? warning = null;

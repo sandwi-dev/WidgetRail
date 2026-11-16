@@ -33,6 +33,12 @@ internal sealed partial class IndexedWidgetValidationPage
             Check(ReferenceEquals(chrome,presenter.FocusPreviewChrome)&&Reads()==reads,"X enters the existing panel without another read");
             presenter.ActivateFocused();await Until(()=>FindNode(session!.GetState("indexed-owned")!.LastGood!.Snapshot.Root,"status")?.Text?.Contains("item.1:preview-apply")==true);
             Check(true,"Deferred preview action reaches its captured item through the real worker");
+            var slider=Descendants(presenter.FocusPreviewChrome!).OfType<Slider>().Single();
+            slider.Focus(FocusState.Keyboard);presenter.ActivateFocused();
+            presenter.MoveFocus(FocusNavigationDirection.Right);
+            await Until(()=>FindNode(session!.GetState("indexed-owned")!.LastGood!.Snapshot.Root,"status")?.Text?.Contains("item.1:preview-volume:55")==true);
+            Check(true,"Typed numeric preview value crosses host, bridge and worker unchanged");
+            presenter.ActivateFocused();
             await presenter.HandleControllerButtonAsync(ControllerButton.B);Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),second),"B returns to the exact indexed occurrence");
             var third=(Control)View()!.ContainerFromIndex(2);third.Focus(FocusState.Keyboard);await Until(()=>PreviewText()=="item.2");
             var afterThird=Reads();second.Focus(FocusState.Keyboard);await Until(()=>PreviewText()=="item.1");
@@ -43,7 +49,9 @@ internal sealed partial class IndexedWidgetValidationPage
             await presenter.SetPresentationActiveAsync(false);Check(!presenter.IsFocusPreviewOpen,"Suspension hides and retires preview content");
             await presenter.SetPresentationActiveAsync(true);
             await Send("deferred-readonly");await Until(()=>View()?.Items.Count>2&&View()!.Items[1] is IndexedItem<WidgetIndexedRow> { Value.Lease.IsCurrent: true }&&View()!.ContainerFromIndex(1) is Control {IsEnabled:true});
-            second=(Control)View()!.ContainerFromIndex(1);second.Focus(FocusState.Keyboard);await Until(()=>presenter.IsFocusPreviewOpen&&PreviewText()=="item.1");
+            await Until(()=>!presenter.HasPendingMemoryRestore && Descendants(presenter).OfType<WidgetIndexedCollectionView>().All(view=>!view.IsEntryPending));
+            second=(Control)View()!.ContainerFromIndex(1);Check(second.Focus(FocusState.Keyboard),"Current read-only row accepts focus after query replacement settles");
+            await Until(()=>presenter.IsFocusPreviewOpen&&PreviewText()=="item.1");
             Check(!Descendants(presenter.FocusPreviewChrome!).OfType<Button>().Any(),"Read-only resolved content has no action controls");
             Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),second),"Read-only preview retains source focus");
             if(failure is not null)throw new Exception(failure);
@@ -59,7 +67,10 @@ internal sealed partial class IndexedWidgetValidationPage
         async Task Send(string action)
         {
             var frame=session!.GetState("indexed-owned")!.LastGood!;var before=publication;
-            await session.SendActionAsync(frame.Authority,new(action,"root",InputScopeId:"root"),lifetime.Token);await Until(()=>publication>before);
+            await session.SendActionAsync(frame.Authority,new(action,"root",InputScopeId:"root"),lifetime.Token);
+            // A late preview-read publication is not the requested mode change.
+            await Until(()=>publication>before && presenter.CurrentBinding is { } current &&
+                FindNode(current.Frame.Snapshot.Root,"status")?.Text==action);
         }
         async Task Until(Func<bool> predicate)
         {var deadline=Environment.TickCount64+10000;while(!predicate()){if(Environment.TickCount64>deadline)throw new TimeoutException("Deferred preview did not settle: "+JsonSerializer.Serialize(presenter.FocusPreviewDiagnostics()));await Task.Delay(15,lifetime.Token);}}

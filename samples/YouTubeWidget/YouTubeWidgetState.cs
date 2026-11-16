@@ -331,6 +331,7 @@ internal sealed record YouTubePlaybackState
 /// </summary>
 internal sealed record YouTubeWidgetState
 {
+    public string? PinManagementNotice { get; init; }
     public static YouTubeWidgetState Initial { get; } = new();
 
     public YouTubeRoute Route { get; init; } = YouTubeRoute.Setup;

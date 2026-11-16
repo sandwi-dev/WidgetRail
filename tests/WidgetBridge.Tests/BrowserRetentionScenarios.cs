@@ -11,7 +11,7 @@ internal static partial class BridgeClientRegistryScenarios
         { Mode = WidgetResidencyPolicies.UnloadAfterIdle, IdleSeconds = WidgetResidencyPolicies.MinimumIdleSeconds });
         await using var fixture = new RegistryFixture(Catalog(configured), delay: delay.InvokeAsync,
             configure: (_, client) => client.SnapshotFactory = sequence => new WidgetView(UI.Stack("root",
-                Enumerable.Range(0, 5).Select(i => UI.WebBrowser(new("app." + i, 1, "https://example.com", "App")
+                Enumerable.Range(0, BridgeProtocol.MaximumResidentBrowserCount + 1).Select(i => UI.WebBrowser(new("app." + i, 1, "https://example.com", "App")
                 { Options = WebBrowserOptions.WebApp with { Background = BrowserBackgroundMode.KeepAlive } },
                     BrowserInteractionMode.InteractOnFocus, "page." + i)).ToArray())).CreateSnapshot(configured.InstanceId, sequence));
         await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
@@ -45,10 +45,10 @@ internal static partial class BridgeClientRegistryScenarios
         RegistryAssert.True(await fixture.Registry.SetBrowserRetentionAsync(current, default, default));
         RegistryAssert.False(await fixture.Registry.SetBrowserRetentionAsync(request with { Retain = false }, default, default));
         RegistryAssert.Equal(1, fixture.Registry.BackgroundBrowserCount);
-        for (var i = 1; i < 4; i++)
+        for (var i = 1; i < BridgeProtocol.MaximumResidentBrowserCount; i++)
             RegistryAssert.True(await fixture.Registry.SetBrowserRetentionAsync(current with { DocumentId = "app." + i }, default, default));
-        RegistryAssert.False(await fixture.Registry.SetBrowserRetentionAsync(current with { DocumentId = "app.4" }, default, default));
-        RegistryAssert.Equal(4, fixture.Registry.BackgroundBrowserCount);
+        RegistryAssert.False(await fixture.Registry.SetBrowserRetentionAsync(current with { DocumentId = "app." + BridgeProtocol.MaximumResidentBrowserCount }, default, default));
+        RegistryAssert.Equal(BridgeProtocol.MaximumResidentBrowserCount, fixture.Registry.BackgroundBrowserCount);
         fixture.Registry.ApplyCatalog(Catalog(configured with { WorkerFingerprint = Fingerprint('z'), CatalogFingerprint = Fingerprint('z') }), 1);
         RegistryAssert.Equal(0, fixture.Registry.BackgroundBrowserCount);
     }

@@ -35,18 +35,20 @@ public sealed class BrowserSessionStartupsTests
     }
 
     [TestMethod]
-    public async Task ConcurrentDelayedStartsCannotOverbookTheFourBrowserLimit()
+    [DataRow(4)]
+    [DataRow(8)]
+    public async Task ConcurrentDelayedStartsCannotOverbookBrowserLimit(int maximum)
     {
-        var starts = new BrowserSessionStartups();
-        var residents = new HashSet<(string Widget, string Document)> { ("a", "one"), ("b", "two"), ("c", "three") };
+        var starts = new BrowserSessionStartups(maximum);
+        var residents = Enumerable.Range(0,maximum-1).Select(index=>(Widget:"resident",Document:index.ToString())).ToHashSet();
         var registration = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var tasks = Enumerable.Range(0, 5).Select(index => Open(("new", index.ToString()))).ToArray();
-        Assert.AreEqual(4, starts.CountResidents(residents));
+        Assert.AreEqual(maximum, starts.CountResidents(residents));
         registration.SetResult();
         var admitted = await Task.WhenAll(tasks);
         Assert.AreEqual(1, admitted.Count(result => result));
-        Assert.AreEqual(4, residents.Count);
-        Assert.AreEqual(4, starts.CountResidents(residents));
+        Assert.AreEqual(maximum, residents.Count);
+        Assert.AreEqual(maximum, starts.CountResidents(residents));
 
         async Task<bool> Open((string Widget, string Document) key)
         {

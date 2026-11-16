@@ -24,7 +24,7 @@ public sealed partial class WidgetPresentationSession
         string? expectedAction;
         using (_gate.Enter())
         {
-            var current = DemandPinnedInputLocked(selection, projection);
+            var current = DemandPinnedInteractionLocked(selection, projection);
             ValidatePinnedInputOrigin(projection, input);
             if (input.ActiveInputScopeId != current.ActiveInputScopeId) throw PinnedStale("The pinned input scope changed.");
             OrdinaryInputBinding? originBinding, currentBinding;
@@ -66,7 +66,7 @@ public sealed partial class WidgetPresentationSession
         OrdinaryInputBinding binding;
         using (_gate.Enter())
         {
-            var current = DemandPinnedInputLocked(selection, projection);
+            var current = DemandPinnedInteractionLocked(selection, projection);
             if (action.InputScopeId != projection.Snapshot.ActiveInputScopeId || action.InputScopeId != current.ActiveInputScopeId)
                 throw PinnedStale("The pinned action scope changed.");
             binding = ResolveDisplayedAction(projection.Snapshot, action);
@@ -97,7 +97,7 @@ public sealed partial class WidgetPresentationSession
         var input = new PinnedActionInput(PinnedActionContract.Version, projection.LayoutId, projection.Frame.Authority.SnapshotSequence, action);
         using (_gate.Enter())
         {
-            var current = DemandPinnedInputLocked(selection, projection);
+            var current = DemandPinnedInteractionLocked(selection, projection);
             try
             {
                 if (PinnedActionContract.Resolve(projection.Frame.Snapshot, input) !=
@@ -125,7 +125,7 @@ public sealed partial class WidgetPresentationSession
     private static void ValidatePinnedInputOrigin(WidgetPinnedProjection projection, ControllerInputEvent input)
     {
         if (input.Context != ControllerInputContext.PinnedSurface || input.PinnedLayoutId != projection.LayoutId ||
-            input.IsPinnedLayoutSelected is not null || input.SnapshotSequence != projection.Frame.Authority.SnapshotSequence ||
+            input.IsPinnedLayoutSelected is not null || input.PinnedSelectionId is not null || input.SnapshotSequence != projection.Frame.Authority.SnapshotSequence ||
             input.ActiveInputScopeId != projection.Snapshot.ActiveInputScopeId || !Safe(input.FocusedElementId) ||
             !Enum.IsDefined(input.Button) || !Enum.IsDefined(input.Phase) || !Enum.IsDefined(input.Origin) ||
             input.RequestedValue is { } value && !double.IsFinite(value)) throw PinnedStale("The pinned controller origin is invalid.");

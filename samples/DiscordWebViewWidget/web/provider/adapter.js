@@ -30,8 +30,9 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
         const activities = globalThis.createWidgetRailDiscordActivities?.({store,me,currentChannel:channelId,
             voiceActionAvailable:()=>typeof props('selectVoiceChannel')?.selectVoiceChannel==='function',
             watchAvailable:key=>!!watchDemandApi()&&watchOwnership(key)!==null});
-        let relay = null;
-        let relayEpoch = 0;
+        const relays = new Map(); // One independently renewable lease per display slot.
+        const retiringWatches = new Map(); // At most one unsettled close per slot; slot reuse waits below.
+        const byLease = lease => Array.from(relays.values()).find(entry => entry.lease === lease);
         let shareEpoch = 0;
         let sharePending = false;
         let shareError = null;
@@ -94,7 +95,47 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                         store('UserStore')?.getUser?.(s.ownerId || s.userId)?.username || 'Participant') }));
         }
 
+        function desktopNotifications() {
+            try {
+                const type=store('NotificationSettingsStore')?.getDesktopType?.();
+                return type==='NEVER'?'disabled':['ALL','ONLY_MENTIONS'].includes(type)?'enabled':'unavailable';
+            }catch{return 'unavailable';}
+        }
+
+        async function enableDesktopNotifications(args) {
+            authorize(args);
+            if(globalThis.Notification?.permission!=='granted')fail('notification_permission_required');
+            const settings=store('NotificationSettingsStore');
+            const before=desktopNotifications();
+            authorize(args);
+            if(before!=='disabled')return {state:before};
+            const actions=props('setDesktopType','setTTSType');
+            if(typeof actions?.setDesktopType!=='function')return {state:'unavailable'};
+            authorize(args);
+            if(store('NotificationSettingsStore')!==settings||desktopNotifications()!=='disabled')return {state:desktopNotifications()};
+            // This is the explicit Enable notifications action, never a snapshot
+            // side effect. Preserve existing ALL / ONLY_MENTIONS preferences.
+            await actions.setDesktopType('ALL');
+            authorize(args);
+            const state=store('NotificationSettingsStore')===settings?desktopNotifications():'unavailable';
+            authorize(args);
+            return {state};
+        }
+
+        function outgoingViewers(own,user,id,participants) {
+            try {
+                if(!own||!user||!id||own.state==='ENDED'||own.channelId!==id||(own.ownerId||own.userId)!==user.id)return null;
+                const key=streamKey(own),viewers=store('ApplicationStreamingStore')?.getViewerIds?.(key);
+                if(!Array.isArray(viewers)||viewers.length>1000||viewers.some(value=>typeof value!=='string'||!/^[0-9]{1,32}$/.test(value)))return null;
+                const present=new Set(participants.map(person=>person.id));
+                const userIds=[...new Set(viewers)].filter(value=>value!==user.id&&present.has(value));
+                if(me()?.id!==user.id||channelId()!==id||currentShare()!==own||own.state==='ENDED')return null;
+                return {key,userIds};
+            }catch{return null;}
+        }
+
         function snapshot() {
+            const relay=relays.values().next().value;
             const user = me();
             const id = channelId();
             if(shareErrorOwner&&(shareErrorOwner.account!==user?.id||shareErrorOwner.channel!==id)){shareError=null;shareErrorOwner=null;}
@@ -107,13 +148,15 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                         muted:!!(v.mute||v.selfMute),deafened:!!(v.deaf||v.selfDeaf),
                         speaking:!!store('SpeakingStore')?.isSpeaking?.(v.userId),
                         audio:v.userId!==user?.id?voiceAudio(v.userId)?.state??{available:false,muted:false,volume:null}:{available:false,muted:false,volume:null},
-                        avatarUrl:activities?.avatarUrl(v.userId,participant?.avatar)??null};
+                        avatarUrl:activities?.avatarUrl(v.userId,participant?.avatar,participant?.discriminator)??null};
                 });
             return { revision, ready: !!user && !!wp(), account: user?.id ?? '', capabilities: capabilities(),
                 channels: user ? channels() : [], channelId: id, channelName: text(store('ChannelStore')?.getChannel?.(id)?.name),
                 muted: !!media?.isSelfMute?.(), deafened: !!media?.isSelfDeaf?.(), participants,
-                streams: id ? streams(id).map(({ descriptor, ...value }) => ({...value,audio:streamAudio(value.userId)?.state??
+                streams: id ? streams(id).map(({ descriptor, ...value }) => ({...value,watching:watchOwnership(value.key)?.alreadyWatching===true,audio:streamAudio(value.userId)?.state??
                     {available:false,muted:false,volume:null}})) : [], sharing: !!own && own.state !== 'ENDED',
+                outgoingViewers:outgoingViewers(own,user,id,participants),
+                desktopNotifications:desktopNotifications(),
                 notificationPermission:globalThis.Notification?.permission ?? "unavailable",
                 ...shareQualitySnapshot(user?.id,id),voiceConnection:voiceConnection(),
                 sharePending,shareError:shareErrorOwner?.account===user?.id&&shareErrorOwner?.channel===id?shareError:null,
@@ -166,7 +209,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
 
         async function incomingDiagnostics(args,owner) {
             sameCall(args);
-            const entry=relay,rtc=entry?.demand?.connection,connection=rtc?._connection;
+            const entry=byLease(args.lease),rtc=entry?.demand?.connection,connection=rtc?._connection;
             const connections=store('StreamRTCConnectionStore'),engine=store('MediaEngineStore')?.getMediaEngine?.();
             const exact=()=>entry&&relayCurrent(entry)&&entry.owner===owner&&entry.lease===args.lease&&entry.key===args.key&&
                 entry.account===args.account&&entry.channelId===args.channelId&&entry.demand?.connection===rtc&&
@@ -617,14 +660,14 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
 
         function streamAudioTarget(args,owner) {
             sameCall(args);
-            const current=relay;
+            const current=byLease(args.lease);
             if(!current||current.owner!==owner||current.account!==args.account||current.channelId!==args.channelId||
                 current.lease!==args.lease||current.key!==args.key||current.userId!==args.userId||
                 Date.now()>current.expires||['closed','failed'].includes(current.pc?.connectionState))fail('watch_cancelled');
             if(!streams(args.channelId).some(s=>s.key===args.key&&s.userId===args.userId))fail('stream_ended');
             if(watchOwnership(args.key)?.alreadyWatching!==true)fail('watch_cancelled');
             sameCall(args);
-            if(relay!==current||!relayCurrent(current))fail('watch_cancelled');
+            if(!relayCurrent(current))fail('watch_cancelled');
             return current;
         }
 
@@ -632,11 +675,14 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             try {
                 const account=me()?.id;
                 const streaming=store('ApplicationStreamingStore');
-                if(typeof account!=='string'||typeof streaming?.getViewerIds!=='function')return null;
-                const viewers=streaming.getViewerIds(key);
-                if(!Array.isArray(viewers)||viewers.length>1000||viewers.some(id=>typeof id!=='string'||!/^[0-9]{1,32}$/.test(id)))return null;
-                const alreadyWatching=viewers.includes(account);
-                const startWatch=code('"STREAM_WATCH",streamKey'),closeWatch=code('"STREAM_CLOSE",streamKey');
+                if(typeof account!=='string'||typeof streaming?.getActiveStreamForStreamKey!=='function')return null;
+                // Discord retains rtcStreams.viewerIds after STREAM_CLOSE. Only
+                // activeStreams describes whether this client is watching.
+                const active=streaming.getActiveStreamForStreamKey(key);
+                if(active!==null&&(typeof active!=='object'||!active||streamKey(active)!==key||
+                    !['CONNECTING','ACTIVE','RECONNECTING','PAUSED','ENDED','FAILED'].includes(active.state)))return null;
+                const alreadyWatching=active!==null&&!['ENDED','FAILED'].includes(active.state);
+                const startWatch=code('"STREAM_WATCH",streamKey'),closeWatch=code('"STREAM_STOP",streamKey');
                 if(!alreadyWatching&&(typeof startWatch!=='function'||typeof closeWatch!=='function'))return null;
                 return {alreadyWatching,startWatch,closeWatch};
             }catch{return null;}
@@ -654,7 +700,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
         }
 
         function relayCurrent(entry) {
-            return relay===entry&&me()?.id===entry.account&&channelId()===entry.channelId&&Date.now()<=entry.expires&&
+            return relays.get(entry.slot)===entry&&me()?.id===entry.account&&channelId()===entry.channelId&&Date.now()<=entry.expires&&
                 !['closed','failed'].includes(entry.pc?.connectionState);
         }
 
@@ -664,12 +710,12 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             const connection=api.connections.getRTCConnection(entry.key);
             const manager=connection?._goLiveQualityManager;
             const previous=entry.demand;
-            if(previous&&(previous.connection!==connection||previous.manager!==manager)) {
+            if(previous&&(previous.connection!==connection||previous.manager!==manager||connection?._destroyed===true)) {
                 entry.demand=null;previous.release();
             }
             // STREAM_WATCH establishes the connection asynchronously. Reuse the
             // existing bounded track wait; never instantiate provider internals.
-            if(!connection||!manager||!connection._connection)return false;
+            if(!connection||!manager||!connection._connection||connection._destroyed===true)return false;
             if(connection.context!=='stream'||connection.streamKey!==entry.key||connection._destroyed!==false||
                 connection.isOwner!==false||connection.streamContext?.ownerId!==entry.userId||
                 connection.streamContext?.channelId!==entry.channelId||
@@ -734,19 +780,48 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             if(!previous)return;
             clearInterval(previous.timer);
             try { previous.demand?.release(); }catch{}
-            if(previous.viewId && previous.viewId!==relay?.viewId)try{videoHost.setVideoTrack(previous.viewId,null);}catch{}
+            if(previous.viewId && previous.viewId!==relays.get(previous.slot)?.viewId)try{videoHost.setVideoTrack(previous.viewId,null);}catch{}
             try { previous.pc?.close(); }catch{}
             // A subscription that predates this adapter belongs to the user.
             if (!preserveSubscription && previous.ownsWatch && me()?.id === previous.account) {
-                try { previous.closeWatch(previous.key); } catch { /* No blind retries. */ }
+                retiringWatches.set(previous.slot,{account:previous.account,channelId:previous.channelId,key:previous.key});
+                try { previous.closeWatch(previous.key,false);
+                    if(watchOwnership(previous.key)?.alreadyWatching===false)retiringWatches.delete(previous.slot); } catch { /* No blind retries. */ }
             }
         }
 
-        function stopRelay(preserveSubscription=false) {
-            ++relayEpoch;
-            const previous = relay;
-            relay = null;
-            retireRelay(previous,preserveSubscription);
+        async function awaitWatchRetirement(entry) {
+            const deadline=Date.now()+8000;
+            for(let i=0;i<80;i++) {
+                if(!relayCurrent(entry))fail('watch_cancelled');
+                let pending=false;
+                for(const [slot,closed] of retiringWatches) {
+                    if(closed.account!==entry.account||closed.channelId!==entry.channelId) {
+                        retiringWatches.delete(slot);continue;
+                    }
+                    if(slot!==entry.slot&&closed.key!==entry.key)continue;
+                    const ownership=watchOwnership(closed.key);
+                    // Local watch removal acknowledges closure. Viewer IDs and
+                    // RTC objects can both remain cached after stopping.
+                    if(ownership?.alreadyWatching===false)
+                        retiringWatches.delete(slot);
+                    else pending=true;
+                }
+                if(!pending)return;
+                if(Date.now()>=deadline)break;
+                await sleep(100);
+            }
+            fail('watch_close_pending');
+        }
+
+        function stopRelay(entry) {
+            if(!entry || relays.get(entry.slot)!==entry)return;
+            relays.delete(entry.slot);
+            retireRelay(entry);
+        }
+
+        function stopAllRelays() {
+            for(const entry of relays.values())stopRelay(entry);
         }
 
         function incomingTrack(entry) {
@@ -776,9 +851,14 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             const ownership=watchOwnership(stream.key);
             if(!ownership)fail('watch_ownership_unavailable');
             if(!watchDemandApi())fail('watch_demand_unavailable');
-            const {alreadyWatching,startWatch}=ownership;
+            const {alreadyWatching}=ownership;
             // A same-stream receiver replacement transfers our own subscription;
             // an existing user subscription is never reclassified as ours.
+            const slot=args.slot??1;
+            if(slot!==1 && slot!==2 && slot!==3)fail('invalid_watch_slot');
+            const relay=relays.get(slot);
+            if(Array.from(relays.values()).some(entry=>entry!==relay && (entry.key===stream.key || entry.lease===args.lease ||
+                args.videoView && entry.viewId===args.videoView)))fail('watch_conflict');
             const sameStream=alreadyWatching&&relay?.key===stream.key&&relay.account===args.account&&
                 relay.channelId===args.channelId&&relay.userId===stream.userId;
             const transfer=sameStream&&relay.ownsWatch===true;
@@ -793,18 +873,32 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             const pc = viewId ? null : new RTCPeerConnection({ iceServers: [] });
             const previous=relay,demand=sameStream?previous.demand:null;
             if(demand)previous.demand=null;
-            const epoch = ++relayEpoch;
-            const entry = relay = { pc, viewId, key: stream.key, userId:stream.userId, owner, lease: args.lease, account: args.account,
-                channelId: args.channelId, ownsWatch: transfer||!alreadyWatching, closeWatch, expires: Date.now() + 25000, timer: null,demand };
+            const entry = { slot, pc, viewId, key: stream.key, userId:stream.userId, owner, lease: args.lease, account: args.account,
+                channelId: args.channelId, ownsWatch: transfer, closeWatch, expires: Date.now() + 25000, timer: null,demand };
+            relays.set(slot,entry);
             if(demand)demand.entry=entry;
             retireRelay(previous,transfer);
-            const current = () => relayEpoch === epoch && relayCurrent(entry);
+            const current = () => relayCurrent(entry);
             try {
-                if (!alreadyWatching) startWatch(stream.descriptor, { noFocus: true });
+                // A provider can acknowledge its local close asynchronously.
+                // A new explicit watch must not borrow that dying subscription.
+                await awaitWatchRetirement(entry);
+                if(!current())fail('watch_cancelled');
+                const confirmed=watchOwnership(stream.key);
+                if(!confirmed)fail('watch_ownership_unavailable');
+                if(!streams(args.channelId).some(value=>value.key===stream.key))fail('stream_ended');
+                // Discord's ordinary watch action can close existing subscriptions.
+                // Each pin adds its own watch, including alongside Discord's page.
+                if (!confirmed.alreadyWatching) {
+                    entry.closeWatch=confirmed.closeWatch;entry.ownsWatch=true;
+                    confirmed.startWatch(stream.descriptor, { forceMultiple: true, noFocus: true });
+                }
                 let track;
+                const trackDeadline=Date.now()+8000;
                 for (let i = 0; i < 80 && current(); ++i) {
                     track = refreshWatchDemand(entry)?incomingTrack(entry):null;
                     if (track) break;
+                    if(Date.now()>=trackDeadline)break;
                     await sleep(100);
                 }
                 if (!current()) fail('watch_cancelled');
@@ -818,33 +912,45 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                     await gather(pc);
                 }
                 if (!current()) fail('watch_cancelled');
-                let changing = false;
+                // The widget must publish the receiver before a real remote
+                // decoder may produce frames. Observe after attachment, never
+                // block watch's reply on an as-yet-unpresented WebView.
+                let changing = false, unavailableSince=null, firstPicturePendingSince=Date.now();
                 entry.timer = setInterval(async () => {
                   try {
                     if (!current() || !streams(args.channelId).some(s => s.key === stream.key)||
                         watchOwnership(stream.key)?.alreadyWatching!==true) {
-                        if (relay === entry) stopRelay();
+                        stopRelay(entry);
                         return;
                     }
                     const replacement = refreshWatchDemand(entry)?incomingTrack(entry):null;
+                    if(!replacement){
+                        unavailableSince??=Date.now();
+                        if(Date.now()-unavailableSince>=8000){stopRelay(entry);return;}
+                    }else unavailableSince=null;
                     if(viewId){
-                        if(!videoHost.videoPlayback(viewId)||track.readyState==='ended'&&!replacement){stopRelay();return;}
+                        const playback=videoHost.videoPlayback(viewId);
+                        if(!playback||track.readyState==='ended'&&!replacement){stopRelay(entry);return;}
+                        if(playback.width>0&&playback.height>0&&playback.totalFrames>0)firstPicturePendingSince=null;
+                        else if(firstPicturePendingSince!==null&&Date.now()-firstPicturePendingSince>=12000){
+                            lastFailure={method:'watch',type:'Error',detail:'video_no_frames'};stopRelay(entry);return;
+                        }
                         if(replacement && replacement!==track){
-                            if(!videoHost.setVideoTrack(viewId,replacement)){stopRelay();return;}
+                            if(!videoHost.setVideoTrack(viewId,replacement)){stopRelay(entry);return;}
                             track=replacement;
                         }
                     }else if (!changing && replacement && sender.track !== replacement) {
                         changing = true;
-                        try { await sender.replaceTrack(replacement); } catch { if (relay === entry) stopRelay(); }
+                        try { await sender.replaceTrack(replacement); } catch { stopRelay(entry); }
                         finally { changing = false; }
                     }
                   }catch(error) {
                     lastFailure={method:'watch',type:'Error',detail:error.adapterCode??'watch_demand_failed'};
-                    if(relay===entry)stopRelay();
+                    stopRelay(entry);
                   }
                 }, 1000);
                 return viewId ? {lease:args.lease,videoView:viewId} : { lease: args.lease, offer: pc.localDescription.toJSON() };
-            } catch (error) { if (relay === entry) stopRelay(); throw error; }
+            } catch (error) { stopRelay(entry); throw error; }
         }
 
         function beginShare(args, owner) {
@@ -937,7 +1043,9 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 }
                 if (method === 'diagnostics') return { ok: true, value: lastFailure ?? {} };
                 authorize(args);
+                const relay=byLease(args.lease);
                 switch (method) {
+                    case 'enableNotifications':return {ok:true,value:await enableDesktopNotifications(args)};
                     case 'voiceMute':case 'voiceVolume':return {ok:true,value:updateVoiceAudio(method,args)};
                     case 'voiceSettings':return {ok:true,value:voiceSettings(args)};
                     case 'voiceInputDevice':case 'voiceOutputDevice':case 'voiceInputVolume':return {ok:true,value:updateVoiceSettings(method,args)};
@@ -964,7 +1072,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                         if(channelId()!==target.id)await action.selectVoiceChannel(target.id);
                         break;
                     }
-                    case 'leave': sameCall(args); ++shareEpoch; sharePending = false; stopRelay();
+                    case 'leave': sameCall(args); ++shareEpoch; sharePending = false; stopAllRelays();
                         dispatcher().dispatch({ type: 'VOICE_CHANNEL_SELECT', channelId: null, guildId: null }); break;
                     case 'mute': case 'deafen': {
                         sameCall(args);
@@ -1041,7 +1149,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                         if (relay?.lease === args.lease && relay.owner===owner && relayCurrent(relay))
                             relay.expires = Date.now() + 12000;
                         break;
-                    case 'unwatch': if (relay?.lease === args.lease && relay.owner===owner) stopRelay(); break;
+                    case 'unwatch': if (relay?.lease === args.lease && relay.owner===owner) stopRelay(relay); break;
                     case 'cancelPendingShare':
                         if (shareOwner === owner) { ++shareEpoch; sharePending = false;shareQualityBinding?.dispose(); }
                         break;
@@ -1064,7 +1172,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 return { ok: false, code: error.adapterCode ?? 'adapter_incompatible' };
             }
         }
-        return Object.freeze({ revision, build, invoke, dispose() { ++shareEpoch; sharePending = false;shareQualityBinding?.dispose();shareQualityWarning=null;shareError=null;shareErrorOwner=null; stopRelay(); } });
+        return Object.freeze({ revision, build, invoke, dispose() { ++shareEpoch; sharePending = false;shareQualityBinding?.dispose();shareQualityWarning=null;shareError=null;shareErrorOwner=null; stopAllRelays(); } });
     })();
 }
 

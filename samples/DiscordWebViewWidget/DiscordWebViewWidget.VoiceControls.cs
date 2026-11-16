@@ -8,9 +8,8 @@ namespace WidgetRail.Samples.DiscordWebView;
 
 public sealed partial class DiscordWebViewWidget
 {
-    private sealed record VoiceDialog(WidgetNavigationSnapshot<Route> Visit,string Account,WebSessionReference Session,
-        string? Channel=null,string? Participant=null,string? Name=null);
-    private sealed record VoiceControlsState(VoiceDialog? Dialog=null,string Notice="");
+    private sealed record VoiceDialog(WidgetNavigationSnapshot<Route> Visit,string Account,WebSessionReference Session);
+    private sealed record VoiceControlsState(VoiceDialog? Dialog=null,string Notice="",ParticipantContext? Participants=null);
     private sealed record VoiceSettingsObservation(VoiceDialog Owner,DiscordVoiceSettings Settings);
     private WidgetModel<VoiceControlsState> voiceControls=null!;
     private WidgetResource<VoiceSettingsObservation> voiceSettings=null!;
@@ -33,7 +32,7 @@ public sealed partial class DiscordWebViewWidget
 
     private static string VoiceSettingsAction(DiscordState data,WebSessionReference? session)=>DomainAction("voice-settings",session?.Id,data.Account);
     private static string VoiceAction(string method,VoiceDialog dialog,string? intent=null)=>
-        DomainAction(method,dialog.Session.Id,dialog.Account,dialog.Channel,dialog.Participant,dialog.Visit.Revision.ToString(CultureInfo.InvariantCulture),intent);
+        DomainAction(method,dialog.Session.Id,dialog.Account,dialog.Visit.Revision.ToString(CultureInfo.InvariantCulture),intent);
     private static string VoiceCloseAction(WidgetNavigationSnapshot<Route> route)=>
         DomainAction("voiceClose",route.InputScopeId,route.Revision.ToString(CultureInfo.InvariantCulture));
 
@@ -48,44 +47,30 @@ public sealed partial class DiscordWebViewWidget
             participant.Muted||participant.Deafened||participant.Audio is {Available:true,Muted:true}?UI.Icon(participant.Deafened?DiscordIcons.Voice:DiscordIcons.Muted,ids.Id("status"),ParticipantStatus(participant)).Classes("discord-person-state"):
                 UI.Spacer(ids.Id("status"))};
         var label=participant.Name+", "+ParticipantStatus(participant);
-        return (participant.Id==context.Account?UI.ReadingSurface(ids.Id("participant"),label,ActionSurfaceOrientation.Horizontal,content):
-            UI.ActionSurface("voice-audio",ids.Id("participant"),label+", voice audio controls",ActionSurfaceOrientation.Horizontal,content)).Classes("discord-person");
-    }
-
-    private ValueTask OpenParticipantAudioAsync(ParticipantContext context,DiscordParticipant participant,WidgetActionEvent action,CancellationToken token)
-    {
-        token.ThrowIfCancellationRequested();
-        var data=CurrentState();
-        if(action.ActionId!="voice-audio"||navigation.Value.Route!=Route.Home||client?.Reference is not { } session||session!=context.Session||
-            data is null||data.Account!=context.Account||data.ChannelId!=context.Channel||participant.Id==data.Account||
-            !data.Participants.Any(person=>person.Id==participant.Id))return ValueTask.CompletedTask;
-        PushRoute(Route.ParticipantAudio,action);
-        if(navigation.Value.Route==Route.ParticipantAudio)
-            voiceControls.Update(_=>new(new(navigation.Value,data.Account,session,data.ChannelId,participant.Id,participant.Name)));
-        return ValueTask.CompletedTask;
+        var row=UI.ReadingSurface(ids.Id("participant"),label,ActionSurfaceOrientation.Horizontal,content).Classes("discord-person");
+        return participant.Id==context.Account?row:row.PresentOnFocus(ParticipantAudioPreview(context,participant,ids));
     }
 
     private bool VoiceDialogCurrent(VoiceDialog dialog,DiscordState? data=null)=>
         ReferenceEquals(navigation.Value,dialog.Visit)&&!dialog.Visit.RouteCancellationToken.IsCancellationRequested&&client?.Reference==dialog.Session&&
-        (data??CurrentState()) is {Ready:true} current&&current.Account==dialog.Account&&
-        (dialog.Participant is null||current.ChannelId==dialog.Channel&&current.Participants.Any(person=>person.Id==dialog.Participant));
+        (data??CurrentState()) is {Ready:true} current&&current.Account==dialog.Account;
 
     private void ReconcileVoiceDialog(DiscordState next)
     {
         if(voiceControls.Value.Dialog is not { } dialog||VoiceDialogCurrent(dialog,next))return;
         if(ReferenceEquals(navigation.Value,dialog.Visit))navigation.Back();
-        voiceSettings.Reset();voiceControls.Update(_=>new());
+        voiceSettings.Reset();voiceControls.Update(current=>new(Participants:current.Participants));
     }
 
     private void ResumeVoiceControls()
     {
-        if(voiceControls.Value.Dialog is {Participant:null} dialog&&VoiceDialogCurrent(dialog))voiceSettings.EnsureLoaded(forceRefresh:true);
+        if(voiceControls.Value.Dialog is { } dialog&&VoiceDialogCurrent(dialog))voiceSettings.EnsureLoaded(forceRefresh:true);
     }
 
     private async ValueTask<VoiceSettingsObservation> ReadVoiceSettingsAsync(CancellationToken token)
     {
         var dialog=voiceControls.Value.Dialog;
-        if(dialog is null||dialog.Participant is not null||!VoiceDialogCurrent(dialog))throw new OperationCanceledException();
+        if(dialog is null||!VoiceDialogCurrent(dialog))throw new OperationCanceledException();
         var result=await client!.InvokeAsync("voiceSettings",new{account=dialog.Account},token);
         token.ThrowIfCancellationRequested();
         if(!VoiceDialogCurrent(dialog))throw new OperationCanceledException();
@@ -102,8 +87,8 @@ public sealed partial class DiscordWebViewWidget
         if(action.ActionId.StartsWith("voiceClose.",StringComparison.Ordinal))
         {
             var route=navigation.Value;
-            if(route.Route is Route.ParticipantAudio or Route.VoiceSettings&&action.ActionId==VoiceCloseAction(route)&&action.InputScopeId==route.InputScopeId)
-            {navigation.Back(action.FocusedElementId);voiceSettings.Reset();voiceControls.Update(_=>new());}
+            if(route.Route is Route.VoiceSettings&&action.ActionId==VoiceCloseAction(route)&&action.InputScopeId==route.InputScopeId)
+            {navigation.Back(action.FocusedElementId);voiceSettings.Reset();voiceControls.Update(current=>new(Participants:current.Participants));}
             return true;
         }
         if(action.ActionId.StartsWith("voice-settings.",StringComparison.Ordinal))
@@ -112,27 +97,17 @@ public sealed partial class DiscordWebViewWidget
             PushRoute(Route.VoiceSettings,action);
             if(navigation.Value.Route==Route.VoiceSettings)
             {
-                voiceSettings.Reset();voiceControls.Update(_=>new(new(navigation.Value,data.Account,session)));
+                voiceSettings.Reset();voiceControls.Update(current=>new(new(navigation.Value,data.Account,session),Participants:current.Participants));
                 voiceSettings.EnsureLoaded();
             }
             return true;
         }
-        if(!new[]{"voiceMute.","voiceVolume.","voiceInputDevice.","voiceOutputDevice.","voiceInputVolume.","voiceRefresh.","voiceOpen."}
+        if(!new[]{"voiceInputDevice.","voiceOutputDevice.","voiceInputVolume.","voiceRefresh.","voiceOpen."}
             .Any(prefix=>action.ActionId.StartsWith(prefix,StringComparison.Ordinal)))return false;
         if(dialog is null||!VoiceDialogCurrent(dialog)||data is null)return true;
         if(action.ActionId==VoiceAction("voiceOpen",dialog))
         {
-            navigation.Back();voiceSettings.Reset();voiceControls.Update(_=>new());navigation.Push(Route.Account,"discord.account.open");return true;
-        }
-        if(dialog.Participant is not null)
-        {
-            var person=data.Participants.First(person=>person.Id==dialog.Participant);
-            if(person.Audio is not {Available:true,Volume:not null} audio)return true;
-            if(action.ActionId==VoiceAction("voiceMute",dialog,audio.Muted.ToString()))
-                task=WriteParticipantAudioAsync(dialog,"voiceMute",!audio.Muted,token);
-            else if(action.ActionId==VoiceAction("voiceVolume",dialog)&&action.RequestedValue is { } volume&&double.IsFinite(volume)&&volume is >=0 and <=100)
-                task=WriteParticipantAudioAsync(dialog,"voiceVolume",volume,token);
-            return true;
+            navigation.Back();voiceSettings.Reset();voiceControls.Update(current=>new(Participants:current.Participants));navigation.Push(Route.Account,"discord.account.open");return true;
         }
         if(action.ActionId==VoiceAction("voiceRefresh",dialog))
         {voiceControls.Update(current=>current with{Notice=""});voiceSettings.EnsureLoaded(forceRefresh:true);return true;}
@@ -155,25 +130,6 @@ public sealed partial class DiscordWebViewWidget
     private static string DeviceIntent(DiscordVoiceSettings settings,string method,string id)=>
         JsonSerializer.Serialize(new{id,selected=method=="voiceInputDevice"?settings.InputDeviceId:settings.OutputDeviceId,
             devices=(method=="voiceInputDevice"?settings.InputDevices:settings.OutputDevices).Select(device=>device.Id)});
-
-    private async ValueTask WriteParticipantAudioAsync(VoiceDialog dialog,string method,object value,CancellationToken token)
-    {
-        token.ThrowIfCancellationRequested();if(!VoiceDialogCurrent(dialog))return;
-        voiceControls.Update(current=>current with{Notice=""});
-        try
-        {
-            var result=await client!.InvokeAsync(method,new{account=dialog.Account,channelId=dialog.Channel,userId=dialog.Participant,value},token);
-            var audio=result.GetProperty("audio").Deserialize<DiscordStreamAudio>(DiscordWebSessionClient.Json);
-            if(audio is not {Available:true,Volume:{ } volume}||!double.IsFinite(volume)||volume is <0 or >100)
-                throw new InvalidDataException("Invalid participant audio acknowledgment.");
-            if(!VoiceDialogCurrent(dialog))return;
-            state.TryPublishUpdate(current=>current.Ready&&current.Account==dialog.Account&&current.ChannelId==dialog.Channel&&
-                current.Participants.Any(person=>person.Id==dialog.Participant)
-                ?(true,current with{Participants=current.Participants.Select(person=>person.Id==dialog.Participant?person with{Audio=audio}:person).ToArray()}):(false,current));
-        }
-        catch(Exception) when(!token.IsCancellationRequested)
-        {if(VoiceDialogCurrent(dialog))voiceControls.Update(current=>current with{Notice="Discord could not confirm the voice audio change. Try again."});}
-    }
 
     private async ValueTask WriteVoiceSettingsAsync(VoiceDialog dialog,string method,object value,CancellationToken token)
     {
@@ -200,8 +156,8 @@ public sealed partial class DiscordWebViewWidget
     private WidgetView ApplyVoiceDialog(WidgetView result,DiscordState? data)
     {
         var route=navigation.Value;
-        if(route.Route is not(Route.ParticipantAudio or Route.VoiceSettings))return result;
-        var modalId=route.Route==Route.VoiceSettings?"discord.voice-settings-dialog":"discord.participant-dialog";
+        if(route.Route!=Route.VoiceSettings)return result;
+        const string modalId="discord.voice-settings-dialog";
         // Session replacement can precede the next provider read. Keep a valid
         // modal scope with only Close while reconciliation retires this visit;
         // never publish the old account's controls or an absent active scope.
@@ -209,21 +165,7 @@ public sealed partial class DiscordWebViewWidget
             return result.WithModal(new(modalId,"Voice controls",UI.Text("The account or voice channel changed. Close to return to Discord controls.",modalId+".changed"),modalId+".close",VoiceCloseAction(route)));
         const string id="discord.voice-dialog";
         var content=new List<WidgetElement>();var first=modalId+".close";
-        var title=dialog.Participant is null?"Voice settings":dialog.Name??"Participant audio";
-        if(dialog.Participant is not null)
-        {
-            var person=data!.Participants.First(person=>person.Id==dialog.Participant);
-            if(person.Audio is {Available:true,Volume:{ } volume} audio)
-            {
-                first=id+".mute";
-                content.Add(UI.Button(audio.Muted?"Unmute for me":"Mute for me",VoiceAction("voiceMute",dialog,audio.Muted.ToString()),id+".mute")
-                    .Icon(audio.Muted?WidgetGlyph.Muted:WidgetGlyph.Volume).Selected(audio.Muted).Classes("discord-control"));
-                content.Add(VoiceVolumeField(id+".volume", "Voice volume",volume,VoiceAction("voiceVolume",dialog)));
-                if(data.Deafened)content.Add(UI.Text("Undeafen to hear voice audio.",id+".deafened").Classes("discord-secondary"));
-            }
-            else content.Add(UI.Text("Voice audio controls are unavailable in this Discord version.",id+".unavailable").Classes("discord-secondary"));
-        }
-        else
+        const string title="Voice settings";
         {
             var snapshot=voiceSettings.Snapshot;
             if(snapshot is {HasValue:true,Value:{ } observed}&&ReferenceEquals(observed.Owner,dialog))
@@ -250,11 +192,8 @@ public sealed partial class DiscordWebViewWidget
         if(voiceControls.Value.Notice.Length>0)content.Add(UI.Text(voiceControls.Value.Notice,id+".notice").Classes("discord-notice"));
         return result.WithModal(new(modalId,title,UI.Stack(id+".content",content.ToArray()).Classes("discord-voice-dialog"),first,VoiceCloseAction(dialog.Visit))
         {
-            // Initial-content sizing intentionally does not expand after async
-            // loading. Reserve space for device controls; participant data is
-            // already present and can use the compact measured presentation.
+            // Reserve room before asynchronous device enumeration completes.
             AnchoredPresentation=new(new(ElementId:"discord.main.heading"),Width:440,Height:420)
-                {SizeToContentHeight=dialog.Participant is not null}
         });
     }
 

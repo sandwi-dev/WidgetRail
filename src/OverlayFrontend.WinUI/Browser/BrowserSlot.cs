@@ -20,7 +20,18 @@ internal sealed partial class BrowserSlot : ContentControl
     internal Action? InteractionChanged { get; set; }
     internal bool Active { get; set; }
     internal bool AcceptsInput { get; set; }
-    internal bool Pinned { get; set; }
+    private bool pinned;
+    internal bool Pinned
+    {
+        get => pinned;
+        set
+        {
+            if (pinned == value) return;
+            pinned = value;
+            Host.Margin = new(value ? 0 : 3);
+            RefreshProviderHeight();
+        }
+    }
     internal bool Expanded { get; set; }
     internal bool Retired { get; private set; }
     internal bool IsProviderDocument { get; set; }
@@ -76,7 +87,8 @@ internal sealed partial class BrowserSlot : ContentControl
     private void RefreshProviderHeight()
     {
         if (!IsProviderDocument || !double.IsNaN(Height)) { Host.ClearValue(HeightProperty); return; }
-        Host.Height = Math.Clamp(Surface?.ProviderContentHeight ?? 72, 0, Math.Max(0, Math.Min(MaxHeight, 4096) - 6));
+        Host.Height = Math.Clamp(Surface?.ProviderContentHeight ?? 72, 0,
+            Math.Max(0, Math.Min(MaxHeight, 4096) - Host.Margin.Top - Host.Margin.Bottom));
     }
     internal void ApplyFocusTheme(Brush focus, double radius)
     { focusOutline.BorderBrush = focus; focusOutline.CornerRadius = new(Math.Max(2, radius)); }
@@ -93,7 +105,7 @@ internal sealed partial class BrowserSlot : ContentControl
     {
         var changed = PresentedInPin != pinned;
         PresentedInPin = pinned;
-        SetMessage(pinned ? "This page is pinned. Press View to interact, or unpin it to browse here." : "This page is open in the main widget.");
+        SetMessage(pinned ? "This page is pinned. Open the pin controls to manage it, or unpin it to browse here." : "This page is open in the main widget.");
         if (changed) InteractionChanged?.Invoke();
     }
     internal void Enter() => Surface?.Enter();

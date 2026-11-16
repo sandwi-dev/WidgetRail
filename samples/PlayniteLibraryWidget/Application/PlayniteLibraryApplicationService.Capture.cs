@@ -35,13 +35,17 @@ internal sealed partial class PlayniteLibraryApplicationService
                     authority.CompletionStatuses.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal)),
             };
             var retrievedAt = catalog.RetrievedAt;
+            var generation = Interlocked.Read(ref _connectionGeneration);
             return new(query, context, games, authority, Array.AsReadOnly(ProjectSources(catalog, stale)),
                 catalog.Revision, retrievedAt, stale,
                 game =>
                 {
                     ObjectDisposedException.ThrowIf(_disposed, this);
+                    if (generation != Interlocked.Read(ref _connectionGeneration))
+                        throw new WidgetCapabilityException("invalid_cursor", "The Playnite connection changed. Refresh the library.");
                     return PlayniteLibraryItem.From(Project(game, stale, registerArtwork: false, retrievedAt));
-                }, ResolveCapturedArtworkAsync, ResolveCapturedArtworkSourceAsync);
+                }, (game, handle, cancellation) => ResolveCapturedArtworkAsync(game, handle, generation, cancellation),
+                (game, handle, cancellation) => ResolveCapturedArtworkSourceAsync(game, handle, generation, cancellation));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (ObjectDisposedException) { throw; }
@@ -53,6 +57,7 @@ internal sealed partial class PlayniteLibraryApplicationService
     // a partially fetched catalog to either cursor or captured query consumers.
     private async ValueTask<(Catalog Catalog, bool Stale)> LoadCatalogLockedAsync(bool refresh, CancellationToken token)
     {
+        var generation = Interlocked.Read(ref _connectionGeneration);
         try
         {
             var mutationRevision = Interlocked.Read(ref _catalogMutationRevision);
@@ -60,12 +65,14 @@ internal sealed partial class PlayniteLibraryApplicationService
             {
                 var catalog = await FetchCatalogAsync(token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
+                if (generation != Interlocked.Read(ref _connectionGeneration))
+                    throw new WidgetCapabilityException("invalid_cursor", "The Playnite connection changed. Refresh the library.");
                 _lastGood = catalog;
                 Interlocked.Exchange(ref _lastGoodMutationRevision, mutationRevision);
             }
             return (_lastGood, false);
         }
-        catch (Exception error) when (CanRetain(error, token) && _lastGood is not null)
+        catch (Exception error) when (generation == Interlocked.Read(ref _connectionGeneration) && CanRetain(error, token) && _lastGood is not null)
         { return (_lastGood, true); }
     }
 
@@ -94,27 +101,32 @@ internal sealed partial class PlayniteLibraryApplicationService
     private static string ArtworkHandle(string gameId, string revision, PlayniteBridgeArtworkKind kind) =>
         ContentId("artwork-handle", gameId, revision, kind.ToString());
 
+    private string ArtworkRevision(PlayniteBridgeGame game) => ContentId("artwork-revision", game.Id,
+        GameRevision(game), Interlocked.Read(ref _connectionGeneration).ToString(System.Globalization.CultureInfo.InvariantCulture));
+
     private ValueTask<WidgetArtworkSource?> ResolveCapturedArtworkSourceAsync(PlayniteBridgeGame game,
-        WidgetArtworkHandle handle, CancellationToken token)
+        WidgetArtworkHandle handle, long generation, CancellationToken token)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         token.ThrowIfCancellationRequested();
-        var revision = ContentId("artwork-revision", game.Id, GameRevision(game));
+        if (generation != Interlocked.Read(ref _connectionGeneration)) return ValueTask.FromResult<WidgetArtworkSource?>(null);
+        var revision = ArtworkRevision(game);
         foreach (var kind in new[] { PlayniteBridgeArtworkKind.Cover, PlayniteBridgeArtworkKind.Background })
             if (string.Equals(handle.Value, ArtworkHandle(game.Id, revision, kind), StringComparison.Ordinal))
-                return ResolveArtworkSourceCoreAsync(handle, new(game.Id, revision, kind), captured: true, token);
+                return ResolveArtworkSourceCoreAsync(handle, new(game.Id, revision, kind, generation), captured: true, token);
         return ValueTask.FromResult<WidgetArtworkSource?>(null);
     }
 
     private ValueTask<WidgetEncodedArtwork?> ResolveCapturedArtworkAsync(PlayniteBridgeGame game,
-        WidgetArtworkHandle handle, CancellationToken token)
+        WidgetArtworkHandle handle, long generation, CancellationToken token)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         token.ThrowIfCancellationRequested();
-        var revision = ContentId("artwork-revision", game.Id, GameRevision(game));
+        if (generation != Interlocked.Read(ref _connectionGeneration)) return ValueTask.FromResult<WidgetEncodedArtwork?>(null);
+        var revision = ArtworkRevision(game);
         foreach (var kind in new[] { PlayniteBridgeArtworkKind.Cover, PlayniteBridgeArtworkKind.Background })
             if (string.Equals(handle.Value, ArtworkHandle(game.Id, revision, kind), StringComparison.Ordinal))
-                return ResolveArtworkCoreAsync(handle, new(game.Id, revision, kind), captured: true, token);
+                return ResolveArtworkCoreAsync(handle, new(game.Id, revision, kind, generation), captured: true, token);
         return ValueTask.FromResult<WidgetEncodedArtwork?>(null);
     }
 }

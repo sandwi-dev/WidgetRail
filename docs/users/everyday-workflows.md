@@ -73,10 +73,11 @@ zoom, dragging, suggestions and compatibility limits.
 can play a supported public link without a search key.
 
 1. Return to that widget's tray icon and press **Menu**. Choose an offered pin
-   layout. For an existing pin, review the replacement confirmation.
-2. Hide the overlay: the pin remains visible.
-3. With WidgetRail open, use **View** to switch focus to the pin. **B** returns
-   to the overlay. Follow the pin's guide for playback or page controls.
+   layout. At six pins, choose one to replace or cancel.
+2. Hide the overlay to leave the pins visible.
+3. With WidgetRail open, use **View** to enter the sole pin or open the pin chooser.
+   Highlighting a choice outlines its window. **A** enters it. **B** dismisses
+   local controls, then returns to the overlay. Follow the pin's controller guide.
 4. Use the tray's pin controls to move/resize, change opacity or **Unpin**.
 
 A live browser page transfers to the pin; it is not a new signed-out copy.

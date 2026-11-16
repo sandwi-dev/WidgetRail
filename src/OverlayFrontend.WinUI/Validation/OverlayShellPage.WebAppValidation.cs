@@ -29,12 +29,108 @@ internal sealed partial class OverlayShellPage
         {
             fullscreenLayer.TraceForValidation = message => expansionFocusTrace.Add(message);
             var checks = new List<string>(); string? error = null; var step = "startup";
+            var filePickerTrace = new List<string>();
+            NativeFilePickerLifetime.TraceForValidation = message => { if(filePickerTrace.Count < 32)filePickerTrace.Add(message); };
             try
             {
                 if (startup is not null) await startup;
                 await WebAppUntil(() => activeWidget == "webapp-a" && interactive && foreground && !switching);
                 var first = await CurrentBrowser();
                 await WebAppUntil(() => first.IsBrowsing && browserOwner!.BackgroundSessionCount == 1);
+                if (Environment.GetCommandLineArgs().Contains("--webapp-filepicker-only"))
+                {
+                    step = "file picker cancellation";
+                    await first.EvaluateGestureFixtureAsync("document.getElementById('upload').click()");
+                    await Choose(0);
+                    await WebAppUntil(() => SystemFilePickerOpen);
+                    SetVisible(false);
+                    await WebAppUntil(() => !SystemFilePickerOpen);
+                    Check(await first.EvaluateFixtureAsync("document.getElementById('upload').files.length===0") == "true",
+                        "Hiding cancels the owned picker without selecting a file");
+                    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks, filePickerTrace }));
+                    return;
+                }
+                if (Environment.GetCommandLineArgs().Contains("--webapp-multiple-pins-only"))
+                {
+                    step = "six webapp pins";
+                    var pages = new List<BrowserSurface>();
+                    foreach (var id in new[] { "webapp-a", "webapp-b", "webapp-c", "webapp-d", "webapp-e", "webapp-f" })
+                    {
+                        await SelectAsync(id, true);
+                        var page = await CurrentBrowser();
+                        await page.EvaluateFixtureAsync("window.pinProof='preserved'");
+                        pages.Add(page);
+                        await PinAsync(id, WidgetPinnedProjection.FullWidgetLayoutId);
+                        await WebAppUntil(() => pins.Any(pin => pin.WidgetId == id && pin.IsCurrent && pin.Window.IsVisible));
+                        var browserPin = pins.Single(pin => pin.WidgetId == id);
+                        await WebAppUntil(() => Slots(browserPin.Presenter).Any(slot => slot.Surface == page && BrowserHostFillsSlot(slot)));
+                        Check(true, "Pinned browser fills its slot without a permanent inset for " + id);
+                    }
+                    var opened = pins.ToArray();
+                    await SelectAsync("webapp-g", true);
+                    await CurrentBrowser();
+                    Check(opened.Length == 6 && opened.All(pin => pin.IsCurrent && pin.Window.IsVisible),
+                        "Six legacy full-webapp pins coexist with a seventh active main page");
+                    foreach (var page in pages)
+                        Check(await page.EvaluateFixtureAsync("window.pinProof==='preserved'") == "true",
+                            "Pinned document identity remains intact for " + page.WidgetId);
+                    await EnterPinnedAsync();
+                    var inputPin = pinned!;
+                    await WebAppUntil(() => PinnedInputActive && inputPin.HasForeground);
+                    Check(inputPin.Window.FocusIndicator.Visibility == Visibility.Visible,
+                        "Borderless browser pins retain their temporary host interaction outline");
+                    await UnpinAsync(save: true, opened[0]);
+                    Check(pins.Count == 5 && ReferenceEquals(pinned, inputPin) && PinnedInputActive && inputPin.Window.Interactive,
+                        "Closing a passive webapp pin preserves another pin's input and focus");
+                    Check(await pages[^1].EvaluateFixtureAsync("window.pinProof==='preserved'") == "true",
+                        "Selected pinned document survives its peer's teardown");
+                    await pages[1].NativeProfile!.SetPermissionStateAsync(CoreWebView2PermissionKind.Notifications,
+                        "https://shell.fixture.invalid", CoreWebView2PermissionState.Allow);
+                    await VerifyPinnedNotificationAsync(pages[1], Check);
+                    Check(pins.Count == 5 && ReferenceEquals(pinned, opened[1]),
+                        "Notification activation selects its exact source among several pins");
+                    foreach (var pin in pins.ToArray()) await UnpinAsync(save: true, pin);
+                    await WebAppUntil(() => pins.Count == 0 && foreground);
+                    await SelectAsync(pages[0].WidgetId, true);
+                    await WebAppUntil(() => Slots(surface).Any(slot => slot.Surface == pages[0]));
+                    Check(Slots(surface).Single(slot => slot.Surface == pages[0]).Host.Margin == new Thickness(3),
+                        "Returning a browser to the main widget restores its embedded focus spacing");
+                    Check(browserOwner!.ResidentCount <= WidgetRail.WidgetBridge.BridgeProtocol.MaximumResidentBrowserCount, "Six-pin teardown keeps browser residency bounded");
+                    foreach (var page in pages)
+                    {
+                        await SelectAsync(page.WidgetId, true);
+                        await WebAppUntil(() => page.IsBrowsing && page.CanRequestSiteDecision);
+                        await PopupPreferences.SetAsync(page.WidgetId, page.ProfileName, "https://shell.fixture.invalid", BrowserPopupPlacement.Pinned, lifetime.Token);
+                        await page.EvaluateGestureFixtureAsync("window.pinChild=window.open('https://shell.fixture.invalid/popup')");
+                        await WebAppUntil(() => pins.Any(pin => pin.Popup?.Parent == page && pin.IsCurrent));
+                    }
+                    var popupPins = pins.ToArray();
+                    Check(popupPins.Length == 6 && popupPins.All(pin => pin.Popup is { IsCurrent: true } && pin.Window.IsVisible),
+                        "Six detached popup controllers coexist in independent native pins");
+                    foreach (var popupPin in popupPins)
+                    {
+                        await WebAppUntil(() => BrowserHostFillsSlot(popupPin.Popup!.Slot));
+                        Check(true, "Detached popup fills its pinned slot for " + popupPin.WidgetId);
+                    }
+                    await SelectAsync(pages[0].WidgetId, true);
+                    await PinAsync(pages[0].WidgetId, WidgetPinnedProjection.FullWidgetLayoutId);
+                    await WebAppUntil(() => hostChoiceDialog is { IsOpenForValidation: true });
+                    var capacityChoices = FindControl<ListView>(hostChoiceDialog!, "Host.Choice.Options")!;
+                    capacityChoices.Items.OfType<ListViewItem>().Single(item => (string?)item.Tag == popupPins[0].ChoiceId).Focus(FocusState.Keyboard);
+                    Receive(new ControllerFrame { Connected = 1 });
+                    await Press(ControllerButton.A);
+                    await WebAppUntil(() => pins.Any(pin => pin.WidgetId == pages[0].WidgetId && pin.LayoutId == WidgetPinnedProjection.FullWidgetLayoutId));
+                    Check(pins.Count == 6 && pages[0].PinnablePopup?.IsReady == true && popupPins.Skip(1).All(pin => pin.IsCurrent),
+                        "Capacity replacement returns a live popup into its whole-widget pin without closing the page");
+                    await UnpinAsync(save: true, pins.Single(pin => pin.WidgetId == pages[0].WidgetId));
+                    Check(popupPins.Skip(1).All(pin => pin.IsCurrent && pin.Window.IsVisible) && pages[0].HasPopup,
+                        "Returning one popup preserves its document and the other five pins");
+                    foreach (var pin in pins.ToArray()) await UnpinAsync(save: true, pin);
+                    foreach (var page in pages) await page.ClosePopupAsync();
+                    Check(pins.Count == 0 && pages.All(page => !page.HasPopup), "All six popup leases release cleanly");
+                    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
+                    return;
+                }
                 if (Environment.GetCommandLineArgs().Contains("--extensions-ui-only"))
                 {
                     step = "extension management";
@@ -117,6 +213,15 @@ internal sealed partial class OverlayShellPage
                     for (var cycle = 1; cycle <= cycles; cycle++)
                         await VerifyPassiveBrowserPinAsync(first, cycles == 1 ? path : path + ".cycle-" + cycle, Check);
                     await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
+                    return;
+                }
+                if(Environment.GetCommandLineArgs().Contains("--webapp-pointer-pin"))
+                {
+                    step="native browser pointer adjustment";
+                    await PinAsync("webapp-a",WidgetPinnedProjection.FullWidgetLayoutId);
+                    await WebAppUntil(()=>Slots(pinned?.Presenter).Any(slot=>slot.Surface==first));
+                    await VerifyPointerPinAdjustmentAsync(Check,transparent:false);
+                    await File.WriteAllTextAsync(path,JsonSerializer.Serialize(new{passed=true,step,checks}));
                     return;
                 }
                 if (Environment.GetCommandLineArgs().Contains("--settings-updates-menus"))
@@ -231,7 +336,7 @@ internal sealed partial class OverlayShellPage
                 Check(WindowBelow((nint)hostWindow, pinned.Window.Handle), "Moving, resizing and shell order reconciliation keep the adjusting pin above the overlay");
                 CancelPinnedAdjustment();
                 Check(!PinnedAdjustmentActive && WindowBelow(pinned.Window.Handle, (nint)hostWindow), "Cancelling move/resize restores passive pin ordering");
-                await BeginPinnedAdjustmentAsync(opacityOnly: true);
+                await BeginPinnedAdjustmentAsync();
                 StepPinnedOpacity(pinned.Window.OpacityPercent < 100 ? PinnedPlacementDirection.Right : PinnedPlacementDirection.Left);
                 ReconcilePeerWindowOrder();
                 Check(PinnedAdjustmentActive && !pinned.Window.Interactive && WindowBelow((nint)hostWindow, pinned.Window.Handle),
@@ -257,7 +362,7 @@ internal sealed partial class OverlayShellPage
                 if (Environment.GetCommandLineArgs().Contains("--webapp-pin-dialog-lifecycle")) await VerifyPinnedDialogExitAsync(first, Check);
                 if (Environment.GetCommandLineArgs().Contains("--webapp-notifications")) await VerifyPinnedNotificationAsync(first, Check);
                 await first.EvaluateGestureFixtureAsync("window.open('https://shell.fixture.invalid/popup')");
-                await WebAppUntil(() => first.HasPopup && first.ActiveSurface.CurrentTitle == "Shell /popup");
+                await WebAppUntil(() => first.HasPopup && first.ActiveSurface.CurrentTitle == "Shell /popup" && first.ActiveSurface.IsBrowsing);
                 Check(ReferenceEquals(first.ActiveSurface.XamlRoot, pinned.Window.AutomationRoot.XamlRoot), "Hosted popup stays in the pinned webapp window");
                 await VerifySpatialRoutingAsync(first.ActiveSurface, "hosted popup", Check);
                 await Press(ControllerButton.B); await WebAppUntil(() => !first.HasPopup);
@@ -338,19 +443,19 @@ internal sealed partial class OverlayShellPage
                         "Returning from another widget restores Normal on the retained browser");
 
                 step = "resource limits";
-                foreach (var id in new[] { "webapp-b", "webapp-c", "webapp-d" })
+                foreach (var id in new[] { "webapp-b", "webapp-c", "webapp-d", "webapp-e", "webapp-f", "webapp-g", "webapp-h" })
                 {
                     await SelectAsync(id); var other = await CurrentBrowser();
                     Check(await other.EvaluateFixtureAsync("localStorage.getItem('widget-a-only')===null") == "true", "Shell profile isolation keeps another widget's website data private: " + id);
                 }
-                await WebAppUntil(() => browserOwner!.BackgroundSessionCount == 4);
-                await SelectAsync("webapp-e");
-                await WebAppUntil(() => !switching && surface?.CurrentBinding?.Frame.Descriptor.Id == "webapp-e");
-                Check(browserOwner!.ResidentCount == 4 && browserOwner.BackgroundSessionCount == 4 &&
-                    await first.EvaluateFixtureAsync("fakeStream.getTracks().every(t=>t.readyState==='live')") == "true", "A fifth webapp cannot evict four retained sessions or their media");
+                await WebAppUntil(() => browserOwner!.BackgroundSessionCount == 8);
+                await SelectAsync("webapp-i");
+                await WebAppUntil(() => !switching && surface?.CurrentBinding?.Frame.Descriptor.Id == "webapp-i");
+                Check(browserOwner!.ResidentCount == 8 && browserOwner.BackgroundSessionCount == 8 &&
+                    await first.EvaluateFixtureAsync("fakeStream.getTracks().every(t=>t.readyState==='live')") == "true", "A ninth webapp cannot evict eight retained sessions or their media");
                 await browserOwner.StopWidgetSessionsAsync("webapp-c");
                 await CurrentBrowser();
-                Check(browserOwner.BackgroundSessionCount == 4, "Stopping a session makes capacity available to the waiting webapp");
+                Check(browserOwner.BackgroundSessionCount == 8, "Stopping a session makes capacity available to the waiting webapp");
 
                 step = "renderer recovery";
                 await SelectAsync("webapp-a");
@@ -371,7 +476,7 @@ internal sealed partial class OverlayShellPage
                 }
             }
             catch (Exception failure) { error = failure.ToString(); hostChoiceDialog?.Hide(); await Task.Delay(100); }
-            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = error is null, step, checks, error, expansionFocusTrace, pinState = new { exists = pinned is not null, current = pinned?.IsCurrent, interactive = pinned?.Window.Interactive, focused = pinned?.HasForeground, foreground, expanded = expandedBrowser is not null }, pages = Slots(surface).Select(slot => new { ready = slot.Surface?.IsReady, loading = slot.Surface?.IsNavigationInProgress, title = slot.Surface?.CurrentTitle, profile = slot.Surface?.ProfileName, permissions = slot.Surface?.FixturePermissionTrace }).ToArray(), retained = browserOwner?.BackgroundSessionCount }));
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = error is null, step, checks, error, filePickerTrace, expansionFocusTrace, pinState = new { exists = pinned is not null, current = pinned?.IsCurrent, interactive = pinned?.Window.Interactive, focused = pinned?.HasForeground, foreground, mainInteractive=interactive, activeWidget, MainFocusEnabled, expanded = expandedBrowser is not null }, pages = Slots(surface).Select(slot => new { ready = slot.Surface?.IsReady, loading = slot.Surface?.IsNavigationInProgress, title = slot.Surface?.CurrentTitle, profile = slot.Surface?.ProfileName, permissions = slot.Surface?.FixturePermissionTrace, childPermissions=slot.Surface?.PinnablePopup?.FixturePermissionTrace }).ToArray(), retained = browserOwner?.BackgroundSessionCount, focus=surface?.FocusDiagnostics(), controllerPage=surface?.ControllerBrowser?.CurrentUrl }));
 
             async Task<BrowserSurface> CurrentBrowser()
             {
@@ -405,6 +510,14 @@ internal sealed partial class OverlayShellPage
             { if (!passed) throw new InvalidOperationException(name); checks.Add(name); File.WriteAllText(path + ".progress", string.Join('\n', checks)); }
         };
     }
+    private static bool BrowserHostFillsSlot(BrowserSlot slot)
+    {
+        if (!slot.IsLoaded || slot.ActualWidth <= 0 || slot.ActualHeight <= 0) return false;
+        var bounds = slot.Host.TransformToVisual(slot).TransformBounds(new(0, 0, slot.Host.ActualWidth, slot.Host.ActualHeight));
+        return Math.Abs(bounds.X) < 1 && Math.Abs(bounds.Y) < 1 &&
+            Math.Abs(bounds.Width - slot.ActualWidth) < 1 && Math.Abs(bounds.Height - slot.ActualHeight) < 1;
+    }
+
     private static IEnumerable<BrowserSlot> Slots(DependencyObject? root)
     {
         if (root is null) yield break;

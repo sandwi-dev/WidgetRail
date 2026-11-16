@@ -63,6 +63,19 @@ public sealed class WidgetNotificationTests
         Assert.IsNull(NotificationPlacement.Choose(area, 420, 120, [area]));
     }
     [TestMethod]
+    public void BannerFitsBetweenSixPinsAndRetainsItsPosition()
+    {
+        var area = new PinnedBounds(-1200, 100, 1200, 800);
+        PinnedBounds[] pins = [
+            new(-1200, 100, 400, 200), new(-800, 100, 400, 200), new(-400, 100, 400, 200),
+            new(-1200, 700, 400, 200), new(-800, 700, 400, 200), new(-400, 700, 400, 200)
+        ];
+        var expected = new PinnedBounds(-436, 316, 420, 120);
+        Assert.AreEqual(expected, NotificationPlacement.Choose(area, 420, 120, pins));
+        Assert.AreEqual(expected, NotificationPlacement.Choose(area, 420, 120, pins[..3], expected));
+        Assert.IsNull(NotificationPlacement.Choose(area, 420, 400, pins));
+    }
+    [TestMethod]
     public void ContractRejectsUnsafeOrUnboundedCustomization()
     {
         var content = new WidgetNotification("key", "Title"); Assert.IsTrue(WidgetNotificationContract.IsValid(content));

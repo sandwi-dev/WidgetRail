@@ -794,6 +794,9 @@ internal sealed class WidgetWorkerServer
              input.IsPinnedLayoutSelected is not null))
             throw new WidgetProtocolViolationException(
                 "Pinned-surface input requires exact layout, scope, focus, and snapshot authority.");
+        if(input.PinnedSelectionId is { } identity && (input.Context!=ControllerInputContext.PinnedLayoutSelection ||
+            !Guid.TryParseExact(identity,"N",out _)))
+            throw new WidgetProtocolViolationException("Pinned selection identity requires a selection notification.");
         if (input.Context == ControllerInputContext.PinnedLayoutSelection &&
             (input.IsPinnedLayoutSelected is null ||
              (input.IsPinnedLayoutSelected == true &&

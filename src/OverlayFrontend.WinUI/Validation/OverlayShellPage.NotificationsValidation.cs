@@ -166,8 +166,9 @@ internal sealed partial class OverlayShellPage
         var arriving = inbox.Add("webapp-a", "default", "https://fixture.invalid", "", "New arrival", "Keep selection stable", new object(), callbacks, NotificationPresentation.ListOnly)!;
         check(ReferenceEquals(focused, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot)) && utilityPanel!.FocusedId == stale.Id.ToString(),
             "New arrivals preserve the user's selected notification and native focus");
-        await WebAppUntil(() => list.Items.Count == 2 && ((Control)list.Items[1]).IsLoaded && ((Control)list.Items[1]).ActualHeight > 0);
-        check(((ListViewItem)list.Items[1]).Content is NotificationCard { TitleText.Text: "New arrival" },
+        var arrivingRow=list.Items.OfType<ListViewItem>().Single(row=>row.Tag as string==arriving.Id.ToString());
+        await WebAppUntil(() => arrivingRow.IsLoaded && arrivingRow.ActualHeight>0);
+        check(arrivingRow.Content is ShellUtilityRowContent { Body:NotificationCard { TitleText.Text: "New arrival" } },
             "Newly appended notification has a live rich card");
         await CapturePopupDecisionAsync(dialog, "notifications-stale");
         Receive(new ControllerFrame { Connected = 1 });
@@ -198,7 +199,7 @@ internal sealed partial class OverlayShellPage
     private async Task VerifyPinnedNotificationAsync(BrowserSurface page, Action<bool, string> check)
     {
         var inbox = browserOwner!.Notifications;
-        var pin = pinned!;
+        var pin = pins.Single(item => ReferenceEquals(item.Window.AutomationRoot.XamlRoot, page.XamlRoot));
         if (await page.EvaluateFixtureAsync("Notification.permission") != "\"granted\"")
         {
             // Allow once belongs to the requesting document, not every child.

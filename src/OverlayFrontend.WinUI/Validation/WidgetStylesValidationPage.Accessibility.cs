@@ -44,6 +44,13 @@ internal sealed partial class WidgetStylesValidationPage
             await Wait(() => ColorOf(label.Foreground) == (Windows.UI.Color)resources[keys[1]] &&
                 ColorOf(button.Foreground) == (Windows.UI.Color)resources[keys[1]] &&
                 ColorOf(button.Background) == (Windows.UI.Color)resources[keys[0]]);
+            foreach (var declared in new[] { WidgetRail.WidgetProtocol.WidgetSurfaceAppearance.Solid,
+                WidgetRail.WidgetProtocol.WidgetSurfaceAppearance.Transparent, WidgetRail.WidgetProtocol.WidgetSurfaceAppearance.DesktopAcrylic })
+            {
+                var policy = Shell.OverlayAppearancePolicy.Resolve(AppearanceSettings.Default with { Contrast = ContrastPreference.High }, null, declared, false);
+                Check(Shell.OverlaySurfacePaint.Panel(policy, null) == (Windows.UI.Color)resources[keys[0]],
+                    declared + ": main and pinned surfaces use the same high-contrast window palette as their text and banner chrome");
+            }
             Check(ReferenceEquals(panel.Children[0], label) && ReferenceEquals(panel.Children[1], button) &&
                 ReferenceEquals(NativeComputedStyleAdapter.For(button), buttonStyle) && button.FocusState != FocusState.Unfocused,
                 "system high-contrast palette changes refresh retained shell and widget colors without moving focus");

@@ -23,6 +23,33 @@ internal sealed record ResolvedPinnedPlacement(PinnedMonitor Monitor, PinnedBoun
 /// <summary>Persist logical size and relative work-area position; WinUI owns content layout.</summary>
 internal static class PinnedPlacementPolicy
 {
+    // Slot creation is serialized by the shell. Existing windows remain stationary.
+    internal static PinnedBounds AvoidPins(PinnedBounds preferred,PinnedBounds workArea,IReadOnlyList<PinnedBounds> occupied)
+    {
+        long Overlap(PinnedBounds bounds,PinnedBounds other)
+        {
+            var w=Math.Max(0L,Math.Min((long)bounds.X+bounds.Width,(long)other.X+other.Width)-Math.Max(bounds.X,other.X));
+            var h=Math.Max(0L,Math.Min((long)bounds.Y+bounds.Height,(long)other.Y+other.Height)-Math.Max(bounds.Y,other.Y));
+            return w*h;
+        }
+        if(occupied.All(other=>Overlap(preferred,other)==0))return preferred;
+        // Overlap changes slope at rectangle edges. Include the preferred coordinates
+        // to minimize travel along an unobstructed axis and break ties consistently.
+        static int[] Positions(int preferred,int start,int extent,int size,IEnumerable<(int Start,int Size)> spans)
+        {
+            var limit=start+extent-size;
+            return spans.SelectMany(span=>new[]{span.Start-size,span.Start,span.Start+span.Size-size,span.Start+span.Size})
+                .Append(preferred).Append(start).Append(limit).Select(value=>Math.Clamp(value,start,limit)).Distinct().ToArray();
+        }
+        var xs=Positions(preferred.X,workArea.X,workArea.Width,preferred.Width,occupied.Select(b=>(b.X,b.Width)));
+        var ys=Positions(preferred.Y,workArea.Y,workArea.Height,preferred.Height,occupied.Select(b=>(b.Y,b.Height)));
+        return (from x in xs from y in ys
+                let bounds=preferred with {X=x,Y=y}
+                let dx=(double)x-preferred.X let dy=(double)y-preferred.Y
+                orderby occupied.Sum(other=>Overlap(bounds,other)), dx*dx+dy*dy, y, x
+                select bounds).First();
+    }
+
     internal static ResolvedPinnedPlacement? Resolve(IReadOnlyList<PinnedMonitor> monitors, PinnedPlacement? saved,
         PinnedPlacementLimits limits, double initialWidth = 480, double initialHeight = 270)
     {

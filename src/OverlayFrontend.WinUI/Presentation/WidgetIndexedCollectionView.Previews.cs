@@ -18,4 +18,13 @@ internal sealed partial class WidgetIndexedCollectionView
                 return (row, container);
         return null;
     }
+    // Paint continuity only: this never authorizes an action from the old lease.
+    internal bool IsPreviewContentRefreshing(WidgetIndexedRow previous, FrameworkElement anchor) =>
+        !disposed && CanReceiveInput && ReferenceEquals(source, previous.Owner) &&
+        source!.Declaration.IndexedCollection is { } next && next.SourceId == previous.Lease.Range.Source.SourceId &&
+        next.QueryGeneration == previous.Lease.Range.Source.QueryGeneration &&
+        (next.ContentRevision > previous.Lease.Range.Source.ContentRevision || source.HasPendingPresentation) &&
+        anchor is SelectorItem { IsLoaded: true } container && containers.TryGetValue(container, out var entry) &&
+        !entry.Slot.Failed && ReferenceEquals(entry.Slot.Value, previous) && entry.Slot.Key == previous.Item.Key;
+
 }

@@ -42,11 +42,12 @@ internal sealed partial class OverlayShellPage
         fullscreenLayer.ApplyMotion(Appearance, systemUi.AnimationsEnabled);
         trayGuide.ApplyAppearance(ShellPalette, Appearance, systemUi.AnimationsEnabled);
         RefreshSystemStatusAppearance();
+        RefreshPinnedAdjustmentToolbar();
         openingIndicator?.ApplyAppearance(ShellPalette, Appearance, systemUi.AnimationsEnabled);
         RefreshStartupPresentation();
         QueueWidgetStatusRefresh();
         RefreshRadialChooser();
     }
 
-    internal void DisposeShellChrome() { WaitForGuideLayout(null); chromeStyles?.Dispose(); chromeStyles = null; trayGuide.Dispose(); radialView?.Dispose(); }
+    internal void DisposeShellChrome() { returnPointerMonitor?.Dispose();returnPointerMonitor=null;RetirePinnedAdjustmentToolbar(false);WaitForGuideLayout(null); chromeStyles?.Dispose(); chromeStyles = null; trayGuide.Dispose(); radialView?.Dispose(); }
 }

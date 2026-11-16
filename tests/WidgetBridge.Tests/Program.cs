@@ -1772,7 +1772,7 @@ static async Task EnumerationIsLazy()
     var widgets = response.Payload.GetProperty("widgets");
     Assert.Equal(1, widgets.GetArrayLength());
     var descriptor = widgets[0];
-    Assert.SequenceEqual(["canManage", "canStop", "fullWidgetPinningSupported", "icon", "iconAssets", "id", "instanceId", "isStopped", "isUserWebApp", "name", "notificationCategories", "packageContentDigest", "pinningSupported", "presentationGeneration", "protectedWifiPromptSupported", "quickActions", "runtimeGeneration"],
+    Assert.SequenceEqual(["canManage", "canStop", "fullWidgetPinningSupported", "icon", "iconAssets", "id", "instanceId", "isStopped", "isUserWebApp", "name", "notificationCategories", "packageContentDigest", "packageId", "pinningSupported", "presentationGeneration", "protectedWifiPromptSupported", "publisherId", "quickActions", "runtimeGeneration"],
         descriptor.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("test-widget", descriptor.GetProperty("id").GetString());
     Assert.Equal("Test Widget", descriptor.GetProperty("name").GetString());
@@ -1980,8 +1980,21 @@ static async Task CatalogManagementIcons()
         try { await client.RequestAsync(BridgeMessageTypes.Stop, new { }); } catch { }
         await serving.WaitAsync(TimeSpan.FromSeconds(5));
     }
+    var removal = new BridgeWidgetPackageUninstallService(catalogService, monitor);
+    var inspection = await removal.InspectAsync(configured.PackageId, default);
+    Assert.True(inspection.CanUninstall && inspection.ConfirmationToken is not null,
+        "Disabled installed duplicate must be removable independently of its built-in.");
+    var removed = await removal.UninstallAsync(inspection.WidgetId, inspection.PublisherId,
+        inspection.ActiveVersion, inspection.ConfirmationToken!, default);
+    Assert.Equal(PlatformWidgetPackageUninstallStatus.Uninstalled, removed.Status);
+    Assert.Equal(0, (await catalogService.DiscoverAsync()).Widgets.Count);
+    var afterRemoval = await BridgeCatalog.LoadWithInstalledAsync(bundled.Path, installed.Path, Environment.ProcessPath!);
+    Assert.Equal(configured.PackageRoot, afterRemoval.Catalog.GetConfigured(configured.Id).PackageRoot);
+    var retainedIcon = await resolver.ResolveAsync(afterRemoval.Catalog, 3, source, "test.mark", default);
+    Assert.Equal(bytes.Metadata.NormalizedSha256, retainedIcon.Metadata.NormalizedSha256);
+
     await File.AppendAllTextAsync(Path.Combine(configured.PackageRoot!, "assets", "mark.svg"), "<!--tampered-->");
-    await Assert.ThrowsAsync<BridgeStalePackageIconAuthorityException>(() => resolver.ResolveAsync(active, 3, source, "test.mark", default));
+    await Assert.ThrowsAsync<BridgeStalePackageIconAuthorityException>(() => resolver.ResolveAsync(active, 4, source, "test.mark", default));
 }
 
 static async Task PackageSvgIconsResolveLazily()

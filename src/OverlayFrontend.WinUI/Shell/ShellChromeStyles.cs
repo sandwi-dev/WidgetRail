@@ -10,19 +10,19 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 /// <summary>Resolved shell roles on ordinary native controls; no replacement item template or input policy.</summary>
 internal sealed class ShellChromeStyles : IDisposable
 {
-    private readonly Dictionary<FrameworkElement, (string Role, NativeComputedStyleAdapter Style)> elements = [];
+    private readonly Dictionary<FrameworkElement, (string Role, NativeComputedStyleAdapter Style, bool TypographyOnly)> elements = [];
     private readonly Dictionary<SelectorItem, (NativeComputedStyleAdapter Style, long Selection)> items = [];
     private readonly List<ListView> trays = [];
     private IReadOnlyDictionary<string, BridgeNodeRenderStyles>? palette;
     private bool disposed;
     private double textScale = 1;
 
-    internal void Register(FrameworkElement element, string role)
+    internal void Register(FrameworkElement element, string role, bool typographyOnly=false)
     {
         if (elements.Remove(element, out var previous)) previous.Style.Dispose();
         var style = new NativeComputedStyleAdapter(element);
         style.SetOwnTextScale(textScale);
-        elements.Add(element, (role, style)); style.Update(palette?.GetValueOrDefault(role));
+        elements.Add(element, (role, style, typographyOnly)); style.Update(palette?.GetValueOrDefault(role),typographyOnly:typographyOnly);
     }
 
     internal void Attach(ListView tray, bool paintBackground = true)
@@ -61,7 +61,7 @@ internal sealed class ShellChromeStyles : IDisposable
         NativeComputedStyleAdapter.SetMotionPolicy(settings, animationsEnabled);
         if (ReferenceEquals(next, palette)) return;
         palette = next;
-        foreach (var value in elements.Values) value.Style.Update(palette?.GetValueOrDefault(value.Role));
+        foreach (var value in elements.Values) value.Style.Update(palette?.GetValueOrDefault(value.Role),typographyOnly:value.TypographyOnly);
         foreach (var item in items.Keys) UpdateItem(item);
     }
 

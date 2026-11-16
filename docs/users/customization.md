@@ -156,7 +156,7 @@ See [Compatibility](known-limitations.md) before using it.
 ## Stop a widget without disabling it
 
 Choose **Stop widget** at the bottom of its tray menu. This ends its background
-work, playback, browser connections, additional pages and current pin. Saved
+work, playback, browser connections, additional pages and all its pins. Saved
 sign-ins, permissions, configuration and remembered pin size/position remain.
 Other widgets keep running.
 

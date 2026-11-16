@@ -20,12 +20,13 @@ internal sealed partial class PlayniteBridgeClient
             .Where(link => Uri.TryCreate(link.Url, UriKind.Absolute, out var uri) &&
                 uri.Scheme is "http" or "https" && string.IsNullOrEmpty(uri.UserInfo)).ToArray();
     }
-    private async ValueTask<JsonDocument?> ReadPluginDataAsync(string gameId, PlayniteBridgeCommandKind kind,
+    private async ValueTask<(JsonDocument? Document, string? ConnectionId)> ReadPluginDataAsync(string gameId, PlayniteBridgeCommandKind kind,
         CancellationToken token)
     {
         var id = CanonicalGameId(gameId);
         var response = await SendRequiredAsync(new(kind, id), token).ConfigureAwait(false);
-        if (response.StatusCode == 404) return null;
+        token.ThrowIfCancellationRequested();
+        if (response.StatusCode == 404) return (null, response.ConnectionId);
         EnsureSuccess(response);
         if (response.Body.Length > PlayniteBridgeHttpTransport.MaximumDetailBytes)
             throw new PlayniteBridgeDataException("invalid_playnite_data");
@@ -39,17 +40,17 @@ internal sealed partial class PlayniteBridgeClient
             document.Dispose();
             throw new PlayniteBridgeDataException("invalid_playnite_data");
         }
-        if (available) return document;
+        if (available) return (document, response.ConnectionId);
         document.Dispose();
-        return null;
+        return (null, response.ConnectionId);
     }
     public async ValueTask<PlayniteAchievements> GetAchievementsAsync(string gameId, CancellationToken token)
     {
-        var cached = await ReadCachedAchievementsAsync(CanonicalGameId(gameId), token).ConfigureAwait(false);
-        if (cached is not null) return cached;
-        using var document = await ReadPluginDataAsync(gameId, PlayniteBridgeCommandKind.Achievements, token).ConfigureAwait(false);
-        if (document is null) return PlayniteAchievements.Unavailable;
-        return ParseAchievements(document.RootElement, PlayniteAchievementProvider.SuccessStory);
+        var read = await ReadPluginDataAsync(gameId, PlayniteBridgeCommandKind.Achievements, token).ConfigureAwait(false);
+        using var typed = read.Document;
+        if (typed is null) return PlayniteAchievements.Unavailable;
+        return ParseAchievements(typed.RootElement, OptionalString(typed.RootElement, "provider", 64) == "playnite-achievements"
+            ? PlayniteAchievementProvider.PlayniteAchievements : PlayniteAchievementProvider.SuccessStory) with { ConnectionId = read.ConnectionId };
     }
 
     private static PlayniteAchievements ParseAchievements(JsonElement root, PlayniteAchievementProvider provider)
@@ -72,6 +73,9 @@ internal sealed partial class PlayniteBridgeClient
                 item.TryGetProperty("isHidden", out var hidden) && hidden.ValueKind == JsonValueKind.True)
             {
                 Id = OptionalString(item, "apiName", 256),
+                Category = OptionalString(item, "category", 256), TrophyType = OptionalString(item, "trophyType", 64),
+                IsGoal = item.TryGetProperty("isGoal", out var goal) && goal.ValueKind == JsonValueKind.True,
+                IsCapstone = item.TryGetProperty("isCapstone", out var capstone) && capstone.ValueKind == JsonValueKind.True,
                 Progress = TryNonNegativeInteger(item, "progress", out var progress) &&
                     TryNonNegativeInteger(item, "progressMax", out var maximum) && maximum > 0 && progress <= maximum
                     ? new PlayniteAchievementProgress(progress, maximum) : null,
@@ -80,11 +84,12 @@ internal sealed partial class PlayniteBridgeClient
         }
         if (values.Count(value => value.Unlocked) != unlocked)
             throw new PlayniteBridgeDataException("invalid_playnite_data");
-        return new(true, total, unlocked, values.OrderByDescending(value => value.UnlockedAt).ToArray()) { Provider = provider };
+        return new(true, total, unlocked, values.OrderByDescending(value => value.UnlockedAt).ToArray()) { Provider = provider, CanRefresh = root.TryGetProperty("canRefresh", out var refresh) && refresh.ValueKind == JsonValueKind.True,
+            ObservedAt = ParseOptionalDate(root, "observedAt") };
     }
     public async ValueTask<PlayniteActivity> GetActivityAsync(string gameId, CancellationToken token)
     {
-        using var document = await ReadPluginDataAsync(gameId, PlayniteBridgeCommandKind.Activity, token).ConfigureAwait(false);
+        using var document = (await ReadPluginDataAsync(gameId, PlayniteBridgeCommandKind.Activity, token).ConfigureAwait(false)).Document;
         if (document is null) return PlayniteActivity.Unavailable;
         var root = document.RootElement;
         if (!root.TryGetProperty("sessions", out var array) || array.ValueKind != JsonValueKind.Array ||

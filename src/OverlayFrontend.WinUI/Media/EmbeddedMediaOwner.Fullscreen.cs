@@ -33,7 +33,7 @@ internal sealed partial class EmbeddedMediaOwner
     {
         DemandDispatcher();
         var id = displayed.Authority.WidgetId;
-        if (retired || compact is not null || fullscreenHost is null || fullscreen is not null || !visible || !inputEnabled || id != activeWidget ||
+        if (retired || compactSurfaces.ContainsKey(id) || fullscreenHost is null || fullscreen is not null || !visible || !inputEnabled || id != activeWidget ||
             entries.GetValueOrDefault(id) is not { Document: { } document, Surface: { IsReady: true } surface } ||
             MatchingViewport(id) is not { } ordinary || !ordinary.Element.AcceptsInput ||
             !ReferenceEquals(surface.Element.Parent, MainHost(id, ordinary)) ||

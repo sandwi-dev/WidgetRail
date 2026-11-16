@@ -12,6 +12,9 @@ internal sealed partial class OverlayShellPage
 
     private void PublishControllerGuide()
     {
+        QueueRememberedPins();
+        RefreshPinPointerAdmission();
+        RefreshPinManagementCommands();
         ScheduleIntroduction();
         IReadOnlyList<ControllerGuideHint>? shell = null;
         object? shellContext = null;

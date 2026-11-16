@@ -35,8 +35,9 @@ public sealed partial class DiscordWebViewWidget
     private bool ConnectionDetailsCurrent(ConnectionDetailsOwner owner,DiscordState? next=null)=>
         ReferenceEquals(navigation.Value,owner.Visit)&&!owner.Visit.RouteCancellationToken.IsCancellationRequested&&client?.Reference==owner.Session&&
         (next??CurrentState()) is {Ready:true} data&&data.Account==owner.Account&&data.ChannelId==owner.Channel;
-    private MeasuredWatch CurrentMeasuredWatch()=>new(view.Value.StreamKey,view.Value.Receiver);
-    private bool MeasuredWatchCurrent(MeasuredWatch watch)=>watch.Key==view.Value.StreamKey&&ReferenceEquals(watch.Relay,view.Value.Receiver);
+    private WatchState MeasuredScreen=>watches.FirstOrDefault(slot=>slot.Pin.IsSelected && slot.State.Value.StreamKey is not null)?.State.Value??watches[0].State.Value;
+    private MeasuredWatch CurrentMeasuredWatch()=>new(MeasuredScreen.StreamKey,MeasuredScreen.Receiver);
+    private bool MeasuredWatchCurrent(MeasuredWatch watch)=>watch.Key==MeasuredScreen.StreamKey&&ReferenceEquals(watch.Relay,MeasuredScreen.Receiver);
 
     private void ReconcileConnectionDetails(DiscordState next)
     {
@@ -91,7 +92,7 @@ public sealed partial class DiscordWebViewWidget
         var sameOwner=before is not null&&ReferenceEquals(before.Owner,owner);
         var previous=sameOwner&&before!.Watch==watch?before:null;
         var elapsed=previous is null?0:time.GetElapsedTime(previous.ObservedAt,now).TotalSeconds;
-        var playback=watch.Relay is null?view.Value.ReceiverFailure is not null?"Pin disconnected · select the screen again to retry":"No active video pin":
+        var playback=watch.Relay is null?MeasuredScreen.ReceiverFailure is not null?"Pin disconnected · select the screen again to retry":"No active video pin":
             DiscordConnectionMeasurementPolicy.Playback(pin,incoming,previous?.Pin,previous?.Incoming,elapsed);
         return new(owner,watch,call,incoming,pin,now,playback,
             DiscordConnectionMeasurementPolicy.AppendPing(sameOwner?before!.Pings:[],call.PingMilliseconds));
@@ -120,7 +121,7 @@ public sealed partial class DiscordWebViewWidget
         if(owner is null||!ConnectionDetailsCurrent(owner)||action.InputScopeId!=owner.Visit.InputScopeId)return true;
         if(action.ActionId==ConnectionAction("connectionRefresh",owner))connectionReading.Refresh();
         else if(action.ActionId==ConnectionRetryAction(owner,CurrentMeasuredWatch())&&data is {Capabilities.Watch:true}&&
-            data.Streams.FirstOrDefault(stream=>stream.Key==view.Value.StreamKey) is {} stream)
+            data.Streams.FirstOrDefault(stream=>stream.Key==MeasuredScreen.StreamKey) is {} stream)
         {
             // Reuse the existing explicit Watch action and its domain guards.
             // This occurs only after the user's Reconnect pin command.
@@ -167,7 +168,7 @@ public sealed partial class DiscordWebViewWidget
             .Classes("discord-secondary"));
         content.Add(UI.Text("Updates while this panel is open. Ping is a connection measurement, not end-to-end audio latency.",id+".help").Classes("discord-secondary"));
         if(owner is not null)content.Add(UI.Button("Refresh",ConnectionAction("connectionRefresh",owner),id+".refresh").Busy(connectionReading.IsBusy).Disabled(!current).Classes("discord-control"));
-        if(current&&owner is not null&&data is {Capabilities.Watch:true}&&data.Streams.Any(stream=>stream.Key==view.Value.StreamKey))
+        if(current&&owner is not null&&data is {Capabilities.Watch:true}&&data.Streams.Any(stream=>stream.Key==MeasuredScreen.StreamKey))
             content.Add(UI.Button("Reconnect pin",ConnectionRetryAction(owner,CurrentMeasuredWatch()),id+".retry").Classes("discord-control","discord-quiet"));
         return result.WithModal(new(id,"Connection details",UI.Stack(id+".content",content.ToArray()).Classes("discord-voice-dialog"),
             id+".summary",ConnectionCloseAction(navigation.Value))

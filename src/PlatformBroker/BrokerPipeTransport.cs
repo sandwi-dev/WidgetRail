@@ -14,6 +14,8 @@ public enum BrokerHostEffectKind
     CloseOverlayAfterAppLaunch,
     ActivateTaskWindow,
     OpenPinnedLayout,
+    ClosePinnedLayout,
+    ManagePinnedSurface,
 }
 
 public sealed record BrokerHostEffect(BrokerHostEffectKind Kind)
@@ -22,6 +24,7 @@ public sealed record BrokerHostEffect(BrokerHostEffectKind Kind)
     public string? WindowId { get; init; }
     public NativeWindowPreviewTarget? WindowTarget { get; init; }
     public string? PinnedLayoutId { get; init; }
+    public string? PinnedSelectionId { get; init; }
 }
 
 internal readonly record struct BrokerCapabilityDiagnostic(
@@ -422,6 +425,16 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         BrokerResponseEnvelope response)
     {
         var request = BrokerJson.ParseRequest(requestBytes);
+        if(request.CapabilityId==PlatformCapabilities.WidgetPinningV1 && request.Operation=="pin.manage")
+        {
+            var target=BrokerJson.ParsePayload<WidgetRail.WidgetProtocol.WidgetPinManageRequest>(request.Payload);
+            return new(BrokerHostEffectKind.ManagePinnedSurface){PinnedLayoutId=target.LayoutId,PinnedSelectionId=target.SelectionId};
+        }
+        if(request.CapabilityId==PlatformCapabilities.WidgetPinningV1 && request.Operation=="pin.close")
+        {
+            var target=BrokerJson.ParsePayload<WidgetRail.WidgetProtocol.WidgetPinCloseRequest>(request.Payload);
+            return new(BrokerHostEffectKind.ClosePinnedLayout){PinnedLayoutId=target.LayoutId,PinnedSelectionId=target.SelectionId};
+        }
         if(request.CapabilityId==PlatformCapabilities.WidgetPinningV1 && request.Operation=="pin.open")
             return new(BrokerHostEffectKind.OpenPinnedLayout)
             { PinnedLayoutId=BrokerJson.ParsePayload<WidgetRail.WidgetProtocol.WidgetPinRequest>(request.Payload).LayoutId };

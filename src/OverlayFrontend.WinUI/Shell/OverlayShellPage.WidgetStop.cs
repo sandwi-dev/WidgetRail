@@ -37,7 +37,7 @@ internal sealed partial class OverlayShellPage
                 SetCatalog(await requestOwner.Session.ListWidgetsAsync(lifetime.Token));
                 if (stopped)
                 {
-                    if (pinned is { } pin && pin.WidgetId == id) await RemovePinnedCoreAsync();
+                    foreach(var pin in pins.Where(pin=>pin.WidgetId==id).ToArray())await RemovePinnedCoreAsync(target:pin);
                     await RetireWidgetSurfaceAsync(id);
                     if (browserOwner is not null) await browserOwner.RetireWidgetAsync(id);
                     if (mediaOwner is not null) await mediaOwner.RetireWidgetAsync(id);

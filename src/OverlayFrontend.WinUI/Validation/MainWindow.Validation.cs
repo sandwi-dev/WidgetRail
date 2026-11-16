@@ -168,6 +168,8 @@ public sealed partial class MainWindow
             RootFrame.Content = new Validation.ContextCaptureValidationPage(captureResult);
         else if (validateWindowPreview) RootFrame.Content = new Validation.WindowPreviewValidationPage();
         else if (arguments.Contains("--validate-shell-status")) RootFrame.Content = new Validation.ShellStatusValidationPage();
+        else if (Shell.FrontendArguments.Value(arguments, "--validate-desktop-acrylic") is { } acrylicResult)
+        { AppWindow.Resize(new(1500, 1100)); RootFrame.Content = new Validation.DesktopAcrylicValidationPage(this,acrylicResult); }
         else if (Shell.FrontendArguments.Value(arguments, "--validate-banner-style") is { } bannerStyleResult)
         { AppWindow.Resize(new(1500, 1100)); RootFrame.Content = new Validation.NotificationBannerStyleValidationPage(bannerStyleResult); }
         else if (arguments.Contains("--validate-production-shell"))
@@ -370,20 +372,30 @@ public sealed partial class MainWindow
             page.EnableGuideHandoffValidation(guideHandoffResult, () => input?.IsForeground == true);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-settings-refresh-focus") is { } settingsFocusResult)
             page.EnableSettingsRefreshFocusValidation(settingsFocusResult, () => input?.IsForeground == true);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-settings-uninstall") is { } settingsUninstallResult)
+            page.EnableSettingsUninstallValidation(settingsUninstallResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-widget-opening") is { } openingResult)
             page.EnableOpeningValidation(openingResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pin-menu") is { } pinMenuResult)
             page.EnablePinnedMenuValidation(pinMenuResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pin-keyboard") is { } pinKeyboardResult)
+            page.EnablePinnedKeyboardValidation(pinKeyboardResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-adjust-pin") is { } adjustPinResult)
+            page.EnableUnifiedPinAdjustmentValidation(adjustPinResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-pin-requests") is { } pinRequestResult)
             page.EnablePinRequestValidation(pinRequestResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-direct-video") is { } directVideo)
             page.EnableDiscordDirectVideoValidation(directVideo);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-voice-pin-memory") is { } voiceMemory)
+            page.EnableVoicePinMemoryValidation(voiceMemory,arguments.Contains("--voice-pin-memory-resume"));
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-navigation") is { } discordNavigationResult)
             page.EnableDiscordNavigationValidation(discordNavigationResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-audio") is { } discordAudioResult)
             page.EnableDiscordAudioValidation(discordAudioResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-voice-pin") is { } discordVoicePinResult)
             page.EnableDiscordVoicePinValidation(discordVoicePinResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-participant-preview") is { } participantPreviewResult)
+            page.EnableDiscordParticipantPreviewValidation(participantPreviewResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-voice-controls") is { } discordVoiceControlsResult)
             page.EnableDiscordVoiceControlsValidation(discordVoiceControlsResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-dialog-admission") is { } admissionResult)

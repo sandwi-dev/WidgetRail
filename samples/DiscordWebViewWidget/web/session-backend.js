@@ -7,7 +7,7 @@
     let fingerprint = null;
     let version = null;
     const validQuality=q=>q&&typeof q==='object'&&!Array.isArray(q)&&[480,720,1080].includes(q.resolution)&&[15,30,60].includes(q.frameRate);
-    const commands = new Set(['joinActivity', 'watchActivity', 'join', 'leave', 'mute', 'deafen', 'streamMute', 'streamVolume', 'streamDiagnostics', 'connectionDiagnostics', 'incomingDiagnostics', 'videoPlayback', 'voiceMute', 'voiceVolume', 'voiceSettings', 'voiceInputDevice', 'voiceOutputDevice', 'voiceInputVolume', 'watch', 'keep', 'unwatch', 'share', 'cancelPendingShare', 'stopShare']);
+    const commands = new Set(['enableNotifications', 'joinActivity', 'watchActivity', 'join', 'leave', 'mute', 'deafen', 'streamMute', 'streamVolume', 'streamDiagnostics', 'connectionDiagnostics', 'incomingDiagnostics', 'videoPlayback', 'voiceMute', 'voiceVolume', 'voiceSettings', 'voiceInputDevice', 'voiceOutputDevice', 'voiceInputVolume', 'watch', 'keep', 'unwatch', 'share', 'cancelPendingShare', 'stopShare']);
     async function snapshot(owner) {
         observation?.refresh();
         const response = await WidgetRailDiscordPrototype.invoke({ method: 'snapshot', owner });

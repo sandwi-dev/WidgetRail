@@ -128,6 +128,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Update file flow binds target and reviews the newly selected version", WidgetUpdateReviewFlow),
     ("Technical details expose one rollback action and reject obsolete version actions", CompactVersionManagement),
     ("Disabled Community uninstall confirms exact package and declares data removal", InstalledWidgetPackageUninstall),
+    ("Uninstall timeout and cancellation reconcile without replay or false failure", UncertainUninstallOutcome),
     ("Built-in widgets remain available and can be disabled without removing files", BuiltInWidgetInventory),
     ("Bundled Marketplace technical details show its declared idle unloading policy", MarketplaceResidencyDetails),
     ("Installed copies cannot shadow built-in widget management", InstalledBuiltInCopy),
@@ -1835,6 +1836,26 @@ static async Task CompactVersionManagement()
     Assert.Valid(technical);
 }
 
+static async Task UncertainUninstallOutcome()
+{
+    var displayed=new PlatformWidgetPackageUninstallInspection("dev.test.remove","Remove","dev.publisher","1.0.0",1,true,"ready","token");
+    foreach(var code in new[]{"widget_not_found","ready","uninstall_recovery_pending","diagnostics_timeout"})
+    {
+        var current=displayed with{StatusCode=code,CanUninstall=code=="ready"};
+        var service=new UncertainUninstallDiagnostics(displayed,current);
+        var result=await new SettingsInstalledWidgetUninstallOperation(service).ExecuteAsync(displayed,CancellationToken.None);
+        Assert.Equal(1,service.Calls);
+        Assert.True(result.ReloadCatalog,"Uncertain mutation did not refresh authoritative catalog state.");
+        Assert.Equal(code!="widget_not_found",result.Error);
+        Assert.True(!result.Status.Contains("failed",StringComparison.OrdinalIgnoreCase),"Timeout falsely claimed a completed failure.");
+    }
+    using var cancellation=new CancellationTokenSource();
+    var cancelledService=new UncertainUninstallDiagnostics(displayed,displayed with{StatusCode="widget_not_found",CanUninstall=false},cancellation);
+    var cancelled=await new SettingsInstalledWidgetUninstallOperation(cancelledService).ExecuteAsync(displayed,cancellation.Token);
+    Assert.True(cancelled.ReloadCatalog&&!cancelled.Error,"Cancellation after commit was treated as rollback.");
+    Assert.Equal(1,cancelledService.Calls);
+}
+
 static async Task InstalledWidgetPackageUninstall()
 {
     using var temp = new TemporaryDirectory();
@@ -3539,6 +3560,17 @@ file sealed class LocalDataDiagnosticsService(string selectedId) : IPlatformDiag
         return ValueTask.FromResult(new PlatformWidgetLocalDataClearResult(
             PlatformWidgetLocalDataClearStatus.Cleared, "cleared"));
     }
+}
+
+file sealed class UncertainUninstallDiagnostics(PlatformWidgetPackageUninstallInspection before,
+    PlatformWidgetPackageUninstallInspection after,CancellationTokenSource? cancellation=null):IPlatformDiagnosticsService
+{
+    public int Calls{get;private set;}
+    public ValueTask<PlatformDiagnosticsSnapshot> GetSnapshotAsync(CancellationToken ct=default)=>ValueTask.FromResult(PlatformDiagnosticsSnapshot.Unavailable());
+    public ValueTask<PlatformWidgetPackageUninstallInspection> InspectWidgetPackageUninstallAsync(string id,CancellationToken ct=default)
+    {ct.ThrowIfCancellationRequested();return ValueTask.FromResult(Calls==0?before:after);}
+    public ValueTask<PlatformWidgetPackageUninstallResult> UninstallWidgetPackageAsync(string id,string publisher,string version,string token,CancellationToken ct=default)
+    {Calls++;if(cancellation is not null){cancellation.Cancel();throw new OperationCanceledException(ct);}throw new PlatformDiagnosticsException("diagnostics_timeout");}
 }
 
 file sealed class PackageUninstallDiagnosticsService(

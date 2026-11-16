@@ -1450,7 +1450,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         string expectedWorkerFingerprint,
         BrokerHostEffect effect)
     {
-        if (effect.Kind is not (BrokerHostEffectKind.CloseOverlayAfterAppLaunch or BrokerHostEffectKind.ActivateTaskWindow or BrokerHostEffectKind.OpenPinnedLayout)) return;
+        if (effect.Kind is not (BrokerHostEffectKind.CloseOverlayAfterAppLaunch or BrokerHostEffectKind.ActivateTaskWindow or BrokerHostEffectKind.OpenPinnedLayout or BrokerHostEffectKind.ClosePinnedLayout or BrokerHostEffectKind.ManagePinnedSurface)) return;
         _ = PublishHostEffectAsync(widgetId, expectedWorkerFingerprint, effect);
     }
 
@@ -1479,11 +1479,13 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             new BridgeHostEffect(
                 widgetId,
                 descriptor.RuntimeGeneration,
-                effect.Kind switch { BrokerHostEffectKind.ActivateTaskWindow => "activateTaskWindow", BrokerHostEffectKind.OpenPinnedLayout => "openPinnedLayout", _ => "closeOverlayAfterAppLaunch" },
+                effect.Kind switch { BrokerHostEffectKind.ActivateTaskWindow => "activateTaskWindow", BrokerHostEffectKind.OpenPinnedLayout => "openPinnedLayout",
+                    BrokerHostEffectKind.ClosePinnedLayout => "closePinnedLayout",
+                    BrokerHostEffectKind.ManagePinnedSurface => "managePinnedSurface", _ => "closeOverlayAfterAppLaunch" },
                 sequence, effect.InitiatedAtMilliseconds,
                 effect.Kind == BrokerHostEffectKind.ActivateTaskWindow && effect.WindowId is { } id && effect.WindowTarget is { } target
                     ? new Dictionary<string, NativeWindowPreviewTarget> { [id] = target } : null,
-                effect.Kind==BrokerHostEffectKind.OpenPinnedLayout ? effect.PinnedLayoutId : null)).ConfigureAwait(false);
+                effect.PinnedLayoutId,effect.PinnedSelectionId)).ConfigureAwait(false);
     }
 
     private async Task SendEventAsync<T>(string type, T payload)
@@ -1614,6 +1616,9 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             ControllerButton.DPadLeft or ControllerButton.DPadRight)
             throw new BridgeProtocolException(
                 "A, B, Y, and D-pad input are owned by the dashboard and cannot be forwarded.");
+        if(input.PinnedSelectionId is { } identity && (input.Context!=ControllerInputContext.PinnedLayoutSelection ||
+            !Guid.TryParseExact(identity,"N",out _)))
+            throw new BridgeProtocolException("Pinned selection identity requires a selection notification.");
         if (input.Context == ControllerInputContext.PinnedLayoutSelection &&
             (input.IsPinnedLayoutSelected is null ||
              (input.IsPinnedLayoutSelected == true &&

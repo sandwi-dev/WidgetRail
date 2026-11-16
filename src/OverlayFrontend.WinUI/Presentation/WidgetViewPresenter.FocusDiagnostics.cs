@@ -34,6 +34,7 @@ internal sealed partial class WidgetViewPresenter
         {
             phase, frame?.Authority.SnapshotSequence, activeScope, needsEntry,
             presentationInputEnabled, automaticFocusEnabled, applying,
+            preview = FocusPreviewDiagnostics(),
             current = focused?.Identity.Id, currentIndex = currentItem?.Index,
             remembered = rememberedBinding?.Identity.Id, rememberedIndex = memory?.Index,
             pendingEntry = (rememberedBinding?.Element as WidgetIndexedCollectionView)?.IsEntryPending,

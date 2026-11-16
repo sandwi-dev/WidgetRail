@@ -50,7 +50,11 @@ internal static class ActivityUiTests
             await Wait(()=>fake.Commands.Any(c=>c.Method=="watchActivity"));
             check(fake.Commands.Single(c=>c.Method=="watchActivity").Args.GetProperty("userId").GetString()=="30"&&
                 !fake.Commands.Any(c=>c.Method=="watch"),"Activity Watch validates friendship and stream identity when the actual pin receiver starts");
+            await Wait(()=>widget.Render().PinnedLayouts!.Any(layout=>layout.Id=="discord.stream"&&layout.Root is { } root&&
+                Nodes(root).Any(node=>node.WebBrowser is not null)));
             await widget.OnActionAsync(new(DeclaredActions.Resolve(widget.Render().CreateSnapshot("activity",1),"unwatch"),"discord.streams.stop"));
+            await pinned.ReplaceSnapshotAsync();
+            check(pinned.SelectedLayoutId is null,"Stop watching revokes its pin before a later activity Watch");
             fake.FailReceivers=true;
             // Pin selection published a newer snapshot. Use a newly admitted
             // collection lease, just as the native host does after publication.
@@ -58,6 +62,9 @@ internal static class ActivityUiTests
             using var retryRows=await retryHost.AcquireAsync("discord.activities",0,3);
             if(retryRows.RouteAction("friend.30",ControllerButton.A)!=WidgetOperationAdmission.Enqueued)
                 throw new InvalidDataException("The current activity row did not admit retry.");
+            await Wait(()=>pins.Count==2);
+            await pinned.ReplaceSnapshotAsync();
+            await pinned.SelectAsync("discord.stream");
             await Wait(()=>widget.Render().CreateSnapshot("activity",100).PinnedLayouts.Any(layout=>layout.Root is { } root&&Nodes(root).Any(node=>node.Text=="Screen unavailable")));
             check(true,"A failed incoming receiver shows retry guidance in its pin rather than Connecting forever");
         }

@@ -216,8 +216,9 @@ internal sealed partial class BrowserSurface
                     var pinned = request.Placement == BrowserPopupPlacement.Pinned && request.Pin is not null && await request.Pin(child);
                     if (!pinned)
                     {
-                        if (PreparePopup is { } place) await place(child, layer, false, cancellation.Token);
+                        // Placement must measure a visible destination before admitting page input.
                         layer.Visibility = Visibility.Visible;
+                        if (PreparePopup is { } place) await place(child, layer, false, cancellation.Token);
                         if (request.Placement == BrowserPopupPlacement.Pinned) ShowStatus("The page opened in the widget because pin placement was unavailable.");
                     }
                     TraceNewWindow(previous is null ? "opened" : "replaced");
@@ -233,8 +234,8 @@ internal sealed partial class BrowserSurface
                     {
                         try
                         {
-                            if (PreparePopup is { } place) await place(child, layer, false, lifetime.Token);
                             layer.Visibility = Visibility.Visible;
+                            if (PreparePopup is { } place) await place(child, layer, false, lifetime.Token);
                         }
                         catch (Exception fallback) when (fallback is not OutOfMemoryException) { await ClosePopupAsync(); }
                     }

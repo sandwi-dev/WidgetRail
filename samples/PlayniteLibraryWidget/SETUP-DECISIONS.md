@@ -19,23 +19,23 @@ require the user to choose the displayed action.
 
 ## Inspect the chosen profile
 
-| Bridge / connection state | Automatic prompt | Explicit action |
+| WidgetRail integration / connection state | Automatic prompt | Explicit action |
 | --- | --- | --- |
 | Running, API matches profile, saved token matches | None; show library | Manual setup remains available |
 | Running and healthy, but saved token missing/different | Connect dialog | Save that profile's token after verification |
-| Running, Bridge absent | Installation dialog | Install bundled Bridge and restart the selected profile |
-| Stopped, Bridge absent | Installation dialog | Install and start the selected profile |
-| Stopped, Bridge present | Launch/repair dialog | Start and verify, or repair a recognized old build |
-| Bridge disabled | Enable dialog | Preserve files/preferences, enable, restart if running |
-| Running Bridge offline | Restart/reconnect dialog | Preserve installed files |
+| Running, integration absent | Installation dialog | Install WidgetRail for Playnite and restart the selected profile |
+| Stopped, integration absent | Installation dialog | Install and start the selected profile |
+| Stopped, integration present | Launch/repair dialog | Start and verify, or repair a recognized old build |
+| Integration disabled | Enable dialog | Preserve files/preferences, enable, restart if running |
+| Running integration offline | Restart/reconnect dialog | Preserve installed files |
 | Wrong profile or authentication rejected | Connection guidance | No file or credential overwrite |
-| Recognized original build requires repair | Repair dialog | Verified bundled replacement with rollback |
+| Recognized older WidgetRail build needs update | Repair dialog | Verified bundled replacement with rollback |
 | Unknown/newer incompatible build | Manual guidance | Never overwrite it automatically |
 | Interrupted setup | Recovery dialog | Recover the recorded transaction before retry |
 | Inspection fails | Visible error and connection-settings action | Never silently treat failure as a healthy connection |
 
-Automatic inspection checks local API identity/availability but does not repeatedly
-compile eval scripts. Explicit setup performs the complete compatibility check before
+Automatic inspection checks discovered API identity and capabilities.
+Explicit setup also verifies a bounded library read before
 accepting the connection. An existing connection's credentials are retained until a
 new connection has been verified.
 
@@ -67,8 +67,12 @@ require user interaction. Never force-kill Playnite to complete setup.
 ## Validation
 
 Backend fixtures cover profile discovery, duplicate installations, disabled and
-missing Bridge, token/health decisions, unknown builds, stale plans, shutdown refusal,
+missing integration, token/health decisions, unknown builds, stale plans, shutdown refusal,
 and rollback/recovery. Presentation/lifecycle fixtures must cover every automatic
 dialog action and the zero/one/multiple-profile selector states, including busy and
 error updates. A read-only live portable check verifies discovery and the offered
 plan without installing or restarting that copy.
+
+Original Playnite Bridge is never an update target. Its port, files, token and
+preferences remain independent. Discovery uses the selected profile descriptor,
+not port scanning. Coexistence evidence is tracked in the local integration plan.

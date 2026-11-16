@@ -20,6 +20,29 @@ internal static partial class NativeContextProbeInput
     }
     internal static void Keyboard(bool shiftF10) => SendKeyboard(shiftF10 ? VirtualKey.F10 : VirtualKey.Application, shiftF10);
     internal static void Escape() => SendKeyboard(VirtualKey.Escape, false);
+    internal static void PressKey(VirtualKey key,bool shift=false)=>SendKeyboard(key,shift);
+    internal static unsafe void PressControlShiftKey(VirtualKey key)
+    {
+        DemandOwnForeground();
+        var inputs=stackalloc NativeInput[6];
+        inputs[0]=Key(VirtualKey.Control,false);inputs[1]=Key(VirtualKey.Shift,false);inputs[2]=Key(key,false);
+        inputs[3]=Key(key,true);inputs[4]=Key(VirtualKey.Shift,true);inputs[5]=Key(VirtualKey.Control,true);
+        if(SendInput(6,inputs,sizeof(NativeInput))!=6)
+        {SendInput(3,inputs+3,sizeof(NativeInput));throw new InvalidOperationException("Native pin shortcut injection failed.");}
+    }
+    internal static unsafe void PressAltKey(VirtualKey key)
+    {
+        DemandOwnForeground();
+        var inputs=stackalloc NativeInput[4];
+        inputs[0]=Key(VirtualKey.Menu,false);inputs[1]=Key(key,false);
+        inputs[2]=Key(key,true);inputs[3]=Key(VirtualKey.Menu,true);
+        if(SendInput(4,inputs,sizeof(NativeInput))!=4)
+        {
+            inputs[0]=Key(key,true);inputs[1]=Key(VirtualKey.Menu,true);
+            SendInput(2,inputs,sizeof(NativeInput));
+            throw new InvalidOperationException("Native browser modifier input failed.");
+        }
+    }
     private static unsafe void SendKeyboard(VirtualKey key, bool shiftF10)
     {
         DemandOwnForeground();

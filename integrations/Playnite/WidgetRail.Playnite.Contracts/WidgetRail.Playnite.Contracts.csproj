@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net462;net8.0</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>WidgetRail.Playnite.Contracts</AssemblyName>
+    <RootNamespace>WidgetRail.Playnite</RootNamespace>
+    <Version>1.1.0</Version>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net462'">
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+</Project>

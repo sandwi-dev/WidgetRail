@@ -12,7 +12,7 @@ public sealed class PlayniteLocalArtworkTests
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNgYGBgAAAABQABeqhXUAAAAABJRU5ErkJggg==");
 
     [TestMethod]
-    public async Task LocalBytesMatchSourceAndDeletedFileFallsBackWithoutAnotherEval()
+    public async Task LocalBytesMatchSourceAndDeletedFileFallsBackWithoutAnotherManifestRead()
     {
         var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".png");
         await File.WriteAllBytesAsync(path, Image);
@@ -41,7 +41,7 @@ public sealed class PlayniteLocalArtworkTests
     [DataRow("{\"success\":true,\"result\":null}")]
     [DataRow("{\"success\":true,\"result\":[{\"id\":\"bad\"}]}")]
     [DataRow("not json")]
-    public async Task InvalidIndexFallsBackAndDoesNotRetryEval(string index)
+    public async Task InvalidIndexFallsBackAndDoesNotRetryManifest(string index)
     {
         var transport = new Transport(index);
         using var client = new PlayniteBridgeClient(transport, new Credentials(), preferLocalArtwork: true);
@@ -103,8 +103,10 @@ public sealed class PlayniteLocalArtworkTests
     {
         if (Environment.GetEnvironmentVariable("WRAIL_TEST_LIVE_PLAYNITE_ARTWORK") != "1")
             Assert.Inconclusive("Explicit opt-in required; reads the current Playnite profile.");
-        using var local = PlayniteBridgeClient.CreateDefault();
-        using var http = new PlayniteBridgeClient(new PlayniteBridgeHttpTransport(), new WindowsCredentialPlayniteTokenStore());
+        var source = LivePlayniteConnection.Source();
+        var credentials = new PlayniteProfileCredentialStore(source);
+        using var local = PlayniteBridgeClient.CreateLocal(source, credentials);
+        using var http = new PlayniteBridgeClient(new PlayniteBridgeHttpTransport(source), credentials);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var games = await local.QueryGamesAsync(new(0, 8, true), deadline.Token);
         foreach (var game in games.Games)
@@ -120,8 +122,8 @@ public sealed class PlayniteLocalArtworkTests
 
     private static string Index(string? path) => JsonSerializer.Serialize(new
     {
-        success = true,
-        result = new[] { new { id = GameId, cover = path, background = path } },
+        offset = 0, total = 1, revision = "fixture-1",
+        artwork = new[] { new { id = GameId, cover = path, background = path } },
     });
 
     private sealed class Credentials : IPlayniteCredentialStore

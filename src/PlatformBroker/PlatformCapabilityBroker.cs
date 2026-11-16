@@ -363,7 +363,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         var requestToken = lease.Token;
         return BrokerCapabilityDomains.Resolve(request.CapabilityId) switch
         {
-            BrokerCapabilityDomain.Pinning => PinningCapabilityDomain.Admit(request.Payload),
+            BrokerCapabilityDomain.Pinning => PinningCapabilityDomain.Admit(request.Operation,request.Payload),
             BrokerCapabilityDomain.WebSessions => await _webSessionDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Activity => await _activityDomain.ExecuteAsync(request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Notifications => await _notificationDomain.ExecuteAsync(request.Payload, requestToken).ConfigureAwait(false),

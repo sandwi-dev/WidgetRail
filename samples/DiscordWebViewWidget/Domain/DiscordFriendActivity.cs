@@ -11,6 +11,11 @@ internal static class DiscordAvatar
     {
         if(value is null)return true;
         if(value.Length>160)return false;
+        // Discord exposes exactly six public default avatars. Their URL contains no account data.
+        const string defaults="https://cdn.discordapp.com/embed/avatars/";
+        if(value.StartsWith(defaults,StringComparison.Ordinal))
+            return value.Length==defaults.Length+5&&value[defaults.Length] is >= '0' and <= '5'&&
+                value.EndsWith(".png",StringComparison.Ordinal);
         var prefix=$"https://cdn.discordapp.com/avatars/{userId}/";
         const string suffix=".png?size=64";
         if(!value.StartsWith(prefix,StringComparison.Ordinal)||!value.EndsWith(suffix,StringComparison.Ordinal))return false;

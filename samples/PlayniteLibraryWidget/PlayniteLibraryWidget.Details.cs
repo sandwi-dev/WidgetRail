@@ -30,6 +30,7 @@ public sealed partial class PlayniteLibraryWidget
             Activity = activity.Value,
             ActivityLoading = activity.Status is WidgetResourceStatus.Loading or WidgetResourceStatus.Refreshing,
             ActivityError = activity.Error?.Message,
+            ProgressPinSelectionId = progressPin.Selection?.SelectionId,
         } };
     }
 
@@ -46,6 +47,9 @@ public sealed partial class PlayniteLibraryWidget
                 CompletionStatusesLoading = false,
                 AchievementSearchRequest = 0,
                 OperationBusy = false,
+                AchievementRefreshBusy = false,
+                AchievementRefreshMessage = state.DetailsExtras.AchievementRefreshBusy
+                    ? "The provider may still be refreshing in Playnite." : state.DetailsExtras.AchievementRefreshMessage,
                 ConfirmUninstall = false,
                 OperationMessage = state.DetailsExtras.OperationBusy
                     ? "Request interrupted. Refresh to check its outcome."
@@ -72,7 +76,7 @@ public sealed partial class PlayniteLibraryWidget
     {
         if (retainReadValues) { _detailsAchievements.Cancel(); _detailsActivity.Cancel(); }
         else { _detailsAchievements.Reset(); _detailsActivity.Reset(); }
-        foreach (var key in new[] { "playnite-library.details", "playnite-library.details.operation", "playnite-library.details.statuses" }) Operations.Cancel(key);
+        foreach (var key in new[] { "playnite-library.details", "playnite-library.details.operation", "playnite-library.details.statuses", DetailsPrefix + "provider-refresh" }) Operations.Cancel(key);
     }
 
     private void UpdateDetails(long generation, Func<PlayniteDetailsExtras, PlayniteDetailsExtras> update) =>
@@ -136,6 +140,20 @@ public sealed partial class PlayniteLibraryWidget
         var state = WithDetailsResources(_model.Value);
         if (LifecycleState != WidgetLifecycleState.Interactive || state.DetailsItem is not { } item) return true;
         var name = action.ActionId[DetailsPrefix.Length..];
+        if (name.StartsWith("achievement.unpin.", StringComparison.Ordinal) || name.StartsWith("achievement.manage.", StringComparison.Ordinal))
+        {
+            var selection = progressPin.Selection;
+            if (selection is not null && name.EndsWith("." + selection.SelectionId, StringComparison.Ordinal))
+                try
+                {
+                    if (name.StartsWith("achievement.unpin.", StringComparison.Ordinal)) await HostServices.Pinning.RequestCloseAsync(selection, token).ConfigureAwait(false);
+                    else await HostServices.Pinning.RequestManageAsync(selection, token).ConfigureAwait(false);
+                }
+                catch (Exception error) when (error is WidgetCapabilityException or WidgetCapabilityUnavailableException)
+                { UpdateDetails(state.DetailsGeneration, value => value with { AchievementRefreshMessage = "Pin management is unavailable on this host." }); }
+            return true;
+        }
+        if (name == "achievement.refresh-provider") { RefreshAchievementsFromProvider(state); return true; }
         if (action.ActionId != PlayniteAchievementBrowse.SearchFocusAction && state.DetailsExtras.AchievementSearchRequest != 0)
             UpdateDetails(state.DetailsGeneration, value => value with { AchievementSearchRequest = 0 });
         if (action.ActionId == PlayniteAchievementBrowse.SearchFocusAction)
@@ -189,8 +207,13 @@ public sealed partial class PlayniteLibraryWidget
         }
         if (name == "refresh")
         {
-            if (!state.DetailsExtras.OperationBusy && !state.OrganizationBusy && state.LaunchingSavedId is null)
+            if (!state.DetailsExtras.OperationBusy && !state.DetailsExtras.AchievementRefreshBusy &&
+                !state.OrganizationBusy && state.LaunchingSavedId is null)
+            {
                 OpenDetails(item, preserveTab: true);
+                if (state.DetailsExtras.Tab == PlayniteDetailsTab.Achievements)
+                    RefreshAchievementsFromProvider(WithDetailsResources(_model.Value));
+            }
             return true;
         }
         if (name is "page.previous" or "page.next")

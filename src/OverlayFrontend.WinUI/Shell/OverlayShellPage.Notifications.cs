@@ -133,8 +133,11 @@ internal sealed partial class OverlayShellPage
             if (entry.Available && entry.Owner is WidgetRail.WidgetPresentationSession.WidgetPresentationNotification { IntentToken: not null } notification && owner is { } current)
                 return await InvokeIntentCoreAsync(prepareNotification: token => current.Session.PrepareNotificationIntentAsync(notification, token));
             if (!entry.Available || entry.Owner is not BrowserSurface source || retired) return false;
-            if (pinned is { } pin && pin.WidgetId == entry.Widget && pin.IsCurrent && ReferenceEquals(source.XamlRoot, pin.Window.AutomationRoot.XamlRoot))
+            if (source.XamlRoot is { } root && pins.FirstOrDefault(pin=>pin.WidgetId==entry.Widget && pin.IsCurrent &&
+                ReferenceEquals(root,pin.Window.AutomationRoot.XamlRoot)) is { } target)
             {
+                if(!ReferenceEquals(pinned,target))ExitPinnedInteraction(restoreMain:false);
+                pinned=target;
                 await EnterPinnedAsync();
                 return PinnedInputActive && await browsers.FocusNotificationSourceAsync(source);
             }

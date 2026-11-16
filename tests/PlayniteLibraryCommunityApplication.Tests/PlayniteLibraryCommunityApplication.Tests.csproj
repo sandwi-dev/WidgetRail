@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\samples\PlayniteLibraryWidget\Application\PlayniteLibraryApplication.csproj" />
+    <ProjectReference Include="../../integrations/Playnite/WidgetRail.Playnite.Core/WidgetRail.Playnite.Core.csproj" />
     <ProjectReference Include="../PlayniteLaunchLifetimeFixture/PlayniteLaunchLifetimeFixture.csproj" ReferenceOutputAssembly="false" />
     <!-- Metadata-only setup fixture; never a runtime or compile-time dependency. -->
     <PackageDownload Include="PlayniteSDK" Version="[6.15.0]" />

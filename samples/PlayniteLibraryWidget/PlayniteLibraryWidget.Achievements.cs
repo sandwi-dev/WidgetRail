@@ -38,6 +38,8 @@ public sealed partial class PlayniteLibraryWidget
                         {
                             token.ThrowIfCancellationRequested();
                             if (query.Generation != _model.Value.DetailsGeneration) return;
+                            if (action.ActionId == PlayniteAchievementBrowse.Prefix + "achievement.track." + entry.Key)
+                            { await TrackAchievementAsync(query, entry, token); return; }
                             await HandleActionAsync(action, null, token);
                         },
                         ResolveArtworkSource = (query, entry, handle, token) =>

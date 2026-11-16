@@ -48,7 +48,7 @@ static async Task PageCoverage()
 {
     var widget = new SdkGalleryWidget();
     var overview = Snapshot(widget, 1);
-    Assert.Equal(ProtocolConstants.WidgetTransitionVersion, overview.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.PinnedInteractionVersion, overview.ProtocolVersion);
     Assert.Equal("gallery.refresh", overview.InitialFocusId);
     Assert.Equal(widget.Navigation.InputScopeId, overview.ActiveInputScopeId);
     Assert.Equal(WidgetSurfaceMode.Standard, overview.Surface!.Mode);
@@ -132,7 +132,7 @@ static async Task PageCoverage()
 
     await Act(widget, "gallery.tab.tiles");
     var tiles = Snapshot(widget, 3);
-    Assert.Equal(ProtocolConstants.WidgetTransitionVersion, tiles.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.PinnedInteractionVersion, tiles.ProtocolVersion);
     Assert.Equal(4, Nodes(tiles.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface));
     Assert.Equal(2, Nodes(tiles.Root).Count(node =>
         node.StyleClasses.SequenceEqual(["wrail-action-surface", "wrail-tile"])));
@@ -190,7 +190,7 @@ static async Task NativeGrid()
     await Act(widget, "gallery.tab.controls");
     var before = Snapshot(widget, 1);
     var firstGrid = Find(before, "gallery.grid");
-    Assert.Equal(ProtocolConstants.LineGraphVersion, before.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.PinnedInteractionVersion, before.ProtocolVersion);
     Assert.Equal(ViewNodeKind.LineGraph, Find(before, "gallery.graph").Kind);
     Assert.True(Find(before, "gallery.graph").Graph!.Points.Any(point => point.Value is null));
     Assert.Equal(ViewNodeKind.Grid, firstGrid.Kind);
@@ -393,7 +393,7 @@ static async Task TrustedArtwork()
     var snapshot = Snapshot(widget, 1);
     var artworkHandle = Find(snapshot, "gallery.app.artwork").ArtworkHandle;
     Assert.True(artworkHandle is not null);
-    Assert.Equal(ProtocolConstants.WidgetTransitionVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.PinnedInteractionVersion, snapshot.ProtocolVersion);
     Assert.Equal(ViewNodeKind.BackgroundSurface, snapshot.Root.Kind);
     Assert.True(snapshot.Root.StyleClasses.SequenceEqual(
         ["wrail-background-surface", "gallery-root-background"]));
@@ -670,7 +670,7 @@ static async Task ModernExamples()
     Assert.True(Find(Snapshot(widget, 4), "gallery.busy").IsBusy == true);
     await widget.OnActionAsync(new("gallery.level", "gallery.level.direct", RequestedValue: 75));
     Assert.Equal(75d, Find(Snapshot(widget, 5), "gallery.level.explicit").Value);
-    Assert.Equal(2, widget.Render().PinnedLayouts!.Count);
+    Assert.Equal(3, widget.Render().PinnedLayouts!.Count);
     await Act(widget, "gallery.tab.surfaces");
     Assert.False(Nodes(Snapshot(widget, 6).Root).Any(node => node.Kind is ViewNodeKind.WebBrowser or ViewNodeKind.MediaPlayer));
     await Act(widget, "gallery.surface.browser");

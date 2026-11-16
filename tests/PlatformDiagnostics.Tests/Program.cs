@@ -22,6 +22,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Trusted worker inspects and clears only exact widget local data", WidgetLocalDataRoundTrip),
     ("Built-in and installed data operations stay distinct across the diagnostics pipe", BuiltInLocalDataRoundTrip),
     ("Trusted worker uninstalls only an exact path-free package identity", WidgetPackageUninstallRoundTrip),
+    ("Uninstall outlives the read budget but remains bounded without replay", WidgetPackageUninstallBudget),
     ("Recovery retry reports stale and refused outcomes without mutation ambiguity", RecoveryRetryStaleAndRefused),
     ("Recovery retry timeout and caller cancellation fail closed", RecoveryRetryCancellationIsBounded),
     ("Recovery retry results enforce closed bounded diagnostics", RecoveryRetryResultIsBounded),
@@ -348,6 +349,54 @@ static async Task WidgetPackageUninstallRoundTrip()
             "community.widget", "installed.ABCD", "2.0.0", "bad").AsTask());
     Assert.Equal(1, inspected);
     Assert.Equal(1, uninstalled);
+}
+
+static async Task WidgetPackageUninstallBudget()
+{
+    var token=ConfirmationToken('6',legacy:true);
+    var calls=0;
+    await using(var harness=new DiagnosticsHarness(_=>ValueTask.FromResult(HealthySnapshot(52)),
+        uninstall:async(_,_,_,_,ct)=>
+        {
+            Interlocked.Increment(ref calls);
+            await Task.Delay(2300,ct);
+            return new(PlatformWidgetPackageUninstallStatus.Uninstalled,"uninstalled");
+        }))
+    {
+        var result=await harness.Client.UninstallWidgetPackageAsync("community.widget","installed.ABCD","2.0.0",token);
+        Assert.Equal(PlatformWidgetPackageUninstallStatus.Uninstalled,result.Status);
+        Assert.Equal(1,calls);
+        await harness.Client.GetSnapshotAsync();
+    }
+    var late=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    await using(var harness=new DiagnosticsHarness(_=>ValueTask.FromResult(HealthySnapshot(52)),
+        uninstall:async(_,_,_,_,_)=>
+        {
+            Interlocked.Increment(ref calls);
+            await Task.Delay(350); // Simulate a post-commit operation that cannot undo its work.
+            late.SetResult();
+            return new(PlatformWidgetPackageUninstallStatus.Uninstalled,"uninstalled");
+        }))
+    {
+        using var cancelled=new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        await Assert.ThrowsAsync<OperationCanceledException>(()=>harness.Client.UninstallWidgetPackageAsync(
+            "community.widget","installed.ABCD","2.0.0",token,cancelled.Token).AsTask());
+        await late.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(2,calls);
+        await harness.Client.GetSnapshotAsync();
+    }
+    await using(var harness=new DiagnosticsHarness(_=>ValueTask.FromResult(HealthySnapshot(52)),
+        uninstall:async(_,_,_,_,ct)=>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan,ct);
+            return new(PlatformWidgetPackageUninstallStatus.Uninstalled,"uninstalled");
+        }))
+    {
+        var error=await Assert.ThrowsAsync<PlatformDiagnosticsException>(()=>harness.Client.UninstallWidgetPackageAsync(
+            "community.widget","installed.ABCD","2.0.0",token).AsTask().WaitAsync(TimeSpan.FromSeconds(40)));
+        Assert.True(error.Code is "diagnostics_timeout" or "diagnostics_unavailable");
+        await harness.Client.GetSnapshotAsync();
+    }
 }
 
 static async Task RecoveryRetryStaleAndRefused()

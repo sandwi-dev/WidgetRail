@@ -6,6 +6,9 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     internal BrowserOwner? BrowserOwner { get; set; }
+    internal BrowserSurface? NativeKeyboardBrowser => bindings.Values.Select(binding=>binding.Element).OfType<BrowserSlot>()
+        .Where(slot=>slot.AcceptsInput).Select(slot=>slot.Surface?.ActiveSurface)
+        .FirstOrDefault(browser=>browser?.HasNativeKeyboardFocus==true);
     internal BrowserSurface? ControllerBrowser => presentationInputEnabled && FocusedBrowser is { AcceptsInput: true, IsBrowsing: true } slot
         ? slot.Surface?.ActiveSurface : null;
     private BrowserSlot? FocusedBrowser => bindings.Values.Select(binding => binding.Element).OfType<BrowserSlot>()

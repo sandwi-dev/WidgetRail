@@ -107,9 +107,9 @@ internal static class PlayniteLibraryDetailsPresentation
             {
                 var facts = new List<WidgetElement>();
                 var metadata = item.Presentation.Metadata;
-                if (metadata?.PlaytimeMinutes is > 0) facts.Add(Value("Time played", Duration(metadata.PlaytimeMinutes.Value * 60), Prefix + "overview.playtime"));
+                if (metadata?.PlaytimeMinutes is > 0) facts.Add(Value("Time played", Duration(metadata.PlaytimeMinutes.Value * 60), Prefix + "overview.playtime", "playnite-ink-time"));
                 if (metadata?.LastPlayedAtUnixMilliseconds is { } last && last is >= -62135596800000 and <= 253402300799999)
-                    facts.Add(Value("Last played", DateTimeOffset.FromUnixTimeMilliseconds(last).ToLocalTime().ToString("d"), Prefix + "overview.last"));
+                    facts.Add(Value("Last played", DateTimeOffset.FromUnixTimeMilliseconds(last).ToLocalTime().ToString("d"), Prefix + "overview.last", "playnite-ink-time"));
                 if (facts.Count > 0) tabContent.Add(UI.ResponsiveGrid(Prefix + "overview.facts", 240, 2, facts.ToArray()).Classes("playnite-library-details-facts"));
                 AddDescription(tabContent, item, game, loading, error);
             }
@@ -144,7 +144,7 @@ internal static class PlayniteLibraryDetailsPresentation
         var menu = PlayniteLibraryGameOptions.Create(item, favorite, categories, busy || !current)
             .Take(ProtocolConstants.MaximumContextActionCount - 2)
             .Concat(new WidgetContextAction[] {
-                new(Prefix + "refresh", "Refresh details", IsDisabled: busy || !current),
+                new(Prefix + "refresh", "Refresh details", IsDisabled: busy || extras.AchievementRefreshBusy || !current),
                 new(Prefix + "uninstall", "Uninstall…", IsDisabled: busy || !current || !installed)
             }).ToArray();
         var options = UI.Row(OptionsId,
@@ -155,7 +155,7 @@ internal static class PlayniteLibraryDetailsPresentation
         {
             ScrollContent = false,
             HeaderActions = UI.Row(Prefix + "header-hints", options,
-                UI.ControllerHint(ControllerButton.Y, "Refresh", Prefix + "refresh.hint"),
+                UI.ControllerHint(ControllerButton.Y, extras.AchievementRefreshBusy ? "Refreshing…" : "Refresh", Prefix + "refresh.hint"),
                 UI.ControllerHint(ControllerButton.B, "Close", Prefix + "close.hint"))
                 .Classes("playnite-library-details-header-hints"),
         };
@@ -188,9 +188,9 @@ internal static class PlayniteLibraryDetailsPresentation
     private static void AddInformation(List<WidgetElement> content, PlayniteLibraryItem item, PlayniteBridgeGame? game)
     {
         var metadata = item.Presentation.Metadata;
-        if (metadata?.PlaytimeMinutes is { } minutes) content.Add(Value("Time played", Duration(minutes * 60), Prefix + "playtime"));
+        if (metadata?.PlaytimeMinutes is { } minutes) content.Add(Value("Time played", Duration(minutes * 60), Prefix + "playtime", "playnite-ink-time"));
         if (metadata?.LastPlayedAtUnixMilliseconds is { } played && played is >= -62135596800000 and <= 253402300799999)
-            content.Add(Value("Last played", DateTimeOffset.FromUnixTimeMilliseconds(played).ToLocalTime().ToString("d"), Prefix + "last-played"));
+            content.Add(Value("Last played", DateTimeOffset.FromUnixTimeMilliseconds(played).ToLocalTime().ToString("d"), Prefix + "last-played", "playnite-ink-time"));
         if (game is not null)
         {
             AddValue("Developer", string.Join(", ", game.Developers), "developers");
@@ -207,14 +207,14 @@ internal static class PlayniteLibraryDetailsPresentation
             if (game.CriticScore is { } critic) scores.Add($"Critics {critic}/100");
             if (game.CommunityScore is { } community) scores.Add($"Community {community}/100");
             if (game.UserScore is { } personal) scores.Add($"Your rating {personal}/100");
-            AddValue("Ratings", string.Join(" | ", scores), "ratings");
+            AddValue("Ratings", string.Join(" | ", scores), "ratings", "playnite-ink-reward");
             AddValue("Tags", string.Join(", ", game.Tags), "tags");
         }
         AddValue("Version", metadata?.Version, "version");
         if (content.Count == 0) content.Add(Copy("No additional information is available for this game.", "information.empty"));
-        void AddValue(string label, string? value, string id)
+        void AddValue(string label, string? value, string id, string ink = "playnite-ink-source")
         {
-            if (!string.IsNullOrWhiteSpace(value)) content.Add(Value(label, value, Prefix + id));
+            if (!string.IsNullOrWhiteSpace(value)) content.Add(Value(label, value, Prefix + id, ink));
         }
     }
 
@@ -264,17 +264,17 @@ internal static class PlayniteLibraryDetailsPresentation
             return;
         }
         if (data.Sessions.Count == 0) { content.Add(Copy("GameActivity has no recorded sessions for this game.", "activity.empty")); return; }
-        content.Add(Value("Recorded playtime", Duration(data.TotalSeconds), Prefix + "activity.total"));
-        content.Add(Value("Sessions", data.Sessions.Count.ToString(CultureInfo.CurrentCulture), Prefix + "activity.count"));
-        content.Add(Value("Average session", Duration((long)data.Sessions.Average(item => (double)item.Seconds)), Prefix + "activity.average"));
-        content.Add(Value("Longest session", Duration(data.Sessions.Max(item => item.Seconds)), Prefix + "activity.longest"));
+        content.Add(Value("Recorded playtime", Duration(data.TotalSeconds), Prefix + "activity.total", "playnite-ink-time"));
+        content.Add(Value("Sessions", data.Sessions.Count.ToString(CultureInfo.CurrentCulture), Prefix + "activity.count", "playnite-ink-time"));
+        content.Add(Value("Average session", Duration((long)data.Sessions.Average(item => (double)item.Seconds)), Prefix + "activity.average", "playnite-ink-time"));
+        content.Add(Value("Longest session", Duration(data.Sessions.Max(item => item.Seconds)), Prefix + "activity.longest", "playnite-ink-time"));
         var page = Math.Clamp(state.Page, 0, (data.Sessions.Count - 1) / PageSize);
         for (var index = page * PageSize; index < Math.Min(data.Sessions.Count, (page + 1) * PageSize); index++)
         {
             var session = data.Sessions[index];
             var label = (session.Date?.ToLocalTime().ToString("g") ?? "Date unknown") + " | " + Duration(session.Seconds);
             content.Add(UI.Stack(Prefix + "session." + index,
-                UI.Text(label, Prefix + "session." + index + ".summary").Classes("playnite-library-details-row-title"),
+                UI.Text(label, Prefix + "session." + index + ".summary").Classes("playnite-library-details-row-title", "playnite-ink-time"),
                 UI.Text(session.Action ?? "Play session", Prefix + "session." + index + ".action").Classes("playnite-library-details-meta"))
                 .Classes("playnite-library-details-row"));
         }
@@ -289,10 +289,10 @@ internal static class PlayniteLibraryDetailsPresentation
             UI.Button("Next", Prefix + "page.next", Prefix + "page.next").Disabled((page + 1) * PageSize >= count))
             .Classes("playnite-library-details-toolbar"));
     }
-    private static WidgetElement Value(string label, string value, string id) =>
+    private static WidgetElement Value(string label, string value, string id, string ink = "playnite-ink-source") =>
         UI.Stack(id,
             UI.Text(label, id + ".label").Classes("playnite-library-details-label"),
-            UI.Text(value, id + ".value").Classes("playnite-library-details-field"))
+            UI.Text(value, id + ".value").Classes("playnite-library-details-field", ink))
             .Classes("playnite-library-details-value");
     private static WidgetElement Copy(string text, string id) => UI.Text(text, Prefix + id).Classes("playnite-library-details-description");
     private static WidgetElement Loading(string text) => UI.Row(Prefix + "loading",

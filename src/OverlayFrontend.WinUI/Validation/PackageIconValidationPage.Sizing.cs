@@ -12,6 +12,42 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 internal sealed partial class PackageIconValidationPage
 {
+    private async Task TintedIconSizingAsync()
+    {
+        var host=(StackPanel)Content;
+        using var view=new WidgetPackageIconView{Width=14,Height=14,FontSize=24,HorizontalAlignment=HorizontalAlignment.Left};
+        host.Children.Add(view);
+        var demands=0;
+        try
+        {
+            view.Update(new(){Id="small-tint",Kind=ViewNodeKind.Icon,Glyph=WidgetGlyph.Music,
+                PackageIcon=new("small-tint",WidgetPackageIconColorMode.ThemeTint)},(_,_)=>
+                {demands++;return Task.FromResult(Bytes("small-tint"));},"small-tint",diagnostics.Add);
+            await Until(()=>view.Content is ImageIcon icon&&NativePackageIconTint.For(icon) is not null&&view.ActualWidth>0);
+            foreach(var size in new[]{14d,16d,26d,32d})
+            {
+                view.Width=view.Height=size;
+                try{await Until(()=>Math.Abs(view.ActualWidth-size)<1);}
+                catch(TimeoutException error){throw new InvalidOperationException($"Tint slot {size} did not settle: owner={view.ActualWidth}x{view.ActualHeight}, child={((ImageIcon)view.Content).ActualWidth}x{((ImageIcon)view.Content).ActualHeight}",error);}
+                view.UpdateLayout();
+                var image=(ImageIcon)view.Content;
+                var bounds=image.TransformToVisual(view).TransformBounds(new(0,0,image.ActualWidth,image.ActualHeight));
+                Check(image.Width<=view.ActualWidth+.1&&image.Height<=view.ActualHeight+.1&&Math.Abs(bounds.Width-size)<1&&Math.Abs(bounds.Height-size)<1&&
+                    Math.Abs(bounds.X)<1&&Math.Abs(bounds.Y)<1,
+                    $"Tinted icon at {size} DIPs is laid out at paint size and centered without an oversized clipped child " +
+                    $"(owner={view.ActualWidth:F2}x{view.ActualHeight:F2}, child={image.Width:F2}x{image.Height:F2}, bounds={bounds})");
+            }
+            view.ClearValue(FrameworkElement.WidthProperty);view.ClearValue(FrameworkElement.HeightProperty);
+            await Until(()=>Math.Abs(view.ActualWidth-24)<1&&Math.Abs(view.ActualHeight-24)<1);
+            Check(demands==1,"Removing tinted icon dimensions restores intrinsic size and retains the admitted asset");
+            view.Padding=new Thickness(4);
+            await Until(()=>Math.Abs(view.ActualWidth-32)<1&&Math.Abs(view.ActualHeight-32)<1);
+            Check(Math.Abs(((ImageIcon)view.Content).Width-24)<1,
+                "An intrinsically sized tinted icon reserves padding around its full glyph");
+        }
+        finally{host.Children.Remove(view);}
+    }
+
     private async Task OriginalColorSizingAsync()
     {
         var host = (StackPanel)Content;

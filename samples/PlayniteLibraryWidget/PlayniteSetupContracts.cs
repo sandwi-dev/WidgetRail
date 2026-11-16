@@ -14,7 +14,7 @@ internal sealed record PlayniteSetupPlan(PlayniteSetupInstallation Installation,
         PlayniteSetupAction.Start => "Start Playnite and connect",
         PlayniteSetupAction.Restart => "Restart Playnite and connect",
         PlayniteSetupAction.Install => Installation.Running ? "Install integration and restart Playnite" : "Install integration and connect",
-        PlayniteSetupAction.Repair => "Repair integration and reconnect",
+        PlayniteSetupAction.Repair => "Update integration and reconnect",
         PlayniteSetupAction.Enable => "Enable integration and reconnect",
         _ => "Connect Playnite",
     };

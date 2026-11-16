@@ -1,10 +1,11 @@
-param([Parameter(Mandatory)][string]$CandidateDirectory,[string]$OutputDirectory)
+param([Parameter(Mandatory)][string]$CandidateDirectory,[string]$OutputDirectory,[switch]$PassivePins,[switch]$PointerPins,
+    [string]$BridgeDirectory,[string]$FixtureDirectory)
 $ErrorActionPreference='Stop'
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $candidate=[IO.Path]::GetFullPath($CandidateDirectory)
 $exe=Join-Path $candidate 'OverlayFrontend.WinUI.exe'
-$bridge=Join-Path $repo 'src/WidgetBridge/bin/Debug/net8.0-windows10.0.19041.0/win-x64'
-$worker=Join-Path $repo 'tests/PinningWidgetFixture/bin/Debug/net8.0'
+$bridge=if($BridgeDirectory){[IO.Path]::GetFullPath($BridgeDirectory)}else{Join-Path $repo 'src/WidgetBridge/bin/Debug/net8.0-windows10.0.19041.0/win-x64'}
+$worker=if($FixtureDirectory){[IO.Path]::GetFullPath($FixtureDirectory)}else{Join-Path $repo 'tests/PinningWidgetFixture/bin/Debug/net8.0'}
 $seal=Join-Path $repo 'tools/BundledWidgetPackageSeal/bin/Debug/net8.0/BundledWidgetPackageSeal.dll'
 foreach($file in @($exe,$seal,(Join-Path $bridge 'WidgetBridge.exe'),(Join-Path $worker 'PinningWidgetFixture.exe'))){if(!(Test-Path -LiteralPath $file)){throw "Build the fixture prerequisites first: $file"}}
 if(!$OutputDirectory){$OutputDirectory=Join-Path $repo ('artifacts/discord-webview/pinning-runs/'+[guid]::NewGuid().ToString('N'))}
@@ -15,7 +16,7 @@ $profile=Join-Path $output 'profile'
 New-Item -ItemType Directory -Force "$installation/runtime",$profile | Out-Null
 Copy-Item -LiteralPath $bridge -Destination "$installation/runtime/Bridge" -Recurse
 Copy-Item -LiteralPath $worker -Destination "$installation/runtime/Fixture" -Recurse
-$widgets=@(foreach($id in @('pinning-gallery','pinning-gallery-peer')){
+$widgets=@(foreach($id in @('pinning-gallery','pinning-gallery-peer','pinning-gallery-third','pinning-gallery-fourth')){
     $package=Join-Path $installation ('packages/'+$id)
     New-Item -ItemType Directory -Force $package|Out-Null
     Copy-Item -LiteralPath $worker -Destination "$package/payload" -Recurse
@@ -34,7 +35,10 @@ Copy-Item -LiteralPath "$repo/samples/SdkGalleryWidget/styles/default.wrss" -Des
 @{version=1;step='complete';paused=$false}|ConvertTo-Json|Set-Content -LiteralPath "$profile/introduction-progress.json"
 @{InstallationRoot=$installation;SettingsRoot=$profile;InstalledCatalogRoot="$output/catalog";InitialWidgetId='pinning-gallery';LayoutDiagnosticsPath="$output/layout.json"}|ConvertTo-Json|Set-Content -LiteralPath "$output/shell.json"
 $result=Join-Path $output 'result.json'
-$process=Start-Process -FilePath $exe -ArgumentList @(('"--shell-config='+$output+'/shell.json"'),'--shell-no-controller',('"--validate-pin-requests='+$result+'"')) -WindowStyle Hidden -PassThru
+$launchArgs=@(('"--shell-config='+$output+'/shell.json"'),'--shell-no-controller','--validation-platform-activation',('"--validate-pin-requests='+$result+'"'))
+if($PassivePins){$launchArgs+='--passive-pins-only'}
+if($PointerPins){$launchArgs+='--pointer-pins-only'}
+$process=Start-Process -FilePath $exe -ArgumentList $launchArgs -WindowStyle Hidden -PassThru
 try{
     $deadline=[DateTime]::UtcNow.AddSeconds(120)
     while(!(Test-Path -LiteralPath $result)){
@@ -48,6 +52,11 @@ try{
     $data.checks|ForEach-Object{Write-Output "PASS $_"}
     Write-Output "Evidence: $result"
 }finally{
-    if(!$process.HasExited){Stop-Process -Id $process.Id}
+    if(!$process.HasExited){
+        & "$repo/scripts/Close-WinUiTestShell.ps1" -AppPid $process.Id
+        if(!$process.WaitForExit(30000)){Stop-Process -Id $process.Id;throw 'Pin fixture did not close normally.'}
+    }
+    if($process.ExitCode -ne 0){throw "Pin fixture exited with $($process.ExitCode)."}
+    @{exitCode=$process.ExitCode}|ConvertTo-Json|Set-Content "$output/shutdown.json"
     $process.Dispose()
 }

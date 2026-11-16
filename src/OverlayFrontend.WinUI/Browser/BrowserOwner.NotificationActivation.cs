@@ -8,8 +8,7 @@ internal sealed partial class BrowserOwner
     {
         while (reconciliation is { IsCompleted: false } pending) await pending;
         if (retired) return false;
-        if (popupPresentation is { IsCurrent: true, Slot: { CanDisplay: true, AcceptsInput: true } popupSlot } popup &&
-            ReferenceEquals(popup.Child, source))
+        if (popupPresentations.GetValueOrDefault(source) is { IsCurrent: true, Slot: { CanDisplay: true, AcceptsInput: true } popupSlot })
         {
             if (!popupSlot.Focus(FocusState.Keyboard)) return false;
             source.Enter();

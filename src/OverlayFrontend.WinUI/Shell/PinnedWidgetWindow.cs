@@ -1,4 +1,5 @@
 using Microsoft.UI.Windowing;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -10,7 +11,7 @@ using WinUIEx.Messaging;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
-internal enum PeerWindowLayer { Pin, Notification }
+internal enum PeerWindowLayer { Pin, Notification, Toolbar }
 
 /// <summary>Peer native window. The coordinator owns widget/session and input authority.</summary>
 internal sealed partial class PinnedWidgetWindow : IDisposable
@@ -20,7 +21,7 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
     private readonly Input.GamepadKeyBoundary gamepadKeys;
     private WindowMessageMonitor? messages;
     private readonly Grid content = new();
-    private readonly Border surfaceBackground = new();
+    private readonly DesktopAcrylicSurface surfaceBackground = new();
     // A sibling overlay keeps the ownership cue out of widget measurement and
     // never steals pointer/controller input from the presentation beneath it.
     private readonly Border focusIndicator = new() { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
@@ -29,13 +30,14 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
     private readonly Microsoft.UI.System.ThemeSettings theme;
     private bool disposed;
     private bool hasForeground;
+    private bool ownedBrowserFocus;
     private bool placementActive;
     private double focusWidth = 4;
     internal event Action? CloseRequested;
     internal event Action<bool>? ForegroundChanged;
     internal event Action? ThemeChanged;
     internal event Action? PlacementEnvironmentChanged;
-    internal Border SurfaceBackground => surfaceBackground;
+    internal Border SurfaceBackground => surfaceBackground.Paint;
     internal Border FocusIndicator => focusIndicator;
     internal FrameworkElement AutomationRoot => automationRoot;
     internal bool SystemHighContrast => theme.HighContrast;
@@ -45,6 +47,7 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
         set { scaleRoot.InterfaceScale = value; UpdateFocusGeometry(); }
     }
     internal bool Interactive { get; private set; }
+    internal bool NativeInputEnabled => IsWindowEnabled(Handle);
     internal bool IsVisible => !disposed && window.IsVisible;
     internal nint Handle { get; }
     internal FrameworkElement? Child { get; private set; }
@@ -151,14 +154,21 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
         DemandAlive();
         if (bounds.Width <= 0 || bounds.Height <= 0) throw new ArgumentOutOfRangeException(nameof(bounds));
         if (Bounds != bounds) window.MoveAndResize(new(bounds.X, bounds.Y, bounds.Width, bounds.Height));
+        pointerPlacement?.Place(bounds);
+        pointerActivation?.Place(bounds);
         SizeIsland();
+    }
+    internal void PrepareContent()
+    {
+        DemandAlive();
+        SizeIsland();island.SiteBridge.Show();
     }
     internal void Show()
     {
         DemandAlive();
         if (!IsVisible) window.Show(activateWindow: false);
-        SizeIsland(); island.SiteBridge.Show();
-        OverlayWindowFrame.SuppressBorder(Handle);
+        PrepareContent();
+        OverlayWindowFrame.SuppressBorder(Handle,suppressNativeCorners:true);
         ReconcileOrder();
         UpdateFocusVisibility();
     }
@@ -169,6 +179,8 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
     internal void Hide()
     {
         if (disposed) return;
+        SetPointerActivation(null);
+        SetPointerPlacement(null);
         placementActive = false;
         SetInteraction(false);
         hasForeground = false;
@@ -177,7 +189,12 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
     internal void SetInteraction(bool enabled)
     {
         DemandAlive();
+        if(enabled)SetPointerActivation(null);
         Interactive = enabled;
+        if(!enabled)ownedBrowserFocus=false;
+        // Gate the HWND and native descendants without applying disabled XAML
+        // styling to the rendered content. Entry reenables it before activation.
+        EnableWindow(Handle,enabled);
         var style = ExtendedStyle | ExtendedWindowStyle.ToolWindow | ExtendedWindowStyle.Layered;
         style = enabled ? style & ~(ExtendedWindowStyle.NoActivate | ExtendedWindowStyle.Transparent)
             : style | ExtendedWindowStyle.NoActivate | ExtendedWindowStyle.Transparent;
@@ -192,17 +209,27 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
         // widget styles just because the host window is click-through. The
         // coordinator separately gates presenter entry and action admission.
     }
-    internal void ReconcileOrder()
+    internal void ReconcileOrder(nint backdrop = 0)
     {
         if (disposed || mainWindow == 0 || !IsVisible) return;
         if (OverlayWindowFrame.IsWindowVisible(mainWindow) != 0)
         {
-            // Presentation layer is independent of input ownership. Move only the
-            // banner: lowering the main window could leave its backdrop above it.
-            if (layer == PeerWindowLayer.Notification) OverlayWindowFrame.PlaceAbove(Handle, mainWindow);
-            // Adjustment owns the front layer while the shell retains input.
-            else if (Interactive || placementActive) OverlayWindowFrame.PlaceBelow(mainWindow, Handle);
-            else OverlayWindowFrame.PlaceBelow(Handle, mainWindow);
+            // Relative layer constraints are enough. Requiring every peer to be
+            // adjacent to main rotates all siblings on every overlay refresh.
+            if (layer == PeerWindowLayer.Notification || Interactive || placementActive)
+                OverlayWindowFrame.EnsureAbove(Handle, mainWindow);
+            else
+            {
+                OverlayWindowFrame.EnsureBelow(Handle, mainWindow);
+                if(backdrop!=0&&OverlayWindowFrame.IsWindowVisible(backdrop)!=0)
+                    OverlayWindowFrame.EnsureAbove(Handle,backdrop);
+            }
+            if(pointerActivation is { } activation)
+            {
+                // A guard belongs directly to its visual peer, never over a
+                // different overlapping pin. Each pair has a distinct slot.
+                OverlayWindowFrame.PlaceAbove(activation.Handle,Handle);
+            }
         }
         else OverlayWindowFrame.KeepTopmost(Handle);
     }
@@ -240,14 +267,16 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
     private void UpdateFocusGeometry()
     {
         focusIndicator.BorderThickness = new Thickness(focusWidth * InterfaceScale);
-        focusIndicator.CornerRadius = surfaceBackground.CornerRadius;
+        focusIndicator.CornerRadius = surfaceBackground.SurfaceCornerRadius;
     }
     private void UpdateFocusVisibility()
     {
-        var active = !disposed && IsVisible && Interactive && hasForeground;
-        focusIndicator.Visibility = !disposed && IsVisible && (placementActive || active) ? Visibility.Visible : Visibility.Collapsed;
+        var active = !disposed && IsVisible && Interactive && (hasForeground||ownedBrowserFocus);
+        focusIndicator.Visibility = !disposed && IsVisible && (placementActive || active&&layer==PeerWindowLayer.Pin) ? Visibility.Visible : Visibility.Collapsed;
         if (automationRoot.XamlRoot is { } root) NativeComputedStyleAdapter.SetRootFocusPresentation(root, active);
     }
+    internal void SetOwnedBrowserFocus(bool focused)
+    {if(disposed)return;ownedBrowserFocus=focused;UpdateFocusVisibility();}
     private void DemandAlive()
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -258,14 +287,25 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
     {
         if (disposed) return;
         DemandAlive();
+        SetPointerActivation(null);
+        SetPointerPlacement(null);
         placementActive = false;
         SetInteraction(false); window.Hide();
         disposed = true;
         theme.Changed -= OnThemeChanged;
         messages?.Dispose(); messages = null;
         content.Children.Clear(); Child = null;
+        surfaceBackground.Retire();
         gamepadKeys.Dispose();
         island.Dispose();
         window.Destroy();
     }
+    [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool EnableWindow(nint window,[MarshalAs(UnmanagedType.Bool)] bool enabled);
+    [LibraryImport("user32.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool IsWindowEnabled(nint window);
 }

@@ -22,7 +22,13 @@ internal sealed partial class WidgetViewPresenter
         if (previewEntered && previewSurface?.Fragment is { } preview)
         {
             if (button == ControllerButton.B && !preview.HasTransientControl)
-            { if (phase == ControllerEventPhase.Pressed) ExitFocusPreview(); return true; }
+            {
+                // A nested slider owns its adjustment and release before the
+                // containing preview returns focus to its source.
+                if (preview.HandleSliderButton(button, phase)) return true;
+                if (phase == ControllerEventPhase.Pressed) ExitFocusPreview();
+                return true;
+            }
             await preview.HandleControllerButtonAsync(button, phase, origin, cancellationToken);
             return true;
         }

@@ -462,6 +462,8 @@ public sealed class WidgetPinnedLayoutTestHost
             !await RevokeAsync(cancellationToken).ConfigureAwait(false))
             return false;
 
+        if(SelectedLayoutId==layoutId)return true;
+        _testSelectionId=CurrentSnapshot.PinnedLayouts.Any(p=>p.Id==layoutId&&p.IndependentSelection) ? Guid.NewGuid().ToString("N") : null;
         var handled = await _widget.OnControllerInputAsync(
                 SelectionInput(layoutId, selected: true), cancellationToken)
             .ConfigureAwait(false);
@@ -500,7 +502,14 @@ public sealed class WidgetPinnedLayoutTestHost
         if (SelectedLayoutId is { } selected &&
             !CurrentSnapshot.PinnedLayouts.Any(layout =>
                 string.Equals(layout.Id, selected, StringComparison.Ordinal)))
+        {
+            var selectionId = _testSelectionId;
             await RevokeAsync(cancellationToken).ConfigureAwait(false);
+            // Independent demand is already revoked by publishing the withdrawal.
+            // Its old notification may correctly be rejected by the worker.
+            if (SelectedLayoutId == selected && _testSelectionId == selectionId)
+            { SelectedLayoutId = null; _testSelectionId = null; }
+        }
         return CurrentSnapshot;
     }
 
@@ -529,6 +538,7 @@ public sealed class WidgetPinnedLayoutTestHost
         }, cancellationToken);
     }
 
+    private string? _testSelectionId;
     private ControllerInputEvent SelectionInput(string layoutId, bool selected) => new(
         ControllerButton.View,
         ControllerEventPhase.Pressed,
@@ -537,5 +547,6 @@ public sealed class WidgetPinnedLayoutTestHost
     {
         PinnedLayoutId = layoutId,
         IsPinnedLayoutSelected = selected,
+        PinnedSelectionId = _testSelectionId,
     };
 }

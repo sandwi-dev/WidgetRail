@@ -4,7 +4,8 @@ internal sealed record DiscordCapabilities(bool Voice, bool Mute, bool Deafen, b
 internal sealed record DiscordChannel(string Id, string GuildId, string Name, string Guild);
 internal sealed record DiscordParticipant(string Id, string Name, bool Muted, bool Deafened, bool Speaking,string? AvatarUrl=null,DiscordStreamAudio? Audio=null);
 internal sealed record DiscordStreamAudio(bool Available, bool Muted, double? Volume);
-internal sealed record DiscordStream(string Key, string UserId, string Name, DiscordStreamAudio? Audio=null);
+internal sealed record DiscordStream(string Key, string UserId, string Name, DiscordStreamAudio? Audio=null,bool Watching=false);
+internal sealed record DiscordOutgoingViewers(string Key,string[] UserIds);
 internal sealed record DiscordShareQuality(int Resolution,int FrameRate)
 {
     internal bool IsSupported=>Resolution is 480 or 720 or 1080 && FrameRate is 15 or 30 or 60;
@@ -14,12 +15,21 @@ internal sealed record DiscordState(int Revision, bool Ready, string Account, Di
     DiscordChannel[] Channels, string? ChannelId, string ChannelName, bool Muted, bool Deafened,
     DiscordParticipant[] Participants, DiscordStream[] Streams, bool Sharing, bool SharePending, string? ShareError, string RelayState, DiscordFriendActivity[]? Activities=null, string ActivityAvailability="unavailable", bool ActivitiesTruncated=false,
     DiscordShareQuality[]? ShareQualities=null,string ShareQualityAvailability="unavailable",DiscordShareQuality? PreferredShareQuality=null,
-    string VoiceConnection="unavailable",string? ShareQualityWarning=null,string NotificationPermission="unavailable")
+    string VoiceConnection="unavailable",string? ShareQualityWarning=null,string NotificationPermission="unavailable",
+    DiscordOutgoingViewers? OutgoingViewers=null,string DesktopNotifications="unavailable")
 {
     public DiscordFriendActivity[] Activities { get; init; }=Activities??[];
     public DiscordShareQuality[] ShareQualities {get;init;}=ShareQualities??DiscordShareQuality.Baseline;
     internal void Validate()
     {
+        if(DesktopNotifications is not("enabled" or "disabled" or "unavailable"))
+            throw new InvalidDataException("invalid_desktop_notifications");
+        if(OutgoingViewers is {} viewers && (!Sharing||ChannelId is null||Participants is null||
+            viewers.Key is not {Length:>0 and <=100}||!OwnStreamKey(viewers.Key)||
+            viewers.UserIds is null||viewers.UserIds.Length>100||
+            viewers.UserIds.Any(id=>!Id(id)||id==Account||!Participants.Any(person=>person?.Id==id))||
+            viewers.UserIds.Distinct().Count()!=viewers.UserIds.Length))
+            throw new InvalidDataException("invalid_outgoing_viewers");
         if (NotificationPermission is not ("default" or "granted" or "denied" or "unavailable"))
             throw new InvalidDataException("invalid_notification_permission");
         if(ShareQualityWarning is not(null or "share_quality_unavailable" or "share_quality_unconfirmed" or "share_content_preference_unconfirmed"))
@@ -58,6 +68,12 @@ internal sealed record DiscordState(int Revision, bool Ready, string Account, Di
             throw new InvalidDataException("invalid_adapter_state");
     }
     private static bool Id(string? id) => id is { Length: > 0 and <= 32 } && id.All(char.IsAsciiDigit);
+    private bool OwnStreamKey(string key)=>key.Split(':') switch
+    {
+        ["call",var channel,var account]=>channel==ChannelId&&account==Account,
+        ["guild",var guild,var channel,var account]=>Id(guild)&&channel==ChannelId&&account==Account,
+        _=>false
+    };
     private static bool AudioValid(DiscordStreamAudio audio)=>audio.Available
         ?audio.Volume is { } volume&&double.IsFinite(volume)&&volume is >=0 and <=100
         :audio.Volume is null&&!audio.Muted;

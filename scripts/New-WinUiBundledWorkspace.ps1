@@ -91,6 +91,7 @@ foreach ($widget in $widgets) {
     widgets=@(if ($IncludeSettings) { $catalogDefinition.widgets })
     bundledWidgets=$widgets
 } | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $installation 'widget-catalog.json') -Encoding utf8
+if ($IncludeSettings) { & (Join-Path $PSScriptRoot 'Test-WinUiCandidateCatalog.ps1') -InstallationRoot $installation *> (Join-Path $logs 'catalog-discovery-verification.log') }
 $options = Join-Path $output 'shell-options.json'
 @{
     InstallationRoot=$installation; SettingsRoot=$profile; InstalledCatalogRoot=$catalog

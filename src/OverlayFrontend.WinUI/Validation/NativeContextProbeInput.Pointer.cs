@@ -48,6 +48,36 @@ internal static partial class NativeContextProbeInput
         }
     }
 
+    internal static async Task HoldSliderDragAsync(Microsoft.UI.Xaml.Controls.Slider slider, Func<Task> heldCheck, Func<Task> releasedCheck)
+    {
+        var window = DemandOwnForeground();
+        if (GetCursorPos(out var previous) == 0) throw new InvalidOperationException("Pointer position unavailable.");
+        slider.UpdateLayout();
+        if (!slider.IsLoaded || slider.ActualWidth <= 0 || slider.ActualHeight <= 0) throw new InvalidOperationException("Slider is not laid out.");
+        // In-process automation peers can report an empty rectangle for portal
+        // descendants. Use their native XAML-root transform, then verify the
+        // actual injected press reaches this slider before asserting a drag.
+        var point = slider.TransformToVisual(slider.XamlRoot.Content).TransformPoint(new(slider.ActualWidth / 2, slider.ActualHeight / 2));
+        var scale = slider.XamlRoot.RasterizationScale;
+        var start = new NativePoint { X = (int)(point.X * scale), Y = (int)(point.Y * scale) };
+        if (ClientToScreen(window, ref start) == 0) throw new InvalidOperationException("Slider coordinates unavailable.");
+        var held = false; var receivedPress = false;
+        Microsoft.UI.Xaml.Input.PointerEventHandler pressed = (_,_) => receivedPress = true;
+        slider.AddHandler(UIElement.PointerPressedEvent, pressed, true);
+        try
+        {
+            await ContinuePointerMoveAsync(start, previous);
+            SendLeftButton(false); held = true; await Task.Delay(80);
+            if (!receivedPress) throw new InvalidOperationException("Injected pointer press did not reach the intended slider.");
+            SendPointerMove(new() { X = start.X + 60, Y = start.Y });
+            await heldCheck();
+            SendLeftButton(true); held = false; await Task.Delay(200);
+            SendPointerMove(new() { X = start.X - 60, Y = start.Y });
+            await releasedCheck();
+        }
+        finally { if (held) SendLeftButton(true); slider.RemoveHandler(UIElement.PointerPressedEvent, pressed); SendPointerMove(previous); }
+    }
+
     private static unsafe void SendLeftButton(bool up)
     {
         var input = new NativeInput { Data = new() { Mouse = new() { Flags = up ? 0x0004u : 0x0002u } } };

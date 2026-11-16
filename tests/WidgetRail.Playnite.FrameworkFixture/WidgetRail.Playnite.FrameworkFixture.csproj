@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net462</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../integrations/Playnite/WidgetRail.Playnite/WidgetRail.Playnite.csproj" />
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+</Project>

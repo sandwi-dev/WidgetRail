@@ -26,14 +26,14 @@ internal sealed partial class OverlayShellPage
             foreach (var opacity in new[] { false, true })
             foreach (var save in new[] { false, true })
             {
-                var label = (opacity ? "opacity" : "move/resize") + (save ? " Save" : " Cancel");
+                var label = (opacity ? "opacity edit" : "geometry edit") + (save ? " Save" : " Cancel");
                 Receive(Sample());
-                await BeginPinnedAdjustmentAsync(opacity);
+                await BeginPinnedAdjustmentAsync();
                 check(RadialOpen && radialView is { Visibility: Visibility.Visible, IsHitTestVisible: false } &&
                     !WidgetHost.IsHitTestVisible && !Tray.IsHitTestVisible,
                     label + " keeps the wheel visible while adjustment exclusively owns pointer and controller input");
-                var frame = Sample(rightX: save ? (short)0 : (short)-32767);
-                frame.DpadNavigation = new() { Direction = NavigationDirection.Left, Phase = NavigationPhase.Pressed };
+                var frame = opacity ? Sample(0x0100,pressed:0x0100) : Sample(rightX: save ? (short)0 : (short)-32767);
+                if(!opacity)frame.DpadNavigation = new() { Direction = NavigationDirection.Left, Phase = NavigationPhase.Pressed };
                 Receive(frame); Receive(Sample());
                 check(radialSelection == selected && radialPage == page,
                     label + " adjustment stick/D-pad input cannot navigate the retained radial selection");
@@ -54,11 +54,13 @@ internal sealed partial class OverlayShellPage
             foreach (var opacity in new[] { false, true })
             foreach (var save in new[] { false, true })
             {
-                var label = (opacity ? "opacity" : "move/resize") + (save ? " Save" : " Cancel");
+                var label = (opacity ? "opacity edit" : "geometry edit") + (save ? " Save" : " Cancel");
                 Receive(Sample());
-                await BeginPinnedAdjustmentAsync(opacity);
+                await BeginPinnedAdjustmentAsync();
                 check(interactive && !MainFocusEnabled && !WidgetHost.IsHitTestVisible && !RadialOpen,
                     label + " preserves the originating widget context while revoking its input and automatic focus");
+                if(opacity){Receive(Sample(0x0100,pressed:0x0100));Receive(Sample(released:0x0100));}
+                else StepPinnedPlacement(PinnedPlacementDirection.Left,false);
                 Finish(save);
                 await Until(() => !PinnedAdjustmentActive && MainFocusEnabled && FocusId() == focused);
                 check(activeWidget == "settings" && interactive && !RadialOpen,

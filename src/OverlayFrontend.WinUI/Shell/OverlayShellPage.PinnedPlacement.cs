@@ -9,18 +9,61 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 internal sealed partial class OverlayShellPage
 {
-    private sealed record PinnedAdjustment(PinnedSurface Surface, PinnedPlacementAdjustment Placement, bool OpacityOnly,
-        long Selection, long VisibleSession);
+    private sealed record PinnedAdjustment(PinnedSurface Surface, PinnedPlacementAdjustment Placement,
+        long Selection, long VisibleSession, IReadOnlyList<PinnedMonitor> Monitors)
+    {internal bool ControllerDriven{get;set;}}
     private PinnedAdjustment? pinnedAdjustment;
     private bool savingPinnedAdjustment;
     private bool restorePinnedAdjustmentFocus;
     private bool PinnedAdjustmentActive => pinnedAdjustment is not null || savingPinnedAdjustment;
     private readonly PinnedPlacementInput pinnedPlacementInput = new();
     private RawControllerState lastPlacementController;
+    private PinnedAdjustmentToolbar? pinAdjustmentToolbar;
 
-    private void InitializePinnedPlacement() => PreviewKeyDown += (_, args) =>
+    private uint? adjustmentReturnPointer;
+    private void InitializePinnedPlacement()
+    {
+        PreviewKeyDown += PinnedAdjustmentKeyDown;
+        ProductionRoot.PointerReleased += CompleteAdjustmentReturnPointer;
+        ProductionRoot.PointerCanceled += CompleteAdjustmentReturnPointer;
+        ProductionRoot.PointerCaptureLost += CompleteAdjustmentReturnPointer;
+    }
+
+    private bool TryReturnFromAdjustment(PointerRoutedEventArgs args)
+    {
+        if(!PinnedAdjustmentActive)return false;
+        var point=args.GetCurrentPoint(ProductionRoot).Position;
+        // These host-owned regions stay drawn while adjustment revokes their
+        // content input. Their clicks must not fall through as empty backdrop.
+        bool Contains(FrameworkElement? region)=>region is {Visibility:Visibility.Visible,ActualWidth:>0,ActualHeight:>0,Opacity:>0}&&
+            region.TransformToVisual(ProductionRoot).TransformBounds(new(0,0,region.ActualWidth,region.ActualHeight)).Contains(point);
+        if(!(RadialOpen?Contains(radialView):Contains(WidgetSurface)&&surface?.Visibility==Visibility.Visible)&&!Contains(RailControls))return false;
+        args.Handled=true;
+        // Keep the complete return gesture at the host boundary: re-enabling
+        // the widget must not deliver an orphan release to a newly active control.
+        if(!ProductionRoot.CapturePointer(args.Pointer))return true;
+        adjustmentReturnPointer=args.Pointer.PointerId;
+        CancelPinnedAdjustment();
+        return true;
+    }
+
+    private void CompleteAdjustmentReturnPointer(object sender,PointerRoutedEventArgs args)
+    {
+        if(adjustmentReturnPointer!=args.Pointer.PointerId)return;
+        adjustmentReturnPointer=null;
+        args.Handled=true;
+        ProductionRoot.ReleasePointerCapture(args.Pointer);
+    }
+    private void PinnedAdjustmentKeyDown(object sender,KeyRoutedEventArgs args)
     {
         if (pinnedAdjustment is null && !savingPinnedAdjustment) return;
+        if(!Input.GamepadKeyBoundary.IsGamepadKey(args.OriginalKey)&&pinnedAdjustment is {} keyboardAdjustment)
+            keyboardAdjustment.ControllerDriven=false;
+        if (!savingPinnedAdjustment && (args.Key is Windows.System.VirtualKey.Tab or Windows.System.VirtualKey.Space ||
+            pinAdjustmentToolbar?.Opacity.FocusState!=FocusState.Unfocused&&pinAdjustmentToolbar is not null&&
+                args.Key is Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down)) return;
+        if(args.Key==Windows.System.VirtualKey.Enter&&pinAdjustmentToolbar is {} toolbar&&
+            (toolbar.Save.FocusState!=FocusState.Unfocused||toolbar.Cancel.FocusState!=FocusState.Unfocused||toolbar.Close.FocusState!=FocusState.Unfocused))return;
         args.Handled = true;
         if (Input.GamepadKeyBoundary.IsGamepadKey(args.OriginalKey) || savingPinnedAdjustment) return;
         var direction = args.Key switch
@@ -35,26 +78,23 @@ internal sealed partial class OverlayShellPage
         {
             var resize = (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift) &
                 Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
-            if (pinnedAdjustment?.OpacityOnly == true) StepPinnedOpacity(direction);
-            else StepPinnedPlacement(direction, resize);
+            StepPinnedPlacement(direction, resize);
         }
         else if (args.Key == Windows.System.VirtualKey.Enter) _ = FinishPinnedAdjustmentAsync(save: true);
         else if (args.Key == Windows.System.VirtualKey.Escape) CancelPinnedAdjustment();
-    };
+    }
 
-    private Task BeginPinnedAdjustmentAsync() => BeginPinnedAdjustmentAsync(opacityOnly: false);
-
-    private Task BeginPinnedAdjustmentAsync(bool opacityOnly)
+    private Task BeginPinnedAdjustmentAsync()
     {
         if (retired || !visible || !foreground || switching || IsMediaFullscreen || savingPinnedAdjustment ||
             pinned is not { } current || !current.IsCurrent) return Task.CompletedTask;
         CancelPinnedAdjustment();
-        ExitPinnedInteraction(restoreMain: false);
+        ExitPinnedInteraction(restoreMain: true);
         ReconcilePinnedPlacementEnvironment(current);
         if (!current.Window.IsVisible) return Task.CompletedTask;
         var placement = new PinnedPlacementAdjustment(current.Window.Bounds, current.Monitor, current.Limits,
             current.LayoutId, current.Window.OpacityPercent);
-        pinnedAdjustment = new(current, placement, opacityOnly, selectionVersion, visibleSince);
+        pinnedAdjustment = new(current, placement, selectionVersion, visibleSince, PinnedDisplayAreas.Read());
         restorePinnedAdjustmentFocus = true;
         var state = lastPlacementController;
         pinnedPlacementInput.Prime(state.Buttons, state.LeftThumbX, state.LeftThumbY, state.RightThumbX, state.RightThumbY, Environment.TickCount64);
@@ -66,18 +106,19 @@ internal sealed partial class OverlayShellPage
         surface?.SetPresentationInputEnabled(false);
         current.SetInput(false);
         current.Window.SetPlacementActive(true);
+        try
+        {
+            current.Window.SetPointerPlacement((bounds,edge)=>PreviewPinnedPointerPlacement(current,bounds,edge),error=>
+                {CancelPinnedAdjustment();ReportFailure(error);});
+            OpenPinnedAdjustmentToolbar();
+        }
+        catch{CancelPinnedAdjustment();throw;}
         WidgetHost.IsHitTestVisible = Tray.IsHitTestVisible = false;
         RefreshRadialChooser(); UpdateTrayHelp(); UpdateDiagnostics();
         return Task.CompletedTask;
     }
 
-    private IReadOnlyList<ControllerGuideHint> PinnedPlacementHints() => pinnedAdjustment?.OpacityOnly == true ?
-    (ControllerGuideHint[])[
-        new(ControllerPrompt.DPadHorizontal, $"Opacity: {pinnedAdjustment.Placement.OpacityPercent}%", Required: true),
-        new(ControllerPrompt.LeftStickMove, "Adjust", Required: true),
-        new(ControllerPrompt.A, "Save", ControllerButton.A, Required: true),
-        new(ControllerPrompt.B, "Cancel", ControllerButton.B, Required: true),
-    ] :
+    private IReadOnlyList<ControllerGuideHint> PinnedPlacementHints() =>
     (ControllerGuideHint[])[
         new(ControllerPrompt.LeftStickMove, "Move · D-pad", Required: true),
         new(ControllerPrompt.RightStickMove, "Resize", Required: true),
@@ -91,11 +132,17 @@ internal sealed partial class OverlayShellPage
     {
         lastPlacementController = frame.State;
         if (pinnedAdjustment is null && !savingPinnedAdjustment) return false;
-        if (retired || !visible || !foreground || frame.Connected == 0 ||
+        if (retired || !visible || !foreground ||
             pinnedAdjustment is { } pending && (!ReferenceEquals(pinned, pending.Surface) || !pending.Surface.IsCurrent))
         {
             if (frame.Connected == 0) { shellGestures.Reset(); trayHold.Reset(); radialInput.Reset(); }
             CancelPinnedAdjustment(); return true;
+        }
+        if(frame.Connected==0)
+        {
+            shellGestures.Reset();trayHold.Reset();radialInput.Reset();
+            if(pinnedAdjustment?.ControllerDriven==true)CancelPinnedAdjustment();
+            return true;
         }
         // This route runs before ReceiveCore's ordinary priming/gesture guards.
         // A capture-source handoff must not turn the menu-opening A into Save.
@@ -109,22 +156,23 @@ internal sealed partial class OverlayShellPage
         }
         var savePressed = (frame.PressedButtons & 0x1000) != 0 && !shellGestures.Owns(ControllerButton.A);
         var cancelPressed = (frame.PressedButtons & 0x2000) != 0 && !shellGestures.Owns(ControllerButton.B);
+        var lessOpaque=(frame.PressedButtons&0x0100)!=0&&!shellGestures.Owns(ControllerButton.LeftBumper);
+        var moreOpaque=(frame.PressedButtons&0x0200)!=0&&!shellGestures.Owns(ControllerButton.RightBumper);
+        var closePressed=(frame.PressedButtons&0x4000)!=0&&!shellGestures.Owns(ControllerButton.X);
         shellGestures.CaptureFrame(frame);
         if (savingPinnedAdjustment) return true;
         var sample = frame.State;
         var changes = pinnedPlacementInput.Sample(sample.Buttons, sample.LeftThumbX, sample.LeftThumbY,
             sample.RightThumbX, sample.RightThumbY, Environment.TickCount64);
-        if (pinnedAdjustment?.OpacityOnly == true)
-        {
-            StepPinnedOpacity(changes.Dpad);
-            StepPinnedOpacity(changes.Move);
-        }
-        else
-        {
-            StepPinnedPlacement(changes.Dpad, resize: false);
-            StepPinnedPlacement(changes.Move, resize: false);
-            StepPinnedPlacement(changes.Resize, resize: true);
-        }
+        if(pinnedAdjustment is {} controllerAdjustment && (changes.Dpad!=PinnedPlacementDirection.None ||
+            changes.Move!=PinnedPlacementDirection.None || changes.Resize!=PinnedPlacementDirection.None))
+            controllerAdjustment.ControllerDriven=true;
+        StepPinnedPlacement(changes.Dpad, resize: false);
+        StepPinnedPlacement(changes.Move, resize: false);
+        StepPinnedPlacement(changes.Resize, resize: true);
+        if(lessOpaque)StepPinnedOpacity(PinnedPlacementDirection.Left);
+        if(moreOpaque)StepPinnedOpacity(PinnedPlacementDirection.Right);
+        if(closePressed){_ = CloseAdjustedPinAsync();return true;}
         if (savePressed) _ = FinishPinnedAdjustmentAsync(save: true);
         else if (cancelPressed) CancelPinnedAdjustment();
         return true;
@@ -138,25 +186,64 @@ internal sealed partial class OverlayShellPage
         if (savingPinnedAdjustment) return true;
         if (button == ControllerButton.A) await FinishPinnedAdjustmentAsync(save: true);
         else if (button == ControllerButton.B) CancelPinnedAdjustment();
+        else if(button==ControllerButton.LeftBumper)StepPinnedOpacity(PinnedPlacementDirection.Left);
+        else if(button==ControllerButton.RightBumper)StepPinnedOpacity(PinnedPlacementDirection.Right);
+        else if(button==ControllerButton.X)await CloseAdjustedPinAsync();
         return true;
     }
 
     private void StepPinnedPlacement(PinnedPlacementDirection direction, bool resize)
     {
         if (pinnedAdjustment is not { } adjustment || !ReferenceEquals(pinned, adjustment.Surface) ||
-            !adjustment.Surface.IsCurrent || !adjustment.Placement.Step(direction, resize)) return;
-        adjustment.Surface.Window.Place(adjustment.Placement.Current);
+            !adjustment.Surface.IsCurrent || direction == PinnedPlacementDirection.None) return;
+        if (!adjustment.Placement.Step(direction, resize, adjustment.Monitors)) return;
+        var changedMonitor = adjustment.Surface.Monitor.Id != adjustment.Placement.Monitor.Id;
+        adjustment.Surface.Monitor = adjustment.Placement.Monitor;
         adjustment.Surface.LogicalPlacement = PinnedPlacementPolicy.Capture(adjustment.Placement.Current, adjustment.Surface.Monitor,
             adjustment.Surface.Limits, adjustment.Surface.LayoutId, adjustment.Surface.Window.OpacityPercent);
+        adjustment.Surface.Window.Place(adjustment.Placement.Current);
+        RefreshPinnedAdjustmentToolbar();
+        if (changedMonitor) _ = RefreshPinnedDisplayAsync(adjustment.Surface);
         UpdateDiagnostics();
+    }
+
+    private PinnedBounds PreviewPinnedPointerPlacement(PinnedSurface current,PinnedBounds bounds,int edge)
+    {
+        if(pinnedAdjustment is not { } adjustment || !ReferenceEquals(adjustment.Surface,current) ||
+            !ReferenceEquals(pinned,current) || !current.IsCurrent || retired || !visible || !foreground)
+            return current.Window.Bounds;
+        var next=adjustment.Placement.PreviewPointer(bounds,edge,adjustment.Monitors);
+        adjustment.ControllerDriven=false;
+        var changedMonitor=current.Monitor.Id!=adjustment.Placement.Monitor.Id;
+        current.Monitor=adjustment.Placement.Monitor;
+        current.LogicalPlacement=PinnedPlacementPolicy.Capture(next,current.Monitor,current.Limits,current.LayoutId,current.Window.OpacityPercent);
+        RefreshPinnedAdjustmentToolbar();
+        if(changedMonitor)_=RefreshPinnedDisplayAsync(current);
+        UpdateDiagnostics();
+        return next;
     }
 
     private void StepPinnedOpacity(PinnedPlacementDirection direction)
     {
-        if (pinnedAdjustment is not { OpacityOnly: true } adjustment || !ReferenceEquals(pinned, adjustment.Surface) ||
+        if (pinnedAdjustment is not { } adjustment || !ReferenceEquals(pinned, adjustment.Surface) ||
             !adjustment.Surface.IsCurrent || !adjustment.Placement.StepOpacity(direction)) return;
         var current = adjustment.Surface;
         current.Window.SetOpacity(adjustment.Placement.OpacityPercent);
+        adjustment.ControllerDriven=true;
+        RefreshPinnedAdjustmentToolbar();
+        current.LogicalPlacement = PinnedPlacementPolicy.Capture(current.Window.Bounds, current.Monitor,
+            current.Limits, current.LayoutId, current.Window.OpacityPercent);
+        UpdateTrayHelp(); UpdateDiagnostics();
+    }
+
+    private void SetPinnedOpacity(int value)
+    {
+        if (pinnedAdjustment is not { } adjustment || !ReferenceEquals(pinned, adjustment.Surface) ||
+            !adjustment.Surface.IsCurrent || !adjustment.Placement.SetOpacity(value)) return;
+        adjustment.ControllerDriven=false;
+        var current = adjustment.Surface;
+        current.Window.SetOpacity(adjustment.Placement.OpacityPercent);
+        RefreshPinnedAdjustmentToolbar();
         current.LogicalPlacement = PinnedPlacementPolicy.Capture(current.Window.Bounds, current.Monitor,
             current.Limits, current.LayoutId, current.Window.OpacityPercent);
         UpdateTrayHelp(); UpdateDiagnostics();
@@ -167,6 +254,8 @@ internal sealed partial class OverlayShellPage
         if (!save) { CancelPinnedAdjustment(); return; }
         if (pinnedAdjustment is not { } adjustment || savingPinnedAdjustment) return;
         savingPinnedAdjustment = true;
+        RetirePinnedAdjustmentToolbar();
+        adjustment.Surface.Window.SetPointerPlacement(null);
         // A is the commit boundary. Hide/deactivation after this point does not
         // reinterpret a requested save as Cancel while the atomic write finishes.
         pinnedAdjustment = null;
@@ -177,7 +266,7 @@ internal sealed partial class OverlayShellPage
             entered = true;
             if (retired || !ReferenceEquals(pinned, adjustment.Surface) || !adjustment.Surface.IsCurrent) return;
             ReconcilePinnedPlacementEnvironment(adjustment.Surface);
-            await SavePinnedAsync(adjustment.Surface, required: true);
+            await SavePinnedAsync(adjustment.Surface, required: true, opacityOnly:!adjustment.Placement.GeometryChanged);
         }
         catch (Exception error) when (error is not (OutOfMemoryException or StackOverflowException or AccessViolationException))
         {
@@ -199,6 +288,8 @@ internal sealed partial class OverlayShellPage
         // but completion after hide/deactivation must not restore native focus.
         if (!restoreFocus) restorePinnedAdjustmentFocus = false;
         if (pinnedAdjustment is not { } adjustment) return;
+        RetirePinnedAdjustmentToolbar(restoreFocus);
+        adjustment.Surface.Window.SetPointerPlacement(null);
         pinnedAdjustment = null;
         if (ReferenceEquals(pinned, adjustment.Surface)) RestorePinnedPlacement(adjustment);
         EndPinnedAdjustmentPresentation(adjustment);
@@ -224,14 +315,16 @@ internal sealed partial class OverlayShellPage
         {
             current.Window.SetPlacementActive(false);
             current.SetInput(PinnedInputActive);
+            _ = RefreshPinnedDisplayAsync(current);
         }
         WidgetHost.IsHitTestVisible = Tray.IsHitTestVisible = true;
         surface?.SetPresentationInputEnabled(!retired && visible && foreground && !switching && activeWidget == requestedWidget);
         surface?.SetAutomaticFocusEnabled(MainFocusEnabled);
         rightStick.Reset();
         RefreshRadialChooser();
-        if (!restorePinnedAdjustmentFocus || retired || !visible || !foreground ||
-            adjustment.Selection != selectionVersion || adjustment.VisibleSession != visibleSince) return;
+        var restore=restorePinnedAdjustmentFocus && !retired && visible && foreground &&
+            adjustment.Selection==selectionVersion && adjustment.VisibleSession==visibleSince;
+        if(RestorePinManagementAdjustmentFocus(allowFocus:restore)||!restore)return;
         if (RadialOpen) radialView?.FocusSelected();
         else QueueEntryFocus();
     }
@@ -244,8 +337,15 @@ internal sealed partial class OverlayShellPage
         DispatcherQueue.TryEnqueue(() =>
         {
             current.PlacementRefreshQueued = false;
-            if (retired || !ReferenceEquals(pinned, current)) return;
-            try { CancelPinnedAdjustment(); ReconcilePinnedPlacementEnvironment(current); _ = RefreshPinnedDisplayAsync(current); }
+            if (retired || !pins.Contains(current)) return;
+            try
+            {
+                if (pinnedAdjustment is { } adjustment && ReferenceEquals(adjustment.Surface, current) &&
+                    !PinnedDisplayAreas.Read().OrderBy(monitor => monitor.Id, StringComparer.Ordinal)
+                        .SequenceEqual(adjustment.Monitors.OrderBy(monitor => monitor.Id, StringComparer.Ordinal))) CancelPinnedAdjustment();
+                ReconcilePinnedPlacementEnvironment(current);
+                _ = RefreshPinnedDisplayAsync(current);
+            }
             catch (Exception error) { ReportFailure(error); }
         });
     }

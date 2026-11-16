@@ -52,12 +52,24 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     }
 #if ENABLE_WIDGET_VALIDATION
     internal bool IsOpenForValidation => opened;
+    internal IReadOnlyList<string> ChoiceIdsForValidation => entries.Select(entry=>entry.Id).ToArray();
 #endif
     private Func<HostDialogChoice, UIElement>? choiceContent;
     internal Func<string, bool>? KeepOpenOnChoice { get; set; }
     internal Func<string, bool>? ChoiceIsActionable { get; set; }
     internal bool FocusedChoiceIsActionable => FocusedChoice() is not { Tag: string id } || ChoiceIsActionable?.Invoke(id) != false;
     internal event Action? SelectionContextChanged;
+    internal string? FocusedChoiceId => FocusedChoice()?.Tag as string;
+    // Preview-only consumers opt in; hovering never changes selection or focus.
+    internal bool PreviewHoveredChoices { get; set; }
+    private string? hoveredChoiceId;
+    internal string? PreviewChoiceId => PreviewHoveredChoices && hoveredChoiceId is { } hovered && entries.Any(entry=>entry.Id==hovered)
+        ? hovered : FocusedChoiceId;
+    private void ClearChoiceHover()
+    {
+        if(hoveredChoiceId is null)return;
+        hoveredChoiceId=null;SelectionContextChanged?.Invoke();
+    }
     internal void SetChoiceContent(Func<HostDialogChoice, UIElement> create)
     {
         choiceContent = create;
@@ -193,7 +205,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         choices.LostFocus += (_, _) => QueueChoiceFocusSync();
         Content = content;
         content.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => initialFocusRequired = false), true);
-        content.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, _) => initialFocusRequired = false), true);
+        content.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, _) => { initialFocusRequired = false; ClearChoiceHover(); }), true);
         Opened += (_, _) =>
         {
             opened = true;
@@ -265,6 +277,12 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         AutomationProperties.SetAutomationId(item, "Host.Choice.Item." + entry.Id);
         AutomationProperties.SetName(item, ChoiceAccessibleLabel(entry));
         item.EffectiveViewportChanged += (_, _) => QueueVisibleChoices();
+        item.PointerEntered += (_, args) =>
+        {
+            if(!PreviewHoveredChoices||!opened||closing||args.Pointer.PointerDeviceType==Microsoft.UI.Input.PointerDeviceType.Touch)return;
+            hoveredChoiceId=entry.Id;SelectionContextChanged?.Invoke();
+        };
+        item.PointerExited += (_, _) => { if(hoveredChoiceId==entry.Id)ClearChoiceHover(); };
         return item;
     }
     private void RefreshChoiceGroups()
@@ -528,6 +546,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     internal void Handle(ControllerButton button, ControllerEventPhase phase)
     {
         if (closing || !ControllerAdmission.IsArmed || phase != ControllerEventPhase.Pressed) return;
+        ClearChoiceHover();
         initialFocusRequired = false;
         if (HandleSelection(button)) return;
         if (button == ControllerButton.B) { ControllerAdmission.Reset(); Hide(); }

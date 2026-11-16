@@ -106,6 +106,7 @@ public abstract partial class Widget
             if (item is null) return null;
             var parent = Volatile.Read(ref _latestSnapshot)!;
             if (parent.Sequence != correlation.SnapshotSequence) return null;
+            if (lease.Request.PinnedLayoutId is { } pin && !PinnedSurfaceContract.AllowsInteraction(parent,pin)) return null;
             IReadOnlyList<ViewNode> currentOwners;
             try { currentOwners = IndexedCollectionInputContract.ResolveOwnerPath(parent, lease.Request); }
             catch (InvalidOperationException) { return null; }
@@ -114,6 +115,7 @@ public abstract partial class Widget
             action = new WidgetActionEvent(current.ActionId, current.OwnerId, input.Button, input.Phase,
                 correlation.Sequence, correlation.MonotonicTimestampMicroseconds, InputScopeId: lease.Lease.Range.ScopeId)
                 {
+                    RequestedValue = input.PreviewAction?.RequestedValue,
                     FocusedElementId = input.PreviewAction?.OwnerId ?? item.Declaration.Root.Id,
                     FocusedCollectionItem = lease.Request.Kind == IndexedCollectionRequestKind.FocusPreview ? null : new(lease.Request.CollectionId, lease.Request.Source.SourceId,
                         lease.Request.Source.QueryGeneration, item.Declaration.Key,

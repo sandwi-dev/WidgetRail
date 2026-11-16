@@ -172,7 +172,7 @@ the specified A/B interaction mode are retained.
 Protocol 69 uses opaque, worker-owned references. Each document accepts at most
 five snippets, 64 Ki characters and 64 KiB of UTF-8 content; the registry retains at most 24 per owner and
 64 total. Revocation and worker retirement invalidate documents. Native instances
-are created only near the visible viewport and share the four-controller browser
+are created only near the visible viewport and share the eight-controller browser
 budget. Default inline height is 180 logical pixels, styleable by the author.
 
 ## Game Help application

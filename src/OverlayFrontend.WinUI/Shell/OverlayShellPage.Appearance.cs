@@ -8,7 +8,7 @@ internal sealed partial class OverlayShellPage
     internal event Action? SurfaceAppearanceChanged;
     internal string? SurfaceAppearanceWidgetId { get; private set; }
     internal IReadOnlyDictionary<string, BridgeNodeRenderStyles>? ShellPalette { get; private set; }
-    internal Microsoft.UI.Xaml.Controls.Border SurfaceBackground => WidgetSurface;
+    internal Microsoft.UI.Xaml.Controls.Border SurfaceBackground => WidgetSurface.Paint;
 
     internal async Task RefreshShellPaletteAsync()
     {
@@ -22,7 +22,8 @@ internal sealed partial class OverlayShellPage
             var radius = OverlaySurfacePaint.CornerRadius(palette);
             foreach (var retained in retainedSurfaces.Values) retained.Presenter.SetSurfaceCornerRadius(radius);
             preparingSurface?.Presenter.SetSurfaceCornerRadius(radius);
-            if (pinned is { } current) ApplyPinnedAppearance(current);
+            foreach (var current in pins.ToArray()) ApplyPinnedAppearance(current);
+            RefreshNotificationBannerAppearance();
             SurfaceAppearanceChanged?.Invoke();
         }
         catch (OperationCanceledException) when (retired) { }

@@ -1,3 +1,4 @@
+using WidgetRail.Playnite;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
@@ -54,10 +55,11 @@ public sealed class PlayniteSetupTests
         if (disabled) PlayniteSetupFiles.WriteObject(fixture.MainConfig, new() { ["DisabledPlugins"] = new JsonArray(PlayniteSetupFiles.ExtensionId) });
         fixture.Connection.Status = Enum.Parse<PlayniteSetupConnectionKind>(health);
         fixture.Credentials.Value = savedToken ? Fixture.Token : null;
+        if (savedToken) new PlayniteLocalConnectionStore(fixture.State).Save(new(1, Guid.NewGuid().ToString("D"), Fixture.Profile, fixture.Program, fixture.Data));
         var offer = await fixture.Service.CheckSetupAsync(default);
         Assert.AreEqual(attention, offer.NeedsAttention);
         Assert.AreEqual(Enum.Parse<PlayniteSetupAction>(action), offer.Plan!.Action);
-        Assert.AreEqual(0, fixture.Connection.ScriptChecks, "Opening the widget must not compile an eval script.");
+        Assert.AreEqual(0, fixture.Connection.LibraryChecks, "Opening the widget must not fetch the entire library.");
         Assert.AreEqual(savedToken ? Fixture.Token : null, fixture.Credentials.Value);
         Assert.AreEqual(0, fixture.Platform.Starts + fixture.Platform.Stops, "Inspection cannot mutate runtime state.");
     }
@@ -170,7 +172,7 @@ public sealed class PlayniteSetupTests
     public async Task HiddenStartPreservesCustomProfileAndNormalLibraryUpdates()
     {
         using var fixture = new Fixture();
-        fixture.Install("1.5.3", Fixture.Original);
+        fixture.Install("0.9.0", Fixture.Original);
         var info = PlayniteSetupPlatform.LaunchInfo(fixture.Installation);
         CollectionAssert.AreEqual(new[] { "--startclosedtotray", "--hidesplashscreen", "--userdatadir", fixture.Data }, info.ArgumentList.ToArray());
         var fullscreen = PlayniteSetupPlatform.LaunchInfo(fixture.Installation with { Fullscreen = true });
@@ -215,7 +217,8 @@ public sealed class PlayniteSetupTests
         Assert.IsTrue(result.Connected, result.Message);
         Assert.AreEqual(Fixture.Token, fixture.Credentials.Value);
         Assert.AreEqual(PlayniteSetupPackage.Version, PlayniteSetupFiles.ReadManifest(Path.Combine(fixture.Extension, "extension.yaml"))["Version"]);
-        Assert.IsTrue(PlayniteSetupFiles.ReadObject(fixture.PluginConfig)["NetworkPromptDismissed"]!.GetValue<bool>());
+        Assert.IsTrue(PlayniteSetupFiles.ReadObject(fixture.PluginConfig)["Enabled"]!.GetValue<bool>());
+        Assert.IsNull(PlayniteSetupFiles.ReadObject(fixture.PluginConfig)["NetworkPromptDismissed"]);
         Assert.AreEqual(1, fixture.Connection.Reads);
         Assert.IsTrue(File.Exists(Path.Combine(fixture.State, "playnite-installation.json")));
         Assert.IsFalse(Directory.Exists(Path.Combine(fixture.Extension, "previous")));
@@ -242,7 +245,7 @@ public sealed class PlayniteSetupTests
         using var fixture = new Fixture();
         fixture.Install("9.0.0", [9, 8, 7]);
         fixture.Platform.Running = true;
-        fixture.Connection.Status = PlayniteSetupConnectionKind.EvalUnavailable;
+        fixture.Connection.Status = PlayniteSetupConnectionKind.Incompatible;
         var plan = await fixture.Service.InspectAsync(fixture.RunningInstallation, default);
         Assert.AreEqual(PlayniteSetupAction.Manual, plan.Action);
         Assert.IsFalse((await fixture.Service.ApplyAsync(plan, _ => { }, default)).Connected);
@@ -272,13 +275,13 @@ public sealed class PlayniteSetupTests
     {
         using var fixture = new Fixture();
         fixture.Install("9.0.0", [9, 8, 7]);
-        File.WriteAllText(fixture.MainConfig, "{\"DisabledPlugins\":[\"other\",\"PlayniteBridge_f47ac10b\"],\"OtherSetting\":17}");
+        PlayniteSetupFiles.WriteObject(fixture.MainConfig, new() { ["DisabledPlugins"] = new JsonArray("other", "PlayniteBridge_f47ac10b", PlayniteSetupFiles.ExtensionId), ["OtherSetting"] = 17 });
         File.WriteAllText(fixture.PluginConfig, "{\"SyncEnabled\":true,\"Custom\":\"keep\"}");
         var plan = await fixture.Service.InspectAsync(fixture.Installation, default);
         Assert.AreEqual(PlayniteSetupAction.Enable, plan.Action);
         var result = await fixture.Service.ApplyAsync(plan, _ => { }, default);
         Assert.IsTrue(result.Connected, result.Message);
-        CollectionAssert.AreEqual(new[] { "other" }, PlayniteSetupFiles.ReadObject(fixture.MainConfig)["DisabledPlugins"]!.AsArray().Select(node => node!.GetValue<string>()).ToArray());
+        CollectionAssert.AreEqual(new[] { "other", "PlayniteBridge_f47ac10b" }, PlayniteSetupFiles.ReadObject(fixture.MainConfig)["DisabledPlugins"]!.AsArray().Select(node => node!.GetValue<string>()).ToArray());
         Assert.AreEqual(17, PlayniteSetupFiles.ReadObject(fixture.MainConfig)["OtherSetting"]!.GetValue<int>());
         var settings = PlayniteSetupFiles.ReadObject(fixture.PluginConfig);
         Assert.IsTrue(settings["SyncEnabled"]!.GetValue<bool>());
@@ -290,9 +293,9 @@ public sealed class PlayniteSetupTests
     public async Task FailedVerificationRestoresFilesSettingsAndPreviousCredential()
     {
         using var fixture = new Fixture();
-        fixture.Install("1.5.3", Fixture.Original);
+        fixture.Install("0.9.0", Fixture.Original);
         fixture.Platform.Running = true;
-        fixture.Connection.Status = PlayniteSetupConnectionKind.EvalUnavailable;
+        fixture.Connection.Status = PlayniteSetupConnectionKind.Incompatible;
         fixture.Credentials.Value = "pb_previous";
         File.WriteAllText(fixture.MainConfig, "{\"DisabledPlugins\":[\"other\"],\"OtherSetting\":17}");
         File.WriteAllText(fixture.PluginConfig, "{\"Custom\":\"unchanged\"}");
@@ -314,7 +317,7 @@ public sealed class PlayniteSetupTests
     public async Task StalePlanAndShutdownFailureDoNotChangeInstalledFiles()
     {
         using var fixture = new Fixture();
-        fixture.Install("1.5.3", Fixture.Original);
+        fixture.Install("0.9.0", Fixture.Original);
         var plan = await fixture.Service.InspectAsync(fixture.Installation, default);
         File.WriteAllBytes(fixture.Dll, [7, 7]);
         Assert.IsFalse((await fixture.Service.ApplyAsync(plan, _ => { }, default)).Connected);
@@ -332,7 +335,7 @@ public sealed class PlayniteSetupTests
     public async Task InterruptedDeploymentCanRecoverBeforeOrAfterCommit(bool committed)
     {
         using var fixture = new Fixture();
-        fixture.Install("1.5.3", Fixture.Original);
+        fixture.Install("0.9.0", Fixture.Original);
         var deployment = new PlayniteSetupDeployment(fixture.Installation, fixture.Extension, fixture.Package);
         deployment.Prepare(true);
         if (committed) deployment.Commit();
@@ -376,17 +379,59 @@ public sealed class PlayniteSetupTests
         Assert.AreEqual(0, fixture.Platform.Stops);
     }
 
+    [TestMethod]
+    public void RollbackPreservesPreferencesChangedAfterRestart()
+    {
+        using var fixture = new Fixture();
+        fixture.Install("0.9.0", Fixture.Original);
+        PlayniteSetupFiles.WriteObject(fixture.MainConfig, new() { ["DisabledPlugins"] = new JsonArray("other", PlayniteSetupFiles.ExtensionId), ["OtherSetting"] = 17 });
+        PlayniteSetupFiles.WriteObject(fixture.PluginConfig, new() { ["Enabled"] = false, ["PreferredPort"] = 22000 });
+        var deployment = new PlayniteSetupDeployment(fixture.Installation, fixture.Extension, fixture.Package);
+        deployment.Prepare(true); deployment.Commit();
+        var current = PlayniteSetupFiles.ReadObject(fixture.MainConfig);
+        current["OtherSetting"] = 18; current["DisabledPlugins"]!.AsArray().Add("newly-disabled");
+        PlayniteSetupFiles.WriteObject(fixture.MainConfig, current);
+        var plugin = PlayniteSetupFiles.ReadObject(fixture.PluginConfig); plugin["LastSuccessfulPort"] = 22000;
+        PlayniteSetupFiles.WriteObject(fixture.PluginConfig, plugin);
+        deployment.Rollback();
+        var after = PlayniteSetupFiles.ReadObject(fixture.MainConfig);
+        Assert.AreEqual(18, after["OtherSetting"]!.GetValue<int>());
+        CollectionAssert.AreEquivalent(new[] { "other", "newly-disabled", PlayniteSetupFiles.ExtensionId },
+            after["DisabledPlugins"]!.AsArray().Select(item => item!.GetValue<string>()).ToArray());
+        Assert.IsFalse(PlayniteSetupFiles.ReadObject(fixture.PluginConfig)["Enabled"]!.GetValue<bool>());
+        Assert.AreEqual(22000, PlayniteSetupFiles.ReadObject(fixture.PluginConfig)["LastSuccessfulPort"]!.GetValue<int>());
+    }
+
+    [TestMethod]
+    public async Task FreshSetupLeavesOriginalBridgeFilesAndCredentialsUntouched()
+    {
+        using var fixture = new Fixture();
+        var oldRoot = Path.Combine(fixture.Data, "Extensions", "PlayniteBridge_f47ac10b"); Directory.CreateDirectory(oldRoot);
+        File.WriteAllText(Path.Combine(oldRoot, "extension.yaml"), "Id: PlayniteBridge_f47ac10b\nModule: PlayniteBridge.dll\nVersion: 1.5.3.1\n");
+        File.WriteAllBytes(Path.Combine(oldRoot, "PlayniteBridge.dll"), Fixture.Original);
+        var oldAuth = Path.Combine(fixture.Data, "ExtensionsData", "f47ac10b-58cc-4372-a567-0e02b2c3d479", "auth.json");
+        PlayniteSetupFiles.WriteObject(oldAuth, new() { ["token"] = "old-bridge-fixture" });
+        var authBefore = File.ReadAllBytes(oldAuth);
+        var plan = await fixture.Service.InspectAsync(fixture.Installation, default);
+        Assert.AreEqual(PlayniteSetupAction.Install, plan.Action);
+        Assert.IsTrue((await fixture.Service.ApplyAsync(plan, _ => { }, default)).Connected);
+        CollectionAssert.AreEqual(Fixture.Original, File.ReadAllBytes(Path.Combine(oldRoot, "PlayniteBridge.dll")));
+        CollectionAssert.AreEqual(authBefore, File.ReadAllBytes(oldAuth));
+        Assert.AreEqual(Fixture.Profile, new PlayniteLocalConnectionStore(fixture.State).Read()!.ProfileId);
+    }
+
     private sealed class Fixture : IDisposable
     {
         internal static readonly byte[] Original = Encoding.UTF8.GetBytes("original bridge");
         internal static readonly byte[] Replacement = Encoding.UTF8.GetBytes("replacement bridge");
-        internal const string Token = "pb_0123456789abcdef0123456789abcdef";
+        internal const string Token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        internal const string Profile = "647c4b76-71c7-4131-a17c-a0736573536d";
         internal readonly string Root = Path.Combine(Path.GetTempPath(), "WidgetRail.Setup.Tests", Guid.NewGuid().ToString("N"));
         internal string Program { get; }
         internal string Data { get; }
         internal string State => Path.Combine(Root, "state");
         internal string Extension => Path.Combine(Data, "Extensions", PlayniteSetupFiles.ExtensionId);
-        internal string Dll => Path.Combine(Extension, "PlayniteBridge.dll");
+        internal string Dll => Path.Combine(Extension, IntegrationIdentity.ModuleName);
         internal string MainConfig => Path.Combine(Data, "config.json");
         internal string PluginConfig => Path.Combine(PlayniteSetupFiles.PluginData(Data), "config.json");
         internal FakePlatform Platform { get; }
@@ -406,19 +451,17 @@ public sealed class PlayniteSetupTests
             var bundle = Path.Combine(Root, "bundle");
             Directory.CreateDirectory(bundle);
             Package = new(bundle);
+            var payload = Payload(PlayniteSetupPackage.Version, Replacement);
             using (var archive = ZipFile.Open(Package.PackagePath, ZipArchiveMode.Create))
+                foreach (var (name, content) in payload)
+                { using var stream = archive.CreateEntry(name).Open(); stream.Write(content); }
+            var hashes = new JsonObject();
+            foreach (var (name, content) in payload) hashes[name] = Convert.ToHexString(SHA256.HashData(content));
+            PlayniteSetupFiles.WriteObject(Path.Combine(bundle, "integration-package.json"), new()
             {
-                Add("PlayniteBridge.dll", Replacement);
-                Add("extension.yaml", Encoding.UTF8.GetBytes($"Id: {PlayniteSetupFiles.ExtensionId}\nVersion: {PlayniteSetupPackage.Version}\nModule: PlayniteBridge.dll\n"));
-                Add("LICENSE", Encoding.UTF8.GetBytes("Fixture license"));
-                Add("WidgetRail.Build.json", Encoding.UTF8.GetBytes("{}"));
-                void Add(string name, byte[] content) { using var stream = archive.CreateEntry(name).Open(); stream.Write(content); }
-            }
-            PlayniteSetupFiles.WriteObject(Path.Combine(bundle, "bridge-package.json"), new()
-            {
+                ["pluginId"] = IntegrationIdentity.PluginId, ["extensionId"] = IntegrationIdentity.ExtensionId,
                 ["version"] = PlayniteSetupPackage.Version, ["sha256"] = PlayniteSetupFiles.Digest(Package.PackagePath),
-                ["dllSha256"] = Convert.ToHexString(SHA256.HashData(Replacement)),
-                ["knownOriginalDllSha256"] = Convert.ToHexString(SHA256.HashData(Original)),
+                ["dllSha256"] = Convert.ToHexString(SHA256.HashData(Replacement)), ["files"] = hashes,
             });
             Service = new(State, bundle, Platform, Connection, Credentials);
         }
@@ -434,9 +477,26 @@ public sealed class PlayniteSetupTests
         internal void Install(string version, byte[] dll)
         {
             Directory.CreateDirectory(Extension);
-            File.WriteAllBytes(Dll, dll);
-            File.WriteAllText(Path.Combine(Extension, "extension.yaml"), $"Id: {PlayniteSetupFiles.ExtensionId}\nVersion: {version}\nModule: PlayniteBridge.dll\n");
+            foreach (var (name, content) in Payload(version, dll)) File.WriteAllBytes(Path.Combine(Extension, name), content);
             Platform.CreateToken();
+        }
+        private static Dictionary<string, byte[]> Payload(string version, byte[] dll)
+        {
+            var files = new Dictionary<string, byte[]>
+            {
+                [IntegrationIdentity.ModuleName] = dll,
+                ["WidgetRail.Playnite.Core.dll"] = Encoding.UTF8.GetBytes("fixture core"),
+                ["WidgetRail.Playnite.Contracts.dll"] = Encoding.UTF8.GetBytes("fixture contracts"),
+                ["extension.yaml"] = Encoding.UTF8.GetBytes($"Id: {PlayniteSetupFiles.ExtensionId}\nVersion: {version}\nModule: {IntegrationIdentity.ModuleName}\n"),
+                ["LICENSE"] = Encoding.UTF8.GetBytes("Fixture license"),
+            };
+            var hashes = new JsonObject();
+            foreach (var (name, bytes) in files.Where(item => item.Key.EndsWith(".dll"))) hashes[name] = Convert.ToHexString(SHA256.HashData(bytes));
+            files["WidgetRail.Build.json"] = Encoding.UTF8.GetBytes(new JsonObject
+            {
+                ["pluginId"] = IntegrationIdentity.PluginId, ["extensionId"] = IntegrationIdentity.ExtensionId, ["files"] = hashes,
+            }.ToJsonString());
+            return files;
         }
         public void Dispose() { if (Directory.Exists(Root)) Directory.Delete(Root, true); }
     }
@@ -460,16 +520,16 @@ public sealed class PlayniteSetupTests
         internal void CreateToken()
         {
             var path = Path.Combine(PlayniteSetupFiles.PluginData(data), "auth.json");
-            if (!File.Exists(path)) PlayniteSetupFiles.WriteObject(path, new() { ["token"] = Fixture.Token });
+            if (!File.Exists(path)) PlayniteSetupFiles.WriteObject(path, new() { ["schemaVersion"] = 1, ["profileId"] = Fixture.Profile, ["token"] = Fixture.Token });
         }
     }
     private sealed class FakeConnection : IPlayniteSetupConnection
     {
         internal PlayniteSetupConnectionKind Status = PlayniteSetupConnectionKind.Ready;
         internal int Reads;
-        internal int ScriptChecks;
-        public ValueTask<PlayniteSetupConnectionKind> CheckAsync(PlayniteSetupInstallation installation, string credential, CancellationToken token, bool verifyScripts = true)
-        { Reads++; if (verifyScripts) ScriptChecks++; return ValueTask.FromResult(Status); }
+        internal int LibraryChecks;
+        public ValueTask<PlayniteSetupConnectionKind> CheckAsync(PlayniteSetupInstallation installation, string credential, CancellationToken token, bool verifyLibrary = true)
+        { Reads++; if (verifyLibrary) LibraryChecks++; return ValueTask.FromResult(Status); }
     }
     private sealed class FakeCredentials : IPlayniteCredentialStore
     {

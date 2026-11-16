@@ -116,6 +116,8 @@ internal sealed record ConfiguredWidget
 
     public BridgeWidgetDescriptor PublicDescriptor() => new()
     {
+        PackageId = PackageId,
+        PublisherId = PublisherId,
         Id = Id,
         Name = Name,
         InstanceId = InstanceId,

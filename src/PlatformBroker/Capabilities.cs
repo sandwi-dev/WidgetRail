@@ -331,7 +331,7 @@ public static class PlatformCapabilities
             [WebSessionsV1] = new(WebSessionsV1, 1, BrokerCapabilityKind.Control, Set("web-session.command", "web-session.microphone", "web-session.permission"), Set(),
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true,
                 BackgroundOperations: Set("web-session.command")),
-            [WidgetPinningV1] = new(WidgetPinningV1, 1, BrokerCapabilityKind.Control, Set("pin.open"), Set(),
+            [WidgetPinningV1] = new(WidgetPinningV1, 1, BrokerCapabilityKind.Control, Set("pin.open", "pin.close", "pin.manage"), Set(),
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted),
             [WidgetActivityV1] = new(WidgetActivityV1, 1, BrokerCapabilityKind.Control,
                 Set("activity.report"), Set(), AllowsDashboardGesture: false,

@@ -89,7 +89,7 @@ internal static class ConnectionDetailsTests
     private static async Task ReceiverRetirement(Action<bool,string> check)
     {
         await using var test=await Harness.Create();
-        await test.ActControl("discord.stream.30");await test.Pin.SelectAsync("discord.stream");
+        await test.ActControl("discord.stream.30");await test.Pin.ReplaceSnapshotAsync();await test.Pin.SelectAsync("discord.stream");
         await Until(()=>test.Session.Receivers.Count==1);var receiver=test.Session.Receivers.Single();
         await Until(()=>receiver.Lease is not null);await test.Open();
         check(test.Node(Dialog+".incoming").Text!.Contains("1920 × 1080"),"Incoming details reads the selected stream's decoded dimensions");
@@ -102,7 +102,7 @@ internal static class ConnectionDetailsTests
         await test.RefreshDetails();
         check(test.Node(Dialog+".playback").Text=="No active video pin","Removing the stream pin reports its actual absence");
         var watches=test.Session.Core.Commands.Count(command=>command.Method=="watch");
-        await test.ActControl(Dialog+".retry");await test.Pin.SelectAsync("discord.stream");
+        await test.ActControl(Dialog+".retry");await test.Pin.ReplaceSnapshotAsync();await test.Pin.SelectAsync("discord.stream");
         await Until(()=>test.Session.Receivers.Count==2);
         check(test.Session.Core.Commands.Count(command=>command.Method=="watch")==watches+1,"Explicit Reconnect pin performs one existing Watch flow");
     }

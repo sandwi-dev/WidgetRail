@@ -44,7 +44,14 @@ public sealed record WidgetView(
         WidgetElement? root = null,
         string? initialFocusId = null,
         string? activeInputScopeId = null)
+        => PinnedLayout(id, name, surface, PinnedInteractionMode.Interactive, root, initialFocusId, activeInputScopeId);
+
+    /// <summary>Creates a layout with an explicit content interaction policy.</summary>
+    public static PinnedPresentationLayout PinnedLayout(
+        string id, string name, WidgetSurfaceHints surface, PinnedInteractionMode interaction,
+        WidgetElement? root = null, string? initialFocusId = null, string? activeInputScopeId = null)
     {
+        if (!Enum.IsDefined(interaction)) throw new ArgumentOutOfRangeException(nameof(interaction));
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(surface);
@@ -53,6 +60,7 @@ public sealed record WidgetView(
             Id = id,
             Name = name,
             Surface = surface,
+            Interaction = interaction,
             Root = root?.ToProtocolNode(),
             ActiveInputScopeId = root is null
                 ? null
@@ -226,6 +234,7 @@ public sealed record ControllerInputEvent(
     /// </summary>
     public string? PinnedLayoutId { get; init; }
     public bool? IsPinnedLayoutSelected { get; init; }
+    public string? PinnedSelectionId { get; init; }
 }
 
 public sealed record WidgetInvalidatedEventArgs(long Revision);
@@ -280,6 +289,7 @@ public abstract partial class Widget
     private readonly Dictionary<string, PinnedLayoutHandle> _pinnedLayoutHandles =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _pinnedLayoutFirstSequences = new(StringComparer.Ordinal);
+    private readonly Dictionary<string,(string Id,CancellationTokenSource Lifetime)> _independentSelections = new(StringComparer.Ordinal);
     private long _pinnedSelectionSequence;
     private string? _selectedPinnedLayoutId;
     private CancellationTokenSource? _pinnedLayoutSelectionLifetime;
@@ -336,7 +346,14 @@ public abstract partial class Widget
         WidgetSurfaceHints surface,
         string? initialFocusId = null,
         string? activeInputScopeId = null)
+        => CreatePinnedLayoutHandle(id, name, surface, PinnedInteractionMode.Interactive, initialFocusId, activeInputScopeId);
+
+    /// <summary>Registers a pin with an explicit content interaction policy, independent of host placement.</summary>
+    public PinnedLayoutHandle CreatePinnedLayoutHandle(
+        string id, string name, WidgetSurfaceHints surface, PinnedInteractionMode interaction,
+        string? initialFocusId = null, string? activeInputScopeId = null)
     {
+        if (!Enum.IsDefined(interaction)) throw new ArgumentOutOfRangeException(nameof(interaction));
         StableIdentifier.Validate(id, nameof(id));
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(surface);
@@ -350,7 +367,7 @@ public abstract partial class Widget
                 throw new InvalidOperationException(
                     $"Pinned layout handle '{id}' is already registered by this widget.");
             var handle = new PinnedLayoutHandle(
-                id, name, surface, initialFocusId, activeInputScopeId);
+                id, name, surface, initialFocusId, activeInputScopeId, interaction);
             _pinnedLayoutHandles.Add(id, handle);
             return handle;
         }
@@ -602,6 +619,7 @@ public abstract partial class Widget
             : snapshot;
     }
 
+
     /// <summary>Renders and remembers the exact snapshot used for subsequent input resolution.</summary>
     public ViewSnapshot RenderSnapshot(string widgetInstanceId, long sequence)
     {
@@ -637,6 +655,7 @@ public abstract partial class Widget
 
     private void RememberSnapshot(ViewSnapshot snapshot)
     {
+        List<CancellationTokenSource>? retiredPins=null;
         lock (_pinnedLayoutGate)
         {
             var previous = _latestSnapshot;
@@ -653,8 +672,17 @@ public abstract partial class Widget
                     _pinnedLayoutFirstSequences.Remove(id);
             foreach (var layout in snapshot.PinnedLayouts)
                 _pinnedLayoutFirstSequences.TryAdd(layout.Id, snapshot.Sequence);
+            foreach(var pair in _independentSelections.ToArray())
+                if(previous is not null && (previous.WidgetInstanceId!=snapshot.WidgetInstanceId || snapshot.Sequence<previous.Sequence) ||
+                    !snapshot.PinnedLayouts.Any(layout=>layout.Id==pair.Key && layout.IndependentSelection))
+                {
+                    _independentSelections.Remove(pair.Key);
+                    _pinnedLayoutHandles.GetValueOrDefault(pair.Key)?.SetSelection(false,default);
+                    (retiredPins??=[]).Add(pair.Value.Lifetime);
+                }
             Volatile.Write(ref _latestSnapshot, snapshot);
         }
+        if(retiredPins is not null)foreach(var pin in retiredPins)CancelAndDispose(pin);
     }
 
     public virtual ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
@@ -858,6 +886,7 @@ public abstract partial class Widget
         ArgumentNullException.ThrowIfNull(input);
         cancellationToken.ThrowIfCancellationRequested();
         if (!Enum.IsDefined(input.Origin)) return ValueTask.FromResult(false);
+        if(input.PinnedSelectionId is not null && input.Context!=ControllerInputContext.PinnedLayoutSelection)return ValueTask.FromResult(false);
         if (input.Context == ControllerInputContext.PinnedLayoutSelection)
         {
             if (input.IsPinnedLayoutSelected is null ||
@@ -918,7 +947,7 @@ public abstract partial class Widget
                 {
                     var selectedLayout = snapshot.PinnedLayouts.SingleOrDefault(layout =>
                         string.Equals(layout.Id, input.PinnedLayoutId, StringComparison.Ordinal));
-                    if (selectedLayout?.Root is null ||
+                    if (selectedLayout?.Root is null || selectedLayout.Interaction == PinnedInteractionMode.Passive ||
                         string.IsNullOrWhiteSpace(selectedLayout.ActiveInputScopeId))
                         return ValueTask.FromResult(false);
                     inputRoot = selectedLayout.Root;
@@ -1014,6 +1043,8 @@ public abstract partial class Widget
         ControllerInputEvent input,
         CancellationToken cancellationToken)
     {
+        if(input.PinnedSelectionId is { } instance)
+            return await ObserveIndependentSelectionAsync(input,instance,cancellationToken).ConfigureAwait(false);
         var selectedId = input.IsPinnedLayoutSelected == true
             ? input.PinnedLayoutId
             : null;
@@ -1043,6 +1074,45 @@ public abstract partial class Widget
         {
             Invalidate();
         }
+        return true;
+    }
+
+    /// <summary>Called for an instance-aware host selection notification. Layout withdrawal also cancels its handle's selection token.</summary>
+    public virtual ValueTask OnPinnedSurfaceChangedAsync(string layoutId,bool selected,CancellationToken cancellationToken=default)
+        => ValueTask.CompletedTask;
+
+    private async ValueTask<bool> ObserveIndependentSelectionAsync(ControllerInputEvent input,string instance,CancellationToken token)
+    {
+        if(!Guid.TryParseExact(instance,"N",out _) || input.PinnedLayoutId is not { } layout)return false;
+        var selected=input.IsPinnedLayoutSelected==true;
+        CancellationTokenSource? prior=null;
+        lock(_pinnedLayoutGate)
+        {
+            var snapshot=_latestSnapshot;
+            if(snapshot is null || input.SnapshotSequence>snapshot.Sequence)return false;
+            _independentSelections.TryGetValue(layout,out var current);
+            var handle=_pinnedLayoutHandles.GetValueOrDefault(layout);
+            if(selected)
+            {
+                if(!snapshot.PinnedLayouts.Any(p=>p.Id==layout && p.IndependentSelection) ||
+                    !_pinnedLayoutFirstSequences.TryGetValue(layout,out var first) || input.SnapshotSequence<first)return false;
+                if(current.Id==instance)return true;
+                var lifetime=CancellationTokenSource.CreateLinkedTokenSource(_widgetLifetime.Token);
+                prior=current.Lifetime;
+                _independentSelections[layout]=(instance,lifetime);
+                handle?.SetSelection(true,lifetime.Token,instance);
+            }
+            else
+            {
+                if(current.Id!=instance)return false;
+                prior=current.Lifetime;
+                _independentSelections.Remove(layout);
+                handle?.SetSelection(false,default);
+            }
+        }
+        CancelAndDispose(prior);
+        try { await OnPinnedSurfaceChangedAsync(layout,selected,token).ConfigureAwait(false); }
+        finally { Invalidate(); }
         return true;
     }
 
@@ -1099,8 +1169,12 @@ public abstract partial class Widget
     private void EndPinnedLayoutSelection()
     {
         CancellationTokenSource? lifetime;
+        CancellationTokenSource[] independent;
         lock (_pinnedLayoutGate)
         {
+            independent=_independentSelections.Values.Select(pin=>pin.Lifetime).ToArray();
+            foreach(var layout in _independentSelections.Keys)_pinnedLayoutHandles.GetValueOrDefault(layout)?.SetSelection(false,default);
+            _independentSelections.Clear();
             lifetime = _pinnedLayoutSelectionLifetime;
             _pinnedLayoutSelectionLifetime = null;
             if (_selectedPinnedLayoutId is { } selectedId &&
@@ -1109,6 +1183,7 @@ public abstract partial class Widget
             _selectedPinnedLayoutId = null;
         }
         CancelAndDispose(lifetime);
+        foreach(var selection in independent)CancelAndDispose(selection);
     }
 
     private static void CancelAndDispose(CancellationTokenSource? lifetime)

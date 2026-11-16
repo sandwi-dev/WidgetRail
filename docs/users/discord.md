@@ -1,7 +1,7 @@
 # Discord
 
 Discord provides controller-friendly voice channels, call and stream audio
-controls, application sharing, friend activity and two pinned layouts. Discord
+controls, application sharing, friend activity and voice/video pins. Discord
 sign-in and media run in a persistent WidgetRail WebView2 session; no separate
 Discord desktop client, Vesktop or Vencord installation is required.
 
@@ -42,6 +42,13 @@ website notifications in WidgetRail. Choose **Remember for this profile** to kee
 the decision across restarts. The native widget and the older website wrapper have
 separate Discord profiles. A saved block can be changed in **Website settings**.
 
+Setup also checks Discord's separate **Enable Desktop Notifications** setting.
+After permission is granted, it enables that setting when the current Discord
+client supports it and confirms the result. Existing notification preferences
+are preserved. If it cannot confirm the setting, follow the displayed instruction:
+**Discord → User Settings → Notifications → Enable Desktop Notifications**.
+Permission alone does not enable Discord's own notifications.
+
 ## Calls and controls
 
 Without a call, the home view shows the server/channel picker. Search and keyboard
@@ -50,7 +57,9 @@ channels are saved per account.
 
 In a call, Xbox **X** toggles your microphone, **Y** starts sharing when available,
 and **L3** opens the server picker. Follow the on-screen hints for your controller.
-Select a participant to change that participant's local voice volume or mute.
+Hover or focus another participant to preview local voice volume and mute. Click
+a preview control directly, or press X (F6 on keyboard) to enter. B/Escape finishes
+slider adjustment first, then returns to the participant.
 **Menu → Voice settings** selects microphone and output devices. Input gain is
 unavailable because the current browser engine does not apply it.
 
@@ -69,6 +78,12 @@ display the same decoded video track side by side. Stream mute and volume are on
 the shared-screen card in the main widget; they are independent of participant
 voice volume. Deafen also silences received audio. The video pin has no audio
 controls and does not play a second copy of stream audio.
+
+Use the pin-adjustment button beside a pinned item for movement, opacity and unpinning.
+The host outlines the matching window. Video and participant-only pins remain
+passive; voice-control pins also offer Interact. The eye beside a participant means
+that person is watching **your** stream. LIVE separately indicates that they are
+broadcasting; watching their stream does not give them an eye indicator.
 
 The separate voice-controls pin exposes Mute, Deafen and Leave, with participant
 avatars and speaking indicators. Hiding the overlay keeps an active call,

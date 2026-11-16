@@ -169,6 +169,7 @@ public enum WidgetSurfaceAppearance
     Theme,
     Transparent,
     Solid,
+    DesktopAcrylic,
 }
 
 /// <summary>
@@ -197,8 +198,22 @@ public sealed record WidgetSurfaceHints
 /// A protocol-v21 layout may additionally carry one declarative projection.
 /// It grants no window, renderer, provider, or independent input/focus authority.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<PinnedInteractionMode>))]
+public enum PinnedInteractionMode { Interactive, Passive }
+
 public sealed record PinnedPresentationLayout
 {
+    /// <summary>Passive layouts are display-only; host placement controls remain available.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public PinnedInteractionMode Interaction { get; init; }
+    /// <summary>Requests independently revocable demand for this published layout.</summary>
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IndependentSelection { get; init; }
+    /// <summary>After the user pins this independent layout, remember that choice
+    /// and reopen it when the layout is published again. Explicit unpin clears it.
+    /// Omitting the layout closes its window without clearing that choice.</summary>
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingDefault)]
+    public bool RestoreWhenAvailable { get; init; }
     public required string Id { get; init; }
     public required string Name { get; init; }
     public required WidgetSurfaceHints Surface { get; init; }

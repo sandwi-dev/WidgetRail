@@ -1,5 +1,5 @@
 /* The host supplies palette and material fallbacks, including high contrast. */
-.discord-root { width:100%; height:100%; min-width:0px; min-height:0px; padding:20px; gap:16px; color:var(--text); background:var(--surface); background-material:acrylic; background-tint-opacity:.88; background-luminosity-opacity:auto; }
+.discord-root { width:100%; height:100%; min-width:0px; min-height:0px; padding:20px; gap:16px; color:var(--text); background:transparent; }
 .discord-body, .discord-list { width:100%; min-width:0px; min-height:0px; flex-grow:1; }
 .discord-page { width:100%; min-width:0px; min-height:0px; flex-grow:1; gap:8px; }
 .discord-header { width:100%; min-width:0px; align:center; gap:10px; padding:0px 2px 14px; border-bottom-width:1px; border-bottom-color:var(--border, var(--surface-muted)); }
@@ -33,9 +33,9 @@
 .discord-page-scroll { width:100%; min-width:0px; min-height:0px; flex-grow:1; gap:16px; padding:4px; }
 .discord-search { min-width:0px; flex-grow:1; min-height:40px; }
 .discord-notice { color:var(--text); font-size:13px; padding:8px 12px; background:var(--surface-raised); border-color:var(--border, var(--surface-muted)); border-width:1px; corner-radius:8px; max-lines:3; }
-.discord-pin { width:100%; height:100%; min-width:0px; min-height:0px; gap:10px; padding:12px; justify:center; background:var(--surface); background-material:acrylic; background-tint-opacity:.84; background-luminosity-opacity:auto; }
+.discord-pin { width:100%; height:100%; min-width:0px; min-height:0px; gap:10px; padding:12px; justify:center; background:transparent; }
 .discord-video { width:100%; height:100%; min-width:0px; min-height:0px; }
-.discord-stream-pin { width:100%; height:100%; min-width:0px; min-height:0px; gap:0px; background:var(--surface); color:var(--text); }
+.discord-stream-pin { width:100%; height:100%; min-width:0px; min-height:0px; gap:0px; background:transparent; color:var(--text); }
 .discord-video-pane { width:100%; min-width:0px; min-height:0px; flex-grow:1; }
 .discord-audio-row { width:100%; min-width:0px; gap:8px; align:center; }
 .discord-audio-volume { min-width:0px; min-height:36px; padding:0px; flex-grow:1; }
@@ -44,7 +44,7 @@
 .discord-audio-mute:selected { color:var(--text-muted); }
 .discord-audio-value { min-width:34px; flex-grow:0; color:var(--text-muted); font-size:12px; text-align:end; max-lines:1; }
 .discord-columns { gap:24px; }
-.discord-primary-pane { min-width:0px; min-height:0px; flex-grow:1; gap:20px; padding:4px; }
+.discord-primary-pane { min-width:0px; min-height:0px; flex-grow:1; gap:20px; padding:4px 16px 4px 4px; }
 .discord-main-content { min-width:0px; min-height:0px; flex-grow:0; }
 .discord-call-content { width:100%; min-width:0px; gap:16px; }
 .discord-activity-pane { width:260px; min-width:0px; min-height:0px; gap:14px; padding:4px 0px 0px 18px; border-left-width:1px; border-left-color:var(--border, var(--surface-muted)); }
@@ -56,12 +56,16 @@
 .discord-call-actions { width:100%; min-width:0px; gap:8px; }
 .discord-participants { width:100%; min-width:0px; height:88px; min-height:88px; gap:10px; padding:4px 0px; }
 .discord-person { padding:10px; gap:10px; align:center; min-width:168px; corner-radius:12px; width:168px; height:72px; min-height:72px; margin:0px 6px 0px 0px; background:var(--surface-raised); border-width:1px; border-color:var(--border, var(--surface-muted)); }
-.discord-avatar-frame, .discord-avatar-speaking { width:38px; height:38px; padding:2px; corner-radius:19px; border-width:1px; border-color:transparent; }
-.discord-avatar-speaking { border-color:var(--data-green); border-width:2px; }
-.discord-person-state { width:16px; height:16px; color:var(--text-muted); }
+.discord-avatar-frame, .discord-avatar-speaking { width:40px; min-width:40px; height:40px; min-height:40px; padding:2px; corner-radius:20px; border-width:2px; border-color:transparent; align:center; justify:center; flex-grow:0; }
+.discord-avatar-speaking { border-color:var(--data-green); }
+.discord-person-state { width:16px; min-width:16px; height:16px; min-height:16px; margin:0px 2px 0px 0px; flex-grow:0; color:var(--text-muted); }
 .discord-person:focused, .discord-stream-action:focused, .discord-activity-row:focused { outline-color:var(--focus); outline-width:var(--focus-width, 2px); outline-offset:-2px; }
 .discord-stream-card { width:100%; min-width:0px; padding:14px; gap:10px; background:var(--surface-raised); border-width:1px; border-color:var(--border, var(--surface-muted)); corner-radius:12px; }
-.discord-stream-action { width:100%; min-width:0px; gap:12px; padding:4px; align:center; corner-radius:8px; border-width:0px; background:transparent; }
+.discord-stream-action { min-width:0px; flex-grow:1; gap:12px; padding:4px; align:center; corner-radius:8px; border-width:0px; background:transparent; }
+.discord-stream-header { width:100%; min-width:0px; gap:8px; align:center; }
+.discord-stream-tools { width:100%; min-width:0px; justify:end; }
+.discord-stream-stop { min-height:28px; padding:4px 8px; font-size:12px; }
+.discord-pin-toggle:selected { color:var(--data-purple); background:alpha(var(--data-purple), .12); border-color:alpha(var(--data-purple), .3); }
 .discord-stream-icon { width:32px; height:32px; color:var(--data-purple); }
 .discord-stream-audio { width:100%; min-width:0px; gap:6px; padding:8px 0px 0px; border-top-width:1px; border-top-color:var(--border, var(--surface-muted)); }
 .discord-activity-row { width:100%; min-width:0px; padding:10px; gap:6px; corner-radius:10px; align:stretch; text-align:start; }
@@ -71,25 +75,32 @@
 .discord-quiet { background:transparent; border-color:transparent; }
 .discord-leave { color:var(--data-red); background:alpha(var(--data-red), .06); border-color:alpha(var(--data-red), .25); }
 .discord-server { width:100%; min-width:0px; }
-.discord-voice-pin { width:100%; height:100%; min-width:0px; min-height:0px; padding:12px; gap:10px; justify:space-between; color:var(--text); background:var(--surface); background-material:acrylic; background-tint-opacity:.9; background-luminosity-opacity:auto; }
+.discord-voice-pin { width:100%; height:100%; min-width:0px; min-height:0px; padding:12px; gap:10px; justify:space-between; color:var(--text); background:transparent; }
 .discord-voice-heading { width:100%; min-width:0px; gap:10px; align:start; }
 .discord-voice-icon { width:24px; height:24px; color:var(--data-purple); min-width:24px; margin:2px 0px 0px; }
 .discord-voice-title { font-size:18px; font-weight:600; max-lines:1; text-overflow:ellipsis; }
 .discord-voice-count { font-size:11px; color:var(--text-muted); max-lines:1; flex-grow:0; padding:3px 0px; }
-.discord-voice-people { width:100%; min-width:0px; min-height:28px; gap:8px; align:center; }
-.discord-voice-avatars { gap:2px; align:center; }
-.discord-voice-avatar-frame { width:26px; height:26px; padding:1px; corner-radius:13px; border-width:1px; border-color:transparent; }
-.discord-voice-speaking { border-color:var(--data-green); border-width:2px; }
-.discord-voice-avatar { width:22px; height:22px; min-width:22px; min-height:22px; corner-radius:11px; }
-.discord-voice-names { font-size:13px; color:var(--text-muted); max-lines:1; text-overflow:ellipsis; }
+.discord-voice-list { width:100%; min-width:0px; padding:0px; }
+.discord-people-overlay { width:100%; min-width:0px; min-height:0px; padding:4px; gap:8px; align:start; background:transparent; }
+.discord-overlay-person { max-width:100%; min-width:0px; min-height:40px; align:center; gap:8px; }
+.discord-overlay-label { min-width:0px; max-width:100%; min-height:28px; padding:4px 10px; align:center; gap:6px; background:rgba(20, 20, 23, .88); corner-radius:16px; }
+.discord-overlay-name { min-width:0px; max-width:150px; font-family:Segoe UI; font-size:16px; font-weight:600; line-height:1.25; color:#f2f3f5; max-lines:1; text-overflow:ellipsis; }
+.discord-overlay-status { width:16px; min-width:16px; height:16px; min-height:16px; flex-grow:0; color:#c4c5c9; }
+.discord-overlay-live { padding:2px 5px; corner-radius:5px; background:#d83c3e; flex-grow:0; }
+.discord-overlay-live-label { font-size:10px; font-weight:700; color:#ffffff; max-lines:1; }
+.discord-overlay-watching { width:18px; min-width:18px; height:18px; color:#f2f3f5; flex-grow:0; }
+.discord-voice-avatar-frame { width:30px; min-width:30px; height:30px; min-height:30px; padding:2px; corner-radius:15px; border-width:2px; border-color:transparent; align:center; justify:center; flex-grow:0; }
+.discord-voice-speaking { border-color:var(--data-green); }
+.discord-overlay-avatar { width:40px; min-width:40px; height:40px; min-height:40px; padding:0px; border-width:2px; corner-radius:20px; background:transparent; }
+.discord-overlay-avatar-image { width:36px; min-width:36px; height:36px; min-height:36px; corner-radius:18px; }
 .discord-voice-actions { width:100%; min-width:0px; }
 .discord-voice-button { width:100%; min-width:0px; min-height:40px; padding:8px 4px; font-size:12px; }
 .discord-voice-toggle:selected { color:var(--data-purple); background:alpha(var(--data-purple), .12); border-color:alpha(var(--data-purple), .45); }
 
 .discord-voice-dialog { width:100%; min-width:0px; gap:14px; padding:4px; }
 .discord-voice-select, .discord-voice-volume { width:100%; min-width:0px; gap:6px; }
-.discord-connecting { font-size:12px; font-weight:600; color:var(--text-muted); }
-.discord-connection-link { min-width:0px; min-height:20px; padding:0px; background:transparent; border-width:0px; text-align:start; align:start; }
+.discord-connection-ready { color:var(--data-green); }
+.discord-connection-pending { color:var(--text-muted); }
 .discord-connection-history { width:100%; height:90px; min-height:90px; color:var(--data-green); }
 
 /* Unified call surface: destination, call actions, then a bounded people rail. */
@@ -101,3 +112,6 @@
 .discord-leave:pressed { background:alpha(var(--data-red), .14); }
 .discord-voice-summary { width:100%; min-width:0px; gap:8px; }
 .discord-voice-guild { font-size:11px; color:var(--text-muted); max-lines:1; text-overflow:ellipsis; }
+
+.discord-participant-preview { gap: 12px; min-width: 0px; }
+.discord-participant-preview-heading { gap: 10px; align: center; }

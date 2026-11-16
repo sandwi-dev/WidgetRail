@@ -316,7 +316,7 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
           let video=entry.video;
           if(!video){
             video=doc.createElement('video');video.muted=true;video.autoplay=true;video.playsInline=true;
-            doc.documentElement.style.background='black';doc.body.style.margin='0';
+            doc.documentElement.style.background='transparent';doc.body.style.margin='0';doc.body.style.background='transparent';
             Object.assign(video.style,{display:'block',width:'100vw',height:'100vh',objectFit:'contain'});
             doc.body.replaceChildren(video);entry.video=video;
           }

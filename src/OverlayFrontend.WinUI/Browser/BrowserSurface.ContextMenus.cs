@@ -117,22 +117,40 @@ internal sealed partial class BrowserSurface
     {
         if (!CanOpenPageActions || !CanRequestSiteDecision || HasDialog || core is not { } current) return;
         CancelPointer();
-        using var metrics = JsonDocument.Parse(await current.CallDevToolsProtocolMethodAsync("Page.getLayoutMetrics", "{}"));
-        if (!CanRequestSiteDecision || HasDialog || !ReferenceEquals(current, core)) return;
-        var viewport = metrics.RootElement.GetProperty("cssVisualViewport");
-        var x = cursorX * viewport.GetProperty("clientWidth").GetDouble();
-        var y = cursorY * viewport.GetProperty("clientHeight").GetDouble();
-        try
+        var page = pageEpoch;
+        var deadline = Environment.TickCount64 + 2000;
+        bool Current() => CanRequestSiteDecision && !HasDialog && ReferenceEquals(current, core) && pageEpoch == page;
+        while (Current())
         {
-            await current.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(
-                new BrowserPointerEvent("mousePressed", x, y, button: "right", clickCount: 1, buttons: 2), BrowserJsonContext.Default.BrowserPointerEvent));
-        }
-        finally
-        {
-            // Always release even when the down event opens a site-owned menu.
-            if (!retired && ReferenceEquals(current, core))
+            using var metrics = JsonDocument.Parse(await current.CallDevToolsProtocolMethodAsync("Page.getLayoutMetrics", "{}"));
+            if (!Current()) return;
+            var viewport = metrics.RootElement.GetProperty("cssVisualViewport");
+            var width = viewport.GetProperty("clientWidth").GetDouble();
+            var height = viewport.GetProperty("clientHeight").GetDouble();
+            if (width <= 0 || height <= 0)
+            {
+                // XAML placement can finish before Chromium acknowledges its new
+                // bounds. Preserve this gesture until the native viewport is ready.
+                if (Environment.TickCount64 >= deadline)
+                { ShowStatus("The page is still loading. Try Page actions again."); return; }
+                await Task.Delay(16, lifetime.Token);
+                continue;
+            }
+            var x = cursorX * width;
+            var y = cursorY * height;
+            try
+            {
                 await current.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(
-                    new BrowserPointerEvent("mouseReleased", x, y, button: "right", clickCount: 1), BrowserJsonContext.Default.BrowserPointerEvent));
+                    new BrowserPointerEvent("mousePressed", x, y, button: "right", clickCount: 1, buttons: 2), BrowserJsonContext.Default.BrowserPointerEvent));
+            }
+            finally
+            {
+                // Always release even when the down event opens a site-owned menu.
+                if (!retired && ReferenceEquals(current, core))
+                    await current.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", JsonSerializer.Serialize(
+                        new BrowserPointerEvent("mouseReleased", x, y, button: "right", clickCount: 1), BrowserJsonContext.Default.BrowserPointerEvent));
+            }
+            return;
         }
     }
 }

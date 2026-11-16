@@ -71,11 +71,14 @@ internal sealed partial class PackageIconValidationPage : Page, IAsyncDisposable
 
     private async Task RunAsync()
     {
+        if (Environment.GetCommandLineArgs().Contains("--validate-icon-labels")) { await IconLabelsAsync(); return; }
         try
         {
             await PresentationContinuityAsync();
+            await RadialIconContinuityAsync();
             await CatalogSourcesAsync();
             await OriginalColorSizingAsync();
+            await TintedIconSizingAsync();
             Apply();
             await Until(() => Find("Widget.icon") is WidgetPackageIconView { Content: Image { Source: SvgImageSource } });
             var icon = (WidgetPackageIconView)Find("Widget.icon")!;
@@ -254,5 +257,10 @@ internal sealed partial class PackageIconValidationPage : Page, IAsyncDisposable
         var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WidgetRail", "WinUI", "diagnostics");
         Directory.CreateDirectory(path); File.WriteAllText(Path.Combine(path, "package-icon-result.json"), JsonSerializer.Serialize(value));
     }
-    public ValueTask DisposeAsync() { catalogPreview?.Dispose(); return presenter.DisposeAsync(); }
+    public async ValueTask DisposeAsync()
+    {
+        catalogPreview?.Dispose();
+        foreach (var item in labelPresenters) await item.DisposeAsync();
+        await presenter.DisposeAsync();
+    }
 }

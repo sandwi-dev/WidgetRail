@@ -8,6 +8,31 @@ public sealed class PinnedPlacementTests
 {
     private static readonly PinnedPlacementLimits Limits = PinnedPlacementLimits.Default;
     [TestMethod]
+    public async Task RememberedPinsPersistSeparatelyFromGeometryAndKeepExactPackageIdentity()
+    {
+        var path=Path.Combine(Path.GetTempPath(),"wrail-pin-memory-"+Guid.NewGuid().ToString("N"));
+        try
+        {
+            var voice=new RememberedPin("discord","package.discord","publisher.one","discord.default","voice");
+            var people=voice with{LayoutId="people"};
+            var preference=PinnedPreferences.Empty.WithRemembered(voice,true).WithRemembered(people,true)
+                .WithPlacement("discord",new("display",.1,.2,400,300,"voice",75));
+            var store=new PinnedPreferencesStore(path);
+            await store.SaveAsync(preference);
+            var loaded=await new PinnedPreferencesStore(path).LoadAsync();
+            CollectionAssert.AreEqual(new[]{voice,people},loaded.Remembered.ToArray());
+            Assert.AreEqual(75,loaded.Find("discord","voice")!.OpacityPercent);
+            var manuallyClosed=loaded.WithRemembered(voice,false);
+            CollectionAssert.AreEqual(new[]{people},manuallyClosed.Remembered.ToArray());
+            Assert.IsNotNull(manuallyClosed.Find("discord","voice"));
+            Assert.AreNotEqual(voice,voice with{PublisherId="publisher.two"});
+            Assert.AreNotEqual(voice,voice with{InstanceId="discord.other"});
+            Assert.IsFalse((loaded with{Remembered=[voice,voice]}).IsValid);
+            Assert.IsFalse((loaded with{Remembered=[voice with{LayoutId="host.full-widget"}]}).IsValid);
+        }
+        finally{if(Directory.Exists(path))Directory.Delete(path,true);}
+    }
+    [TestMethod]
     public void DefaultUsesDipsAndTopRightMarginWithinWorkArea()
     {
         var monitor = new PinnedMonitor("left", new(-1920, -200, 1920, 1040), 1.25, true);
@@ -31,6 +56,18 @@ public sealed class PinnedPlacementTests
         Assert.AreEqual(saved.AnchorX, recaptured.AnchorX, .002);
         Assert.AreEqual(saved.AnchorY, recaptured.AnchorY, .002);
         Assert.AreEqual(65, recaptured.OpacityPercent);
+    }
+
+    [TestMethod]
+    public void OccupiedSavedLocationUsesClosestFreePositionAndRestoresWhenAvailable()
+    {
+        var monitor=new PinnedMonitor("left",new(-1200,0,1200,800),1,true);
+        var original=new PinnedBounds(-400,100,300,180);
+        var saved=PinnedPlacementPolicy.Capture(original,monitor,Limits,"voice",65);
+        var preferred=PinnedPlacementPolicy.Resolve([monitor],saved,Limits)!.Bounds;
+        Assert.AreEqual(original with {Y=280},PinnedPlacementPolicy.AvoidPins(preferred,monitor.WorkArea,[original]));
+        Assert.AreEqual(original,PinnedPlacementPolicy.AvoidPins(PinnedPlacementPolicy.Resolve([monitor],saved,Limits)!.Bounds,monitor.WorkArea,[]));
+        Assert.AreEqual(original,PinnedPlacementPolicy.AvoidPins(original,monitor.WorkArea,[monitor.WorkArea]));
     }
 
     [TestMethod]

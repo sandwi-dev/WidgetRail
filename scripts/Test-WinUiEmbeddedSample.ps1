@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$ShellConfig,
-    [Parameter(Mandatory)][string]$OutputDirectory
+    [Parameter(Mandatory)][string]$OutputDirectory,
+    [string]$Frontend,
+    [switch]$PinOnly,
+    [switch]$RecordPassive
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
@@ -11,10 +14,19 @@ New-Item -ItemType Directory $OutputDirectory | Out-Null
 $resultPath = Join-Path $OutputDirectory 'result.json'
 $ownedPid = 0
 try {
-    $raw = winapp run (Join-Path $root 'src/OverlayFrontend.WinUI/OverlayFrontend.WinUI.csproj') --no-build --arch x64 -p Platform=x64 --detach --json `
-        --args "--shell-config=$([IO.Path]::GetFullPath($ShellConfig)) --shell-no-controller --validation-platform-activation --validate-embedded-sample=$resultPath"
-    if ($LASTEXITCODE -ne 0) { throw "Sample launch failed: $raw" }
-    $launch = ($raw -join "`n") | ConvertFrom-Json
+    if ($Frontend) {
+        $arguments = @(
+            ('"--shell-config='+[IO.Path]::GetFullPath($ShellConfig)+'"'),'--shell-no-controller','--validation-platform-activation','--embedded-sample-capture-ack',
+            ('"--validate-embedded-sample='+$resultPath+'"'))
+        if ($PinOnly) { $arguments += '--embedded-sample-pin-only' }
+        $process=Start-Process -FilePath (Resolve-Path -LiteralPath $Frontend).Path -WindowStyle Hidden -PassThru -ArgumentList $arguments
+        $launch=[pscustomobject]@{ProcessId=$process.Id}
+    } else {
+        $raw = winapp run (Join-Path $root 'src/OverlayFrontend.WinUI/OverlayFrontend.WinUI.csproj') --no-build --arch x64 -p Platform=x64 --detach --json `
+            --args "--shell-config=$([IO.Path]::GetFullPath($ShellConfig)) --shell-no-controller --validation-platform-activation --embedded-sample-capture-ack $(if($PinOnly){'--embedded-sample-pin-only'}) --validate-embedded-sample=$resultPath"
+        if ($LASTEXITCODE -ne 0) { throw "Sample launch failed: $raw" }
+        $launch = ($raw -join "`n") | ConvertFrom-Json
+    }
     $ownedPid = [int]$launch.ProcessId
     $launch | ConvertTo-Json | Set-Content (Join-Path $OutputDirectory 'launch.json')
     $captured = @{}
@@ -25,8 +37,13 @@ try {
         if (Test-Path $resultPath) {
             try { $result = Get-Content $resultPath -Raw | ConvertFrom-Json } catch { $result = $null }
             if ($result.phase -and !$captured.ContainsKey($result.phase)) {
-                & (Join-Path $PSScriptRoot 'Capture-WinUiTestWindow.ps1') -AppPid $ownedPid -WindowHandle ([string]$result.peerHwnd) `
-                    -OutputPath (Join-Path $OutputDirectory ($result.phase + '.png')) | Out-Null
+                $capturePath = Join-Path $OutputDirectory ($result.phase + '.png')
+                winapp ui screenshot --window ([string]$result.peerHwnd) --output $capturePath --json > (Join-Path $OutputDirectory ($result.phase + '.capture.json'))
+                if ($LASTEXITCODE -ne 0) { throw "Native compact-window capture failed for $($result.phase)." }
+                if ($RecordPassive -and $result.phase -eq 'compact-passive') {
+                    winapp ui record --window ([string]$result.peerHwnd) --duration-sec 3 --fps 5 --frames --output (Join-Path $OutputDirectory 'compact-passive.mp4') --json > (Join-Path $OutputDirectory 'compact-passive.record.json')
+                    if ($LASTEXITCODE -ne 0) { throw 'Passive compact recording failed.' }
+                }
                 # Both sealed local videos contain a large bright yellow marker.
                 # A live document/visible HWND alone does not prove video pixels.
                 Add-Type -AssemblyName System.Drawing
@@ -42,6 +59,7 @@ try {
                     if ($markers -lt 200) { $pixelFailures += $result.phase }
                 } finally { $bitmap.Dispose() }
                 $captured[$result.phase] = $true
+                [IO.File]::WriteAllText($resultPath + "." + $result.phase + ".captured", "")
             }
             if ($result -and $result.PSObject.Properties.Name -contains 'passed') { break }
         }
@@ -49,8 +67,12 @@ try {
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
     if (!$result -or !$result.passed) { throw "Sample workflow failed or timed out. See $resultPath" }
-    if (!$captured.ContainsKey('compact-passive') -or !$captured.ContainsKey('compact-interactive')) { throw 'Missing compact media pixel evidence.' }
-    if ($pixelFailures.Count -gt 0) { throw "Local video marker missing in $($pixelFailures -join ', ')." }
+    if (!$captured.ContainsKey('compact-passive') -or (!$PinOnly -and !$captured.ContainsKey('compact-interactive'))) { throw 'Missing compact media pixel evidence.' }
+    $result | Add-Member -NotePropertyName nativePassed -NotePropertyValue $true
+    $result | Add-Member -NotePropertyName pixelFailures -NotePropertyValue @($pixelFailures)
+    $result.passed = $pixelFailures.Count -eq 0
+    $result | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $resultPath
+    if (!$result.passed) { throw "Local video marker missing in $($pixelFailures -join ', ')." }
     winapp ui screenshot Widget.media-shell.root -a $ownedPid -o (Join-Path $OutputDirectory 'sample.png') --json | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Sample screenshot failed.' }
     "$($result.checks.Count) actual sample checks passed."

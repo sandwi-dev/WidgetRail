@@ -79,7 +79,10 @@ internal sealed class SyntheticDiscordSession:IDiscordSession
             .Select(id=>new DiscordChannel(id.ToString(),"300","Voice "+id,"After hours"))]};
         if(voiceControlsMode)state=state with{Participants=state.Participants.Select(person=>person.Id==state.Account?person:person with{Audio=new(true,false,50)}).ToArray()};
         if(audioMode)state=state with{Streams=state.Streams.Select(stream=>stream with{Audio=new(true,false,100)}).ToArray()};
-        if(voicePinMode)state=state with{ChannelName="A very long voice channel name for compact controller pin layout checks",Muted=true,Deafened=true};
+        if(File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-voice-overflow.enabled")))state=state with{Participants=[..state.Participants,new("5","Jules",false,false,false)]};
+        if(voicePinMode)state=state with{ChannelName="A very long voice channel name for compact controller pin layout checks",Muted=true,Deafened=true,
+            Sharing=true,OutgoingViewers=new("guild:100:10:1",["2"]),
+            Streams=state.Streams.Select((stream,index)=>stream with{Watching=index==0}).ToArray()};
     }
     // Navigation-only sentinel: deliberately never registered with the broker.
     // The account route can be entered/backed out without any page, network or login.
@@ -145,7 +148,7 @@ internal sealed class SyntheticDiscordSession:IDiscordSession
         if(audioMode&&method=="unwatch"&&value.TryGetProperty("lease",out var removed))leases.TryRemove(removed.GetString()!,out _);
         if(method=="mute")state=state with{Muted=value.GetProperty("value").GetBoolean()};
         if(method=="deafen")state=state with{Deafened=value.GetProperty("value").GetBoolean()};
-        if(method=="leave")state=state with{ChannelId=null,Participants=[],Streams=[],VoiceConnection="disconnected",
+        if(method=="leave")state=state with{ChannelId=null,Participants=[],Streams=[],VoiceConnection="disconnected",Sharing=false,OutgoingViewers=null,
             Activities=state.Activities.Where(activity=>activity.CanJoinVoice).ToArray()};
         if(method is "join" or "joinActivity")
         {

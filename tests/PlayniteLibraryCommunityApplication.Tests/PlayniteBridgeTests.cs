@@ -78,8 +78,8 @@ public sealed class PlayniteBridgeTests
         Assert.IsFalse(await client.ChangeInstallationAsync(id, true, default));
         transport.Response = new(200, "{\"ok\":true,\"action\":\"install_started\"}");
         Assert.IsTrue(await client.ChangeInstallationAsync(id, true, default));
-        Assert.AreEqual("api/games/" + id + "/install", PlayniteBridgeHttpTransport.Resolve(transport.ObservedCommand!).RelativePath);
-        Assert.AreEqual(HttpMethod.Post, PlayniteBridgeHttpTransport.Resolve(new(PlayniteBridgeCommandKind.Uninstall, id)).Method);
+        Assert.AreEqual("v1/games/" + id + "/install", PlayniteBridgeHttpTransport.ResolveLocal(transport.ObservedCommand!).RelativePath);
+        Assert.AreEqual(HttpMethod.Post, PlayniteBridgeHttpTransport.ResolveLocal(new(PlayniteBridgeCommandKind.Uninstall, id)).Method);
     }
 
     [TestMethod]
@@ -191,14 +191,9 @@ public sealed class PlayniteBridgeTests
         Assert.AreEqual(
             WidgetRail.WidgetProtocol.ProtocolConstants.MaximumEncodedArtworkBytes,
             maximumArtworkBytes);
-        var fixedOrigin = (Uri)typeof(PlayniteBridgeHttpTransport).GetField(
-            "Origin", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
-        Assert.AreEqual("http://localhost:19821/", fixedOrigin.AbsoluteUri);
-        Assert.AreEqual("localhost", fixedOrigin.Host);
-        Assert.AreEqual("localhost:19821", fixedOrigin.Authority,
-            "The HTTP/1.1 Host authority must identify the fixed Playnite Bridge listener.");
-        Assert.AreEqual(PlayniteBridgeClient.Port, fixedOrigin.Port);
-
+        Assert.IsNull(typeof(PlayniteBridgeHttpTransport).GetField("Origin", BindingFlags.Static | BindingFlags.NonPublic),
+            "No static endpoint may bypass the selected profile descriptor.");
+        Assert.IsNull(typeof(PlayniteBridgeHttpTransport).GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null, Type.EmptyTypes, null));
         var clientMethods = typeof(PlayniteBridgeClient).GetMethods(
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
             .Where(method => !method.IsSpecialName)
@@ -212,6 +207,7 @@ public sealed class PlayniteBridgeTests
             nameof(PlayniteBridgeClient.DeleteCredentialAsync),
             nameof(IDisposable.Dispose),
             nameof(IAsyncDisposable.DisposeAsync),
+            nameof(PlayniteBridgeClient.GetAchievementOverviewAsync),
             nameof(PlayniteBridgeClient.GetAchievementsAsync),
             nameof(PlayniteBridgeClient.GetActivityAsync),
             nameof(PlayniteBridgeClient.LaunchAsync),
@@ -219,6 +215,8 @@ public sealed class PlayniteBridgeTests
             nameof(PlayniteBridgeClient.ListCompletionStatusesAsync),
             nameof(PlayniteBridgeClient.ProbeAsync),
             nameof(PlayniteBridgeClient.QueryGamesAsync),
+            nameof(PlayniteBridgeClient.ReadEventsAsync),
+            nameof(PlayniteBridgeClient.RefreshAchievementsAsync),
             nameof(PlayniteBridgeClient.ResolveArtworkAsync),
             nameof(PlayniteBridgeClient.ResolveArtworkFileAsync),
             nameof(PlayniteBridgeClient.ResolveGameAsync),
@@ -238,7 +236,7 @@ public sealed class PlayniteBridgeTests
         var compatibilityPath = (string)typeof(PlayniteBridgeClient).GetField(
             nameof(PlayniteBridgeClient.CompatibilityPath),
             BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
-        Assert.AreEqual("/api/games?installed=true&limit=1&offset=0",
+        Assert.AreEqual("/v1/connection",
             compatibilityPath);
         var credentialTarget = (string)typeof(WindowsCredentialPlayniteTokenStore).GetField(
             nameof(WindowsCredentialPlayniteTokenStore.Target),
@@ -370,6 +368,8 @@ public sealed class PlayniteBridgeTests
         var manifestPath = Path.Combine(root, "samples", "PlayniteLibraryWidget", "manifest.json");
         using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
         var value = manifest.RootElement;
+        Assert.IsTrue(value.GetProperty("pinningSupported").GetBoolean(), "The authored progress layout requires package pin admission.");
+        Assert.IsFalse(value.TryGetProperty("notificationCategories", out _), "PlayniteAchievements owns unlock notifications.");
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, value.GetProperty("optionalPermissions").GetArrayLength());
         Assert.IsTrue(Version.TryParse(value.GetProperty("version").GetString(), out _),
@@ -409,17 +409,19 @@ public sealed class PlayniteBridgeTests
                                 $"{value.GetProperty("version").GetString()}.wrwidget");
         Assert.IsTrue(File.Exists(packagePath), "The validated package artifact is missing.");
         using var archive = ZipFile.OpenRead(packagePath);
-        var bridgeBytes = ReadEntry(archive, "payload/bridge/PlayniteBridge.WidgetRail.pext");
-        using var bundleMetadata = JsonDocument.Parse(ReadEntry(archive, "payload/bridge/bridge-package.json"));
+        var bridgeBytes = ReadEntry(archive, "payload/integration/WidgetRail.Playnite.pext");
+        using var bundleMetadata = JsonDocument.Parse(ReadEntry(archive, "payload/integration/integration-package.json"));
         Assert.AreEqual(bundleMetadata.RootElement.GetProperty("sha256").GetString(),
             Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bridgeBytes)));
         using var bridgeStream = new MemoryStream(bridgeBytes);
         using var bridgeArchive = new ZipArchive(bridgeStream, ZipArchiveMode.Read);
-        CollectionAssert.AreEquivalent(new[] { "PlayniteBridge.dll", "extension.yaml", "LICENSE", "WidgetRail.Build.json" },
+        CollectionAssert.AreEquivalent(PlayniteSetupPackage.Files,
             bridgeArchive.Entries.Select(entry => entry.FullName).ToArray());
         Assert.AreEqual(bundleMetadata.RootElement.GetProperty("dllSha256").GetString(),
-            Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(ReadEntry(bridgeArchive, "PlayniteBridge.dll"))));
+            Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(ReadEntry(bridgeArchive, "WidgetRail.Playnite.dll"))));
         Assert.IsTrue(ReadEntry(bridgeArchive, "LICENSE").Length > 0);
+        foreach (var entry in bridgeArchive.Entries)
+            AssertNoLegacyExecution(ReadEntry(bridgeArchive, entry.FullName), entry.FullName);
         var stylePath = Path.Combine(root, "samples", "PlayniteLibraryWidget",
             "styles", "default.wrss");
         CollectionAssert.AreEqual(File.ReadAllBytes(manifestPath),
@@ -444,13 +446,23 @@ public sealed class PlayniteBridgeTests
             using var stream = entry.Open();
             using var buffer = new MemoryStream();
             stream.CopyTo(buffer);
-            var content = Encoding.Latin1.GetString(buffer.ToArray());
-            Assert.IsFalse(content.Contains("fake-playnite-token", StringComparison.Ordinal),
-                entry.FullName);
-            Assert.IsFalse(content.Contains("/api/eval", StringComparison.OrdinalIgnoreCase),
-                entry.FullName);
-            Assert.IsFalse(content.Contains("/api/auth/rotate", StringComparison.OrdinalIgnoreCase),
-                entry.FullName);
+            AssertNoLegacyExecution(buffer.ToArray(), entry.FullName);
+        }
+    }
+
+    private static void AssertNoLegacyExecution(byte[] bytes, string entry)
+    {
+        foreach (var forbidden in new[] { "api/eval", "api/auth/rotate", "CSharpCodeProvider", "fake-playnite-token" })
+        {
+            // Microsoft's System.Management and its CodeDom dependency carry this type.
+            // They support WMI setup discovery; we do not invoke their code generator.
+            // Keep checking every other assembly,
+            // including our entire nested plugin, and all endpoint/token markers.
+            if (forbidden == "CSharpCodeProvider" &&
+                entry is "payload/System.CodeDom.dll" or "payload/System.Management.dll")
+                continue;
+            Assert.IsTrue(bytes.AsSpan().IndexOf(Encoding.UTF8.GetBytes(forbidden)) < 0, entry + ": " + forbidden);
+            Assert.IsTrue(bytes.AsSpan().IndexOf(Encoding.Unicode.GetBytes(forbidden)) < 0, entry + ": UTF-16 " + forbidden);
         }
     }
 

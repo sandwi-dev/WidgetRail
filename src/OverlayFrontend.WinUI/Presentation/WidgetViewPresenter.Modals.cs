@@ -12,6 +12,10 @@ internal sealed partial class WidgetViewPresenter
     private sealed record PendingModalDismissal(WidgetPresentationBinding Owner, object LayerToken,
         object DialogToken, string DialogId, string Action);
     private PendingModalDismissal? modalDismissPending;
+    // The shell may return from pin interaction only after owned Escape contexts.
+    internal bool OwnsKeyboardEscape => previewEntered || HasTransientControl || effectiveView?.Root.Kind==ViewNodeKind.ModalLayer ||
+        HasClosingModal || previewOwner is not null || bindings.Values.Any(binding=>
+            binding.Element is Browser.BrowserSlot slot&&slot.Surface?.HasNativeKeyboardFocus==true);
 
     // A modal is painted beside the shell, outside this presenter's subtree.
     // Native focus can still be on shell chrome (for example after a pointer
@@ -33,8 +37,19 @@ internal sealed partial class WidgetViewPresenter
 
     private void ModalKeyDown(object sender, KeyRoutedEventArgs args)
     {
+        // Preview portals sit beside their owner, including owners with a modal.
+        // Give their nested controls Escape before the outer modal or pin return.
+        if (!args.Handled && args.Key == Windows.System.VirtualKey.Escape && previewEntered && previewSurface?.Fragment is { } preview)
+        {
+            if (!preview.HasTransientControl) preview.ModalKeyDown(sender, args);
+            return;
+        }
         if (!args.Handled && args.Key == Windows.System.VirtualKey.Escape && previewOwner is { } owner && !HasTransientControl)
-        { args.Handled = true; owner.ExitFocusPreview(); return; }
+        {
+            args.Handled = true;
+            if (!args.KeyStatus.WasKeyDown && !HandleSliderButton(ControllerButton.B, ControllerEventPhase.Pressed)) owner.ExitFocusPreview();
+            return;
+        }
         if (args.Handled || args.Key != Windows.System.VirtualKey.Escape ||
             Input.GamepadKeyBoundary.Owns(this, args) || HasTransientControl ||
             FocusedBrowser?.Surface?.HasNativeKeyboardFocus == true ||

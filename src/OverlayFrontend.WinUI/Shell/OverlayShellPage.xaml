@@ -15,7 +15,7 @@
                 <RowDefinition Height="8" />
                 <RowDefinition Height="76" />
             </Grid.RowDefinitions>
-            <Border x:Name="WidgetSurface" VerticalAlignment="Bottom" IsHitTestVisible="False" />
+            <local:DesktopAcrylicSurface x:Name="WidgetSurface" VerticalAlignment="Bottom" IsHitTestVisible="False" />
             <!-- Presenters remain parented in a full-size native layout stage.
                  Incoming content can reach its final extent without resizing the
                  committed backdrop or unloading/recreating native controls. -->
@@ -37,18 +37,42 @@
             </Border>
             <Grid x:Name="MediaParking" Visibility="Collapsed" IsHitTestVisible="False"
                   AutomationProperties.AccessibilityView="Raw" />
-            <ContentControl x:Name="TrayHelp" Grid.Row="2" IsTabStop="False"
-                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
-                            AutomationProperties.AutomationId="Overlay.TrayHelp" />
+            <Grid x:Name="GuideRegion" Grid.Row="2">
+                <ContentControl x:Name="TrayHelp" IsTabStop="False"
+                                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                                AutomationProperties.AutomationId="Overlay.TrayHelp" />
+                <TextBlock x:Name="PinAdjustmentHelp" Visibility="Collapsed" VerticalAlignment="Center" TextWrapping="Wrap"
+                           AutomationProperties.AutomationId="Overlay.PinAdjustment.Help" />
+            </Grid>
             <Grid x:Name="RailRegion" Grid.Row="4" VerticalAlignment="Center" ColumnSpacing="14">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition x:Name="LeadingStatusColumn" Width="0" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition x:Name="TrailingStatusColumn" Width="0" />
                 </Grid.ColumnDefinitions>
+                <Grid x:Name="RailStatusGroup" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <ContentControl x:Name="RailStatusHost" IsTabStop="False" Visibility="Collapsed"
                                 HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
                                 AutomationProperties.AutomationId="Overlay.RailStatus" />
+                <StackPanel x:Name="PinManagementCommands" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Background="Transparent">
+                    <Button x:Name="ManagePinsButton" Width="48" Height="48" Padding="4" CornerRadius="12" Click="ManagePinsClicked"
+                            AutomationProperties.AutomationId="Overlay.ManagePins" AutomationProperties.Name="Manage pins"
+                            ToolTipService.ToolTip="Adjust pins (Ctrl+Shift+P). Interact with pin (Ctrl+Shift+I).">
+                        <Button.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="P" Modifiers="Control,Shift" Invoked="ManagePinsAcceleratorInvoked" />
+                            <KeyboardAccelerator Key="I" Modifiers="Control,Shift" Invoked="InteractPinAcceleratorInvoked" />
+                        </Button.KeyboardAccelerators>
+                        <PathIcon Width="22" Height="22" Data="F1 M4,2 L11,2 11,4 10,5 10,10 13,13 13,15 8.5,15 8.5,22 6.5,22 6.5,15 2,15 2,13 5,10 5,5 4,4 Z M7,4 L7,10.8 4.8,13 10.2,13 8,10.8 8,4 Z M15,5 L22,5 22,7 15,7 Z M15,11 L22,11 22,13 15,13 Z M15,17 L22,17 22,19 15,19 Z M17,4 L20,4 20,8 17,8 Z M16,10 L19,10 19,14 16,14 Z M19,16 L22,16 22,20 19,20 Z" />
+                    </Button>
+                    <Button x:Name="ReturnFromPinButton" Width="48" Height="48" Padding="4" CornerRadius="12" Visibility="Collapsed" IsEnabled="False" Click="ReturnFromPinClicked"
+                            AutomationProperties.AutomationId="Overlay.ReturnFromPin" AutomationProperties.Name="Return to overlay"
+                            ToolTipService.ToolTip="Return to the main overlay">
+                        <FontIcon Glyph="&#xE72B;" FontFamily="Segoe Fluent Icons" FontSize="22" />
+                    </Button>
+                </StackPanel>
+                </Grid>
+
                 <Grid x:Name="RailControls" Grid.Column="1" ColumnSpacing="6">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <Button x:Name="TrayPrevious" Content="&#xE76B;" FontFamily="Segoe Fluent Icons" Width="36" Height="44" Padding="0"

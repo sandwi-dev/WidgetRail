@@ -154,6 +154,7 @@ foreach($widget in $catalog.bundledWidgets){
     $null=Package $sources[$widget.packageId] $build $widget.packageRoot $widget.id
 }
 Write-ReleaseJson (Join-Path $build 'widget-catalog.json') $catalog
+& (Join-Path $PSScriptRoot 'Test-WinUiCandidateCatalog.ps1') -InstallationRoot $build *> (Join-Path $logs 'catalog-discovery-verification.txt')
 $extras=@(foreach($widget in $content.supplementalWidgets){
     $manifest=Package (Join-Path $repository $widget.project) $supplemental "runtime/$($widget.runtime)" $widget.id
     [ordered]@{id=$widget.id;packageId=$manifest.id;instanceId="$($widget.id).default";packageRoot="runtime/$($widget.runtime)";icon=$manifest.presentation.icon;quickActions=@()}

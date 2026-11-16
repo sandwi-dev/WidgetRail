@@ -17,7 +17,8 @@ internal sealed class BrowserPopupPresentation(string widgetId, BrowserSurface p
 
 internal sealed partial class BrowserOwner
 {
-    private BrowserPopupPresentation? popupPresentation;
+    private readonly Dictionary<BrowserSurface,BrowserPopupPresentation> popupPresentations=[];
+    private BrowserPopupPresentation? expandedPopup;
     private readonly SemaphoreSlim popupPlacement = new(1, 1);
     private BrowserSlot? expandedPopupSlot;
     private Task? popupReconciliation;
@@ -36,7 +37,8 @@ internal sealed partial class BrowserOwner
 
     internal BrowserSurface[] PinnablePopups(string widgetId) => retired ? [] : entries
         .Where(pair => pair.Key.Widget == widgetId && session.IsWebBrowserSessionCurrent(pair.Value.Authority, pair.Key.Document))
-        .Select(pair => pair.Value.Surface.PinnablePopup).OfType<BrowserSurface>().ToArray();
+        .Select(pair => pair.Value.Surface.PinnablePopup).OfType<BrowserSurface>()
+        .Where(child=>!popupPresentations.ContainsKey(child)).ToArray();
     internal BrowserSurface? PinnablePopup(string widgetId) => PinnablePopups(widgetId).FirstOrDefault();
     internal bool CanPinPopup(string widgetId, BrowserSurface child) => PinnablePopups(widgetId).Contains(child);
 
@@ -49,12 +51,12 @@ internal sealed partial class BrowserOwner
         {
             while (reconciliation is { IsCompleted: false } pending) await pending;
             var pair = entries.FirstOrDefault(pair => ReferenceEquals(pair.Value.Surface.PinnablePopup, child));
-            if (retired || popupPresentation is not null || destination.Retired || !destination.CanDisplay ||
+            if (retired || popupPresentations.ContainsKey(child) || destination.Retired || !destination.CanDisplay ||
                 pair.Value is not { } entry || !session.IsWebBrowserSessionCurrent(entry.Authority, pair.Key.Document)) return null;
             var origin = entry.Surface.DetachPopup(child);
             if (origin is null) return null;
             lease = new(entry.Authority.WidgetId, entry.Surface, child, destination, origin);
-            popupPresentation = lease;
+            popupPresentations.Add(child,lease);
             destination.Pinned = true;
             destination.PlacementChanged = RefreshPopupPresentation;
             await MoveAsync(child, destination.Host, () => lease.IsCurrent && destination.CanDisplay);
@@ -85,8 +87,8 @@ internal sealed partial class BrowserOwner
     {
         if (lease.Released) return;
         lease.Released = true;
-        if (ReferenceEquals(popupPresentation, lease)) popupPresentation = null;
-        InvalidatePopupExpansion();
+        popupPresentations.Remove(lease.Child);
+        if(ReferenceEquals(expandedPopup,lease))InvalidatePopupExpansion();
         lease.Slot.PlacementChanged = null;
         lease.Slot.SetSurface(null);
         lease.Child.SetPresentation(false, false);
@@ -108,20 +110,21 @@ internal sealed partial class BrowserOwner
 
     private void RefreshPopupPresentation()
     {
-        if (retired || popupPresentation is not { IsCurrent: true } lease) return;
-        var slot = expandedPopupSlot ?? lease.Slot;
-        lease.Child.SetPresentation(slot.CanDisplay, slot.AcceptsInput,
-            passivePin: slot.Pinned && !slot.Expanded && !slot.AcceptsInput);
+        if(retired)return;
+        foreach(var lease in popupPresentations.Values.Where(pin=>pin.IsCurrent).ToArray())
+        {
+            var slot=ReferenceEquals(expandedPopup,lease)&&expandedPopupSlot is not null?expandedPopupSlot:lease.Slot;
+            lease.Child.SetPresentation(slot.CanDisplay,slot.AcceptsInput,passivePin:slot.Pinned&&!slot.Expanded&&!slot.AcceptsInput);
+        }
     }
 
     private void PopupClosed(BrowserSurface child)
     {
-        if (popupPresentation is not { } lease || !ReferenceEquals(lease.Child, child)) return;
+        if (!popupPresentations.Remove(child,out var lease))return;
         lease.Released = true;
-        popupPresentation = null;
         lease.Slot.PlacementChanged = null;
         lease.Slot.SetSurface(null);
-        InvalidatePopupExpansion();
+        if(ReferenceEquals(expandedPopup,lease))InvalidatePopupExpansion();
         // Notification only: shell teardown is queued, never awaited while the
         // parent/profile's lifetime operation owns its own gate.
         PopupPresentationInvalidated?.Invoke(lease);
@@ -131,6 +134,7 @@ internal sealed partial class BrowserOwner
     {
         if (expandedPopupSlot is not { } slot) return;
         expandedPopupSlot = null;
+        expandedPopup=null;
         slot.SetSurface(null); slot.PlacementChanged = null;
         ExpansionInvalidated?.Invoke();
     }
@@ -142,6 +146,7 @@ internal sealed partial class BrowserOwner
         {
             if (retired || !lease.IsCurrent || expandedPopupSlot is not null || !destination.CanDisplay) return false;
             expandedPopupSlot = destination;
+            expandedPopup=lease;
             destination.Expanded = true;
             destination.PlacementChanged = RefreshPopupPresentation;
             lease.Slot.SetSurface(null);
@@ -164,7 +169,9 @@ internal sealed partial class BrowserOwner
             if (!ReferenceEquals(expandedPopupSlot, destination)) return;
             expandedPopupSlot = null;
             destination.SetSurface(null); destination.PlacementChanged = null;
-            if (retired || popupPresentation is not { IsCurrent: true } lease) return;
+            var lease=expandedPopup;
+            expandedPopup=null;
+            if(retired || lease is not {IsCurrent:true})return;
             returning = lease;
             lease.Child.SetPresentation(false, false);
             await MoveAsync(lease.Child, lease.Slot.Host, () => lease.IsCurrent && !lease.Slot.Retired);

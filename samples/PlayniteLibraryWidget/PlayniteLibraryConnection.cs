@@ -32,37 +32,37 @@ internal static partial class PlayniteLibraryConnectionPresentation
         var (title, detail, tone) = state.Kind switch
         {
             PlayniteBridgeConnectionKind.Connected => (
-                "Playnite Bridge connected",
+                "WidgetRail for Playnite connected",
                 "Your library is ready to browse.", AlertTone.Success),
             PlayniteBridgeConnectionKind.AuthenticationRequired => (
                 "Authentication required",
-                "The saved token was rejected. Enter the current Playnite Bridge token.",
+                "The saved token was rejected. Enter the current WidgetRail for Playnite token.",
                 AlertTone.Warning),
             PlayniteBridgeConnectionKind.Incompatible => (
-                "Playnite Bridge is incompatible",
-                "Update Playnite Bridge to a compatible version, then try again.",
+                "WidgetRail for Playnite is incompatible",
+                "Update WidgetRail for Playnite to a compatible version, then try again.",
                 AlertTone.Warning),
             PlayniteBridgeConnectionKind.Malformed => (
-                "Playnite Bridge returned invalid data",
+                "WidgetRail for Playnite returned invalid data",
                 "Restart Playnite and test the connection again.",
                 AlertTone.Danger),
             PlayniteBridgeConnectionKind.Unavailable when state.Code == "permission_required" => (
                 "Permission required",
-                "Allow local port 19821 and private-secret access in WidgetRail Settings.",
+                "Reconnect the selected Playnite profile from connection settings.",
                 AlertTone.Warning),
             PlayniteBridgeConnectionKind.Unavailable => (
-                "Playnite Bridge unavailable",
-                "Start Playnite Bridge locally, then test the connection again.",
+                "WidgetRail for Playnite unavailable",
+                "Start WidgetRail for Playnite locally, then test the connection again.",
                 AlertTone.Warning),
             _ => (
                 "Token required",
-                "Copy the token from Playnite Bridge settings and save it here.",
+                "Copy the token from WidgetRail for Playnite settings and save it here.",
                 AlertTone.Info),
         };
         var enabled = state.Interactive && !state.Busy;
         var token = UI.SensitiveTextEntry(
-                configured ? "Enter a replacement Playnite Bridge token" :
-                    "Enter the Playnite Bridge token",
+                configured ? "Enter a replacement WidgetRail for Playnite token" :
+                    "Enter the WidgetRail for Playnite token",
                 PlayniteLibraryWidget.PlayniteSaveActionId,
                 "playnite-library.playnite.token",
                 ProtocolConstants.MaximumTextEntryLength)
@@ -94,9 +94,9 @@ internal static partial class PlayniteLibraryConnectionPresentation
                         .Disabled(!state.Interactive)
                         .AddClasses("playnite-library-control"))
                 .Classes("playnite-library-header", "playnite-library-playnite-header"),
-            UI.Text("Local service · localhost:19821",
+            UI.Text("Local service · selected Playnite profile",
                     "playnite-library.playnite.endpoint",
-                    "Playnite Bridge local service on port 19821")
+                    "WidgetRail for Playnite local service")
                 .Classes("playnite-library-source-summary"),
             UI.Alert(title, detail, tone, "playnite-library.playnite.status"),
             UI.Stack("playnite-library.playnite.credential",
@@ -113,7 +113,7 @@ internal static partial class PlayniteLibraryConnectionPresentation
         if (state.Busy)
             children.Add(UI.Stack("playnite-library.playnite.busy",
                     UI.LoadingIndicator("playnite-library.playnite.busy.indicator",
-                        "Checking Playnite Bridge"),
+                        "Checking WidgetRail for Playnite"),
                     UI.Text("Checking the local connection…",
                         "playnite-library.playnite.busy.text"))
                 .Classes("playnite-library-playnite-card"));
@@ -152,7 +152,7 @@ public sealed partial class PlayniteLibraryWidget
     private IPlayniteBridgeClient? _playniteClient;
 
     private IPlayniteBridgeClient PlayniteClient =>
-        _playniteClient ??= PlayniteBridgeClient.CreateDefault();
+        _playniteClient ??= PlayniteBridgeClient.CreateUnconfigured();
 
     private PlayniteLibraryConnectionState CapturePlayniteConnection(
         PlayniteLibraryRenderState state)
@@ -210,13 +210,13 @@ public sealed partial class PlayniteLibraryWidget
         if (completion.Status != WidgetOperationStatus.Succeeded)
         {
             ShowPlayniteFeedback(new("Connection test failed",
-                "Playnite Bridge could not be checked.", ToastTone.Danger));
+                "WidgetRail for Playnite could not be checked.", ToastTone.Danger));
             return;
         }
         var result = _playniteConnection.Snapshot.Value;
         if (result is null) return;
         ShowPlayniteFeedback(result.Kind == PlayniteBridgeConnectionKind.Connected
-            ? new("Connection confirmed", "Playnite Bridge is ready.", ToastTone.Success)
+            ? new("Connection confirmed", "WidgetRail for Playnite is ready.", ToastTone.Success)
             : new("Connection test failed", ConnectionFeedbackMessage(result),
                 result.Kind == PlayniteBridgeConnectionKind.AuthenticationRequired
                     ? ToastTone.Warning
@@ -243,7 +243,7 @@ public sealed partial class PlayniteLibraryWidget
                     PlayniteBusy = false,
                 });
                 ShowPlayniteFeedback(new("Token was not saved",
-                    "Enter a valid Playnite Bridge token.", ToastTone.Warning));
+                    "Enter a valid WidgetRail for Playnite token.", ToastTone.Warning));
                 return;
             }
             _playniteFeedbackExpiry.Cancel();
@@ -252,7 +252,10 @@ public sealed partial class PlayniteLibraryWidget
             var probe = _playniteConnection.Refresh();
             await probe.Completion.WaitAsync(lifetime.Token).ConfigureAwait(false);
             if (_playniteConnection.Snapshot.Value?.Kind == PlayniteBridgeConnectionKind.Connected)
-                _application.ResetConnectionCache();
+            {
+                RetireConnectionPresentation();
+                await _application.ResetConnectionCacheAsync().ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (PlayniteCredentialException)
@@ -282,6 +285,9 @@ public sealed partial class PlayniteLibraryWidget
         try
         {
             await PlayniteClient.DeleteCredentialAsync(lifetime.Token).ConfigureAwait(false);
+            Operations.Cancel(UpdatesOperation);
+            RetireConnectionPresentation();
+            await _application.ResetConnectionCacheAsync().ConfigureAwait(false);
             _playniteConnection.Reset();
             _model.Update(state => state with
             {
@@ -349,7 +355,7 @@ public sealed partial class PlayniteLibraryWidget
             PlayniteBridgeConnectionKind.Malformed =>
                 "The local service returned an invalid bounded response.",
             PlayniteBridgeConnectionKind.NotConfigured =>
-                "Save the Playnite Bridge token before testing.",
-            _ => "Playnite Bridge is not available on localhost:19821.",
+                "Save the WidgetRail for Playnite token before testing.",
+            _ => "The selected Playnite profile is not available.",
         };
 }

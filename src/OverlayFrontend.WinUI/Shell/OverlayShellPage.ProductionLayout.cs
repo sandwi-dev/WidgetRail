@@ -56,7 +56,7 @@ internal sealed partial class OverlayShellPage
         StatusChrome.MaxHeight = content.Height;
         var alignment = Appearance.OverlayPosition switch
         { OverlayPosition.BottomLeft => HorizontalAlignment.Left, OverlayPosition.BottomRight => HorizontalAlignment.Right, _ => HorizontalAlignment.Center };
-        WidgetSurface.HorizontalAlignment = StatusChrome.HorizontalAlignment = TrayHelp.HorizontalAlignment = RailRegion.HorizontalAlignment = alignment;
+        WidgetSurface.HorizontalAlignment = StatusChrome.HorizontalAlignment = GuideRegion.HorizontalAlignment = RailRegion.HorizontalAlignment = alignment;
         ConfigureRail(available.Width);
         RefreshRadialChooser();
         PositionOpeningIndicator();
@@ -67,7 +67,9 @@ internal sealed partial class OverlayShellPage
 
     private void ConfigureRail(double width)
     {
-        var next = ProductionShellGeometry.Rail(width, catalogItems.Count, Appearance.OverlayPosition == OverlayPosition.Center);
+        PinManagementCommands.Measure(new(double.PositiveInfinity, ProductionShellGeometry.RailHeight));
+        reservedPinCommandWidth = PinManagementCommands.DesiredSize.Width is > 0 and var commandsWidth ? commandsWidth + 8 : 0;
+        var next = ProductionShellGeometry.Rail(Math.Max(1, width - reservedPinCommandWidth), catalogItems.Count, Appearance.OverlayPosition == OverlayPosition.Center);
         if (railItemStyle is null || next.TileSize != railGeometry.TileSize)
         {
             railItemStyle = new(typeof(ListViewItem));
@@ -85,17 +87,22 @@ internal sealed partial class OverlayShellPage
         UpdateIcons(Tray);
         QueueWidgetStatusRefresh();
         Tray.Width = next.ViewportWidth;
-        TrayHelp.Width = next.GuideWidth;
+        GuideRegion.Width = Math.Min(width, Math.Max(880, next.GuideWidth));
         TrayPrevious.Visibility = TrayNext.Visibility = next.Overflow ? Visibility.Visible : Visibility.Collapsed;
+        RailControls.ColumnSpacing = next.Overflow ? 6 : 0;
         var statusLeft = Appearance.OverlayPosition == OverlayPosition.BottomLeft;
         // Centered rails reserve matching space on both sides, keeping icons
         // centered as passive status appears/disappears or changes width.
         var centered = Appearance.OverlayPosition == OverlayPosition.Center;
-        LeadingStatusColumn.Width = new(statusLeft || centered ? next.StatusWidth : 0);
-        TrailingStatusColumn.Width = new(!statusLeft || centered ? next.StatusWidth : 0);
-        Grid.SetColumn(RailStatusHost, statusLeft ? 0 : 2);
+        var commandWidth = Math.Max(0, reservedPinCommandWidth - 8);
+        var statusGroupWidth = next.StatusWidth + commandWidth + (next.StatusWidth > 0 && commandWidth > 0 ? 8 : 0);
+        LeadingStatusColumn.Width = new(statusLeft ? statusGroupWidth : centered ? next.StatusWidth : 0);
+        TrailingStatusColumn.Width = new(!statusLeft ? statusGroupWidth : centered ? next.StatusWidth : 0);
+        Grid.SetColumn(RailStatusGroup, statusLeft ? 0 : 2);
+        RailStatusHost.Width = next.StatusWidth;
         RailStatusHost.Visibility = next.StatusWidth > 0 ? Visibility.Visible : Visibility.Collapsed;
-        RailRegion.ColumnSpacing = next.StatusWidth > 0 ? 14 : 0;
+        RailStatusGroup.ColumnSpacing = next.StatusWidth > 0 && commandWidth > 0 ? 8 : 0;
+        RailRegion.ColumnSpacing = next.StatusWidth > 0 ? 14 : commandWidth > 0 ? 4 : 0;
         UpdateRailOverflow();
         void UpdateIcons(DependencyObject root)
         {
@@ -139,12 +146,26 @@ internal sealed partial class OverlayShellPage
     private void ProductionGapPressed(object sender, PointerRoutedEventArgs args)
     {
         if (IsMediaFullscreen || args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse &&
-            !args.GetCurrentPoint(ProductionRoot).Properties.IsLeftButtonPressed) return;
+            !args.GetCurrentPoint(ProductionRoot).Properties.IsLeftButtonPressed&&!args.GetCurrentPoint(ProductionRoot).Properties.IsRightButtonPressed) return;
+        if(TryReturnFromAdjustment(args))return;
+#if ENABLE_WIDGET_VALIDATION
+        if(pinReturnGapTraceForValidation is {Count:<16} trace)
+            trace.Add("source="+args.OriginalSource?.GetType().Name+"#"+(args.OriginalSource as FrameworkElement)?.Name);
+#endif
         for (var node = args.OriginalSource as DependencyObject; node is not null; node = Presentation.PresentationLayers.LogicalParent(node))
             // Popup routed input can reach this root even though its visual
             // ancestry lives outside WidgetSurface. It is still UI content.
-            if (ReferenceEquals(node, introductionCard) || ReferenceEquals(node, WidgetSurface) || node is Presentation.WidgetViewPresenter or MenuFlyoutPresenter or MenuFlyoutItemBase or ContentDialog || ReferenceEquals(node, RailRegion) || ReferenceEquals(node, TrayHelp) || ReferenceEquals(node, StatusChrome) || ReferenceEquals(node, radialView)) return;
+            if (ReferenceEquals(node, introductionCard) || ReferenceEquals(node, WidgetSurface) || node is Presentation.WidgetViewPresenter or MenuFlyoutPresenter or MenuFlyoutItemBase or ContentDialog || ReferenceEquals(node, RailRegion) || ReferenceEquals(node, GuideRegion) || ReferenceEquals(node, StatusChrome) || ReferenceEquals(node, radialView))
+            {
+#if ENABLE_WIDGET_VALIDATION
+                if(pinReturnGapTraceForValidation is {Count:<16} kept)kept.Add("kept="+(node as FrameworkElement)?.Name);
+#endif
+                return;
+            }
+#if ENABLE_WIDGET_VALIDATION
+        if(pinReturnGapTraceForValidation is {Count:<16} hidden)hidden.Add("hide requested");
+#endif
         args.Handled = true;
-        HideRequested?.Invoke();
+        if(!TryBeginPinPointer(args)&&args.GetCurrentPoint(ProductionRoot).Properties.IsLeftButtonPressed)HideRequested?.Invoke();
     }
 }

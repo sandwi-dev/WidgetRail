@@ -192,7 +192,11 @@ internal sealed partial class BrowserSurface
     internal void ApplyTheme(Brush background, Brush text, Brush muted, Brush selected, Brush focus,
         double size, Windows.UI.Text.FontWeight weight, FontFamily? family, double radius)
     {
-        header.Background = background; viewport.Background = background; welcome.Foreground = muted; welcome.FontSize = size;
+        header.Background = background;
+        // Video-only documents deliberately expose the desktop around their
+        // aspect-fit picture. A chrome fill beneath WebView would hide it again.
+        viewport.Background = IsBackendVideo ? null : background;
+        welcome.Foreground = muted; welcome.FontSize = size;
         status.Foreground = text; status.FontSize = size; status.FontWeight = weight;
         address.Foreground = muted; address.FontSize = size; address.FontWeight = weight;
         zoomLabel.Foreground = muted; zoomLabel.FontSize = size; zoomLabel.FontWeight = weight;

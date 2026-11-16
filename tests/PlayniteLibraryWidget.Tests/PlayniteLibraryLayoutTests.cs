@@ -191,7 +191,8 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsNull(library.ActionId);
         Assert.IsFalse(library.IsFocusable);
         Assert.AreEqual(ControllerButton.Menu, library.ContextMenuButton);
-        Assert.AreEqual(2, Nodes(topActions).Count(node => node.IsFocusable));
+        CollectionAssert.AreEquivalent(new[] { PlayniteLibraryActions.HomeOpen, PlayniteLibraryActions.BrowseOpen, PlayniteLibraryActions.AchievementsOpen },
+            Nodes(topActions).Where(node => node.IsFocusable).Select(node => node.ActionId).ToArray());
         CollectionAssert.AreEqual(new[]
         {
             PlayniteLibraryActions.Refresh,

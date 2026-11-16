@@ -114,6 +114,10 @@ public static class ViewSnapshotValidator
                 continue;
             }
             CheckIdentifier(layout.Id, $"{path}.id", "pinned layout ID");
+            if(layout.RestoreWhenAvailable&&!layout.IndependentSelection)
+                Add($"{path}.restoreWhenAvailable","independent_selection_required","Remembered pins require independent selection.");
+            if (!Enum.IsDefined(layout.Interaction))
+                Add($"{path}.interaction", "invalid_enum", "Unknown pinned interaction policy.");
             if (!string.IsNullOrWhiteSpace(layout.Id) && !pinnedLayoutIds.Add(layout.Id))
                 Add($"{path}.id", "duplicate_identifier", "Pinned layout IDs must be unique.");
             CheckString(layout.Name, $"{path}.name");
@@ -1928,7 +1932,7 @@ public static class ViewSnapshotValidator
                     // independent scopes and background services cannot escape its lifetime.
                     if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or
                         ViewNodeKind.Text or ViewNodeKind.RichText or ViewNodeKind.Button or ViewNodeKind.ActionSurface or
-                        ViewNodeKind.Select or ViewNodeKind.Scroll or ViewNodeKind.Progress or ViewNodeKind.LineGraph or
+                        ViewNodeKind.Select or ViewNodeKind.Slider or ViewNodeKind.Scroll or ViewNodeKind.Progress or ViewNodeKind.LineGraph or
                         ViewNodeKind.Spacer or ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator or ViewNodeKind.ControllerGlyph) ||
                         node.InputScopeId is not null || node.Focus is not null || node.FocusPersistenceId is not null ||
                         node.FocusPreviewKey is not null || node.FocusPreviewSource is not null || node.FocusPresentation is not null || node.DefaultFocusPresentation is not null || node.FocusPreview is not null ||
@@ -1936,7 +1940,7 @@ public static class ViewSnapshotValidator
                         node.ScrollNearStartActionId is not null || node.ScrollNearEndActionId is not null ||
                         node.VirtualCollectionWindow is not null || node.IndexedCollection is not null ||
                         node.Shortcuts.Count != 0 || node.ContextActions.Count != 0)
-                        Add(nodePath, "invalid_interactive_preview", "Interactive previews support bounded reading content, buttons and selectors without nested scopes or services.");
+                        Add(nodePath, "invalid_interactive_preview", "Interactive previews support bounded reading content, buttons, selectors and sliders without nested scopes or services.");
                     for (var index = 0; index < node.Children.Count; index++)
                         VisitFragment(node.Children[index], $"{nodePath}.children[{index}]", relativeDepth + 1);
                     return;

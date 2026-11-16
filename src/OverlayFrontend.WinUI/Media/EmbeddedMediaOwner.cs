@@ -11,11 +11,11 @@ namespace WidgetRail.OverlayFrontend.WinUI.Media;
 /// <summary>
 /// Shell lifetime owner for durable media. Presentation trees borrow viewport slots;
 /// this owner alone closes documents. Native controllers and pending admissions share
-/// the original host's four-session capacity, including parked sessions.
+/// the host's bounded session capacity, including parked sessions.
 /// </summary>
 internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
 {
-    internal const int MaximumResidentSessions = 4;
+    internal const int MaximumResidentSessions = 7; // Six compact pins and the main media viewport.
     private sealed class Entry(string widgetId)
     {
         internal string WidgetId { get; } = widgetId;
@@ -134,7 +134,8 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
             {
                 reconcileAgain = false;
                 if (fullscreen is not null && !session.IsMediaPresentationCurrent(fullscreen)) ExitFullscreen();
-                if (compact is not null && !session.IsMediaPresentationCurrent(compact)) ExitCompact();
+                foreach(var pin in compactSurfaces.Values.ToArray())
+                    if(!session.IsMediaPresentationCurrent(pin.Presentation))ExitCompact(pin.Presentation.Document.Authority.WidgetId);
                 foreach (var id in failures.Keys.ToArray())
                     if (!entries.ContainsKey(id) && session.GetState(id)?.LastGood?.Snapshot.EmbeddedMediaSession is null)
                         SetFailure(id, null);
@@ -152,7 +153,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
                         if (surface.FailureCode is not null && fullscreen?.Document.Authority.WidgetId == entry.WidgetId)
                             ExitFullscreen();
                         SetFailure(entry.WidgetId, surface.FailureCode);
-                        if (surface.FailureCode is not null && compact?.Document.Authority.WidgetId == entry.WidgetId) ExitCompact();
+                        if (surface.FailureCode is not null) ExitCompact(entry.WidgetId);
                         Place(entry, MatchingViewport(entry.WidgetId));
                         surface.Refresh();
                     }
@@ -204,7 +205,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     private static bool ContainsViewport(ViewNode node, Viewport target) =>
         node.Kind == ViewNodeKind.MediaViewport && node.Id == target.ElementId && node.MediaSessionId == target.SessionId ||
         node.Children.Any(child => ContainsViewport(child, target));
-    private bool CanAcceptInput(string widgetId) => IsCompact(widgetId) && compactInput || inputEnabled && (IsFullscreen(widgetId) ||
+    private bool CanAcceptInput(string widgetId) => IsCompact(widgetId) && compactInputWidget==widgetId || inputEnabled && (IsFullscreen(widgetId) ||
         MatchingViewport(widgetId) is { } target && target.Element.AcceptsInput &&
         session.GetState(widgetId)?.LastGood?.Authority.ActiveInputScopeId == target.Authority.ActiveInputScopeId);
 
@@ -264,7 +265,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
         var isCompact = IsCompact(entry.WidgetId);
         target?.Element.SetMediaPinned(isCompact);
         target?.Element.SetMediaLoading(!isCompact && !surface.IsReady && surface.FailureCode is null);
-        var destination = isCompact ? compactHost! : isFullscreen ? fullscreenHost! : target?.Element.SurfaceHost ?? parking;
+        var destination = isCompact ? compactSurfaces[entry.WidgetId].Host : isFullscreen ? fullscreenHost! : target?.Element.SurfaceHost ?? parking;
         if (entry.Stage is { } stage)
         {
             if (entry.Document is { } document && session.GetEmbeddedMediaState(document) is { } state) stage.Configure(state.Declaration.AspectRatio);
@@ -273,7 +274,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
             else stage.SetSlot(isCompact || !local ? null : target?.Element.SurfaceHost);
             if (!isCompact && local) destination = stage.SurfaceHost;
         }
-        surface.SetPassivePin(isCompact && !compactInput);
+        surface.SetPassivePin(isCompact && compactInputWidget!=entry.WidgetId);
         _ = surface.MoveTo(destination, isCompact || isFullscreen || target is not null,
             CanAcceptInput(entry.WidgetId));
         if (isCompact) CompactChanged?.Invoke();
@@ -289,7 +290,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     private void Retire(Entry entry)
     {
         if (!entries.Remove(entry.WidgetId)) return;
-        if (compact?.Document.Authority.WidgetId == entry.WidgetId) ExitCompact();
+        ExitCompact(entry.WidgetId);
         if (fullscreen?.Document.Authority.WidgetId == entry.WidgetId) ExitFullscreen();
         SetFailure(entry.WidgetId, null);
         entry.Lifetime.Cancel();
@@ -339,7 +340,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     {
         DemandDispatcher();
         retired = true;
-        ExitCompact();
+        foreach(var id in compactSurfaces.Keys.ToArray())ExitCompact(id);
         ExitFullscreen();
         session.PresentationChanged -= PresentationChanged;
         session.CatalogChanged -= CatalogChanged;

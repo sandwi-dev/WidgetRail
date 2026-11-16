@@ -67,6 +67,7 @@ public sealed partial class PlayniteLibraryWidget
         if (_setupService is null || !BeginSetup()) return;
         var plan = _model.Value.Setup.Plan;
         if (plan?.CanApply != true) { FinishSetupError("Find and select Playnite before connecting."); return; }
+        Operations.Cancel(UpdatesOperation);
         _ = Operations.RunLatest(SetupPrefix + "work", async context =>
         {
             try
@@ -75,14 +76,20 @@ public sealed partial class PlayniteLibraryWidget
                 var result = startOnly
                     ? await _setupService.StartAsync(plan.Installation, Progress, context.CancellationToken).ConfigureAwait(false)
                     : await _setupService.ApplyAsync(plan!, Progress, context.CancellationToken).ConfigureAwait(false);
+                if (result.Connected)
+                {
+                    RetireConnectionPresentation();
+                    await _application.ResetConnectionCacheAsync().ConfigureAwait(false);
+                    if (_playniteClient is PlayniteBridgeClient client) client.ResetConnection();
+                    _playniteConnection.Reset();
+                    _model.Update(state => state with { PlayniteKind = PlayniteBridgeConnectionKind.Connected, PlayniteCode = "connected",
+                        DetailsItem = null, DetailsCapturedTarget = null, DetailsExtras = new(), DetailsLoading = false, DetailsError = null });
+                }
                 _model.Update(state => state with { Setup = state.Setup with { Busy = false, Progress = null,
                     Message = result.Message, Connected = result.Connected }, SetupRequired = !result.Connected,
                     SetupDialogOpen = !result.Connected && state.SetupDialogOpen });
                 if (result.Connected)
                 {
-                    _application.ResetConnectionCache();
-                    _playniteConnection.Reset();
-                    _model.Update(state => state with { PlayniteKind = PlayniteBridgeConnectionKind.Connected, PlayniteCode = "connected" });
                     if (_navigation.Value.Route == PlayniteLibraryRoute.PlayniteConnection) _navigation.Back(SetupPrefix + "apply");
                     if (_navigation.Value.Route == PlayniteLibraryRoute.Library)
                         await ReturnToLibraryAsync().ConfigureAwait(false);
@@ -92,6 +99,7 @@ public sealed partial class PlayniteLibraryWidget
             }
             catch (OperationCanceledException) when (context.CancellationToken.IsCancellationRequested) { FinishSetupError("Setup was interrupted. Open connection settings to retry or recover it."); }
             catch (Exception error) { FinishSetupError(SetupError(error)); }
+            finally { StartPlayniteUpdates(); }
         }, WidgetOperationLifetime.Widget);
     }
 
@@ -101,6 +109,41 @@ public sealed partial class PlayniteLibraryWidget
             ? (state, false) : (state with { Setup = state.Setup with { Busy = true, Progress = "Checking Playnite…", Message = null } }, true)).Result;
         if (admitted) Operations.Cancel(SetupPrefix + "availability");
         return admitted;
+    }
+    private void RetireConnectionPresentation()
+    {
+        // Ordinary refresh may retain a same-profile query. Reconnecting cannot:
+        // even a materialized old row must lose authority before new reads start.
+        Operations.Cancel(IndexedHomeOperation);
+        Operations.Cancel(IndexedBrowseOperation);
+        Operations.Cancel("playnite-library.warm-state");
+        Operations.Cancel("playnite-library.launch");
+        Operations.Cancel("playnite-library.launch-lifecycle");
+        CancelDetailsOperations();
+        achievementHub.Reset(); _hiddenRows.Reset(); progressData.Reset();
+        lock (_gate)
+        {
+            RetireCurrentQueryAuthorityLocked(PlayniteLibraryRoute.Library);
+            RetireCurrentQueryAuthorityLocked(PlayniteLibraryRoute.Browse);
+            _hasLivePlayniteAuthority = false;
+            _livePlayniteAuthority = _presentationAuthority = PlayniteLibraryAuthorityProjection.Empty;
+            _createdCategoriesPendingReconciliation.Clear();
+            _launchGeneration.Invalidate(); _launchStates.Clear(); _launchStateRecency.Clear();
+            PublishHomeContent(new(PlayniteLibraryHomeQuery.Empty), replace: true);
+            _indexedBrowse.PublishQuery(new(PlayniteLibraryBrowseQuery.Empty), 0);
+            _model.Update(state => state with
+            {
+                IndexedHome = new() { Attempt = state.IndexedHome.Attempt + 1 },
+                IndexedBrowse = new() { Attempt = state.IndexedBrowse.Attempt + 1 },
+                FixedRows = PlayniteLibraryFixedRows.Empty, FixedRowsRevision = state.FixedRowsRevision + 1,
+                HomeGameCount = null, BrowseGameCount = null, SourceObservations = [], ActiveCategoryId = null,
+                HeroSavedId = null, HeroIndex = 0, BrowseHeroSavedId = null, BrowseHeroIndex = 0,
+                DetailsItem = null, DetailsCapturedTarget = null, DetailsExtras = new(), DetailsLoading = false,
+                DetailsError = null, DetailsGeneration = state.DetailsGeneration + 1, Progress = new(),
+                ActiveBrowseReload = null, BrowseInitialFocusId = null, FilterDraft = null,
+                LaunchingSavedId = null, ContentEntryScopeId = null, PendingRestoredSavedId = null,
+            });
+        }
     }
     private void FinishSetupError(string message) => _model.Update(state => state with { Setup = state.Setup with { Busy = false, Progress = null, Message = message } });
     private static string SetupError(Exception error) => error is PlayniteSetupException

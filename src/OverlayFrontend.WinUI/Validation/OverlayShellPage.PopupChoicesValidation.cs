@@ -89,19 +89,22 @@ internal sealed partial class OverlayShellPage
         await PinAsync(parent.WidgetId, WidgetPinnedProjection.FullWidgetLayoutId);
         await EnterPinnedAsync(); await WebAppUntil(() => PinnedInputActive && parent.IsBrowsing &&
             Slots(pinned?.Presenter).Any(slot => slot.Surface == parent) && ReferenceEquals(parent.XamlRoot, pinned!.Window.AutomationRoot.XamlRoot));
-        var previousPin = pinned;
-        pending = Open();
-        await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
-        check(ReferenceEquals(pinned, previousPin) && hostChoiceDialog!.Title.ToString() == "Open new window",
-            "Remembered pin placement still asks before replacing an existing pin");
-        await CapturePopupDecisionAsync(hostChoiceDialog!, "popup-replace");
-        await Press(ControllerButton.B); await pending;
-        check(ReferenceEquals(pinned, previousPin) && !parent.HasPopup, "Cancelling replacement preserves the existing pin");
-        pending = Open(); await Decide("pin"); await pending; child = await Child();
-        await WebAppUntil(() => pinned?.Popup?.Child == child && foreground);
-        check(!ReferenceEquals(pinned, previousPin) && ReferenceEquals(parent.ActiveSurface, parent),
-            "One explicit Replace pin decision replaces the parent pin without a second confirmation");
-        await UnpinAsync(save: false); await parent.ClosePopupAsync();
+        var previousPin=pinned!;
+        pending=Open();
+        await pending;child=await Child();
+        await WebAppUntil(()=>pins.Any(pin=>ReferenceEquals(pin.Popup?.Child,child)));
+        var childPin=pins.Single(pin=>ReferenceEquals(pin.Popup?.Child,child));
+        check(hostChoiceDialog is null&&pins.Contains(previousPin)&&previousPin.Window.IsVisible,
+            "Remembered popup pin placement adds a window while preserving its existing parent pin");
+        check(ReferenceEquals(pinned,previousPin)&&PinnedInputActive&&!childPin.Window.Interactive,
+            "Opening a passive popup pin retains input in the parent pin");
+        await UnpinAsync(save:false,childPin);
+        check(pins.Contains(previousPin)&&PinnedInputActive&&ReferenceEquals(parent.ActiveSurface,child),
+            "Returning the popup keeps its parent pin alive and restores the child to its original owner");
+        await parent.ClosePopupAsync();
+        ExitPinnedInteraction(restoreMain:true);
+        await WebAppUntil(()=>foreground&&!PinnedInputActive);
+        await UnpinAsync(save:false,previousPin);
         await PopupPreferences.SetAsync(parent.WidgetId, parent.ProfileName, origin, BrowserPopupPlacement.InWidget, lifetime.Token);
         await WebAppUntil(() => parent.IsBrowsing && foreground);
 

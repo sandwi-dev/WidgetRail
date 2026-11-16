@@ -223,9 +223,11 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
                 await Task.Delay(key=="item.0"?350:35,token);
                 var text=UI.Stack("preview.copy",UI.Text(key,"preview.key"),UI.RichText("preview.rich",UI.Text("Details for ","preview.prefix"),UI.Text(key,"preview.value")));
                 return UI.Stack("preview.content",UI.Text("Context "+context.Revision,"preview.context"),text,
-                    context.ReadOnly?UI.Text("Read only","preview.readonly"):UI.Button("Apply","preview-apply","preview.apply"));
+                    context.ReadOnly?UI.Text("Read only","preview.readonly"):UI.Stack("preview.actions",
+                        UI.Button("Apply","preview-apply","preview.apply"),
+                        UI.Slider(50,0,100,5,"preview-volume","preview.volume","Volume").RequireControllerActivation()));
             },
-            OnAction=(context,key,action,token)=>{Volatile.Write(ref status,$"preview:{context.Revision}:{key}:{action.ActionId}");Invalidate();return ValueTask.CompletedTask;},
+            OnAction=(context,key,action,token)=>{Volatile.Write(ref status,$"preview:{context.Revision}:{key}:{action.ActionId}"+(action.RequestedValue is { } value?":"+value.ToString(System.Globalization.CultureInfo.InvariantCulture):""));Invalidate();return ValueTask.CompletedTask;},
         });
         source = CreateIndexedCollection<int, int>("owned", 0, 100, new()
         {

@@ -24,6 +24,9 @@ public sealed record BridgeWidgetDescriptor
     public required string Id { get; init; }
     public required string Name { get; init; }
     public required string InstanceId { get; init; }
+    /// <summary>Host-verified package authority for saved user preferences. Unsigned replacement bytes have distinct authority.</summary>
+    public string? PackageId { get; init; }
+    public string? PublisherId { get; init; }
     public required string RuntimeGeneration { get; init; }
     public required string PresentationGeneration { get; init; }
     public required WidgetGlyph Icon { get; init; }

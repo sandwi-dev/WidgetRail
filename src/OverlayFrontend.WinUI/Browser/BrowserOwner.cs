@@ -169,10 +169,10 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                     {
                         if (chosen.Document.HostedSession is not null) { chosen.Slot.SetMessage("This web session is unavailable. Reopen it from the widget."); continue; }
                         if (retiringEntries.Contains(group.Key)) continue;
-                        if (BrowserResidencyCount >= 4)
+                        if (BrowserResidencyCount >= MaximumResidentBrowsers)
                         {
                             var oldest = entries.Where(pair => !pair.Value.Retained && !pair.Value.Surface.BackgroundFaulted && pair.Value.Slot?.CanDisplay != true &&
-                                !(popupPresentation is { IsCurrent: true } popup && ReferenceEquals(popup.Parent, pair.Value.Surface))).OrderBy(pair => pair.Value.LastUse).FirstOrDefault();
+                                !popupPresentations.Values.Any(pin=>pin.IsCurrent && ReferenceEquals(pin.Parent,pair.Value.Surface))).OrderBy(pair => pair.Value.LastUse).FirstOrDefault();
                             if (oldest.Value is null) { chosen.Slot.SetMessage(retiringEntries.Count > 0 ? "Closing the previous browser session…" : "Stop another webapp session before opening this one."); continue; }
                             await RetireAsync(oldest.Key, oldest.Value);
                         }
@@ -203,7 +203,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                                 !session.IsWebBrowserSessionCurrent(chosen.Authority, chosen.Document.Id)) { dirty = true; continue; }
                         }
                         // A hosted startup may reserve the last slot while profile/library I/O awaits.
-                        if (BrowserResidencyCount >= 4)
+                        if (BrowserResidencyCount >= MaximumResidentBrowsers)
                         { chosen.Slot.SetMessage("Stop another webapp session before opening this one."); continue; }
                         var surface = CreateSurface(group.Key.Widget, chosen.Document, chosen.Authority, providerHtml, library, profileName);
                         entry = new(chosen.Authority, surface); entries.Add(group.Key, entry); CreatedCount++;
@@ -283,7 +283,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
             ReadPopupPlacement = ReadPopupPlacement, WritePopupPlacement = WritePopupPlacement,
             RequestPopupPin = session.GetState(widgetId)?.LastGood?.Descriptor.FullWidgetPinningSupported == true && RequestPopupPin is not null
                 ? source => RequestPopupPin?.Invoke(source) ?? Task.CompletedTask : null,
-            PopupIsPinned = source => popupPresentation is { IsCurrent: true } popup && ReferenceEquals(popup.Child, source),
+            PopupIsPinned = source => popupPresentations.GetValueOrDefault(source)?.IsCurrent==true,
             ChangeRunning = ChangeRunningAsync,
             Recover = RecoverAsync,
             PrepareScreenPicker = (source, token) => PrepareScreenPicker?.Invoke(source, token) ?? Task.FromResult(false),

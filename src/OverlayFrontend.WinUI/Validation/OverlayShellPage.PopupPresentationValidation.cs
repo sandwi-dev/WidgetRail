@@ -67,16 +67,20 @@ internal sealed partial class OverlayShellPage
         check(FindControl<Button>(child, "Browser.PinPopup")!.Focus(FocusState.Keyboard), "Pop-out toolbar exposes a focusable pin action");
         check(child.IsToolbarFocused && child.RequestPopupPin is not null && PinnedInputActive,
             "Pop-out pin action has settled controller toolbar ownership");
+        var parentPin=pinned!;
         await Press(ControllerButton.A);
-        await WebAppUntil(() => hostChoiceDialog is { IsLoaded: true });
-        FindControl<Button>(hostChoiceDialog!, "Host.Choice.Primary")!.Focus(FocusState.Keyboard);
-        Receive(new ControllerFrame { Connected = 1 });
-        await Press(ControllerButton.A);
-        await WebAppUntil(() => pinned?.Popup is { IsCurrent: true } popup && ReferenceEquals(popup.Child, child));
-        var pin = pinned!;
-        await WebAppUntil(() => foreground && parent.IsBrowsing && !switching);
-        check(pin.Presenter is null && ReferenceEquals(parent.ActiveSurface, parent) && child.NavigationCount == navigations,
-            "Toolbar replacement uses the single shared pin while returning independent interaction to the parent");
+        await WebAppUntil(()=>pins.Any(item=>ReferenceEquals(item.Popup?.Child,child)));
+        var pin=pins.Single(item=>ReferenceEquals(item.Popup?.Child,child));
+        check(pins.Contains(parentPin)&&parentPin.Window.IsVisible&&PinnedInputActive&&ReferenceEquals(pinned,parentPin)&&!pin.Window.Interactive,
+            "Toolbar pinning adds a passive child window and retains input in its parent pin");
+        check(pin.Presenter is null && ReferenceEquals(parent.ActiveSurface,parent) && child.NavigationCount==navigations,
+            "Pinning preserves both live page identities");
+        ExitPinnedInteraction(restoreMain:true);
+        await WebAppUntil(()=>foreground&&!PinnedInputActive);
+        await UnpinAsync(save:false,parentPin);
+        await SelectAsync(parent.WidgetId,enterWidget:true);
+        await WebAppUntil(()=>foreground&&parent.IsBrowsing&&!switching);
+        check(pins.Contains(pin)&&child.IsReady,"Closing the parent pin preserves its detached child pin");
         await Press(ControllerButton.View);
         await WebAppUntil(() => PinnedInputActive && child.IsBrowsing);
         check(ReferenceEquals(pin.Popup!.Slot.Surface, child), "View enters the same pinned live pop-out through shared controller routing");
@@ -126,6 +130,7 @@ internal sealed partial class OverlayShellPage
         await WebAppUntil(() => pinned is null && parent.ActiveSurface == child && foreground);
         check(await child.EvaluateFixtureAsync("marker==='live pin' && stream.getTracks().every(t=>t.readyState==='live')") == "true",
             "Return pop-out removes the pin and restores its live page inside the widget");
+        await SelectAsync(parent.WidgetId,enterWidget:true);
         await WebAppUntil(() => child.IsBrowsing && foreground);
         var descriptor = catalogItems.Single(widget => widget.Id == "webapp-a");
         var choice = GetPinChoices(descriptor).Single(item => item.Popup);

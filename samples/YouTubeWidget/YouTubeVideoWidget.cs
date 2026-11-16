@@ -156,7 +156,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             .FocusLeft("youtube.timeline")
             .Classes("youtube-slider", "youtube-volume");
 
-        var status = error ?? (seekBuffering
+        var status = error ?? state.PinManagementNotice ?? (seekBuffering
             ? "Buffering YouTube video…"
             : StatusText(videoId, playback.State, mediaLoading));
         var statusClass = error is not null ? "is-error" :
@@ -180,6 +180,8 @@ public sealed partial class YouTubeVideoWidget : Widget
                 .Classes("youtube-status", "youtube-status-pill", statusClass),
         };
         var transportControls = new List<WidgetElement> { toggle };
+        if(videoId is not null)headerActions.Add(UI.IconButton(WidgetGlyph.Settings,"youtube.pin.manage",
+            "youtube.pin.manage","Manage pins",size:IconButtonSize.Small).Classes("youtube-route-button","youtube-transport-button"));
         if (showFullscreenAction)
         {
             transportControls.Add(fullscreen);
@@ -317,6 +319,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if(action.ActionId=="youtube.pin.manage")return ManagePinsAsync(cancellationToken);
         if (TryHandleApplicationAction(action)) return ValueTask.CompletedTask;
         if (action.ActionId == LinkActionId && action.CommittedText is { } committed)
         {

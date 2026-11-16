@@ -108,7 +108,16 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual("row", Resolve("row", "wrail-modal__header").Get("direction")?.Text);
         Assert.AreEqual("900px", Resolve("stack", "wrail-modal").Get("width")?.Text);
         Assert.AreEqual("0", Resolve("text", "playnite-library-details-field").Get("flex-grow")?.Text);
-        Assert.AreEqual(accent, Resolve("text", "playnite-library-summary-badge-accent").Get("color")?.Text);
+        Assert.AreEqual(Resolve("text", "wrail-data-gold").Get("color")?.Text,
+            Resolve("text", "playnite-library-summary-badge-accent").Get("color")?.Text);
+        foreach (var (semantic, dataClass) in new[] { ("source", "blue"), ("progress", "green"), ("reward", "gold"), ("time", "purple") })
+        {
+            var expected = Resolve("text", "wrail-data-" + dataClass).Get("color")?.Text;
+            Assert.IsNotNull(expected);
+            Assert.AreEqual(expected, Resolve("text", "playnite-ink-" + semantic).Get("color")?.Text);
+            Assert.AreEqual(expected, Resolve("text", "playnite-library-details-field", "playnite-ink-" + semantic).Get("color")?.Text);
+            Assert.AreEqual(expected, Resolve("text", "playnite-library-achievement-meta", "playnite-ink-" + semantic).Get("color")?.Text);
+        }
         var focusedControl = theme.Resolve(new WrssElement("button", null,
             new HashSet<string>(["playnite-library-control"]),
             new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));

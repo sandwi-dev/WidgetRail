@@ -16,6 +16,7 @@ internal sealed partial class OverlayShellPage
         if (pin is null && !ReferenceEquals(root, XamlRoot)) return [];
         var presenter = pin is null ? surface : pin.Presenter;
         var focus = FocusManager.GetFocusedElement(root) as Control;
+        if(pin is not null)ActivatePinForHostDialog(pin);
         SystemFilePickerOpen = true;
         presenter?.SetAutomaticFocusEnabled(false);
         presenter?.SetPresentationInputEnabled(false);

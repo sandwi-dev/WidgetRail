@@ -11,9 +11,9 @@ internal static class VoiceControlTests
     internal static async Task RunAsync(Action<bool,string> check)
     {
         await ConnectionStatus(check);
-        await ParticipantControls(check);
+        await VoicePreviewTests.RunAsync(check);
         await DeviceControls(check);
-        await StaleDialogs(check);
+        await MissingDevices(check);
         await DelayedDeviceReads(check);
         await DeviceWriteReconciliation(check);
     }
@@ -25,48 +25,11 @@ internal static class VoiceControlTests
             ("reconnecting","Reconnecting to voice…"),("disconnected","Voice disconnected"),("unavailable","Voice status unavailable")})
         {
             test.Session.Core.State=test.Session.Core.State with{VoiceConnection=phase};await test.Refresh();
-            check(test.Node("discord.main.connected").Text==label,"Voice heading reports observed RTC phase: "+phase);
-            check(test.Node("discord.main.connected").StyleClasses.Contains(phase=="connected"?"discord-connected":"discord-connecting"),
+            check(test.Node("discord.main.connected").AccessibilityLabel==label+" · Connection details","Connection info reports observed RTC phase: "+phase);
+            check(test.Node("discord.main.connected").StyleClasses.Contains(phase=="connected"?"discord-connection-ready":"discord-connection-pending"),
                 "Only an observed connected voice call uses connected emphasis: "+phase);
         }
         check(test.Session.Commands.IsEmpty&&test.Session.Core.MicrophoneRequests==0,"Reading connection status has no call or permission side effects");
-    }
-
-    private static async Task ParticipantControls(Action<bool,string> check)
-    {
-        await using var test=await Harness.Create();
-        using(var host=WidgetTestHost.CreateIndexedCollectionHost(test.Widget,"voice-self"))
-        using(var rows=await host.AcquireAsync("discord.participants",0,1))
-            check(Nodes(rows.Range.Items.Single().Root).All(node=>node.ActionId!="voice-audio"),"Self participant does not expose other-person voice controls");
-        var original=test.Session.Core.State;
-        await test.OpenParticipant();
-        var snapshot=test.Snapshot();var slider=test.Node(Dialog+".volume");
-        check(snapshot.Root.Kind==ViewNodeKind.ModalLayer&&snapshot.ActiveInputScopeId=="discord.participant-dialog.scope"&&
-            snapshot.InitialFocusId==Dialog+".mute","Selecting a participant opens a native modal with initial local-mute focus");
-        check(slider.Kind==ViewNodeKind.Slider&&slider.Minimum==0&&slider.Maximum==100&&slider.Step==5&&slider.Value==55&&
-            slider.SliderInteractionMode==SliderInteractionMode.ActivateToAdjust,"Participant voice volume uses a bounded host-adjusted slider");
-        check(WidgetTestHost.ValidateWinUiPresentation(snapshot).Count==0&&
-            snapshot.PinnedLayouts.All(pin=>pin.Root?.Kind!=ViewNodeKind.ModalLayer),"Voice modal validates and does not leak into either pin");
-        var mute=test.Node(Dialog+".mute").ActionId!;
-        await test.ActControl(Dialog+".mute");
-        check(test.Node(Dialog+".mute").Text=="Unmute for me"&&test.Session.Commands.Last().Method=="voiceMute",
-            "Participant mute uses the voice-specific acknowledged command");
-        var count=test.Session.Commands.Count;await test.Act(mute);
-        check(test.Session.Commands.Count==count,"An old participant mute action cannot toggle a newer observed state");
-        await test.ActControl(Dialog+".volume",35);
-        check(test.Node(Dialog+".volume.value").Text=="35%"&&test.Node(Dialog+".mute").Text=="Unmute for me",
-            "Voice-volume acknowledgment updates immediately without clearing local mute");
-        check(test.Session.Core.State.Muted==original.Muted&&test.Session.Core.State.Deafened==original.Deafened&&
-            test.Session.Core.State.Streams.SequenceEqual(original.Streams),"Participant audio changes neither self audio nor stream audio");
-        test.Session.Core.State=test.Session.Core.State with{Deafened=true};await test.Refresh();
-        check(test.Node(Dialog+".deafened").Text!.Contains("Undeafen"),"Participant controls explain silence while self-deafened");
-        await test.Close();
-        check(test.Snapshot().FocusGroupEntryRequest is {RestoreViewport:true,IndexedItem:{CollectionId:"discord.participants",ItemKey:"participant.30",Index:1}},
-            "Closing participant audio restores the exact indexed participant and viewport through SDK navigation");
-        test.Session.Core.State=test.Session.Core.State with{Participants=test.Session.Core.State.Participants.Select(person=>person with{Audio=null}).ToArray()};await test.Refresh();
-        await test.OpenParticipant();
-        check(test.Find(Dialog+".volume") is null&&test.Node(Dialog+".unavailable").Text!.Contains("unavailable"),
-            "Missing participant audio support presents a clear message without fake controls");
     }
 
     private static async Task DeviceControls(Action<bool,string> check)
@@ -102,28 +65,30 @@ internal static class VoiceControlTests
             "Open Discord leaves the device modal and uses the existing account page");
     }
 
-    private static async Task StaleDialogs(Action<bool,string> check)
+    private static async Task MissingDevices(Action<bool,string> check)
     {
-        foreach(var change in new[]{"account","call","session","participant","reopen"})
-        {
-            await using var test=await Harness.Create();await test.OpenParticipant();
-            var oldAction=test.Node(Dialog+".volume").ValueChangedActionId!;
-            test.Session.HoldMethod="voiceVolume";
-            var pending=test.Act(oldAction,20).AsTask();await test.Session.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            switch(change)
-            {
-                case "account":test.Session.Core.State=test.Session.Core.State with{Account="2"};await test.Refresh();break;
-                case "call":test.Session.Core.State=test.Session.Core.State with{ChannelId="20"};await test.Refresh();break;
-                case "session":test.Session.Core.Reference=new(new string('c',32));await test.Refresh();break;
-                case "participant":test.Session.Core.State=test.Session.Core.State with{Participants=[test.Session.Core.State.Participants[0]]};await test.Refresh();break;
-                case "reopen":await test.Close();await test.OpenParticipant();break;
-            }
-            test.Session.Gate.TrySetResult();await pending.WaitAsync(TimeSpan.FromSeconds(5));
-            check(change=="reopen"?test.Node(Dialog+".volume.value").Text=="55%":test.Snapshot().Root.Kind!=ViewNodeKind.ModalLayer,
-                "Late participant acknowledgment cannot replace a newer view after "+change);
-            var count=test.Session.Commands.Count;await test.Act(oldAction,80);
-            check(test.Session.Commands.Count==count,"Stale participant action is rejected after "+change);
-        }
+        await using var test=await Harness.Create();
+        var available=test.Session.Settings;
+        test.Session.Settings=new(false,false,false,[],[],null,null,null);
+        await test.OpenSettings();
+        check(test.Find(Dialog+".input") is null&&test.Find(Dialog+".output") is null&&
+            test.Find(Dialog+".input.unavailable") is not null&&test.Find(Dialog+".output.unavailable") is not null&&
+            WidgetTestHost.ValidateWinUiPresentation(test.Snapshot()).Count==0,
+            "No detected devices render an operable unavailable dialog without empty selectors or a crash");
+        check(test.Session.Commands.All(command=>command.Method=="voiceSettings")&&test.Session.Core.MicrophoneRequests==0,
+            "Missing devices leave Discord's audio/default handling untouched and request no hardware");
+        test.Session.Settings=available;
+        await test.ActControl(Dialog+".refresh");await test.Widget.WaitForVoiceSettingsAsync();
+        var stale=test.Node(Dialog+".input").SelectOptions![1].ActionId;
+        test.Session.Settings=new(false,false,false,[],[],null,null,null);
+        await test.ActControl(Dialog+".refresh");await test.Widget.WaitForVoiceSettingsAsync();
+        var count=test.Session.Commands.Count;
+        await test.Act(stale);
+        check(test.Session.Commands.Count==count&&test.Find(Dialog+".input") is null,
+            "A stale device selection after unplug and refresh cannot write a removed device");
+        await test.Close();
+        check(test.Snapshot().Root.Kind!=ViewNodeKind.ModalLayer,
+            "The no-device dialog closes normally");
     }
 
     private static async Task DelayedDeviceReads(Action<bool,string> check)
@@ -183,17 +148,11 @@ internal static class VoiceControlTests
             await Act(Snapshot().Root.ContextActions.Single(action=>action.Label=="Voice settings").ActionId);
             if(wait)await Widget.WaitForVoiceSettingsAsync().WaitAsync(TimeSpan.FromSeconds(5));
         }
-        internal async Task OpenParticipant()
-        {
-            using var host=WidgetTestHost.CreateIndexedCollectionHost(Widget,"voice-participant."+Guid.NewGuid().ToString("N"));
-            using var rows=await host.AcquireAsync("discord.participants",1,1);rows.RouteAction("participant.30",ControllerButton.A);
-            await Until(()=>Snapshot().Root.Kind==ViewNodeKind.ModalLayer);
-        }
         internal async Task Refresh(){await Act("refresh");await Widget.WaitForStateReadAsync().WaitAsync(TimeSpan.FromSeconds(5));}
         public async ValueTask DisposeAsync(){Session.Gate.TrySetResult();await WidgetTestHost.DestroyAsync(Widget);}
     }
 
-    private sealed class VoiceSession:IDiscordSession
+    internal sealed class VoiceSession:IDiscordSession
     {
         internal readonly FakeSession Core=new();
         internal readonly ConcurrentQueue<FakeSession.Command> Commands=new();

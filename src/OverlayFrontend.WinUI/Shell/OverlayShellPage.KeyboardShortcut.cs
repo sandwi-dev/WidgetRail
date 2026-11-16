@@ -66,8 +66,15 @@ internal sealed partial class OverlayShellPage
             record.Click += (_, _) =>
             {
                 if (saving) return;
-                recording = true; record.Content = "Press a shortcut…";
-                status.Text = "Press the key combination to record it. Cancel with the mouse or controller B.";
+                if (recording)
+                {
+                    recording = false;
+                    record.Content = "Change shortcut…";
+                    status.Text = "Recording cancelled. The current shortcut is unchanged.";
+                    return;
+                }
+                recording = true; record.Content = "Cancel recording";
+                status.Text = "Press a key combination to record it. Cancel recording keeps the current shortcut.";
                 record.Focus(FocusState.Keyboard);
             };
             reset.Click += (_, _) =>
@@ -100,7 +107,7 @@ internal sealed partial class OverlayShellPage
                     dialog.KeepOpenOnChoice = _ =>
                     {
                         if (saving) return true;
-                        if (recording) { status.Text = "Record a shortcut before saving, or cancel."; return true; }
+                        if (recording) { status.Text = "Record a shortcut before saving, or select Cancel recording."; return true; }
                         if (!Current()) return true;
                         saving = true;
                         record.IsEnabled = reset.IsEnabled = false; enabled.IsEnabled = false; dialog.IsPrimaryButtonEnabled = false;

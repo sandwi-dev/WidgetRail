@@ -114,9 +114,30 @@ try
     await Act(widget,"refresh");await Wait(()=>fake.Reads>readCount);
     await Wait(()=>Nodes(Snapshot(widget).Root).Any(node=>node.Id=="discord.notice"&&node.Text!.Contains("call changed")));
     fake.ReceiverGate.SetResult();await Wait(()=>fake.Receivers.Count==2&&fake.Receivers.Last().Disposed);
-    Check(!Nodes(Snapshot(widget).PinnedLayouts.Single(p=>p.Id=="discord.stream").Root!).Any(node=>node.WebBrowser is not null),"Late receiver after account change is disposed without being published");
+    Check(!Snapshot(widget).PinnedLayouts.Any(p=>p.Id=="discord.stream"),"Account change withdraws the old stream layout and a late receiver cannot republish it");
 }
 finally{fake.MicrophoneGate?.TrySetResult();fake.ReceiverGate?.TrySetResult();fake.CommandGate?.TrySetResult();await WidgetTestHost.DestroyAsync(widget);}
+
+foreach(var desktopState in new[]{"disabled","unavailable"})
+{
+    var notificationSession=new FakeSession{DesktopEnableState=desktopState};
+    notificationSession.State=notificationSession.State with{NotificationPermission="granted",DesktopNotifications=desktopState};
+    var notificationWidget=WidgetTestHost.Attach(new DiscordWebViewWidget(notificationSession,refreshInterval:TimeSpan.FromHours(1)),
+        new WidgetTestHostServicesBuilder().Build());
+    try
+    {
+        await WidgetTestHost.InitializeAsync(notificationWidget);
+        await WidgetTestHost.SetLifecycleStateAsync(notificationWidget,WidgetLifecycleState.Interactive);
+        await notificationWidget.WaitForStateReadAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Check(notificationSession.Commands.IsEmpty,"Notification status rendering never changes Discord preferences");
+        var enableAction=Nodes(Snapshot(notificationWidget).Root).Single(node=>node.Id=="discord.notifications.enable").ActionId!;
+        await Act(notificationWidget,enableAction);
+        await Wait(()=>Nodes(Snapshot(notificationWidget).Root).Any(node=>node.Id=="discord.notice"&&node.Text?.Contains("Enable Desktop Notifications")==true));
+        Check(Nodes(Snapshot(notificationWidget).Root).Any(node=>node.Id=="discord.notifications.enable"),
+            "Permission without a confirmed desktop setting keeps setup available: "+desktopState);
+    }
+    finally{await WidgetTestHost.DestroyAsync(notificationWidget);}
+}
 Check(fake.Disposed,"Widget teardown disposes its backend session");
 await TransportChecks(Check);
 await SharingTests.RunAsync(Check);
@@ -130,6 +151,7 @@ await UnifiedLayoutTests.RunAsync(Check);
 await PickerTests.RunAsync(Check);
 await ChannelFavoritesTests.RunAsync(Check);
 await VoicePinTests.RunAsync(Check);
+await MultiStreamTests.RunAsync(Check);
 await VoiceControlTests.RunAsync(Check);
 await ProviderInvalidationTests.RunAsync(Check);
 await ConnectionDetailsTests.RunAsync(Check);
@@ -206,6 +228,7 @@ sealed class FakeSession:IDiscordSession
     internal bool FailCommands,FailReceivers;
     internal bool IgnoreShareCancellation;
     internal TaskCompletionSource? DiagnosticsGate;
+    internal TaskCompletionSource<DiscordState>? ReadGate;
     internal JsonElement Diagnostics=JsonSerializer.SerializeToElement(new{source=new{width=2560,height=1440},
         outbound=new[]{new{width=1920,height=1080,framesPerSecond=59.5}},advertised=new[]{new{width=1280,height=720,frameRate=60}}});
     internal WebSessionMicrophoneState Microphone=WebSessionMicrophoneState.Granted;
@@ -214,8 +237,13 @@ sealed class FakeSession:IDiscordSession
         "10","Lobby",true,false,[new("1","Self",true,false,false),new("30","Other",false,false,true)],
         [new("guild:1:10:30","30","Other")],false,false,null,"closed");
     public WebSessionReference Reference{get;set;}=new(new string('a',32));
-    public ValueTask<DiscordState> ReadAsync(CancellationToken token){token.ThrowIfCancellationRequested();Interlocked.Increment(ref Reads);return ValueTask.FromResult(State);}
+    public async ValueTask<DiscordState> ReadAsync(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();Interlocked.Increment(ref Reads);
+        return ReadGate is { } gate?await gate.Task:State;
+    }
     internal int NotificationRequests;
+    internal string DesktopEnableState="enabled";
     public ValueTask<WebSessionPermissionResult> RequestNotificationsAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
@@ -234,6 +262,11 @@ sealed class FakeSession:IDiscordSession
         if(method=="share"&&ShareGate is { } shareGate)
         {if(IgnoreShareCancellation)await shareGate.Task;else await shareGate.Task.WaitAsync(token);}
         if(FailCommands)throw new IOException("Synthetic uncertain command outcome");
+        if(method=="enableNotifications")
+        {
+            State=State with{DesktopNotifications=DesktopEnableState};
+            return JsonSerializer.SerializeToElement(new{state=DesktopEnableState});
+        }
         if(method=="streamDiagnostics")
         {
             // Deliberately ignore cancellation: publication must fence stale provider reads.

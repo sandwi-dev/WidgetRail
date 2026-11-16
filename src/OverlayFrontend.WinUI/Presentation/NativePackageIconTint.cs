@@ -52,6 +52,10 @@ internal sealed class NativePackageIconTint : IDisposable
         color = compositor.CreateColorBrush(Microsoft.UI.Colors.Transparent);
         mask = compositor.CreateMaskBrush(); mask.Mask = alpha; mask.Source = color;
         visual = compositor.CreateSpriteVisual(); visual.Brush = mask;
+        // The SVG alpha owns silhouette antialiasing. A soft compositor boundary
+        // can add a rectangular fringe when the parent settles at fractional zoom.
+        // Clip the sprite's outer bitmap boundary without changing the mask pixels.
+        visual.BorderMode = CompositionBorderMode.Hard;
         ElementCompositionPreview.SetElementChildVisual(icon, visual);
         foregroundToken = icon.RegisterPropertyChangedCallback(IconElement.ForegroundProperty, (_, _) => UpdateForeground());
         icon.SizeChanged += SizeChanged; icon.Loaded += Loaded; icon.ActualThemeChanged += ThemeChanged;

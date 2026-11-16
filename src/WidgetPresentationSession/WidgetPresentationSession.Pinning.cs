@@ -8,15 +8,17 @@ namespace WidgetRail.WidgetPresentationSession;
 
 public sealed partial class WidgetPresentationSession
 {
-    private sealed record PinnedEpoch(WidgetPresentationAuthority Owner);
+    private sealed record PinnedEpoch(WidgetPresentationAuthority Owner,bool Independent);
     private readonly Dictionary<string, Dictionary<string, PinnedEpoch>> _pinnedEpochs = new(StringComparer.Ordinal);
     private readonly ConditionalWeakTable<WidgetPresentationFrame, IReadOnlyDictionary<string, PinnedEpoch>> _pinnedFrames = new();
-    private readonly Dictionary<string, WidgetPinnedSelection> _pinnedSelections = new(StringComparer.Ordinal);
+    private readonly Dictionary<(string Widget,string Layout), WidgetPinnedSelection> _pinnedSelections = new();
     private readonly HashSet<string> _pinnedSelectionPending = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _pinnedDispatch = new(1, 1);
 
     /// <summary>Capture the current selection, including an unconfirmed attempt, for a fresh host teardown intent.</summary>
-    public WidgetPinnedSelection? GetPinnedSelection(WidgetPresentationFrame displayed)
+    public WidgetPinnedSelection? GetPinnedSelection(WidgetPresentationFrame displayed) => GetPinnedSelection(displayed,null);
+
+    public WidgetPinnedSelection? GetPinnedSelection(WidgetPresentationFrame displayed,string? layoutId)
     {
         ArgumentNullException.ThrowIfNull(displayed);
         using (_gate.Enter())
@@ -24,7 +26,11 @@ public sealed partial class WidgetPresentationSession
             var current = DemandPinnedFrameLocked(displayed);
             if (current.Authority.SnapshotSequence != displayed.Authority.SnapshotSequence)
                 throw PinnedStale("Selection lookup requires the current displayed frame.");
-            return _pinnedSelections.GetValueOrDefault(current.Authority.WidgetId);
+            var legacy=_pinnedSelections.GetValueOrDefault((current.Authority.WidgetId,string.Empty));
+            if(layoutId is null)return legacy;
+            var independent=_pinnedSelections.GetValueOrDefault((current.Authority.WidgetId,layoutId));
+            return current.Snapshot.PinnedLayouts.Any(layout=>layout.Id==layoutId&&layout.IndependentSelection)
+                ?independent:legacy?.LayoutId==layoutId?legacy:independent;
         }
     }
 
@@ -64,10 +70,10 @@ public sealed partial class WidgetPresentationSession
             ValidatePinnedClock(sequence, monotonicTimestampMicroseconds);
             var widget = current.Authority.WidgetId;
             if (!_pinnedSelectionPending.Add(widget)) throw PinnedStale("A pinned selection change is pending.");
-            if (_pinnedSelections.TryGetValue(widget, out var prior))
-            { prior.Active = false; RetirePinnedIndexedLocked(widget, prior.LayoutId); }
             selected = new(this, projection);
-            _pinnedSelections[widget] = selected;
+            if (_pinnedSelections.TryGetValue(selected.Slot, out var prior))
+            { prior.Active = false; RetirePinnedIndexedLocked(widget, prior.LayoutId); }
+            _pinnedSelections[selected.Slot] = selected;
         }
         try
         {
@@ -75,7 +81,7 @@ public sealed partial class WidgetPresentationSession
             using (_gate.Enter())
             {
                 DemandPinnedProjectionLocked(projection);
-                if (!ReferenceEquals(_pinnedSelections.GetValueOrDefault(selected.WidgetId), selected) ||
+                if (!ReferenceEquals(_pinnedSelections.GetValueOrDefault(selected.Slot), selected) ||
                     _indexedHiddenWidgets.Contains(selected.WidgetId))
                     throw PinnedStale("The selection retired or changed before notification.");
             }
@@ -86,13 +92,14 @@ public sealed partial class WidgetPresentationSession
                 ControllerInputContext.PinnedLayoutSelection, Sequence: sequence,
                 MonotonicTimestampMicroseconds: monotonicTimestampMicroseconds,
                 SnapshotSequence: projection.Frame.Authority.SnapshotSequence)
-            { PinnedLayoutId = full ? null : projection.LayoutId, IsPinnedLayoutSelected = !full };
+            { PinnedLayoutId = full ? null : projection.LayoutId, IsPinnedLayoutSelected = !full,
+                PinnedSelectionId = selected.Independent ? selected.SelectionId : null };
             var acknowledged = await SendPinnedWireAsync(projection.Frame, input, null, null, dispatch, cancellationToken).ConfigureAwait(false);
             using (_gate.Enter())
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 DemandPinnedProjectionLocked(projection);
-                if (!ReferenceEquals(_pinnedSelections.GetValueOrDefault(selected.WidgetId), selected) ||
+                if (!ReferenceEquals(_pinnedSelections.GetValueOrDefault(selected.Slot), selected) ||
                     _indexedHiddenWidgets.Contains(selected.WidgetId)) throw PinnedStale("The selection retired during notification.");
                 selected.DemandAcknowledged = acknowledged;
                 if (!full && !acknowledged)
@@ -113,7 +120,7 @@ public sealed partial class WidgetPresentationSession
         using (_gate.Enter())
         {
             var current = DemandPinnedFrameLocked(displayed);
-            if (!ReferenceEquals(selection.Owner, this) || !ReferenceEquals(_pinnedSelections.GetValueOrDefault(selection.WidgetId), selection) ||
+            if (!ReferenceEquals(selection.Owner, this) || !ReferenceEquals(_pinnedSelections.GetValueOrDefault(selection.Slot), selection) ||
                 !SameIndexedOwner(selection.Authority, current.Authority) ||
                 current.Authority.SnapshotSequence != displayed.Authority.SnapshotSequence)
                 throw PinnedStale("The deselection belongs to another selection or frame.");
@@ -127,7 +134,7 @@ public sealed partial class WidgetPresentationSession
             using (_gate.Enter())
             {
                 DemandPinnedFrameLocked(displayed);
-                if (!ReferenceEquals(_pinnedSelections.GetValueOrDefault(selection.WidgetId), selection))
+                if (!ReferenceEquals(_pinnedSelections.GetValueOrDefault(selection.Slot), selection))
                     throw PinnedStale("The selection changed before demand removal.");
             }
             var input = new ControllerInputEvent(ControllerButton.View, ControllerEventPhase.Pressed,
@@ -136,9 +143,10 @@ public sealed partial class WidgetPresentationSession
             // The package owns one authored demand. A cancelled selection may
             // or may not have reached it; the existing null-id revoke handles
             // both states without targeting a replacement local selection.
-            { PinnedLayoutId = null, IsPinnedLayoutSelected = false };
+            { PinnedLayoutId = selection.Independent ? selection.LayoutId : null, IsPinnedLayoutSelected = false,
+                PinnedSelectionId = selection.Independent ? selection.SelectionId : null };
             var handled = await SendPinnedWireAsync(displayed, input, null, null, dispatch, cancellationToken).ConfigureAwait(false);
-            using (_gate.Enter()) if (ReferenceEquals(_pinnedSelections.GetValueOrDefault(selection.WidgetId), selection)) _pinnedSelections.Remove(selection.WidgetId);
+            using (_gate.Enter()) if (ReferenceEquals(_pinnedSelections.GetValueOrDefault(selection.Slot), selection)) _pinnedSelections.Remove(selection.Slot);
             return handled;
         }
         finally { using (_gate.Enter()) _pinnedSelectionPending.Remove(selection.WidgetId); }
@@ -148,7 +156,7 @@ public sealed partial class WidgetPresentationSession
     {
         ArgumentNullException.ThrowIfNull(selection);
         using (_gate.Enter()) return !_disposed && _terminalFailure is null && ReferenceEquals(selection.Owner, this) && selection.Active &&
-            !_indexedHiddenWidgets.Contains(selection.WidgetId) && ReferenceEquals(_pinnedSelections.GetValueOrDefault(selection.WidgetId), selection) &&
+            !_indexedHiddenWidgets.Contains(selection.WidgetId) && ReferenceEquals(_pinnedSelections.GetValueOrDefault(selection.Slot), selection) &&
             ReferenceEquals(_pinnedEpochs.GetValueOrDefault(selection.WidgetId)?.GetValueOrDefault(selection.LayoutId), selection.Epoch);
     }
 
@@ -176,6 +184,15 @@ public sealed partial class WidgetPresentationSession
             !ReferenceEquals(selection.Epoch, projection.Epoch) || !projection.SupportsOrdinaryInput)
             throw PinnedStale("Pinned input requires the selected layout and its supported input scope.");
         return PinnedSnapshot(current, projection.LayoutId).Snapshot;
+    }
+    private ViewSnapshot DemandPinnedInteractionLocked(WidgetPinnedSelection selection, WidgetPinnedProjection projection)
+    {
+        var current = DemandPinnedInputLocked(selection, projection);
+        if (projection.Interaction == PinnedInteractionMode.Passive ||
+            _states[selection.WidgetId].LastGood!.Snapshot.PinnedLayouts
+                .Any(layout => layout.Id == selection.LayoutId && layout.Interaction == PinnedInteractionMode.Passive))
+            throw PinnedStale("The pinned layout is display-only.");
+        return current;
     }
     private static void ValidatePinnedClock(long sequence, long timestamp)
     { if (sequence < 0 || timestamp < 0) throw PinnedStale("Pinned input timestamps cannot be negative."); }
@@ -212,20 +229,34 @@ public sealed partial class WidgetPresentationSession
                 // Layout presence owns selection lifetime. Its active scope and
                 // content can navigate independently; input still compares the
                 // captured projection's own scope and binding with the current one.
-                next.Add(id, old is not null && SameIndexedOwner(old.Owner, frame.Authority) ? old : new(frame.Authority));
+                var independent=frame.Snapshot.PinnedLayouts.Any(layout=>layout.Id==id && layout.IndependentSelection);
+                next.Add(id, old is not null && old.Independent==independent && SameIndexedOwner(old.Owner, frame.Authority)
+                    ? old : new(frame.Authority,independent));
             }
         }
         _pinnedEpochs[state.WidgetId] = next;
         _pinnedFrames.GetValue(frame, _ => new ReadOnlyDictionary<string, PinnedEpoch>(next));
-        if (_pinnedSelections.TryGetValue(state.WidgetId, out var selected) &&
-            !ReferenceEquals(next.GetValueOrDefault(selected.LayoutId), selected.Epoch)) selected.Active = false;
+        foreach(var selected in _pinnedSelections.Values.Where(pin=>pin.WidgetId==state.WidgetId).ToArray())
+            if(!ReferenceEquals(next.GetValueOrDefault(selected.LayoutId),selected.Epoch))
+            {
+                selected.Active=false;
+                // Keep the inactive receipt until host teardown can revoke worker demand.
+            }
         ReconcilePinnedArtworkLocked(state.WidgetId);
     }
     private void RetirePinnedProjectionsLocked(string? widget = null)
     {
         RetirePinnedArtworkLocked(widget);
         if (widget is null) { _pinnedEpochs.Clear(); foreach (var item in _pinnedSelections.Values) item.Active = false; _pinnedSelections.Clear(); }
-        else { _pinnedEpochs.Remove(widget); if (_pinnedSelections.Remove(widget, out var selected)) selected.Active = false; }
+        else { _pinnedEpochs.Remove(widget); RetireWidgetSelectionsLocked(widget); }
+    }
+    private void RetireWidgetSelectionsLocked(string widget)
+    {
+        foreach(var selection in _pinnedSelections.Values.Where(pin=>pin.WidgetId==widget).ToArray())
+        {
+            selection.Active=false;
+            _pinnedSelections.Remove(selection.Slot);
+        }
     }
     private void RetirePinnedIndexedLocked(string widget, string id)
     {
@@ -239,9 +270,12 @@ public sealed partial class WidgetPresentationSession
     private void DemandPinnedIndexedInputLocked(WidgetPresentationIndexedLease lease)
     {
         if (lease.Request.Range.PinnedLayoutId is not { } id) return;
-        if (!_pinnedSelections.TryGetValue(lease.Authority.WidgetId, out var selected) || selected.LayoutId != id ||
-            !IsPinnedSelectionCurrent(selected))
+        var selected=_pinnedSelections.GetValueOrDefault((lease.Authority.WidgetId,id))??
+            _pinnedSelections.GetValueOrDefault((lease.Authority.WidgetId,string.Empty));
+        if (selected is null || selected.LayoutId!=id || !IsPinnedSelectionCurrent(selected))
             throw PinnedStale("The indexed row does not belong to the selected pinned layout.");
+        if (!PinnedSurfaceContract.AllowsInteraction(_states[lease.Authority.WidgetId].LastGood!.Snapshot,id))
+            throw PinnedStale("The pinned layout is display-only.");
     }
 
     // Cancellation stops the caller waiting, not a command already admitted to

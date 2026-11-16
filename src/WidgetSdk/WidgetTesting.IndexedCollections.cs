@@ -202,6 +202,12 @@ public sealed class WidgetIndexedCollectionTestLease : IDisposable
         IndexedCollectionInputContext? context = null) =>
         host.Route(this, new(new(LeaseId,itemKey), ControllerButton.A) { PreviewAction = new(ownerId,actionId) }, context);
 
+    /// <summary>Routes a numeric value from the exact leased preview slider.</summary>
+    public WidgetOperationAdmission? RoutePreviewValueAction(string itemKey, string ownerId, string actionId, double value,
+        IndexedCollectionInputContext? context = null) =>
+        host.Route(this, new(new(LeaseId,itemKey), ControllerButton.A)
+            { PreviewAction = new(ownerId,actionId) { RequestedValue = value } }, context);
+
     /// <summary>Resolves declared opaque artwork with production identity and encoded-image validation.</summary>
     public ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(string itemKey, WidgetArtworkHandle handle,
         CancellationToken cancellationToken = default) =>

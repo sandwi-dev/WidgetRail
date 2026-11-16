@@ -69,6 +69,7 @@ public sealed partial class SdkGalleryWidget : Widget
         GalleryRoute.Utilities,
     ];
     private readonly WidgetNavigator<GalleryRoute> _navigation;
+    private readonly PinnedLayoutHandle _summaryPin,_levelPin,_readoutPin;
     private bool _compactMode = true;
     private string _density = "Comfortable";
     private TimeSpan _position = TimeSpan.FromSeconds(74);
@@ -78,6 +79,10 @@ public sealed partial class SdkGalleryWidget : Widget
     public SdkGalleryWidget()
     {
         _demo = CreateModel(new DemoState());
+        _summaryPin=CreatePinnedLayoutHandle("gallery.summary","Summary",new(){PreferredWidth=360,PreferredHeight=180},"gallery.pin.feedback");
+        _levelPin=CreatePinnedLayoutHandle("gallery.level","Level controls",new(){PreferredWidth=420,PreferredHeight=180},"gallery.pin.slider");
+        _readoutPin=CreatePinnedLayoutHandle("gallery.readout","Passive readout",
+            new(){PreferredWidth=360,PreferredHeight=180,Appearance=WidgetSurfaceAppearance.DesktopAcrylic},PinnedInteractionMode.Passive);
         _navigation = CreateNavigatorWithOptions(
         Ids.Id("navigation"),
         GalleryRoute.Overview,
@@ -176,6 +181,12 @@ public sealed partial class SdkGalleryWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
 
+        foreach(var pin in new[]{_summaryPin,_levelPin,_readoutPin})
+            if(pin.Selection is { } target)
+            {
+                if(action.ActionId==CloseDemoPinAction(target))return RequestDemoCloseAsync(target,cancellationToken);
+                if(action.ActionId==ManageDemoPinAction(target))return RequestDemoManageAsync(target,cancellationToken);
+            }
         if (TryDemoAction(action)) return ValueTask.CompletedTask;
 
         if (_navigation.TryHandleBack(action, action.FocusedElementId))
@@ -185,6 +196,7 @@ public sealed partial class SdkGalleryWidget : Widget
         {
             case "gallery.pin.open.summary": return RequestDemoPinAsync("gallery.summary",cancellationToken);
             case "gallery.pin.open.level": return RequestDemoPinAsync("gallery.level",cancellationToken);
+            case "gallery.pin.open.readout": return RequestDemoPinAsync("gallery.readout",cancellationToken);
             case "gallery.tab.overview":
                 ActivatePage(GalleryRoute.Overview);
                 return ValueTask.CompletedTask;

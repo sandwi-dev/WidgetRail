@@ -29,6 +29,22 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
     internal WidgetPresentationFrame Frame => Presentation.Frame;
     internal string ActiveScope => Presentation.Scope;
     internal ViewNode Declaration => Volatile.Read(ref presentation).Collection;
+    // The session retires range authority before its publication reaches the UI
+    // dispatcher. Keep the old frame's paint until that already-accepted frame
+    // commits; this does not make its old actions or artwork requests current.
+    internal bool HasPendingPresentation
+    {
+        get
+        {
+            var current = Presentation;
+            var state = session.GetState(current.Frame.Authority.WidgetId);
+            return !lifetime.IsCancellationRequested && IsPresentationActive && current.IsCurrent &&
+                state is { Failure: null, LastGood: { } next } &&
+                SameOwner(current.Frame.Authority, next.Authority) &&
+                next.Authority.SnapshotSequence > current.Frame.Authority.SnapshotSequence;
+        }
+    }
+
     internal Action<Exception>? Failed { get; set; }
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource activity = new();

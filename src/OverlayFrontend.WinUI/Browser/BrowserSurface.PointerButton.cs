@@ -41,6 +41,12 @@ internal sealed partial class BrowserSurface
         var gesture = nativePointerGesture;
         Run(() => SetPointerButtonAsync(false, gesture, -1, 0, 0));
     }
+    // Release cleanup is permitted after focus proof expires; it never starts
+    // an input gesture. CancelPointer uses the existing outside-page release.
+    // pointerPressed clears synchronously, so duplicate releases cannot queue
+    // repeated native ups while the original cancellation is still awaiting CDP.
+    internal void CancelPendingControllerPress()
+    {if(pointerPressed)CancelPointer();}
     private async Task SetPointerButtonAsync(bool down, long gesture, long epoch, double ratioX, double ratioY)
     {
         AutomaticFieldClick? click = null;

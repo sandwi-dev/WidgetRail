@@ -113,7 +113,9 @@ public sealed class EmbeddedMediaSampleWidget : Widget
                     UI.Text("LOCAL MEDIA", "media-shell.eyebrow").Classes("media-shell-eyebrow"),
                     UI.Text(MediaItems[activeMediaIndex].Title, "media-shell.title").Classes("media-shell-title"),
                     UI.Text(StatusText(playbackState), "media-shell.status").Classes("media-shell-status")).Classes("media-shell-heading"),
-                    UI.Row("media-shell.header-actions", fullscreen, back)).Classes("media-shell-header"),
+                    UI.Row("media-shell.header-actions",
+                        UI.IconButton(WidgetGlyph.Settings,"sample.manage-pin","media-shell.manage","Manage pin",size:IconButtonSize.Small).Classes("media-shell-back"),
+                        fullscreen, back)).Classes("media-shell-header"),
                 UI.MediaViewport(media, "media-shell.viewport").Classes("media-shell-viewport"),
                 UI.Row("media-shell.timeline", UI.Text(FormatTime(position), "media-shell.position").Classes("media-shell-time"), timeline, UI.Text(FormatTime(duration), "media-shell.duration").Classes("media-shell-time", "is-end")).Classes("media-shell-timeline"),
                 UI.Row("media-shell.controls", previous, seekBack, play, seekForward, next).Classes("media-shell-controls"),
@@ -137,6 +139,7 @@ public sealed class EmbeddedMediaSampleWidget : Widget
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if(action.ActionId=="sample.manage-pin")return ManagePinAsync(cancellationToken);
         lock (_gate)
         {
             if (_pendingCommand is not null)
@@ -249,6 +252,9 @@ public sealed class EmbeddedMediaSampleWidget : Widget
         }
         return ValueTask.CompletedTask;
     }
+
+    private async ValueTask ManagePinAsync(CancellationToken token) =>
+        await HostServices.Pinning.RequestManageAsync(token);
 
     private static string StatusText(EmbeddedMediaPlaybackState state) => state switch
     {

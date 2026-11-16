@@ -26,7 +26,16 @@ internal sealed partial class BrowserSurface
     {
         if (initializing is not null || core is not null) throw new InvalidOperationException("Session must be configured before creating its browser.");
         hostedDefinition = definition;
-        if (IsBackendVideo) progressRow.Height = new(0);
+        if (IsBackendVideo)
+        {
+            progressRow.Height = new(0);
+            // WinUI's SystemVisualBridge paints a theme backing independently of
+            // CoreWebView2.DefaultBackgroundColor. Scope its color resources to
+            // this video control so transparent HTML reveals the pin's material.
+            // The outer pin still owns explicit appearance/accessibility fallback.
+            web.Resources["SolidBackgroundFillColorBase"] = Microsoft.UI.Colors.Transparent;
+            web.Resources["SystemColorWindowColor"] = Microsoft.UI.Colors.Transparent;
+        }
         if (IsHostedPackage) profile = "pkg-" + profile;
         hostedResources = resources;
         UpdateChrome();

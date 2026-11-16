@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Controls;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetBridge;
@@ -11,6 +12,15 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed record ShellChromePalette(Color Surface, Color Item, Color Text, Color Selected,
     Color SelectedText, Color Muted, Color Focus, double FocusWidth, bool HighContrast)
 {
+    internal void PaintButton(Button button,double tint=.025)
+    {
+        // Native computed styles own button visual states. Keep shell paint on
+        // the control properties instead of replacing live template resources.
+        button.Background=new SolidColorBrush(HighContrast?Surface:Blend(Surface,Text,tint));
+        button.Foreground=new SolidColorBrush(Text);
+        button.BorderBrush=new SolidColorBrush(HighContrast?Text:Blend(Surface,Text,.08));
+        button.FocusVisualPrimaryBrush=new SolidColorBrush(Focus);
+    }
     private static readonly UISettings SystemUi = new();
     private static readonly AccessibilitySettings Accessibility = new();
     internal static ShellChromePalette Resolve(IReadOnlyDictionary<string, BridgeNodeRenderStyles>? styles, AppearanceSettings appearance)

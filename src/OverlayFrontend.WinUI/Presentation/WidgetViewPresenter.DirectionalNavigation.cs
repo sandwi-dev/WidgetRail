@@ -21,7 +21,20 @@ internal sealed partial class WidgetViewPresenter
         if (direction == FocusNavigationDirection.None) return;
         // Tunnel before a native control can perform a second spatial move.
         args.Handled = true;
-        MoveFocus(direction, args.KeyStatus.WasKeyDown);
+        if (!MoveKeyboardSlider(direction)) MoveFocus(direction, args.KeyStatus.WasKeyDown);
+    }
+
+    // Controller engagement is not a keyboard requirement. Preserve native
+    // left/right slider behavior, including sliders inside a preview portal.
+    private bool MoveKeyboardSlider(FocusNavigationDirection direction)
+    {
+        if (previewEntered && previewSurface?.Fragment is { } preview)
+            return preview.MoveKeyboardSlider(direction);
+        if (!presentationActive || !presentationInputEnabled || applying || disposed || presentationOnly ||
+            direction is not (FocusNavigationDirection.Left or FocusNavigationDirection.Right) ||
+            FocusedBinding() is not { Element: Slider slider } binding || !Navigable(binding)) return false;
+        if (declarations[binding.Identity.Id].Node.IsBusy != true) StepSlider(binding, slider, direction);
+        return true;
     }
 
     private bool MoveDirectionalFocus(FocusNavigationDirection direction, bool isRepeat)

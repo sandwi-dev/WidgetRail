@@ -26,7 +26,7 @@ internal static class OverlayAppearancePolicy
             ContrastPreference.High => true, ContrastPreference.Standard => false, _ => systemHighContrast,
         };
         var fallback = contrast ? "high-contrast" : settings.Transparency == TransparencyPreference.Reduced ? "reduced-transparency" :
-            requested == WidgetSurfaceAppearance.Transparent && !transparentComposition ? "unsupported-composition" :
+            requested is WidgetSurfaceAppearance.Transparent or WidgetSurfaceAppearance.DesktopAcrylic && !transparentComposition ? "unsupported-composition" :
             requested == WidgetSurfaceAppearance.Transparent && settings.BackdropOpacity <= 0 ? "zero-backdrop-contrast" : null;
         return new(declared, requested, fallback is null ? requested : WidgetSurfaceAppearance.Solid, fallback, contrast);
     }

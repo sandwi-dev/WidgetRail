@@ -70,27 +70,27 @@ internal sealed partial class OverlayShellPage
                 await AssertTrayNavigation("Save");
 
                 var opacityBefore = tested.Window.OpacityPercent;
-                var opacityDirection = opacityBefore > 30 ? (ushort)4 : (ushort)8;
-                var expectedOpacity = opacityBefore + (opacityDirection == 4 ? -5 : 5);
-                await BeginPinnedAdjustmentAsync(opacityOnly: true);
+                var opacityDirection = opacityBefore > 30 ? (ushort)0x0100 : (ushort)0x0200;
+                var expectedOpacity = opacityBefore + (opacityDirection == 0x0100 ? -5 : 5);
+                await BeginPinnedAdjustmentAsync();
                 Receive(Sample(opacityDirection, pressed: opacityDirection)); Receive(Sample());
                 Check(tested.Window.OpacityPercent == expectedOpacity && tested.Window.Bounds == committed,
                     "opacity controller input previews one five-percent step without moving the pin");
-                Check(PinnedPlacementHints().Any(hint => hint.Label.Contains(expectedOpacity + "%")),
-                    "opacity adjustment guide reports its current percentage");
+                Check(pinAdjustmentToolbar?.Opacity.Value==expectedOpacity,
+                    "The floating opacity control reports its current percentage");
                 Receive(Sample(rightX: -32767)); Receive(Sample());
-                Check(tested.Window.Bounds == committed, "opacity mode consumes resize input without changing bounds");
+                Check(tested.Window.Bounds != committed, "The combined adjustment also accepts resize input after changing opacity");
                 Receive(Sample(0x2000, pressed: 0x2000)); Receive(Sample(released: 0x2000));
                 Check(tested.Window.OpacityPercent == opacityBefore && tested.Window.Bounds == committed,
                     "opacity Cancel restores original alpha and placement");
-                await BeginPinnedAdjustmentAsync(opacityOnly: true);
+                await BeginPinnedAdjustmentAsync();
                 Receive(Sample(opacityDirection, pressed: opacityDirection)); Receive(Sample());
                 Receive(Sample(0x1000, pressed: 0x1000)); Receive(Sample(released: 0x1000));
                 await Until(() => !savingPinnedAdjustment && pinnedAdjustment is null);
                 persisted = await new PinnedPreferencesStore(options.SettingsRoot).LoadAsync(lifetime.Token);
                 Check(persisted.Find(tested.WidgetId, tested.LayoutId)?.OpacityPercent == expectedOpacity,
                     "opacity Save persists the native preview percentage in the existing pin preferences");
-                await BeginPinnedAdjustmentAsync(opacityOnly: true);
+                await BeginPinnedAdjustmentAsync();
                 Receive(Sample(opacityDirection, pressed: opacityDirection)); Receive(Sample());
                 SetVisible(false);
                 Check(tested.Window.OpacityPercent == expectedOpacity, "hiding cancels uncommitted opacity while retaining the saved value");

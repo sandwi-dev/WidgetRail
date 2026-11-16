@@ -31,6 +31,9 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
     private readonly Button previous = new() { Content = new FontIcon { Glyph = "\uE76B", FontFamily = new("Segoe Fluent Icons"), FontSize = 14 }, Width = 32, Height = 32, Padding = new(0), AllowFocusOnInteraction = false };
     private readonly Button next = new() { Content = new FontIcon { Glyph = "\uE76C", FontFamily = new("Segoe Fluent Icons"), FontSize = 14 }, Width = 32, Height = 32, Padding = new(0), AllowFocusOnInteraction = false };
     private readonly (Button Button, WidgetPackageIconView Icon, WidgetStatusBadges Badges)[] items;
+    private readonly Dictionary<string, (WidgetPackageIconView View, long Used)> retainedIcons = [];
+    private long iconUse;
+    internal int RetainedIconCount => retainedIcons.Count;
     internal Func<BridgeWidgetDescriptor, WidgetStatus>? StatusFor { get; set; }
     private ShellChromePalette? badgePalette;
     internal Action<WidgetPackageIconView, BridgeWidgetDescriptor>? ApplyWebAppIcon { get; set; }
@@ -128,13 +131,33 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
         updating = true;
         try
         {
-            foreach (var (entry, index) in items.Select((entry, index) => (entry, index)))
+            // Detach outgoing slots before reattaching: catalog reordering may
+            // move a retained icon to a different sector in the same update.
+            for (var index = 0; index < items.Length; ++index)
+                if (Item(index) is not { } target || !retainedIcons.TryGetValue(target.Id, out var retained) ||
+                    !ReferenceEquals(retained.View, items[index].Icon))
+                    ((Grid)items[index].Button.Content).Children.Remove(items[index].Icon);
+            for (var index = 0; index < items.Length; ++index)
             {
+                var entry = items[index];
                 var item = Item(index);
                 entry.Button.Visibility = item is null ? Visibility.Collapsed : Visibility.Visible;
                 entry.Button.IsTabStop = item is not null;
                 if (item is not null)
                 {
+                    if (!retainedIcons.TryGetValue(item.Id, out var retained))
+                        retained = (new WidgetPackageIconView { Width = 40, Height = 40, FontSize = 40,
+                            ShowPendingFallback = false, HorizontalAlignment = HorizontalAlignment.Center,
+                            VerticalAlignment = VerticalAlignment.Center }, 0);
+                    retainedIcons[item.Id] = (retained.View, ++iconUse);
+                    if (!ReferenceEquals(entry.Icon, retained.View))
+                    {
+                        if (!retainedIcons.Values.Any(value => ReferenceEquals(value.View, entry.Icon))) entry.Icon.Dispose();
+                        entry = (entry.Button, retained.View, entry.Badges);
+                        items[index] = entry;
+                    }
+                    var stage = (Grid)entry.Button.Content;
+                    if (!stage.Children.Contains(entry.Icon)) stage.Children.Insert(0, entry.Icon);
                     var asset = item.IconAssets.FirstOrDefault(candidate => candidate.AssetId == item.PackageIcon?.AssetId);
                     var generation = $"{item.Id}|{item.InstanceId}|{item.RuntimeGeneration}|{item.PresentationGeneration}|{item.PackageContentDigest}|{asset?.SourceSha256}|{asset?.NormalizedSha256}";
                     entry.Icon.Update(new() { Id = "radial.icon", Kind = ViewNodeKind.Icon, Glyph = item.Icon,
@@ -156,6 +179,14 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
                 entry.Button.UseSystemFocusVisuals = palette.HighContrast;
                 entry.Button.Width = entry.Button.Height = 66; entry.Button.MinWidth = entry.Button.MinHeight = 0;
             }
+            // Three recently visited pages, not an unbounded view per catalog item.
+            var visibleIcons = items.Where((_, index) => Item(index) is not null).Select(entry => entry.Icon).ToHashSet();
+            foreach (var key in retainedIcons.Keys.Where(id => !catalog.Any(item => item.Id == id)).ToArray())
+                RetireIcon(key);
+            foreach (var key in retainedIcons.OrderBy(pair => pair.Value.Used)
+                         .Where(pair => !visibleIcons.Contains(pair.Value.View))
+                         .Take(Math.Max(0, retainedIcons.Count - 24)).Select(pair => pair.Key).ToArray())
+                RetireIcon(key);
             pageText.Text = $"{page + 1}/{RadialChooserPolicy.PageCount(catalog.Count)}";
             pageText.Visibility = catalog.Count > 8 ? Visibility.Visible : Visibility.Collapsed;
             previous.Visibility = next.Visibility = catalog.Count > 8 ? Visibility.Visible : Visibility.Collapsed;
@@ -165,6 +196,10 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
         }
         finally { updating = false; }
         RefreshBadges();
+    }
+    private void RetireIcon(string key)
+    {
+        if (retainedIcons.Remove(key, out var item)) item.View.Dispose();
     }
     internal void RefreshBadges()
     {
@@ -229,5 +264,7 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
         WidgetControllerPrompts.Changed -= UpdatePagingGlyph;
         face.Shadow = null; elevation.Receivers.Clear();
         foreach (var item in items) item.Icon.Dispose();
+        foreach (var item in retainedIcons.Values) item.View.Dispose();
+        retainedIcons.Clear();
     }
 }

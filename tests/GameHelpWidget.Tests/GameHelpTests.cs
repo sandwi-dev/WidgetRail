@@ -346,7 +346,9 @@ public sealed class GameHelpTests
             await widget.OnActionAsync(new("capture.image","help.capture-image"));
             await Until(()=>Snapshot(widget).Root.Kind==ViewNodeKind.ModalLayer);
             Assert.AreEqual(0,service.Requests.Count);
-            Assert.AreEqual(ProtocolConstants.TextEntryPurposeVersion,Snapshot(widget).ProtocolVersion);
+            var preview = Snapshot(widget);
+            Assert.IsTrue(Walk(preview.Root).Any(node => node.ModalDismissal is not null));
+            Assert.AreEqual(ProtocolConstants.ModalDismissalVersion, preview.ProtocolVersion);
             Assert.IsTrue(Walk(Snapshot(widget).Root).Any(n=>n.Kind==ViewNodeKind.MediaPlayer&&n.MediaPlayer!.Source.Attachment==attachment));
             Assert.AreEqual(ViewNodeKind.TextEntry, Walk(Snapshot(widget).Root).Single(n => n.Id == "help.preview-question").Kind);
             await widget.OnActionAsync(new("preview.question", "help.preview-question") { CommittedText = "How do I reach the office?" });

@@ -29,11 +29,22 @@ internal sealed partial class OverlayShellPage
                     catalogItems.Any(widget=>widget.Id.StartsWith("widgetrail.prototype.discord",StringComparison.Ordinal)))
                     throw new InvalidOperationException("Voice controls validation accepts only the synthetic fixture.");
                 await SelectAsync("widgetrail.tests.discord-ui",true);App.Window!.Activate();
-                await Until(()=>MainFocusEnabled&&OwnsMain()&&Node("discord.main.connected")?.Text=="Voice connected");
+                await Until(()=>MainFocusEnabled&&OwnsMain()&&Node("discord.main.connected")?.AccessibilityLabel=="Voice connected · Connection details");
                 Check(browserOwner?.ResidentCount==0,"Synthetic voice/device controls open no browser, capture or microphone session");
+                step="connection info";
+                Check(surface!.FocusHostTarget("discord.voice.pin"),"Connection info starts next to the native voice-controls pin button");
+                await Until(()=>FocusId()=="Widget.discord.voice.pin");
+                await Move(NavigationDirection.Left);
+                Check(FocusId()=="Widget.discord.main.connected"&&VisibleFocus(),"One Left from pin voice controls reaches the visible connection info button");
+                await Button(ControllerButton.A);
+                await Until(()=>Node("discord.connection-dialog") is not null);
+                await Button(ControllerButton.B);
+                await Until(()=>Node("discord.connection-dialog") is null&&FocusId()=="Widget.discord.main.connected");
+                Check(VisibleFocus(),"Closing connection details restores the info button focus");
+                step="participants";
                 Check(surface!.FocusHostTarget("discord.main.mute"),"Participant entry starts on a native main call control");
                 await Until(()=>FocusId()=="Widget.discord.main.mute");
-                await MoveUntil(NavigationDirection.Up,()=>FocusId().StartsWith("Widget.discord.participants.Item.",StringComparison.Ordinal));
+                await MoveUntil(NavigationDirection.Down,()=>FocusId().StartsWith("Widget.discord.participants.Item.",StringComparison.Ordinal));
                 await MoveUntil(NavigationDirection.Left,()=>FocusId()=="Widget.discord.participants.Item.0");
                 await Move(NavigationDirection.Right);
                 Check(FocusId()=="Widget.discord.participants.Item.1","Controller navigation selects the first other participant without pointer priming");
@@ -79,7 +90,8 @@ internal sealed partial class OverlayShellPage
                 trace.Add(new{step,phase="settings declaration ready",focus=FocusId(),native=surface.FocusDiagnostics()});
                 Check(surface.CurrentBinding!.Frame.Authority.ActiveInputScopeId=="discord.voice-settings-dialog.scope",
                     "Voice settings enters a distinct matching modal/navigation scope");
-                await Until(()=>FocusId() is "Widget.discord.voice-settings-dialog.close" or "Widget.discord.voice-dialog.input"&&NativeEntrySettled());
+                await Until(()=>(FocusId() is "Widget.discord.voice-settings-dialog.close" or "Widget.discord.voice-dialog.input")&&
+                    NativeEntrySettled()&&NativeControlReady("discord.voice-dialog.input")&&NativeControlReady("discord.voice-dialog.output"));
                 trace.Add(new{step,phase="settings native entry",focus=FocusId(),native=surface.FocusDiagnostics()});
                 if(FocusId()!="Widget.discord.voice-dialog.input")await MoveUntil(NavigationDirection.Down,()=>FocusId()=="Widget.discord.voice-dialog.input");
                 Check(VisibleFocus(),"The microphone selector is reachable after the asynchronous settings read");
@@ -203,6 +215,8 @@ internal sealed partial class OverlayShellPage
                 return !state.RootElement.GetProperty("needsEntry").GetBoolean()&&!state.RootElement.GetProperty("focusQueued").GetBoolean()&&
                     !state.RootElement.GetProperty("applying").GetBoolean();
             }
+            bool NativeControlReady(string id)=>surface?.XamlRoot?.Content is { } root&&
+                Find<FrameworkElement>(root,id) is { IsLoaded:true,ActualWidth:>0,ActualHeight:>0 };
             IndexedCollectionFocusTarget? ChannelFocus()=>surface is null?null:Find<WidgetIndexedCollectionView>(surface,"discord.channels")?.CaptureFocusedItem();
             bool VisibleFocus()
             {

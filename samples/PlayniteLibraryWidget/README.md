@@ -10,25 +10,26 @@ to play, and launch it with your controller without leaving the overlay.
 ## What you can do
 
 - Browse installed games on Home, or search your wider library in Library.
+- Browse cached achievement progress and recent unlocks in the Achievements section.
 - Filter by favorites, installed status, source, and collections.
-- Open game details over the current page, then launch installed games through Playnite Bridge.
+- Open game details over the current page, then launch installed games through Playnite.
 - Read descriptions, metadata, achievements, and play-session history in game details.
 - Request installation or uninstallation through Playnite and the game's launcher.
 - Organize favorites, hidden games, categories, and completion status.
 
 ## Connect your library
 
-This widget connects to [**Playnite Bridge**](https://github.com/rollacode/playnite-bridge)
-by [rollacode](https://github.com/rollacode), a Playnite plugin that provides a
-local API. Guided setup includes a tested integration package and connects it
-without requiring you to download a plugin or copy a token.
+This widget includes **WidgetRail for Playnite**, an independent Playnite plugin
+with a local-only API. Guided setup installs and connects it without a separate
+download or copying a token. Existing Playnite Bridge installations can stay:
+the two plugins have separate identities, servers and credentials.
 
 1. Install Playnite Library from **Catalogue**, or its published `.wrwidget` through **Settings → Widgets**. Review the full-access prompt. A fresh interactive install starts enabled; an update preserves the existing enabled state.
 2. Install [Playnite](https://playnite.link/) if you do not already have it.
 3. Open the widget and choose **Set up connection**. Setup detects Playnite and its data profile; choose a profile if more than one is found.
 4. Select the displayed connection action. When installation or repair is needed, the button explains that Playnite will restart. Setup preserves its library and integration preferences, connects, and returns to your library.
 
-If a running Playnite copy needs Bridge or a new connection, the widget opens setup
+If a running Playnite copy needs the integration or a new connection, the widget opens setup
 for that profile automatically, showing its data folder before any change. Other
 stopped installations are preserved. If selection is ambiguous, choose a profile in
 connection settings.
@@ -50,24 +51,14 @@ the widget stops or WidgetRail exits. No File Explorer window needs to be open.
 If the desktop shell is unavailable, start Playnite manually and retry; the
 widget does not fall back to a process that would close with it.
 
-Healthy existing Bridge builds are reused. Setup only replaces the specifically
-recognized older build; unfamiliar or newer integrations remain under your control.
-**Advanced** provides custom application/data folders and manual token controls.
-Keep Playnite running while using the widget.
+Healthy current WidgetRail integrations are reused; recognized older builds get
+an update offer. Unknown/newer builds remain under your control. **Advanced**
+provides custom application/data folders and manual token controls. Keep Playnite
+running while using the widget.
 
-The bundled integration is a clearly labeled WidgetRail build of Bridge 1.5.3,
-with the framework-reference compatibility fix submitted as
-[upstream PR #6](https://github.com/rollacode/playnite-bridge/pull/6). It retains
-Bridge's extension identity and MIT license. A future compatible official release
-can replace it. The package is included with the widget, so setup does not download
-from GitHub.
-
-WidgetRail uses the plugin's local API. The optional Playnite Bridge sync backend
-is not required.
-
-The supported bridge listens on `localhost:19821` and must provide the compatible
-games API. Tokens are stored privately in Windows Credential Manager.
-You can reopen connection settings through **Menu → Playnite connection**.
+The plugin selects an available loopback port and tells the widget where to connect.
+It never uses the original Bridge's port 19821. Credentials are scoped to the selected
+profile in Windows Credential Manager. Reopen **Menu → Playnite connection** to reconnect.
 
 If setup cannot finish, it reports the next step and restores its previous
 integration/settings when possible. Finish any Playnite startup or shutdown dialog
@@ -115,7 +106,7 @@ Search suggests titles from the cached library without making provider requests 
 The **Installed** filter narrows Library. Game details offers **Install** for uninstalled
 games and **Game options → Uninstall** for installed games, with confirmation before requesting
 uninstallation. Follow any Playnite or launcher prompts, then refresh to see the result.
-Pinned views keep showing the page without its modal.
+Achievement tracking uses a separate passive pin; game details remain in the widget.
 
 **Achievements** reads [PlayniteAchievements](https://github.com/justin-delano/PlayniteAchievements)
 first, with [SuccessStory](https://github.com/Lacro59/playnite-successstory-plugin) as a fallback,
@@ -124,11 +115,17 @@ in Playnite, with saved data for the selected game. Missing data is explained in
 relevant tab. Achievements scroll continuously, with local search, All/Locked/Unlocked
 filters, and sorting by recent unlocks, rarity, name or numerical progress when available.
 Each row shows its description, icon, status, rarity, unlock date and available progress
-directly. Ordinary rows are read-only. Press **A** on a secret achievement to reveal its
+directly. Unfinished, non-hidden achievements with measurable progress offer **Track in progress pin** in their right-click/X menu. Press **A** on a secret achievement to reveal its
 description and artwork. Search suggestions use all loaded, revealed achievement names;
 the active filter still controls results. Activity retains 20 entries per page. Data loads when you open the
-tab and is reused while that game's details remain open. **Refresh** reads the latest
-locally synced data; it does not ask Steam or another service to sync achievements.
+tab and updates when Playnite reports changes. **Refresh / Y** reloads details and,
+on the Achievements tab, asks PlayniteAchievements to sync when supported. Playnite
+owns provider accounts and prompts. Closing the view does not cancel an accepted sync.
+
+Track one achievement in a compact passive progress pin. Selecting another eligible achievement replaces its content while preserving the window position, size and opacity;
+**Adjust progress pin** and **Unpin progress** are in the Achievements tab. Missing
+or filtered data becomes unavailable, never another achievement. Hidden locked
+achievements, completed achievements, and achievements without numeric progress cannot be pinned. Progress updates when PlayniteAchievements refreshes its data. Unlock notifications remain owned by PlayniteAchievements; this widget does not send duplicate banners.
 
 The interface follows your selected WidgetRail theme. Categories open by selecting
 the row; game covers retain their original artwork colors.
@@ -149,14 +146,13 @@ needs to be started once or selected under Advanced.
 that the intended Playnite profile is selected. Guided setup can save its current
 token. **Advanced** also provides manual token entry and **Test connection**.
 
-**The bridge is unavailable.** Start Playnite and its bridge, then open
-**Playnite connection → Test connection**. An incompatible bridge API needs a compatible bridge version.
+**The integration is unavailable.** Start Playnite, then use **Playnite connection → Test connection**. Guided setup can offer an update or reconnect the selected profile.
 
 **A game is missing.** Home only shows installed games. Check Library, clear its
 filters, and refresh after changing your library in Playnite.
 
 **Does closing the overlay close Playnite?** No. The widget unloads after five
-minutes hidden to release memory; Playnite and its bridge keep running.
+minutes hidden to release memory; Playnite and its integration keep running.
 
 ## Verify, reconnect and remove the connection
 
@@ -172,17 +168,17 @@ widget never force-kills Playnite. Setup can briefly show Playnite or take focus
 reopen WidgetRail to see the result.
 
 Use **Advanced → Remove saved token** to delete WidgetRail's connection token from
-Windows Credential Manager. This does not revoke the token inside Bridge, remove
+Windows Credential Manager. This does not revoke the token inside the Playnite plugin, remove
 the plugin or stop Playnite. Disabling the widget keeps its settings/credentials;
 uninstalling removes host-owned widget state and browser data but does not remove
-Playnite, Bridge, its library, or that separately stored credential. Remove the
+Playnite, its plugins or library, or that separately stored credential. Remove the
 saved token before uninstalling if you want it cleared.
 
-Bridge setup preserves existing preferences, authentication and network setup.
-Suppressing its optional network prompt does not add/remove firewall rules or
-HTTP reservations, or turn off an existing LAN configuration. WidgetRail itself
-connects through localhost. See the [setup decision matrix](SETUP-DECISIONS.md)
-for maintainers' exact discovery and replacement rules.
+Setup changes only the WidgetRail plugin. It does not reconfigure or uninstall an
+existing Bridge, add firewall rules or permit remote connections. To remove the
+new integration, disable or uninstall **WidgetRail for Playnite** in Playnite's
+Add-ons settings. Original Bridge clients continue to work. See the
+[setup decision matrix](SETUP-DECISIONS.md) for maintainers.
 
 ## Build or customize
 
@@ -193,4 +189,27 @@ pwsh -NoProfile -File .\samples\PlayniteLibraryWidget\Build-CommunityPackage.ps1
 ```
 
 The package is written to `artifacts/community-addons/playnite-library/` without installing it.
-See [development notes](DEVELOPMENT.md) for the bridge contract, state ownership, caching, and package structure.
+See [development notes](DEVELOPMENT.md) for the local API contract, state ownership, caching, and package structure.
+
+
+## Achievements
+
+The **Achievements** destination uses PlayniteAchievements' visible cached data.
+It shows unlocked totals, completed games, recent unlocks, and game progress.
+Search games, filter by progress, or sort by recent unlock, completion or name.
+Select a game to open its existing achievement details; closing details returns
+to the selected game when it is still available. LB/RB cycle the three destinations;
+L3 focuses search. Narrow layouts use a compact summary and one game column.
+
+Install or enable PlayniteAchievements in Playnite's Add-ons menu if the page
+reports it missing. The page also distinguishes an unsupported add-on API and an
+outdated WidgetRail integration. Home and Library remain available.
+
+The page's Refresh reloads cached information. In a game's Achievements tab,
+**Refresh / Y** also asks the add-on to update that game when supported. Provider cache events
+update the displayed progress; the add-on and game determine when fresh progress
+is available. WidgetRail does not produce duplicate unlock banners.
+
+Only unfinished achievements with measurable progress can be tracked in a pin.
+The pin uses that achievement's artwork when available. Choosing another target
+updates the existing progress pin, retaining its position and opacity.

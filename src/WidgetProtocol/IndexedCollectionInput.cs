@@ -12,7 +12,11 @@ public sealed record IndexedCollectionInputRequest(IndexedCollectionItemReferenc
 }
 
 /// <summary>An action declared inside the exact leased row's interactive preview.</summary>
-public sealed record IndexedCollectionPreviewAction(string OwnerId, string ActionId);
+public sealed record IndexedCollectionPreviewAction(string OwnerId, string ActionId)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public double? RequestedValue { get; init; }
+}
 
 internal sealed record IndexedInputBinding(string ActionId, string OwnerId, ViewNodeKind OwnerKind, bool IsItem);
 
@@ -48,7 +52,8 @@ public static class IndexedCollectionInputContract
         if (request.PreviewAction is { } preview &&
             (request.ContextActionId is not null || request.Button != ControllerButton.A || request.Phase != ControllerEventPhase.Pressed ||
              preview.OwnerId is null || preview.ActionId is null ||
-             !ProtocolValidationIdentifierContext.IsSafeIdentifier(preview.OwnerId) || !ProtocolValidationIdentifierContext.IsSafeIdentifier(preview.ActionId)))
+             !ProtocolValidationIdentifierContext.IsSafeIdentifier(preview.OwnerId) || !ProtocolValidationIdentifierContext.IsSafeIdentifier(preview.ActionId) ||
+             preview.RequestedValue is { } requested && !double.IsFinite(requested)))
             throw new ArgumentException("Indexed preview action identity is invalid.", nameof(request));
     }
 
@@ -120,9 +125,17 @@ public static class IndexedCollectionInputContract
     {
         available &= ControllerShortcutResolutionContract.OwnerAvailable(node);
         if (node.Id == action.OwnerId)
-            return available && (node.ActionId == action.ActionId || node.Kind == ViewNodeKind.Select &&
+        {
+            if (!available) return null;
+            if (node.Kind == ViewNodeKind.Slider)
+                return action.ActionId == node.ValueChangedActionId && action.RequestedValue is { } value &&
+                    node.Minimum is { } minimum && node.Maximum is { } maximum && node.Step is { } step &&
+                    SliderValueContract.IsValidRequestedValue(value, minimum, maximum, step)
+                    ? new(action.ActionId, node.Id, node.Kind, true) : null;
+            return action.RequestedValue is null && (node.ActionId == action.ActionId || node.Kind == ViewNodeKind.Select &&
                 node.SelectOptions.Any(option => option.ActionId == action.ActionId && !option.IsDisabled && !option.IsBusy))
                 ? new(action.ActionId, node.Id, node.Kind, true) : null;
+        }
         foreach (var child in node.Children)
             if (ResolvePreview(child, action, available) is { } match) return match;
         return null;

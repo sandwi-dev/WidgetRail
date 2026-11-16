@@ -351,7 +351,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(input);
         if (input.Context is ControllerInputContext.PinnedSurface or ControllerInputContext.PinnedLayoutSelection ||
-            input.PinnedLayoutId is not null || input.IsPinnedLayoutSelected is not null)
+            input.PinnedLayoutId is not null || input.IsPinnedLayoutSelected is not null || input.PinnedSelectionId is not null)
             throw PinnedStale("Pinned input requires the pinned projection and selection API.");
         _ = ValidateAuthority(authority);
         if (input.SnapshotSequence != authority.SnapshotSequence)
@@ -631,7 +631,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     {
         RequireAllowedProperties(payload, new HashSet<string>(StringComparer.Ordinal)
         {
-            "widgetId", "runtimeGeneration", "effect", "sequence", "initiatedAtMilliseconds", "windowPreviews", "pinnedLayoutId",
+            "widgetId", "runtimeGeneration", "effect", "sequence", "initiatedAtMilliseconds", "windowPreviews", "pinnedLayoutId", "pinnedSelectionId",
         }, "widgetId", "runtimeGeneration", "effect", "sequence", "initiatedAtMilliseconds");
         var widgetId = ReadHostIdentifier(payload, "widgetId");
         var runtime = ReadHostIdentifier(payload, "runtimeGeneration");
@@ -643,11 +643,22 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             "closeOverlayAfterAppLaunch" => WidgetHostEffectKind.CloseOverlayAfterAppLaunch,
             "activateTaskWindow" => WidgetHostEffectKind.ActivateTaskWindow,
             "openPinnedLayout" => WidgetHostEffectKind.OpenPinnedLayout,
+            "closePinnedLayout" => WidgetHostEffectKind.ClosePinnedLayout,
+            "managePinnedSurface" => WidgetHostEffectKind.ManagePinnedSurface,
             _ => WidgetHostEffectKind.Unsupported,
         };
         WidgetHostWindowTarget? target = null;
         string? pinnedLayout = null;
-        if(kind==WidgetHostEffectKind.OpenPinnedLayout)
+        string? selectionId=null;
+        if(kind==WidgetHostEffectKind.ClosePinnedLayout || kind==WidgetHostEffectKind.ManagePinnedSurface && payload.TryGetProperty("pinnedSelectionId",out _))
+        {
+            selectionId=ReadString(payload,"pinnedSelectionId");
+            if(!Guid.TryParseExact(selectionId,"N",out _))throw new BridgeProtocolException("Invalid pin selection identity.");
+        }
+        else if(kind!=WidgetHostEffectKind.Unsupported && payload.TryGetProperty("pinnedSelectionId",out _))
+            throw new BridgeProtocolException("Unexpected pin selection identity.");
+        if(kind is WidgetHostEffectKind.OpenPinnedLayout or WidgetHostEffectKind.ClosePinnedLayout ||
+            kind==WidgetHostEffectKind.ManagePinnedSurface && payload.TryGetProperty("pinnedLayoutId",out _))
         {
             pinnedLayout=ReadString(payload,"pinnedLayoutId");
             if(!new WidgetPinRequest(pinnedLayout).IsWellFormed() || payload.TryGetProperty("windowPreviews",out _))
@@ -655,6 +666,9 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         }
         else if(kind!=WidgetHostEffectKind.Unsupported && payload.TryGetProperty("pinnedLayoutId",out _))
             throw new BridgeProtocolException("Only a pin effect can carry a pinned layout.");
+        if(kind==WidgetHostEffectKind.ManagePinnedSurface &&
+            (!new WidgetPinManageRequest(pinnedLayout,selectionId).IsWellFormed() || payload.TryGetProperty("windowPreviews",out _)))
+            throw new BridgeProtocolException("Invalid pin management target.");
         if (kind == WidgetHostEffectKind.ActivateTaskWindow)
             target = ReadHostWindowTarget(payload);
         else if (kind == WidgetHostEffectKind.CloseOverlayAfterAppLaunch && payload.TryGetProperty("windowPreviews", out _))
@@ -680,7 +694,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             RecordDiagnostic("stale_host_effect", "A stale or replayed host effect was rejected.", widgetId);
             return;
         }
-        HostEffectReceived?.Invoke(this, new(new(authority, kind, name, sequence, initiatedAt, target, pinnedLayout)));
+        HostEffectReceived?.Invoke(this, new(new(authority, kind, name, sequence, initiatedAt, target, pinnedLayout){PinnedSelectionId=selectionId}));
     }
 
     private static string ReadHostIdentifier(JsonElement payload, string name)

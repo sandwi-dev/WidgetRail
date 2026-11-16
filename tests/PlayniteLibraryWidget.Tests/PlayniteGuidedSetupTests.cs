@@ -273,6 +273,34 @@ public sealed partial class PlayniteLibraryTests
         await Background(widget);
     }
 
+    [TestMethod]
+    public async Task ReconnectionRetiresBothPublishedRoutesWhenTheNewReadFails()
+    {
+        var host = new FakeHost(3);
+        var services = host.Services();
+        var setup = new SetupFixture();
+        var widget = WidgetTestHost.Attach(new LauncherWidget(new TestApplicationService(services, host),
+            new FakeConnectionClient(), setupService: setup), services);
+        await Interactive(widget); await Ready(widget, host);
+        var homeBefore = widget.RenderState.Value.IndexedHome.Publication;
+        Assert.IsNotNull(homeBefore);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.BrowseOpen, "library"));
+        await Bounded(widget.WhenLibraryIdleAsync(), "browse before reconnect");
+        var browseBefore = widget.RenderState.Value.IndexedBrowse.Publication;
+        Assert.IsNotNull(browseBefore);
+        await widget.OnActionAsync(new(LauncherWidget.PlayniteOpenActionId, "menu"));
+        await WaitFor(() => !widget.RenderState.Value.Setup.Busy && widget.RenderState.Value.Setup.Plan is not null, "connection inspection");
+        host.QueryHandler = (_, _) => ValueTask.FromException<WidgetAppLibraryPage>(new WidgetCapabilityException("platform_unavailable", "new profile unavailable"));
+        await widget.OnActionAsync(new(LauncherWidget.SetupPrefix + "apply", LauncherWidget.SetupPrefix + "apply"));
+        await WaitFor(() => setup.ApplyCalls == 1 && !widget.RenderState.Value.Setup.Busy, "connected profile");
+        await Bounded(widget.WhenLibraryIdleAsync(), "failed new-profile read");
+        Assert.IsNull(widget.RenderState.Value.IndexedHome.Publication, "Home must not retain its previous profile's action owner.");
+        Assert.IsNull(widget.RenderState.Value.IndexedBrowse.Publication, "Browse must not retain its previous profile's action owner.");
+        Assert.IsNull(widget.RenderState.Value.DetailsCapturedTarget);
+        Assert.AreEqual(0, host.Launches.Count);
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
     private sealed class SetupFixture : IPlayniteSetupService
     {
         internal readonly PlayniteSetupInstallation Installation = new("fixture", @"C:\Games\Playnite", @"D:\Profiles\Playnite", "Playnite profile", false, false);

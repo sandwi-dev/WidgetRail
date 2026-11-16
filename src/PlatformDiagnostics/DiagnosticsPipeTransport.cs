@@ -22,6 +22,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
     private const string InspectWidgetPackageUninstallOperation = "inspect-widget-package-uninstall";
     private const string UninstallWidgetPackageOperation = "uninstall-widget-package";
     internal static readonly TimeSpan MaximumOperationTimeout = TimeSpan.FromSeconds(10);
+    internal static readonly TimeSpan PackageUninstallOperationTimeout = TimeSpan.FromSeconds(30);
     private readonly Func<CancellationToken, ValueTask<PlatformWidgetPackageNotification>>? _packageNotification;
     private readonly Func<OverlayDisplayContext>? _overlayDisplay;
     private readonly Func<CancellationToken, ValueTask<SupportBundleExportResult>>? _supportExport;
@@ -133,7 +134,7 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
                 VerifyExpectedClient(_pipe);
                 using var request = CancellationTokenSource.CreateLinkedTokenSource(linked.Token);
                 request.CancelAfter(_requestTimeout);
-                await ServeConnectionAsync(_pipe, request.Token).ConfigureAwait(false);
+                await ServeConnectionAsync(_pipe, request).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (linked.IsCancellationRequested)
             {
@@ -171,8 +172,9 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
-    private async Task ServeConnectionAsync(Stream pipe, CancellationToken cancellationToken)
+    private async Task ServeConnectionAsync(Stream pipe, CancellationTokenSource deadline)
     {
+        var cancellationToken = deadline.Token;
         var hello = await ReadAsync<DiagnosticsHello>(pipe, cancellationToken).ConfigureAwait(false);
         var authenticated = CryptographicOperations.FixedTimeEquals(
             Convert.FromHexString(ChannelNonce), ParseNonce(hello.Nonce));
@@ -365,6 +367,10 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
                 ValidateWidgetId(request.WidgetId);
                 ValidateConfirmationToken(request.ConfirmationToken);
                 ValidatePackageIdentity(request.PublisherId, request.ActiveVersion);
+                // Only a fully authenticated, validated mutation gets the longer
+                // budget. Connect/hello/request admission remain short and bounded.
+                cancellationToken.ThrowIfCancellationRequested();
+                deadline.CancelAfter(PackageUninstallOperationTimeout);
                 var result = _packageUninstall is null
                     ? new PlatformWidgetPackageUninstallResult(
                         PlatformWidgetPackageUninstallStatus.Refused, "uninstall_unsupported")
@@ -373,6 +379,8 @@ public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
                             request.ConfirmationToken!, cancellationToken)
                         .AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
                 ValidatePackageUninstallResult(result);
+                cancellationToken.ThrowIfCancellationRequested();
+                deadline.CancelAfter(_requestTimeout);
                 await WriteAsync(pipe, result, cancellationToken).ConfigureAwait(false);
                 receiptOperation = UninstallWidgetPackageOperation;
                 break;
@@ -885,10 +893,20 @@ public sealed class PlatformDiagnosticsPipeClient(
             await PlatformDiagnosticsPipeServer.WriteAsync(
                 pipe, request, bounded.Token)
                 .ConfigureAwait(false);
+            if(request.Operation=="uninstall-widget-package")
+            {
+                bounded.Token.ThrowIfCancellationRequested();
+                bounded.CancelAfter(PlatformDiagnosticsPipeServer.PackageUninstallOperationTimeout);
+            }
             var response = await PlatformDiagnosticsPipeServer
                 .ReadAsync<T>(pipe, bounded.Token)
                 .ConfigureAwait(false);
             validate(response);
+            if(request.Operation=="uninstall-widget-package")
+            {
+                bounded.Token.ThrowIfCancellationRequested();
+                bounded.CancelAfter(_timeout);
+            }
             await PlatformDiagnosticsPipeServer.WriteAsync(
                 pipe, new DiagnosticsReceipt(receiptOperation), bounded.Token)
                 .ConfigureAwait(false);

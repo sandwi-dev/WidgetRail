@@ -6,13 +6,12 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal sealed partial class PlayniteBridgeClient
 {
-    internal const int MaximumArtworkPathsBytes = 8 * 1024 * 1024;
     private readonly object _artworkPathGate = new();
     private readonly CancellationTokenSource _artworkLifetime = new();
     private Task<IReadOnlyDictionary<string, LocalArtworkPaths>>? _artworkPaths;
     private int _disposed;
     private readonly string _artworkPathRevision = Guid.NewGuid().ToString("N");
-    private sealed record LocalArtworkPaths(string? Cover, string? Background);
+    private sealed record LocalArtworkPaths(string? Cover, string? Background, string? CoverRevision = null, string? BackgroundRevision = null);
 
     public async ValueTask<WidgetFileArtwork?> ResolveArtworkFileAsync(
         string gameId, PlayniteBridgeArtworkKind kind, CancellationToken cancellationToken)
@@ -22,33 +21,9 @@ internal sealed partial class PlayniteBridgeClient
         if (!paths.TryGetValue(CanonicalGameId(gameId), out var entry)) return null;
         var path = kind switch { PlayniteBridgeArtworkKind.Cover => entry.Cover,
             PlayniteBridgeArtworkKind.Background => entry.Background, _ => null };
-        return path is null ? null : new WidgetFileArtwork(path, _artworkPathRevision);
+        var revision = kind == PlayniteBridgeArtworkKind.Cover ? entry.CoverRevision : entry.BackgroundRevision;
+        return path is null ? null : new WidgetFileArtwork(path, revision is null ? _artworkPathRevision : _artworkPathRevision + ":" + revision);
     }
-
-    // Fixed read-only code, never caller-authored. Both count and total path text are
-    // bounded inside Playnite before serialization. No image bytes are loaded here.
-    internal const string ArtworkPathsScript = """
-        var rows = new List<object>();
-        int characters = 0;
-        Func<string, string> resolve = path => {
-            if (string.IsNullOrEmpty(path)) return null;
-            try {
-                var full = PlayniteApi.Database.GetFullFilePath(path);
-                return full != null && full.Length <= 1024 ? full : null;
-            } catch { return null; }
-        };
-        foreach (var game in PlayniteApi.Database.Games.Take(10000)) {
-            var cover = resolve(game.CoverImage);
-            var background = resolve(game.BackgroundImage);
-            characters += (cover == null ? 0 : cover.Length) + (background == null ? 0 : background.Length);
-            if (characters > 1000000) break;
-            rows.Add(new { id = game.Id.ToString("D"), cover = cover, background = background });
-        }
-        return rows;
-        """;
-
-    internal static string ArtworkPathsRequestBody { get; } =
-        JsonSerializer.Serialize(new { code = ArtworkPathsScript, timeoutMs = 3000, onUiThread = false });
 
     private Task<IReadOnlyDictionary<string, LocalArtworkPaths>> LocalArtworkPathsAsync(CancellationToken token)
     {
@@ -72,24 +47,7 @@ internal sealed partial class PlayniteBridgeClient
     {
         try
         {
-            var response = await SendRequiredAsync(new(PlayniteBridgeCommandKind.ResolveArtworkPaths), token)
-                .ConfigureAwait(false);
-            if (response.StatusCode != 200 || response.Body.Length > MaximumArtworkPathsBytes) return EmptyPaths();
-            using var document = JsonDocument.Parse(response.Body, new() { MaxDepth = 8 });
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object ||
-                !root.TryGetProperty("success", out var success) || success.ValueKind != JsonValueKind.True ||
-                !root.TryGetProperty("result", out var rows) || rows.ValueKind != JsonValueKind.Array ||
-                rows.GetArrayLength() > MaximumGames) return EmptyPaths();
-            var paths = new Dictionary<string, LocalArtworkPaths>(StringComparer.Ordinal);
-            foreach (var row in rows.EnumerateArray())
-            {
-                if (row.ValueKind != JsonValueKind.Object ||
-                    !TryString(row, "id", 36, out var rawId) || !Guid.TryParseExact(rawId, "D", out var id) ||
-                    !paths.TryAdd(id.ToString("D"), new(ReadPath(row, "cover"), ReadPath(row, "background"))))
-                    return EmptyPaths();
-            }
-            return paths;
+            return await LoadTypedArtworkPathsAsync(token).ConfigureAwait(false);
         }
         catch (Exception error) when (error is PlayniteBridgeTransportException or
             PlayniteBridgeDataException or PlayniteCredentialException or JsonException ||
@@ -100,6 +58,43 @@ internal sealed partial class PlayniteBridgeClient
 
         static IReadOnlyDictionary<string, LocalArtworkPaths> EmptyPaths() =>
             new Dictionary<string, LocalArtworkPaths>();
+    }
+
+    private async Task<IReadOnlyDictionary<string, LocalArtworkPaths>> LoadTypedArtworkPathsAsync(CancellationToken token)
+    {
+        var paths = new Dictionary<string, LocalArtworkPaths>(StringComparer.Ordinal);
+        string? revision = null;
+        var characters = 0;
+        var total = MaximumGames;
+        for (var offset = 0; offset < total;)
+        {
+            var response = await SendRequiredAsync(new(PlayniteBridgeCommandKind.ResolveArtworkPaths)
+                { ArtworkOffset = offset, ArtworkLimit = 128, Revision = revision }, token).ConfigureAwait(false);
+            EnsureSuccess(response);
+            using var document = JsonDocument.Parse(response.Body, new() { MaxDepth = 8 });
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !TryNonNegativeInteger(root, "total", out var count) || count > MaximumGames ||
+                !TryNonNegativeInteger(root, "offset", out var position) || position != offset ||
+                !root.TryGetProperty("artwork", out var rows) || rows.ValueKind != JsonValueKind.Array || rows.GetArrayLength() > 128 ||
+                OptionalString(root, "revision", 80) is not { } current || revision is not null && revision != current)
+                throw new PlayniteBridgeDataException("invalid_playnite_data");
+            if (revision is not null && count != total) throw new PlayniteBridgeDataException("invalid_playnite_data");
+            revision = current; total = count;
+            if (rows.GetArrayLength() == 0 && offset != total) throw new PlayniteBridgeDataException("invalid_playnite_data");
+            foreach (var row in rows.EnumerateArray())
+            {
+                if (row.ValueKind != JsonValueKind.Object || !TryString(row, "id", 36, out var rawId) ||
+                    !Guid.TryParseExact(rawId, "D", out var id) || !paths.TryAdd(id.ToString("D"),
+                        new(ReadPath(row, "cover"), ReadPath(row, "background"), OptionalString(row, "coverRevision", 64), OptionalString(row, "backgroundRevision", 64))))
+                    throw new PlayniteBridgeDataException("invalid_playnite_data");
+                var entry = paths[id.ToString("D")];
+                characters += (entry.Cover?.Length ?? 0) + (entry.Background?.Length ?? 0);
+                if (characters > 1_000_000) throw new PlayniteBridgeDataException("invalid_playnite_data");
+            }
+            offset += rows.GetArrayLength();
+            if (offset > total) throw new PlayniteBridgeDataException("invalid_playnite_data");
+        }
+        return paths;
     }
 
     private static string? ReadPath(JsonElement row, string name)

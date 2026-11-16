@@ -73,7 +73,7 @@ New-Item -ItemType Directory -Force -Path $mediaRoot, `
     (Join-Path $stagingRoot 'styles'), (Join-Path $stagingRoot 'assets\icons') | Out-Null
 
 & dotnet publish $applicationProject --configuration $Configuration --no-self-contained --nologo `
-    --property:UseSharedCompilation=false --property:BuildInParallel=false --output $publishRoot
+    --property:UseSharedCompilation=false --property:BuildInParallel=false "-bl:$artifactsRoot/publish-{}.binlog" --output $publishRoot
 if ($LASTEXITCODE -ne 0) { throw "YouTube application publish failed with exit code $LASTEXITCODE." }
 
 Get-ChildItem -LiteralPath $publishRoot -File | Where-Object {
@@ -128,10 +128,10 @@ if (Test-Path -LiteralPath $packagePath) {
 }
 
 & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
-    --property:UseSharedCompilation=false --property:BuildInParallel=false -- validate $stagingRoot
+    --property:UseSharedCompilation=false --property:BuildInParallel=false "-bl:$artifactsRoot/validate-{}.binlog" -- validate $stagingRoot
 if ($LASTEXITCODE -ne 0) { throw 'wrail validate rejected the staged YouTube widget.' }
 & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
-    --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
+    --property:UseSharedCompilation=false --property:BuildInParallel=false "-bl:$artifactsRoot/pack-{}.binlog" -- `
     pack $stagingRoot --output $packagePath
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
     throw 'wrail pack did not produce the YouTube widget package.'

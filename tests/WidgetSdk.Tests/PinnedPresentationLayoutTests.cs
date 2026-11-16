@@ -14,10 +14,25 @@ internal static class PinnedPresentationLayoutTests
         ProjectionIsDeclarativeBoundedAndVersioned();
         await SelectionDemandIsExplicitAndRevocable();
         await TypedHandleAndPublicTestHostOwnSelection();
+        await IndependentHandleLifetimes();
         await SelectionSurvivesPublicationButNotRetiredLayout();
         await PinnedBackUsesOnlyTheSelectedProjection();
         await PinnedInputResolvesOnlyTheSelectedRoot();
+        await PassiveInputIsExplicitAndVersioned();
         CatalogChangesRequireCheckpointFallback();
+        RememberedSelectionIsExplicitAndVersioned();
+    }
+
+    private static void RememberedSelectionIsExplicitAndVersioned()
+    {
+        var layout=WidgetView.PinnedLayout("voice","Voice",new(),UI.Text("People","people")) with
+            {IndependentSelection=true,RestoreWhenAvailable=true};
+        var snapshot=new WidgetView(UI.Text("Main","main")){PinnedLayouts=[layout]}.CreateSnapshot("remembered.test",1);
+        Equal(ProtocolConstants.PinnedRestoreVersion,snapshot.ProtocolVersion);
+        True(ViewSnapshotValidator.Validate(snapshot with{ProtocolVersion=108}).Any(),"Older protocol accepted remembered pin behavior.");
+        True(ViewSnapshotValidator.Validate(snapshot with{PinnedLayouts=[layout with{IndependentSelection=false}]}).Any(),
+            "Remembered layout must be independently selected.");
+        True(!WidgetView.PinnedLayout("ordinary","Ordinary",new()).RestoreWhenAvailable,"Ordinary pins opted into reopening by default.");
     }
 
     private static async Task SelectionSurvivesPublicationButNotRetiredLayout()
@@ -362,6 +377,39 @@ internal static class PinnedPresentationLayoutTests
             "A stale pinned snapshot sequence resolved input.");
     }
 
+    private static async Task PassiveInputIsExplicitAndVersioned()
+    {
+        var widget = new PinnedRoutingWidget { Interaction = PinnedInteractionMode.Passive };
+        var snapshot = widget.RenderSnapshot("pinned.passive", 1);
+        Equal(ProtocolConstants.PinnedInteractionVersion,snapshot.ProtocolVersion);
+        Equal(PinnedInteractionMode.Passive,SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot)).PinnedLayouts[0].Interaction);
+        True(ViewSnapshotValidator.Validate(snapshot with {ProtocolVersion=107}).Count>0,"Old hosts must reject passive policy.");
+        var invalid = snapshot with {PinnedLayouts=[snapshot.PinnedLayouts[0] with {Interaction=(PinnedInteractionMode)999}]};
+        AssertError(invalid,"$.pinnedLayouts[0].interaction","invalid_enum");
+        await widget.SetActiveAsync(true,CancellationToken.None);
+        try
+        {
+            True(!await widget.OnControllerInputAsync(PinnedInput("compact","compact.root","compact.play",1)),
+                "A passive declaration containing a button must reject controller input.");
+            widget.Interaction= PinnedInteractionMode.Interactive;
+            widget.RenderSnapshot("pinned.passive",2);
+            True(await widget.OnControllerInputAsync(PinnedInput("compact","compact.root","compact.play",2)),
+                "An explicit interactive declaration should restore input.");
+            await widget.NextActionAsync();
+            widget.Interaction= PinnedInteractionMode.Passive;
+            widget.RenderSnapshot("pinned.passive",3);
+            True(!await widget.OnControllerInputAsync(PinnedInput("compact","compact.root","compact.play",2)),
+                "An old interactive snapshot cannot bypass a later passive declaration.");
+            var handle=widget.CreatePinnedLayoutHandle("passive","Readout",Surface(360,240),PinnedInteractionMode.Passive);
+            Equal(PinnedInteractionMode.Passive,handle.Present(UI.Text("Readout","readout")).Interaction);
+            var acrylic=new WidgetView(UI.Text("Glass","glass"),Surface:Surface(360,240) with {Appearance=WidgetSurfaceAppearance.DesktopAcrylic})
+                .CreateSnapshot("desktop.acrylic",1);
+            Equal(ProtocolConstants.DesktopAcrylicVersion,acrylic.ProtocolVersion);
+            True(ViewSnapshotValidator.Validate(acrylic with {ProtocolVersion=107}).Count>0,"Old hosts must reject desktop acrylic.");
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+
     private static ControllerInputEvent PinnedInput(
         string layoutId,
         string scopeId,
@@ -609,6 +657,41 @@ internal static class PinnedPresentationLayoutTests
         }
     }
 
+    private static async Task IndependentHandleLifetimes()
+    {
+        var widget=new HandleWidget{Independent=true};
+        WidgetTestHost.Attach(widget,new WidgetTestHostServicesBuilder().Build());
+        await WidgetTestHost.InitializeAsync(widget);
+        try
+        {
+            var snapshot=widget.RenderSnapshot("independent-pins",1);
+            var first=Guid.NewGuid().ToString("N");
+            ControllerInputEvent Select(string layout,string identity,bool selected=true)=>new(
+                ControllerButton.View,ControllerEventPhase.Pressed,ControllerInputContext.PinnedLayoutSelection,SnapshotSequence:snapshot.Sequence)
+                {PinnedLayoutId=layout,PinnedSelectionId=identity,IsPinnedLayoutSelected=selected};
+            True(await widget.OnControllerInputAsync(Select("compact",first)),"First independent pin was rejected.");
+            var token=widget.Compact.SelectionCancellationToken;
+            var second=Guid.NewGuid().ToString("N");
+            True(await widget.OnControllerInputAsync(Select("details",second)),"Second independent pin was rejected.");
+            True(widget.Compact.IsSelected&&widget.Details.IsSelected&&!token.IsCancellationRequested,"Sibling demand was cancelled.");
+            True(widget.Compact.Selection?.SelectionId==first,"Close target lost its exact identity.");
+            True(await widget.OnControllerInputAsync(Select("compact",first,false)),"Exact revoke was rejected.");
+            True(token.IsCancellationRequested&&widget.Details.IsSelected,"Revocation affected the wrong handle.");
+            var replacement=Guid.NewGuid().ToString("N");
+            True(await widget.OnControllerInputAsync(Select("compact",replacement)),"Reopen failed.");
+            True(!await widget.OnControllerInputAsync(Select("compact",first,false))&&widget.Compact.Selection?.SelectionId==replacement,
+                "Stale revoke closed a reopened pin.");
+            var withdrawn=widget.Compact.SelectionCancellationToken;
+            widget.IncludeCompact=false;
+            widget.RenderSnapshot("independent-pins",2);
+            True(withdrawn.IsCancellationRequested&&!widget.Compact.IsSelected&&widget.Details.IsSelected,
+                "Withdrawing one layout must retire only its own bounded demand.");
+        }
+        finally {await WidgetTestHost.DestroyAsync(widget);}
+        True(widget.Compact.SelectionCancellationToken.IsCancellationRequested&&widget.Details.SelectionCancellationToken.IsCancellationRequested,
+            "Destroy did not cancel every independent pin.");
+    }
+
     private sealed class HandleWidget : Widget
     {
         internal HandleWidget()
@@ -624,6 +707,7 @@ internal static class PinnedPresentationLayoutTests
         internal PinnedLayoutHandle Compact { get; }
         internal PinnedLayoutHandle Details { get; }
         internal bool IncludeCompact { get; set; } = true;
+        internal bool Independent { get; init; }
         internal List<SelectionObservation> SelectionObservations { get; } = [];
         internal TaskCompletionSource<WidgetActionEvent> Action { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -649,7 +733,7 @@ internal static class PinnedPresentationLayoutTests
             return new WidgetView(
                 UI.Text("Full", "full"), ActiveInputScopeId: "full")
             {
-                PinnedLayouts = layouts,
+                PinnedLayouts = layouts.Select(layout=>layout with{IndependentSelection=Independent}).ToArray(),
             };
         }
 
@@ -680,6 +764,7 @@ internal static class PinnedPresentationLayoutTests
 
     private sealed class PinnedRoutingWidget : Widget
     {
+        internal PinnedInteractionMode Interaction;
         private readonly Channel<WidgetActionEvent> _actions =
             Channel.CreateUnbounded<WidgetActionEvent>();
 
@@ -694,7 +779,7 @@ internal static class PinnedPresentationLayoutTests
                     "compact", "Compact", Surface(360, 240),
                     UI.Stack("compact.root",
                         UI.Button("Play compact", "compact-play", "compact.play")),
-                    initialFocusId: "compact.play"),
+                    initialFocusId: "compact.play") with {Interaction=Interaction},
                 WidgetView.PinnedLayout(
                     "expanded", "Expanded", Surface(560, 360),
                     UI.Stack("expanded.root",

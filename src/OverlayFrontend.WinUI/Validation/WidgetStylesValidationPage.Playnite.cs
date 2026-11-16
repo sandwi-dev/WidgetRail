@@ -50,7 +50,9 @@ internal sealed partial class WidgetStylesValidationPage
         presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
         Check(ReferenceEquals(acrylic, panel.Background), "unchanged modal styles reuse the acrylic brush");
         presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced, Transparency = TransparencyPreference.Reduced }, false);
-        await Wait(() => panel.Background is SolidColorBrush { Color.A: 255 });
+        await Wait(() => panel.Background is SolidColorBrush { Color.A: 255, Opacity: 1 } ||
+            panel.Background is LinearGradientBrush { Opacity: 1 } gradient && gradient.GradientStops.Count > 0 &&
+            gradient.GradientStops.All(stop => stop.Color.A == 255));
         Check(panel.Opacity == 1, "reduced transparency preserves opaque modal text and fill");
         presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
         WidgetViewPresenter.SetHighContrastStyleOverride(true);
@@ -71,7 +73,7 @@ internal sealed partial class WidgetStylesValidationPage
             scroll.ExtentWidth <= scroll.ViewportWidth + 1, "production Playnite modal keeps finite horizontal measure despite its long description");
         var posterSlot = LayoutInformation.GetLayoutSlot(poster);
         var posterOrigin = Find<Grid>(prefix + "overview-header")!.TransformToVisual(scroll).TransformPoint(new(posterSlot.X, posterSlot.Y));
-        Check(posterOrigin.X >= 0 && posterOrigin.X + posterSlot.Width <= scroll.ViewportWidth + 1 && poster.ActualHeight >= 180 && poster.ActualHeight <= 220,
+        Check(posterOrigin.X >= 0 && posterOrigin.X + posterSlot.Width <= scroll.ViewportWidth + 1 && Math.Abs(poster.ActualWidth - 80) < 1 && Math.Abs(poster.ActualHeight - 120) < 1,
             "production Playnite decoded poster remains inside the modal viewport after focus reveal");
         var tabs = snapshot.Root.Children[1];
         var tabButtons = Walk(tabs).Where(node => node.ActionId?.StartsWith("playnite-library.details.tab.", StringComparison.Ordinal) == true).ToArray();

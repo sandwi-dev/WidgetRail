@@ -1,18 +1,19 @@
 # Current platform status
 
-Reviewed against source on 2026-11-12: local application candidate `0.1.0-preview.40.local.1`, SDK/CLI
-`0.4.8-dev`. The presentation contract is protocol 106, including
-backend web sessions, direct pin requests, microphone admission, native web capture,
-capture quality selection and explicit modal dismissal. The local refinement
-branch also adds a configurable overlay keyboard shortcut, responsive loading
-space for the Playnite poster rail, and Discord media/status improvements; see
+Reviewed against source on 2026-11-15: local application candidate `0.1.0-preview.40.local.1`, SDK/CLI
+`0.4.8-dev`. The presentation contract is protocol 110, including backend web
+sessions, native capture, explicit modal dismissal, exact pin-selection identities,
+interactive/passive pin declarations, desktop acrylic surfaces, opted-in pin
+restoration, and numeric values in interactive rich previews. The local refinement
+branch supports up to six pins with shared adjustment controls, three incoming
+Discord streams, and the independent local Playnite integration; see
 [implementation and qualification](../input-discord-refinements-plan.md).
 These are source versions, not a claim that
 a corresponding release has been published or that every workflow is qualified.
 See [versioning](versioning.md) for the authoritative version files.
 Public release remains preview.40; the current installers are for local testing.
 Discord's accepted WebView2 integration is now Catalogue package
-`widgetrail.samples.discord-controls` `0.1.0`, with a separate full-access identity
+`widgetrail.samples.discord-controls` `0.1.0.20`, with a separate full-access identity
 and client-modification Terms of Service warning. It needs a published asset before
 Catalogue can download it; the local candidate is supplied as a `.wrwidget` file.
 The user accepted continued use, with further platform/device coverage to develop
@@ -51,8 +52,8 @@ use the same review, consent, update and uninstall flow regardless of publisher.
 
 ## Implemented behavior and contracts
 
-- Controller opening supports View + Menu or Guide/PS. Optional F1 is off by
-  default and controlled from Settings → Controllers.
+- Controller opening supports View + Menu or Guide/PS. The optional configurable
+  keyboard shortcut is controlled from Settings → Controllers.
 - Startup at sign-in is available in the installer and Settings → General. The
   WinUI host advertises the startup backend, which targets its executable with
   `--hidden`. Windows Startup Apps can override an existing entry. This restores
@@ -74,6 +75,14 @@ use the same review, consent, update and uninstall flow regardless of publisher.
   host-owned. Game Help owns its provider client, credentials and response handling.
 - The old held-D-pad preference is not consumed by WinUI; ordinary directional
   navigation can scroll when the last focusable control has been reached.
+
+Playnite Library 0.4.5 uses WidgetRail for Playnite 1.1.0, an independently identified,
+authenticated loopback integration with port discovery and typed API operations.
+The Achievements destination and progress tracker consume optional provider cache
+data and events. Refresh/Y in a game's Achievements tab also requests provider
+synchronization when available. See the [integration plan](../playnite-local-integration-plan.md).
+The experimental desktop-acrylic navigation bars were reverted; existing panel
+styling and accepted whole-surface/pin/banner materials remain.
 
 ## Qualification and documentation
 

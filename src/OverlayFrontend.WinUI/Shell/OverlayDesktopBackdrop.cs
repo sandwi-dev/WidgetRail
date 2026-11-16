@@ -32,18 +32,28 @@ internal sealed partial class OverlayDesktopBackdrop : IDisposable
         // Native host treats the backdrop as one opaque RGB brush with independent
         // window opacity. Authored brush alpha is not multiplied into that setting.
         color.A = (byte)Math.Clamp(Math.Round(Math.Clamp(opacity, 0, .8) * 255), 0, 255);
-        brush!.Color = color;
-        if (window!.AppWindow.Position.X != bounds.X || window.AppWindow.Position.Y != bounds.Y ||
-            window.AppWindow.Size.Width != bounds.Width || window.AppWindow.Size.Height != bounds.Height)
+        if(brush!.Color!=color)brush.Color = color;
+        var moved=window!.AppWindow.Position.X != bounds.X || window.AppWindow.Position.Y != bounds.Y ||
+            window.AppWindow.Size.Width != bounds.Width || window.AppWindow.Size.Height != bounds.Height;
+        if (moved)
             window.AppWindow.MoveAndResize(bounds);
-        if (!IsVisible) window.AppWindow.Show(activateWindow: false);
-        OverlayWindowFrame.SuppressBorder(handle);
-        const uint gwHwndPrevious = 3;
-        if (GetWindow(handle, gwHwndPrevious) != overlay && SetWindowPos(handle, overlay, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010) == 0)
+        var showing=!IsVisible;
+        if (showing) window.AppWindow.Show(activateWindow: false);
+        // Ordinary view publications must not refresh a native frame or pull the
+        // scrim above pins already correctly placed between it and the overlay.
+        if(moved||showing)OverlayWindowFrame.SuppressBorder(handle);
+        try
         {
-            var error = Marshal.GetLastPInvokeError();
+            // Relative order alone also accepts a non-topmost scrim below an
+            // ordinary foreground app. Promote only after creation/demotion;
+            // unchanged publications must not shuffle the overlay's peers.
+            OverlayWindowFrame.KeepTopmost(handle);
+            OverlayWindowFrame.EnsureBelow(handle,overlay);
+        }
+        catch(Win32Exception)
+        {
             window.AppWindow.Hide();
-            throw new Win32Exception(error, "Backdrop z order could not be established.");
+            throw;
         }
     }
 
@@ -78,13 +88,7 @@ internal sealed partial class OverlayDesktopBackdrop : IDisposable
     [LibraryImport("user32.dll", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static partial nint GetWindowLongPtrW(nint window, int index);
-    [LibraryImport("user32.dll")]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial nint GetWindow(nint window, uint command);
     [LibraryImport("user32.dll", SetLastError = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static partial nint SetWindowLongPtrW(nint window, int index, nint value);
-    [LibraryImport("user32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static partial int SetWindowPos(nint window, nint insertAfter, int x, int y, int width, int height, uint flags);
 }

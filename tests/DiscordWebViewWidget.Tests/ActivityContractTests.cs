@@ -40,6 +40,16 @@ internal static class ActivityContractTests
             Reject(valid with{Activities=[row with{AvatarUrl=unsafeAvatar}]},"Activity avatar rejects a changed identity host or query");
             Reject(legacy with{Participants=[new("2","Friend",false,false,false,unsafeAvatar)]},"Participant avatar rejects a changed identity host or query");
         }
+        foreach(var index in Enumerable.Range(0,6))
+        {
+            var defaultAvatar=$"https://cdn.discordapp.com/embed/avatars/{index}.png";
+            (valid with{Activities=[row with{AvatarUrl=defaultAvatar}]}).Validate();
+            (legacy with{Participants=[new("2","Friend",false,false,false,defaultAvatar)]}).Validate();
+        }
+        Pass("All six public Discord default avatars validate without relaxing custom-avatar identity");
+        foreach(var path in new[]{"6.png","-1.png","00.png","1.png?token=x","1.png/extra","../avatars/1.png"})
+            Reject(legacy with{Participants=[new("2","Friend",false,false,false,"https://cdn.discordapp.com/embed/avatars/"+path)]},
+                "Default avatar allowlist rejects noncanonical paths");
         return count;
     }
 }

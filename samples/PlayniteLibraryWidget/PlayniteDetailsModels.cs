@@ -15,12 +15,19 @@ internal sealed record PlayniteAchievement(string Name, string Description, bool
     internal string? Id { get; init; }
     internal PlayniteAchievementProgress? Progress { get; init; }
     internal string? Icon { get; init; }
+    internal string? Category { get; init; }
+    internal string? TrophyType { get; init; }
+    internal bool IsGoal { get; init; }
+    internal bool IsCapstone { get; init; }
 }
 internal sealed record PlayniteAchievements(bool Available, int Total, int Unlocked,
     IReadOnlyList<PlayniteAchievement> Items)
 {
     internal static PlayniteAchievements Unavailable { get; } = new(false, 0, 0, []);
     internal PlayniteAchievementProvider Provider { get; init; }
+    internal bool CanRefresh { get; init; }
+    internal DateTimeOffset? ObservedAt { get; init; }
+    internal string? ConnectionId { get; init; }
     internal string ProviderName => Provider == PlayniteAchievementProvider.PlayniteAchievements ? "PlayniteAchievements" : "SuccessStory";
 }
 internal sealed record PlayniteSession(DateTimeOffset? Date, long Seconds, string? Action);
@@ -48,6 +55,9 @@ internal sealed record PlayniteDetailsExtras
     internal string? ActivityError { get; init; }
     internal string? OperationMessage { get; init; }
     internal bool OperationBusy { get; init; }
+    internal bool AchievementRefreshBusy { get; init; }
+    internal string? AchievementRefreshMessage { get; init; }
+    internal string? ProgressPinSelectionId { get; init; }
     internal bool ConfirmUninstall { get; init; }
     internal IReadOnlySet<string> RevealedAchievements { get; init; } = new HashSet<string>(StringComparer.Ordinal);
     internal AchievementFilter AchievementFilter { get; init; }

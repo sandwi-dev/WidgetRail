@@ -35,7 +35,6 @@ internal enum PlayniteBridgeCommandKind
     Uninstall,
     ResolveArtwork,
     ResolveArtworkPaths,
-    CachedAchievements,
     Launch,
     SetFavorite,
     SetHidden,
@@ -44,6 +43,10 @@ internal enum PlayniteBridgeCommandKind
     ListCategories,
     CreateCategory,
     ListCompletionStatuses,
+    AchievementOverview,
+    IntegrationEvents,
+    RefreshAchievements,
+    OperationStatus,
 }
 
 internal sealed record PlayniteBridgeCommand(
@@ -51,13 +54,24 @@ internal sealed record PlayniteBridgeCommand(
     string? GameId = null,
     PlayniteBridgeGameQuery? Query = null,
     string? JsonBody = null,
-    PlayniteBridgeArtworkKind? ArtworkKind = null);
+    PlayniteBridgeArtworkKind? ArtworkKind = null)
+{
+    internal int OverviewOffset { get; init; }
+    internal int ArtworkOffset { get; init; }
+    internal int ArtworkLimit { get; init; } = 128;
+    internal string? Revision { get; init; }
+    internal long AfterSequence { get; init; }
+    internal int WaitMilliseconds { get; init; } = 25000;
+    internal string? OperationId { get; init; }
+    internal string? CommandId { get; init; }
+}
 
 internal sealed record PlayniteBridgeResponse(
     int StatusCode,
     byte[] Body,
     string? ContentType = null)
 {
+    internal string? ConnectionId { get; init; }
     internal PlayniteBridgeResponse(int statusCode, string jsonBody)
         : this(statusCode, Encoding.UTF8.GetBytes(jsonBody), "application/json") { }
 
@@ -90,7 +104,10 @@ internal sealed record PlayniteBridgeGameQuery(
     string? SearchText = null,
     string? Source = null,
     string? Category = null,
-    string? CompletionStatus = null);
+    string? CompletionStatus = null)
+{
+    internal string? Revision { get; init; }
+}
 
 internal sealed record PlayniteBridgeGame(
     string Id,
@@ -128,7 +145,10 @@ internal sealed record PlayniteBridgeGamePage(
     int Total,
     int Offset,
     int Limit,
-    IReadOnlyList<PlayniteBridgeGame> Games);
+    IReadOnlyList<PlayniteBridgeGame> Games)
+{
+    internal string? Revision { get; init; }
+}
 
 internal sealed record PlayniteBridgeNamedItem(string Id, string Name);
 
@@ -156,6 +176,9 @@ internal interface IPlayniteBridgeClient : IDisposable
 
 internal interface IPlayniteLibraryBridgeClient : IAsyncDisposable
 {
+    ValueTask<PlayniteProviderRefreshResult> RefreshAchievementsAsync(string gameId, CancellationToken token) =>
+        ValueTask.FromResult(PlayniteProviderRefreshResult.Unavailable);
+    ValueTask<PlayniteEventBatch?> ReadEventsAsync(long after, CancellationToken token) => ValueTask.FromResult<PlayniteEventBatch?>(null);
     ValueTask<WidgetFileArtwork?> ResolveArtworkFileAsync(string gameId, PlayniteBridgeArtworkKind kind,
         CancellationToken cancellationToken) => ValueTask.FromResult<WidgetFileArtwork?>(null);
     ValueTask<PlayniteBridgeGamePage> QueryGamesAsync(
@@ -169,6 +192,7 @@ internal interface IPlayniteLibraryBridgeClient : IAsyncDisposable
         PlayniteBridgeArtworkKind kind,
         CancellationToken cancellationToken);
     ValueTask<bool> LaunchAsync(string gameId, CancellationToken cancellationToken);
+    ValueTask<PlayniteAchievementOverview> GetAchievementOverviewAsync(CancellationToken token) => ValueTask.FromResult(PlayniteAchievementOverview.Unavailable);
     ValueTask<PlayniteAchievements> GetAchievementsAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteAchievements.Unavailable);
     ValueTask<PlayniteActivity> GetActivityAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteActivity.Unavailable);
     ValueTask<bool> ChangeInstallationAsync(string gameId, bool install, CancellationToken token) => ValueTask.FromResult(false);
@@ -198,8 +222,7 @@ internal sealed partial class PlayniteBridgeClient(
     IPlayniteCredentialStore credentials,
     bool preferLocalArtwork = false) : IPlayniteBridgeClient, IPlayniteLibraryBridgeClient
 {
-    internal const int Port = 19821;
-    internal const string CompatibilityPath = "/api/games?installed=true&limit=1&offset=0";
+    internal const string CompatibilityPath = "/v1/connection";
     internal const int MaximumTokenCharacters = 512;
     internal const int MaximumGames = 10_000;
     internal const int MaximumPageSize = 64;
@@ -215,11 +238,28 @@ internal sealed partial class PlayniteBridgeClient(
         throw new ArgumentNullException(nameof(transport));
     private readonly IPlayniteCredentialStore _credentials = credentials ??
         throw new ArgumentNullException(nameof(credentials));
+    private bool UsesLocalConnection => _transport is IPlayniteConnectedTransport { UsesProfileConnection: true };
+    internal void ResetConnection()
+    {
+        if (_transport is IPlayniteConnectedTransport connected) connected.ResetConnection();
+        ResetArtworkPathCache();
+    }
 
-    internal static PlayniteBridgeClient CreateDefault() => new(
-        new PlayniteBridgeHttpTransport(),
-        new WindowsCredentialPlayniteTokenStore(),
-        preferLocalArtwork: true);
+    internal static PlayniteBridgeClient CreateUnconfigured() => new(new UnconfiguredTransport(), new UnconfiguredCredentials());
+    private sealed class UnconfiguredTransport : IPlayniteBridgeTransport
+    {
+        public ValueTask<PlayniteBridgeResponse> SendAsync(PlayniteBridgeCommand command, string bearer, CancellationToken token) =>
+            throw new InvalidOperationException("A Playnite profile has not been selected.");
+        public void Dispose() { }
+    }
+    private sealed class UnconfiguredCredentials : IPlayniteCredentialStore
+    {
+        public ValueTask<string?> ReadAsync(CancellationToken token) => ValueTask.FromResult<string?>(null);
+        public ValueTask SaveAsync(string value, CancellationToken token) => throw new PlayniteCredentialException();
+        public ValueTask DeleteAsync(CancellationToken token) => ValueTask.CompletedTask;
+    }
+    internal static PlayniteBridgeClient CreateLocal(IPlayniteLocalConnectionSource source, IPlayniteCredentialStore credentials) =>
+        new(new PlayniteBridgeHttpTransport(source), credentials, preferLocalArtwork: true);
 
     public async ValueTask<PlayniteBridgeConnectionResult> ProbeAsync(
         CancellationToken cancellationToken)
@@ -233,7 +273,7 @@ internal sealed partial class PlayniteBridgeClient(
                 return new(PlayniteBridgeConnectionKind.NotConfigured, "credential_missing");
             if (response.StatusCode == 401)
             {
-                await _credentials.DeleteAsync(cancellationToken).ConfigureAwait(false);
+                if (!UsesLocalConnection) await _credentials.DeleteAsync(cancellationToken).ConfigureAwait(false);
                 return new(PlayniteBridgeConnectionKind.AuthenticationRequired,
                     "authentication_required");
             }
@@ -244,6 +284,7 @@ internal sealed partial class PlayniteBridgeClient(
                 return new(PlayniteBridgeConnectionKind.Incompatible, "api_incompatible");
             if (response.StatusCode is < 200 or > 299)
                 return new(PlayniteBridgeConnectionKind.Unavailable, "service_unavailable");
+            if (UsesLocalConnection) return new(PlayniteBridgeConnectionKind.Connected, "connected");
             return TryParsePage(response, expectedOffset: 0, expectedLimit: 1, out _)
                 ? new(PlayniteBridgeConnectionKind.Connected, "connected")
                 : new(PlayniteBridgeConnectionKind.Malformed, "malformed_response");
@@ -285,11 +326,12 @@ internal sealed partial class PlayniteBridgeClient(
                 new(PlayniteBridgeCommandKind.QueryGames, Query: query), cancellationToken)
             .ConfigureAwait(false);
         EnsureSuccess(response);
+        if (!TryParsePage(response, query.Offset, query.Limit, out var page) ||
+            UsesLocalConnection && page!.Revision is null || query.Revision is not null && query.Revision != page!.Revision)
+            throw new PlayniteBridgeDataException("invalid_playnite_data");
         if (preferLocalArtwork && query.Offset == 0)
             await LocalArtworkPathsAsync(cancellationToken).ConfigureAwait(false);
-        return TryParsePage(response, query.Offset, query.Limit, out var page)
-            ? page!
-            : throw new PlayniteBridgeDataException("invalid_playnite_data");
+        return page!;
     }
 
     public async ValueTask<PlayniteBridgeGame?> ResolveGameAsync(
@@ -553,13 +595,13 @@ internal sealed partial class PlayniteBridgeClient(
         try { bytes = new UTF8Encoding(false, true).GetByteCount(token); }
         catch (EncoderFallbackException exception)
         {
-            throw new ArgumentException("The Playnite Bridge token is invalid.",
+            throw new ArgumentException("The WidgetRail for Playnite token is invalid.",
                 nameof(token), exception);
         }
         if (token.Length is < 16 or > MaximumTokenCharacters || bytes > MaximumTokenCharacters ||
             token.Any(character => character > 0x7e || character < 0x21 ||
                 char.IsWhiteSpace(character)))
-            throw new ArgumentException("The Playnite Bridge token is invalid.", nameof(token));
+            throw new ArgumentException("The WidgetRail for Playnite token is invalid.", nameof(token));
     }
 
     internal static string CanonicalGameId(string value) =>
@@ -572,6 +614,8 @@ internal sealed partial class PlayniteBridgeClient(
         PlayniteBridgeCommand command,
         CancellationToken cancellationToken)
     {
+        if (_transport is IPlayniteConnectedTransport { UsesProfileConnection: true } connected)
+            return await connected.SendConnectedAsync(command, cancellationToken).ConfigureAwait(false);
         var token = await _credentials.ReadAsync(cancellationToken).ConfigureAwait(false);
         if (token is null) return null;
         try
@@ -641,6 +685,7 @@ internal sealed partial class PlayniteBridgeClient(
         _ = NormalizeOptional(query.Source, MaximumFilterCharacters, nameof(query));
         _ = NormalizeOptional(query.Category, MaximumFilterCharacters, nameof(query));
         _ = NormalizeOptional(query.CompletionStatus, MaximumFilterCharacters, nameof(query));
+        if (query.Revision?.Length > 80) throw new ArgumentOutOfRangeException(nameof(query));
     }
 
     private static void EnsureSuccess(PlayniteBridgeResponse response)
@@ -682,7 +727,7 @@ internal sealed partial class PlayniteBridgeClient(
                 values.Add(game);
             }
             if (offset > total || offset + values.Count > total) return false;
-            page = new(total, offset, limit, values);
+            page = new(total, offset, limit, values) { Revision = OptionalString(root, "revision", 80) };
             return true;
         }
         catch (JsonException) { return false; }
@@ -915,24 +960,15 @@ internal sealed partial class PlayniteBridgeClient(
     }
 }
 
-internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
+internal sealed partial class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport, IPlayniteConnectedTransport
 {
     internal const int MaximumJsonBytes = 96 * 1024;
+    internal const int MaximumLibraryPageBytes = 4 * 1024 * 1024;
     internal const int MaximumDetailBytes = 2 * 1024 * 1024;
     internal const int MaximumArtworkBytes =
         WidgetRail.WidgetProtocol.ProtocolConstants.MaximumEncodedArtworkBytes;
-    private static readonly Uri Origin = new(
-        $"http://localhost:{PlayniteBridgeClient.Port}/", UriKind.Absolute);
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(8);
     private readonly HttpClient _http;
-
-    internal PlayniteBridgeHttpTransport()
-    {
-        _http = new HttpClient(CreateHandler(), disposeHandler: true)
-        {
-            Timeout = Timeout.InfiniteTimeSpan,
-        };
-    }
 
     internal static HttpClientHandler CreateHandler() => new()
     {
@@ -947,112 +983,12 @@ internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
         MaxResponseHeadersLength = 16,
     };
 
-    public async ValueTask<PlayniteBridgeResponse> SendAsync(
-        PlayniteBridgeCommand command,
-        string bearerToken,
-        CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(command);
-        PlayniteBridgeClient.ValidateToken(bearerToken);
-        var (method, relativePath, maximumBytes) = Resolve(command);
-        using var request = new HttpRequestMessage(method, new Uri(Origin, relativePath))
-        {
-            Version = HttpVersion.Version11,
-            VersionPolicy = HttpVersionPolicy.RequestVersionExact,
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
-        var jsonBody = command.Kind switch
-        {
-            PlayniteBridgeCommandKind.ResolveArtworkPaths => PlayniteBridgeClient.ArtworkPathsRequestBody,
-            PlayniteBridgeCommandKind.CachedAchievements => PlayniteBridgeClient.CachedAchievementsRequestBody(command.GameId!),
-            _ => command.JsonBody,
-        };
-        if (jsonBody is not null)
-            request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(RequestTimeout);
-        try
-        {
-            using var response = await _http.SendAsync(
-                    request, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
-                .ConfigureAwait(false);
-            var body = await ReadBoundedAsync(response.Content, maximumBytes, timeout.Token)
-                .ConfigureAwait(false);
-            return new((int)response.StatusCode, body,
-                response.Content.Headers.ContentType?.MediaType);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (OperationCanceledException exception)
-        {
-            throw new PlayniteBridgeTransportException(isMalformed: false, exception);
-        }
-        catch (HttpRequestException exception)
-        {
-            throw new PlayniteBridgeTransportException(isMalformed: false, exception);
-        }
-        catch (IOException exception)
-        {
-            throw new PlayniteBridgeTransportException(isMalformed: false, exception);
-        }
-    }
+    public ValueTask<PlayniteBridgeResponse> SendAsync(PlayniteBridgeCommand command, string bearerToken, CancellationToken token) =>
+        throw new InvalidOperationException("Use the selected profile connection; bearer tokens cannot be routed independently.");
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose() { DisposeConnection(); _http.Dispose(); }
 
-    internal static (HttpMethod Method, string RelativePath, int MaximumBytes) Resolve(
-        PlayniteBridgeCommand command)
-    {
-        static string Game(string? value) =>
-            "api/games/" + PlayniteBridgeClient.CanonicalGameId(value ?? string.Empty);
-        return command.Kind switch
-        {
-            PlayniteBridgeCommandKind.Probe =>
-                (HttpMethod.Get, PlayniteBridgeClient.CompatibilityPath[1..], MaximumJsonBytes),
-            PlayniteBridgeCommandKind.QueryGames when command.Query is { } query =>
-                (HttpMethod.Get, QueryPath(query), MaximumJsonBytes),
-            PlayniteBridgeCommandKind.Achievements =>
-                (HttpMethod.Get, Game(command.GameId) + "/achievements", MaximumDetailBytes),
-            PlayniteBridgeCommandKind.Activity =>
-                (HttpMethod.Get, Game(command.GameId) + "/activity", MaximumDetailBytes),
-            PlayniteBridgeCommandKind.Install =>
-                (HttpMethod.Post, Game(command.GameId) + "/install", MaximumJsonBytes),
-            PlayniteBridgeCommandKind.Uninstall =>
-                (HttpMethod.Post, Game(command.GameId) + "/uninstall", MaximumJsonBytes),
-            PlayniteBridgeCommandKind.ResolveGame =>
-                (HttpMethod.Get, Game(command.GameId), MaximumJsonBytes),
-            PlayniteBridgeCommandKind.ResolveArtwork =>
-                (HttpMethod.Get, Game(command.GameId) + "/cover" +
-                    (command.ArtworkKind == PlayniteBridgeArtworkKind.Cover
-                        ? string.Empty
-                        : "?type=" + command.ArtworkKind!.Value.ToString().ToLowerInvariant()),
-                    MaximumArtworkBytes),
-            PlayniteBridgeCommandKind.ResolveArtworkPaths =>
-                (HttpMethod.Post, "api/eval", PlayniteBridgeClient.MaximumArtworkPathsBytes),
-            PlayniteBridgeCommandKind.CachedAchievements =>
-                (HttpMethod.Post, "api/eval", MaximumDetailBytes),
-            PlayniteBridgeCommandKind.Launch =>
-                (HttpMethod.Post, Game(command.GameId) + "/launch", MaximumJsonBytes),
-            PlayniteBridgeCommandKind.SetFavorite or
-                PlayniteBridgeCommandKind.SetHidden =>
-                (HttpMethod.Put, Game(command.GameId), MaximumJsonBytes),
-            PlayniteBridgeCommandKind.SetCategories =>
-                (HttpMethod.Put, Game(command.GameId) + "/categories", MaximumJsonBytes),
-            PlayniteBridgeCommandKind.SetCompletionStatus =>
-                (HttpMethod.Put, Game(command.GameId) + "/status", MaximumJsonBytes),
-            PlayniteBridgeCommandKind.ListCategories =>
-                (HttpMethod.Get, "api/categories", MaximumJsonBytes),
-            PlayniteBridgeCommandKind.CreateCategory =>
-                (HttpMethod.Post, "api/categories", MaximumJsonBytes),
-            PlayniteBridgeCommandKind.ListCompletionStatuses =>
-                (HttpMethod.Get, "api/completion-statuses", MaximumJsonBytes),
-            _ => throw new ArgumentException("The Playnite Bridge command is invalid.",
-                nameof(command)),
-        };
-    }
-
-    private static string QueryPath(PlayniteBridgeGameQuery query)
+    private static string QueryPath(PlayniteBridgeGameQuery query, string path = "v1/games")
     {
         var parts = new List<string>
         {
@@ -1066,7 +1002,8 @@ internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
         Add("source", query.Source);
         Add("category", query.Category);
         Add("completionStatus", query.CompletionStatus);
-        return "api/games?" + string.Join('&', parts);
+        Add("revision", query.Revision);
+        return path + "?" + string.Join('&', parts);
 
         void Add(string name, string? value)
         {
@@ -1146,6 +1083,8 @@ internal sealed class PlayniteBridgeHttpTransport : IPlayniteBridgeTransport
 
 internal sealed class WindowsCredentialPlayniteTokenStore : IPlayniteCredentialStore
 {
+    private readonly string target;
+    internal WindowsCredentialPlayniteTokenStore(string target = Target) => this.target = target;
     private const int GenericCredential = 1;
     private const int LocalMachinePersistence = 2;
     private const int NotFound = 1168;
@@ -1155,7 +1094,7 @@ internal sealed class WindowsCredentialPlayniteTokenStore : IPlayniteCredentialS
     public ValueTask<string?> ReadAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!NativeMethods.CredRead(Target, GenericCredential, 0, out var pointer))
+        if (!NativeMethods.CredRead(target, GenericCredential, 0, out var pointer))
         {
             var error = Marshal.GetLastWin32Error();
             if (error == NotFound) return ValueTask.FromResult<string?>(null);
@@ -1201,7 +1140,7 @@ internal sealed class WindowsCredentialPlayniteTokenStore : IPlayniteCredentialS
             var credential = new NativeCredential
             {
                 Type = GenericCredential,
-                TargetName = Target,
+                TargetName = target,
                 CredentialBlobSize = bytes.Length,
                 CredentialBlob = blob,
                 Persist = LocalMachinePersistence,
@@ -1222,7 +1161,7 @@ internal sealed class WindowsCredentialPlayniteTokenStore : IPlayniteCredentialS
     public ValueTask DeleteAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!NativeMethods.CredDelete(Target, GenericCredential, 0))
+        if (!NativeMethods.CredDelete(target, GenericCredential, 0))
         {
             var error = Marshal.GetLastWin32Error();
             if (error != NotFound) throw new PlayniteCredentialException(error);
@@ -1276,7 +1215,7 @@ internal sealed class PlayniteBridgeTransportException : Exception
         bool isMalformed,
         Exception? inner = null,
         bool isOverBudget = false)
-        : base("The bounded Playnite Bridge transport failed.", inner)
+        : base("The bounded WidgetRail for Playnite transport failed.", inner)
     {
         IsMalformed = isMalformed;
         IsOverBudget = isOverBudget;
@@ -1289,7 +1228,7 @@ internal sealed class PlayniteBridgeTransportException : Exception
 internal sealed class PlayniteBridgeDataException : Exception
 {
     internal PlayniteBridgeDataException(string code, Exception? inner = null)
-        : base("The bounded Playnite Bridge data operation failed.", inner) => Code = code;
+        : base("The bounded WidgetRail for Playnite data operation failed.", inner) => Code = code;
 
     internal string Code { get; }
 }

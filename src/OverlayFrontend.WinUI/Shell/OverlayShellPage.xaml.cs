@@ -69,6 +69,10 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         preferencesStore = new(options.SettingsRoot);
         interactionAdmission = new(transitions);
         InitializeComponent();
+        InitializePinReturnBoundary();
+        ProductionRoot.PointerReleased+=PinPointerReleased;
+        ProductionRoot.PointerCanceled+=PinPointerCanceled;
+        ProductionRoot.PointerCaptureLost+=PinPointerCanceled;
         InitializeNotificationBell();
         InitializeSystemStatus(startService);
         InitializeTrayCommands();
@@ -285,7 +289,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     }
 
     private void Changed(object? sender, WidgetPresentationChangedEventArgs args) => DispatcherQueue.TryEnqueue(() =>
-    { ApplyPinnedState(args.State); ApplyState(args.State); ObserveWidgetStatusState(args.State); });
+    { ApplyPinnedState(args.State); ApplyState(args.State); ObserveWidgetStatusState(args.State); ObserveRememberedAvailability(args.State); });
 
     private void ApplyState(WidgetPresentationState state)
     {
@@ -439,14 +443,14 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private void SystemAnimationsChanged(Windows.UI.ViewManagement.UISettings sender, object args) => DispatcherQueue.TryEnqueue(() =>
     {
         if (!retired) surface?.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
-        if (!retired && pinned is { } current) ApplyPinnedAppearance(current);
+        if (!retired)foreach(var current in pins)ApplyPinnedAppearance(current);
         if (!retired) MotionPolicyChanged?.Invoke();
     });
 
     private void HostEffectReceived(object? sender, WidgetHostEffectEventArgs args) => DispatcherQueue.TryEnqueue(() =>
     {
         var effect = args.Effect;
-        if(effect.Kind==WidgetHostEffectKind.OpenPinnedLayout)
+        if(effect.Kind is WidgetHostEffectKind.OpenPinnedLayout or WidgetHostEffectKind.ClosePinnedLayout or WidgetHostEffectKind.ManagePinnedSurface)
         { _=RequestWidgetPinAsync(effect);return; }
         var rejection = retired ? "retired" : !visible ? "hidden" : effect.Authority.WidgetId != activeWidget ? "widget-changed" :
             effect.InitiatedAtMilliseconds < visibleSince ? "old-visible-session" :
@@ -521,6 +525,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (!value) ExitPinnedInteraction(restoreMain: false);
         interactionAdmission.Invalidate();
         visible = value;
+        if(!value){pointerPressedPin=null;adjustmentReturnPointer=null;returnPointerPending=false;ProductionRoot.ReleasePointerCaptures();}
+        RefreshPinPointerAdmission();
         ScheduleIntroduction();
         if (value && notificationBannerState.EntryId is { } bannerId &&
             (notificationCenter?.Inbox.Find(bannerId) is not { } bannerEntry || !NotificationBannerEligible(bannerEntry) || !PlaceNotificationBanner())) HideNotificationBanner();
@@ -584,6 +590,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     internal void SetForeground(bool value)
     {
         if (foreground == value || retired) return;
+        if(!value&&pinned is {BorrowedBrowserFocus:not null})ExitPinnedInteraction(restoreMain:false);
         if (!value) { intentCancellation?.Cancel(); webAppEditor?.Close(); }
         if (!value) CancelPinnedAdjustment(restoreFocus: false);
         interactionAdmission.Invalidate();
@@ -749,7 +756,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                     await HandleExtensionCommandAsync(request);
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EnterMediaFullscreenAction)
                 {
-                    if (pinned is { Media: not null } mediaPin && mediaPin.WidgetId == request.Authority.WidgetId)
+                    if (pins.FirstOrDefault(pin=>pin.Media is not null && pin.WidgetId==request.Authority.WidgetId) is { } mediaPin)
                         await UnpinAsync(save: true, mediaPin);
                     mediaOwner?.EnterFullscreen(request.Displayed, request.Action);
                 }
@@ -896,7 +903,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     }
 
     public ValueTask DisposeAsync() => new(disposal ??= StopAsync());
-    internal void PrepareNativeShutdown() => browserOwner?.BeginShutdown();
+    internal void PrepareNativeShutdown() { WidgetSurface.Retire(); browserOwner?.BeginShutdown(); }
     private async Task StopAsync()
     {
         interactionAdmission.Invalidate();
@@ -954,7 +961,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 try { if (browserOwner is not null) await browserOwner.DisposeAsync(); }
                 finally
                 {
-                    try { await RemovePinnedCoreAsync(); }
+                    try { foreach(var pin in pins.ToArray())await RemovePinnedCoreAsync(target:pin); }
                     finally { await DisposeWidgetSurfacesAsync(); }
                 }
             }

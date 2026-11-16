@@ -171,7 +171,7 @@
 
 .playnite-library-details-meta { color: var(--text-muted); max-lines: 3; text-overflow: ellipsis; overflow-wrap: anywhere; }
 
-.playnite-library-tabs { width: 400px; min-width: 0px; max-width: 400px; min-height: 44px; gap: 12px; padding: 0px; background: transparent; border-width: 0px; surface-shading: 0; }
+.playnite-library-tabs { width: 100%; min-width: 0px; max-width: 560px; min-height: 44px; gap: 12px; padding: 0px; background: transparent; border-width: 0px; surface-shading: 0; }
 .playnite-library-tab { width: 128px; min-width: 104px; flex-grow: 1; text-align: center; }
 .playnite-library-tab-key { font-size: var(--controller-glyph-size, 24px); color: var(--text); }
 .playnite-library-nav-hint { color: var(--text); }
@@ -296,3 +296,51 @@
 .playnite-library-achievement-description { color: var(--text); text-align: start; font-size: 16px; line-height: 1.35; max-lines: 128; overflow-wrap: anywhere; }
 
 .playnite-library-advanced-content { gap: 14px; }
+
+.playnite-library-progress-pin { padding: 14px 16px; gap: 8px; background: alpha(var(--surface), .96); corner-radius: 12px; }
+.playnite-library-progress-game { color: var(--text-muted); font-size: 12px; max-lines: 1; }
+.playnite-library-progress-title { color: var(--text); font-size: 17px; font-weight: 600; max-lines: 2; overflow-wrap: anywhere; }
+.playnite-library-progress-numbers { justify: space-between; align: center; gap: 12px; }
+.playnite-library-progress-count { color: var(--text); font-size: 14px; font-weight: 600; }
+
+.playnite-library-progress-artwork { width: 36px; height: 36px; corner-radius: 6px; }
+
+/* Achievement destination: fixed navigation/tools, one demanded game list. */
+.playnite-hub-page { width:100%; height:100%; min-width:0; min-height:0; padding:20px; background:transparent; corner-radius:20px; }
+.playnite-hub-body { width:100%; height:100%; min-width:0; min-height:0; }
+.playnite-hub-game-copy { min-width:0; flex-grow:1; gap:4px; align:stretch; }
+.playnite-hub-title { font-family:var(--font-display, Segoe UI); font-size:28px; font-weight:600; color:var(--text); max-lines:2; }
+.playnite-hub-meta { font-size:13px; color:var(--text-muted); max-lines:2; text-overflow:ellipsis; }
+.playnite-hub-section-title { font-size:17px; font-weight:600; color:var(--text); max-lines:1; }
+.playnite-hub-stat { min-width:0; padding:8px 12px; gap:12px; align:center; corner-radius:12px; background:var(--surface-raised); }
+.playnite-hub-stat-value { font-size:24px; font-weight:600; color:var(--text); }
+.playnite-hub-summary { gap:12px; }
+.playnite-hub-recent-section { gap:8px; min-width:0; }
+.playnite-hub-recent { width:100%; min-width:0; height:124px; min-height:124px; }
+.playnite-hub-recent-card { width:288px; height:100px; min-height:100px; min-width:0; gap:12px; padding:12px; margin:0px 12px 0px 0px; align:center; text-align:start; corner-radius:12px; background:var(--surface-raised); }
+.playnite-hub-recent-art { width:48px; height:48px; min-width:48px; corner-radius:8px; }
+.playnite-hub-games { width:100%; height:100%; min-width:0; min-height:0; }
+.playnite-hub-game { width:100%; min-width:0; min-height:88px; margin:0px 12px 8px 0px; padding:8px 12px; align:center; gap:16px; text-align:start; corner-radius:12px; background:var(--surface-raised); }
+.playnite-hub-cover { width:44px; height:64px; min-width:44px; corner-radius:6px; }
+.playnite-hub-game-name { font-size:17px; font-weight:600; color:var(--text); max-lines:1; text-overflow:ellipsis; }
+.playnite-hub-game:focused, .playnite-hub-recent-card:focused { outline-color:var(--focus); outline-width:2px; outline-offset:-2px; }
+.playnite-hub-empty { width:100%; min-width:0; gap:16px; padding:32px; align:start; justify:center; }
+.playnite-hub-empty-icon { width:48px; height:48px; color:var(--accent); }
+.playnite-hub-empty-description { font-size:16px; line-height:1.45; color:var(--text-muted); max-width:700px; max-lines:6; }
+
+.playnite-hub-summary-compact { width:100%; min-width:0; padding:12px; background:var(--surface-raised); corner-radius:12px; font-size:15px; color:var(--text); max-lines:2; }
+
+.playnite-hub-list-status { min-width:0; flex-grow:1; font-size:13px; color:var(--text-muted); max-lines:2; }
+
+.playnite-hub-recent-meta { font-size:13px; line-height:1.3; color:var(--text-muted); max-lines:1; text-overflow:ellipsis; }
+
+/* Categorical data ink follows the active theme, as in PoB. Labels and prose
+   retain ordinary text; status is still explicit in words and symbols. */
+.playnite-ink-source, .playnite-library-hero-source, .playnite-library-details-source,
+.playnite-library-summary-meta, .playnite-library-summary-compact-meta,
+.playnite-library-category-count, .playnite-library-result-count { color:var(--data-blue, var(--text)); }
+.playnite-ink-progress, .playnite-library-achievement-summary,
+.playnite-library-achievement-progress-label, .playnite-library-progress-count { color:var(--data-green, var(--text)); }
+.playnite-ink-reward, .playnite-library-summary-badge-accent { color:var(--data-gold, var(--text)); }
+.playnite-ink-time { color:var(--data-purple, var(--text)); }
+.playnite-ink-muted { color:var(--text-muted); }

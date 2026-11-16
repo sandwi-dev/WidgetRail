@@ -10,7 +10,7 @@ public sealed partial class WidgetPresentationSession
     {
         using (_gate.Enter())
         {
-            var current = DemandPinnedInputLocked(selection, projection);
+            var current = DemandPinnedInteractionLocked(selection, projection);
             if (IntentActionAuthority.Revalidate(projection.Snapshot, projection.Snapshot, action) is null) return false;
             if (IntentActionAuthority.Revalidate(projection.Snapshot, current, action) is null)
                 throw PinnedStale("The displayed pinned intent changed.");

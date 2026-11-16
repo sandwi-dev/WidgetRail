@@ -3,9 +3,17 @@
 This is the managed host authority for authored pinned layouts and the host's
 `host.full-widget` projection. It uses the existing controller-input bridge
 contract, protocol-63 indexed continuation, and separate version-1 pinned action
-and artwork requests. The view schema, runtime-v2 handshake and bridge-v1
-handshake are unchanged. A pinned window and its placement remain host
+and artwork requests. Protocol 107 adds opt-in independent layouts and selection
+identities. The runtime-v2 handshake and bridge-v1 handshake remain compatible. A pinned window and its placement remain host
 responsibilities; these APIs do not create one.
+
+Protocol 108 adds an explicit layout interaction policy. Interactive is the
+compatibility default and permits later host entry; it does not grant current
+focus. Passive retains selection, rendering and resource demand but rejects
+controller, declared action and indexed input. Read-only browser, artwork and
+media resolution must not be coupled to that rejection. The host filters View
+and Interact choices against the latest frame and exits existing interaction
+when policy becomes Passive, preserving the window and saved placement.
 
 ## Projection, selection, and displayed origin
 
@@ -16,7 +24,9 @@ Three identities must remain separate:
 - `WidgetPinnedProjection` selects one layout from that frame. Its `Snapshot`
   and `RenderStyles` are rendering views, not a new ordinary input frame.
 - `WidgetPinnedSelection` is one host selection lifetime. Deselecting, switching,
-  or reselecting the same layout retires the preceding lifetime.
+  or reselecting the same layout retires the preceding lifetime. Independent
+  layouts have separate slots keyed by widget and layout. Existing layouts share
+  their widget's legacy slot.
 
 Resolve a projection from the exact published frame with
 `ResolvePinnedProjection(frame, layoutId)`, select it with
@@ -24,6 +34,13 @@ Resolve a projection from the exact published frame with
 projection alongside the rendered controls. On a new publication, resolve and
 render a fresh projection while retaining the current selection; do not select
 again for every refresh. Selection retains minimal authority, not an old UI tree.
+
+For an independent layout, selection notifications carry an opaque `SelectionId`.
+The SDK stores that identity on its `PinnedLayoutHandle.Selection`. Widget close
+requests must capture it when authoring the action. The host matches widget,
+layout, and exact selection before closing the window. A delayed request cannot
+close a newly opened selection of the same layout. Legacy notifications retain
+their original wire shape and callback.
 
 A layout can change its own active input scope without losing its selection.
 Input from the preceding displayed scope is rejected. Removing a layout and

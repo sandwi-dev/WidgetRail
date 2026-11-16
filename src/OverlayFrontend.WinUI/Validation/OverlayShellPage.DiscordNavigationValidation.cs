@@ -115,8 +115,9 @@ internal sealed partial class OverlayShellPage
                 await MoveUntil(NavigationDirection.Down,()=>FocusId()=="Widget.discord.streams.stop");
                 Check(ActionableFocus()&&VisibleFocus(),"D-pad reveals the main Stop watching control with the receiver error present");
                 await Button(ControllerButton.A);
-                await Until(()=>Node("discord.notice") is null&&PinText("discord.pin.status.title")=="No screen selected");
-                await UnpinAsync(save:true);
+                await Until(()=>Node("discord.notice") is null&&!pins.Any(pin=>pin.LayoutId=="discord.stream"));
+                Check(!owner!.Session.GetState("widgetrail.tests.discord-ui")!.LastGood!.Snapshot.PinnedLayouts.Any(layout=>layout.Id=="discord.stream"),
+                    "Stop watching closes the failed pin and withdraws its tray declaration");
                 step="indexed Watch";
                 Check(surface.FocusHostTarget("discord.main.mute"),"Activity navigation starts on the native mute control");
                 await Until(()=>FocusId()=="Widget.discord.main.mute");
@@ -152,9 +153,9 @@ internal sealed partial class OverlayShellPage
                 await MoveUntil(NavigationDirection.Down,()=>FocusId()=="Widget.discord.streams.stop");
                 Check(ActionableFocus()&&VisibleFocus(),"D-pad reaches and reveals Stop watching after indexed activation");
                 await Button(ControllerButton.A);
-                await Until(()=>Node("discord.notice") is null && PinText("discord.pin.status.title")=="No screen selected");
-                Check(true,"Native Stop watching clears failed selection and recovery notice");
-                await UnpinAsync(save:true);
+                await Until(()=>Node("discord.notice") is null&&!pins.Any(pin=>pin.LayoutId=="discord.stream"));
+                Check(!owner!.Session.GetState("widgetrail.tests.discord-ui")!.LastGood!.Snapshot.PinnedLayouts.Any(layout=>layout.Id=="discord.stream"),
+                    "Native Stop watching closes the failed pin, withdraws its declaration and clears recovery notice");
                 await VerifyIdlePicker();
 
                 async Task VerifyIdlePicker()

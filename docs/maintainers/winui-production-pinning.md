@@ -1,6 +1,7 @@
 # Production WinUI pin coordination
 
-`OverlayShellPage.Pinning` owns one pinned selection and its peer native window.
+`OverlayShellPage.Pinning` owns up to six pinned surfaces and one selected input
+target. Each surface owns its native window and presentation receipt.
 The tray exposes authored pinned layouts and eligible full-widget layouts. The
 presenter receives the genuine session selection/projection; the shell never
 manufactures a main frame to represent the pin.
@@ -15,7 +16,9 @@ the same widget incarnation, a visible overlay and native foreground ownership
 of the pin. Passive UI Automation action attempts fail the admission callback.
 
 The existing controller stream routes to the selected input surface. View enters
-or leaves the pin; an unhandled B leaves it; LB+RB+X unpins. The pin does not start
+or leaves the sole pin. With several pins, View from main opens a named chooser.
+Highlighting a choice outlines its real native window. A confirms the target.
+An unhandled B returns to main. LB+RB+X closes the active pin or opens the chooser. The pin does not start
 another controller reader. Main-window deactivation is not pin deactivation:
 transferring focus between the two HWNDs must not cancel entry. The pin's own
 activation event relinquishes interaction when its native focus is lost.
@@ -41,17 +44,29 @@ work-area position and opacity. `PinnedPreferences` contains only a version and
 placement dictionary, not a selected widget/layout. Creating a new pin can reuse
 its placement; starting WidgetRail does not recreate a pin.
 
-Placement is clamped to the available monitor and uses that monitor's appearance
-settings. Explicit edits persist geometry. Browser and embedded-media owners
-retain their own single live surface and transfer it through the host's placement
+If the preferred rectangle is occupied, opening chooses the nearest available
+placement on that monitor. Automatic displacement preserves the saved geometry.
+Only an explicit move/resize save replaces it. Saving opacity preserves the
+existing preferred geometry. Discord screen slots use stable layout keys
+`discord.stream`, `discord.stream.2` and `discord.stream.3`. A surviving stream
+keeps its slot. These three authored receiver slots are Discord policy; the host
+allows six pins across widgets and webapps.
+Additional browser pages use `host.browser.popup` and numbered suffixes.
+
+Placement uses the current monitor's work area and appearance settings. Moving
+outward at an aligned display edge transfers the pin to the nearest display in
+that direction, preserving logical size. The adjustment captures display topology
+once, and topology changes cancel its preview. Per-display interface settings
+apply after save or cancel. Explicit edits persist geometry. Browser and embedded-media owners
+retain one live surface per document and transfer it through the host's placement
 policy; ordinary pinned roots use separate XAML presentation. A visible Browser
 pin retains the page when its main widget opens, showing a notice in the main
 view instead of moving the page twice.
 
-Move/resize and opacity adjustments retain the underlying radial context. Ending
+Unified position/size/opacity adjustment retains the underlying radial context. Ending
 adjustment restores the prior valid UI owner instead of unconditionally focusing
 the tray. The tray offers Replace pin first for an eligible different widget,
-followed by Unpin, Move/resize, Change opacity and Interact. Multiple authored
+followed by Unpin, Adjust pin and Interact. Multiple authored
 layouts use the chooser; cancellation and stale selections preserve the old pin.
 
 ## Historical validation checkpoints
@@ -79,12 +94,20 @@ changes. Screenshots were inspected. Evidence:
 
 ## Controller placement adjustment
 
-The tray's **Move / resize pinned widget** command starts a reversible host-owned
-preview. Left stick/D-pad move, right stick resizes, A saves and B cancels.
+The tray's **Adjust pin** command starts a reversible host-owned preview.
+Left stick/D-pad move, right stick resizes, LB/RB changes opacity, A saves,
+B cancels and X closes the exact pin without committing unfinished edits.
 Keyboard arrows move, Shift+arrows resize, Enter saves and Escape cancels. The
-existing main window retains input ownership; the pinned peer remains passive
-and its themed border identifies the edited surface. The semantic guide shows
+host owns input through a single floating adjustment toolbar; the pinned content
+remains passive and its themed border identifies the edited surface. The semantic guide shows
 the current host commands. Widget controls do not receive adjustment input.
+
+The toolbar uses the existing peer-window lifecycle, independent opacity and
+monitor-clamped placement. It is not a seventh selectable pin. Its callbacks
+capture the exact adjustment and surface identity; retired controls cannot
+mutate a later adjustment. Global, tray and SDK management enter adjustment
+directly after any target chooser. Inactive pins accept right-click adjustment
+only while the overlay is open; active content retains its context menu.
 
 Geometry follows the original 32-DIP step and 250/80ms repeat policy with native
 axis hysteresis. The existing placement policy applies declared min/max sizes,

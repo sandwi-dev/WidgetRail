@@ -7,6 +7,9 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 /// <summary>Cancel the owned Windows common dialog, then join its actual completion.</summary>
 internal static partial class NativeFilePickerLifetime
 {
+#if ENABLE_WIDGET_VALIDATION
+    internal static Action<string>? TraceForValidation { get; set; }
+#endif
     internal static async Task<T> RunAsync<T>(WindowId ownerId, Func<Task<T>> show, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
@@ -22,6 +25,9 @@ internal static partial class NativeFilePickerLifetime
         using var registration = token.Register(() => queue.TryEnqueue(() =>
         {
             if (finished) return;
+#if ENABLE_WIDGET_VALIDATION
+            TraceForValidation?.Invoke("cancellation requested");
+#endif
             CloseOwnedPicker(owner); timer.Start();
         }));
         try
@@ -33,19 +39,29 @@ internal static partial class NativeFilePickerLifetime
         finally { finished = true; timer.Stop(); }
     }
 
-    private static unsafe void CloseOwnedPicker(nint owner)
+    private static void CloseOwnedPicker(nint owner)
     {
         var popup = GetWindow(owner, 6); // GW_ENABLEDPOPUP
-        if (popup == 0 || popup == owner) return;
+        if (TryCloseOwnedPicker(owner, popup)) return;
+        // The mouse guard can precede the common dialog in the owned-window
+        // chain. Keep the exact owner/process/class checks for every candidate.
+        var window = GetWindow(owner, 0); // GW_HWNDFIRST
+        for (var count = 0; window != 0 && count < 512; count++, window = GetWindow(window, 2))
+            if (window != popup && TryCloseOwnedPicker(owner, window)) return;
+    }
+
+    private static unsafe bool TryCloseOwnedPicker(nint owner, nint popup)
+    {
+        if (popup == 0 || popup == owner) return false;
         GetWindowThreadProcessId(popup, out var process);
-        if (process != (uint)Environment.ProcessId) return;
+        if (process != (uint)Environment.ProcessId) return false;
         var ancestor = popup;
         for (var depth = 0; depth < 8 && ancestor != owner && ancestor != 0; depth++) ancestor = GetWindow(ancestor, 4); // GW_OWNER
-        if (ancestor != owner) return;
+        if (ancestor != owner) return false;
         char* name = stackalloc char[64];
         var length = GetClassNameW(popup, name, 64);
-        if (length != 6 || !new ReadOnlySpan<char>(name, length).SequenceEqual("#32770")) return;
-        _ = PostMessageW(popup, 0x0010, 0, 0); // WM_CLOSE follows native Cancel; never confirms a file.
+        if (length != 6 || !new ReadOnlySpan<char>(name, length).SequenceEqual("#32770")) return false;
+        return PostMessageW(popup, 0x0010, 0, 0) != 0; // WM_CLOSE follows native Cancel.
     }
 
     // Borrowed HWNDs; this helper never destroys or takes ownership of them.

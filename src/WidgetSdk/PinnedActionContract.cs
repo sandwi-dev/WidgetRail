@@ -40,6 +40,8 @@ internal static class PinnedActionContract
     {
         Validate(input);
         var action = input.Action;
+        if (!PinnedSurfaceContract.AllowsInteraction(snapshot, input.LayoutId))
+            throw new InvalidOperationException("The pinned layout is display-only.");
         var projected = Project(snapshot, input.LayoutId);
         if (action.InputScopeId != projected.ActiveInputScopeId) throw new InvalidOperationException("Pinned action scope retired.");
         var scope = FindScope(projected.Root, projected.ActiveInputScopeId, true)

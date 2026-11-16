@@ -14,7 +14,7 @@ internal sealed partial class OverlayShellPage
         return savedAppearance with { InterfaceScale = scale.InterfaceScale, TextScale = scale.TextScale };
     }
 
-    private async Task<PreparedPin> PreparePinnedPlacementAsync(PinnedWidgetWindow window, WidgetSurfaceHints? hints, PinnedPlacement? saved)
+    private async Task<PreparedPin> PreparePinnedPlacementAsync(PinnedWidgetWindow window, WidgetSurfaceHints? hints, PinnedPlacement? saved, PinnedSurface? replacing = null)
     {
         // Place a hidden peer to identify its actual monitor, then resolve the
         // final native layout before showing it. No main-display context is sent
@@ -39,7 +39,9 @@ internal sealed partial class OverlayShellPage
                 (hints?.PreferredHeight ?? 270) * appearance.InterfaceScale)
                 ?? throw new InvalidOperationException("No display has enough room for this pinned layout.");
         }
-        return new(placement, limits, displayId);
+        var obstacles=pins.Where(pin=>pin.Window.IsVisible && !ReferenceEquals(pin,replacing)).Select(pin=>pin.Window.Bounds).ToArray();
+        var bounds=PinnedPlacementPolicy.AvoidPins(placement.Bounds,placement.Monitor.WorkArea,obstacles);
+        return new(placement with {Bounds=bounds},limits,displayId);
     }
 
     private Task<string?> ReadPinnedDisplayAsync(nint window) => Task.Run(() =>
@@ -59,15 +61,18 @@ internal sealed partial class OverlayShellPage
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error)
         {
-            if (!retired && ReferenceEquals(pinned, current) && current.DisplayRevision == revision)
+            if (!retired && pins.Contains(current) && current.DisplayRevision == revision)
                 Diagnostics.FrontendFailureLog.Current.Write("pinned-display", error);
         }
     }
 
     private bool TryApplyPinnedDisplay(PinnedSurface current, long revision, string? id)
     {
-        if (retired || !ReferenceEquals(pinned, current) || !current.IsCurrent || current.DisplayRevision != revision) return false;
+        if (retired || !pins.Contains(current) || !current.IsCurrent || current.DisplayRevision != revision) return false;
         current.DisplayId = id;
+        // A display-specific interface scale can change size limits. Apply it
+        // when the move commits or cancels so it cannot cancel its own preview.
+        if (ReferenceEquals(pinnedAdjustment?.Surface, current) || savingPinnedAdjustment && ReferenceEquals(pinned, current)) return true;
         ApplyPinnedAppearance(current);
         return true;
     }

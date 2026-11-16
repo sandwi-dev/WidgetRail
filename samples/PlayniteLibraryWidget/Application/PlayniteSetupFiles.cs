@@ -7,8 +7,9 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal static class PlayniteSetupFiles
 {
-    internal const string ExtensionId = "PlayniteBridge_f47ac10b";
-    internal const string PluginId = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+    internal const string ExtensionId = WidgetRail.Playnite.IntegrationIdentity.ExtensionId;
+    internal const string PluginId = WidgetRail.Playnite.IntegrationIdentity.PluginId;
+    internal const string RecoveryDirectory = "WidgetRail.Playnite";
     internal static string LocalPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path) || path.StartsWith(@"\\", StringComparison.Ordinal) ||

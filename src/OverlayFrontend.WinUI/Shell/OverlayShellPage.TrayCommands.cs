@@ -92,7 +92,7 @@ internal sealed partial class OverlayShellPage
         PublishControllerGuide();
         AutomationProperties.SetHelpText(Tray, trayGuide.HelpText);
         // Keep the native layout slot stable when focus enters/leaves the tray.
-        TrayHelp.Visibility = Visibility.Visible;
+        TrayHelp.Visibility = DesktopPinHelpVisible ? Visibility.Collapsed : Visibility.Visible;
         AutomationProperties.SetAccessibilityView(TrayHelp, AccessibilityView.Content);
     }
 
@@ -209,12 +209,9 @@ internal sealed partial class OverlayShellPage
             openedMenu = menu;
             Input.GamepadKeyBoundary.ObserveFlyout(menu.Flyout, anchor);
             trayMenu = menu;
-            MenuFlyoutSubItem? pinGroup = null;
             AddPinnedCommands(descriptor, (label, id, action) =>
             {
-                var group = id is "Pin.Adjust" or "Pin.Opacity" or "Pin.Interact"
-                    ? pinGroup ??= Group("Manage pin", "Pin") : null;
-                Add(label, id, action, id == "Pin.Interact" ? ControllerButton.View : null, group: group);
+                Add(label, id, action, id == "Pin.Interact" ? ControllerButton.View : null);
             });
             var preferencesGroup = Group("Preferences", "Preferences");
             if (browserOwner?.PermissionTargets(descriptor.Id).Length > 0)
@@ -271,7 +268,7 @@ internal sealed partial class OverlayShellPage
             menu.Flyout.ShowAt(anchor);
 
             bool TrayShortcutAvailable(ControllerButton button) => button is not (ControllerButton.A or ControllerButton.B or ControllerButton.Y or ControllerButton.Menu) &&
-                (button != ControllerButton.View || pinned is null);
+                (button != ControllerButton.View || !HasInteractivePins);
 
             MenuFlyoutSubItem Group(string label, string id)
             {

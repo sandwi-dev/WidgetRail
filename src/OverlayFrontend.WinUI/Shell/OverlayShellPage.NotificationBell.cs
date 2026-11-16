@@ -38,12 +38,9 @@ internal sealed partial class OverlayShellPage
     private void PaintNotificationBell()
     {
         var palette = ShellChromePalette.Resolve(ShellPalette, Appearance);
-        foreach (var icon in new[] { notificationBell, taskSwitcherButton })
+        foreach (var icon in new[] { notificationBell, taskSwitcherButton, ManagePinsButton, ReturnFromPinButton })
         {
-            icon.Foreground = new SolidColorBrush(palette.Text);
-            icon.Background = new SolidColorBrush(palette.HighContrast ? palette.Surface : ShellChromePalette.Blend(palette.Surface, palette.Text, .025));
-            icon.BorderBrush = new SolidColorBrush(palette.HighContrast ? palette.Text : ShellChromePalette.Blend(palette.Surface, palette.Text, .08));
-            icon.FocusVisualPrimaryBrush = new SolidColorBrush(palette.Focus);
+            palette.PaintButton(icon);
         }
         utilityPlacement = null;
         PositionUtilityPanel();

@@ -55,9 +55,16 @@ internal static class DomainIntentTests
                 await widget.OnActionAsync(new(watch,"discord.stream.30"));
                 var stop=DeclaredActions.Resolve(Snapshot(widget),"unwatch");
                 await widget.OnActionAsync(new(DeclaredActions.Resolve(Snapshot(widget),"watch.31"),"discord.stream.31"));
-                var secondStop=DeclaredActions.Resolve(Snapshot(widget),"unwatch");
+                var secondStop=Nodes(Snapshot(widget).Root).Single(node=>node.Id=="discord.streams.stop.2").ActionId!;
                 await widget.OnActionAsync(new(stop,"discord.streams.stop"));
-                check(DeclaredActions.Resolve(Snapshot(widget),"unwatch")==secondStop,"A delayed Stop watching cannot clear a different selected stream");
+                check(Nodes(Snapshot(widget).Root).Single(node=>node.Id=="discord.streams.stop.2").ActionId==secondStop,
+                    "Stopping the first screen preserves the second screen and its slot");
+                await widget.OnActionAsync(new(watch,"discord.stream.30"));
+                var reopened=DeclaredActions.Resolve(Snapshot(widget),"unwatch");
+                await widget.OnActionAsync(new(stop,"discord.streams.stop"));
+                check(DeclaredActions.Resolve(Snapshot(widget),"unwatch")==reopened&&
+                    Nodes(Snapshot(widget).Root).Single(node=>node.Id=="discord.streams.stop.2").ActionId==secondStop,
+                    "A delayed first-slot stop cannot clear a reopened slot or its neighbor");
                 fake.State=fake.State with{Account="2"};await Refresh(widget);
                 var requests=pins.Count;await widget.OnActionAsync(new(watch,"discord.stream.30"));
                 check(pins.Count==requests,"A delayed Watch cannot start a receiver in a different account");

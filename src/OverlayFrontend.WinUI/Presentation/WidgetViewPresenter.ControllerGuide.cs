@@ -120,7 +120,8 @@ internal sealed partial class WidgetViewPresenter
             var adjusting = ReferenceEquals(adjustingSlider, focused);
             return (ControllerGuideHint[])[.. hints.Where(hint => hint.Button != ControllerButton.A),
                 .. (adjusting ? (ControllerGuideHint[])[new(ControllerPrompt.DPadHorizontal, "Adjust")] : []),
-                .. (adjusting || activation ? (ControllerGuideHint[])[new(ControllerPrompt.A, adjusting ? "Done" : "Adjust", ControllerButton.A)] : [])];
+                .. (adjusting || activation ? (ControllerGuideHint[])[new(ControllerPrompt.A, adjusting ? "Done" : "Adjust", ControllerButton.A)] : []),
+                .. (previewOwner is not null ? (ControllerGuideHint[])[new(ControllerPrompt.B, adjusting ? "Finish adjustment" : "Back to source", ControllerButton.B)] : [])];
         }
         if (previewOwner is not null) return (ControllerGuideHint[])[..hints, new(ControllerPrompt.B,"Back to source",ControllerButton.B)];
         if (PreviewEnterButton(CurrentPreviewSource()) is { } enter) return (ControllerGuideHint[])[..hints.Where(hint=>hint.Button!=enter),

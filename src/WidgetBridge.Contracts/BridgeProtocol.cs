@@ -12,6 +12,10 @@ public static class BridgeProtocol
 {
     public const int CurrentVersion = 1;
     public const int DefaultMaximumMessageBytes = ProtocolConstants.MaximumEncodedArtworkFrameBytes;
+    /// <summary>Maximum simultaneous native pinned surfaces in one host.</summary>
+    public const int MaximumPinnedSurfaceCount = 6;
+    /// <summary>Shared frontend and bridge retention ceiling for pins, main, and a supporting backend.</summary>
+    public const int MaximumResidentBrowserCount = MaximumPinnedSurfaceCount + 2;
     public const int AbsoluteMaximumMessageBytes = ProtocolConstants.MaximumEncodedArtworkFrameBytes;
 }
 

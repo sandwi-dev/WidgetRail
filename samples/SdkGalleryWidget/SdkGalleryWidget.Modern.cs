@@ -174,8 +174,30 @@ public sealed partial class SdkGalleryWidget
         UI.Text(_demo.Value.Status, "gallery.intent.status"),
         UI.Row("gallery.pin.actions",
             UI.Button("Pin summary", "gallery.pin.open.summary", "gallery.pin.open.summary"),
-            UI.Button("Pin level controls", "gallery.pin.open.level", "gallery.pin.open.level")),
+            UI.Button("Pin level controls", "gallery.pin.open.level", "gallery.pin.open.level"),
+            UI.Button("Pin passive readout", "gallery.pin.open.readout", "gallery.pin.open.readout")),
+        DemoCloseControl(_summaryPin,"gallery.pin.close.summary"),
+        DemoCloseControl(_levelPin,"gallery.pin.close.level"),
+        DemoCloseControl(_readoutPin,"gallery.pin.close.readout"),
         UI.Text("Open a layout directly, or use the tray menu to manage its placement. Pin controls share the main view’s state.", "gallery.pin.help"));
+
+    private static string CloseDemoPinAction(WidgetPinCloseRequest target)=>"gallery.pin.close."+target.LayoutId+"."+target.SelectionId;
+    private static string ManageDemoPinAction(WidgetPinCloseRequest target)=>"gallery.pin.manage."+target.LayoutId+"."+target.SelectionId;
+    private static WidgetElement DemoCloseControl(PinnedLayoutHandle pin,string id)=>pin.Selection is { } target
+        ?UI.Row(id+".controls",UI.Button("Unpin "+pin.Name,CloseDemoPinAction(target),id),
+            UI.Button("Manage "+pin.Name,ManageDemoPinAction(target),id+".manage")):UI.Spacer(id);
+    private async ValueTask RequestDemoManageAsync(WidgetPinCloseRequest target,CancellationToken token)
+    {
+        try{await HostServices.Pinning.RequestManageAsync(target,token);}
+        catch(Exception error) when(error is WidgetCapabilityException or WidgetCapabilityUnavailableException)
+        {_demo.Update(state=>state with{Status="Pin management requires a supporting WidgetRail host."});}
+    }
+    private async ValueTask RequestDemoCloseAsync(WidgetPinCloseRequest target,CancellationToken token)
+    {
+        try{await HostServices.Pinning.RequestCloseAsync(target,token);}
+        catch(Exception error) when(error is WidgetCapabilityException or WidgetCapabilityUnavailableException)
+        {_demo.Update(state=>state with{Status="This host could not close the pin."});}
+    }
 
     private async ValueTask RequestDemoPinAsync(string layoutId,CancellationToken token)
     {
@@ -195,12 +217,13 @@ public sealed partial class SdkGalleryWidget
 
     private IReadOnlyList<PinnedPresentationLayout> PinExamples() =>
     [
-        WidgetView.PinnedLayout("gallery.summary", "Summary", new() { PreferredWidth = 360, PreferredHeight = 180 },
-            UI.Stack("gallery.pin.summary", UI.Text("SDK Gallery", "gallery.pin.title"), UI.Text($"Level: {_demo.Value.Level:0}%", "gallery.pin.value"),
-                UI.Button("Show feedback", "gallery.toast.show", "gallery.pin.feedback")), "gallery.pin.feedback"),
-        WidgetView.PinnedLayout("gallery.level", "Level controls", new() { PreferredWidth = 420, PreferredHeight = 180 },
-            UI.Stack("gallery.pin.controls", UI.Text("Shared level", "gallery.pin.label"),
-                UI.Slider(_demo.Value.Level, 0, 100, 5, "gallery.level", "gallery.pin.slider", "Shared level")), "gallery.pin.slider"),
+        _readoutPin.Present(UI.Stack("gallery.pin.readout",UI.Text("Passive readout","gallery.pin.readout.title"),
+            UI.Text($"Level: {_demo.Value.Level:0}%","gallery.pin.readout.value"))) with {IndependentSelection=true},
+        _summaryPin.Present(UI.Stack("gallery.pin.summary",UI.Text("SDK Gallery","gallery.pin.title"),
+            UI.Text($"Level: {_demo.Value.Level:0}%","gallery.pin.value"),
+            UI.Button("Show feedback","gallery.toast.show","gallery.pin.feedback"))) with {IndependentSelection=true},
+        _levelPin.Present(UI.Stack("gallery.pin.controls",UI.Text("Shared level","gallery.pin.label"),
+            UI.Slider(_demo.Value.Level,0,100,5,"gallery.level","gallery.pin.slider","Shared level"))) with {IndependentSelection=true},
     ];
 
     public override ValueTask<bool> OnIntentCompletedAsync(WidgetIntentFeedback feedback, CancellationToken cancellationToken = default)

@@ -105,8 +105,8 @@ internal static partial class PlayniteLibraryConnectionPresentation
             advanced.Add((UI.TextEntry(setup.DataPath, "Leave empty to detect the profile", prefix + "data", prefix + "data", 1024)
                 with { InputKind = TextEntryInputKind.Ordinary }).Disabled(!enabled).Classes("playnite-library-control"));
             advanced.Add(UI.Button("Use these folders", prefix + "folders", prefix + "folders").Disabled(!enabled || string.IsNullOrWhiteSpace(setup.ProgramPath)));
-            advanced.Add(UI.Text("Manual Bridge token · stored in Windows Credential Manager", prefix + "token.label").Classes("playnite-library-setup-path"));
-            advanced.Add(UI.SensitiveTextEntry("Enter a Playnite Bridge token", PlayniteLibraryWidget.PlayniteSaveActionId,
+            advanced.Add(UI.Text("Manual integration token · stored in Windows Credential Manager", prefix + "token.label").Classes("playnite-library-setup-path"));
+            advanced.Add(UI.SensitiveTextEntry("Enter a WidgetRail for Playnite token", PlayniteLibraryWidget.PlayniteSaveActionId,
                 "playnite-library.playnite.token", ProtocolConstants.MaximumTextEntryLength).Disabled(!enabled).Classes("playnite-library-playnite-token"));
             advanced.Add(UI.ResponsiveGrid(prefix + "manual-actions", 180, 2,
                 UI.Button("Test connection", PlayniteLibraryWidget.PlayniteRefreshActionId, PlayniteLibraryWidget.PlayniteRefreshActionId).Disabled(!enabled),

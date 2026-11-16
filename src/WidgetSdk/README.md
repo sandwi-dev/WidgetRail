@@ -57,10 +57,62 @@ Pinned widgets reuse the same host ownership. `WidgetView.PinnedLayouts`
 accepts legacy size-only profiles and protocol-v21 declarative projections
 created with `WidgetView.PinnedLayout(...)`. A projection supplies only its
 bounded root, surface, input scope, and initial focus. The host injects Full
-widget, validates each projection plus the aggregate catalog, and atomically
-selects one on the single pinned surface. Override
-`OnPinnedLayoutSelectionChangedAsync` only to observe package data demand;
-null revokes it and never grants host authority.
+widget and validates each projection plus the aggregate catalog. The shell supports
+up to six simultaneous pins. Existing layouts retain one selection per widget.
+Set `IndependentSelection = true` on each layout that can coexist with the widget's
+other layouts. This requires protocol 107. Observe those selections through
+`OnPinnedSurfaceChangedAsync(layoutId, selected, token)` or `PinnedLayoutHandle`.
+Each handle's selection token ends when its exact instance is retired.
+For a layout that should follow a recurring domain condition, opt into
+`RestoreWhenAvailable = true` alongside `IndependentSelection = true` (protocol109).
+Publish it only while that condition is true. After an explicit user pin, the host
+remembers the choice, closes the window when the layout is withdrawn, and restores
+it when published again. Explicit unpin clears the preference. This never grants a
+widget permission to issue background `pin.open` calls or creates a pin on first
+render. Restoration waits at capacity, stays passive and does not start a worker.
+Preferences are scoped to the host-verified package authority and instance; unsigned
+replacement bytes have a new authority and do not inherit the preference silently.
+Default layouts, embedded-media and popup pins retain session-only selection.
+Use distinct browser document/session identities for simultaneous native browser
+views. A document retains its single controller as presentation slots borrow it.
+
+Legacy `OnPinnedLayoutSelectionChangedAsync` remains available for layouts that
+use the original single-selection contract. A null selection revokes demand.
+
+To offer Unpin, capture `PinnedLayoutHandle.Selection` when authoring the action
+and pass that immutable `WidgetPinCloseRequest` to
+`HostServices.Pinning.RequestCloseAsync` inside the action handler. The host checks
+the exact selection identity, so a delayed close cannot affect a reopened pin.
+Opening and closing use the existing action-completion host-effect pipeline.
+
+For host controls, pass the same captured selection to
+`HostServices.Pinning.RequestManageAsync(selection, cancellationToken)`.
+The host outlines that exact pin and offers movement, opacity, unpinning and,
+for Interactive layouts, content interaction. A retired selection cannot manage
+its replacement. Keep geometry, native focus and menu state in the host.
+
+`RequestManageAsync(cancellationToken)` instead asks the host to select from
+the calling widget's pins, including host-owned compact media and pop-outs.
+One pin opens directly; several get a caller-scoped chooser; none produces an
+informational dialog without opening a pin. This overload does not expose or
+accept native window IDs or author-invented host layout IDs. Both forms require
+an admitted user action and use the existing terminal-success effect barrier.
+The additive `pin.manage` operation requires a supporting host; catch the
+usual capability-unavailable/rejected exceptions on older hosts.
+
+Protocol v108 makes content interaction explicit. Pass
+`PinnedInteractionMode.Passive` to `CreatePinnedLayoutHandle` or the
+`WidgetView.PinnedLayout` overload for a display-only layout. Existing overloads
+default to Interactive. Passive pins still render live data and retain host
+move/resize, opacity and unpin controls. The host excludes them from View and
+Interact, and the SDK rejects their content actions even if the tree contains
+buttons or shortcuts. Do not infer input policy by inspecting the UI tree.
+
+`WidgetSurfaceAppearance.DesktopAcrylic` requests bounded desktop blur from the
+host. Keep the authored root background transparent so it remains visible.
+User overrides and accessibility fallback still apply. It is separate from WRSS
+`background-material: acrylic`, which blurs content within the app and remains
+appropriate for panels over widget artwork.
 
 Widgets that need one embedded media document may set the optional
 `WidgetView.EmbeddedMediaSession` property. The declaration contains a stable
@@ -132,7 +184,7 @@ Each hook receives the current operation's `AbortSignal`; use it to detach
 provider callbacks and reject pending driver work when the runtime admits a new
 initialization authority.
 
-The host retains at most four exact per-widget embedded-media sessions in one
+The host retains at most seven exact per-widget embedded-media sessions in one
 shared WebView2 environment/profile. Normal widget cycling, overlay hide/show,
 and overlay-to-pin transfer only change visibility and input focus; they do not
 recreate a resident controller or stop its audio. Playing and pinned sessions

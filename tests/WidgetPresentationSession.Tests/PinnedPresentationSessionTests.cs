@@ -10,6 +10,98 @@ namespace WidgetRail.WidgetPresentationSession.Tests;
 [TestClass]
 public sealed class PinnedPresentationSessionTests
 {
+    [TestMethod]
+    public async Task PassiveTransitionRejectsStaleInputButKeepsSelectionAndRendering()
+    {
+        var passive=Snapshot(2) with {PinnedLayouts=Snapshot(2).PinnedLayouts.Select(layout=>layout.Id=="compact"
+            ?layout with {Interaction=PinnedInteractionMode.Passive}:layout).ToArray()};
+        await Run(async channel=>
+        {
+            await Selection(channel,"compact",true);
+            var refresh=await Read(channel);await ReplySnapshot(channel,refresh.RequestId,passive);
+        },async(session,frame)=>
+        {
+            var original=session.ResolvePinnedProjection(frame,"compact");
+            var selected=await session.SelectPinnedLayoutAsync(original);
+            var next=await session.RefreshAsync(frame.Authority);
+            var current=session.ResolvePinnedProjection(next,"compact");
+            Assert.IsTrue(selected.IsCurrent);
+            Assert.AreEqual(PinnedInteractionMode.Passive,current.Interaction);
+            Assert.IsNotNull(WidgetRail.OverlayFrontend.WinUI.Presentation.WidgetPresentationBinding.ForPinned(session,selected,current));
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(()=>session.SendPinnedControllerInputAsync(selected,original,Input(original)));
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(()=>session.SendPinnedControllerInputAsync(selected,current,Input(current)));
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(()=>session.SendPinnedActionAsync(selected,current,
+                new WidgetActionEvent("compact.play","shared",InputScopeId:current.Snapshot.ActiveInputScopeId)));
+        });
+    }
+
+    [TestMethod]
+    public async Task IndependentPinsKeepSeparateLifetimesAndExactRevocation()
+    {
+        var initial=Snapshot(1);
+        initial=initial with {PinnedLayouts=initial.PinnedLayouts.Select(layout=>layout with {IndependentSelection=true}).ToArray()};
+        await Run(async channel=>
+        {
+            await Selection(channel,"compact",true);
+            await Selection(channel,"other",true);
+            await Selection(channel,"compact",false);
+            await Selection(channel,"compact",true);
+        },async(session,frame)=>
+        {
+            var compact=session.ResolvePinnedProjection(frame,"compact");
+            var first=await session.SelectPinnedLayoutAsync(compact);
+            var other=await session.SelectPinnedLayoutAsync(session.ResolvePinnedProjection(frame,"other"));
+            Assert.IsTrue(first.IsCurrent&&other.IsCurrent);
+            await session.ClearPinnedSelectionAsync(first,frame);
+            Assert.IsFalse(first.IsCurrent);
+            Assert.IsTrue(other.IsCurrent);
+            var reopened=await session.SelectPinnedLayoutAsync(compact);
+            Assert.AreNotEqual(first.SelectionId,reopened.SelectionId);
+            await Assert.ThrowsAsync<WidgetPresentationSessionException>(()=>session.ClearPinnedSelectionAsync(first,frame));
+            Assert.IsTrue(reopened.IsCurrent&&other.IsCurrent);
+        },initial);
+    }
+
+    [TestMethod]
+    public async Task LegacySelectionOmitsIdentityAndKeepsSingleLayoutSemantics()
+    {
+        await Run(async channel=>
+        {
+            foreach(var layout in new[]{"compact","other"})
+            {
+                var request=await Read(channel);
+                var wire=BridgeJson.FromElement<BridgeControllerInputRequest>(request.Payload);
+                Assert.IsNull(wire.Input.PinnedSelectionId);
+                Assert.IsFalse(request.Payload.GetProperty("input").TryGetProperty("pinnedSelectionId",out _));
+                Assert.AreEqual(layout,wire.Input.PinnedLayoutId);
+                await Handled(channel,request);
+            }
+        },async(session,frame)=>
+        {
+            var first=await session.SelectPinnedLayoutAsync(session.ResolvePinnedProjection(frame,"compact"));
+            var next=await session.SelectPinnedLayoutAsync(session.ResolvePinnedProjection(frame,"other"));
+            Assert.IsFalse(first.IsCurrent);Assert.IsTrue(next.IsCurrent);
+        },Snapshot(1) with{ProtocolVersion=ProtocolConstants.ModalDismissalVersion});
+    }
+
+    [TestMethod]
+    public async Task SixIndependentLayoutsOfOneWidgetRetainAllTheirSelections()
+    {
+        var initial=Snapshot(1) with{PinnedLayouts=Enumerable.Range(1,6)
+            .Select(index=>Layout("screen."+index) with{IndependentSelection=true}).ToArray()};
+        await Run(async channel=>
+        {
+            foreach(var layout in initial.PinnedLayouts)await Selection(channel,layout.Id,true);
+        },async(session,frame)=>
+        {
+            var live=new List<WidgetPinnedSelection>();
+            foreach(var layout in initial.PinnedLayouts)
+                live.Add(await session.SelectPinnedLayoutAsync(session.ResolvePinnedProjection(frame,layout.Id)));
+            Assert.AreEqual(6,live.Count(pin=>pin.IsCurrent));
+            Assert.AreEqual(6,live.Select(pin=>pin.SelectionId).Distinct().Count());
+        },initial);
+    }
+
     private static readonly TimeSpan Limit = TimeSpan.FromSeconds(5);
     private static BridgeWidgetDescriptor Descriptor => new() { Id = "pinned", Name = "Pinned", InstanceId = "pinned.instance",
         RuntimeGeneration = new('a', 32), PresentationGeneration = new('b', 32), PackageContentDigest = new('c', 64),

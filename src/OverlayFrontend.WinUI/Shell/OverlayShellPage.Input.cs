@@ -48,6 +48,15 @@ internal sealed partial class OverlayShellPage
         if (nativeBrowserPickerActive) { heldAction.Reset(); rightStick.Reset(); return; }
         if (ReceivePinnedPlacement(frame)) { heldAction.Reset(); return; }
         if (retired || !visible || frame.Connected == 0 || frame.Primed != 0) { heldAction.Reset(); rightStick.Reset(); return; }
+        if(!IsMediaFullscreen&&PinnedInteractionRequested&&!PinnedInputActive)
+        {
+            // Native browser focus can settle on the following dispatcher turn.
+            // This is still the pin's interaction request, never main input.
+            if((frame.ReleasedButtons&0x1000)!=0)CancelUnvalidatedPinPress();
+            shellGestures.CaptureFrame(frame);
+            heldAction.Reset();rightStick.Reset();trayHold.Reset();radialInput.Reset();
+            return;
+        }
         if (startupPresentationPending)
         {
             foreach (var (mask, button) in Buttons)
@@ -76,7 +85,7 @@ internal sealed partial class OverlayShellPage
         _ = RunTrayHoldAsync(trayHold.Tick(TrayGestureIdentity, !reordering, Environment.TickCount64));
         Presentation.WidgetControllerPrompts.Set(frame.LastInputFamily);
         if (pinned is not null && (frame.State.Buttons & 0x300) == 0x300 && (frame.PressedButtons & 0x4000) != 0)
-        { shellGestures.Claim(ControllerButton.X); _ = UnpinAsync(save: true); return; }
+        { shellGestures.Claim(ControllerButton.X); _ = PinnedInputActive?UnpinAsync(save:true,pinned):ChoosePinAsync("Unpin widget",pin=>UnpinAsync(save:true,pin),selectTarget:false); return; }
         var radialNavigation = ReceiveRadialNavigation(frame);
         var pointerPresenter = PinnedInputActive ? pinned!.Presenter : interactive ? surface : null;
         var activeBrowser = radialNavigation ? null : expandedBrowser?.Surface?.ActiveSurface ??
@@ -209,13 +218,25 @@ internal sealed partial class OverlayShellPage
         {
             if (await RoutePinnedPlacementButtonAsync(button, phase)) return;
             if (RouteFullscreenButton(button, phase)) return;
+            if(PinnedInteractionRequested&&!PinnedInputActive)
+            {
+                if(button==ControllerButton.A&&phase==ControllerEventPhase.Released)CancelUnvalidatedPinPress();
+                if(phase==ControllerEventPhase.Pressed)shellGestures.Claim(button);
+                return;
+            }
             if (pinned is { } pin && !IsMediaFullscreen)
             {
-                if (button == ControllerButton.View && phase == ControllerEventPhase.Pressed)
+                if (PinnedInputActive && !CanInteractWithPin(pin))
+                {
+                    shellGestures.Claim(button);
+                    ExitPinnedInteraction(restoreMain:true);
+                    return;
+                }
+                if (button == ControllerButton.View && phase == ControllerEventPhase.Pressed && (PinnedInputActive || HasInteractivePins))
                 {
                     shellGestures.Claim(button);
                     if (PinnedInputActive) ExitPinnedInteraction(restoreMain: true);
-                    else await EnterPinnedAsync();
+                    else await ChoosePinAsync("Interact with pinned widget",_=>EnterPinnedAsync(),interactionOnly:true);
                     return;
                 }
                 if (PinnedInputActive)
@@ -257,6 +278,13 @@ internal sealed partial class OverlayShellPage
         }
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { ReportFailure(error); }
+    }
+
+    private void CancelUnvalidatedPinPress()
+    {
+        if(pinned is not {} current)return;
+        var browser=current.Popup?.Child.ActiveSurface??current.Presenter?.ControllerBrowser??current.Presenter?.NativeKeyboardBrowser;
+        browser?.CancelPendingControllerPress();
     }
 
 }

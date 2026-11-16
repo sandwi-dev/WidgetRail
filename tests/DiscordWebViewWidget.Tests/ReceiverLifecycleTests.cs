@@ -14,7 +14,7 @@ internal static class ReceiverLifecycleTests
         try
         {
             await Until(()=>Nodes(Snapshot(widget).Root).Any(n=>n.Id=="discord.stream.30"));
-            await Act(widget,"watch.30");await pin.SelectAsync("discord.stream");
+            await Act(widget,"watch.30");await pin.ReplaceSnapshotAsync();await pin.SelectAsync("discord.stream");
             await Until(()=>fake.Receivers.Count==1&&PinnedSession(widget)==fake.Receivers.First().Reference);
             var first=fake.Receivers.First();var watches=fake.Commands.Count(c=>c.Method=="watch");
             first.FailureSource.TrySetResult(new(first.Lease,"rtc_failed"));

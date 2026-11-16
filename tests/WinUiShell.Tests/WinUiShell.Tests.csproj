@@ -18,6 +18,7 @@
     <EmbeddedResource Include="..\..\src\OverlayFrontend.WinUI\Assets\Words\english.txt" LogicalName="WidgetRail.EnglishWords" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\WordCompletion.cs" Link="WordCompletion.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\FocusPreviewDelayState.cs" Link="FocusPreviewDelayState.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\FocusPreviewPointerTransit.cs" Link="FocusPreviewPointerTransit.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ContentSizedPresentationState.cs" Link="ContentSizedPresentationState.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ScrollEdgeCueState.cs" Link="ScrollEdgeCueState.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ScrollOffsetAccumulator.cs" Link="ScrollOffsetAccumulator.cs" />
@@ -69,6 +70,7 @@
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\TrayHoldGesture.cs" Link="TrayHoldGesture.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\PinnedPlacement.cs" Link="PinnedPlacement.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\PinnedPlacementAdjustment.cs" Link="PinnedPlacementAdjustment.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\PinnedAdjustmentToolbarPlacement.cs" Link="PinnedAdjustmentToolbarPlacement.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\PinnedPreferences.cs" Link="PinnedPreferences.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\FrontendArguments.cs" Link="FrontendArguments.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\OverlayShellOptions.cs" Link="OverlayShellOptions.cs" />

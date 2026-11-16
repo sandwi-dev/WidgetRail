@@ -97,15 +97,16 @@ internal sealed partial class OverlayShellPage
         {
             // Force the reported bad order, then run the same reconciliation
             // used after main-window activation, resizing and backdrop refresh.
-            OverlayWindowFrame.PlaceBelow(banner.Handle, main);
             backdrop.Apply(main, new(0, 0, 64, 64), Microsoft.UI.Colors.Black, .6, true);
+            OverlayWindowFrame.PlaceBelow(banner.Handle, backdrop.Handle);
             check(WindowBelow(banner.Handle, backdrop.Handle), "Layer fixture reproduces banner behind backdrop " + cycle);
-            peer.ReconcileOrder();
-            ReconcilePeerWindowOrder();
-            check(WindowBelow(backdrop.Handle, main) && WindowBelow(main, banner.Handle) && WindowBelow(peer.Handle, main),
+            peer.ReconcileOrder(backdrop.Handle);
+            ReconcilePeerWindowOrder(backdrop.Handle);
+            check(WindowBelow(backdrop.Handle, main) && WindowBelow(main, banner.Handle) && WindowBelow(peer.Handle, main) &&
+                WindowBelow(backdrop.Handle,peer.Handle),
                 "Banner stays above main and backdrop while passive pin remains below main " + cycle);
             peer.SetPlacementActive(true);
-            ReconcilePeerWindowOrder();
+            ReconcilePeerWindowOrder(backdrop.Handle);
             check(WindowBelow(main, peer.Handle) && WindowBelow(main, banner.Handle) && WindowBelow(backdrop.Handle, main),
                 "Pin adjustment and banner ordering preserve the main-over-backdrop invariant " + cycle);
             peer.SetPlacementActive(false);
@@ -113,7 +114,7 @@ internal sealed partial class OverlayShellPage
             // the banner without raising it over that peer or lowering main.
             OverlayWindowFrame.PlaceAbove(peer.Handle, main);
             OverlayWindowFrame.PlaceBelow(banner.Handle, backdrop.Handle);
-            ReconcilePeerWindowOrder();
+            ReconcilePeerWindowOrder(backdrop.Handle);
             check(WindowBelow(banner.Handle, peer.Handle) && WindowBelow(main, banner.Handle) && WindowBelow(backdrop.Handle, main),
                 "Banner repair preserves already-raised sibling ordering " + cycle);
             banner.Hide(); banner.Show();

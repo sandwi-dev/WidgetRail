@@ -155,6 +155,8 @@ over Wi-Fi or Ethernet; the Bluetooth indicator reflects radio power.
 
 Use Menu on a tray icon to manage pinning. Pin controls also let you adjust or
 remove an existing pin without finding the icon that originally created it.
+With several pins, the named chooser selects the target and outlines its window.
+**A** confirms that target. **B** cancels the chooser. Up to six pins can coexist.
 A widget decides which views it supports for pinning; the full widget is not
 automatically a pin option.
 

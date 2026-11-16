@@ -42,6 +42,9 @@ internal sealed partial class ShellControllerGuide : ContentControl, IDisposable
     internal FrameworkElement BackgroundSurface => stage;
     internal IReadOnlyList<FrameworkElement> Typography => typography;
     internal IReadOnlyList<ControllerGuideHint> DisplayedHints => stage.Selected.Where(i => i < current.Count).Select(i => current[i]).ToArray();
+#if ENABLE_WIDGET_VALIDATION
+    internal IReadOnlyList<ControllerGuideHint> PublishedHintsForValidation => current.ToArray();
+#endif
 
     internal ShellControllerGuide()
     {

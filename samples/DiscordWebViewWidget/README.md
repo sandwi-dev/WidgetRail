@@ -43,7 +43,8 @@ the current account, call, friendship and channel permissions again after microp
 consent. Watch is offered only for a current, discoverable stream in the same call.
 No messages, invitations, activity secrets or arbitrary activity URLs are used.
 
-Select another call participant to open local voice mute/volume controls. These
+Hover or focus another call participant to preview local voice mute/volume controls.
+Click a control directly, or press X (F6 on keyboard) to enter the preview. These
 change only what you hear, independently of the participant's stream audio and
 their own microphone state. **Menu → Voice settings** provides microphone and
 output-device selection plus device refresh in a native dialog. Input gain is
@@ -63,11 +64,11 @@ Changing the selected track updates the existing view. The source session
 retains Discord audio and the user’s original stream subscription.
 
 The separate voice-controls pin keeps its channel header at the top, shows up to
-three passive participant avatars with speaking rings and an overflow count, and
+four passive participant rows with speaking rings and an overflow count, and
 uses equal-width Mute/Deafen/Leave controls. Entering that pin focuses the first
 available call action. Speaking updates do not reorder participants or add focus
-stops. Saved pin dimensions remain host-owned; the current minimum height is180
-DIPs. The voice pin does not claim the host's X/Y pin-management shortcuts.
+stops. Saved pin dimensions remain host-owned. Voice controls use a 340-DIP
+minimum height; the transparent participant-only layout uses 224 DIPs. The voice pin does not claim the host's X/Y pin-management shortcuts.
 
 While watching, the shared-screen card exposes **Mute stream** and a
 0–100% **Stream volume** slider. These use Discord's stream-specific audio context

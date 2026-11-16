@@ -116,6 +116,10 @@ public sealed class SessionHostEventTests
             var pin = Effect(descriptor, 6, "openPinnedLayout");
             pin["pinnedLayoutId"] = "discord.stream";
             await EventAsync(channel, BridgeMessageTypes.HostEffect, pin);
+            var manage=Effect(descriptor,7,"managePinnedSurface");
+            manage["pinnedLayoutId"]="discord.stream";manage["pinnedSelectionId"]=new string('a',32);
+            await EventAsync(channel,BridgeMessageTypes.HostEffect,manage);
+            await EventAsync(channel,BridgeMessageTypes.HostEffect,Effect(descriptor,8,"managePinnedSurface"));
             await EventAsync(channel, BridgeMessageTypes.HostEffect, Effect(descriptor, 4));
             await CatalogReplyAsync(channel, barrier.RequestId, descriptor, 1);
             await CatalogAsync(channel, Descriptor(new string('d', 32)), 2);
@@ -128,7 +132,12 @@ public sealed class SessionHostEventTests
             await session.ListWidgetsAsync();
             await session.ListWidgetsAsync();
             var delivered = effects.ToArray();
-            CollectionAssert.AreEqual(new long[] { 1, 4, 5, 6 }, delivered.Select(item => item.Sequence).ToArray());
+            CollectionAssert.AreEqual(new long[] { 1, 4, 5, 6, 7, 8 }, delivered.Select(item => item.Sequence).ToArray());
+            Assert.AreEqual(WidgetHostEffectKind.ManagePinnedSurface,delivered[4].Kind);
+            Assert.AreEqual("discord.stream",delivered[4].PinnedLayoutId);
+            Assert.AreEqual(new string('a',32),delivered[4].PinnedSelectionId);
+            Assert.AreEqual(WidgetHostEffectKind.ManagePinnedSurface,delivered[5].Kind);
+            Assert.IsNull(delivered[5].PinnedLayoutId);
             Assert.AreEqual(WidgetHostEffectKind.CloseOverlayAfterAppLaunch, delivered[0].Kind);
             Assert.AreEqual(250L, delivered[0].InitiatedAtMilliseconds);
             Assert.IsNull(delivered[0].WindowTarget);

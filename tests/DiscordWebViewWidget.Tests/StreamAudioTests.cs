@@ -125,9 +125,13 @@ internal static class StreamAudioTests
     private static async Task PinContinuity(Action<bool,string> check)
     {
         await using var test=await Harness.Create();
+        test.Session.Core.ReceiverGate=new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await test.Watch(wait:false);
         var initial=test.Snapshot().PinnedLayouts.Single(layout=>layout.Id=="discord.stream");
         var initialRoot=initial.Root??throw new InvalidOperationException("Missing initial stream pin root");
-        await test.Watch();
+        test.Session.Core.ReceiverGate.SetResult();
+        await Until(()=>test.Session.Core.Receivers.Count==1&&Nodes(test.Snapshot().PinnedLayouts.Single(layout=>layout.Id=="discord.stream").Root!)
+            .Any(node=>node.WebBrowser?.HostedSession is not null));
         var first=test.Snapshot().PinnedLayouts.Single(layout=>layout.Id=="discord.stream");
         var firstRoot=first.Root??throw new InvalidOperationException("Missing active stream pin root");
         var firstVideo=Nodes(firstRoot).Single(node=>node.WebBrowser?.HostedSession is not null);
@@ -188,7 +192,9 @@ internal static class StreamAudioTests
                 case "stream user":test.Session.Core.State=test.Session.Core.State with{Streams=[test.Session.Core.State.Streams[0] with{UserId="31"}]};await test.Refresh();break;
                 case "stream selection":
                     test.Session.Core.State=test.Session.Core.State with{Streams=[..test.Session.Core.State.Streams,new("guild:1:10:31","31","Second",new(true,false,55))]};
-                    await test.Refresh();await test.Watch("31");break;
+                    await test.Refresh();
+                    await test.Act("discord.streams.stop");
+                    await test.Watch("31");break;
                 case "receiver lease":await test.Watch();break;
             }
             var before=test.Session.AudioCommands.Count;

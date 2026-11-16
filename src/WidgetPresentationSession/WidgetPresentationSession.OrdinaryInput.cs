@@ -15,7 +15,7 @@ public sealed partial class WidgetPresentationSession
         ValidateControllerPayload(input);
         if (input.Context != ControllerInputContext.DashboardQuickAction || input.SnapshotSequence != displayed.Authority.SnapshotSequence ||
             input.FocusedElementId is not null || input.RequestedValue is not null || input.PinnedLayoutId is not null ||
-            input.IsPinnedLayoutSelected is not null || input.Phase is not (ControllerEventPhase.Pressed or ControllerEventPhase.Repeated))
+            input.IsPinnedLayoutSelected is not null || input.PinnedSelectionId is not null || input.Phase is not (ControllerEventPhase.Pressed or ControllerEventPhase.Repeated))
             throw OrdinaryInputStale("Dashboard input origin is invalid.");
         using (_gate.Enter())
         {
@@ -88,7 +88,7 @@ public sealed partial class WidgetPresentationSession
     {
         ValidateControllerPayload(input);
         if (input.Context != ControllerInputContext.OpenWidget || input.SnapshotSequence != displayed.Authority.SnapshotSequence ||
-            input.PinnedLayoutId is not null || input.IsPinnedLayoutSelected is not null)
+            input.PinnedLayoutId is not null || input.IsPinnedLayoutSelected is not null || input.PinnedSelectionId is not null)
             throw OrdinaryInputStale("The displayed controller input has invalid origin authority.");
     }
 

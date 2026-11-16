@@ -66,6 +66,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
         _playniteFeedbackExpiry = CreateTimedMutation(
             WidgetOperationLifetime.Active, clock);
         _model = CreateModel(PlayniteLibraryRenderState.Initial(InstalledGames));
+        (progressPin, progressData) = CreateProgressServices();
+        achievementHub = CreateAchievementHubResource();
         _navigation = CreateNavigator("playnite-library.navigation", PlayniteLibraryRoute.Library,
             maximumDepth: 2, maximumRoutes: 8);
         _indexedHome = CreateIndexedHome();
@@ -101,7 +103,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             {
                 Load = LoadPlayniteConnectionAsync,
                 MapError = _ => new WidgetResourceError(
-                    "playnite_unavailable", "Playnite Bridge could not be checked."),
+                    "playnite_unavailable", "WidgetRail for Playnite could not be checked."),
                 CacheDuration = TimeSpan.Zero,
                 Lifetime = WidgetOperationLifetime.Active,
                 RetainLastGoodValue = true,
@@ -170,7 +172,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     public override WidgetView Render()
     {
-        lock (_gate) return RenderCore();
+        lock (_gate) return WithProgressPin(RenderCore());
     }
 
     private WidgetView RenderCore()
@@ -205,7 +207,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             };
         }
         CursorDiagnostic("render", "snapshot", navigation.Route);
-        var view = PlayniteLibraryPresentation.Render(state, indexedBrowse:
+        var view = navigation.Route == PlayniteLibraryRoute.Achievements ? RenderAchievementHub(local) : PlayniteLibraryPresentation.Render(state, indexedBrowse:
             navigation.Route == PlayniteLibraryRoute.Browse ? _indexedBrowse : null, indexedHome:
             navigation.Route == PlayniteLibraryRoute.Library ? _indexedHome : null, favoritesSource:
             navigation.Route == PlayniteLibraryRoute.Library ? _indexedFavorites : null);
@@ -251,7 +253,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (local.FilterDraft is { } draft && navigation.Route == PlayniteLibraryRoute.Browse)
             return page.WithModal(PlayniteLibraryPresentation.Filters(state, draft));
         if (local.DetailsItem is { } details && navigation.Route is
-            PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
+            PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse or PlayniteLibraryRoute.Achievements)
         {
             var current = CurrentCollectionSnapshot.Items.Concat(local.FixedRows.All)
                 .FirstOrDefault(item => item.Key == details.Key);
@@ -326,10 +328,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
+        StartPlayniteUpdates();
         RefreshSetupAvailability();
         ResumeDetails();
         var activation = _navigation.Value;
         var route = activation.Route;
+        if (route == PlayniteLibraryRoute.Achievements) { _ = achievementHub.Refresh(); return ValueTask.CompletedTask; }
         if (route != PlayniteLibraryRoute.Library && (route == PlayniteLibraryRoute.Hidden
                 ? _hiddenRows.Snapshot.Status != WidgetResourceStatus.NotLoaded
                 : CollectionSnapshot(route).Status != WidgetPagedResourceStatus.NotLoaded))
@@ -427,20 +431,23 @@ public sealed partial class PlayniteLibraryWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         if (await TryHandleSetupActionAsync(action).ConfigureAwait(false)) return;
         if (_model.Value.Setup.Busy && action.ActionId is PlayniteSaveActionId or PlayniteDeleteActionId or PlayniteRefreshActionId) return;
-        if (action.ActionId is not (PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen))
+        if (action.ActionId is not (PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen or PlayniteLibraryActions.AchievementsOpen))
             _model.Update(state => state.ContentEntryScopeId is null
                 ? state : state with { ContentEntryScopeId = null });
         if (action.ActionId != PlayniteLibraryActions.SearchFocus)
             _model.Update(state => state.SearchFocusPending ? state with { SearchFocusPending = false } : state);
-        if (action.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen or
+        if (action.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen or PlayniteLibraryActions.AchievementsOpen or
             PlayniteLibraryActions.HiddenOpen or PlayniteLibraryActions.CategoriesOpen or PlayniteOpenActionId)
         {
             CancelDetailsOperations();
+            if (action.ActionId != PlayniteLibraryActions.AchievementsOpen) achievementHub.Cancel();
+            Operations.Cancel("playnite-library.achievement-hub.open");
             _model.Update(state => state.DetailsItem is null ? state : state with
             { DetailsItem = null, DetailsCapturedTarget = null, DetailsExtras = new(), DetailsLoading = false, DetailsError = null });
         }
-        if (action.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen or PlayniteLibraryActions.CategoriesOpen or PlayniteLibraryActions.HiddenOpen)
+        if (action.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen or PlayniteLibraryActions.AchievementsOpen or PlayniteLibraryActions.CategoriesOpen or PlayniteLibraryActions.HiddenOpen)
             _model.Update(state => state.FilterDraft is null ? state : state with { FilterDraft = null });
+        if (await TryHandleAchievementHubAsync(action, cancellationToken).ConfigureAwait(false)) return;
         if (TryHandleLibraryControls(action)) return;
         if (await TryHandleDetailsActionAsync(action, cancellationToken).ConfigureAwait(false)) return;
         var feedbackBeforeAction = _model.Value.ActionFeedback;
@@ -718,7 +725,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 return;
             case PlayniteLibraryActions.HomeOpen:
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
-                    _navigation.Value.Route is not (PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)) return;
+                    _navigation.Value.Route is not (PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse or PlayniteLibraryRoute.Achievements)) return;
                 var homeNavigation = _navigation.Navigate(PlayniteLibraryRoute.Library, action.SourceElementId);
                 RequestContentEntry();
                 if (homeNavigation == WidgetNavigationResult.Changed)
@@ -726,8 +733,8 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 return;
             case PlayniteLibraryActions.BrowseOpen:
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
-                    _navigation.Value.Route is not (PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)) return;
-                if (_navigation.Value.Route == PlayniteLibraryRoute.Library &&
+                    _navigation.Value.Route is not (PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse or PlayniteLibraryRoute.Achievements)) return;
+                if (_navigation.Value.Route != PlayniteLibraryRoute.Browse &&
                     _navigation.Navigate(PlayniteLibraryRoute.Browse, action.SourceElementId) ==
                     WidgetNavigationResult.Changed)
                 {
@@ -1239,6 +1246,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             }
             lock (_gate)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 _organization = normalized;
                 _stateRevision = revision;
                 if (HomeState.Publication is null && normalized.Items.Count > 0)
@@ -1302,8 +1310,13 @@ public sealed partial class PlayniteLibraryWidget : Widget
             .ToArray();
     }
 
-    public override ValueTask<WidgetArtworkSource?> OnResolveArtworkSourceAsync(WidgetArtworkHandle handle, CancellationToken token = default) =>
-        _application.OwnsArtworkContent ? _application.ResolveArtworkSourceAsync(handle, token) : ValueTask.FromResult<WidgetArtworkSource?>(null);
+    public override ValueTask<WidgetArtworkSource?> OnResolveArtworkSourceAsync(WidgetArtworkHandle handle, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        if (handle.Value.StartsWith("playnite.progress.", StringComparison.Ordinal))
+            return ValueTask.FromResult(ResolveProgressArtwork(handle));
+        return _application.OwnsArtworkContent ? _application.ResolveArtworkSourceAsync(handle, token) : ValueTask.FromResult<WidgetArtworkSource?>(null);
+    }
 
     public override ValueTask<WidgetEncodedArtwork?> OnResolveArtworkAsync(
         WidgetArtworkHandle handle,
@@ -2273,9 +2286,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
     private static WidgetResourceError MapError(Exception exception) => exception switch
     {
         WidgetCapabilityException capability when capability.ErrorCode == "credential_missing" =>
-            new("credential_missing", "Install and enable Playnite Bridge in Playnite, then copy its token. Select Set up connection to enter it here."),
+            new("credential_missing", "Install and enable WidgetRail for Playnite in Playnite, then copy its token. Select Set up connection to enter it here."),
         WidgetCapabilityException capability when capability.ErrorCode == "authentication_required" =>
-            new("authentication_required", "The saved Playnite Bridge token was rejected. Copy the current token from Playnite Bridge settings and update it here."),
+            new("authentication_required", "The saved WidgetRail for Playnite token was rejected. Copy the current token from WidgetRail for Playnite settings and update it here."),
         WidgetCapabilityException capability when capability.ErrorCode is
             "permission_denied" or "capability_not_declared" or "capability_revoked" =>
             new("permission_denied", "Allow Playnite Library access in Settings."),

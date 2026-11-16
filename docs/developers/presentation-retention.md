@@ -20,9 +20,21 @@ Focus/hover shows the complete fragment while focus stays on the source. X only
 transfers focus into its first available control; re-entry remembers the last
 control. Keyboard F6 does the same. Clicking a preview control enters directly.
 A on the source retains its primary action. B/Escape closes a nested selector
-first, then returns to the exact source while leaving the same panel visible.
+or finishes an active slider adjustment first, then returns to the exact source while leaving the same panel visible.
 Entry and return dispatch no widget action, and preserve controls, geometry and
 reading position. Clicking another source changes the preview normally.
+
+Pointer movement from a row into its preview uses a host-owned travel corridor
+and a short exit grace period, so crossing the gap or a neighboring row does not
+replace the popup on the way to its controls. Widgets need no hover timers or
+focus-transfer counters. Moving away, changing scope/query, or removing the source
+still dismisses it. Content-only row refreshes retain the visible control instances;
+input remains tied to the newly admitted row lease.
+
+Slider actions receive `WidgetActionEvent.RequestedValue`. Indexed previews validate
+that value against the exact declared slider range and step, and reject value payloads
+on buttons/selectors. Declare sliders normally, using `RequireControllerActivation()`
+when A should start adjustment. B/Escape finishes adjustment before leaving the preview.
 
 The host renders native controls once, gates their input until entry, and routes
 actions through the original displayed frame. Indexed preview actions additionally
@@ -31,7 +43,7 @@ worker. Source removal, scope/query retirement, hidden anchors and suspension
 revoke the panel. No stale action is replayed against a replacement item.
 
 Interactive fragments support bounded layout, rich text, images, buttons,
-action surfaces, selectors and scrolling. Nested scopes, embedded services,
+action surfaces, selectors, sliders (protocol 110) and scrolling. Nested scopes, embedded services,
 collections and nested previews are not supported. Existing fragment node/depth
 limits apply to inline fragments; deferred content has its own bound below. Keep IDs stable across busy updates; mark
 pending controls busy rather than removing or disabling them. For catalogs, resolve content on demand rather than attaching every preview to

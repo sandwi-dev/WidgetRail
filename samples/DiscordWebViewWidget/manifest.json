@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.discord-controls",
   "publisher": "widgetrail.samples",
   "name": "Discord",
-  "version": "0.1.0",
+  "version": "0.1.0.20",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -15,8 +15,8 @@
   },
   "presentation": {
     "packageIcon": {
-      "assetId": "discord.voice",
-      "colorMode": "themeTint"
+      "assetId": "discord.mark",
+      "colorMode": "originalColor"
     },
     "icon": "connection"
   },
@@ -32,6 +32,15 @@
     "x64"
   ],
   "iconAssets": {
+    "discord.mark": {
+      "path": "assets/icons/discord.svg"
+    },
+    "discord.manage-pin": {
+      "path": "assets/icons/manage-pin.svg"
+    },
+    "discord.info": {
+      "path": "assets/icons/info.svg"
+    },
     "discord.refresh": {
       "path": "assets/icons/refresh.svg"
     },
@@ -58,6 +67,9 @@
     },
     "discord.screen": {
       "path": "assets/icons/screen.svg"
+    },
+    "discord.watching": {
+      "path": "assets/icons/watching.svg"
     },
     "discord.activity": {
       "path": "assets/icons/activity.svg"

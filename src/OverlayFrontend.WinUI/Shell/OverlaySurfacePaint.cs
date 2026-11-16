@@ -4,7 +4,6 @@ using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
 using Windows.UI;
-using Windows.UI.ViewManagement;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
@@ -14,7 +13,7 @@ internal static class OverlaySurfacePaint
         styles?.GetValueOrDefault("panel")?.Base.GetValueOrDefault("corner-radius")?.Number ?? 18, 0, 256);
     internal static Color Panel(OverlaySurfaceAppearance policy, IReadOnlyDictionary<string, BridgeNodeRenderStyles>? styles)
     {
-        if (policy.HighContrast) return new UISettings().GetColorValue(UIColorType.Background);
+        if (policy.HighContrast) return ShellChromePalette.WindowColors().Background;
         if (policy.Effective == WidgetSurfaceAppearance.Transparent) return Microsoft.UI.Colors.Transparent;
         var color = Background(styles, "panel", Color.FromArgb(255, 0x1b, 0x1f, 0x29));
         var opacity = styles?.GetValueOrDefault("panel")?.Base.GetValueOrDefault("opacity")?.Number ?? 1;
@@ -30,8 +29,15 @@ internal static class OverlaySurfacePaint
     internal static void Apply(Border surface, OverlaySurfaceAppearance policy, IReadOnlyDictionary<string, BridgeNodeRenderStyles>? styles)
     {
         var color = Panel(policy, styles);
+        if (policy.Effective == WidgetSurfaceAppearance.DesktopAcrylic) color.A = 255;
+        surface.CornerRadius = new Microsoft.UI.Xaml.CornerRadius(CornerRadius(styles));
+        if (surface.Parent is DesktopAcrylicSurface material)
+        {
+            var enabled = material.ApplyMaterial(policy.Effective == WidgetSurfaceAppearance.DesktopAcrylic, color);
+            if (enabled) color = Microsoft.UI.Colors.Transparent;
+            else if (policy.Effective == WidgetSurfaceAppearance.DesktopAcrylic) color.A = 255;
+        }
         if (surface.Background is SolidColorBrush brush) brush.Color = color;
         else surface.Background = new SolidColorBrush(color);
-        surface.CornerRadius = new Microsoft.UI.Xaml.CornerRadius(CornerRadius(styles));
     }
 }

@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][string]$OutputDirectory,
     [switch]$IncludeNotifications,
     [switch]$IncludeSettingsMenus,
-    [switch]$SettingsUpdatesOnly
+    [switch]$SettingsUpdatesOnly,
+    [string]$Frontend
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
@@ -22,7 +23,7 @@ $configuration.InitialWidgetId = 'webapp-a'
 $configPath = Join-Path $output 'shell.json'
 $configuration | ConvertTo-Json | Set-Content -LiteralPath $configPath
 $result = Join-Path $output 'result.json'
-$exe = Join-Path $root 'src/OverlayFrontend.WinUI/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/OverlayFrontend.WinUI.exe'
+$exe = if($Frontend){(Resolve-Path -LiteralPath $Frontend).Path}else{Join-Path $root 'src/OverlayFrontend.WinUI/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/OverlayFrontend.WinUI.exe'}
 $arguments = @(
     '--shell-no-controller', '--validation-platform-activation', ('--shell-config="{0}"' -f $configPath),
     ('--validate-webapp-shell="{0}"' -f $result), '--webapp-new-window-flow', '--webapp-popup-placement',

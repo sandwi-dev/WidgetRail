@@ -47,6 +47,31 @@ internal static class PinningEffectTests
         Require(effects.Count==2,"SDK runtime pin did not reach the deferred effect");
         try{await adapter.InvokeAsync(WidgetPinningCapabilities.Open,new WidgetPinRequest("stream"));throw new Exception("Out-of-action runtime call accepted");}
         catch(WidgetCapabilityException error) when(error.ErrorCode=="action_context_required") { }
+        var selection=Guid.NewGuid().ToString("N");
+        var close=new WidgetPinCloseRequest("stream",selection);
+        var closing=new WidgetActionInvocationState(5);
+        using(WidgetActionInvocationContext.Enter(closing))
+            Require((await adapter.InvokeAsync(WidgetPinningCapabilities.Close,close)).Accepted,"Close request was rejected.");
+        Require(effects.Count==2,"Close escaped the terminal action barrier.");
+        Complete(5,WidgetActionExecutionOutcome.Succeeded);
+        Require(effects.Last() is {Kind:BrokerHostEffectKind.ClosePinnedLayout,PinnedLayoutId:"stream"} effect &&
+            effect.PinnedSelectionId==selection,"Close lost its exact selection identity.");
+        try{await adapter.InvokeAsync(WidgetPinningCapabilities.Close,close);throw new Exception("Out-of-action close accepted");}
+        catch(WidgetCapabilityException error) when(error.ErrorCode=="action_context_required") { }
+        var manage=new WidgetPinManageRequest("stream",selection);
+        using(WidgetActionInvocationContext.Enter(new WidgetActionInvocationState(6)))
+            Require((await adapter.InvokeAsync(WidgetPinningCapabilities.Manage,manage)).Accepted,"Manage rejected exact selection.");
+        var beforeManage=effects.Count;
+        Complete(6,WidgetActionExecutionOutcome.Succeeded);
+        Require(effects.Count==beforeManage+1&&effects.Last() is {Kind:BrokerHostEffectKind.ManagePinnedSurface,PinnedLayoutId:"stream"} managed&&
+            managed.PinnedSelectionId==selection,"Manage lost exact identity or terminal barrier.");
+        using(WidgetActionInvocationContext.Enter(new WidgetActionInvocationState(7)))
+            Require((await adapter.InvokeAsync(WidgetPinningCapabilities.Manage,new())).Accepted,"Caller-scoped manage was rejected.");
+        Complete(7,WidgetActionExecutionOutcome.Succeeded);
+        Require(effects.Last() is {Kind:BrokerHostEffectKind.ManagePinnedSurface,PinnedLayoutId:null,PinnedSelectionId:null},
+            "Caller-scoped manage fabricated a host layout identity.");
+        try{await adapter.InvokeAsync(WidgetPinningCapabilities.Manage,manage);throw new Exception("Out-of-action manage accepted");}
+        catch(WidgetCapabilityException error) when(error.ErrorCode=="action_context_required") { }
         lifetime.Cancel();
         try{await server;}catch(OperationCanceledException) when(lifetime.IsCancellationRequested) { }
     }

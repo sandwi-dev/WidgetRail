@@ -91,6 +91,19 @@ internal sealed class ProtocolVersionRequirements
                 ProtocolConstants.SurfaceAppearanceVersion,
                 "$.pinnedLayouts",
                 $"Surface appearance requires protocol version {ProtocolConstants.SurfaceAppearanceVersion} or later.");
+        if (snapshot.Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic ||
+            snapshot.PinnedLayouts?.Any(layout => layout?.Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic) == true)
+            Add("desktop-acrylic", ProtocolConstants.DesktopAcrylicVersion, "$.surface",
+                "Desktop acrylic requires protocol version 108 or later.");
+        if (snapshot.PinnedLayouts?.Any(layout => layout?.Interaction == PinnedInteractionMode.Passive) == true)
+            Add("passive-pinned-layout", ProtocolConstants.PinnedInteractionVersion, "$.pinnedLayouts",
+                "Passive pin interaction policy requires protocol version 108 or later.");
+        if(snapshot.PinnedLayouts?.Any(layout=>layout?.IndependentSelection==true)==true)
+            Add("independent-pinned-selection",ProtocolConstants.PinnedSelectionIdentityVersion,"$.pinnedLayouts",
+                "Independent pin selection requires protocol version 107 or later.");
+        if(snapshot.PinnedLayouts?.Any(layout=>layout?.RestoreWhenAvailable==true)==true)
+            Add("restorable-pinned-selection",ProtocolConstants.PinnedRestoreVersion,"$.pinnedLayouts",
+                "Remembered pin selection requires protocol version 109 or later.");
         if (snapshot.PinnedLayouts?.Any(layout => layout?.Root is not null) == true)
             Add(
                 "pinned-presentation-projections",
@@ -151,6 +164,10 @@ internal sealed class ProtocolVersionRequirements
             if (node.FocusPreviewSource is not null || node.FocusPreviewKey is not null ||
                 node.Kind == ViewNodeKind.RichText && (path.Contains(".focusPresentation",StringComparison.Ordinal)||path.Contains(".defaultFocusPresentation",StringComparison.Ordinal)))
                 Add("deferred-focus-preview",ProtocolConstants.DeferredFocusPreviewVersion,path,"Deferred or rich read-only previews require protocol version 95 or later.");
+            if (node.Kind == ViewNodeKind.Slider && (path.Contains(".focusPresentation", StringComparison.Ordinal) ||
+                path.Contains(".defaultFocusPresentation", StringComparison.Ordinal)))
+                Add("interactive-preview-values", ProtocolConstants.InteractivePreviewValuesVersion, path,
+                    "Sliders in rich previews require protocol version 110 or later.");
             if (node.FocusPreview?.EnterButton is not null)
                 Add("interactive-preview", ProtocolConstants.InteractivePreviewVersion, path,
                     "Interactive rich previews require protocol version 94 or later.");

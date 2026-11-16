@@ -13,11 +13,11 @@ internal static class BridgeWebAppFixture
         var store = new PlatformSettingsStore(paths);
         await using var appearance = new PlatformAppearanceService(paths, new ThemeManager(store, new ThemeCatalog(paths)));
         await appearance.StartAsync();
-        var catalog = new BridgeCatalog(new[] { "webapp-a", "webapp-b", "webapp-c", "webapp-d", "webapp-e", "webapp-idle" }.Select(id => new ConfiguredWidget
+        var catalog = new BridgeCatalog(new[] { "webapp-a", "webapp-b", "webapp-c", "webapp-d", "webapp-e", "webapp-f", "webapp-g", "webapp-h", "webapp-i", "webapp-idle" }.Select(id => new ConfiguredWidget
         {
             Id = id, PackageId = "fixture." + id, PublisherId = "fixture.webapp", Name = id,
             InstanceId = id + ".instance", WorkerExecutable = Environment.ProcessPath!,
-            WorkerFingerprint = new string(id[^1], 64), CatalogFingerprint = new string(id[^1], 64),
+            WorkerFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(id))).ToLowerInvariant(), CatalogFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(id))).ToLowerInvariant(),
             PinningSupported = id != "webapp-idle", FullWidgetPinningSupported = id != "webapp-idle",
             ResidencyPolicy = new() { Mode = WidgetResidencyPolicies.UnloadAfterIdle, IdleSeconds = 5 },
             Intents = id == "webapp-a" ? new() { Requests = [WidgetIntentContracts.Web], Handles = [new(WidgetIntentContracts.Web)] } : null,

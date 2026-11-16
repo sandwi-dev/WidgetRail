@@ -5,6 +5,11 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.DiscordWebView;
 
+internal sealed class DiscordCommandException(string code) : InvalidOperationException("Discord could not confirm this command.")
+{
+    internal string Code { get; } = code;
+}
+
 internal interface IDiscordSession : IAsyncDisposable
 {
     event Action<WebSessionReference>? Invalidated { add { } remove { } }
@@ -98,7 +103,9 @@ internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) 
         var current=session??throw new InvalidOperationException("Discord is not connected.");
         var response=await current.RequestAsync<object,JsonElement>("command",new{owner,method,args},token);
         if(!response.TryGetProperty("ok",out var ok)||ok.ValueKind!=JsonValueKind.True)
-            throw new InvalidOperationException("Discord could not confirm this command.");
+            throw new DiscordCommandException(response.TryGetProperty("code",out var failure) &&
+                failure.ValueKind==JsonValueKind.String && failure.GetString() is {Length:>0 and <=80} code &&
+                code.All(c=>char.IsAsciiLetterLower(c)||c=='_') ? code : "provider_error");
         return response.GetProperty("value").Clone();
     }
 
@@ -128,7 +135,7 @@ internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) 
     public async ValueTask<IDiscordReceiver> OpenReceiverAsync(CancellationToken token)
     {
         var parent=session??throw new InvalidOperationException("Discord is not connected.");
-        var receiver=await sessions.OpenAsync(new("discord.receiver","Discord shared screen",WebSessionSource.BackendVideo(parent.Reference)),token);
+        var receiver=await sessions.OpenAsync(new("discord.receiver."+Guid.NewGuid().ToString("N"),"Discord shared screen",WebSessionSource.BackendVideo(parent.Reference)),token);
         return new DiscordReceiver(receiver);
     }
 

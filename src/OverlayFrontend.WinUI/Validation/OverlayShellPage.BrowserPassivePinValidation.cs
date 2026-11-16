@@ -41,11 +41,13 @@ internal sealed partial class OverlayShellPage
         NativePickerVisibilityForValidation(true);
         await WebAppUntil(() => visible && foreground && !switching);
         await Observe("passive-reopened");
-        await EnterPinnedAsync();
+        await ClickPinForValidationAsync(pinned!,check);
         await WebAppUntil(() => PinnedInputActive && page.IsBrowsing);
         await Observe("interactive");
+        if(Environment.GetCommandLineArgs().Contains("--pin-keyboard-return"))await VerifyBrowserPinKeyboardReturnAsync(page,check);
         ExitPinnedInteraction(restoreMain: true);
         await Observe("passive-after-input");
+        await VerifyAdjustmentOutsideClicksAsync(pinned!,check);
         await UnpinAsync(save: true);
         check(page.NavigationCount == navigations && Slots(surface).Any(slot => slot.Surface == parent) && parent.ActiveSurface == page,
             "Pin, hide/reopen, interaction and unpin preserve the same live page without navigation");

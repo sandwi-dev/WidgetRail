@@ -11,7 +11,7 @@ internal sealed partial class BrowserOwner
     internal async Task<bool> ExpandAsync(BrowserSurface source, BrowserSlot destination)
     {
         if (retired || expandedSlot is not null || expandedPopupSlot is not null || destination.Retired) return false;
-        if (popupPresentation is { IsCurrent: true } popup && ReferenceEquals(popup.Child, source))
+        if (popupPresentations.GetValueOrDefault(source) is { IsCurrent: true } popup)
             return await ExpandPopupAsync(popup, destination);
         var pair = entries.FirstOrDefault(pair => pair.Value.Surface.Owns(source));
         if (pair.Value?.Slot is not { } origin || !slots.TryGetValue(origin, out var binding) ||

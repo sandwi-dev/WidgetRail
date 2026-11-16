@@ -18,17 +18,25 @@ public sealed class WidgetPinnedProjection
     public IReadOnlyDictionary<string, BridgeNodeRenderStyles> RenderStyles { get; }
     /// <summary>Legacy sizing-only layouts render their parent but have no pinned controller route.</summary>
     public bool SupportsOrdinaryInput { get; }
+    public PinnedInteractionMode Interaction => Frame.Snapshot.PinnedLayouts
+        .FirstOrDefault(layout => layout.Id == LayoutId)?.Interaction ?? PinnedInteractionMode.Interactive;
 }
 
 /// <summary>One host selection lifetime. Deselecting and selecting the same layout creates a new lifetime.</summary>
 public sealed class WidgetPinnedSelection
 {
     internal WidgetPinnedSelection(WidgetPresentationSession owner, WidgetPinnedProjection projection)
-    { Owner = owner; Authority = projection.Frame.Authority; LayoutId = projection.LayoutId; Epoch = projection.Epoch; }
+    {
+        Owner = owner; Authority = projection.Frame.Authority; LayoutId = projection.LayoutId; Epoch = projection.Epoch;
+        Independent = projection.Frame.Snapshot.PinnedLayouts.Any(layout=>layout.Id==LayoutId&&layout.IndependentSelection);
+    }
     internal WidgetPresentationSession Owner { get; }
     internal WidgetPresentationAuthority Authority { get; }
     internal object Epoch { get; }
     internal bool Active { get; set; }
+    public string SelectionId { get; } = Guid.NewGuid().ToString("N");
+    public bool Independent { get; }
+    internal (string Widget,string Layout) Slot => (WidgetId,Independent?LayoutId:string.Empty);
     public string WidgetId => Authority.WidgetId;
     public string LayoutId { get; }
     /// <summary>Whether the worker acknowledged package-authored selection demand; this is not permission.</summary>

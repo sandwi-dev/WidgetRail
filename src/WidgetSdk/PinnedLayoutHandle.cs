@@ -12,19 +12,22 @@ public sealed class PinnedLayoutHandle
     private readonly object _gate = new();
     private CancellationToken _selectionToken = InactiveToken;
     private bool _isSelected;
+    private WidgetPinCloseRequest? _selection;
 
     internal PinnedLayoutHandle(
         string id,
         string name,
         WidgetSurfaceHints surface,
         string? initialFocusId,
-        string? activeInputScopeId)
+        string? activeInputScopeId,
+        PinnedInteractionMode interaction)
     {
         Id = id;
         Name = name;
         Surface = surface;
         InitialFocusId = initialFocusId;
         ActiveInputScopeId = activeInputScopeId;
+        Interaction = interaction;
     }
 
     /// <summary>The stable package-authored layout identifier.</summary>
@@ -35,6 +38,8 @@ public sealed class PinnedLayoutHandle
 
     /// <summary>The immutable bounded surface hints registered for this layout.</summary>
     public WidgetSurfaceHints Surface { get; }
+    /// <summary>The registered content interaction policy. Host placement remains available for passive pins.</summary>
+    public PinnedInteractionMode Interaction { get; }
 
     /// <summary>The stable initial focus identity, when the layout has one.</summary>
     public string? InitialFocusId { get; }
@@ -64,7 +69,7 @@ public sealed class PinnedLayoutHandle
     /// </summary>
     public PinnedPresentationLayout Present(WidgetElement? root) =>
         WidgetView.PinnedLayout(
-            Id, Name, Surface, root, InitialFocusId, ActiveInputScopeId);
+            Id, Name, Surface, Interaction, root, InitialFocusId, ActiveInputScopeId);
 
     /// <summary>
     /// Presents this handle's current immutable root with a focus target chosen
@@ -75,13 +80,17 @@ public sealed class PinnedLayoutHandle
         WidgetElement? root,
         string? initialFocusId) =>
         WidgetView.PinnedLayout(
-            Id, Name, Surface, root, initialFocusId, ActiveInputScopeId);
+            Id, Name, Surface, Interaction, root, initialFocusId, ActiveInputScopeId);
 
-    internal void SetSelection(bool selected, CancellationToken token)
+    /// <summary>The current close target, or null when this host has supplied no selection identity.</summary>
+    public WidgetPinCloseRequest? Selection { get { lock (_gate) return _selection; } }
+
+    internal void SetSelection(bool selected, CancellationToken token,string? selectionId=null)
     {
         lock (_gate)
         {
             _isSelected = selected;
+            _selection = selected && selectionId is not null ? new(Id,selectionId) : null;
             _selectionToken = selected ? token : InactiveToken;
         }
     }

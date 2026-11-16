@@ -22,10 +22,11 @@ internal sealed partial class WidgetStylesValidationPage
         var popup = new NativePopupTheme(); popup.Attach(page);
         var catalog = new ThemeCatalog(new PlatformSettingsPaths(directory));
         long sequence = 0; var sourceVisible = true; var busy = false; var primary = 0; var applied = 0;
-        var selected = "one"; var delay = 0;
+        var selected = "one"; var delay = 0; double volume = 50; var valueWrites = 0;
         var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Reduced };
         var materialStyle = WrssParser.Parse(Environment.GetCommandLineArgs().Contains("--interactive-preview-acrylic")
-            ? "preview { background-material: acrylic; }" : "", "interactive-preview.wrss");
+            ? "preview { background-material: acrylic; } .preview-source-row { width:180px; }"
+            : ".preview-source-row { width:180px; }", "interactive-preview.wrss");
         var theme = ThemeLayerCompiler.Compile(catalog.BuiltInDefault.Package, new((WrssDocument[])[materialStyle.Document], []),
             catalog.Load("widgetrail.builtin.velvet-dusk", "1.0.0").Package).Theme!;
         page.ApplyAppearance(appearance, false); page.Failed = error => failure ??= error;
@@ -37,6 +38,7 @@ internal sealed partial class WidgetStylesValidationPage
                 case "apply": applied++; break;
                 case "one": selected = "one"; break;
                 case "two": selected = "two"; break;
+                case "volume" when request.Action.RequestedValue is { } value: volume = value; valueWrites++; break;
             }
             Publish(); return Task.CompletedTask;
         };
@@ -54,10 +56,22 @@ internal sealed partial class WidgetStylesValidationPage
             Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), source) && primary == 0 && applied == 0,
                 "Showing full preview keeps source focus without dispatch");
             var bounds = (chrome!.ActualWidth, chrome.ActualHeight);
+            await NativeContextProbeInput.HoverTransitAsync(source,
+                () => Find<Button>("Widget.preview.select", root)!,
+                () => Wait(() => page.IsFocusPreviewOpen),
+                () =>
+                {
+                    Check(page.IsFocusPreviewOpen && ReferenceEquals(page.FocusPreviewChrome, chrome),
+                        "Real slow diagonal mouse transit across adjacent content retains the same interactive preview");
+                    Check(primary == 0 && applied == 0 && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), source),
+                        "Hover transit neither activates the source nor steals keyboard focus");
+                    return Task.CompletedTask;
+                });
             await page.HandleControllerButtonAsync(ControllerButton.RightStick);
             await Wait(() => ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), apply));
             Check(ReferenceEquals(page.FocusPreviewChrome, chrome) && ReferenceEquals(apply, Find<Button>("Widget.preview.apply", root)),
                 "Entry preserves panel and action control instances");
+            Check(page.OwnsKeyboardEscape, "Entered preview owns Escape ahead of outer modal or pin return");
             Check(bounds == (chrome.ActualWidth, chrome.ActualHeight) && sequence == 1 && applied == 0,
                 "Entry changes no geometry and sends no widget action");
             busy = true; Publish(); await Task.Delay(80);
@@ -65,6 +79,25 @@ internal sealed partial class WidgetStylesValidationPage
                 "Busy updates retain focus and the original control");
             page.ActivateFocused(); Check(applied == 0, "Busy action does not dispatch");
             busy = false; Publish(); await Task.Delay(80);
+            var slider = Find<Slider>("Widget.preview.volume", root)!;
+            slider.Focus(FocusState.Keyboard); page.ActivateFocused();
+            page.MoveFocus(FocusNavigationDirection.Right);
+            await Wait(() => volume == 55 && valueWrites == 1);
+            Check(ReferenceEquals(page.FocusPreviewChrome, chrome) && ReferenceEquals(slider, Find<Slider>("Widget.preview.volume", root)),
+                "Preview slider sends its numeric value and retains native controls across the acknowledgement");
+            Check(page.CaptureControllerGuide().Any(hint => hint.Button == ControllerButton.B && hint.Label == "Finish adjustment"),
+                "Preview guide identifies the slider's first Back action");
+            await page.HandleControllerButtonAsync(ControllerButton.B);
+            Check(page.CaptureControllerGuide().Any(hint => hint.Button == ControllerButton.B && hint.Label == "Back to source"),
+                "Preview guide updates after adjustment finishes");
+            Check(page.IsFocusPreviewOpen && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), slider),
+                "First B leaves slider adjustment without dismissing the interactive preview");
+            NativeContextProbeInput.PressKey(Windows.System.VirtualKey.Right);
+            await Wait(() => volume == 60 && valueWrites == 2);
+            Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), slider),
+                "Real keyboard Right adjusts the preview slider without controller engagement or focus movement");
+            NativeContextProbeInput.PressKey(Windows.System.VirtualKey.Left);
+            await Wait(() => volume == 55 && valueWrites == 3);
             var select = Find<Button>("Widget.preview.select", root)!;
             select.Focus(FocusState.Keyboard); page.ActivateFocused();
             await page.HandleControllerButtonAsync(ControllerButton.B);
@@ -92,6 +125,32 @@ internal sealed partial class WidgetStylesValidationPage
             await page.HandleControllerButtonAsync(ControllerButton.B);
             Find<Button>("Widget.preview.apply", root)!.Focus(FocusState.Pointer);
             Check(primary == 0, "Pointer entry transfers focus without choosing the source");
+            delay = 0; Publish(); source.Focus(FocusState.Keyboard);
+            await page.HandleControllerButtonAsync(ControllerButton.RightStick);
+            await Wait(() => page.IsFocusPreviewOpen);
+            var dragged = Find<Slider>("Widget.preview.volume", root)!;
+            Check(dragged.Focus(FocusState.Keyboard), "Drag cancellation fixture focuses its actual preview slider");
+            await Task.Delay(60);
+            await NativeContextProbeInput.HoldSliderDragAsync(dragged, async () =>
+            {
+                await Task.Delay(180);
+                sourceVisible = false; Publish();
+                await Wait(() => !page.IsFocusPreviewOpen);
+                Check(!WalkPointerTree(dragged).Any(element => element.PointerCaptures is { Count: > 0 }),
+                    "Source removal releases native slider and thumb pointer capture before detaching the preview");
+            }, () => Task.CompletedTask);
+            sourceVisible = true; Publish();
+            await Wait(() => Find<Button>("Widget.preview.source", root) is { IsLoaded: true });
+            Find<Button>("Widget.preview.source", root)!.Focus(FocusState.Keyboard);
+            await page.HandleControllerButtonAsync(ControllerButton.RightStick);
+            await Wait(() => page.IsFocusPreviewOpen && Find<Slider>("Widget.preview.volume", root) is { IsLoaded: true });
+            var reopenedSlider = Find<Slider>("Widget.preview.volume", root)!;
+            var afterRelease = volume;
+            await NativeContextProbeInput.HoverAsync(reopenedSlider, async () =>
+            {
+                await Task.Delay(250);
+                Check(volume == afterRelease, "Reopened preview ignores unpressed pointer movement after an interrupted drag");
+            });
             await page.SetPresentationActiveAsync(false); Check(!page.IsFocusPreviewOpen, "Suspension revokes the preview");
             if (failure is not null) throw failure;
         }
@@ -100,15 +159,25 @@ internal sealed partial class WidgetStylesValidationPage
         await File.WriteAllTextAsync(Path.Combine(directory, "result.json"), JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString() }));
         if (failure is not null) throw failure;
 
+        static IEnumerable<UIElement> WalkPointerTree(DependencyObject node)
+        {
+            if (node is UIElement element) yield return element;
+            for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(node); i++)
+                foreach (var child in WalkPointerTree(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(node, i))) yield return child;
+        }
+
         void Publish()
         {
-            var source = UI.Button("Choose item", "choose", "preview.source")
+            var source = UI.Button("Choose item", "choose", "preview.source").Classes("preview-source-row")
                 .PresentOnFocus(UI.Stack("preview.content", UI.Text("Item details", "preview.summary"),
                     UI.Button("Apply", "apply", "preview.apply").Busy(busy),
-                    UI.Select("Option", (SelectOption[])[new("one", "One", "one", selected == "one"), new("two", "Two", "two", selected == "two")], "preview.select"))).TransitionLayout("preview-source", "one", 0);
+                    UI.Select("Option", (SelectOption[])[new("one", "One", "one", selected == "one"), new("two", "Two", "two", selected == "two")], "preview.select"),
+                    UI.Slider(volume, 0, 100, 5, "volume", "preview.volume", "Volume").RequireControllerActivation())).TransitionLayout("preview-source", "one", 0);
             var view = new WidgetView(UI.Stack("preview.page",
-                UI.FocusPresentationSurface(UI.Stack("preview.sources", sourceVisible ? source : UI.Text("Removed", "preview.removed")),
-                    UI.Text("", "preview.empty"), "preview.surface") with { Preview = new(360, 240, DelayMilliseconds: delay) { EnterButton = ControllerButton.RightStick, SizeToContentHeight = true } })
+                UI.FocusPresentationSurface(UI.Stack("preview.sources", sourceVisible ? source : UI.Text("Removed", "preview.removed"),
+                    UI.Button("Neighbor", "choose", "preview.neighbor").Classes("preview-source-row")
+                        .PresentOnFocus(UI.Text("Neighbor preview", "preview.neighbor-content"))),
+                    UI.Text("", "preview.empty"), "preview.surface") with { Preview = new(360, 320, DelayMilliseconds: delay) { EnterButton = ControllerButton.RightStick, SizeToContentHeight = true } })
                 .InputScope("preview.page"), sourceVisible ? "preview.source" : null);
             var snapshot = view.CreateSnapshot("interactive-preview-fixture", ++sequence);
             var styles = new Dictionary<string, BridgeNodeRenderStyles>();

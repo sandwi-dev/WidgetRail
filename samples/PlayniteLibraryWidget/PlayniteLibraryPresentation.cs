@@ -126,7 +126,7 @@ internal static partial class PlayniteLibraryPresentation
             .Classes("playnite-library-header");
         if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
             header = UI.Row("playnite-library.home.actions",
-                    NavigationTabs(state),
+                    NavigationTabs(state.Route),
                     UI.Row("playnite-library.home.utilities",
                             LibraryNavigation(state, renderActionsEnabled))
                         .Classes("playnite-library-home-utilities"))
@@ -231,7 +231,7 @@ internal static partial class PlayniteLibraryPresentation
         {
             var missing = snapshot.Error.Code == "credential_missing";
             content = UI.Stack("playnite-library.content",
-                    UI.EmptyState(missing ? "Set up Playnite Bridge" : "Update your Playnite Bridge token",
+                    UI.EmptyState(missing ? "Set up WidgetRail for Playnite" : "Update your WidgetRail for Playnite token",
                         snapshot.Error.Message, "playnite-library.connection-required",
                         new ComponentAction(missing ? "Set up connection" : "Update token",
                             PlayniteLibraryWidget.PlayniteOpenActionId, WidgetGlyph.Settings)))
@@ -631,11 +631,11 @@ internal static partial class PlayniteLibraryPresentation
             initialFocus = "playnite-library.search";
         if (state.Route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
         {
-            var siblingAction = state.Route == PlayniteLibraryRoute.Library
-                ? PlayniteLibraryActions.BrowseOpen : PlayniteLibraryActions.HomeOpen;
+            var previousTab = state.Route == PlayniteLibraryRoute.Library ? PlayniteLibraryActions.AchievementsOpen : PlayniteLibraryActions.HomeOpen;
+            var nextTab = state.Route == PlayniteLibraryRoute.Library ? PlayniteLibraryActions.BrowseOpen : PlayniteLibraryActions.AchievementsOpen;
             root = ((ContainerElement)root)
-                .Shortcut(ControllerButton.LeftBumper, siblingAction, label: "Previous tab")
-                .Shortcut(ControllerButton.RightBumper, siblingAction, label: "Next tab");
+                .Shortcut(ControllerButton.LeftBumper, previousTab, label: "Previous tab")
+                .Shortcut(ControllerButton.RightBumper, nextTab, label: "Next tab");
             if (state.Route == PlayniteLibraryRoute.Browse)
                 root = ((ContainerElement)root).Shortcut(ControllerButton.LeftStick,
                     PlayniteLibraryActions.SearchFocus, label: "Search");
@@ -932,17 +932,18 @@ internal static partial class PlayniteLibraryPresentation
 
     private static string GameCount(int count) => count == 1 ? "1 game" : $"{count} games";
 
-    private static WidgetElement NavigationTabs(PlayniteLibraryPresentationState state)
+    internal static WidgetElement NavigationTabs(PlayniteLibraryRoute route)
     {
         var parts = UI.NavigationShellParts("playnite-library.destinations",
-            state.Route == PlayniteLibraryRoute.Library ? "home" : "library",
+            route switch { PlayniteLibraryRoute.Library => "home", PlayniteLibraryRoute.Achievements => "achievements", _ => "library" },
             NavigationShellContentEntry.Unavailable, UI.Stack("playnite-library.nav.unused"),
             [new("home", "Home", PlayniteLibraryActions.HomeOpen, WidgetGlyph.Play) { Icon = PlayniteIcons.Home },
-             new("library", "Library", PlayniteLibraryActions.BrowseOpen, WidgetGlyph.Fullscreen) { Icon = PlayniteIcons.Library }],
+             new("library", "Library", PlayniteLibraryActions.BrowseOpen, WidgetGlyph.Fullscreen) { Icon = PlayniteIcons.Library },
+             new("achievements", "Achievements", PlayniteLibraryActions.AchievementsOpen, WidgetGlyph.Check) { Icon = PlayniteIcons.Achievements }],
             compactLeadingAdornment: UI.ControllerGlyph(ControllerButton.LeftBumper,
-                "playnite-library.nav.previous", "Previous tab").Classes("playnite-library-tab-key"),
+                "playnite-library.nav.previous", "Previous tab").Classes("playnite-library-tab-key").VisibleWhen(ResponsiveVisibility.ExpandedOnly),
             compactTrailingAdornment: UI.ControllerGlyph(ControllerButton.RightBumper,
-                "playnite-library.nav.next", "Next tab").Classes("playnite-library-tab-key"));
+                "playnite-library.nav.next", "Next tab").Classes("playnite-library-tab-key").VisibleWhen(ResponsiveVisibility.ExpandedOnly));
         var compact = (ResponsiveBranchElement)parts.CompactNavigation;
         var tabs = (RowElement)compact.Child;
         parts = parts with

@@ -9,6 +9,21 @@ namespace WinUiShell.Tests;
 public sealed class OverlayAppearancePolicyTests
 {
     [TestMethod]
+    public void DesktopAcrylicPreservesOverridesAndAccessibilityWithoutRequiringAScrim()
+    {
+        var settings=AppearanceSettings.Default with {BackdropOpacity=0};
+        Assert.AreEqual(WidgetSurfaceAppearance.DesktopAcrylic,
+            OverlayAppearancePolicy.Resolve(settings,"discord",WidgetSurfaceAppearance.DesktopAcrylic,false).Effective);
+        Assert.AreEqual(WidgetSurfaceAppearance.Solid,
+            OverlayAppearancePolicy.Resolve(settings with {Transparency=TransparencyPreference.Reduced},"discord",WidgetSurfaceAppearance.DesktopAcrylic,false).Effective);
+        Assert.AreEqual("unsupported-composition",
+            OverlayAppearancePolicy.Resolve(settings,"discord",WidgetSurfaceAppearance.DesktopAcrylic,false,false).FallbackReason);
+        Assert.AreEqual(WidgetSurfaceAppearance.Transparent,
+            OverlayAppearancePolicy.Resolve(settings with {WidgetSurfaceAppearance=WidgetSurfaceAppearanceOverride.Transparent,BackdropOpacity=.5},
+                "discord",WidgetSurfaceAppearance.DesktopAcrylic,false).Effective);
+    }
+
+    [TestMethod]
     public void ExactWidgetOverridePrecedesGlobalIncludingWidgetDeclaration()
     {
         var settings = AppearanceSettings.Default with { WidgetSurfaceAppearance = WidgetSurfaceAppearanceOverride.Solid,

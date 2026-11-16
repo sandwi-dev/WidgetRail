@@ -37,7 +37,8 @@ internal static class UnifiedLayoutTests
             check(!people.Range.Items.SelectMany(row=>Nodes(row.Root)).Any(n=>n.Kind==ViewNodeKind.Text&&n.Text is "Speaking" or "Listening"),
                 "Lazy participant rows also omit visible speaking/listening labels");
         }
-        var pin=call.PinnedLayouts.Single(p=>p.Id=="discord.stream");
+        check(!call.PinnedLayouts.Any(p=>p.Id.StartsWith("discord.stream",StringComparison.Ordinal)),
+            "Call rendering does not publish a stream pin before a Watch intent");
         var callPin=call.PinnedLayouts.Single(p=>p.Id=="discord.call");
 
         check(shortcuts.Single(s=>s.Button==ControllerButton.LeftStick).ActionId=="server-picker",
@@ -74,11 +75,8 @@ internal static class UnifiedLayoutTests
             "Idle picker has no call shortcuts and rendering never joins, captures, or prompts");
         check(WidgetTestHost.ValidateWinUiPresentation(idle).Count==0,
             "Idle server picker satisfies protocol and native control contracts");
-        var idlePin=idle.PinnedLayouts.Single(p=>p.Id=="discord.stream");
-        var idleCallPin=idle.PinnedLayouts.Single(p=>p.Id=="discord.call");
-        check(pin.Root!.Id==idlePin.Root!.Id&&pin.Root.Kind==idlePin.Root.Kind&&pin.ActiveInputScopeId==idlePin.ActiveInputScopeId&&
-            callPin.Root!.Id==idleCallPin.Root!.Id&&callPin.Root.Kind==idleCallPin.Root.Kind,
-            "Call/idle layout transitions retain the existing pinned layout root identities");
+        check(!idle.PinnedLayouts.Any(p=>p.Id.StartsWith("discord.stream",StringComparison.Ordinal)||p.Id is "discord.call" or "discord.people"),
+            "Idle transitions withdraw voice pins and keep unused stream slots unavailable");
     }
 
     private static IEnumerable<ViewNode> Nodes(ViewNode root)=>new[]{root}.Concat(root.Children.SelectMany(Nodes));

@@ -80,10 +80,12 @@ internal sealed class PlayniteLibraryActionFeedback(
 
 internal sealed record PlayniteLibraryRenderState
 {
+    internal PlayniteProgressState Progress { get; init; } = new();
     internal bool SetupDialogOpen { get; init; }
     // Focus-group request IDs are monotonic across every page and modal in
     // this widget, not independently within each destination.
     internal PlayniteLibraryFilterDraft? FilterDraft { get; init; }
+    internal PlayniteAchievementHubState AchievementHub { get; init; } = new();
     // Collection is the Home route's independent query/selection model.
     internal required PlayniteLibraryCollectionState Collection { get; init; }
     internal required PlayniteLibraryCollectionState BrowseCollection { get; init; }
@@ -145,6 +147,7 @@ internal enum PlayniteLibraryRoute
     // routes own Categories, Hidden games, and Playnite connection.
     Library,
     Browse,
+    Achievements,
     Hidden,
     Categories,
     PlayniteConnection,

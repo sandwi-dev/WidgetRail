@@ -11,6 +11,9 @@ public sealed partial class MainWindow
 {
     private OverlayDesktopBackdrop? desktopBackdrop;
     private bool backdropAvailable = true;
+#if ENABLE_WIDGET_VALIDATION
+    internal nint BackdropHandleForValidation => desktopBackdrop?.Handle ?? 0;
+#endif
 
     private void InitializeShellAppearance(OverlayShellPage page)
     {
@@ -42,9 +45,13 @@ public sealed partial class MainWindow
         var area = display.OuterBounds;
         try
         {
+            // The whole visible overlay stack belongs above ordinary apps.
+            // Placing a topmost scrim below a non-topmost main HWND demotes it
+            // again, so establish the upper anchor's band before ordering peers.
+            if(AppWindow.IsVisible)OverlayWindowFrame.KeepTopmost(WinRT.Interop.WindowNative.GetWindowHandle(this));
             desktopBackdrop.Apply(WinRT.Interop.WindowNative.GetWindowHandle(this), area, color,
                 page.Appearance.BackdropOpacity, AppWindow.IsVisible);
-            page.ReconcilePeerWindowOrder();
+            page.ReconcilePeerWindowOrder(desktopBackdrop.IsVisible?desktopBackdrop.Handle:0);
         }
         catch (Exception error)
         {

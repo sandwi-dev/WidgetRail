@@ -30,7 +30,7 @@ Identity matches the native resource contract: widget runtime, presentation and 
 
 New snapshot sequences, input scopes, playback commands, accessible names, sizing, aspect ratio, supported presentations and viewport placement do not recreate the document. Declaring media without a viewport parks the retained document. A widget Background lifecycle transition does not itself retire media, allowing the existing retained/background playback contract. The frontend remains responsible for visibility and playback policy.
 
-The session holds only document identity, cancellation and event-order state. It does not cache transferred bytes or own WebView controllers. The frontend must bound controller/document retention, dispose retired browser objects, and release document/resource references. Existing native policy permits at most four retained controllers. Do not create another renderer whenever `PendingCommand` changes.
+The session holds only document identity, cancellation and event-order state. It does not cache transferred bytes or own WebView controllers. The frontend must bound controller/document retention, dispose retired browser objects, and release document/resource references. The native media owner permits at most seven retained controllers for six pins and the main widget. Do not create another renderer whenever `PendingCommand` changes.
 
 ## Admission and resource limits
 

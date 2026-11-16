@@ -279,7 +279,7 @@ public sealed partial class WidgetPresentationSession
             _indexedLifecycleVersions[target.Descriptor.Id] = version;
             if (state == WidgetRail.WidgetSdk.WidgetLifecycleState.Background)
             {
-                if (_pinnedSelections.Remove(target.Descriptor.Id, out var selected)) selected.Active = false;
+                RetireWidgetSelectionsLocked(target.Descriptor.Id);
                 RetirePinnedArtworkLocked(target.Descriptor.Id);
                 _indexedHiddenWidgets.Add(target.Descriptor.Id);
                 RetireIndexedRangesLocked(target.Descriptor.Id);

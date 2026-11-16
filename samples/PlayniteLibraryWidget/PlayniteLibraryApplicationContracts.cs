@@ -35,7 +35,10 @@ internal sealed record PlayniteLibraryQueryResult(
 
 internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
 {
-    void ResetConnectionCache() { }
+    ValueTask<PlayniteProviderRefreshResult> RefreshAchievementsAsync(string gameId, CancellationToken token) =>
+        ValueTask.FromResult(PlayniteProviderRefreshResult.Unavailable);
+    ValueTask<PlayniteEventBatch?> ReadEventsAsync(long after, CancellationToken token) => ValueTask.FromResult<PlayniteEventBatch?>(null);
+    ValueTask ResetConnectionCacheAsync() => ValueTask.CompletedTask;
     async ValueTask<WidgetArtworkSource?> ResolveArtworkSourceAsync(WidgetArtworkHandle handle, CancellationToken token) =>
         await ResolveArtworkAsync(handle, token).ConfigureAwait(false);
     bool OwnsArtworkContent { get; }
@@ -48,6 +51,7 @@ internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
         var item = items.SingleOrDefault(value => value.SavedId == gameId);
         return item is null ? null : new(item);
     }
+    ValueTask<PlayniteAchievementOverview> GetAchievementOverviewAsync(CancellationToken token) => ValueTask.FromResult(PlayniteAchievementOverview.Unavailable);
     ValueTask<PlayniteAchievements> GetAchievementsAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteAchievements.Unavailable);
     ValueTask<PlayniteActivity> GetActivityAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteActivity.Unavailable);
     ValueTask<bool> ChangeInstallationAsync(string gameId, bool install, CancellationToken token) => ValueTask.FromResult(false);

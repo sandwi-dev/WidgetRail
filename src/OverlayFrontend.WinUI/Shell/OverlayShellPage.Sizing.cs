@@ -55,7 +55,8 @@ internal sealed partial class OverlayShellPage
         surface?.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
         if (preparingSurface is { } preparing && !ReferenceEquals(preparing.Presenter, surface))
             preparing.Presenter.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
-        if (pinned is { } current) ApplyPinnedAppearance(current);
+        foreach(var current in pins)ApplyPinnedAppearance(current);
+        RefreshNotificationBannerAppearance();
         AppearanceLoaded?.Invoke(Appearance);
     }
 

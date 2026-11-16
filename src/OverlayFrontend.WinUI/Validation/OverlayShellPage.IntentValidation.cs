@@ -144,16 +144,17 @@ internal sealed partial class OverlayShellPage
                 await PinAsync("intent-target", WidgetPresentationSession.WidgetPinnedProjection.FullWidgetLayoutId);
                 var oldPin = pinned!;
                 pinCommands = PinCommands(sourceDescriptor);
-                Check(pinCommands[0].Id == "Pin.Replace" && pinCommands[0].Label == "Replace pin",
-                    "A different pinnable widget offers Replace pin first");
+                Check(pinCommands.Take(2).Select(command=>command.Id).SequenceEqual(new[]{"Pin.links-pin","Pin.Full"}),
+                    "A different pinnable widget can add a pin alongside existing surfaces");
                 Check(pinCommands.Select(command => command.Id).SequenceEqual(new[]
-                    { "Pin.Replace", "Pin.Remove", "Pin.Adjust", "Pin.Opacity", "Pin.Interact" }),
+                    { "Pin.links-pin","Pin.Full","Pin.Replace", "Pin.Remove", "Pin.Adjust", "Pin.Interact" }),
                     "Pin commands without shortcuts precede Interact in the requested order");
                 await ShowTrayMenuAsync(sourceDescriptor);
                 await Until(() => trayMenu?.Items[0].IsLoaded == true);
                 var actualMenu = trayMenu!;
-                Check(actualMenu.Items.Take(4).All(item => item.Icon is null), "Pin management commands have no invented shortcut hints");
-                Check(actualMenu.Items[4].Icon is FontIcon && AutomationProperties.GetHelpText(actualMenu.Items[4]).Contains("Tray shortcut:"),
+                Check(actualMenu.Items.Take(5).All(item => item.Icon is null), "Pin management commands have no invented shortcut hints");
+                var interactMenu=actualMenu.Items.Single(item=>AutomationProperties.GetAutomationId(item)=="Overlay.TrayCommand.Pin.Interact");
+                Check(interactMenu.Icon is FontIcon && AutomationProperties.GetHelpText(interactMenu).Contains("Tray shortcut:"),
                     "Interact exposes its controller shortcut and accessible help");
                 Check(actualMenu.Items.Single(item => AutomationProperties.GetAutomationId(item) == "Overlay.TrayCommand.Reorder").Icon is FontIcon &&
                     actualMenu.Items.Single(item => AutomationProperties.GetAutomationId(item) == "Overlay.TrayCommand.Restart") is { Icon: null, KeyboardAcceleratorTextOverride: "" },
@@ -161,7 +162,7 @@ internal sealed partial class OverlayShellPage
                 CloseTrayMenu(true);
                 Check(PinCommands(sourceDescriptor with { PinningSupported = false, FullWidgetPinningSupported = false })
                     .All(command => command.Id != "Pin.Replace"), "A nonpinnable widget offers no replacement");
-                var replacing = pinCommands[0].Action();
+                var replacing = pinCommands.Single(command=>command.Id=="Pin.Replace").Action();
                 await Until(() => hostChoiceDialog is { IsLoaded: true });
                 await Until(() => FocusManager.GetFocusedElement(XamlRoot) is ListViewItem { Tag: "Pin.links-pin" });
                 Check(string.IsNullOrEmpty(hostChoiceDialog!.PrimaryButtonText) && hostChoiceDialog.CloseButtonText == "Cancel",
@@ -173,14 +174,14 @@ internal sealed partial class OverlayShellPage
                 Check(ReferenceEquals(pinned, oldPin) && oldPin.IsCurrent, "Cancelling a replacement preserves the live original pin");
                 Check(!interactive && !MainFocusEnabled && !HostChoiceActive,
                     "Replacement chooser returns to tray mode without enabling widget input");
-                replacing = PinCommands(sourceDescriptor)[0].Action();
+                replacing = PinCommands(sourceDescriptor).Single(command=>command.Id=="Pin.Replace").Action();
                 await Until(() => hostChoiceDialog is { IsLoaded: true });
                 await Until(() => FocusManager.GetFocusedElement(XamlRoot) is ListViewItem { Tag: "Pin.links-pin" });
                 ++pinIntent;
                 ChooseFirstPinLayout();
                 await replacing;
                 Check(ReferenceEquals(pinned, oldPin), "An intervening pin operation invalidates the open chooser");
-                replacing = PinCommands(sourceDescriptor)[0].Action();
+                replacing = PinCommands(sourceDescriptor).Single(command=>command.Id=="Pin.Replace").Action();
                 await Until(() => hostChoiceDialog is { IsLoaded: true });
                 await Until(() => FocusManager.GetFocusedElement(XamlRoot) is ListViewItem { Tag: "Pin.links-pin" });
                 ChooseFirstPinLayout();
@@ -193,7 +194,7 @@ internal sealed partial class OverlayShellPage
                 await PinAsync("intent-target", WidgetPresentationSession.WidgetPinnedProjection.FullWidgetLayoutId, oldPin);
                 Check(ReferenceEquals(pinned, replacement), "A stale replacement cannot remove a newer pin");
                 await SelectAsync("intent-target", enterWidget: false);
-                var singleReplacement = PinCommands(surface!.CurrentBinding!.Frame.Descriptor)[0].Action();
+                var singleReplacement = PinCommands(surface!.CurrentBinding!.Frame.Descriptor).Single(command=>command.Id=="Pin.Replace").Action();
                 Check(!HostChoiceActive, "A single eligible layout replaces directly without a redundant chooser");
                 await singleReplacement;
                 Check(pinned is { WidgetId: "intent-target", IsCurrent: true } && !HostChoiceActive && !replacement!.IsCurrent,

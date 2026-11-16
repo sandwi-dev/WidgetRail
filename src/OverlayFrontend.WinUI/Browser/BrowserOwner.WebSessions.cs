@@ -12,7 +12,8 @@ internal sealed partial class BrowserOwner
     private Task? hostedPump;
     private readonly HashSet<Task> hostedOperations = [];
     private readonly Dictionary<string, Task> hostedMessagePumps = [];
-    private readonly BrowserSessionStartups hostedStartups = new();
+    private const int MaximumResidentBrowsers = BridgeProtocol.MaximumResidentBrowserCount;
+    private readonly BrowserSessionStartups hostedStartups = new(MaximumResidentBrowsers);
     private IEnumerable<(string Widget, string Document)> BrowserResidentKeys => entries.Keys.Concat(retiringEntries).Concat(captureRetirements.Keys);
     private int BrowserResidencyCount => hostedStartups.CountResidents(BrowserResidentKeys);
 #if ENABLE_WIDGET_VALIDATION

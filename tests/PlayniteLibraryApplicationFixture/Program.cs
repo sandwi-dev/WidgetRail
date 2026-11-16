@@ -58,6 +58,31 @@ file sealed class JournalClient : IPlayniteLibraryBridgeClient, IPlayniteBridgeC
         var bytes=await File.ReadAllBytesAsync(Path.Combine(root,"artwork",$"{(kind==PlayniteBridgeArtworkKind.Background?"background":"cover")}-{index%8}.jpg"),token);
         return new(new WidgetEncodedArtwork(WidgetArtworkContentType.Jpeg,bytes),"fixture","large");
     }
+    public async ValueTask<PlayniteAchievementOverview> GetAchievementOverviewAsync(CancellationToken token)
+    {
+        var path = Path.Combine(root, "achievement-overview.json");
+        if (!File.Exists(path)) return PlayniteAchievementOverview.Unavailable;
+        var mode = JsonSerializer.Deserialize<AchievementOptions>(await File.ReadAllTextAsync(path, token))!;
+        await File.AppendAllTextAsync(Path.Combine(root, "overview-reads.txt"), "read" + Environment.NewLine, token);
+        if (mode.Availability != "ready") return PlayniteAchievementOverview.Unavailable with { Availability = mode.Availability };
+        var rows = games.Select((game, index) => new PlayniteAchievementGame(game.Id, game.Name, "Steam", true,
+            40 + index, index % 3 == 0 ? 0 : index % 3 == 1 ? 40 + index : 12, index % 3 == 2 ? 3 : 0,
+            index % 3 == 0 ? null : DateTimeOffset.UtcNow.AddDays(-index), null)).ToArray();
+        var recent = rows.Where(game => game.Unlocked > 0).Take(8).Select(game => new PlayniteRecentAchievement(game.Id, game.Name,
+            "milestone", "A new milestone", game.LastUnlockedAt!.Value, 24.5)).ToArray();
+        return new("ready", "fixture-profile", Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow, rows, recent);
+    }
+    public ValueTask<PlayniteAchievements> GetAchievementsAsync(string gameId, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (!File.Exists(Path.Combine(root, "achievement-overview.json"))) return ValueTask.FromResult(PlayniteAchievements.Unavailable);
+        return ValueTask.FromResult(new PlayniteAchievements(true, 2, 1,
+        [new("A new milestone", "Complete your first chapter", true, DateTimeOffset.UtcNow.AddDays(-1), 24.5, null, false)
+            { Id = "milestone", Icon = Path.Combine(root, "achievement.png") },
+         new("Keep moving forward", "Reach the next milestone", false, null, 15, null, false)
+            { Id = "progress", Progress = new(2, 10), Icon = Path.Combine(root, "achievement.png") }])
+            { Provider = PlayniteAchievementProvider.PlayniteAchievements, ConnectionId = "fixture-profile" });
+    }
     public async ValueTask<bool> LaunchAsync(string id, CancellationToken token)
     {
         if (!games.Any(game => game.Id == id)) throw new InvalidOperationException("Unknown fixture game.");
@@ -82,3 +107,5 @@ file sealed class JournalClient : IPlayniteLibraryBridgeClient, IPlayniteBridgeC
 }
 
 file sealed record PerformanceOptions(int GameCount=2000,bool Artwork=true,int DelayMilliseconds=15);
+
+file sealed record AchievementOptions(string Availability = "ready");

@@ -118,6 +118,8 @@ $expectedDefaultStepIds = @(
     'network-controls-tests',
     'games-apps-tests',
     'playnite-library-tests',
+    'playnite-local-api-tests',
+    'playnite-local-framework-tests',
     'playnite-library-package',
     'playnite-library-community-application-tests',
     'full-application-widget-tests',

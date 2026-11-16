@@ -14,7 +14,7 @@ internal sealed partial class OverlayShellPage
     {
         if (retired || !visible || !foreground && !PinnedInputActive || switching || pinnedAdjustment is not null || savingPinnedAdjustment || trayMenu is not null)
             return null;
-        if (PinnedInputActive && pinned is { Media: not null } pin && pin.IsCurrent && mediaOwner?.CompactState is { } compact)
+        if (PinnedInputActive && pinned is { Media: not null } pin && pin.IsCurrent && mediaOwner?.GetCompactState(pin.Media) is { } compact)
             return ((pin, compact.Authority.WidgetInstanceId, compact.Authority.RuntimeGeneration, compact.Declaration.Id, button), !mediaOwner.CompactCommandPending);
         if (IsMediaFullscreen && mediaOwner?.FullscreenState is { } full)
             return ((fullscreenView, full.Authority.WidgetId, full.Authority.WidgetInstanceId, full.Authority.RuntimeGeneration, full.Declaration.Id, button), !mediaOwner.FullscreenCommandPending);

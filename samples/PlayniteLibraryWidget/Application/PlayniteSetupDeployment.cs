@@ -26,7 +26,7 @@ internal sealed class PlayniteSetupDeployment
         var owner = PlayniteSetupFiles.Within(dataExtensions, target) ? installation.DataDirectory :
             PlayniteSetupFiles.Within(programExtensions, target) ? installation.ProgramDirectory :
             throw new PlayniteSetupException("The integration folder is outside the selected Playnite installation.");
-        root = Path.Combine(owner, "WidgetRail.Setup", "PlayniteBridge");
+        root = Path.Combine(owner, "WidgetRail.Setup", PlayniteSetupFiles.RecoveryDirectory);
         PlayniteSetupFiles.NoLinks(root);
         PlayniteSetupFiles.NoLinks(target);
     }
@@ -50,9 +50,9 @@ internal sealed class PlayniteSetupDeployment
         Backup(PluginConfig, "plugin-config.before");
         var record = new JsonObject
         {
-            ["target"] = target, ["originalPresent"] = Directory.Exists(target), ["replaceFiles"] = replaceFiles,
-            ["originalDigest"] = File.Exists(Path.Combine(target, "PlayniteBridge.dll")) ? PlayniteSetupFiles.Digest(Path.Combine(target, "PlayniteBridge.dll")) : null,
-            ["newDigest"] = replaceFiles ? package.DllDigest : null,
+            ["pluginId"] = PlayniteSetupFiles.PluginId, ["target"] = target, ["originalPresent"] = Directory.Exists(target), ["replaceFiles"] = replaceFiles,
+            ["originalDigest"] = PlayniteSetupPackage.InstalledDigest(target),
+            ["newDigest"] = replaceFiles ? package.PayloadDigest : null,
             ["mainConfigPresent"] = File.Exists(MainConfig), ["pluginConfigPresent"] = File.Exists(PluginConfig),
             ["complete"] = false, ["settingsWritten"] = false,
         };
@@ -81,7 +81,7 @@ internal sealed class PlayniteSetupDeployment
             PlayniteSetupFiles.WriteObject(MainConfig, settings);
         }
         var plugin = File.Exists(PluginConfig) ? PlayniteSetupFiles.ReadObject(PluginConfig) : new JsonObject();
-        plugin["NetworkPromptDismissed"] = true;
+        plugin["Enabled"] = true;
         PlayniteSetupFiles.WriteObject(PluginConfig, plugin);
     }
 
@@ -100,7 +100,7 @@ internal sealed class PlayniteSetupDeployment
         if (record["replaceFiles"]!.GetValue<bool>())
         {
             var originalPresent = record["originalPresent"]!.GetValue<bool>();
-            var current = File.Exists(Path.Combine(target, "PlayniteBridge.dll")) ? PlayniteSetupFiles.Digest(Path.Combine(target, "PlayniteBridge.dll")) : null;
+            var current = PlayniteSetupPackage.InstalledDigest(target);
             var originalDigest = record["originalDigest"]?.GetValue<string>();
             var newDigest = record["newDigest"]?.GetValue<string>();
             if (Directory.Exists(target) && current != originalDigest && current != newDigest)
@@ -112,12 +112,12 @@ internal sealed class PlayniteSetupDeployment
             }
             else if (!originalPresent && Directory.Exists(target)) DeleteTarget();
             else if (originalPresent && !Directory.Exists(target))
-                throw new PlayniteSetupException("The original integration backup is missing. Use manual setup to restore Playnite Bridge.");
+                throw new PlayniteSetupException("The original integration backup is missing. Use manual setup to restore WidgetRail for Playnite.");
         }
         if (record["settingsWritten"]?.GetValue<bool>() == true)
         {
-            Restore(MainConfig, "main-config.before", record["mainConfigPresent"]!.GetValue<bool>());
-            Restore(PluginConfig, "plugin-config.before", record["pluginConfigPresent"]!.GetValue<bool>());
+            RestoreSettings(MainConfig, "main-config.before", record["mainConfigPresent"]!.GetValue<bool>(), main: true);
+            RestoreSettings(PluginConfig, "plugin-config.before", record["pluginConfigPresent"]!.GetValue<bool>(), main: false);
         }
         DeleteOwned(Staging);
         record["complete"] = true;
@@ -128,7 +128,8 @@ internal sealed class PlayniteSetupDeployment
     private JsonObject Record()
     {
         var record = PlayniteSetupFiles.ReadObject(Journal, 16 * 1024);
-        if (!string.Equals(record["target"]?.GetValue<string>(), target, StringComparison.OrdinalIgnoreCase))
+        if (record["pluginId"]?.GetValue<string>() != PlayniteSetupFiles.PluginId ||
+            !string.Equals(record["target"]?.GetValue<string>(), target, StringComparison.OrdinalIgnoreCase))
             throw new PlayniteSetupException("The saved recovery record belongs to another integration folder. Use manual setup.");
         return record;
     }
@@ -143,6 +144,43 @@ internal sealed class PlayniteSetupDeployment
         PlayniteSetupFiles.NoLinks(path);
         if (existed) PlayniteSetupFiles.Write(path, PlayniteSetupFiles.Read(Path.Combine(root, name), 32 * 1024 * 1024));
         else if (File.Exists(path)) File.Delete(path);
+    }
+    private void RestoreSettings(string path, string name, bool existed, bool main)
+    {
+        // Playnite may save unrelated preferences after the verification restart.
+        // Roll back our fields only; preserve those later writes and other plugins.
+        var before = existed ? PlayniteSetupFiles.ReadObject(Path.Combine(root, name), 32 * 1024 * 1024) : new JsonObject();
+        var expected = (JsonObject)before.DeepClone();
+        if (main)
+        {
+            if (expected["DisabledPlugins"] is JsonArray disabled)
+                for (var index = disabled.Count - 1; index >= 0; index--)
+                    if (IsOurs(disabled[index])) disabled.RemoveAt(index);
+        }
+        else expected["Enabled"] = true;
+        var current = File.Exists(path) ? PlayniteSetupFiles.ReadObject(path, 32 * 1024 * 1024) : new JsonObject();
+        if (JsonNode.DeepEquals(current, expected) || JsonNode.DeepEquals(current, before))
+        { Restore(path, name, existed); return; }
+        if (main)
+        {
+            var previous = before["DisabledPlugins"] as JsonArray;
+            if (current["DisabledPlugins"] is not JsonArray values)
+            {
+                if (current.ContainsKey("DisabledPlugins")) throw new PlayniteSetupException("Playnite settings changed format. Restore the saved integration settings manually.");
+                values = new JsonArray(); current["DisabledPlugins"] = values;
+            }
+            for (var index = values.Count - 1; index >= 0; index--)
+                if (IsOurs(values[index])) values.RemoveAt(index);
+            if (previous is not null)
+                for (var index = 0; index < previous.Count; index++)
+                    if (IsOurs(previous[index])) values.Insert(Math.Min(index, values.Count), previous[index]!.DeepClone());
+        }
+        else if (before.ContainsKey("Enabled")) current["Enabled"] = before["Enabled"]?.DeepClone();
+        else current.Remove("Enabled");
+        PlayniteSetupFiles.WriteObject(path, current);
+
+        static bool IsOurs(JsonNode? value) => value is JsonValue text && text.TryGetValue<string>(out var id) &&
+            id is PlayniteSetupFiles.ExtensionId or PlayniteSetupFiles.PluginId;
     }
     private void DeleteTarget()
     {

@@ -13,8 +13,10 @@ existing bridge/session/adapter logic owns admission and command lineage.
 
 ## Presentations and lifetime
 
-One `EmbeddedMediaOwner` retains at most four resident sessions, including parked
-ones. A session has one WebView2 and one document. Ordinary viewport, fullscreen
+One `EmbeddedMediaOwner` retains at most seven resident sessions, including parked
+ones, serving six compact pins and the main widget. Each compact presentation is
+keyed by widget and validated against its exact receipt. Only the selected pin
+accepts controller input. A session has one WebView2 and one document. Ordinary viewport, fullscreen
 and compact pin borrow that browser; they do not create duplicate players.
 Hide/switch parks ordinary media, while a pin remains visible. Scope/capability or
 document retirement revokes its presentation receipt. Explicit restart creates a

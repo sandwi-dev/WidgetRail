@@ -9,6 +9,7 @@ internal static class VoicePinTests
     {
         await BoundedParticipants(check);
         await SpeakingAndCallState(check);
+        await StreamIndicators(check);
         await FocusAndConnectionLoss(check);
     }
 
@@ -20,16 +21,25 @@ internal static class VoicePinTests
                 false,false,index==1,index%2==0?null:"https://cdn.discordapp.com/avatars/"+index+"/"+new string('a',32)+".png?size=64")).ToArray();
             await using var test=await Harness.Create(people);
             var snapshot=test.Snapshot();var pin=test.Pin();var nodes=Nodes(pin.Root!).ToArray();
-            check(pin.Root!.Id=="discord.pin.controls"&&pin.Surface.PreferredWidth==400&&pin.Surface.PreferredHeight==180&&
-                pin.Surface.MinimumWidth==320&&pin.Surface.MinimumHeight==180,
+            var overlay=snapshot.PinnedLayouts.Single(layout=>layout.Id=="discord.people");
+            var overlayRows=overlay.Root!.Children.Where(row=>row.Kind==ViewNodeKind.Row).ToArray();
+            check(overlay.Surface.Appearance==WidgetSurfaceAppearance.Transparent&&overlay.Root.StyleClasses.Contains("discord-people-overlay")&&
+                overlayRows.Select(row=>Nodes(row).Single(node=>node.Id.StartsWith("discord.people.name.",StringComparison.Ordinal)).Text).SequenceEqual(people.Take(4).Select(person=>person.Name))&&
+                !Nodes(overlay.Root).Any(node=>node.IsFocusable),"Transparent overlay pairs names with passive avatars in provider order: "+count);
+            check(overlayRows.Where(row=>Nodes(row).Any(node=>node.StyleClasses.Contains("discord-voice-speaking")))
+                .Select(row=>Nodes(row).Single(node=>node.Id.StartsWith("discord.people.name.",StringComparison.Ordinal)).Text).SequenceEqual(people.Take(4).Where(person=>person.Speaking).Select(person=>person.Name)),
+                "Transparent overlay outlines the matching speaker: "+count);
+            check(pin.Root!.Id=="discord.pin.controls"&&pin.Surface.PreferredWidth==400&&pin.Surface.PreferredHeight==340&&
+                pin.Surface.MinimumWidth==320&&pin.Surface.MinimumHeight==340,
                 "Voice pin retains its stable root and compact preferred/minimum surface: "+count+" participants");
             var avatars=nodes.Where(node=>node.Id.StartsWith("discord.pin.avatar.",StringComparison.Ordinal)).ToArray();
-            check(avatars.Length==Math.Min(count,3)&&avatars.All(node=>!node.IsFocusable)&&
-                avatars.Count(node=>node.Kind==ViewNodeKind.Image)==people.Take(3).Count(person=>person.AvatarUrl is not null),
-                "Voice pin requests at most three passive participant avatars: "+count+" participants");
+            check(avatars.Length==Math.Min(count,4)&&avatars.All(node=>!node.IsFocusable)&&
+                avatars.Count(node=>node.Kind==ViewNodeKind.Image)==people.Take(4).Count(person=>person.AvatarUrl is not null),
+                "Voice pin requests at most four passive participant avatars: "+count+" participants");
             check(test.Node("discord.pin.state").Text==count+" in call"&&
-                test.Node("discord.pin.people").Text==string.Join(" · ",people.Take(3).Select(person=>person.Name))&&
-                test.Node("discord.pin.more").Text==(count>3?"+"+(count-3):""),
+                nodes.Where(node=>node.Id.StartsWith("discord.pin.name.",StringComparison.Ordinal)).Select(node=>node.Text)
+                    .SequenceEqual(people.Take(4).Select(person=>person.Name))&&
+                (nodes.FirstOrDefault(node=>node.Id=="discord.pin.more")?.Text??"")==(count>4?"+"+(count-4):""),
                 "Voice pin names and overflow describe the same bounded participant set: "+count+" participants");
             check(nodes.Where(node=>node.IsFocusable).Select(node=>node.Id).SequenceEqual(new[]{"discord.pin.mute","discord.pin.deafen","discord.pin.leave"})&&
                 nodes.SelectMany(node=>node.Shortcuts).All(shortcut=>shortcut.Button is not(ControllerButton.X or ControllerButton.Y)),
@@ -66,6 +76,31 @@ internal static class VoicePinTests
             "Voice pin uses the exact same domain-bound call actions as the main widget");
     }
 
+    private static async Task StreamIndicators(Action<bool,string> check)
+    {
+        await using var test=await Harness.Create([new("1","You",false,false,false),new("30","Watching",false,false,false),
+            new("31","Streaming",false,false,false),new("32","In voice",false,false,false)]);
+        test.Session.State=test.Session.State with{Sharing=true,Streams=[new("guild:1:10:30","30","Watching",Watching:true),
+            new("guild:1:10:31","31","Streaming")]};
+        await test.Refresh();
+        var nodes=Nodes(test.Snapshot().PinnedLayouts.Single(pin=>pin.Id=="discord.people").Root!).ToArray();
+        check(new[]{"1","30","31"}.All(id=>nodes.Any(node=>node.Id=="discord.people.live."+id))&&
+            !nodes.Any(node=>node.Id=="discord.people.live.32"),"LIVE badges identify both local and remote broadcasters only");
+        check(!nodes.Any(node=>node.Id.StartsWith("discord.people.watching.",StringComparison.Ordinal)),
+            "Watching another person's stream does not imply that they watch yours");
+        test.Session.State=test.Session.State with{OutgoingViewers=new("guild:1:10:1",["31","32"])};await test.Refresh();
+        nodes=Nodes(test.Snapshot().PinnedLayouts.Single(pin=>pin.Id=="discord.people").Root!).ToArray();
+        check(new[]{"31","32"}.All(id=>nodes.Any(node=>node.Id=="discord.people.watching."+id&&node.PackageIcon?.AssetId=="discord.watching"))&&
+            !nodes.Any(node=>node.Id=="discord.people.watching.30"),"Eye marks viewers of your stream independently of their LIVE status");
+        var voice=Nodes(test.Pin().Root!).ToArray();
+        check(new[]{"31","32"}.All(id=>voice.Any(node=>node.Id=="discord.pin.watching."+id)),
+            "Voice controls use the same outgoing viewer status");
+        test.Session.State=test.Session.State with{Sharing=false,Streams=[],OutgoingViewers=null};await test.Refresh();
+        nodes=Nodes(test.Snapshot().PinnedLayouts.Single(pin=>pin.Id=="discord.people").Root!).ToArray();
+        check(!nodes.Any(node=>node.Id.StartsWith("discord.people.live.",StringComparison.Ordinal)||
+            node.Id.StartsWith("discord.people.watching.",StringComparison.Ordinal)),"Stream-end updates remove LIVE and watching indicators");
+    }
+
     private static async Task FocusAndConnectionLoss(Action<bool,string> check)
     {
         await using var test=await Harness.Create([new("1",new string('n',120),false,false,false)]);
@@ -76,15 +111,19 @@ internal static class VoicePinTests
         test.Session.State=test.Session.State with{Capabilities=test.Session.State.Capabilities with{Deafen=false}};await test.Refresh();
         check(test.Pin().InitialFocusId=="discord.pin.leave"&&test.Node("discord.pin.deafen").IsDisabled==true,
             "Voice pin focuses Leave when mute and deafen are both unavailable");
-        var rootId=test.Pin().Root!.Id;var scope=test.Pin().ActiveInputScopeId;
+        check(test.Pin().RestoreWhenAvailable&&test.Snapshot().PinnedLayouts.Single(p=>p.Id=="discord.people").RestoreWhenAvailable,
+            "Both voice layouts opt into user-selected availability memory");
+        var connected=test.Session.State;
         foreach(var disconnected in new[]{false,true})
         {
             test.Session.State=test.Session.State with{Ready=!disconnected,ChannelId=null,ChannelName="",Participants=[],Streams=[],VoiceConnection="disconnected"};await test.Refresh();
-            var pin=test.Pin();var snapshot=test.Snapshot();
-            check(pin.Root!.Id==rootId&&pin.ActiveInputScopeId==scope&&pin.InitialFocusId is null&&
-                !Nodes(pin.Root).Any(node=>node.IsFocusable)&&WidgetTestHost.ValidateWinUiPresentation(snapshot).Count==0,
-                disconnected?"Lost Discord connection keeps a valid passive voice pin without stale focus":"Leaving voice keeps the pin root and removes obsolete call-control focus");
+            var snapshot=test.Snapshot();
+            check(!snapshot.PinnedLayouts.Any(p=>p.Id is "discord.call" or "discord.people")&&WidgetTestHost.ValidateWinUiPresentation(snapshot).Count==0,
+                disconnected?"Lost Discord connection withdraws both voice pins":"Leaving voice withdraws both voice pins instead of retaining empty windows");
         }
+        test.Session.State=connected with{ChannelId="another-channel"};await test.Refresh();
+        check(test.Snapshot().PinnedLayouts.Count(p=>p.RestoreWhenAvailable)==2,
+            "Joining a different voice channel republishes the same two remembered layout identities");
     }
 
     private sealed class Harness:IAsyncDisposable

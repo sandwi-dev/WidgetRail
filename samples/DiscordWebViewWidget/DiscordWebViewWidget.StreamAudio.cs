@@ -7,13 +7,17 @@ namespace WidgetRail.Samples.DiscordWebView;
 
 public sealed partial class DiscordWebViewWidget
 {
-    private DiscordStream? WatchedStream(DiscordState? data,ViewState selected,WebSessionReference? session)=>
-        streamPin.IsSelected && selected.Receiver is { } receiver && data is { Ready:true } &&
+    private DiscordStream? WatchedStream(DiscordState? data,WatchSlot slot,WebSessionReference? session)
+    {
+        var selected=slot.State.Value;
+        return
+        slot.Pin.IsSelected && selected.Receiver is { } receiver && data is { Ready:true } &&
         data.Account==selected.Account && data.ChannelId==selected.Channel && session==selected.StreamSession &&
         receiver.Account==data.Account && receiver.Channel==data.ChannelId
             ?data.Streams.FirstOrDefault(stream=>stream.Key==selected.StreamKey):null;
+    }
 
-    private static string StreamAudioAction(string method,DiscordState data,DiscordStream stream,ViewState selected,WebSessionReference? session)=>
+    private static string StreamAudioAction(string method,DiscordState data,DiscordStream stream,WatchState selected,WebSessionReference? session)=>
         DomainAction(method,session?.Id,data.Account,data.ChannelId,stream.Key,stream.UserId,selected.Receiver?.Lease,
             method=="streamMute"?stream.Audio?.Muted.ToString():null);
 
@@ -28,7 +32,7 @@ public sealed partial class DiscordWebViewWidget
         return thumb==0&&observed>0||thumb==100&&observed<100?observed:thumb;
     }
 
-    private WidgetElement StreamAudioControls(DiscordState data,DiscordStream stream,ViewState selected,string id)
+    private WidgetElement StreamAudioControls(DiscordState data,DiscordStream stream,WatchState selected,string id)
     {
         var audio=stream.Audio;
         if(audio is not { Available:true,Volume:not null })
@@ -46,18 +50,23 @@ public sealed partial class DiscordWebViewWidget
         return UI.Stack(id,content.ToArray()).Classes("discord-stream-audio");
     }
 
-    private bool TryStreamAudioAction(WidgetActionEvent action,DiscordState? data,ViewState selected,
+    private bool TryStreamAudioAction(WidgetActionEvent action,DiscordState? data,
         WebSessionReference? session,CancellationToken token,out ValueTask task)
     {
         task=ValueTask.CompletedTask;
         if(!action.ActionId.StartsWith("streamMute.",StringComparison.Ordinal)&&!action.ActionId.StartsWith("streamVolume.",StringComparison.Ordinal))return false;
-        var stream=WatchedStream(data,selected,session);
-        if(stream?.Audio is not {Available:true,Volume:not null} audio || data is null)return true;
-        if(action.ActionId==StreamAudioAction("streamMute",data,stream,selected,session))
-            task=SetStreamAudioAsync("streamMute",!audio.Muted,data,stream,selected,session,token);
-        else if(action.ActionId==StreamAudioAction("streamVolume",data,stream,selected,session) &&
-            action.RequestedValue is { } volume && double.IsFinite(volume) && volume is >=0 and <=100)
-            task=SetStreamAudioAsync("streamVolume",volume,data,stream,selected,session,token);
+        if(data is null)return true;
+        foreach(var slot in watches)
+        {
+            var selected=slot.State.Value;
+            var stream=WatchedStream(data,slot,session);
+            if(stream?.Audio is not {Available:true,Volume:not null} audio)continue;
+            if(action.ActionId==StreamAudioAction("streamMute",data,stream,selected,session))
+                task=SetStreamAudioAsync("streamMute",!audio.Muted,data,stream,slot,selected,session,token);
+            else if(action.ActionId==StreamAudioAction("streamVolume",data,stream,selected,session) &&
+                action.RequestedValue is { } volume && double.IsFinite(volume) && volume is >=0 and <=100)
+                task=SetStreamAudioAsync("streamVolume",volume,data,stream,slot,selected,session,token);
+        }
         return true;
     }
 
@@ -65,11 +74,11 @@ public sealed partial class DiscordWebViewWidget
     // slider coalescing retains the newest pending value; no widget queue/retry
     // or cancellation-based overlapping external writes are needed here.
     private async ValueTask SetStreamAudioAsync(string method,object value,DiscordState data,DiscordStream stream,
-        ViewState selected,WebSessionReference? session,CancellationToken token)
+        WatchSlot slot,WatchState selected,WebSessionReference? session,CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        bool Current()=>client?.Reference==session && view.Value.Receiver?.Lease==selected.Receiver?.Lease &&
-            WatchedStream(CurrentState(),view.Value,client?.Reference)?.Key==stream.Key;
+        bool Current()=>client?.Reference==session && slot.State.Value.Receiver?.Lease==selected.Receiver?.Lease &&
+            WatchedStream(CurrentState(),slot,client?.Reference)?.Key==stream.Key;
         if(!Current())return;
         view.Update(current=>current with{Notice=""});
         try

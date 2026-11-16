@@ -7,6 +7,46 @@ namespace PlayniteLibraryCommunityApplication.Tests;
 public sealed partial class PackageRuntimeTests
 {
     [TestMethod]
+    public async Task ProfileSwitchCannotTurnALateReadIntoANewProfileMutation()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(1);
+        await using var service = Service(directory.Path, client);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.GameResolveHandler = async (_, _) => { entered.SetResult(); await release.Task; return client.Games[0]; };
+        var pending = service.SetFavoriteAsync(client.Games[0].Id, true, default).AsTask();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        try { await service.ResetConnectionCacheAsync(); } finally { release.TrySetResult(); }
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await pending);
+        Assert.IsNull(client.LastMutatedId);
+    }
+
+    [TestMethod]
+    public async Task ProfileSwitchRetiresCapturedArtworkAndRejectsLateBytes()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(1);
+        await using var service = Service(directory.Path, client);
+        var query = await service.CaptureQueryAsync(AllGames, new(PlayniteLibraryQueryScope.Library), true, default);
+        var row = query.ReadRange(0, 1)[0];
+        var handle = new WidgetArtworkHandle(row.Item.Presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Cover)!.Handle);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.ArtworkResolveHandler = async (_, _, _) => { entered.SetResult(); await release.Task; return ArtworkResult(); };
+        var pending = query.ResolveArtworkAsync(row, handle).AsTask();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        try { await service.ResetConnectionCacheAsync(); }
+        finally { release.TrySetResult(); }
+        Assert.IsNull(await pending);
+        Assert.AreEqual(0, service.RetainedArtworkBytes);
+        Assert.IsNull(await query.ResolveArtworkSourceAsync(row, handle, default));
+        Assert.Throws<WidgetCapabilityException>(() => query.ReadRange(0, 1));
+        var next = await service.CaptureQueryAsync(AllGames, new(PlayniteLibraryQueryScope.Library), false, default);
+        Assert.AreNotEqual(handle.Value, next.ReadRange(0, 1)[0].Item.Presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Cover)!.Handle);
+    }
+
+    [TestMethod]
     public async Task CapturedFileArtworkDoesNotAllocateEncodedCacheOrCrossItemAuthority()
     {
         using var directory = new TestDirectory();

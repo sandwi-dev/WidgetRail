@@ -3,32 +3,39 @@
 [User guide and setup](README.md)
 
 Playnite Library is a controller-first, full-trust Community sample backed by a
-Playnite Bridge instance. The package owns its guided setup, bounded localhost
+WidgetRail for Playnite local API. The package owns its guided setup, bounded localhost
 client, protected credential controls, presentation, and organization state. It
 does not copy a product app-library provider into the package.
 
 ## Achievement providers
 
-The Achievements tab makes one bounded, read-only eval request for the selected
-game's PlayniteAchievements cache. It locates the installed add-on by plugin ID,
-uses its public `AchievementDataService` and prefers `GetVisibleGameAchievementData`
-(falling back to the older public `GetGameAchievementData` method). It never starts
-a provider sync or reads the add-on's database schema directly. Only a validated
-canonical game GUID is inserted into the fixed script. Execution is off the
-Playnite UI thread, with a three-second execution deadline and bounded result text.
-The bridge compiles each eval using its C# 5 CodeDOM compiler before execution;
-that compilation is outside the script deadline, and its assembly remains loaded
-until Playnite exits. Per-game reads deliberately favor fresh cached progress over
-a library-wide startup snapshot. Never call eval for row focus or scrolling.
+The typed `/v1/games/{id}/achievements` endpoint projects the optional provider's
+public cached service. Reflection and bounded projection live in the Playnite
+plugin, not compiled scripts. The adapter prefers `GetVisibleGameAchievementData`
+and falls back to the older public read method. SuccessStory file data is a bounded
+fallback; a valid empty primary-provider result stays empty. Hidden/filtered data
+retains provider semantics. Current metadata includes progress, rarity, points,
+category, trophy, goal and capstone fields.
 
-Missing, incompatible, malformed or failed optional reads use the existing
-SuccessStory endpoint. A valid empty result remains empty. Results are kept only
-with the current game's details; tab revisits reuse them, while reopening details
-or Refresh reads again. Existing details generations and cancellation fence late
-responses. Secret achievement rows omit both artwork and progress until
-revealed. Local icons use captured indexed-row file artwork authority;
-HTTPS icons use the host's existing image path. No library-wide achievement cache
-or polling is added.
+Opening/scrolling reads cache only. **Refresh / Y** on the Achievements tab admits a
+UUID-keyed operation through the public refresh method. Concurrent refreshes for
+one game share provider work; cancelling a widget wait does not undo that work.
+The client observes operation status for up to two minutes without resubmitting.
+A bounded long-poll event feed invalidates selected details and progress data.
+SDK active operations own cancellation and reconnect starts at `after=now`.
+
+One passive progress pin retains an exact connection/provider/game/API-name target.
+The normal model owns that target; SDK query resources own its data, error and late
+result state. The SDK pin handle owns selection/close authority and the host owns
+placement/input. The layout is omitted when no target exists. Hidden locked entries
+cannot be tracked; missing, duplicate or foreign results never substitute a title.
+Tracking another eligible achievement replaces the query target within the same SDK
+pin selection. QueryResource retires old work/results; window geometry remains
+host-owned. Only visible unfinished entries with 0 <= current < maximum qualify.
+
+Unlock notifications remain owned by PlayniteAchievements. No widget publisher or
+notification category is registered. The bounded server feed remains available for
+selected-game refresh and other API consumers.
 
 Achievement browsing uses an indexed collection over an immutable local query.
 Provider API names supply stable hashed keys; legacy data falls back to name and
@@ -92,82 +99,51 @@ After five minutes hidden, the widget application unloads and its in-memory quer
 and navigation reset; saved settings and the external Playnite process remain.
 
 The SDK leases bound rendered-row lifetimes independently of the application catalog.
-A range request does not issue another Bridge page request or accumulate cursor
+A range request does not issue another API page request or accumulate cursor
 history. Provider capture, fixed-row resolution, persistence and authority publication
 are coordinated before the replacement query is visible. Failed same-query refreshes
 retain the last complete query; retired/superseded captures cannot publish.
 
 ## Setup and safety
 
-Without a saved token, the widget offers **Set up connection**. Guided setup
-discovers installed, portable, and running custom-data profiles, reuses healthy
-integrations, and installs/enables the pinned bundle when explicitly selected.
-It imports the selected profile's generated token only after checking the returned
-application/data paths, games endpoint, and a constant read-only eval. You can open
-**Menu → Playnite connection** at any time; Advanced retains manual token controls.
-The token is stored under the package-scoped Windows Credential Manager target
-and is never rendered, logged, or copied into package or private state. The UI
-offers explicit replace and remove actions. Missing credentials produce an
-actionable setup screen; no environment variable is part of the product flow.
+`integrations/Playnite` owns the independently identified local-only plugin and its
+Core/Contracts assemblies. The original Bridge identity, port 19821, token and
+extension directory are deliberately untouched. Both services can run in one
+Playnite process. There is no eval, FSE, remote listener, sync backend or AI module.
 
-The transport is structurally limited to `localhost:19821`, disables proxy,
-redirect, cookie, and decompression behavior, and exposes only the fixed routes
-needed for bounded library reads, artwork, launch request admission, favorites,
-hidden state, categories, completion status, installation/uninstallation, achievements,
-and activity. Fixed eval scripts support artwork-path discovery and cached
-achievements; setup adds a constant compilation check. It does not expose
-caller-authored methods, paths or code, metadata refresh, deletion, or
-account operations.
+Setup validates a selected program/data profile, stages the bundled six-file
+`WidgetRail.Playnite.pext`, and verifies a typed handshake plus a bounded library
+read before saving the connection. It never guesses a profile from whichever port
+answers. The plugin binds 127.0.0.1, tries its preferred/last port then 19822-19831,
+and atomically writes `connection.json` only after listening. The descriptor has
+profile/instance/PID/start-time identity. No wildcard binding, URLACL or firewall
+changes are made. Exhaustion or permission failure is visible and bounded.
 
-### Guided setup implementation
+The client disables redirects/proxies/cookies and binds a captured endpoint and
+credential to one selected profile. Scoped Windows Credential Manager targets
+include profile identity and data location; copied portable installations cannot
+overwrite each other's credentials. Explicit reconnect retires old catalog,
+traversal and artwork authority. Delayed reads and multi-step commands cannot cross
+a connection reset. An HTTP success admits a launch; it does not prove game startup.
 
-`Application/PlayniteSetup*` separates process discovery, bounded file/package
-handling, recovery, and connection checks from the declarative setup UI.
-Setup operations use widget lifetime so hiding the overlay does not interrupt a
-deployment; no automatic installation runs on activation. The
-[setup decision matrix](SETUP-DECISIONS.md) defines profile selection, Bridge health,
-and recovery behavior. A single identifiable running profile takes precedence over
-stopped copies. Inspection supplies the appropriate install, repair, connect, or
-launch action; only an already-working connection omits the dialog. Automatic
-inspection checks the local API without compiling eval scripts. Explicit setup
-performs the full script compatibility check. Entering Interactive from a Visible
-tray preview also rechecks.
-Launch uses argument lists with `--startclosedtotray`,
-`--hidesplashscreen`, and `--userdatadir`; it does
-not override normal library-update preferences. Do not add `--startdesktop`: Playnite
-10.60 processes it as a SwitchMode command after startup and restores its window.
-Even without that flag, its main-window startup can briefly show/activate before
-remaining hidden. The UI must not promise an invisible launch. Shutdown uses Playnite's supported
-`--shutdown` command and a bounded wait, never process termination.
+`Build-IntegrationPackage.ps1` builds repository-owned source and records hashes of
+all payload files. `Build-CommunityPackage.ps1` includes it under `payload/integration`.
+No Playnite SDK DLL is redistributed. The old `Build-BridgePackage.ps1`/`bridge`
+inputs are historical compatibility tooling and are not called by shipping builds.
 
-`bridge/source.json` pins the temporary integration's source revision, source
-archive hash, and known original DLL hash. `Build-BridgePackage.ps1` builds the
-plugin, includes its MIT license and source attribution, and emits a deterministic
-`.pext` plus its digest metadata. `Build-CommunityPackage.ps1` includes both under
-`payload/bridge`. The temporary manifest version is `1.5.3.2`, retaining upstream's
-extension ID so later official versions can supersede it. Build downloads are
-cached and verified; setup itself requires no GitHub access.
-
-The response-write correction is a local patch over that pinned source. The build
-verifies the patch and before/after source digests, records them in the package,
-and runs `scripts/Test-PlayniteBridgeResponse.ps1` before producing the bundle.
-The fixture exercises aborted responses and subsequent healthy requests through a
-local HttpListener; it does not use the installed Playnite or its credentials.
-
-Before replacement, the bundle and selected installation are checked again.
-Staging, one rollback copy, and an atomic transaction journal live in
-`WidgetRail.Setup/PlayniteBridge` outside `Extensions`, on the target volume.
-Existing settings and auth data are preserved. Setup changes only the relevant
-disabled-plugin entry and the optional first-run network-prompt preference;
-it does not add firewall rules or request elevation. Failed verification restores
-the previous files/settings; interrupted transactions are recovered before retry.
-Unknown/newer builds, duplicate extension copies, linked folders, profile conflicts,
-and shutdown refusal produce an actionable result instead of forced replacement.
+Owned older builds receive an update offer even if healthy. Unknown/newer builds
+are reused only if compatible and never overwritten automatically. Staging and one
+rollback copy live outside Extensions under `WidgetRail.Setup/WidgetRail.Playnite`.
+The journal carries plugin/target identity; interrupted work must recover first.
+Rollback restores our files/settings while preserving unrelated settings changed
+after startup. Original Bridge files/auth/disabled-state are outside that transaction.
+See [setup decisions](SETUP-DECISIONS.md) and the
+[API and validation plan](../../docs/playnite-local-integration-plan.md).
 
 ## Data and authority
 
 Playnite game GUIDs are the exact item, action, and mutation authority. Library
-queries traverse deterministic 64-item Bridge pages up to 10,000 games, then
+queries traverse deterministic 64-item revision-bound API pages up to 10,000 games, then
 apply the current search, source, collection and sort locally. The indexed
 frontend requests bounded presentation ranges from that frozen membership. Installed and owned-but-not-installed games remain distinct.
 Manual and emulated games are ordinary Playnite records; optional source,
@@ -176,11 +152,11 @@ malformed.
 
 Favorites, hidden state, category membership, completion status, and launch
 requests are re-resolved against the current exact GUID before mutation. A
-successful launch response means only that Playnite Bridge accepted the request;
+successful launch response means only that Playnite accepted the request;
 it is not presented as proof that a process started. Launch admission and observed process startup are separate states.
 
 The application may retain a bounded last-good catalog for presentation when
-the Bridge becomes unavailable. Retained entries are marked stale, expose no
+the integration becomes unavailable. Retained entries are marked stale, expose no
 launch capability, and cannot authorize mutations. A fresh current observation
 is required before any action.
 
@@ -190,13 +166,12 @@ mutation authority remain shared and current across both presentation routes.
 
 ## Artwork retention
 
-The client performs one bounded, fixed read-only Bridge `eval` lookup per worker
-lifetime to resolve cover/background file paths. File-capable hosts receive
-file-backed artwork sources and decode directly from disk. Image bytes are not
-copied into the application cache or transferred over artwork IPC on that path.
-The path map stays private to the application; it is never UI state. Missing
-paths, incompatible lookup results and native read/decode failures retain the
-existing byte fallback. Setup and token handling are unchanged by this experiment.
+The client reads a bounded, paged `/v1/artwork` manifest at a stable library revision.
+Individual file revisions include length and last-write time. File-capable hosts
+receive file-backed sources and decode directly from disk, without transferring
+image bytes over widget artwork IPC. Paths stay private to the application. Missing
+or invalid paths and decode failures retain the bounded HTTP byte fallback.
+Library invalidation and profile reset retire the path map and stale authorities.
 
 Fallback encoded artwork payloads use a package-owned, least-recently-used content cache
 bounded to 128 MiB. That byte budget is an application cache policy, not a
