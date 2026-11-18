@@ -39,6 +39,7 @@ public sealed partial class CaptureLibraryStore : IDisposable
     {
         public string? RelativePath { get; init; }
         public CaptureFileIdentity? ExternalIdentity { get; init; }
+        public CaptureEditDerivation? Derivation { get; init; }
     }
 
     public CaptureLibraryStore(string root, string captureDirectory,
@@ -62,7 +63,12 @@ public sealed partial class CaptureLibraryStore : IDisposable
             if (saved.Item.Media.ContentType is not ("image/png" or "video/mp4")) throw Error("capture_library_thumbnail_unavailable");
             var original = new FileInfo(MediaPath(saved));
             if (!original.Exists || original.Length != saved.Item.Media.ByteLength) throw Error("capture_library_invalid_media");
-            var path = Path.Combine(root, id + ".thumbnail"); PlainPath(path);
+            var video=saved.Item.Media.ContentType=="video/mp4";
+            var path = ThumbnailPath(id,video); PlainPath(path);
+            // Older video renditions were requested with Windows' cropped
+            // VideosView policy. Regenerate lazily without touching originals,
+            // their revisions, or already-correct screenshot thumbnails.
+            if(video)DeleteOwned(ThumbnailPath(id,false));
             if (File.Exists(path))
             {
                 var cached = await ReadThumbnailAsync(path, token).ConfigureAwait(false);
@@ -166,7 +172,9 @@ public sealed partial class CaptureLibraryStore : IDisposable
         }
         catch { if (!File.Exists(metadata) && DeleteOwned(path)) DeleteOwned(partial); throw; }
     }
-    public async Task<CaptureLibraryReadLease> OpenAsync(string id, CaptureImageResolution resolution, CancellationToken token)
+    public Task<CaptureLibraryReadLease> OpenAsync(string id, CaptureImageResolution resolution, CancellationToken token) =>
+        OpenAsync(id, resolution, expectedRevision: null, token);
+    internal async Task<CaptureLibraryReadLease> OpenAsync(string id, CaptureImageResolution resolution, long? expectedRevision, CancellationToken token)
     {
         DemandId(id); if (!Enum.IsDefined(resolution)) throw Error("invalid_payload");
         await gate.WaitAsync(token).ConfigureAwait(false);
@@ -174,8 +182,9 @@ public sealed partial class CaptureLibraryStore : IDisposable
         {
             using var ownership = Own();
             var saved = await RefreshEditedAsync(Read(id),token).ConfigureAwait(false);
+            if (expectedRevision is { } revision && saved.Item.Revision != revision) throw Error("capture_library_content_changed");
             var path = MediaPath(saved);
-            if (saved.Item.Media.ContentType == "video/mp4")
+            if (saved.Item.Media.ContentType == "video/mp4" || resolution == CaptureImageResolution.Original)
                 return await OpenPinnedLeaseAsync(saved, token).ConfigureAwait(false);
             var source = await VerifiedAsync(saved, token).ConfigureAwait(false);
             if (resolution != CaptureImageResolution.Context || saved.Item.Media.ContentType != "image/png" ||
@@ -242,6 +251,7 @@ public sealed partial class CaptureLibraryStore : IDisposable
         DemandId(id);
         var saved = IndexRows("WHERE id=$id", ("$id", id)).FirstOrDefault() ?? throw Error("capture_library_not_found");
         if (!saved.MetadataValid) throw Error("capture_library_invalid_media");
+        if (saved.Item.SourceId is not null) DemandHiddenState();
         PlainPath(MediaPath(saved));
         return saved;
     }
@@ -276,10 +286,12 @@ public sealed partial class CaptureLibraryStore : IDisposable
         var stamp=File.GetLastWriteTimeUtc(path).Ticks;
         var updated=saved with { Item=saved.Item with { Media=media,Available=true,Revision=stamp,
             FileModifiedAtUnixMilliseconds = saved.Item.SourceId is null ? saved.Item.FileModifiedAtUnixMilliseconds : new DateTimeOffset(file.LastWriteTimeUtc).ToUnixTimeMilliseconds() }, Sha256=hash,MediaStamp=stamp };
-        DeleteOwned(Path.Combine(root,saved.Item.Id+".thumbnail")); WriteMetadata(updated); IndexPut(updated,input.Length);
+        DeleteThumbnails(saved.Item.Id); WriteMetadata(updated); IndexPut(updated,input.Length);
         verified[saved.Item.Id]=(input.Length,updated.MediaStamp,hash); return updated;
     }
     private string MetadataPath(string id) => Path.Combine(root, id + ".json");
+    private string ThumbnailPath(string id,bool video)=>Path.Combine(root,id+(video?".video-thumbnail-v2":".thumbnail"));
+    private bool DeleteThumbnails(string id)=>DeleteOwned(ThumbnailPath(id,false))&DeleteOwned(ThumbnailPath(id,true));
     private string MediaPath(Saved saved) => saved.Item.SourceId is { } sourceId
         ? ResolveSourcePath(ReadSource(sourceId), saved.RelativePath ?? string.Empty)
         : saved.FileName is { } name && ValidName(name) ? Path.Combine(captureDirectory, name) : throw Error("capture_library_invalid_media");

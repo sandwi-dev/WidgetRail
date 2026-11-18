@@ -248,6 +248,13 @@ internal sealed partial class OverlayShellPage
             }
             Add("Task Switcher", "Shell.TaskSwitcher", () => { FocusUtility(ShellUtility.Tasks); return Task.CompletedTask; },
                 HasPendingNotifications ? null : ControllerButton.Y, hold: true);
+            if(ReplayStatusForHost is {} replay && (replay.Settings.Enabled || replay.SessionId is not null || replay.Saving))
+            {
+                if(replay.SessionId is {} replaySession&&!replay.Saving&&replay.BufferedDurationSeconds>0&&replay.Phase is CaptureReplayPhase.Recording or CaptureReplayPhase.Paused)
+                    Add("Save replay","Shell.SaveReplay",()=>SaveReplayFromHostAsync(replaySession));
+                Add(replay.Phase==CaptureReplayPhase.Stopping?"Stopping replay recording…":"Stop replay recording","Shell.StopReplay",
+                    ()=>StopReplayFromHostAsync(replay.SessionId),enabled:replay.Phase!=CaptureReplayPhase.Stopping);
+            }
             if (introductionLoaded && !introduction.Finished)
                 Add("Continue introduction", "Shell.Introduction", () => { ContinueIntroduction(); return Task.CompletedTask; });
             if (descriptor.CanStop && !descriptor.IsStopped)
@@ -278,15 +285,15 @@ internal sealed partial class OverlayShellPage
                 return group;
             }
 
-            void Add(string label, string id, Func<Task> action, ControllerButton? shortcut = null, bool hold = false, MenuFlyoutSubItem? group = null)
+            void Add(string label, string id, Func<Task> action, ControllerButton? shortcut = null, bool hold = false, MenuFlyoutSubItem? group = null, bool enabled = true)
             {
                 var command = new AsyncRelayCommand(async () =>
                 {
                     if (!ReferenceEquals(trayMenu, menu) || !TrayOwnerCurrent(descriptor, selection)) return;
                     CloseTrayMenu(true);
                     await action();
-                });
-                var item = new MenuFlyoutItem { Text = label, Command = command };
+                }, () => enabled);
+                var item = new MenuFlyoutItem { Text = label, Command = command, IsEnabled = enabled };
                 if (shortcut is { } button) ApplyTrayCommandShortcut(item, button, hold);
                 AutomationProperties.SetAutomationId(item, "Overlay.TrayCommand." + id);
                 menu.Items.Add(item); (group?.Items ?? menu.Flyout.Items).Add(item);

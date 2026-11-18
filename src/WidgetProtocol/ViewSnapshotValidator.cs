@@ -221,7 +221,16 @@ public static class ViewSnapshotValidator
             if (reveal.RequestId is <= 0 or > ProtocolConstants.MaximumFocusGroupEntryRequestId)
                 Add("$.scrollRevealRequest.requestId", "out_of_range", "Scroll reveal requires a positive bounded request ID.");
             CheckIdentifier(reveal.ScrollId, "$.scrollRevealRequest.scrollId", "scroll ID", ProtocolValidationIdentifierKind.ElementReference);
-            if (reveal.IndexedItem is { } indexedReveal)
+            if(reveal.DeferredSource is {} deferred)
+            {
+                if(reveal.IndexedItem is not null || reveal.TargetId is not null || deferred.EndFollowingEpoch is null ||
+                    !ids.TryGetValue(reveal.ScrollId,out var collection) || collection.Node.Kind!=ViewNodeKind.IndexedCollection ||
+                    !hasActiveScope || collection.ScopeKey!=activeScopeKey)
+                    Add("$.scrollRevealRequest","invalid_deferred_reveal","Deferred reveal requires one active indexed continuity source and no resolved target.");
+                try{IndexedCollectionContract.ValidateDescriptor(deferred);}
+                catch(ArgumentException){Add("$.scrollRevealRequest.deferredSource","invalid_deferred_reveal","Invalid deferred reveal source.");}
+            }
+            else if (reveal.IndexedItem is { } indexedReveal)
             {
                 if (reveal.TargetId is not null)
                     Add("$.scrollRevealRequest.targetId", "ambiguous_scroll_reveal", "Supply either a declared child or an indexed occurrence.");
@@ -385,6 +394,22 @@ public static class ViewSnapshotValidator
         HashSet<string>? disclosureContentIds = null;
         foreach (var (_, entry) in ids)
         {
+            if(!Enum.IsDefined(entry.Node.IndexedDirectionalEntry) || entry.Node.IndexedDirectionalEntry!=IndexedDirectionalEntryMode.Remembered &&
+                (entry.Node.Kind!=ViewNodeKind.IndexedCollection || entry.Node.CollectionLayout?.Kind!=CollectionLayoutKind.List))
+                Add(entry.Path+".indexedDirectionalEntry","invalid_indexed_directional_entry","Visible-edge entry requires an indexed list and a defined policy.");
+            if (entry.Node.CollectionBoundaries is not null && (entry.Node.Kind!=ViewNodeKind.IndexedCollection ||
+                entry.Node.IndexedCollection?.ObservesBoundaries!=true || entry.Node.CollectionLayout?.Kind!=CollectionLayoutKind.List))
+                Add(entry.Path+".collectionBoundaries","invalid_collection_boundaries","Adjacent pages require an opted-in finite indexed list.");
+            if (entry.Node.FocusVisualTargetId is { } visualTarget)
+            {
+                CheckIdentifier(visualTarget, entry.Path + ".focusVisualTargetId", "focus visual target");
+                if (entry.Node.Kind != ViewNodeKind.ActionSurface || !ids.TryGetValue(visualTarget, out var target) ||
+                    target.Node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid) ||
+                    !target.Path.StartsWith(entry.Path + ".children[", StringComparison.Ordinal) ||
+                    target.ScopeKey != entry.ScopeKey || FragmentRoot(target.Path) != FragmentRoot(entry.Path) ||
+                    !IsAlwaysAvailableDescendant(entry.Node,visualTarget))
+                    Add(entry.Path + ".focusVisualTargetId", "invalid_focus_visual_target", "Focus decoration must name a layout descendant of its action surface.");
+            }
             if (entry.Node.Disclosure is { } disclosure)
             {
                 var path = entry.Path + ".disclosure";
@@ -790,7 +815,7 @@ public static class ViewSnapshotValidator
                     $"The {label} height must be finite and between {minimumHeight} and {maximumHeight} DIPs.");
         }
 
-        void Visit(ViewNode? node, string path, int depth, string inheritedScopeKey, ViewNode? parent = null, bool interactivePreview = false)
+        void Visit(ViewNode? node, string path, int depth, string inheritedScopeKey, ViewNode? parent = null, bool interactivePreview = false, bool previewMedia = false)
         {
             if (node is null)
             {
@@ -1509,6 +1534,8 @@ public static class ViewSnapshotValidator
                     Add($"{actionPath}.style", "invalid_context_action_style",
                         "The context action style is not supported.");
             }
+            if (node.IsCommandMenu is not null && node.Kind is not ViewNodeKind.Select)
+                Add($"{path}.isCommandMenu", "command_menu_not_allowed", "Only Select controls may declare command-menu behavior.");
             var selectOptions = node.SelectOptions ?? [];
             if (node.SelectOptions is null)
                 Add($"{path}.selectOptions", "required", "Select options cannot be null.");
@@ -1568,16 +1595,26 @@ public static class ViewSnapshotValidator
                 if (node.IsSelected is not null)
                     Add($"{path}.isSelected", "interaction_state_not_allowed",
                         "Selected state belongs to exactly one Select option, not the Select opener.");
-                if (selectedOptions != 1)
+                if (node.IsCommandMenu == true)
+                {
+                    if (selectedOptions != 0)
+                        Add($"{path}.selectOptions", "command_menu_selected_option", "Commands cannot declare selected options.");
+                    if (node.AccessibilityValue is not null)
+                        Add($"{path}.accessibilityValue", "command_menu_value_not_allowed", "A command menu has no selected accessible value.");
+                }
+                else if (selectedOptions != 1)
                     Add($"{path}.selectOptions", "select_requires_one_selected_option",
                         "A Select requires exactly one selected option.");
-                if (selectOptions.Count is >= 1 and <= ProtocolConstants.MaximumSelectOptionCount &&
+                if (node.IsCommandMenu != true && selectOptions.Count is >= 1 and <= ProtocolConstants.MaximumSelectOptionCount &&
                     selectedOption is not null && node.AccessibilityValue != selectedOption.Label)
                     Add($"{path}.accessibilityValue", "select_value_mismatch",
                         "A Select accessible value must equal its selected option label.");
             }
             var supportsImageSource = node.Kind is ViewNodeKind.Image or ViewNodeKind.Button or
-                ViewNodeKind.BackgroundSurface;
+                ViewNodeKind.BackgroundSurface or ViewNodeKind.MediaPlayer;
+            if (node.Kind == ViewNodeKind.MediaPlayer && (node.ImageSource is not null ||
+                node.ImageFit is not null && (node.ArtworkHandle is null || node.ImageFit != ImageFit.Contain)))
+                Add(path, "invalid_media_poster", "A media poster requires scoped artwork with Contain fit.");
             if (node.ArtworkHandle is not null)
             {
                 if (!supportsImageSource)
@@ -1655,13 +1692,16 @@ public static class ViewSnapshotValidator
             var children = node.Children ?? [];
             if (node.Kind == ViewNodeKind.RichText)
             {
+                if (children.Count(child => child?.Kind == ViewNodeKind.Image) > ProtocolConstants.MaximumInlineRichImages)
+                    Add(path, "too_many_inline_images", "RichText accepts at most 16 inline images.");
                 if (children.Count is < 1 or > 512 || children.Any(child => child is null ||
-                    child.Kind is not (ViewNodeKind.Text or ViewNodeKind.Button) || child.Children is not { Count: 0 } ||
+                    child.Kind is not (ViewNodeKind.Text or ViewNodeKind.Button or ViewNodeKind.Image) || child.Children is not { Count: 0 } ||
                     child.Kind == ViewNodeKind.Button && (child.Intent is null || string.IsNullOrWhiteSpace(child.Text)) || child.Transition is not null ||
                     child.GridCell is not null || child.VisibleWhen is not (null or ResponsiveVisibility.Always) ||
                     child.InputScopeId is not null || child.ContextActions is not { Count: 0 } || child.Shortcuts is not { Count: 0 } ||
-                    child.Glyph is not null || child.PackageIcon is not null || child.ImageSource is not null || child.ArtworkHandle is not null))
-                    Add(path, "invalid_rich_text", "RichText requires 1-512 plain Text or intent Button spans, without independent layout, images or nested interaction.");
+                    child.Glyph is not null || child.PackageIcon is not null || child.Kind != ViewNodeKind.Image && (child.ImageSource is not null || child.ArtworkHandle is not null) ||
+                    child.Kind == ViewNodeKind.Image && (child.FocusPresentation is not null || child.ActionId is not null)))
+                    Add(path, "invalid_rich_text", "RichText requires 1-512 plain Text, Image or intent Button spans, without independent layout or nested interaction.");
             }
             var shortcuts = node.Shortcuts ?? [];
             var styleClasses = node.StyleClasses ?? [];
@@ -1848,7 +1888,7 @@ public static class ViewSnapshotValidator
             if (node.FocusPresentation is { } focusPresentation)
             {
                 ValidateFocusPresentationContent(
-                    focusPresentation, $"{path}.focusPresentation", interactivePreview);
+                    focusPresentation, $"{path}.focusPresentation", interactivePreview, previewMedia);
                 Visit(focusPresentation, $"{path}.focusPresentation", depth + 1, scopeKey);
             }
             if (node.DefaultFocusPresentation is { } defaultFocusPresentation)
@@ -1860,7 +1900,8 @@ public static class ViewSnapshotValidator
             }
             for (var index = 0; index < children.Count; index++)
                 Visit(children[index], $"{path}.children[{index}]", depth + 1, scopeKey, node,
-                    node.Kind == ViewNodeKind.FocusPresentationSurface ? node.FocusPreview?.EnterButton is not null : interactivePreview);
+                    node.Kind == ViewNodeKind.FocusPresentationSurface ? node.FocusPreview?.EnterButton is not null : interactivePreview,
+                    node.Kind == ViewNodeKind.FocusPresentationSurface ? node.FocusPreview?.AllowMedia == true : previewMedia);
         }
 
         void ValidateFocusPresentationOwnership(
@@ -1919,9 +1960,10 @@ public static class ViewSnapshotValidator
                     child.Kind, ref contentBudget);
         }
 
-        void ValidateFocusPresentationContent(ViewNode root, string path, bool interactive = false)
+        void ValidateFocusPresentationContent(ViewNode root, string path, bool interactive = false, bool allowMedia = false)
         {
             var fragmentNodes = 0;
+            var mediaCount = 0;
             VisitFragment(root, path, 1);
 
             void VisitFragment(ViewNode? node, string nodePath, int relativeDepth)
@@ -1940,7 +1982,9 @@ public static class ViewSnapshotValidator
                     // A preview is a bounded contextual workspace, not another page or runtime.
                     // Native controls retain their normal validation below. Nested surfaces,
                     // independent scopes and background services cannot escape its lifetime.
-                    if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or
+                    if (node.Kind == ViewNodeKind.MediaPlayer && ++mediaCount > 1)
+                        Add(nodePath, "preview_media_limit", "A preview may own at most one native media player.");
+                    if (!(allowMedia && node.Kind == ViewNodeKind.MediaPlayer) && node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or
                         ViewNodeKind.Text or ViewNodeKind.RichText or ViewNodeKind.Button or ViewNodeKind.ActionSurface or
                         ViewNodeKind.Select or ViewNodeKind.Slider or ViewNodeKind.Scroll or ViewNodeKind.Progress or ViewNodeKind.LineGraph or
                         ViewNodeKind.Spacer or ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator or ViewNodeKind.ControllerGlyph) ||

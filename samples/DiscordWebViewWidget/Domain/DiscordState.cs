@@ -16,12 +16,13 @@ internal sealed record DiscordState(int Revision, bool Ready, string Account, Di
     DiscordParticipant[] Participants, DiscordStream[] Streams, bool Sharing, bool SharePending, string? ShareError, string RelayState, DiscordFriendActivity[]? Activities=null, string ActivityAvailability="unavailable", bool ActivitiesTruncated=false,
     DiscordShareQuality[]? ShareQualities=null,string ShareQualityAvailability="unavailable",DiscordShareQuality? PreferredShareQuality=null,
     string VoiceConnection="unavailable",string? ShareQualityWarning=null,string NotificationPermission="unavailable",
-    DiscordOutgoingViewers? OutgoingViewers=null,string DesktopNotifications="unavailable")
+    DiscordOutgoingViewers? OutgoingViewers=null,string DesktopNotifications="unavailable",DiscordMessagingState? Messaging=null)
 {
     public DiscordFriendActivity[] Activities { get; init; }=Activities??[];
     public DiscordShareQuality[] ShareQualities {get;init;}=ShareQualities??DiscordShareQuality.Baseline;
     internal void Validate()
     {
+        if(Ready && Messaging is not null)Messaging.Validate(Account);
         if(DesktopNotifications is not("enabled" or "disabled" or "unavailable"))
             throw new InvalidDataException("invalid_desktop_notifications");
         if(OutgoingViewers is {} viewers && (!Sharing||ChannelId is null||Participants is null||

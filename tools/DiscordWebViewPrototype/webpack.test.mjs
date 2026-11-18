@@ -9,3 +9,15 @@ test('manufactured members cannot satisfy a capability',()=>{const fake=new Prox
 test('real inherited dispatcher methods remain discoverable',()=>{class Dispatcher{dispatch(){}subscribe(){}wait(){}}const value=new Dispatcher();const d=load([{c:{one:{exports:value}}}]);assert.equal(d.Common.FluxDispatcher,value);});
 test('misses can recover when a module loads later',()=>{const runtime={c:{}};const d=load([runtime]);assert.equal(d.findByProps('toggleSelfMute'),undefined);const actions={toggleSelfMute(){}};runtime.c.late={exports:actions};assert.equal(d.findByProps('toggleSelfMute'),actions);});
 test('throwing exports do not prevent finding a valid module',()=>{const bad={};Object.defineProperty(bad,'oops',{enumerable:true,get(){throw Error('fixture');}});const good={hello(){}};const d=load([{c:{bad:{exports:bad},good:{exports:good}}}]);assert.equal(d.findByProps('hello'),good);});
+test('predicate discovery skips a positional HTTP helper sharing the same method names',()=>{
+ const raw={get(url,data,callback){},post(url,data,callback){},del(){},put(){}},typed={get(options){},post(options){}};
+ const runtime={c:{raw:{exports:raw},typed:{exports:typed}}},d=load([runtime]);
+ assert.equal(d.findByProps('get','post'),raw);
+ const contract=value=>value.get.length<=1&&value.post.length<=1;
+ assert.equal(d.findByProps('get','post',contract),typed);
+ typed.get=function(url,data,callback){};
+ assert.equal(d.findByProps('get','post',contract),undefined);
+ const replacement={get(options){},post(options){}};runtime.c.replacement={exports:replacement};
+ assert.equal(d.findByProps('get','post',contract),replacement);
+ assert.equal(d.findByProps('get','post'),raw);
+});

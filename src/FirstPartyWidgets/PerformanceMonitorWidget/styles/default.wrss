@@ -1,8 +1,14 @@
 .performance-widget { padding: 16px; gap: 12px; background: var(--surface); color: var(--text); }
 .performance-dashboard { background: transparent; }
-.performance-title { font-size: 24px; font-weight: 600; }
+.performance-title { font-size: 24px; font-weight: 600; flex-grow: 1; min-width: 0px; }
+.performance-header { align: center; gap: 12px; }
+.performance-enable, .performance-enable:focused { background: var(--accent); color: var(--canvas, var(--surface)); border-color: var(--accent); }
+.performance-enable:focused { outline-color: var(--focus); outline-width: var(--focus-width, 2px); outline-offset: var(--focus-filled-offset, 2px); }
 .performance-subtitle { font-size: 15px; font-weight: 600; max-lines: 2; text-overflow: ellipsis; }
 .performance-value { font-size: 28px; font-weight: 600; }
 .performance-metric { padding: 12px; gap: 6px; corner-radius: 10px; background: var(--surface-raised); }
 .performance-help { font-size: 13px; color: var(--text-muted); }
+.performance-status { font-size: 13px; }
+.performance-error { color: var(--danger, var(--text)); }
+.performance-warning { color: var(--warning, var(--text)); }
 .performance-pin { padding: 12px; gap: 8px; }

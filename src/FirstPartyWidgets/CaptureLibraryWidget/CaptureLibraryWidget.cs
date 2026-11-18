@@ -8,7 +8,8 @@ public sealed partial class CaptureLibraryWidget : Widget
 {
     private sealed record State(CaptureLibraryPage? Page = null, CaptureAttachment? Preview = null, bool FromLibrary = false,
         string? SelectedId = null, bool Detail = false, bool Busy = false, bool Capturing = false, bool Copying = false, bool ConfirmDelete = false, string? Message = null,
-        WidgetNavigationOperation Navigation = WidgetNavigationOperation.Forward, bool Settings = false, CapturePreferences? Preferences = null, CaptureCapabilities? Capabilities = null, long PreferencesRevision = 0);
+        WidgetNavigationOperation Navigation = WidgetNavigationOperation.Forward, bool Settings = false, CapturePreferences? Preferences = null, CaptureCapabilities? Capabilities = null, long PreferencesRevision = 0,
+        CaptureReplayStatus? Replay = null, string? ReplayNotice = null, double? ReplaySavedSeconds = null, bool RecycleLinkedOriginal = false, bool PermissionRequired = false);
     // Before declaring material, all library routes used the host's 1180 x 700
     // legacy extent. An appearance-only hint would otherwise select 880 x 520.
     private static WidgetSurfaceHints Surface(WidgetSurfaceAppearance appearance) => new()
@@ -20,6 +21,8 @@ public sealed partial class CaptureLibraryWidget : Widget
     public CaptureLibraryWidget()
     {
         model = CreateModel(new State());
+        feedback = CreateNotificationPublisher("capture-library.feedback", "capture-result", debounce: TimeSpan.Zero);
+        InitializeRecordingChoices();
         galleryNavigation = CreateNavigatorWithOptions("capture-library.navigation", GalleryRoute.Gallery, new WidgetNavigatorOptions<GalleryRoute>
         {
             SharedRootScopeId = "capture-library.page", RootRoutes = [GalleryRoute.Gallery],
@@ -31,13 +34,14 @@ public sealed partial class CaptureLibraryWidget : Widget
     protected override ValueTask OnActivatedAsync(CancellationToken token)
     {
         WatchLibrary();
+        WatchReplay();
         var state = model.Value;
         if (!state.Busy && state.Preview is { } preview && preview.ExpiresAtUnixMilliseconds <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
         {
             if (state.SelectedId is { } id)
                 Work(async lifetime => { var reopened = await HostServices.CaptureLibrary.OpenAsync(id, cancellationToken: lifetime); model.Update(s => s with { Preview = reopened, FromLibrary = true }); });
             else
-                Work(async lifetime => { model.Update(s => s with { Preview = null, Detail = false }); await RefreshAsync(lifetime); model.Update(s => s with { Message = "The unsaved capture expired. Take another capture to save it." }); });
+                Work(async lifetime => { model.Update(s => s with { Preview = null, Detail = false }); await RefreshAsync(lifetime); UpdateFeedback(s => s with { Message = "The unsaved capture expired. Take another capture to save it." }); });
         }
         else if (!state.Busy) Load();
         return ValueTask.CompletedTask;
@@ -46,45 +50,80 @@ public sealed partial class CaptureLibraryWidget : Widget
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
         var state = model.Value;
+        if (HandleRecordingChoiceAction(action)) return ValueTask.CompletedTask;
+        if (HandleReplayAction(action)) return ValueTask.CompletedTask;
         if (HandleSourceAction(action)) return ValueTask.CompletedTask;
         if (HandleContextAction(action)) return ValueTask.CompletedTask;
         if (HandleBatchAction(action)) return ValueTask.CompletedTask;
         if (action.ActionId == "capture-library.cancel")
-        { Operations.Cancel("capture-library.work"); model.Update(s => s with { Busy = false, Capturing = false, Message = "Capture cancelled." }); return ValueTask.CompletedTask; }
+        { Operations.Cancel("capture-library.work"); UpdateFeedback(s => s with { Busy = false, Capturing = false, Message = "Capture cancelled." }); return ValueTask.CompletedTask; }
         if (action.ActionId == "capture-library.settings.back")
         { model.Update(s => s with { Settings = false, Navigation = WidgetNavigationOperation.Back, Message = null }); return ValueTask.CompletedTask; }
         if (state.Busy) return ValueTask.CompletedTask;
+        if (action.ActionId == "capture-library.focus-actions" && (state.Preview is not null || state.Detail) && !showSources && !showContexts && !state.ConfirmDelete)
+        { detailEntry = CreateFocusRequest().EnterGroup("capture-library.actions"); Invalidate(); return ValueTask.CompletedTask; }
         if (!state.Detail && state.Preview is null && !state.Settings && HandleGalleryAction(action)) return ValueTask.CompletedTask;
         if (action.ActionId.StartsWith("capture-library.option.", StringComparison.Ordinal))
         { ChangeSetting(action.ActionId); return ValueTask.CompletedTask; }
         switch (action.ActionId)
         {
-            case "capture-library.allow": Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ReadPermission], token); await RefreshAsync(token); }); break;
+            case "capture-library.allow": Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ReadPermission], token); await RefreshAsync(token); WatchLibrary(); WatchReplay(); }); break;
             case "capture-library.settings":
                 model.Update(s => s with { Settings = true, Navigation = WidgetNavigationOperation.Forward });
                 Work(LoadSettingsAsync); break;
             case "capture-library.photo": Capture(WindowCaptureKind.Screenshot); break;
             case "capture-library.video": Capture(WindowCaptureKind.Video); break;
-            case "capture-library.refresh": Work(async token => { await HostServices.CaptureLibrary.RefreshAsync(cancellationToken: token); await RefreshAsync(token); WatchLibrary(); }); break;
+            case "capture-library.refresh": Work(async token => { await HostServices.CaptureLibrary.RefreshAsync(cancellationToken: token); await RefreshAsync(token); WatchLibrary(); WatchReplay(); }); break;
             case "capture-library.back":
                 galleryNavigation.Back();
                 Work(async token => { await ReleaseAsync(state, token); model.Update(s => s with { Preview = null, Detail = false, Navigation = WidgetNavigationOperation.Back, ConfirmDelete = false }); await RefreshAsync(token); }); break;
             case "capture-library.save" when state.Preview is { } preview:
                 Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.SavePermission], token); var item = await HostServices.CaptureLibrary.SaveAsync(preview, token);
+                    if (preview.Origin == CaptureAttachmentOrigin.LibraryRecordingDraft)
+                    {
+                        try { await ReplacePreviewAsync(item, state, token); }
+                        catch (WidgetCapabilityException)
+                        {
+                            // Publication already succeeded. Never offer Save again against a retired draft.
+                            if (SamePreviewSource(state))
+                            {
+                                selectedCapture = item;
+                                UpdateFeedback(s => s with { Preview = null, Detail = true, FromLibrary = true, SelectedId = item.Id,
+                                    Message = "The recording was saved, but its preview could not be opened. You can find it in the library." });
+                            }
+                            return;
+                        }
+                        UpdateFeedback(s => s with { Message = "Saved to Pictures → WidgetRail → Captures." });
+                        return;
+                    }
                     var metadata = await HostServices.CaptureLibrary.GetMetadataAsync(item.Id, token);
                     token.ThrowIfCancellationRequested();
-                    selectedCapture = item with { Title=metadata.Title,IsFavorite=metadata.IsFavorite,MetadataRevision=metadata.MetadataRevision };
-                    model.Update(s => s with { SelectedId = item.Id, Message = "Saved to Pictures → WidgetRail → Captures." }); }); break;
+                    item = item with { Title=metadata.Title,IsFavorite=metadata.IsFavorite,MetadataRevision=metadata.MetadataRevision };
+                    selectedCapture = item;
+                    UpdateFeedback(s => s with { SelectedId = item.Id, Message = "Saved to Pictures → WidgetRail → Captures." }); }); break;
             case "capture-library.folder":
                 Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ManagePermission], token); await HostServices.CaptureLibrary.OpenFolderAsync(token); }); break;
+            case "capture-library.edit-copy": EditCaptureCopy(state); break;
             case "capture-library.copy" when selectedCapture is { } copy:
-                Work(token=>ApplyBatchAsync(new("copy",[copy]),token)); break;
+                Work(async token =>
+                {
+                    await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ManagePermission], token);
+                    model.Update(s => s with { Copying = true });
+                    var saved = await HostServices.CaptureLibrary.SaveCopyAsync(new(copy.Id, copy.Revision, copy.MetadataRevision), token);
+                    token.ThrowIfCancellationRequested();
+                    await ReplacePreviewAsync(saved, state, token);
+                    await RefreshGalleryAsync(token);
+                    UpdateFeedback(s => s with { Message = "Copy saved to the capture folder." });
+                }); break;
             case "capture-library.reveal" when state.SelectedId is { } reveal:
                 Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ManagePermission], token); await HostServices.CaptureLibrary.RevealAsync(reveal, token); }); break;
-            case "capture-library.delete" when state.SelectedId is not null: model.Update(s => s with { ConfirmDelete = true }); break;
+            case "capture-library.delete" when state.SelectedId is not null: model.Update(s => s with { ConfirmDelete = true, RecycleLinkedOriginal = false }); break;
+            case "capture-library.unhide": UnhideSelectedCapture(state); break;
+            case "capture-library.recycle-original" when state.SelectedId is not null && selectedCapture is {SourceId:not null,Available:true}:
+                model.Update(s => s with { ConfirmDelete = true, RecycleLinkedOriginal = true }); break;
             case "capture-library.delete.cancel": model.Update(s => s with { ConfirmDelete = false }); break;
             case "capture-library.delete.confirm" when state.ConfirmDelete && state.SelectedId is { } deleted:
-                DeleteSelectedCapture(state, deleted); break;
+                DeleteSelectedCapture(state, deleted, state.RecycleLinkedOriginal); break;
             case "capture-library.favorite" when selectedCapture is not null:
                 ChangeCaptureMetadata(null, toggleFavorite: true); break;
             case "capture-library.title" when selectedCapture is not null:
@@ -97,8 +136,10 @@ public sealed partial class CaptureLibraryWidget : Widget
     private void Load() => Work(RefreshAsync);
     private async Task RefreshAsync(CancellationToken token)
     {
-        await RefreshGalleryAsync(token);
+        // Preference-driven presentation updates must settle before the newest
+        // query captures its identity, including a post-subscription refresh.
         await LoadPreferencesAsync(token);
+        await RefreshGalleryAsync(token);
     }
     private void Work(Func<CancellationToken, Task> work)
     {
@@ -107,7 +148,7 @@ public sealed partial class CaptureLibraryWidget : Widget
         {
             try { await work(context.CancellationToken); }
             catch (OperationCanceledException) { }
-            catch (WidgetCapabilityException error) { if (context.IsCurrent) model.Update(s => s with { Message = Explain(error.ErrorCode), ConfirmDelete = false }); }
+            catch (WidgetCapabilityException error) { if (context.IsCurrent) UpdateFeedback(s => s with { Message = Explain(error.ErrorCode), ConfirmDelete = false }, error.ErrorCode == "permission_denied"); }
             finally { if (context.IsCurrent) model.Update(s => s with { Busy = false, Copying = false }); }
         }, WidgetOperationLifetime.Widget);
     }
@@ -122,11 +163,6 @@ public sealed partial class CaptureLibraryWidget : Widget
             {
                 await LoadPreferencesAsync(context.CancellationToken);
                 await RequirePermissionsAsync([WidgetCaptureCapabilities.Permission, WidgetCaptureLibraryCapabilities.SavePermission], context.CancellationToken);
-                if (kind == WindowCaptureKind.Video)
-                {
-                    var capabilities = await HostServices.Capture.GetRecordingCapabilitiesAsync(model.Value.Preferences?.Video, context.CancellationToken);
-                    model.Update(s => s with { Preferences = s.Preferences is { Video: null } preferences ? preferences with { Video = DefaultVideo(capabilities) } : s.Preferences });
-                }
                 var settings = model.Value.Preferences ?? throw new WidgetCapabilityException("capture_preferences_invalid", "Invalid saved settings.");
                 var request = settings.Request(kind);
                 var validation = await HostServices.Capture.ValidateAsync(request, context.CancellationToken);
@@ -141,7 +177,7 @@ public sealed partial class CaptureLibraryWidget : Widget
                     if (status.Phase == WindowCapturePhase.Ready)
                     {
                         completed = true;
-                        if (context.IsCurrent) model.Update(s => s with { Preview = status.Attachment, Navigation = WidgetNavigationOperation.Forward, FromLibrary = false, SelectedId = null, Message = "Review your capture, then save it to keep it." });
+                        if (context.IsCurrent) UpdateFeedback(s => s with { Preview = status.Attachment, Navigation = WidgetNavigationOperation.Forward, FromLibrary = false, SelectedId = null, Message = "Review your capture, then save it to keep it." });
                         else if (status.Attachment is { } abandoned) { using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(2)); await HostServices.Capture.DiscardAsync(abandoned, cleanup.Token); }
                         break;
                     }
@@ -150,7 +186,7 @@ public sealed partial class CaptureLibraryWidget : Widget
                 }
             }
             catch (OperationCanceledException) { }
-            catch (WidgetCapabilityException error) { if (context.IsCurrent) model.Update(s => s with { Message = Explain(error.ErrorCode) }); }
+            catch (WidgetCapabilityException error) { if (context.IsCurrent) UpdateFeedback(s => s with { Message = Explain(error.ErrorCode) }, error.ErrorCode == "permission_denied"); }
             finally
             {
                 if (!completed && ticket is not null) try { using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(2)); await HostServices.Capture.CancelAsync(ticket, cleanup.Token); } catch (Exception) { }
@@ -182,50 +218,12 @@ public sealed partial class CaptureLibraryWidget : Widget
         string initial;
         if (state.Preview is not null || state.Detail)
         {
-            items.Add(UI.Text("Capture Library", "capture-library.title").Classes("capture-title"));
-            items.Add(UI.Text(state.SelectedId is null ? "Review capture" : "Saved capture", "capture-library.heading").Classes("capture-heading"));
-            if (state.Preview is { } media)
-            {
-                items.Add(UI.Text(Describe(media), "capture-library.metadata").Classes("capture-help"));
-                if (media.ContentType == "video/mp4" && media.Properties is { } actual)
-                    items.Add(UI.Text($"{actual.RequestedFramesPerSecond} fps · {actual.Encoder} encoding · " +
-                        (actual.Audio == CaptureAudioMode.Application ? "Application audio" : "No audio") +
-                        (actual.MissedFrames > 0 ? $" · {actual.MissedFrames} missed frames" : ""), "capture-library.recording-properties").Classes("capture-help"));
-                items.Add(UI.MediaPlayer(MediaPlayerSource.FromCapture(media), "capture-library.preview", "Capture preview",
-                    new(Muted: media.Properties?.Audio is null or CaptureAudioMode.None)).Classes("capture-preview"));
-            }
-            else items.Add(UI.Text(state.Busy ? "Opening capture…" : "Preview unavailable. You can return to the library or delete this entry.", "capture-library.unavailable").Classes("capture-help"));
-            if (state.SelectedId is not null && selectedCapture is { } selected)
-            {
-                items.Add(UI.Row("capture-library.viewer.navigation",
-                    UI.Button("Previous", "capture-library.viewer.previous", "capture-library.viewer.previous").Busy(state.Busy),
-                    UI.Button("Next", "capture-library.viewer.next", "capture-library.viewer.next").Busy(state.Busy),
-                    UI.Button(selected.IsFavorite ? "Remove favorite" : "Favorite", "capture-library.favorite", "capture-library.favorite").Busy(state.Busy)));
-                items.Add(UI.TextEntry(selected.Title ?? "", "Add a title", "capture-library.title", "capture-library.edit-title", 160).Disabled(state.Busy));
-                if (selected.ContextCount > 0)
-                    items.Add(UI.Button("Related details", "capture-library.context.open", "capture-library.context.open").Busy(state.Busy));
-            }
-            var actions = new List<WidgetElement>();
-            if (state.SelectedId is null) actions.Add(UI.Button("Save to library", "capture-library.save", "capture-library.save").Busy(state.Busy));
-            else
-            {
-                actions.Add(UI.Button("Save a copy…", "capture-library.copy", "capture-library.copy").Busy(state.Busy));
-                actions.Add(UI.Button("Show in folder", "capture-library.reveal", "capture-library.reveal").Busy(state.Busy));
-                actions.Add(UI.Button(selectedCapture?.SourceId is not null ? "Remove from library" : selectedCapture?.Available == false ? "Remove unavailable entry" : "Move to Recycle Bin", "capture-library.delete", "capture-library.delete").Busy(state.Busy));
-            }
-            actions.Add(UI.Button(state.SelectedId is null ? "Discard" : "Back to library", "capture-library.back", "capture-library.back").Busy(state.Busy));
-            items.Add(UI.ResponsiveGrid("capture-library.actions", 150, 3, actions.ToArray()));
-            initial = state.SelectedId is null ? "capture-library.save" : "capture-library.back";
+            items.Add(DetailHeader(state));
+            items.Add(DetailBody(state));
+            initial = state.SelectedId is null ? "capture-library.save" : state.Preview is not null ? "capture-library.share" : "capture-library.back";
         }
         else
         {
-            items.Add(UI.ResponsiveGrid("capture-library.header", 400, 2,
-                UI.Text("Capture Library", "capture-library.title").Classes("capture-title"),
-                UI.Row("capture-library.capture-actions",
-                    UI.Button("Screenshot", "capture-library.photo", "capture-library.photo").Busy(state.Busy),
-                    UI.Button("Record clip", "capture-library.video", "capture-library.video").Busy(state.Busy),
-                    UI.Button("Settings", "capture-library.settings", "capture-library.settings").Busy(state.Busy),
-                    UI.Button("Open folder", "capture-library.folder", "capture-library.folder").Busy(state.Busy)).Classes("capture-header-actions")));
             items.AddRange(GalleryControls(state));
             initial = "capture-library.photo";
         }
@@ -239,29 +237,37 @@ public sealed partial class CaptureLibraryWidget : Widget
             items.Add(UI.Text("Saving copies. Completed copies are kept if you cancel.", "capture-library.copy.status").Classes("capture-help"));
             items.Add(UI.Button("Cancel copying", "capture-library.batch.stop", "capture-library.copy.cancel"));
         }
-        if (state.Message is { } message)
+        if (state.Message is { } message && state.PermissionRequired)
         {
-            items.Add(UI.Text(message, "capture-library.status").Classes("capture-help"));
-            if (message == Explain("permission_denied"))
-            {
-                items.Add(UI.Button("Allow capture and library access", "capture-library.allow", "capture-library.allow").Busy(state.Busy));
-                items.Add(PermissionsButton());
-            }
+            items.Insert(1, UI.Stack("capture-library.permission-feedback",
+                UI.Text(message, "capture-library.status").Classes("capture-help"),
+                UI.Button("Allow capture and library access", "capture-library.allow", "capture-library.allow").Busy(state.Busy),
+                PermissionsButton()));
         }
         if (batchFailures.Count > 0)
             items.Add(UI.Button("Review failed captures", "capture-library.batch.failures", "capture-library.batch.failures"));
         ContainerElement root = UI.Stack("capture-library.page", items.ToArray());
         root = root.InputScope(galleryNavigation.Value.InputScopeId).Classes("capture-library");
         if (state.Preview is null && !state.Detail) root = root.AddClasses("capture-library-base");
-        if (state.Preview is not null || state.Detail) root = root.Shortcut(ControllerButton.B, "capture-library.back", label: "Library");
+        if (state.Preview is not null || state.Detail)
+        {
+            root = root.AddClasses("capture-detail-page").Shortcut(ControllerButton.B, "capture-library.back", label: state.SelectedId is null ? "Discard" : "Library");
+            if(state.SelectedId is not null && !state.Busy)
+                root=root.Shortcut(ControllerButton.LeftBumper,"capture-library.viewer.previous",label:"Previous capture")
+                    .Shortcut(ControllerButton.RightBumper,"capture-library.viewer.next",label:"Next capture")
+                    .Shortcut(ControllerButton.Y,"capture-library.favorite",label:selectedCapture?.IsFavorite == true ? "Remove favorite" : "Favorite");
+            if (!state.Busy)
+                root = root.Shortcut(ControllerButton.LeftStick,"capture-library.focus-actions",label:"Capture actions");
+        }
         else if (gallery.Selection?.IsActive == true) root = root.Shortcut(ControllerButton.B, "capture-library.selection.toggle", label: "Done selecting");
         else if (!state.Busy) root = root.Shortcut(ControllerButton.Y, "capture-library.photo", label: "Screenshot").Shortcut(ControllerButton.X, "capture-library.video", label: "Record clip");
+        if (state.Preview is null && !state.Detail && !state.Busy && !showSources && !showContexts && !showBatchFailures && pendingBatch is null)
+            root = root.Shortcut(ControllerButton.LeftStick, "capture-library.focus-controls", label: "Library controls");
         var view = new WidgetView(root.TransitionPage("capture-library.pages", state.Preview is not null || state.Detail ? "preview" : "home", state.Navigation), initial)
         {
-            Surface = Surface(state.Preview is not null || state.Detail
-                ? WidgetSurfaceAppearance.Theme : WidgetSurfaceAppearance.DesktopAcrylic),
+            Surface = Surface(WidgetSurfaceAppearance.DesktopAcrylic),
             FocusGroupEntryRequest = state.Preview is null && !state.Detail
-                ? galleryReturn ?? galleryNavigation.Value.CollectionReturnFocus?.Resolve(GalleryId, gallery.Descriptor) : null,
+                ? galleryReturn ?? galleryNavigation.Value.CollectionReturnFocus?.Resolve(GalleryId, gallery.Descriptor) : detailEntry,
         };
         if (showContexts) view = view.WithModal(ContextDetails());
         else if (showBatchFailures) view = view.WithModal(BatchFailures());
@@ -287,16 +293,18 @@ public sealed partial class CaptureLibraryWidget : Widget
         if (media is null)
             details.Add(UI.Text("The preview is unavailable.",
                 "capture-library.confirm.unavailable").Classes("capture-help"));
-        return new("capture-library.confirm", saved?.SourceId is not null || saved?.Available == false ? $"Remove {kind}?" : $"Recycle {kind}?",
+        var removeEntry = !state.RecycleLinkedOriginal && (saved?.SourceId is not null || saved?.Available == false);
+        var hideEntry = !state.RecycleLinkedOriginal && saved?.SourceId is not null;
+        return new("capture-library.confirm", hideEntry ? $"Hide {kind}?" : removeEntry ? $"Remove {kind}?" : $"Recycle {kind}?",
             UI.Stack("capture-library.confirm.content",
                 UI.VerticalScroll("capture-library.confirm.body",
                     UI.Stack("capture-library.confirm.summary", details.ToArray()).Classes("capture-confirm-summary"),
-                    UI.Text(saved?.SourceId is not null ? "This removes the linked entry from this library. The original stays in its capture folder." : saved?.Available == false ? "This removes the unavailable library entry. Any original file that still exists is kept." : "The original goes to the Windows Recycle Bin. You can restore it there.", "capture-library.confirm.help").Classes("capture-confirm-warning"))
+                    UI.Text(state.RecycleLinkedOriginal ? "The original file in its linked capture folder goes to the Windows Recycle Bin. Other apps using that file will no longer find it there. You can restore it from the Recycle Bin." : hideEntry ? "The original stays in its capture folder. You can unhide this capture using Type → Hidden." : saved?.Available == false ? "This removes the unavailable library entry. Any original file that still exists is kept." : "The original goes to the Windows Recycle Bin. You can restore it there.", "capture-library.confirm.help").Classes("capture-confirm-warning"))
                     .Classes("capture-confirm-body"),
                 UI.Row("capture-library.confirm.actions",
                     UI.Button("Cancel", "capture-library.delete.cancel", "capture-library.delete.cancel").Busy(state.Busy)
                         .FocusRight("capture-library.delete.confirm").Classes("capture-confirm-button"),
-                    UI.Button(state.Busy ? "Removing…" : saved?.SourceId is not null || saved?.Available == false ? "Remove entry" : "Move to Recycle Bin", "capture-library.delete.confirm", "capture-library.delete.confirm").Busy(state.Busy)
+                    UI.Button(state.Busy ? "Working…" : hideEntry ? "Hide" : removeEntry ? "Remove entry" : "Move to Recycle Bin", "capture-library.delete.confirm", "capture-library.delete.confirm").Busy(state.Busy)
                         .FocusLeft("capture-library.delete.cancel").Classes("capture-confirm-button", "capture-delete"))
                     .Classes("capture-confirm-actions")).Classes("capture-confirm-content"),
             "capture-library.delete.cancel", "capture-library.delete.cancel")
@@ -320,10 +328,13 @@ public sealed partial class CaptureLibraryWidget : Widget
         "permission_denied" or "capability_not_declared" => "Allow Capture Library's required permissions in Settings → Widgets. Deleting captures and opening the folder also need its optional manage permission.",
         "capture_library_query_changed" => "The library changed. Refresh and try again.",
         "capture_library_metadata_conflict" => "This capture changed elsewhere. Refresh before editing it again.",
+        "capture_library_not_hidden" => "This capture is already visible. Refresh the library.",
+        "capture_library_user_state_unavailable" => "Hidden-capture settings could not be read. Check access to WidgetRail’s data folder, or restore its metadata backup, then restart WidgetRail. Your originals are unchanged.",
         "capture_library_recycle_unavailable" => "Windows could not move this capture to the Recycle Bin. The file has not been permanently deleted.",
         "capture_library_linked_path" => "This storage location uses a link that WidgetRail cannot follow. Your existing data was not changed.",
         "capture_library_disk_full" => "There is not enough free disk space to save this capture. Free some space and try again.",
-        "capture_too_large" or "capture_output_budget_too_small" => "The capture exceeds its size limit. Use a lower resolution or shorter recording and try again.",
+        "capture_output_budget_too_small" => "These recording settings exceed the storage budget. Shorten the duration or reduce the bitrate in Capture settings.",
+        "capture_too_large" => "The recording reached its file-size limit. Shorten the duration or reduce the bitrate in Capture settings.",
         "capture_encoding_unsupported" or "capture_duration_unsupported" or "capture_image_format_unsupported" or "capture_audio_unsupported" => "Those capture settings are unavailable on this PC. Choose a supported option.",
         "capture_limit" => "Too many temporary captures are open. Return to the library and try again.",
         "cancelled" => "Capture cancelled. Nothing was saved.",

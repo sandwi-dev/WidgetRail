@@ -94,7 +94,31 @@ public sealed record GridCellElement : WidgetElement
     }
     public WidgetElement Child { get; init; }
     public GridCellPlacement Placement { get; init; }
-    internal override ViewNode ToProtocolNode() => Child.ToProtocolNode() with { GridCell = Placement, StyleClasses = StyleClasses };
+    internal override ViewNode ToProtocolNode()
+    {
+        var node=Child.ToProtocolNode();
+        return node with{GridCell=Placement with
+        {
+            HorizontalAlignment=Placement.HorizontalAlignment??node.GridCell?.HorizontalAlignment,
+            VerticalAlignment=Placement.VerticalAlignment??node.GridCell?.VerticalAlignment
+        },StyleClasses=StyleClasses};
+    }
+}
+
+// Like visibility/transition modifiers, preserve attached data by projecting the
+// child once at serialization. Do not eagerly walk authored subtrees to find it.
+internal sealed record GridCellAlignmentElement : WidgetElement
+{
+    internal GridCellAlignmentElement(WidgetElement child,GridCellAlignment? horizontal,GridCellAlignment? vertical):base(child.Id)
+    {Child=child;Horizontal=horizontal;Vertical=vertical;RequiredStyleClasses=child.RequiredStyleClasses;AuthorStyleClasses=child.AuthorStyleClasses;}
+    internal WidgetElement Child { get; init; }
+    internal GridCellAlignment? Horizontal { get; init; }
+    internal GridCellAlignment? Vertical { get; init; }
+    internal override ViewNode ToProtocolNode()
+    {
+        var node=Child.ToProtocolNode();
+        return node with{GridCell=(node.GridCell??new()) with{HorizontalAlignment=Horizontal,VerticalAlignment=Vertical},StyleClasses=StyleClasses};
+    }
 }
 
 public static partial class UI

@@ -21,5 +21,5 @@
 .media-shell-preference { min-width: 84px; min-height: 34px; padding: 7px 11px; color: var(--text); background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; corner-radius: 8px; }
 .media-shell-preference:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
 
-/* The focus edge must contrast with the accent-filled play button. */
-.media-shell-play:focused { outline-color: var(--surface); }
+/* Keep the focus ring visibly separated from the accent-filled play button. */
+.media-shell-play:focused { outline-color: var(--focus); outline-width: var(--focus-width, 2px); outline-offset: var(--focus-filled-offset, 2px); }

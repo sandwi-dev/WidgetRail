@@ -7,6 +7,19 @@ internal static class BrokerPipeRequestTimeoutPolicy
     internal static TimeSpan Resolve(
         BrokerPipeTransportOptions options, BrokerRequestEnvelope request)
     {
+        if (request.CapabilityId == BrokerTransportOperations.WindowCaptureV1 && request.Operation is "capture.replay.configure" or "capture.replay.start")
+            return options.RequestTimeout > TimeSpan.FromSeconds(130) ? options.RequestTimeout : TimeSpan.FromSeconds(130);
+        if (request.CapabilityId == BrokerTransportOperations.WindowCaptureV1 && request.Operation == "capture.replay.save")
+            return options.RequestTimeout > TimeSpan.FromSeconds(50) ? options.RequestTimeout : TimeSpan.FromSeconds(50);
+        if (request.CapabilityId == BrokerTransportOperations.WindowCaptureV1 && request.Operation == "capture.replay.stop")
+            return options.RequestTimeout > TimeSpan.FromSeconds(15) ? options.RequestTimeout : TimeSpan.FromSeconds(15);
+        if (request.CapabilityId == "files.references.v1" && request.Operation == "files.choose")
+            return options.RequestTimeout > TimeSpan.FromSeconds(125) ? options.RequestTimeout : TimeSpan.FromSeconds(125);
+        if (request.CapabilityId == "media.capture-library.save.v1" && request.Operation == "capture-library.edit-copy")
+        {
+            var deadline = TimeSpan.FromSeconds(1205); // ten minutes editor + ten minutes bounded encoding + IPC
+            return options.RequestTimeout > deadline ? options.RequestTimeout : deadline;
+        }
         if(request.CapabilityId==BrokerTransportOperations.WindowCaptureV1 && request.Operation is "capture.web-prepare" or "capture.web-prepare-constrained")
             return options.RequestTimeout>TimeSpan.FromSeconds(95)?options.RequestTimeout:TimeSpan.FromSeconds(95);
         if (request.CapabilityId == "web.sessions.v1" && request.Operation is "web-session.microphone" or "web-session.permission")
@@ -16,6 +29,11 @@ internal static class BrokerPipeRequestTimeoutPolicy
         if (request.CapabilityId == BrokerTransportOperations.CaptureLibraryManageV1 && request.Operation == "capture-library.copy")
         {
             var deadline = TimeSpan.FromSeconds(BrokerTransportLimits.CaptureCopyPickerTimeoutSeconds + BrokerTransportLimits.CaptureCopyTimeoutSeconds + 5);
+            return options.RequestTimeout > deadline ? options.RequestTimeout : deadline;
+        }
+        if (request.CapabilityId == BrokerTransportOperations.CaptureLibraryManageV1 && request.Operation == "capture-library.save-copy")
+        {
+            var deadline = TimeSpan.FromSeconds(BrokerTransportLimits.CaptureCopyTimeoutSeconds + 5);
             return options.RequestTimeout > deadline ? options.RequestTimeout : deadline;
         }
         if (request.CapabilityId == BrokerTransportOperations.CaptureLibraryManageV1 && request.Operation == "capture-library.choose-source")

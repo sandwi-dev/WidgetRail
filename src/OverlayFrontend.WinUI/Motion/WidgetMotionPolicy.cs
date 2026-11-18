@@ -135,6 +135,15 @@ internal static class WidgetMotionPolicy
         return new(new(incoming, WidgetMotionPose.Identity, duration), new(WidgetMotionPose.Identity, outgoing, duration));
     }
 
+    internal static WidgetMotionRecipe Preview(WidgetMotionOptions options, bool media = false)
+    {
+        var duration = options.Duration(140);
+        var shown = WidgetMotionPose.Identity;
+        var hidden = duration == TimeSpan.Zero ? shown : shown with
+        { Opacity = 0, Scale = media ? Vector3.One : new(.97f, .97f, 1) };
+        return new(hidden, shown, duration, WidgetMotionEasing.EaseOut);
+    }
+
     internal static WidgetMotionRecipe Dialog(WidgetMotionOptions options, bool opening, bool scrim = false)
     {
         var hidden = WidgetMotionPose.Identity with { Opacity = 0 };

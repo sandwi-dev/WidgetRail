@@ -17,11 +17,31 @@ public sealed partial class WidgetCatalog
         IReadOnlyList<BrokerWidgetIdentity>? sourceOwners = null)
     {
         var settingsRoot = _dataSettingsRoot;
+        var authorities = publishers.ToHashSet(StringComparer.Ordinal);
+        var paths = new PlatformSettingsPaths(settingsRoot);
+        if (File.Exists(paths.SettingsFile))
+        {
+            // Shared by app/CLI uninstall and pending-uninstall recovery. Removing
+            // an unused old version never enters this package-data removal path.
+            await new PlatformSettingsStore(paths).UpdateAsync(current =>
+            {
+                var replay = current.ReplayCapture;
+                // Full removal also retires intent from an older authority whose
+                // inactive package bytes were already cleaned. This only revokes
+                // recording intent; it never grants replacement code access.
+                if (replay.OwnerPackageId != widgetId) return current;
+                return current with { ReplayCapture = new()
+                {
+                    Revision = checked(replay.Revision + 1),
+                    Settings = replay.Settings with { Enabled = false, AutoStart = false },
+                } };
+            }, CancellationToken.None).ConfigureAwait(false);
+        }
         if (sourceOwners is not null)
             await CaptureLibraryStore.RetireSourceOwnersAsync(Path.Combine(settingsRoot, "capture-library-v2"), sourceOwners, CancellationToken.None).ConfigureAwait(false);
         var states = new PrivateStateStore(Path.Combine(settingsRoot, "widget-state"));
         var configuration = new WidgetConfigurationStore(new PlatformSettingsPaths(settingsRoot));
-        foreach (var publisher in publishers)
+        foreach (var publisher in authorities)
         {
             var identity = new BrokerWidgetIdentity(widgetId, publisher, "uninstall");
             var state = await states.ReadAsync(identity, CancellationToken.None).ConfigureAwait(false);

@@ -46,9 +46,9 @@ internal sealed partial class WidgetStylesValidationPage
             presenter.UpdateLayout();
             var grid = Find<Grid>("Widget.explicit")!;
             var button = Find<Button>("Widget.focus")!;
-            var spacer = Find<Border>("Widget.auto.content")!;
+            var spacer = Find<WidgetSpacer>("Widget.auto.content")!;
             var owner = VisualTreeHelper.GetParent(spacer) as FrameworkElement;
-            Check(grid.GetType() == typeof(Grid), "explicit SDK grid uses the platform Grid directly");
+            Check(grid is WidgetExplicitGrid, "explicit SDK grid uses native Grid tracks with optional aspect sizing");
             Check(grid.RowSpacing == 8 && grid.ColumnSpacing == 10 && grid.RowDefinitions.Count == 3 && grid.ColumnDefinitions.Count == 3,
                 "explicit tracks and spacing are not rewritten by flex direction or theme gap");
             Check(GridNear(grid.RowDefinitions[0].ActualHeight, 50) && GridNear(grid.RowDefinitions[1].ActualHeight, 40) &&
@@ -80,6 +80,11 @@ internal sealed partial class WidgetStylesValidationPage
                 Grid.GetRow(owner!) == 0 && Grid.GetRowSpan(owner!) == 2 && Grid.GetColumnSpan(owner!) == 1 && Grid.GetColumn(button) == 1,
                 "same identities can move cells and change spans without recreating controls");
             Check(button.FocusState != FocusState.Unfocused, "cell updates preserve native focus");
+            focused=focused with{GridCell=focused.GridCell! with{HorizontalAlignment=GridCellAlignment.End,VerticalAlignment=GridCellAlignment.Start}};
+            root=root with{Children=(ViewNode[])[wrapped,focused]};Apply(root);presenter.UpdateLayout();
+            Check(ReferenceEquals(button,Find<Button>("Widget.focus")) && button.HorizontalAlignment==HorizontalAlignment.Right &&
+                button.VerticalAlignment==VerticalAlignment.Top && button.ActualWidth<grid.ColumnDefinitions[1].ActualWidth && button.FocusState!=FocusState.Unfocused,
+                "opted-in cell alignment keeps short content sized within a constrained star track without replacing focus");
 
             root = root with { Children = (ViewNode[])[wrapped with { GridCell = null }, focused with { GridCell = null }],
                 GridLayout = new() };
@@ -88,6 +93,8 @@ internal sealed partial class WidgetStylesValidationPage
                 Grid.GetRow(owner!) == 0 && Grid.GetColumn(owner!) == 0 && Grid.GetRowSpan(owner!) == 1 && Grid.GetColumnSpan(owner!) == 1,
                 "removing tracks and cells restores WinUI implicit star sizing and default attached placement");
             Check(GridNear(grid.ActualWidth, owner!.ActualWidth), "implicit single star fills available width");
+            Check(button.HorizontalAlignment==HorizontalAlignment.Stretch && button.VerticalAlignment==VerticalAlignment.Stretch &&
+                GridNear(button.ActualWidth,grid.ActualWidth),"removing cell alignment restores Stretch on the same native element");
 
             root = root with { GridLayout = null, GridMinimumColumnWidth = 180, GridMaximumColumns = 3 };
             Apply(root);

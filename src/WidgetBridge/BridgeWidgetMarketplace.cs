@@ -319,7 +319,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         {
             var idHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(package.Definition.Id)));
             installed = await _catalog.UpdateFromFileAsync(package.Download.PackageStream, idHash, approval,
-                AdmitReviewedBaseline, job.Cancellation.Token, settings.PrepareAsync).ConfigureAwait(false);
+                AdmitReviewedBaseline, job.Cancellation.Token, settings.PrepareAsync, settings.CompleteAsync).ConfigureAwait(false);
         }
         else installed = await _catalog.InstallReviewedAsync(package.Download.PackageStream, AdmitReviewedBaseline, job.Cancellation.Token, approval).ConfigureAwait(false);
         lock (_gate) _snapshot = _snapshot with { Revision = _snapshot.Revision + 1,

@@ -1,5 +1,6 @@
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
+using WidgetRail.PlatformBroker;
 
 namespace WidgetRail.WidgetBridge;
 
@@ -8,7 +9,8 @@ internal sealed partial class BridgeClientRegistry
     private sealed record IntentTicket(string SourceId, string SourceFingerprint, BridgeWorkerRun? SourceRun,
         long CreatedAt, WidgetIntentRequest Request, WidgetIntentLaunchKind Kind,
         IReadOnlyDictionary<string, string> Targets, BridgeIntentPrepareRequest? Origin, WidgetIntentRequest Original,
-        string? NotificationToken = null, bool HostSettings = false, string? ManagedWidgetId = null, string? ManagedFingerprint = null);
+        string? NotificationToken = null, bool HostSettings = false, string? ManagedWidgetId = null, string? ManagedFingerprint = null,
+        string? PreviewProof = null, WebNotificationIntentPayload? WebNotification = null);
     private readonly Dictionary<string, IntentTicket> _intentTickets = new(StringComparer.Ordinal);
     private sealed record ActiveIntentDelivery(string SourceId, CancellationTokenSource Cancellation);
     private readonly Dictionary<string, ActiveIntentDelivery> _activeIntentDeliveries = new(StringComparer.Ordinal);
@@ -70,10 +72,10 @@ internal sealed partial class BridgeClientRegistry
                     !source.HasCurrentSnapshotWorker || source.CachedWorkerRun != request.WorkerRun ||
                     source.FindInputOriginSnapshot(request.SnapshotSequence) is not { } origin ||
                     source.CachedSnapshot is not { } current || request.Action is null ||
-                    ResolveIntentSourceLocked(source, origin, current, request) is not { } intent ||
+                    ResolveIntentSourceLocked(source, origin, current, request, out var previewProof) is not { } intent ||
                     !Declared(source, intent) || intent.Fallback is { } fallback && !Declared(source, fallback)) return Rejected();
                 ticket = new(request.WidgetId, source.Configured.WorkerFingerprint, request.WorkerRun, IntentNow(), intent,
-                    WidgetIntentLaunchKind.Unavailable, new Dictionary<string, string>(), request, intent);
+                    WidgetIntentLaunchKind.Unavailable, new Dictionary<string, string>(), request, intent, PreviewProof: previewProof);
             }
         }
         finally { source.OperationGate.Release(); }
@@ -112,7 +114,7 @@ internal sealed partial class BridgeClientRegistry
     private static bool Declared(ClientRegistration source, WidgetIntentRequest intent)
     {
         var declaration = source.Configured.Intents?.Requests.SingleOrDefault(item => item.Id == intent.ContractId && item.Version == intent.Version);
-        if (declaration is null || !intent.IsWellFormed()) return false;
+        if (intent.ContractId == WidgetIntentContracts.OpenWebNotification || declaration is null || !intent.IsWellFormed()) return false;
         var contract = CompiledWidgetIntentContract.Create(declaration);
         return contract.SchemaDigest == intent.SchemaDigest && contract.Accepts(intent.Payload);
     }
@@ -120,7 +122,8 @@ internal sealed partial class BridgeClientRegistry
     private bool IntentActionCurrent(IntentTicket ticket)
     {
         if (!IntentSourceCurrent(ticket)) return false;
-        if (ticket.Origin is null) return ticket.HostSettings || NotificationIntentCurrent(ticket);
+        if (ticket.PreviewProof is not null) return IntentPreviewCurrent(ticket);
+        if (ticket.Origin is null) return ticket.HostSettings || ticket.WebNotification is not null && WebNotificationIntentCurrent(ticket) || NotificationIntentCurrent(ticket);
         var source = _clients[ticket.SourceId];
         return source.FindInputOriginSnapshot(ticket.Origin.SnapshotSequence) is { } origin && source.CachedSnapshot is { } current &&
             ticket.Original.Matches(ResolveIntentSourceLocked(source, origin, current, ticket.Origin)) && Declared(source, ticket.Request);
@@ -137,17 +140,22 @@ internal sealed partial class BridgeClientRegistry
             if (_intentTickets.Count + _activeIntentDeliveries.Count >= 16 && _intentTickets.Values.All(item => IntentFresh(item.CreatedAt, IntentNow())))
                 return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
             candidates = intent.Routing == WidgetIntentRouting.Windows ? [] : _catalog.IntentWidgets
-                .Where(widget => !widget.IsStopped && (!ticket.HostSettings || widget.Id == "settings")).SelectMany(widget =>
+                .Where(widget => !widget.IsStopped && (!ticket.HostSettings || widget.Id == "settings") &&
+                    (ticket.WebNotification is null || widget.Id == ticket.SourceId)).SelectMany(widget =>
                 (widget.Intents?.Handles ?? []).Where(handler => handler.Id == intent.ContractId && handler.Version == intent.Version)
                 .Select(handler => (new IntentHandlerCandidate(widget.Id, _catalogRevision + 1, CompiledWidgetIntentContract.Create(handler),
                     true, handler.SupportsPassiveDelivery), widget.CatalogFingerprint, handler.HasDynamicAvailability))).ToList();
         }
         if (candidates.Count > IntentResolutionPolicy.MaximumCandidates)
             return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
+        // File sharing discovers declared destinations without waking every
+        // potential receiver. The chosen target is presented before delivery;
+        // its optional dynamic check and admission guards still run there.
+        var discoverFromCatalog = intent.ContractId == WidgetIntentContracts.FileShare;
         var ready = new List<IntentHandlerCandidate>();
         foreach (var candidate in candidates)
         {
-            if (candidate.Dynamic && candidate.Candidate.Contract.SchemaDigest == intent.SchemaDigest)
+            if (!discoverFromCatalog && candidate.Dynamic && candidate.Candidate.Contract.SchemaDigest == intent.SchemaDigest)
             {
                 var target = await GetOrCreateAsync(candidate.Candidate.WidgetId, token).ConfigureAwait(false);
                 using var held = AdmitInputPublication(target, target);
@@ -171,7 +179,8 @@ internal sealed partial class BridgeClientRegistry
             // Discard catalog entries changed while probing another worker.
             ready.RemoveAll(candidate => !candidates.Any(before => before.Candidate.WidgetId == candidate.WidgetId &&
                 _catalog.IntentWidgets.Any(now => now.Id == candidate.WidgetId && now.CatalogFingerprint == before.Fingerprint)));
-            var declaration = ticket.ManagedWidgetId is not null ? WidgetIntentContracts.WidgetSettings :
+            var declaration = ticket.WebNotification is not null ? WidgetIntentContracts.WebNotification :
+                ticket.ManagedWidgetId is not null ? WidgetIntentContracts.WidgetSettings :
                 _clients[ticket.SourceId].Configured.Intents!.Requests.Single(item => item.Id == intent.ContractId && item.Version == intent.Version);
             var resolution = IntentResolutionPolicy.Resolve(CompiledWidgetIntentContract.Create(declaration), intent.Payload, ready.ToArray(), routing: intent.Routing);
             var kind = resolution.Kind switch
@@ -256,10 +265,11 @@ internal sealed partial class BridgeClientRegistry
         ClientRegistration target;
         CancellationTokenSource operation;
         BridgeClientPublication<ClientRegistration> held;
+        BrokerWidgetIdentity? fileShareSource = null;
         lock (_gate)
         {
             DemandNotDisposed();
-            if (!IntentFresh(ticket.CreatedAt, IntentNow()) || !IntentSourceCurrent(ticket) || ticket.NotificationToken is not null && !NotificationIntentCurrent(ticket)) return new(false);
+            if (!IntentFresh(ticket.CreatedAt, IntentNow()) || !IntentSourceCurrent(ticket) || !IntentPreviewCurrent(ticket) || ticket.NotificationToken is not null && !NotificationIntentCurrent(ticket)) return new(false);
             if (ticket.Kind == WidgetIntentLaunchKind.ExternalBrowser)
                 return request.TargetWidgetId is null && request.TargetWorkerRun is null && request.PinnedTarget is null
                     ? new(true, ticket.Request.Payload.GetProperty("url").GetString()) : new(false);
@@ -271,6 +281,11 @@ internal sealed partial class BridgeClientRegistry
             operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _activeIntentDeliveries.Add(request.TicketId, new(request.WidgetId, operation));
             held = AdmitPublicationLocked(target, target);
+            if (ticket.Request.ContractId == WidgetIntentContracts.FileShare && ticket.Request.Version == 1)
+            {
+                var configured = _clients[ticket.SourceId].Configured;
+                fileShareSource = new(configured.PackageId, configured.PublisherId, configured.InstanceId);
+            }
         }
         using (held)
         using (operation)
@@ -282,7 +297,7 @@ internal sealed partial class BridgeClientRegistry
                 {
                     lock (_gate)
                     {
-                        if (!IntentSourceCurrent(ticket) || ticket.NotificationToken is not null && !NotificationIntentCurrent(ticket) || !IsCurrentLocked(target) || target.CachedWorkerRun != request.TargetWorkerRun ||
+                        if (!IntentSourceCurrent(ticket) || !IntentPreviewCurrent(ticket) || ticket.NotificationToken is not null && !NotificationIntentCurrent(ticket) || !IsCurrentLocked(target) || target.CachedWorkerRun != request.TargetWorkerRun ||
                             !target.HasCurrentSnapshotWorker || !IntentTargetPresented(target, ticket, request.PinnedTarget) ||
                             !ticket.Targets.TryGetValue(target.Configured.Id, out var fingerprint) || target.Configured.CatalogFingerprint != fingerprint)
                             return new(false);
@@ -293,17 +308,29 @@ internal sealed partial class BridgeClientRegistry
                         if (handler.HasDynamicAvailability && !await ExecuteClientOperationAsync(target,
                             (client, token) => client.QueryIntentAsync(ticket.Request, null, request.TargetWorkerRun!.StartOrdinal, token), operation.Token).ConfigureAwait(false))
                             return new(false, Status: WidgetIntentStatus.Unavailable);
+                        lock (_gate) if (!IntentSourceCurrent(ticket) || !IntentPreviewCurrent(ticket)) return new(false);
+                        // Only trusted, selected-target intent delivery can turn
+                        // an opaque offer into recipient-scoped file references.
+                        // Existing source/run/presentation checks remain in charge.
+                        using var files = fileShareSource is null ? null : FileReferenceRegistry.Shared.AuthorizeShare(
+                            fileShareSource, new(target.Configured.PackageId, target.Configured.PublisherId, target.Configured.InstanceId),
+                            ticket.Request.Payload.GetProperty("offerId").GetString()!);
                         var result = await ExecuteClientOperationAsync(target,
                             (client, token) => client.DeliverIntentAsync(ticket.Request, request.TargetWorkerRun!.StartOrdinal, token), operation.Token)
                             .ConfigureAwait(false);
                         operation.Token.ThrowIfCancellationRequested();
                         if (!Enum.IsDefined(result)) return new(false);
                         var accepted = result != WidgetIntentResult.Rejected;
+                        if (files is not null) accepted = files.Complete(accepted);
                         return new(accepted, BrowserFallbackUrl: accepted ? null : BrowserFallback(ticket.Request),
-                            RequiresInteraction: result == WidgetIntentResult.InteractionRequired, Status: accepted ? WidgetIntentStatus.Accepted : WidgetIntentStatus.Rejected);
+                            RequiresInteraction: accepted && result == WidgetIntentResult.InteractionRequired, Status: accepted ? WidgetIntentStatus.Accepted : WidgetIntentStatus.Rejected);
                     }
                     catch (BridgeWidgetRequestException)
                     { return new(false, BrowserFallbackUrl: BrowserFallback(ticket.Request)); }
+                    catch (BrokerException error) when (fileShareSource is not null && error.Code == "file_limit")
+                    { return new(false, Status: WidgetIntentStatus.Rejected, Failure: WidgetIntentFailure.FileCapacity); }
+                    catch (BrokerException)
+                    { return new(false, Status: WidgetIntentStatus.Rejected); }
                 }
                 finally { target.OperationGate.Release(); }
             }
@@ -343,16 +370,31 @@ internal sealed partial class BridgeClientRegistry
         }
     }
 
-    private bool IntentSourceCurrent(IntentTicket ticket) => !_disposed && ManagedTargetCurrent(ticket) &&
+    private bool IntentSourceCurrent(IntentTicket ticket) => !_disposed && ManagedTargetCurrent(ticket) && WebNotificationIntentCurrent(ticket) &&
         _clients.TryGetValue(ticket.SourceId, out var source) && IsCurrentLocked(source) &&
         source.Configured.WorkerFingerprint == ticket.SourceFingerprint &&
-        (ticket.HostSettings || ticket.NotificationToken is not null
+        (ticket.HostSettings || ticket.NotificationToken is not null || ticket.WebNotification is not null
             ? ticket.HostSettings || source.Client.IsRunning && new BridgeWorkerRun(source.Generation, source.Client.Starts) == ticket.SourceRun
             : source.HasCurrentSnapshotWorker && source.CachedWorkerRun == ticket.SourceRun);
 
     private WidgetIntentRequest? ResolveIntentSourceLocked(ClientRegistration source, ViewSnapshot origin,
         ViewSnapshot current, BridgeIntentPrepareRequest request)
+        => ResolveIntentSourceLocked(source, origin, current, request, out _);
+
+    private bool IntentPreviewCurrent(IntentTicket ticket)
     {
+        if (ticket.PreviewProof is null) return true; // Preserve ordinary prepared-intent source-hide semantics.
+        if (ticket.Origin is not { } request || !_clients.TryGetValue(ticket.SourceId, out var source) || source.CachedSnapshot is not { } current) return false;
+        // Hold the admitted semantic proof, not an obsolete native preview or a
+        // bounded snapshot-history slot. Unrelated publications may advance.
+        var intent = ResolveIntentSourceLocked(source, current, current, request, out var proof);
+        return proof == ticket.PreviewProof && ticket.Original.Matches(intent) && Declared(source, ticket.Request);
+    }
+
+    private WidgetIntentRequest? ResolveIntentSourceLocked(ClientRegistration source, ViewSnapshot origin,
+        ViewSnapshot current, BridgeIntentPrepareRequest request, out string? previewProof)
+    {
+        previewProof = null;
         try
         {
             if (request.IndexedItem is { } reference)
@@ -366,8 +408,17 @@ internal sealed partial class BridgeClientRegistry
                     lease.Runtime.Lease.Range.ScopeId != request.Action.InputScopeId) return null;
                 _ = DemandIndexedInputOwnerLocked(lease);
                 var item = lease.Runtime.Lease.Range.Items.SingleOrDefault(item => item.Key == reference.ItemKey);
-                return item is null ? null : IntentActionAuthority.RevalidateIndexed(
-                    ResolveIndexedInputOwners(origin, lease), ResolveIndexedInputOwners(current, lease), item.Root, request.Action);
+                if (item is null) return null;
+                var currentOwners = ResolveIndexedInputOwners(current, lease);
+                var intent = IntentActionAuthority.RevalidateIndexed(
+                    ResolveIndexedInputOwners(origin, lease), currentOwners, item.Root, request.Action, reference);
+                if (intent is not null && (lease.Request.Range.Kind == IndexedCollectionRequestKind.FocusPreview || item.Root.Id != request.Action.SourceElementId))
+                    previewProof = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        reference.LeaseId, reference.ItemKey,
+                        Owners = currentOwners.Select(node => new { node.Id, node.Kind, node.InputScopeId, Entry = node.FocusPreview?.EnterButton }).ToArray(),
+                    });
+                return intent;
             }
             if (request.PinnedLayoutId is { } layout)
             {
@@ -376,7 +427,10 @@ internal sealed partial class BridgeClientRegistry
                 origin = PinnedActionContract.Project(origin, layout, inheritRootless: true);
                 current = PinnedActionContract.Project(current, layout, inheritRootless: true);
             }
-            return IntentActionAuthority.Revalidate(origin, current, request.Action);
+            var resolved = IntentActionAuthority.Revalidate(origin, current, request.Action);
+            if (resolved is not null && InlinePreviewActionContract.Resolve(current, request.Action) is { } preview)
+                previewProof = "inline:" + preview.Ancestry;
+            return resolved;
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or BridgeProtocolException or BridgeStaleIndexedInputAuthorityException)
         { return null; }

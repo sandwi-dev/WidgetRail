@@ -14,6 +14,7 @@ $adapterBuild=([IO.File]::ReadAllText("$repo/samples/DiscordWebViewWidget/web/pr
 if(($adapterBuild -isnot [long] -and $adapterBuild -isnot [int]) -or $adapterBuild -lt 1 -or $adapterBuild -gt [int]::MaxValue){throw 'Invalid Discord adapter build contract.'}
 $adapter=[IO.File]::ReadAllText("$repo/samples/DiscordWebViewWidget/web/provider/adapter.js")
 $adapter+="`ninitializeWidgetRailDiscordAdapter($adapterBuild);"
-$adapter=$activities+"`n"+$adapter
+$messaging=[IO.File]::ReadAllText("$repo/samples/DiscordWebViewWidget/web/provider/messaging-provider.js")
+$adapter=$activities+"`n"+$messaging+"`n"+$adapter
 $adapter += "`n" + [IO.File]::ReadAllText("$PSScriptRoot/discord-commands.js")
 [IO.File]::WriteAllText("$OutputDirectory/discord-adapter.js",$adapter)

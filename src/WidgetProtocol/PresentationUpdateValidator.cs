@@ -337,7 +337,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ActionSurfaceOrientation => Read<ActionSurfaceOrientation?>(change.Value),
                 PresentationProperty.ActionSurfacePresentation => Read<ActionSurfacePresentation?>(change.Value),
                 PresentationProperty.IsDisabled or PresentationProperty.IsSelected or
-                PresentationProperty.IsBusy or
+                PresentationProperty.IsCommandMenu or PresentationProperty.IsBusy or
                 PresentationProperty.UsesFocusedDescendantArtwork or PresentationProperty.RetainLastPresentation => Read<bool?>(change.Value),
                 PresentationProperty.Disclosure => Read<WidgetDisclosure?>(change.Value),
                 PresentationProperty.Focus => Read<FocusNeighbors?>(change.Value),
@@ -467,6 +467,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ContextMenuButton => node with { ContextMenuButton = Read<ControllerButton?>(change.Value) },
                 PresentationProperty.ContextActions => node with { ContextActions = ReadRequired<IReadOnlyList<WidgetContextAction>>(change.Value) },
                 PresentationProperty.SelectOptions => node with { SelectOptions = ReadRequired<IReadOnlyList<WidgetSelectOption>>(change.Value) },
+                PresentationProperty.IsCommandMenu => node with { IsCommandMenu = Read<bool?>(change.Value) },
                 PresentationProperty.TextEntryValue => node with { TextEntryValue = Read<string?>(change.Value) },
                 PresentationProperty.TextEntryPlaceholder => node with { TextEntryPlaceholder = Read<string?>(change.Value) },
                 PresentationProperty.TextEntryMaximumLength => node with { TextEntryMaximumLength = Read<int?>(change.Value) },

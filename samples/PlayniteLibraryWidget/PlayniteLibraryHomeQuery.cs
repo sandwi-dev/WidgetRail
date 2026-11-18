@@ -84,8 +84,17 @@ internal sealed class PlayniteLibraryHomeQuery
             if (Matches(display) && used.Add(game.Id)) result.Add(Make(index, null, display, true));
         }
         var live = source.Games.Select(game => game.Id).Concat(fixedRows.All.Select(item => item.Value.SavedId)).ToHashSet(StringComparer.Ordinal);
-        var referenced = PlayniteLibraryOrganizationPolicy.ReferencedSavedIds(organization).ToHashSet(StringComparer.Ordinal);
-        foreach (var display in organization.Items.Select(item => stored[item.SavedId]).Where(item => (warmDisplayOnly || referenced.Contains(item.SavedId)) &&
+        // Items is a display cache updated in the last browsed query's order. It is
+        // not Home membership order: sorting Library must not reorder this tail
+        // and replace Home's indexed query. Use the user's reference order for
+        // unavailable entries; a warm-only snapshot still shows its saved order.
+        var fallback = warmDisplayOnly
+            ? organization.Items.Select(item => stored[item.SavedId])
+            : PlayniteLibraryOrganizationPolicy.ReferencedSavedIds(organization)
+                .Select(id => stored.GetValueOrDefault(id)).OfType<PlayniteLibraryDisplayItem>();
+        // A filtered-out catalog game is not an unavailable saved reference.
+        // Browse may cache its display, but that must not insert it into Home.
+        foreach (var display in fallback.Where(item => (warmDisplayOnly || !source.Authority.ContainsGame(item.SavedId)) &&
                      !organization.ManualSavedIds.Contains(item.SavedId, StringComparer.Ordinal) && !live.Contains(item.SavedId) && Matches(item))
                      .Take(WidgetAppLibraryService.MaximumSavedItems))
             if (used.Add(display.SavedId)) result.Add(Make(null, null, display, false));

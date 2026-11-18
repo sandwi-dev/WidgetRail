@@ -47,6 +47,15 @@ internal static class EmbeddedMediaAssetResolver
         => ResolveResources(configured, declarations, WebSessionContract.MaximumPackageResourceCount,
             WebSessionContract.MaximumPackageResourceBytes, WebSessionContract.MaximumPackageAggregateBytes);
 
+    internal static IReadOnlyList<BridgeEmbeddedMediaResource> ResolveWebSessionAdapter(ConfiguredWidget configured,
+        WebSessionPageAdapter adapter)
+    {
+        if (!adapter.IsWellFormed()) throw new BridgeProtocolException("Invalid page adapter declaration.");
+        var maximum = adapter.GetMaximumScriptBytes();
+        return ResolveResources(configured, [new() { Path = adapter.ScriptAsset, ContentType = "text/javascript" }],
+            1, maximum, maximum);
+    }
+
     private static IReadOnlyList<BridgeEmbeddedMediaResource> ResolveResources(ConfiguredWidget configured,
         IReadOnlyList<EmbeddedMediaResource> declarations, int maximumCount, int maximumBytes, int maximumAggregate)
     {

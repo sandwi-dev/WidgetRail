@@ -4,14 +4,15 @@ namespace WidgetRail.WidgetProtocol;
 public static class FocusPreviewContentContract
 {
     public const int MaximumNodes = 256;
-    public static void Validate(ViewNode content,bool interactive)
+    public static void Validate(ViewNode content, bool interactive) => Validate(content, interactive, false);
+    public static void Validate(ViewNode content,bool interactive, bool allowMedia)
     {
         ArgumentNullException.ThrowIfNull(content);
         var snapshot=new ViewSnapshot
         {
             ProtocolVersion=ProtocolConstants.CurrentVersion,Sequence=1,WidgetInstanceId="preview-validation",ActiveInputScopeId="preview-validation-root",
             Root=new(){Id="preview-validation-root",Kind=ViewNodeKind.FocusPresentationSurface,
-                FocusPreview=new(){EnterButton=interactive?ControllerButton.X:null},
+                FocusPreview=new(){EnterButton=interactive?ControllerButton.X:null, AllowMedia=allowMedia},
                 DefaultFocusPresentation=new(){Id="preview-validation-empty",Kind=ViewNodeKind.Text,Text=""},
                 Children=[new(){Id="preview-validation-source",Kind=ViewNodeKind.Button,Text="Source",ActionId="source",FocusPresentation=content}]},
         };

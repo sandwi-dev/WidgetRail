@@ -275,7 +275,10 @@ foreach (var plan in new[] { "delivery-plan.md", "review-planner-goal.md", "impl
     if (!File.Exists(Path.Combine(repository, "docs", plan))) failures.Add($"Missing retained plan: {plan}");
 foreach (var removed in new[] { "archive", "history" })
     if (Directory.Exists(Path.Combine(repository, "docs", removed)) &&
-        Directory.EnumerateFiles(Path.Combine(repository, "docs", removed), "*", SearchOption.AllDirectories).Any())
+        Directory.EnumerateFiles(Path.Combine(repository, "docs", removed), "*", SearchOption.AllDirectories)
+            // The owner explicitly requested this active goal's old plan be
+            // archived on Nov17. This is not a general archive exemption.
+            .Any(file => Path.GetRelativePath(repository, file).Replace('\\', '/') != "docs/archive/capture-library-improvements-2026-11-17.md"))
         failures.Add($"Retired notes remain: {removed}");
 foreach (var screenshot in new[] { "audio-mixer", "youtube-pinned" })
     RequireLink(Path.Combine(repository, "README.md"), $"docs/images/widgets/{screenshot}.png");

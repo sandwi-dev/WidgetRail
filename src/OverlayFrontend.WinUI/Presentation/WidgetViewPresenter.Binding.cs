@@ -12,7 +12,7 @@ internal sealed partial class WidgetViewPresenter
     private async Task<bool> AdmitBindingAsync(WidgetPresentationBinding origin, CancellationToken token = default) =>
         IsBindingCurrent(origin) && await AdmitInteractionAsync(origin.Frame.Authority, token) && IsBindingCurrent(origin);
 
-    private async Task DispatchCapturedActionAsync(WidgetPresentationBinding origin, WidgetActionEvent action)
+    private async Task DispatchCapturedActionAsync(WidgetPresentationBinding origin, WidgetActionEvent action, bool previewIntent = false)
     {
         if (!IsBindingCurrent(origin)) return;
         if (previewOwner is { } owner) { await owner.DispatchPreviewActionAsync(this, origin, action); return; }
@@ -24,13 +24,13 @@ internal sealed partial class WidgetViewPresenter
                 if (session.HasPinnedIntentAction(selection, projection, action))
                 {
                     if (DispatchActionAsync is { } intent) await intent(new(origin.Frame, action)
-                        { PinnedSelection = selection, PinnedProjection = projection });
+                        { PinnedSelection = selection, PinnedProjection = projection, IsPreviewIntent = previewIntent });
                 }
                 else await session.SendPinnedActionAsync(selection, projection, action);
             }
             catch (WidgetPresentationSessionException error) when (IsRetiredInput(error)) { session.RequestInputRefresh(origin.Frame); }
         }
-        else if (DispatchActionAsync is { } dispatch) await dispatch(new(origin.Frame, action));
+        else if (DispatchActionAsync is { } dispatch) await dispatch(new(origin.Frame, action) { IsPreviewIntent = previewIntent });
     }
 
     private static bool IsRetiredInput(WidgetPresentationSessionException error) => WidgetInputFailure.IsStale(error);

@@ -11,6 +11,7 @@ internal sealed partial class WindowCaptureRegistry
         internal readonly HostCaptureDiscovery Request = new(Guid.NewGuid().ToString("N"), query);
         internal readonly TaskCompletionSource<CaptureCapabilities> Ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal int Waiters;
+        internal DateTimeOffset CompletedAt;
     }
     private readonly Dictionary<CaptureRecordingQuery, Discovery> recordingDiscoveries = [];
     internal IReadOnlyList<HostCaptureDiscovery> RecordingDiscoveries
@@ -21,21 +22,24 @@ internal sealed partial class WindowCaptureRegistry
     {
         if (query is null || !query.IsWellFormed()) throw Error("invalid_capture_options");
         query = query.Normalize();
+        var detailed = query.Recording is { Selection: not null } or { Encoding: not null };
         Discovery discovery;
         lock (gate)
         {
             ThrowIfDisposed();
             // The catalog's audio flag covers every advertised profile. A specific
             // profile may support audio even if a different catalog profile does not.
-            if (encodingReady.Task.IsCompletedSuccessfully && (query.Recording is null || !capabilities.Available ||
+            if (!detailed && EncodingCacheCurrent && (query.Recording is null || !capabilities.Available ||
                 capabilities.Validate(new() { Recording = query.Recording }).Supported)) return capabilities;
-            if (query.Recording is { } recording)
+            if (!detailed && query.Recording is { } recording)
             {
                 var request = new CaptureSessionRequest { Recording = recording };
                 foreach (var previous in recordingDiscoveries.Values)
-                    if (previous.Ready.Task.IsCompletedSuccessfully && previous.Ready.Task.Result.Validate(request).Supported)
+                    if (previous.Ready.Task.IsCompletedSuccessfully && clock.GetUtcNow()-previous.CompletedAt<EncodingCacheLifetime && previous.Ready.Task.Result.Validate(request).Supported)
                         return previous.Ready.Task.Result;
             }
+            if(recordingDiscoveries.TryGetValue(query,out var expired) && expired.Waiters==0 && expired.Ready.Task.IsCompleted &&
+                clock.GetUtcNow()-expired.CompletedAt>=EncodingCacheLifetime)recordingDiscoveries.Remove(query);
             if (!recordingDiscoveries.TryGetValue(query, out discovery!))
             {
                 // Bound both pending native work and retained replies across all widgets.
@@ -56,7 +60,9 @@ internal sealed partial class WindowCaptureRegistry
         {
             lock (gate)
             {
-                if (--discovery.Waiters == 0 && !discovery.Ready.Task.IsCompleted)
+                // Advanced reads always observe the cheap current adapter/driver
+                // epoch in the frontend. Expensive probes stay shared there.
+                if (--discovery.Waiters == 0 && (!discovery.Ready.Task.IsCompleted || detailed))
                     recordingDiscoveries.Remove(query);
             }
         }
@@ -69,7 +75,11 @@ internal sealed partial class WindowCaptureRegistry
             ThrowIfDisposed();
             var discovery = recordingDiscoveries.Values.FirstOrDefault(d => d.Request.Id == id);
             // A cancelled caller may already have retired this request. Its reply cannot satisfy a replacement.
-            discovery?.Ready.TrySetResult(value with { ImageFormats = value.ImageFormats.ToArray(), RecordingProfiles = value.RecordingProfiles.ToArray(), AudioModes = value.AudioModes.ToArray() });
+            if(discovery is not null)
+            {
+                discovery.CompletedAt=clock.GetUtcNow();
+                discovery.Ready.TrySetResult(value with { ImageFormats = value.ImageFormats.ToArray(), RecordingProfiles = value.RecordingProfiles.ToArray(), AudioModes = value.AudioModes.ToArray() });
+            }
         }
     }
 }

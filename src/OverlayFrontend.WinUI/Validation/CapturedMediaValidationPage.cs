@@ -38,7 +38,17 @@ internal sealed partial class CapturedMediaValidationPage : Page
                 // Allows an external window recorder to attach before the
                 // automatic fixture begins; not included in shipping builds.
                 if (Environment.GetCommandLineArgs().Contains("--record-media-transitions")) await Task.Delay(3000);
-                await media.ValidateCapturePlaybackAsync(png, mp4, checks);
+                if (Environment.GetCommandLineArgs().Contains("--preview-entrance-only"))
+                    await media.ValidatePreviewEntranceAsync(png, mp4, checks);
+                else if (Environment.GetCommandLineArgs().Contains("--media-frame-style-only"))
+                    await media.ValidateFrameStylesAsync(png, mp4, checks);
+                else if (Environment.GetCommandLineArgs().Contains("--recording-codec-player"))
+                    await media.ValidateRecordingCodecPlaybackAsync(mp4,
+                        int.Parse(Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--codec-width")??throw new ArgumentException("Expected codec width required.")),
+                        int.Parse(Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--codec-height")??throw new ArgumentException("Expected codec height required.")),result,checks);
+                else if (Environment.GetCommandLineArgs().Contains("--native-preview-media"))
+                    await media.ValidatePreviewPlaybackAsync(png, mp4, checks);
+                else await media.ValidateCapturePlaybackAsync(png, mp4, checks);
             }
             catch (Exception failure) { error = failure.ToString(); }
             finally { media.Dispose(); }

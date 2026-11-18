@@ -15,7 +15,7 @@ service. Both sandboxed and full-trust application widgets use these APIs. See [
 | `system.apps.windows.read.v1` | `HostServices.TaskSwitcher.GetWindowsAsync` | Visible or Interactive |
 | `system.apps.windows.capture.v1` | `HostServices.Capture` | Interactive confirmation; owned status/read/discard can continue in background |
 | `media.capture-library.read.v1` | `HostServices.CaptureLibrary.ListAsync` / `OpenAsync` and owned media reads | Shared explicitly saved captures; background reads allowed |
-| `media.capture-library.save.v1` | `HostServices.CaptureLibrary.SaveAsync` | Interactive; save only owned temporary media |
+| `media.capture-library.save.v1` | `HostServices.CaptureLibrary.SaveAsync` / `EditCopyAsync` | Interactive; save owned temporary media or create an edited copy with separate source-read consent |
 | `media.capture-library.manage.v1` | `DeleteAsync` / `ExportAsync` | Interactive; fixed Pictures export destination |
 | `presentation.documents.v1` | `HostServices.Documents.CreateAsync` / `DiscardAsync`, `UI.ProviderContent` | Owned restricted HTML; scripts/forms/network blocked; background publication allowed |
 | `system.apps.windows.preview.v1` | Host-rendered `UI.WindowPreview` | A current window and preview permission |

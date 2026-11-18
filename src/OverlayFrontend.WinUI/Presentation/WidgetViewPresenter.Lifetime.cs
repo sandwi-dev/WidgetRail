@@ -32,6 +32,7 @@ internal sealed partial class WidgetViewPresenter
         // Publish it before resuming bindings, including first cold activation.
         if (active && !presentationOnly && frame is { } current) WindowPreviews?.Apply(current);
         var work = new List<Task>();
+        if (!active) work.AddRange(bindings.Values.Select(binding => binding.Element).OfType<Media.MediaPlayerView>().Select(media => media.PlaybackRetirement));
         if (!active)
         {
             CancelScrollReveal();
@@ -78,6 +79,10 @@ internal sealed partial class WidgetViewPresenter
                 if (binding.Element is WidgetPackageIconView icon) icon.RetryTransientFailure();
             QueueSurfaceUpdate(); QueueMediaRefresh();
             ResumeSuspendedCollectionReturn();
+            // A cold frame can finish while the shell prepares this presenter
+            // hidden. Admit its never-consumed reveal without depending on a
+            // later widget publication; canceled/consumed IDs remain rejected.
+            if(fragmentRootId is null && effectiveView is {} view)UpdateScrollReveal(view);
         }
         else work.AddRange(retirements.ToArray());
         var completion = Task.WhenAll(work);

@@ -84,9 +84,14 @@ ctor WidgetRail.WidgetSdk.WidgetCapabilityUnavailableException(string message)
 ctor WidgetRail.WidgetSdk.WidgetCollectionCursor(string value)
 ctor WidgetRail.WidgetSdk.WidgetCollectionItemKey(string value)
 ctor WidgetRail.WidgetSdk.WidgetCollectionItems<TItem>(System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> itemKey, System.Func<TItem,WidgetRail.WidgetSdk.WidgetElement> renderItem, System.Collections.Generic.IEqualityComparer<TItem>? comparer = null)
+ctor WidgetRail.WidgetSdk.WidgetCollectionViewportState(int ActiveViews, bool FollowsEnd, bool Recovering)
 ctor WidgetRail.WidgetSdk.WidgetCommandError(string code, string message)
 ctor WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution>(TState State, TExecution Execution, bool ShouldExecute = true)
 ctor WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs(WidgetRail.WidgetSdk.WidgetActionEvent Action, System.Exception Exception)
+ctor WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate(WidgetRail.WidgetSdk.WidgetCollectionCursor? Before, WidgetRail.WidgetSdk.WidgetCollectionCursor? After)
+ctor WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>(System.Comparison<TItem> Compare, System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionCursor> BoundaryCursor)
+ctor WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>(WidgetRail.WidgetSdk.WidgetCollectionItemKey Key, TItem? Value, bool IsRemoval = false)
+ctor WidgetRail.WidgetSdk.WidgetCursorMutationResult(bool Applied, bool HasUnseenItems, bool RequiresRefresh = false)
 ctor WidgetRail.WidgetSdk.WidgetCursorPage<TItem>(System.Collections.Generic.IReadOnlyList<TItem> Items, WidgetRail.WidgetSdk.WidgetCollectionCursor? Before, WidgetRail.WidgetSdk.WidgetCollectionCursor? After)
 ctor WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>()
 ctor WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>(WidgetRail.WidgetSdk.WidgetPagedResourceStatus Status, System.Collections.Generic.IReadOnlyList<TItem> Items, WidgetRail.WidgetSdk.WidgetCollectionCursor? Before, WidgetRail.WidgetSdk.WidgetCollectionCursor? After, WidgetRail.WidgetSdk.WidgetCollectionItemKey? Anchor, string? RequestedFocusId, WidgetRail.WidgetSdk.WidgetResourceError? Error, long Revision)
@@ -409,6 +414,8 @@ enum WidgetRail.WidgetSdk.WidgetResourceStatus.Loading = WidgetRail.WidgetSdk.Wi
 enum WidgetRail.WidgetSdk.WidgetResourceStatus.NotLoaded = WidgetRail.WidgetSdk.WidgetResourceStatus.NotLoaded
 enum WidgetRail.WidgetSdk.WidgetResourceStatus.Ready = WidgetRail.WidgetSdk.WidgetResourceStatus.Ready
 enum WidgetRail.WidgetSdk.WidgetResourceStatus.Refreshing = WidgetRail.WidgetSdk.WidgetResourceStatus.Refreshing
+enum WidgetRail.WidgetSdk.WidgetViewportRecoveryResult.NotFound = WidgetRail.WidgetSdk.WidgetViewportRecoveryResult.NotFound
+enum WidgetRail.WidgetSdk.WidgetViewportRecoveryResult.Recovered = WidgetRail.WidgetSdk.WidgetViewportRecoveryResult.Recovered
 enum WidgetRail.WidgetSdk.WidgetWifiRadioState.HardwareDisabled = WidgetRail.WidgetSdk.WidgetWifiRadioState.HardwareDisabled
 enum WidgetRail.WidgetSdk.WidgetWifiRadioState.NoAdapter = WidgetRail.WidgetSdk.WidgetWifiRadioState.NoAdapter
 enum WidgetRail.WidgetSdk.WidgetWifiRadioState.Off = WidgetRail.WidgetSdk.WidgetWifiRadioState.Off
@@ -483,8 +490,10 @@ field const string WidgetRail.WidgetSdk.WidgetActivityCapabilities.Service = "wi
 field const string WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Permission = "system.apps.windows.capture.v1"
 field const string WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.ManagePermission = "media.capture-library.manage.v1"
 field const string WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.ReadPermission = "media.capture-library.read.v1"
+field const string WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.RecycleLinkedPermission = "media.capture-library.recycle-linked.v1"
 field const string WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.SavePermission = "media.capture-library.save.v1"
 field const string WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Permission = "presentation.documents.v1"
+field const string WidgetRail.WidgetSdk.WidgetFileCapabilities.Capability = "files.references.v1"
 field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.CapabilityPrefix = "network.loopback:"
 field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.GetJsonOperation = "loopback.http.get-json"
 field const string WidgetRail.WidgetSdk.WidgetLoopbackCapabilities.PostJsonOperation = "loopback.http.post-json"
@@ -515,6 +524,7 @@ method WidgetRail.WidgetSdk.ActionSurfaceElement.FocusDown(string id) -> WidgetR
 method WidgetRail.WidgetSdk.ActionSurfaceElement.FocusLeft(string id) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.FocusRight(string id) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.FocusUp(string id) -> WidgetRail.WidgetSdk.ActionSurfaceElement
+method WidgetRail.WidgetSdk.ActionSurfaceElement.FocusVisualTarget(string childId) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ActionSurfaceElement.OpenIntent(WidgetRail.WidgetProtocol.WidgetIntentContract contract, System.Text.Json.JsonElement payload, WidgetRail.WidgetProtocol.WidgetIntentPresentation presentation = WidgetRail.WidgetProtocol.WidgetIntentPresentation.PreferExistingSurface) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.PersistFocusAs(string id) -> WidgetRail.WidgetSdk.ActionSurfaceElement
@@ -646,6 +656,8 @@ method WidgetRail.WidgetSdk.ImageElement.Equals(WidgetRail.WidgetSdk.WidgetEleme
 method WidgetRail.WidgetSdk.ImageElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ImageElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ImageElement.ToString() -> string
+method WidgetRail.WidgetSdk.IndexedCollectionElement.AdjacentPages(bool before, bool after) -> WidgetRail.WidgetSdk.IndexedCollectionElement
+method WidgetRail.WidgetSdk.IndexedCollectionElement.DirectionalEntry(WidgetRail.WidgetProtocol.IndexedDirectionalEntryMode mode) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method WidgetRail.WidgetSdk.IndexedCollectionElement.Equals(WidgetRail.WidgetSdk.ContainerElement? other) -> bool
 method WidgetRail.WidgetSdk.IndexedCollectionElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.IndexedCollectionElement.GetHashCode() -> int
@@ -673,6 +685,7 @@ method WidgetRail.WidgetSdk.MediaPlayerElement.Equals(WidgetRail.WidgetSdk.Widge
 method WidgetRail.WidgetSdk.MediaPlayerElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.MediaPlayerElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.MediaPlayerElement.ToString() -> string
+method WidgetRail.WidgetSdk.MediaPlayerElement.WithPoster(WidgetRail.WidgetSdk.WidgetArtworkHandle artwork) -> WidgetRail.WidgetSdk.MediaPlayerElement
 method WidgetRail.WidgetSdk.MediaViewportElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.MediaViewportElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.MediaViewportElement.GetHashCode() -> int
@@ -1152,24 +1165,31 @@ method WidgetRail.WidgetSdk.WidgetCapabilityQuery.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetCapabilityQuery.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetCapabilityQuery.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ApplicationsAsync(WidgetRail.WidgetProtocol.CaptureLibraryQuery query, string? search = null, int limit = 128, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryApplications>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ChooseKnownSourceAsync(WidgetRail.WidgetProtocol.CaptureLibraryKnownLocation location, string label, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibrarySource?>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ChooseSourceAsync(string label, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibrarySource?>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.CopyAsync(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.CaptureLibraryMutationReference> items, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryBatchResult>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.DeleteAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.EditCopyAsync(WidgetRail.WidgetProtocol.CaptureAttachment source, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryEditResult>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.EditCopyAsync(WidgetRail.WidgetProtocol.CaptureLibraryMutationReference source, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryEditResult>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ExportAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryExport>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.FindAsync(WidgetRail.WidgetProtocol.CaptureLibraryQuery query, string id, string? revision = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryPosition>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.FoldersAsync(WidgetRail.WidgetProtocol.CaptureLibraryQuery query, string? revision = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryFolders>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.GetContextsAsync(string id, int offset = 0, int count = 16, string? revision = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryContextsPage>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.GetMetadataAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryItem>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.GetSourcesAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.CaptureLibrarySource>>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.GetThumbnailAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryThumbnail>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.GroupsAsync(WidgetRail.WidgetProtocol.CaptureLibraryQuery query, string? revision = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryGroups>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.HideAsync(WidgetRail.WidgetProtocol.CaptureLibraryMutationReference item, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.LinkAsync(string sourceId, string relativePath, WidgetRail.WidgetProtocol.CaptureSaveContext? context = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryItem>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ListAsync(int offset = 0, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryPage>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.OpenAsync(string id, WidgetRail.WidgetProtocol.CaptureImageResolution resolution = WidgetRail.WidgetProtocol.CaptureImageResolution.Original, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureAttachment>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.OpenChangesAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<WidgetRail.WidgetProtocol.CaptureLibraryChanged>>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.OpenFolderAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.QueryAsync(WidgetRail.WidgetProtocol.CaptureLibraryQuery query, int offset = 0, int count = 40, string? revision = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryQueryPage>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.QueryContinuityAsync(WidgetRail.WidgetProtocol.CaptureLibraryQuery query, int offset = 0, int count = 40, string? revision = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryContinuityPage>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ReadContentAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.Task<byte[]>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.RecycleAsync(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.CaptureLibraryMutationReference> items, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryBatchResult>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.RecycleLinkedAsync(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.CaptureLibraryMutationReference> items, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryBatchResult>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.RefreshAsync(int offset = 0, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryPage>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.ReleaseAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.RemoveLinkAsync(WidgetRail.WidgetProtocol.CaptureLibraryMutationReference item, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
@@ -1177,18 +1197,28 @@ method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.RemoveSourceAsync(string
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.RemoveUnavailableAsync(WidgetRail.WidgetProtocol.CaptureLibraryMutationReference reference, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.RevealAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.SaveAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryItem>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.SaveCopyAsync(WidgetRail.WidgetProtocol.CaptureLibraryMutationReference source, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryItem>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.SaveWithContextAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, WidgetRail.WidgetProtocol.CaptureSaveContext context, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryContextSaveResult>
+method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.UnhideAsync(WidgetRail.WidgetProtocol.CaptureLibraryMutationReference item, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryItem>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.UpdateMetadataAsync(string id, long expectedRevision, string? title, bool isFavorite, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryItem>
 method WidgetRail.WidgetSdk.WidgetCaptureLibraryService.UpdateMetadataBatchAsync(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.CaptureLibraryMetadataRequest> items, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureLibraryBatchResult>
+method WidgetRail.WidgetSdk.WidgetCaptureReplayService.ConfigureAsync(WidgetRail.WidgetProtocol.CaptureReplaySettings settings, long expectedSettingsRevision, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureReplayControlResult>
+method WidgetRail.WidgetSdk.WidgetCaptureReplayService.GetAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureReplayStatus>
+method WidgetRail.WidgetSdk.WidgetCaptureReplayService.OpenChangesSubscriptionAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.IWidgetCapabilitySubscription<WidgetRail.WidgetProtocol.CaptureReplayStatus>>
+method WidgetRail.WidgetSdk.WidgetCaptureReplayService.SaveAsync(string expectedSessionId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureReplaySaveResult>
+method WidgetRail.WidgetSdk.WidgetCaptureReplayService.StartAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureReplayControlResult>
+method WidgetRail.WidgetSdk.WidgetCaptureReplayService.StopAsync(string? expectedSessionId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureReplayControlResult>
 method WidgetRail.WidgetSdk.WidgetCaptureService.CancelAsync(WidgetRail.WidgetProtocol.WindowCaptureTicket ticket, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetCaptureService.CopyContentToAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.IO.Stream destination, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.Task
 method WidgetRail.WidgetSdk.WidgetCaptureService.DiscardAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetCaptureService.GetCapabilitiesAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureCapabilities>
 method WidgetRail.WidgetSdk.WidgetCaptureService.GetRecordingCapabilitiesAsync(WidgetRail.WidgetProtocol.RecordingOptions? recording = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureCapabilities>
+method WidgetRail.WidgetSdk.WidgetCaptureService.GetRecordingChoicesAsync(WidgetRail.WidgetProtocol.RecordingOptions recording, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.CaptureCapabilities>
 method WidgetRail.WidgetSdk.WidgetCaptureService.GetStatusAsync(WidgetRail.WidgetProtocol.WindowCaptureTicket ticket, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WindowCaptureStatus>
 method WidgetRail.WidgetSdk.WidgetCaptureService.ReadContentAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.Task<byte[]>
 method WidgetRail.WidgetSdk.WidgetCaptureService.RequestAsync(WidgetRail.WidgetProtocol.WindowCaptureKind kind, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WindowCaptureTicket>
 method WidgetRail.WidgetSdk.WidgetCaptureService.RequestAsync(WidgetRail.WidgetProtocol.WindowCaptureKind kind, WidgetRail.WidgetProtocol.CaptureImageResolution resolution, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WindowCaptureTicket>
+method WidgetRail.WidgetSdk.WidgetCaptureService.RequestLibraryRecordingAsync(WidgetRail.WidgetProtocol.RecordingOptions options, WidgetRail.WidgetProtocol.CapturePreparation? preparation = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WindowCaptureTicket>
 method WidgetRail.WidgetSdk.WidgetCaptureService.RequestRecordingAsync(WidgetRail.WidgetProtocol.RecordingOptions options, WidgetRail.WidgetProtocol.CapturePreparation? preparation = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WindowCaptureTicket>
 method WidgetRail.WidgetSdk.WidgetCaptureService.RequestScreenshotAsync(WidgetRail.WidgetProtocol.ScreenshotOptions options, WidgetRail.WidgetProtocol.CapturePreparation? preparation = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WindowCaptureTicket>
 method WidgetRail.WidgetSdk.WidgetCaptureService.StartAsync(WidgetRail.WidgetProtocol.CaptureSessionRequest request, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WindowCaptureTicket>
@@ -1203,6 +1233,11 @@ method WidgetRail.WidgetSdk.WidgetCollectionItemKey.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetCollectionItems<TItem>.Capture(System.Collections.Generic.IReadOnlyList<TItem> items) -> System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetElement>
 method WidgetRail.WidgetSdk.WidgetCollectionItems<TItem>.Clear() -> void
 method WidgetRail.WidgetSdk.WidgetCollectionReturnFocus.Resolve(string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionDescriptor source) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest?
+method WidgetRail.WidgetSdk.WidgetCollectionViewportState.<Clone>$() -> WidgetRail.WidgetSdk.WidgetCollectionViewportState
+method WidgetRail.WidgetSdk.WidgetCollectionViewportState.Deconstruct(out int ActiveViews, out bool FollowsEnd, out bool Recovering) -> void
+method WidgetRail.WidgetSdk.WidgetCollectionViewportState.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetCollectionViewportState.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetCollectionViewportState.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetCommandError.<Clone>$() -> WidgetRail.WidgetSdk.WidgetCommandError
 method WidgetRail.WidgetSdk.WidgetCommandError.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetCommandError.GetHashCode() -> int
@@ -1216,6 +1251,26 @@ method WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs.Equals(WidgetR
 method WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate.<Clone>$() -> WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate
+method WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate.Deconstruct(out WidgetRail.WidgetSdk.WidgetCollectionCursor? Before, out WidgetRail.WidgetSdk.WidgetCollectionCursor? After) -> void
+method WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>.<Clone>$() -> WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>
+method WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>.Deconstruct(out System.Comparison<TItem> Compare, out System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionCursor> BoundaryCursor) -> void
+method WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>.<Clone>$() -> WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>
+method WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>.Deconstruct(out WidgetRail.WidgetSdk.WidgetCollectionItemKey Key, out TItem? Value, out bool IsRemoval) -> void
+method WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetCursorMutationResult.<Clone>$() -> WidgetRail.WidgetSdk.WidgetCursorMutationResult
+method WidgetRail.WidgetSdk.WidgetCursorMutationResult.Deconstruct(out bool Applied, out bool HasUnseenItems, out bool RequiresRefresh) -> void
+method WidgetRail.WidgetSdk.WidgetCursorMutationResult.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetCursorMutationResult.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetCursorMutationResult.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.<Clone>$() -> WidgetRail.WidgetSdk.WidgetCursorPage<TItem>
 method WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.Deconstruct(out System.Collections.Generic.IReadOnlyList<TItem> Items, out WidgetRail.WidgetSdk.WidgetCollectionCursor? Before, out WidgetRail.WidgetSdk.WidgetCollectionCursor? After) -> void
 method WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.Equals(object? obj) -> bool
@@ -1223,11 +1278,14 @@ method WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetCursorPresentation<TItem>.Present(WidgetRail.WidgetSdk.ScrollElement scroll) -> WidgetRail.WidgetSdk.ScrollElement
 method WidgetRail.WidgetSdk.WidgetCursorPresentation<TItem>.PresentItem(TItem item, WidgetRail.WidgetSdk.WidgetElement element) -> WidgetRail.WidgetSdk.WidgetElement
+method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.ApplyMutations(WidgetRail.WidgetSdk.WidgetCursorMutationScope scope, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>> mutations, bool allowTailEviction = false, WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate? boundaries = null) -> WidgetRail.WidgetSdk.WidgetCursorMutationResult
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Capture() -> WidgetRail.WidgetSdk.WidgetCursorPresentation<TItem>
+method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.CaptureRecovery() -> WidgetRail.WidgetSdk.WidgetCursorRecoveryScope
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.ClearRequestedFocus(bool invalidate = true) -> void
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.EnsureLoaded(bool forceRefresh = false) -> WidgetRail.WidgetSdk.WidgetOperationHandle
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Move(WidgetRail.WidgetSdk.WidgetCursorDirection direction, string sourceScrollId) -> WidgetRail.WidgetSdk.WidgetOperationHandle
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Move(WidgetRail.WidgetSdk.WidgetCursorDirection direction, string sourceScrollId, WidgetRail.WidgetSdk.WidgetActionEvent action) -> WidgetRail.WidgetSdk.WidgetOperationHandle
+method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Prefetch(WidgetRail.WidgetSdk.WidgetCollectionBoundaryDemand demand, string sourceScrollId) -> WidgetRail.WidgetSdk.WidgetOperationHandle
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Prefetch(WidgetRail.WidgetSdk.WidgetCursorDirection direction, string sourceScrollId) -> WidgetRail.WidgetSdk.WidgetOperationHandle
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.PresentItem(TItem item, WidgetRail.WidgetSdk.WidgetElement element) -> WidgetRail.WidgetSdk.WidgetElement
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Refresh() -> WidgetRail.WidgetSdk.WidgetOperationHandle
@@ -1235,6 +1293,8 @@ method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Reset(bool invalidate = 
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Retry() -> WidgetRail.WidgetSdk.WidgetOperationHandle
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.SelectAnchor(WidgetRail.WidgetSdk.WidgetCollectionItemKey key, bool invalidate = true) -> void
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.TryHandlePagination(WidgetRail.WidgetSdk.WidgetActionEvent action, out WidgetRail.WidgetSdk.WidgetOperationHandle operation) -> bool
+method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.TryRecover(WidgetRail.WidgetSdk.WidgetCursorRecoveryScope scope, WidgetRail.WidgetSdk.WidgetCursorPage<TItem> loaded, WidgetRail.WidgetSdk.WidgetCollectionItemKey anchor) -> bool
+method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.TryRecover(WidgetRail.WidgetSdk.WidgetCursorRecoveryScope scope, WidgetRail.WidgetSdk.WidgetCursorPage<TItem> loaded, WidgetRail.WidgetSdk.WidgetCollectionItemKey anchor, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetCollectionItemKey> neighbors, out WidgetRail.WidgetSdk.WidgetCollectionItemKey? restoredAnchor) -> bool
 method WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.WhenIdleAsync(System.Threading.CancellationToken token = null) -> System.Threading.Tasks.Task
 method WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.<Clone>$() -> WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>
 method WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.Equals(object? obj) -> bool
@@ -1319,6 +1379,7 @@ method WidgetRail.WidgetSdk.WidgetDisplayProfilesState.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetDisplayProfilesState.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetDocumentService.CreateAsync(System.Collections.Generic.IReadOnlyList<string> html, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.ProviderDocumentReference>
 method WidgetRail.WidgetSdk.WidgetDocumentService.DiscardAsync(WidgetRail.WidgetProtocol.ProviderDocumentReference reference, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetElement.AlignInGrid(WidgetRail.WidgetProtocol.GridCellAlignment? horizontal = null, WidgetRail.WidgetProtocol.GridCellAlignment? vertical = null) -> WidgetRail.WidgetSdk.WidgetElement
 method WidgetRail.WidgetSdk.WidgetElement.CollectionItem(WidgetRail.WidgetSdk.WidgetCollectionItemKey key) -> WidgetRail.WidgetSdk.WidgetElement
 method WidgetRail.WidgetSdk.WidgetElement.Deconstruct(out string Id) -> void
 method WidgetRail.WidgetSdk.WidgetElement.Equals(object? obj) -> bool
@@ -1329,11 +1390,20 @@ method WidgetRail.WidgetSdk.WidgetElement.PresentOnFocus(WidgetRail.WidgetSdk.Wi
 method WidgetRail.WidgetSdk.WidgetElement.PresentOnFocus(string previewKey) -> WidgetRail.WidgetSdk.WidgetElement
 method WidgetRail.WidgetSdk.WidgetElement.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetElement.VisibleWhen(WidgetRail.WidgetProtocol.ResponsiveVisibility visibility) -> WidgetRail.WidgetSdk.WidgetElement
+method WidgetRail.WidgetSdk.WidgetFileService.AcceptShareAsync(string offerId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetFileReference>>
+method WidgetRail.WidgetSdk.WidgetFileService.CancelShareOfferAsync(string offerId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method WidgetRail.WidgetSdk.WidgetFileService.ChooseAsync(WidgetRail.WidgetProtocol.WidgetFileChoiceRequest? request = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetFileReference>>
+method WidgetRail.WidgetSdk.WidgetFileService.CreateShareOfferAsync(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetFileReference> files, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetFileShareOffer>
+method WidgetRail.WidgetSdk.WidgetFileService.FromCaptureAsync(WidgetRail.WidgetProtocol.CaptureAttachment attachment, string? name = null, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetFileReference>
+method WidgetRail.WidgetSdk.WidgetFileService.GetAsync(string id, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WidgetFileReference>
+method WidgetRail.WidgetSdk.WidgetFileService.OpenReadAsync(WidgetRail.WidgetProtocol.WidgetFileReference file, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.IO.Stream>
+method WidgetRail.WidgetSdk.WidgetFileService.ReleaseAsync(WidgetRail.WidgetProtocol.WidgetFileReference file, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.<Clone>$() -> WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>
 method WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetFocusPreviewSource<TContext>.Publish(TContext context) -> void
+method WidgetRail.WidgetSdk.WidgetFocusRequest.DeferCollectionReveal<TContext,TItem>(WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem> source, string collectionId) -> WidgetRail.WidgetProtocol.ScrollRevealRequest
 method WidgetRail.WidgetSdk.WidgetFocusRequest.EnterCollection<TContext,TItem>(WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
 method WidgetRail.WidgetSdk.WidgetFocusRequest.EnterCollection<TQuery,TItem>(WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
 method WidgetRail.WidgetSdk.WidgetFocusRequest.EnterCollection<TQuery,TItem>(WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem> source, string collectionId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
@@ -1365,6 +1435,7 @@ method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.EndSelection()
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.Enter(string collectionId, long requestId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? item = null) -> WidgetRail.WidgetProtocol.FocusGroupEntryRequest
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.FocusTarget(string collectionId, WidgetRail.WidgetSdk.WidgetCollectionItemKey key, int index) -> WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.PublishQuery(TQuery query, int count) -> void
+method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.PublishRefresh(TQuery query, int count) -> void
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.ReadSelectedAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<TItem>>
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.Reveal(string collectionId, long requestId, WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget item) -> WidgetRail.WidgetProtocol.ScrollRevealRequest
 method WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.SelectAll() -> bool
@@ -1377,6 +1448,7 @@ method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.AcquireAsync(string 
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.AcquirePreviewAsync(string surfaceId, string key, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease>
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.ContinueAsync(string collectionId, bool retry = false, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.LocateAsync(string collectionId, WidgetRail.WidgetSdk.WidgetCollectionItemKey key, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<int?>
+method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.ObserveViewportAsync(string collectionId, WidgetRail.WidgetProtocol.IndexedViewportObservation observation, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestHost.PublishSnapshot() -> WidgetRail.WidgetProtocol.ViewSnapshot
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.ResolveArtworkAsync(string itemKey, WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>
 method WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.ResolveArtworkSourceAsync(string itemKey, WidgetRail.WidgetSdk.WidgetArtworkHandle handle, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetArtworkSource?>
@@ -1805,6 +1877,9 @@ method WidgetRail.WidgetSdk.WidgetView.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetView.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetView.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetView.WithModal(WidgetRail.WidgetSdk.WidgetModal modal) -> WidgetRail.WidgetSdk.WidgetView
+method WidgetRail.WidgetSdk.WidgetViewportRecovery.TryCommit(System.Func<bool> update) -> bool
+method WidgetRail.WidgetSdk.WidgetViewportRecovery.TryCommit(WidgetRail.WidgetSdk.WidgetCollectionItemKey anchor, System.Func<bool> update) -> bool
+method WidgetRail.WidgetSdk.WidgetViewportRecovery.TryCommit<T>(WidgetRail.WidgetSdk.WidgetCursorResource<T> resource, WidgetRail.WidgetSdk.WidgetCursorRecoveryScope scope, WidgetRail.WidgetSdk.WidgetCursorPage<T> page) -> bool
 method WidgetRail.WidgetSdk.WidgetWebCaptureService.GetStatusAsync(WidgetRail.WidgetProtocol.WebCaptureStreamTicket ticket, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WebCaptureStreamStatus>
 method WidgetRail.WidgetSdk.WidgetWebCaptureService.PrepareAsync(WidgetRail.WidgetProtocol.WebSessionReference session, WidgetRail.WidgetProtocol.WebCaptureStreamOptions preferred, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WebCaptureStreamOptions> allowedQualities, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WebCaptureStreamStatus>
 method WidgetRail.WidgetSdk.WidgetWebCaptureService.PrepareAsync(WidgetRail.WidgetProtocol.WebSessionReference session, WidgetRail.WidgetProtocol.WebCaptureStreamOptions preferred, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WebCaptureStreamOptions> allowedQualities, bool allowContentPreferenceSelection, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.WebCaptureStreamStatus>
@@ -2010,6 +2085,7 @@ method static WidgetRail.WidgetSdk.UI.CollectionList(string id, double estimated
 method static WidgetRail.WidgetSdk.UI.CollectionList<TContext,TItem>(string id, WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem> source, double estimatedItemExtent, string accessibilityLabel, WidgetRail.WidgetProtocol.ScrollAxis axis = WidgetRail.WidgetProtocol.ScrollAxis.Vertical) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method static WidgetRail.WidgetSdk.UI.CollectionList<TQuery,TItem>(string id, WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem> source, double estimatedItemExtent, string accessibilityLabel, WidgetRail.WidgetProtocol.ScrollAxis axis = WidgetRail.WidgetProtocol.ScrollAxis.Vertical) -> WidgetRail.WidgetSdk.IndexedCollectionElement
 method static WidgetRail.WidgetSdk.UI.CollectionList<TQuery,TItem>(string id, WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem> source, double estimatedItemExtent, string accessibilityLabel, WidgetRail.WidgetProtocol.ScrollAxis axis = WidgetRail.WidgetProtocol.ScrollAxis.Vertical) -> WidgetRail.WidgetSdk.IndexedCollectionElement
+method static WidgetRail.WidgetSdk.UI.CommandMenu(string label, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.SelectOption> commands, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.SelectElement
 method static WidgetRail.WidgetSdk.UI.ControllerGlyph(WidgetRail.WidgetProtocol.ControllerButton button, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ControllerGlyphElement
 method static WidgetRail.WidgetSdk.UI.ControllerGlyph(WidgetRail.WidgetProtocol.ControllerPrompt prompt, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ControllerGlyphElement
 method static WidgetRail.WidgetSdk.UI.ControllerHint(WidgetRail.WidgetProtocol.ControllerButton button, string label, string id) -> WidgetRail.WidgetSdk.RowElement
@@ -2170,12 +2246,22 @@ method static WidgetRail.WidgetSdk.WidgetCollectionCursor.op_Equality(WidgetRail
 method static WidgetRail.WidgetSdk.WidgetCollectionCursor.op_Inequality(WidgetRail.WidgetSdk.WidgetCollectionCursor left, WidgetRail.WidgetSdk.WidgetCollectionCursor right) -> bool
 method static WidgetRail.WidgetSdk.WidgetCollectionItemKey.op_Equality(WidgetRail.WidgetSdk.WidgetCollectionItemKey left, WidgetRail.WidgetSdk.WidgetCollectionItemKey right) -> bool
 method static WidgetRail.WidgetSdk.WidgetCollectionItemKey.op_Inequality(WidgetRail.WidgetSdk.WidgetCollectionItemKey left, WidgetRail.WidgetSdk.WidgetCollectionItemKey right) -> bool
+method static WidgetRail.WidgetSdk.WidgetCollectionViewportState.op_Equality(WidgetRail.WidgetSdk.WidgetCollectionViewportState? left, WidgetRail.WidgetSdk.WidgetCollectionViewportState? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetCollectionViewportState.op_Inequality(WidgetRail.WidgetSdk.WidgetCollectionViewportState? left, WidgetRail.WidgetSdk.WidgetCollectionViewportState? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetCommandError.op_Equality(WidgetRail.WidgetSdk.WidgetCommandError? left, WidgetRail.WidgetSdk.WidgetCommandError? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetCommandError.op_Inequality(WidgetRail.WidgetSdk.WidgetCommandError? left, WidgetRail.WidgetSdk.WidgetCommandError? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution>.op_Equality(WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution> left, WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution> right) -> bool
 method static WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution>.op_Inequality(WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution> left, WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution> right) -> bool
 method static WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs.op_Equality(WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs? left, WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs.op_Inequality(WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs? left, WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate.op_Equality(WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate? left, WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate.op_Inequality(WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate? left, WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>.op_Equality(WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>? left, WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>? left, WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>.op_Equality(WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>? left, WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>? left, WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetCursorMutationResult.op_Equality(WidgetRail.WidgetSdk.WidgetCursorMutationResult? left, WidgetRail.WidgetSdk.WidgetCursorMutationResult? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetCursorMutationResult.op_Inequality(WidgetRail.WidgetSdk.WidgetCursorMutationResult? left, WidgetRail.WidgetSdk.WidgetCursorMutationResult? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.op_Equality(WidgetRail.WidgetSdk.WidgetCursorPage<TItem>? left, WidgetRail.WidgetSdk.WidgetCursorPage<TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.op_Inequality(WidgetRail.WidgetSdk.WidgetCursorPage<TItem>? left, WidgetRail.WidgetSdk.WidgetCursorPage<TItem>? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.op_Equality(WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>? left, WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>? right) -> bool
@@ -2519,11 +2605,17 @@ method virtual WidgetRail.WidgetSdk.WidgetCapabilityOperation<TRequest,TResponse
 method virtual WidgetRail.WidgetSdk.WidgetCapabilityQuery.Equals(WidgetRail.WidgetSdk.WidgetCapabilityQuery? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetCollectionCursor.Equals(WidgetRail.WidgetSdk.WidgetCollectionCursor other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetCollectionItemKey.Equals(WidgetRail.WidgetSdk.WidgetCollectionItemKey other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetCollectionViewportState.Equals(WidgetRail.WidgetSdk.WidgetCollectionViewportState? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetCommandError.Equals(WidgetRail.WidgetSdk.WidgetCommandError? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution>.Equals(WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution> other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs.<Clone>$() -> WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs
 method virtual WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs.Equals(WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate.Equals(WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>.Equals(WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>.Equals(WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetCursorMutationResult.Equals(WidgetRail.WidgetSdk.WidgetCursorMutationResult? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.Equals(WidgetRail.WidgetSdk.WidgetCursorPage<TItem>? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetCursorRecoveryScope.Dispose() -> void
 method virtual WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.Equals(WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Equals(WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.Equals(WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>? other) -> bool
@@ -2634,6 +2726,8 @@ property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAud
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAudioSpatialFormat> WidgetRail.WidgetSdk.WidgetAudioSpatial.Formats { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork> WidgetRail.WidgetSdk.WidgetAvailableWifiNetworks.Networks { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetBluetoothDevice> WidgetRail.WidgetSdk.WidgetBluetoothSnapshot.Devices { get; set; }
+property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetCollectionBoundaryDemand.ProtectedKeys { get; }
+property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetViewportRecovery.NeighborKeys { get; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>> WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.Viewports { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayControlMode> WidgetRail.WidgetSdk.WidgetDisplayControlMonitor.Modes { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetDisplayControlMonitor> WidgetRail.WidgetSdk.WidgetDisplayControlsState.Displays { get; set; }
@@ -2661,6 +2755,8 @@ property System.Collections.Generic.IReadOnlyList<string> WidgetRail.WidgetSdk.W
 property System.Collections.Generic.IReadOnlyList<string> WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails.IpAddresses { get; set; }
 property System.Collections.Generic.IReadOnlyList<string>? WidgetRail.WidgetSdk.WidgetActionEvent.RetainedCollectionKeys { get; set; }
 property System.Collections.Generic.IReadOnlyList<string>? WidgetRail.WidgetSdk.WidgetActionEvent.VisibleCollectionKeys { get; set; }
+property System.Comparison<TItem> WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>.Compare { get; set; }
+property System.Comparison<TItem>? WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.LiveOrder { get; set; }
 property System.DateTimeOffset WidgetRail.WidgetSdk.WidgetDisplayProfileRestore.Deadline { get; set; }
 property System.DateTimeOffset WidgetRail.WidgetSdk.WidgetPerformanceSnapshot.SampledAtUtc { get; set; }
 property System.Exception WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.Exception { get; set; }
@@ -2679,11 +2775,15 @@ property System.Func<TContext,TItem,WidgetRail.WidgetSdk.WidgetActionEvent,Syste
 property System.Func<TContext,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetArtworkSource?>>? WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.ResolveArtworkSource { get; set; }
 property System.Func<TContext,TItem,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>>? WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.ResolveArtwork { get; set; }
 property System.Func<TContext,TItem,WidgetRail.WidgetSdk.WidgetIndexedItemContext,WidgetRail.WidgetSdk.WidgetElement> WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.RenderItem { get; set; }
+property System.Func<TContext,WidgetRail.WidgetSdk.WidgetCollectionBoundaryDemand,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask>? WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.OnBoundaryDemand { get; set; }
+property System.Func<TContext,WidgetRail.WidgetSdk.WidgetCollectionViewportState,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask>? WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.OnViewportChanged { get; set; }
+property System.Func<TContext,WidgetRail.WidgetSdk.WidgetViewportRecovery,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetViewportRecoveryResult>>? WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.OnRecoverViewport { get; set; }
 property System.Func<TContext,string,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetElement>> WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.Resolve { get; set; }
 property System.Func<TContext,string,WidgetRail.WidgetSdk.WidgetActionEvent,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask>? WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.OnAction { get; set; }
 property System.Func<TContext,string,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetArtworkSource?>>? WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.ResolveArtworkSource { get; set; }
 property System.Func<TContext,string,WidgetRail.WidgetSdk.WidgetArtworkHandle,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetEncodedArtwork?>>? WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>.ResolveArtwork { get; set; }
 property System.Func<TExecution,WidgetRail.WidgetSdk.WidgetOperationContext,System.Threading.Tasks.ValueTask<TResult?>> WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Execute { get; set; }
+property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionCursor> WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>.BoundaryCursor { get; set; }
 property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.ItemKey { get; set; }
 property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.ItemKey { get; set; }
 property System.Func<TItem,WidgetRail.WidgetSdk.WidgetCollectionItemKey> WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.ItemKey { get; set; }
@@ -2744,6 +2844,7 @@ property T? WidgetRail.WidgetSdk.WidgetPrivateStateValue<T>.Value { get; set; }
 property TAuthority WidgetRail.WidgetSdk.WidgetOutOfBandCommandProjection<TState,TAuthority>.Authority { get; set; }
 property TContext WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem>.Context { get; }
 property TExecution WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution>.Execution { get; set; }
+property TItem? WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>.Value { get; set; }
 property TRequest? WidgetRail.WidgetSdk.WidgetScenarioOperationInvocation<TRequest,TResponse>.Request { get; }
 property TResult? WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>.Result { get; set; }
 property TRoute WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.RootRoute { get; set; }
@@ -2791,6 +2892,7 @@ property WidgetRail.WidgetProtocol.GridLayoutDefinition WidgetRail.WidgetSdk.Gri
 property WidgetRail.WidgetProtocol.ImageFit WidgetRail.WidgetSdk.ImageElement.Fit { get; set; }
 property WidgetRail.WidgetProtocol.ImageFit WidgetRail.WidgetSdk.WindowPreviewElement.Fit { get; set; }
 property WidgetRail.WidgetProtocol.ImageFit? WidgetRail.WidgetSdk.ButtonElement.LeadingImageFit { get; set; }
+property WidgetRail.WidgetProtocol.IndexedCollectionBoundaries? WidgetRail.WidgetSdk.IndexedCollectionElement.Boundaries { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.WidgetSdk.IndexedCollectionElement.Source { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.WidgetSdk.WidgetDiscoveredCollection<TQuery,TItem>.Descriptor { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionDescriptor WidgetRail.WidgetSdk.WidgetFocusPreviewSource<TContext>.Descriptor { get; }
@@ -2802,6 +2904,7 @@ property WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? WidgetRail.Widg
 property WidgetRail.WidgetProtocol.IndexedCollectionRange WidgetRail.WidgetSdk.WidgetIndexedCollectionTestLease.Range { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionSelection? WidgetRail.WidgetSdk.IndexedCollectionElement.Selection { get; }
 property WidgetRail.WidgetProtocol.IndexedCollectionSelection? WidgetRail.WidgetSdk.WidgetIndexedCollection<TQuery,TItem>.Selection { get; }
+property WidgetRail.WidgetProtocol.IndexedDirectionalEntryMode WidgetRail.WidgetSdk.IndexedCollectionElement.DirectionalEntryMode { get; }
 property WidgetRail.WidgetProtocol.LineGraphDefinition WidgetRail.WidgetSdk.LineGraphElement.Graph { get; set; }
 property WidgetRail.WidgetProtocol.LoadingIndicatorSize WidgetRail.WidgetSdk.LoadingIndicatorElement.Size { get; set; }
 property WidgetRail.WidgetProtocol.MediaPlayerDefinition WidgetRail.WidgetSdk.MediaPlayerElement.Media { get; set; }
@@ -2876,6 +2979,7 @@ property WidgetRail.WidgetSdk.WidgetAppLibrarySourceHealth WidgetRail.WidgetSdk.
 property WidgetRail.WidgetSdk.WidgetAppLibrarySourceReference WidgetRail.WidgetSdk.WidgetAppLibraryPresentation.Source { get; set; }
 property WidgetRail.WidgetSdk.WidgetArtworkContentType WidgetRail.WidgetSdk.WidgetEncodedArtwork.ContentType { get; }
 property WidgetRail.WidgetSdk.WidgetArtworkHandle WidgetRail.WidgetSdk.FocusBackgroundElement.Artwork { get; set; }
+property WidgetRail.WidgetSdk.WidgetArtworkHandle? WidgetRail.WidgetSdk.MediaPlayerElement.Poster { get; set; }
 property WidgetRail.WidgetSdk.WidgetAudioDeviceDirection WidgetRail.WidgetSdk.WidgetAudioDevice.Direction { get; set; }
 property WidgetRail.WidgetSdk.WidgetAudioInput? WidgetRail.WidgetSdk.WidgetAudioInputChanged.Input { get; set; }
 property WidgetRail.WidgetSdk.WidgetAudioOutput? WidgetRail.WidgetSdk.WidgetAudioOutputChanged.Output { get; set; }
@@ -2888,18 +2992,27 @@ property WidgetRail.WidgetSdk.WidgetBluetoothRadioState WidgetRail.WidgetSdk.Wid
 property WidgetRail.WidgetSdk.WidgetBluetoothSnapshot WidgetRail.WidgetSdk.WidgetBluetoothChanged.Snapshot { get; set; }
 property WidgetRail.WidgetSdk.WidgetBluetoothUnpairingOutcome WidgetRail.WidgetSdk.WidgetBluetoothUnpairingResult.Outcome { get; set; }
 property WidgetRail.WidgetSdk.WidgetCaptureLibraryService WidgetRail.WidgetSdk.WidgetHostServices.CaptureLibrary { get; }
+property WidgetRail.WidgetSdk.WidgetCaptureReplayService WidgetRail.WidgetSdk.WidgetCaptureService.Replay { get; }
 property WidgetRail.WidgetSdk.WidgetCaptureService WidgetRail.WidgetSdk.WidgetHostServices.Capture { get; }
+property WidgetRail.WidgetSdk.WidgetCollectionCursor? WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate.After { get; set; }
+property WidgetRail.WidgetSdk.WidgetCollectionCursor? WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate.Before { get; set; }
 property WidgetRail.WidgetSdk.WidgetCollectionCursor? WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.After { get; set; }
 property WidgetRail.WidgetSdk.WidgetCollectionCursor? WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.Before { get; set; }
 property WidgetRail.WidgetSdk.WidgetCollectionCursor? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.After { get; set; }
 property WidgetRail.WidgetSdk.WidgetCollectionCursor? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Before { get; set; }
 property WidgetRail.WidgetSdk.WidgetCollectionItemKey WidgetRail.WidgetSdk.CollectionItemElement.Key { get; set; }
+property WidgetRail.WidgetSdk.WidgetCollectionItemKey WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>.Key { get; set; }
 property WidgetRail.WidgetSdk.WidgetCollectionItemKey WidgetRail.WidgetSdk.WidgetIndexedItemContext.Key { get; }
+property WidgetRail.WidgetSdk.WidgetCollectionItemKey WidgetRail.WidgetSdk.WidgetViewportRecovery.AnchorKey { get; }
 property WidgetRail.WidgetSdk.WidgetCollectionItemKey? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Anchor { get; set; }
 property WidgetRail.WidgetSdk.WidgetCollectionReturnFocus? WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.CollectionReturnFocus { get; set; }
+property WidgetRail.WidgetSdk.WidgetCollectionViewportState WidgetRail.WidgetSdk.WidgetLoadedCollection<TContext,TItem>.ViewportState { get; }
 property WidgetRail.WidgetSdk.WidgetCommandPolicy WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Policy { get; set; }
+property WidgetRail.WidgetSdk.WidgetCursorDirection WidgetRail.WidgetSdk.WidgetCollectionBoundaryDemand.Direction { get; }
 property WidgetRail.WidgetSdk.WidgetCursorDirection? WidgetRail.WidgetSdk.WidgetAppLibraryCursorRequest.Direction { get; set; }
 property WidgetRail.WidgetSdk.WidgetCursorDirection? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.LoadingDirection { get; set; }
+property WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>? WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.LiveUpdates { get; set; }
+property WidgetRail.WidgetSdk.WidgetCursorMutationScope WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.MutationScope { get; }
 property WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> WidgetRail.WidgetSdk.WidgetCursorPresentation<TItem>.Snapshot { get; }
 property WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Snapshot { get; }
 property WidgetRail.WidgetSdk.WidgetDiscoveredDuplicatePolicy WidgetRail.WidgetSdk.WidgetDiscoveredCollectionOptions<TQuery,TItem>.DuplicatePolicy { get; set; }
@@ -2920,6 +3033,7 @@ property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.ResponsiveBranc
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetModal.Content { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetView.Root { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement? WidgetRail.WidgetSdk.WidgetModal.HeaderActions { get; set; }
+property WidgetRail.WidgetSdk.WidgetFileService WidgetRail.WidgetSdk.WidgetHostServices.Files { get; }
 property WidgetRail.WidgetSdk.WidgetFocusTargetState WidgetRail.WidgetSdk.WidgetFocusTargetResult.State { get; set; }
 property WidgetRail.WidgetSdk.WidgetHostServices WidgetRail.WidgetSdk.WidgetScenarioDefinition.HostServices { get; }
 property WidgetRail.WidgetSdk.WidgetIcon? WidgetRail.WidgetSdk.ActionSheetItem.Icon { get; set; }
@@ -3034,7 +3148,15 @@ property bool WidgetRail.WidgetSdk.WidgetBluetoothDevice.IsPaired { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetBluetoothDevice.IsPresent { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetBluetoothSnapshot.CanControlRadio { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement.Acknowledged { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetCollectionViewportState.FollowsEnd { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetCollectionViewportState.IsAtEnd { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetCollectionViewportState.IsAtStart { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetCollectionViewportState.Recovering { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetCommandProjection<TState,TExecution>.ShouldExecute { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>.IsRemoval { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetCursorMutationResult.Applied { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetCursorMutationResult.HasUnseenItems { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetCursorMutationResult.RequiresRefresh { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.IsBusy { get; }
 property bool WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.HasAfter { get; }
 property bool WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.HasBefore { get; }
@@ -3048,6 +3170,8 @@ property bool WidgetRail.WidgetSdk.WidgetDisplayProfileSummary.MatchesCurrent { 
 property bool WidgetRail.WidgetSdk.WidgetFileArtwork.PackageRelative { get; }
 property bool WidgetRail.WidgetSdk.WidgetFocusTargetResult.IsEnabled { get; }
 property bool WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.EnableSelection { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetIndexedCollectionOptions<TQuery,TItem>.FollowEnd { get; set; }
+property bool WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.FollowEnd { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetLoadedCollectionOptions<TContext,TItem>.PreserveOccurrences { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetLoopbackJsonRequest.InvalidateBearerSecretOnUnauthorized { get; set; }
 property bool WidgetRail.WidgetSdk.WidgetLoopbackRequestOptions.InvalidateBearerSecretOnUnauthorized { get; set; }
@@ -3138,6 +3262,7 @@ property int WidgetRail.WidgetSdk.TextEntryElement.MaximumLength { get; set; }
 property int WidgetRail.WidgetSdk.WidgetAppLibraryCursorRequest.Limit { get; set; }
 property int WidgetRail.WidgetSdk.WidgetAppLibraryItem.PresentationVersion { get; set; }
 property int WidgetRail.WidgetSdk.WidgetAvailableWifiNetwork.SignalPercent { get; set; }
+property int WidgetRail.WidgetSdk.WidgetCollectionViewportState.ActiveViews { get; set; }
 property int WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.RetainedCursorCount { get; }
 property int WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.RetainedItemCount { get; }
 property int WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.MaximumRetainedItems { get; set; }
@@ -3223,6 +3348,8 @@ property long? WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata.LastWrittenUnixM
 property static System.TimeSpan WidgetRail.WidgetSdk.WidgetTimedMutation.MaximumDelay { get; }
 property static WidgetRail.WidgetSdk.NavigationShellContentEntry WidgetRail.WidgetSdk.NavigationShellContentEntry.Unavailable { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetProtocol.CaptureLibraryChanged> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Changed { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetProtocol.CaptureReplayStatus> WidgetRail.WidgetSdk.WidgetCaptureReplayCapabilities.Changed { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetProtocol.CaptureReplayStatus> WidgetRail.WidgetSdk.WidgetCaptureReplayCapabilities.EncodingChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioDevicesChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.DevicesChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioInputChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.InputChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioOutputChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.OutputChanged { get; }
@@ -3243,16 +3370,22 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryChooseSourceRequest,WidgetRail.WidgetProtocol.CaptureLibrarySourceChoice> WidgetRail.WidgetSdk.WidgetCaptureLibrarySourceCapabilities.Choose { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryContextsRequest,WidgetRail.WidgetProtocol.CaptureLibraryContextsPage> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.GetContexts { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryCopyRequest,WidgetRail.WidgetProtocol.CaptureLibraryBatchResult> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Copy { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryEditRequest,WidgetRail.WidgetProtocol.CaptureLibraryEditResult> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.EditCopy { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryFindRequest,WidgetRail.WidgetProtocol.CaptureLibraryPosition> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Find { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryFoldersRequest,WidgetRail.WidgetProtocol.CaptureLibraryFolders> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Folders { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryGroupsRequest,WidgetRail.WidgetProtocol.CaptureLibraryGroups> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Groups { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryLinkRequest,WidgetRail.WidgetProtocol.CaptureLibraryLinkResult> WidgetRail.WidgetSdk.WidgetCaptureLibrarySourceCapabilities.Link { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryListRequest,WidgetRail.WidgetProtocol.CaptureLibraryPage> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.List { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryMetadataRequest,WidgetRail.WidgetProtocol.CaptureLibraryItem> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.UpdateMetadata { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryMutationReference,WidgetRail.WidgetProtocol.CaptureLibraryItem> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.SaveCopy { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryMutationReference,WidgetRail.WidgetProtocol.CaptureLibraryItem> WidgetRail.WidgetSdk.WidgetCaptureLibrarySourceCapabilities.Unhide { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryMutationReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.RemoveUnavailable { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryMutationReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureLibrarySourceCapabilities.RemoveLink { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryOpenRequest,WidgetRail.WidgetProtocol.CaptureAttachment> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Open { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryQueryRequest,WidgetRail.WidgetProtocol.CaptureLibraryContinuityPage> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.QueryContinuity { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryQueryRequest,WidgetRail.WidgetProtocol.CaptureLibraryQueryPage> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Query { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryRecycleRequest,WidgetRail.WidgetProtocol.CaptureLibraryBatchResult> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Recycle { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryRecycleRequest,WidgetRail.WidgetProtocol.CaptureLibraryBatchResult> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.RecycleLinked { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryReference,WidgetRail.WidgetProtocol.CaptureLibraryExport> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Export { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryReference,WidgetRail.WidgetProtocol.CaptureLibraryItem> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.GetMetadata { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureLibraryReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Delete { get; }
@@ -3265,6 +3398,11 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureReadRequest,WidgetRail.WidgetProtocol.CaptureReadChunk> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Read { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureReadRequest,WidgetRail.WidgetProtocol.CaptureReadChunk> WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities.Read { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureRecordingQuery,WidgetRail.WidgetProtocol.CaptureCapabilities> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.RecordingCapabilities { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureReplayReadRequest,WidgetRail.WidgetProtocol.CaptureReplayControlResult> WidgetRail.WidgetSdk.WidgetCaptureReplayCapabilities.DetailedStart { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureReplayReadRequest,WidgetRail.WidgetProtocol.CaptureReplayStatus> WidgetRail.WidgetSdk.WidgetCaptureReplayCapabilities.DetailedGet { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureReplaySaveRequest,WidgetRail.WidgetProtocol.CaptureReplaySaveResult> WidgetRail.WidgetSdk.WidgetCaptureReplayCapabilities.Save { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureReplaySessionRequest,WidgetRail.WidgetProtocol.CaptureReplayControlResult> WidgetRail.WidgetSdk.WidgetCaptureReplayCapabilities.Stop { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureReplaySettingsUpdate,WidgetRail.WidgetProtocol.CaptureReplayControlResult> WidgetRail.WidgetSdk.WidgetCaptureReplayCapabilities.Configure { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureSessionRequest,WidgetRail.WidgetProtocol.CaptureConfigurationValidation> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Validate { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureSessionRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Start { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentContent,WidgetRail.WidgetProtocol.ProviderDocumentReference> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Create { get; }
@@ -3277,6 +3415,14 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebSessionCommand,WidgetRail.WidgetProtocol.WebSessionReply> WidgetRail.WidgetSdk.WidgetWebSessionMicrophoneCapabilities.Request { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebSessionCommand,WidgetRail.WidgetProtocol.WebSessionReply> WidgetRail.WidgetSdk.WidgetWebSessionPermissionCapabilities.Request { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetActivity,WidgetRail.WidgetProtocol.WidgetActivityReceipt> WidgetRail.WidgetSdk.WidgetActivityCapabilities.Report { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetFileChoiceRequest,WidgetRail.WidgetProtocol.WidgetFileSelection> WidgetRail.WidgetSdk.WidgetFileCapabilities.Choose { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetFileFromCaptureRequest,WidgetRail.WidgetProtocol.WidgetFileReference> WidgetRail.WidgetSdk.WidgetFileCapabilities.FromCapture { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetFileIdReference,WidgetRail.WidgetProtocol.WidgetFileReference> WidgetRail.WidgetSdk.WidgetFileCapabilities.Get { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetFileIdReference,WidgetRail.WidgetProtocol.WidgetFileSelection> WidgetRail.WidgetSdk.WidgetFileCapabilities.Accept { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetFileIdReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetFileCapabilities.CancelOffer { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetFileIdReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetFileCapabilities.Release { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetFileOfferRequest,WidgetRail.WidgetProtocol.WidgetFileShareOffer> WidgetRail.WidgetSdk.WidgetFileCapabilities.Offer { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetFileReadRequest,WidgetRail.WidgetProtocol.WidgetFileReadChunk> WidgetRail.WidgetSdk.WidgetFileCapabilities.Read { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetNotificationCommand,WidgetRail.WidgetProtocol.WidgetNotificationReceipt> WidgetRail.WidgetSdk.WidgetNotificationCapabilities.Publish { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionQuery,WidgetRail.WidgetProtocol.WidgetPermissionRequestState> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Request { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPermissionQuery,WidgetRail.WidgetProtocol.WidgetPermissionStatuses> WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Check { get; }
@@ -3325,6 +3471,8 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetTaskWindow>> WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.List { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetProtocol.CaptureCapabilities> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Capabilities { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetProtocol.CaptureLibrarySources> WidgetRail.WidgetSdk.WidgetCaptureLibrarySourceCapabilities.List { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetProtocol.CaptureReplayControlResult> WidgetRail.WidgetSdk.WidgetCaptureReplayCapabilities.Start { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetProtocol.CaptureReplayStatus> WidgetRail.WidgetSdk.WidgetCaptureReplayCapabilities.Get { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAudioInput> WidgetRail.WidgetSdk.WidgetAudioCapabilities.GetInput { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAudioOutput> WidgetRail.WidgetSdk.WidgetAudioCapabilities.GetOutput { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetCapabilityQuery,WidgetRail.WidgetSdk.WidgetAudioSpatial> WidgetRail.WidgetSdk.WidgetAudioCapabilities.GetSpatial { get; }
@@ -3537,6 +3685,7 @@ property string WidgetRail.WidgetSdk.WindowPreviewElement.WindowId { get; set; }
 property string? WidgetRail.WidgetSdk.ActionSheetItem.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.ActionSurfaceElement.ActionId { get; set; }
 property string? WidgetRail.WidgetSdk.ActionSurfaceElement.FocusPersistenceId { get; set; }
+property string? WidgetRail.WidgetSdk.ActionSurfaceElement.FocusVisualTargetId { get; set; }
 property string? WidgetRail.WidgetSdk.ButtonElement.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.ButtonElement.FocusPersistenceId { get; set; }
 property string? WidgetRail.WidgetSdk.ButtonElement.LeadingArtworkHandle { get; set; }
@@ -3674,6 +3823,7 @@ type enum WidgetRail.WidgetSdk.WidgetPageDirection : System.IComparable, System.
 type enum WidgetRail.WidgetSdk.WidgetPagedResourceStatus : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetRecentActivityKind : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetResourceStatus : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+type enum WidgetRail.WidgetSdk.WidgetViewportRecoveryResult : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetWifiRadioState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetWifiScanState : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type enum WidgetRail.WidgetSdk.WidgetWifiSecurityKind : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
@@ -3795,13 +3945,22 @@ type sealed class WidgetRail.WidgetSdk.WidgetCapabilityOperation<TRequest,TRespo
 type sealed class WidgetRail.WidgetSdk.WidgetCapabilityQuery : System.IEquatable<WidgetRail.WidgetSdk.WidgetCapabilityQuery>
 type sealed class WidgetRail.WidgetSdk.WidgetCapabilityUnavailableException : System.Exception, System.Runtime.Serialization.ISerializable
 type sealed class WidgetRail.WidgetSdk.WidgetCaptureLibraryService
+type sealed class WidgetRail.WidgetSdk.WidgetCaptureReplayService
 type sealed class WidgetRail.WidgetSdk.WidgetCaptureService
+type sealed class WidgetRail.WidgetSdk.WidgetCollectionBoundaryDemand
 type sealed class WidgetRail.WidgetSdk.WidgetCollectionItems<TItem>
 type sealed class WidgetRail.WidgetSdk.WidgetCollectionReturnFocus
+type sealed class WidgetRail.WidgetSdk.WidgetCollectionViewportState : System.IEquatable<WidgetRail.WidgetSdk.WidgetCollectionViewportState>
 type sealed class WidgetRail.WidgetSdk.WidgetCommandError : System.IEquatable<WidgetRail.WidgetSdk.WidgetCommandError>
 type sealed class WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs : System.IEquatable<WidgetRail.WidgetSdk.WidgetActionFailedEventArgs>, System.IEquatable<WidgetRail.WidgetSdk.WidgetControllerActionFailedEventArgs>, WidgetRail.WidgetSdk.WidgetActionFailedEventArgs
+type sealed class WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorBoundaryUpdate>
+type sealed class WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorLiveOptions<TItem>>
+type sealed class WidgetRail.WidgetSdk.WidgetCursorMutation<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorMutation<TItem>>
+type sealed class WidgetRail.WidgetSdk.WidgetCursorMutationResult : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorMutationResult>
+type sealed class WidgetRail.WidgetSdk.WidgetCursorMutationScope
 type sealed class WidgetRail.WidgetSdk.WidgetCursorPage<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorPage<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetCursorPresentation<TItem>
+type sealed class WidgetRail.WidgetSdk.WidgetCursorRecoveryScope : System.IDisposable
 type sealed class WidgetRail.WidgetSdk.WidgetCursorResource<TItem>
 type sealed class WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>>
@@ -3822,6 +3981,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetDisplayProfilesState : System.IEqua
 type sealed class WidgetRail.WidgetSdk.WidgetDocumentService
 type sealed class WidgetRail.WidgetSdk.WidgetEncodedArtwork : WidgetRail.WidgetSdk.WidgetArtworkSource
 type sealed class WidgetRail.WidgetSdk.WidgetFileArtwork : WidgetRail.WidgetSdk.WidgetArtworkSource
+type sealed class WidgetRail.WidgetSdk.WidgetFileService
 type sealed class WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext> : System.IEquatable<WidgetRail.WidgetSdk.WidgetFocusPreviewOptions<TContext>>
 type sealed class WidgetRail.WidgetSdk.WidgetFocusPreviewSource<TContext> : WidgetRail.WidgetSdk.IWidgetIndexedCollection
 type sealed class WidgetRail.WidgetSdk.WidgetFocusRequest
@@ -3920,6 +4080,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetTestPrivateState
 type sealed class WidgetRail.WidgetSdk.WidgetTimedMutation : System.IDisposable
 type sealed class WidgetRail.WidgetSdk.WidgetTimedMutationFailedEventArgs : System.EventArgs
 type sealed class WidgetRail.WidgetSdk.WidgetView : System.IEquatable<WidgetRail.WidgetSdk.WidgetView>
+type sealed class WidgetRail.WidgetSdk.WidgetViewportRecovery
 type sealed class WidgetRail.WidgetSdk.WidgetWebCaptureService
 type sealed class WidgetRail.WidgetSdk.WidgetWebSession : System.IAsyncDisposable
 type sealed class WidgetRail.WidgetSdk.WidgetWebSessionService
@@ -3937,10 +4098,12 @@ type static class WidgetRail.WidgetSdk.WidgetAudioCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCaptureCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCaptureLibraryCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCaptureLibrarySourceCapabilities
+type static class WidgetRail.WidgetSdk.WidgetCaptureReplayCapabilities
 type static class WidgetRail.WidgetSdk.WidgetCommunityPlatformLimits
 type static class WidgetRail.WidgetSdk.WidgetDisplayControlsCapabilities
 type static class WidgetRail.WidgetSdk.WidgetDisplayProfilesCapabilities
 type static class WidgetRail.WidgetSdk.WidgetDocumentCapabilities
+type static class WidgetRail.WidgetSdk.WidgetFileCapabilities
 type static class WidgetRail.WidgetSdk.WidgetFocusTargetLookup
 type static class WidgetRail.WidgetSdk.WidgetIds
 type static class WidgetRail.WidgetSdk.WidgetLoopbackCapabilities

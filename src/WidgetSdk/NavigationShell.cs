@@ -445,7 +445,7 @@ public static partial class UI
                 ViewNodeKind.Image or ViewNodeKind.Icon or ViewNodeKind.LoadingIndicator or ViewNodeKind.ControllerGlyph) ||
                 node.ActionId is not null || node.ValueChangedActionId is not null ||
                 node.ContextMenuButton is not null || (node.ContextActions?.Count ?? 0) != 0 ||
-                (node.SelectOptions?.Count ?? 0) != 0 || node.Focus is not null ||
+                (node.SelectOptions?.Count ?? 0) != 0 || node.IsCommandMenu is not null || node.Focus is not null ||
                 node.FocusPersistenceId is not null || node.Transition is not null || node.InputScopeId is not null ||
                 node.InitialChildFocusId is not null ||
                 (node.Shortcuts?.Count ?? 0) != 0 || node.ScrollAxis is not null || node.ShowScrollbar is not null ||

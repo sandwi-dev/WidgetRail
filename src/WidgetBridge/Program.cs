@@ -97,6 +97,8 @@ internal static class Program
                         startupWidget is null ? [] : [startupWidget],
                         (progress, token) => publish(Configure(progress), token)).ConfigureAwait(false);
                     await PrepareBundledPermissionsAsync(loaded.Catalog, consentStore, cancellationToken).ConfigureAwait(false);
+                    await CaptureReplayPreferencesAdapter.RecoverReviewedUpdateAsync(settingsPaths.RootDirectory,
+                        consentStore, loaded.Catalog, Console.Error.WriteLine, cancellationToken).ConfigureAwait(false);
                     return Configure(loaded);
                 });
             catalogMonitor.Diagnostics += (_, warnings) =>
@@ -117,7 +119,19 @@ internal static class Program
             var captureLibrary = new CaptureLibraryStore(Path.Combine(settingsPaths.RootDirectory, "capture-library-v2"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "WidgetRail", "Captures"),
                 WindowsCaptureImageCodec.CreateContextAsync, WindowsCaptureImageCodec.CreateThumbnailAsync, WindowsCaptureImageCodec.InspectAsync, WindowsFileOperations.RecycleAsync);
+            captureLibrary.LinkedOriginalRecycler=WindowsFileOperations.RecycleLinkedAsync;
+            await captureLibrary.RecoverPendingEditsAsync(shutdown.Token).ConfigureAwait(false);
+            CaptureEditPreviewFiles.CleanupExpired();
+            CaptureLibraryEditRequests.Configure(WindowsCaptureEditCodec.EncodeAsync,
+                WindowsCaptureEditCodec.ValidateSourceAsync, CaptureEditPreviewFiles.CreateAsync);
             captureLibrary.StartSources();
+            WidgetBridgeServer? replayAuthority = null;
+            var replaySettings = CaptureReplayPreferencesAdapter.Read((await settingsStore.LoadAsync(shutdown.Token).ConfigureAwait(false)).ReplayCapture);
+            var replay = new CaptureReplayService(captureLibrary, replaySettings,
+                (next, expected, token) => CaptureReplayPreferencesAdapter.SaveAsync(settingsStore, next, expected, token),
+                (actor, capability, token) => replayAuthority?.AuthorizeReplayFeatureAsync(actor, capability, token) ??
+                    Task.FromResult(WidgetRail.WidgetProtocol.CaptureReplayIssue.HostUnavailable), TimeProvider.System,
+                async token => CaptureReplayPreferencesAdapter.Read((await settingsStore.LoadAsync(token).ConfigureAwait(false)).ReplayCapture));
             await using var platformBackend = new CompositePlatformBrokerBackend(
                 new WindowsAudioPlatformBackend(),
                 new WindowsNetworkPlatformBackend(),
@@ -134,7 +148,7 @@ internal static class Program
                 performance: new WidgetRail.WindowsPerformanceProvider.WindowsPerformanceBackend(applicationBackend,
                     Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "Performance", "PerformanceCollector.exe")),
                     new WidgetRail.PerformanceTelemetry.FpsDiagnosticLog(Path.Combine(settingsPaths.RootDirectory, "diagnostics", "fps-collector.log")).Write),
-                captureLibrary: captureLibrary);
+                captureLibrary: captureLibrary) { CaptureReplay = replay };
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
                 catalogMonitor, residencyBudget,
@@ -142,6 +156,7 @@ internal static class Program
                 mediaDiagnostics.RecordLifetime,
                 mediaDiagnostics.RecordRequestFailure,
                 Path.Combine(settingsPaths.RootDirectory, "worker-diagnostics"), settingsStore);
+            replayAuthority = server;
             mediaDiagnostics.RecordBridgeStartupPhase("control-plane-created");
             catalogMonitor.Start();
             mediaDiagnostics.RecordBridgeStartupPhase("installed-catalog-pending");

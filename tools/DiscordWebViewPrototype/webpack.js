@@ -17,8 +17,12 @@
         }
         return result;
     }
-    function find(key,predicate){
-        if(cache.has(key))return cache.get(key);
+    function find(key,predicate,validateCached=false){
+        if(cache.has(key)){
+            const cached=cache.get(key);
+            try{if(!validateCached||predicate(cached))return cached;}catch{}
+            cache.delete(key);
+        }
         for(const v of values()){
             if(!v||!['object','function'].includes(typeof v))continue;
             try{
@@ -39,7 +43,13 @@
     globalThis.WidgetRailWebWebpack={
         diagnostics:()=>{if(!runtimes.size)values();return {lastCommand:globalThis.WidgetRailLastCommand,runtimes:[...runtimes].map(r=>({keys:Object.keys(r),modules:Object.keys(r.c??{}).length,factories:Object.keys(r.m??{}).length})),chunkCount:globalThis.webpackChunkdiscord_app?.length??0};},
         findStore:name=>find('store:'+name,v=>v.constructor?.displayName===name||(typeof v.getName==='function'&&v.getName()===name)),
-        findByProps:(...props)=>find('props:'+props.join(','),v=>props.every(p=>member(v,p))),
+        findByProps:(...props)=>{
+            // Some unrelated client helpers expose identical method names. A
+            // caller may additionally require the actual function contract.
+            const predicate=typeof props.at(-1)==='function'?props.pop():null;
+            return find('props:'+props.join(',')+(predicate?':where:'+Function.prototype.toString.call(predicate):''),
+                v=>props.every(p=>member(v,p))&&(!predicate||predicate(v)),predicate!==null);
+        },
         findByCode:pattern=>find('code:'+pattern,v=>typeof v==='function'&&Function.prototype.toString.call(v).includes(pattern)),
         get Common(){return {FluxDispatcher:find('dispatcher',v=>['dispatch','subscribe','wait'].every(p=>member(v,p)&&typeof v[p]==='function'))};}
     };

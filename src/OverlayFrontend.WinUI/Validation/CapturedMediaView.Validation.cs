@@ -1,4 +1,7 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Input;
 using WidgetRail.PlatformBroker;
@@ -95,24 +98,96 @@ internal sealed partial class MediaPlayerView
         fullscreen.Close(); await interruptedImage;
         await Until(() => Math.Abs(RememberImageViewport()!.Scale - originalScale) < .01);
         Check(!IsExpanded, "Canceling image expansion before its first frame retains the original zoom");
-        interruptedImage = ToggleExpandedAsync();
-        await Task.Delay(60);
-        fullscreen.Close(); await interruptedImage;
-        await Until(() => Math.Abs(RememberImageViewport()!.Scale - originalScale) < .01);
+        await AssertImageReversal(60, "original");
         Check(!IsExpanded, "Reversing image expansion mid-animation retains the original zoom");
+        // The earlier ten-second scale-restoration failure was intermittent.
+        // Probe a bounded set of native placement phases without resetting zoom
+        // between attempts or weakening the existing absolute-scale assertion.
+        for (var cycle = 0; cycle < 2; ++cycle)
+            foreach (var delay in new[] { 0, 20, 60, 120 })
+            {
+                await AssertImageReversal(delay, $"sweep-{cycle}");
+                Check(!IsExpanded, $"Image reversal retains original scale at {delay}ms, cycle {cycle + 1}");
+            }
+
+        var unloadedCheckpoint = RememberImageViewport()!;
+        FitImage();
+        await Until(() => imageViewport.ZoomFactor == 1);
+        stage.Children.Remove(imageViewport);
+        await Until(() => !imageViewport.IsLoaded);
+        RestoreImageViewport(unloadedCheckpoint);
+        Check(pendingImageViewportRestore is not null && imageViewport.ZoomFactor == 1,
+            "Unloaded image restoration retains its checkpoint without issuing a lost native zoom");
+        stage.Children.Insert(0, imageViewport);
+        await Until(() => imageViewport.IsLoaded && Math.Abs(RememberImageViewport()!.Scale - originalScale) < .01);
+        Check(pendingImageViewportRestore is null,
+            "Loaded image applies the exact retained zoom checkpoint once");
+
+        await VerifyDeferredRestoreCancellation(() => ZoomImage(1), "Fresh zoom");
+        await VerifyDeferredRestoreCancellation(FitImage, "Fit");
+        await VerifyDeferredRestoreCancellation(() => SetActive(false, false), "Presentation retirement");
+
+        async Task VerifyDeferredRestoreCancellation(Action supersede, string label)
+        {
+            var checkpoint = RememberImageViewport()!;
+            stage.Children.Remove(imageViewport);
+            await Until(() => !imageViewport.IsLoaded);
+            RestoreImageViewport(checkpoint);
+            Check(pendingImageViewportRestore is not null, label + " fixture retains an unloaded viewport checkpoint");
+            supersede();
+            Check(pendingImageViewportRestore is null, label + " revokes deferred image restoration");
+            SetActive(true, true);
+            stage.Children.Insert(0, imageViewport);
+            await Until(() => imageViewport.IsLoaded);
+            FitImage();
+            await Until(() => imageViewport.ZoomFactor == 1);
+            await Task.Delay(50);
+            Check(imageViewport.ZoomFactor == 1 && pendingImageViewportRestore is null,
+                label + " is not overwritten by a late Loaded/layout callback");
+            RestoreImageViewport(checkpoint);
+            await Until(() => Math.Abs(RememberImageViewport()!.Scale - originalScale) < .01);
+        }
+
+        async Task AssertImageReversal(int closeDelay, string phase)
+        {
+            imageReversalTrace = [];
+            imageReversalCase = $"{phase}:{closeDelay}ms";
+            try
+            {
+                TraceImageViewportState("before-reversal-expansion", originalScale, null, null);
+                if (Math.Abs(RememberImageViewport()!.Scale - originalScale) >= .01 || IsExpanded || changingPlacement)
+                    throw new InvalidOperationException("Image reversal began from an unsettled baseline.");
+                var reversing = ToggleExpandedAsync();
+                if (closeDelay != 0) await Task.Delay(closeDelay);
+                TraceImageViewportState("before-reversal-close", originalScale, null, null);
+                fullscreen.Close(); await reversing;
+                TraceImageViewportState("reversal-close-completed", originalScale, null, null);
+                await Until(() => Math.Abs(RememberImageViewport()!.Scale - originalScale) < .01);
+            }
+            catch (Exception error) when (error is TimeoutException or InvalidOperationException)
+            {
+                TraceImageViewportState("reversal-failed", originalScale, null, null);
+                throw new InvalidOperationException("Interrupted image reversal failed. Bounded viewport evidence: " +
+                    string.Join(";", imageReversalTrace), error);
+            }
+            finally { imageReversalTrace = null; imageReversalCase = null; }
+        }
         SetActive(true, true);
         Apply(_ => Task.FromResult(new HostCaptureAttachment(clip, mp4)), clip, () => true);
         await Until(() => player?.PlaybackSession.NaturalDuration.TotalSeconds > 4.9);
         Check(!IsPlaying && player!.IsMuted, "Native video opens muted without autoplay");
-        Check(play.IsTabStop && replay.IsTabStop && play.UseSystemFocusVisuals && replay.UseSystemFocusVisuals,
+        Check(play.IsTabStop && playbackOptions.IsTabStop && play.UseSystemFocusVisuals && playbackOptions.UseSystemFocusVisuals,
             "Native transport buttons participate in focus and use theme focus visuals");
         Check(play.Focus(FocusState.Keyboard), "Play accepts keyboard/controller focus");
-        Check(MoveFocus(FocusNavigationDirection.Right) && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), replay) && PrimaryActionLabel == "Replay",
-            "Right navigation focuses Replay and updates the A action");
+        Check(MoveFocus(FocusNavigationDirection.Right) && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), mute) && PrimaryActionLabel == "Unmute",
+            "Right navigation focuses audio and updates the A action");
         Handle(ControllerButton.A, ControllerEventPhase.Pressed);
-        await Until(() => IsPlaying);
+        Check(!player!.IsMuted && !IsPlaying, "Controller A changes mute without starting paused playback");
+        Handle(ControllerButton.A, ControllerEventPhase.Pressed);
         Check(MoveFocus(FocusNavigationDirection.Left) && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), play),
             "Left navigation returns to Play without leaving the media element");
+        Handle(ControllerButton.A, ControllerEventPhase.Pressed);
+        await Until(() => IsPlaying);
         Toggle(); await Until(() => !IsPlaying);
         Handle(ControllerButton.A, ControllerEventPhase.Pressed);
         await Until(() => IsPlaying && player!.PlaybackSession.Position.TotalSeconds > .1);
@@ -140,10 +215,38 @@ internal sealed partial class MediaPlayerView
             "General local video uses the same player without a capture attachment and honors options");
         await Until(() => Math.Abs(player!.PlaybackSession.PlaybackRate-1.25)<.01);
         Check(true, "Initial playback rate is applied after media opens");
-        CycleSpeed(); Check(Math.Abs(player.PlaybackSession.PlaybackRate-1.5)<.01,"Speed control cycles native playback rate");
-        ToggleLoop(); Check(!player.IsLoopingEnabled,"Loop control updates native looping");
+        Check(playbackOptions.Focus(FocusState.Keyboard), "Playback options accepts native controller focus");
+        Handle(ControllerButton.A, ControllerEventPhase.Pressed);
+        await Until(() => optionsMenu?.Items.OfType<MenuFlyoutSubItem>().SingleOrDefault() is { IsLoaded: true });
+        optionsNavigation!.Move(FocusNavigationDirection.Down);
+        await optionsNavigation.ActivateAsync();
+        var rate = optionsMenu!.Items.OfType<MenuFlyoutSubItem>().Single().Items.OfType<MenuFlyoutItem>()
+            .Single(item => AutomationProperties.GetAutomationId(item) == "MediaPlayer.Options.speed.1.5");
+        await Until(() => rate.IsLoaded);
+        Check(rate.Focus(FocusState.Keyboard), "Playback speed submenu accepts native focus");
+        Handle(ControllerButton.B, ControllerEventPhase.Pressed);
+        Handle(ControllerButton.B, ControllerEventPhase.Released);
+        await Until(() => FocusManager.GetFocusedElement(XamlRoot) is MenuFlyoutSubItem);
+        Check(HasOptionsMenu && Math.Abs(player.PlaybackSession.PlaybackRate - 1.25) < .01,
+            "First Back closes only the playback speed submenu without changing playback");
+        Handle(ControllerButton.A, ControllerEventPhase.Pressed);
+        await Until(() => rate.IsLoaded);
+        Check(rate.Focus(FocusState.Keyboard), "Playback speed submenu can reopen after Back");
+        Handle(ControllerButton.A, ControllerEventPhase.Pressed);
+        await Until(() => !HasOptionsMenu && Math.Abs(player.PlaybackSession.PlaybackRate - 1.5) < .01);
+        Check(true, "Shared native menu applies the selected playback speed");
+        playbackOptions.Focus(FocusState.Keyboard); Handle(ControllerButton.A, ControllerEventPhase.Pressed);
+        await Until(() => optionsMenu?.Items.OfType<MenuFlyoutItem>().Any(item => item.IsLoaded && AutomationProperties.GetAutomationId(item) == "MediaPlayer.Options.loop") == true);
+        optionsMenu!.Items.OfType<MenuFlyoutItem>().Single(item => AutomationProperties.GetAutomationId(item) == "MediaPlayer.Options.loop").Focus(FocusState.Keyboard);
+        Handle(ControllerButton.A, ControllerEventPhase.Pressed);
+        await Until(() => !HasOptionsMenu);
+        Check(!player.IsLoopingEnabled,"Native options menu updates looping");
         ToggleMute(); Check(player.IsMuted,"Mute control updates native audio");
         volume.Value = 35; Check(!player.IsMuted && Math.Abs(player.Volume-.35)<.01,"Volume slider adjusts native audio and unmutes");
+        Check(time.Text == "Volume 35%" && double.IsFinite(time.Width),
+            "Volume feedback uses the existing fixed-size status cell");
+        Check(Equals(position.ThumbToolTipValueConverter.Convert(72d, typeof(string), null!, "en"), "1:12"),
+            "Native scrub tooltip formats the target as minutes and seconds");
         position.Focus(FocusState.Keyboard);
         MoveFocus(FocusNavigationDirection.Right);
         Check(player.PlaybackSession.Position.TotalSeconds>=.4,"Focusable timeline supports controller scrubbing");
@@ -159,7 +262,7 @@ internal sealed partial class MediaPlayerView
         Check(player!.IsMuted,"Changing playback options during source resolution cannot strand or revive the old load");
         Toggle(); await Until(() => IsPlaying);
         var retained = player;
-        Check(speed.Focus(FocusState.Keyboard), "Speed control accepts focus before expansion");
+        Check(playbackOptions.Focus(FocusState.Keyboard), "Playback options control accepts focus before expansion");
         var inlineVideo = MediaTransitionGeometry.Fit(fullscreen.BoundsOf(video)!.Value, VideoAspectRatio);
         var expanded = ToggleExpandedAsync();
         await Until(() => expandedHost is { IsLoaded: true, IsOpen: true });
@@ -167,7 +270,7 @@ internal sealed partial class MediaPlayerView
         await Until(() => !changingPlacement && expandedHost is { IsTransitioning: false });
         Check(fullscreen.MediaEndpointMatches(inlineVideo), "Native video animation endpoint matches its fitted inline pixels rather than the card");
         Check(card.Parent is MediaFullscreenLayer, "Expanded viewer uses the shared shell layer without dialog framing");
-        Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed), "Expansion preserves the focused transport control; actual=" +
+        Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), playbackOptions), "Expansion preserves the focused transport control; actual=" +
             (FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focus ? Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(focus) : "none"));
         Check(card.ActualWidth <= expandedHost!.ActualWidth + 1 && card.ActualHeight <= expandedHost.ActualHeight + 1 &&
             toolbar.TransformToVisual(card).TransformPoint(new(toolbar.ActualWidth, 0)).X <= card.ActualWidth - 8,
@@ -181,16 +284,16 @@ internal sealed partial class MediaPlayerView
         await expanded;
         Check(ReferenceEquals(card.ReadLocalValue(UIElement.RenderTransformProperty), DependencyProperty.UnsetValue),
             "Native video transition restores the original XAML transform after collapse");
-        Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed), "Collapse restores the same focused transport control");
+        Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), playbackOptions), "Collapse restores the same focused transport control");
         for (var cycle = 0; cycle < 3; cycle++)
         {
             var transition = ToggleExpandedAsync();
-            await Until(() => IsExpanded && !changingPlacement && expandedHost is { IsTransitioning: false } && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed));
+            await Until(() => IsExpanded && !changingPlacement && expandedHost is { IsTransitioning: false } && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), playbackOptions));
             var layer = expandedHost!;
             layer.Route(ControllerButton.RightStick, ControllerEventPhase.Pressed);
             Check(layer.Route(ControllerButton.RightStick, ControllerEventPhase.Released), "Collapse gesture release stays owned by fullscreen");
             await transition;
-            Check(!IsExpanded && ReferenceEquals(player, retained) && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), speed),
+            Check(!IsExpanded && ReferenceEquals(player, retained) && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), playbackOptions),
                 "Repeated expansion retains the player and focus without visiting another control");
         }
         Check(IsPlaying && !IsExpanded && ReferenceEquals(Content,card) && ReferenceEquals(player,retained),"B restores inline player without recreating playback");
@@ -233,11 +336,35 @@ internal sealed partial class MediaPlayerView
         Check(!IsPlaying, "A second inline X press pauses playback");
         var controlsCheck = ToggleExpandedAsync();
         await Until(() => IsExpanded && !changingPlacement && expandedHost is { IsTransitioning: false });
+        Check(play.Focus(FocusState.Keyboard), "Visible transport owns keyboard focus");
         videoChrome.Hide();
-        Check(!videoChrome.Visible && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), video), "Auto-hidden controls park focus on the visible media canvas");
+        Check(videoChrome.Visible && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), play), "Focused transport remains visible without stealing keyboard/controller focus");
+        Check(video.Focus(FocusState.Keyboard), "Media canvas can take focus before hiding inactive controls");
+        player!.Pause();
+        await Until(() => !IsPlaying);
+        Check(play.Focus(FocusState.Pointer), "A mouse-activated control can retain pointer focus before becoming idle");
+        videoChrome.Reveal();
+        await Until(() => !videoChrome.Visible);
+        Check(!IsPlaying && !videoControls.IsHitTestVisible && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),video),
+            "Paused video hides idle pointer-focused controls and parks focus on its visible canvas without playing");
+        videoChrome.Reveal();
+        videoChrome.Hide();
+        Check(!videoChrome.Visible && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), video), "Hidden controls leave focus on the visible media canvas");
         var wasPlaying = IsPlaying;
         Handle(ControllerButton.A, ControllerEventPhase.Pressed);
         Check(videoChrome.Visible && IsPlaying == wasPlaying, "First A reveals controls without activating a hidden command");
+        await Task.Delay(180);
+        Check(videoChrome.Visible && videoControls.Visibility == Visibility.Visible,
+            "Interrupted controls fade cannot collapse a newly revealed toolbar");
+        Check(video.Focus(FocusState.Keyboard), "Leaving the toolbar permits its inactive fade");
+        videoChrome.Hide();
+        await Until(() => videoControls.Visibility == Visibility.Collapsed);
+        Check(!videoControls.IsHitTestVisible, "Completed controls fade retires native hit targets");
+        fullscreen.ApplyMotion(WidgetRail.PlatformSettings.AppearanceSettings.Default with { Motion = WidgetRail.PlatformSettings.MotionPreference.Reduced }, true);
+        videoChrome.Reveal(); videoChrome.Hide();
+        Check(videoControls.Visibility == Visibility.Collapsed, "Reduced motion settles media controls visibility immediately");
+        fullscreen.ApplyMotion(WidgetRail.PlatformSettings.AppearanceSettings.Default, true);
+        videoChrome.Reveal();
         expandedHost!.Width = 380; expandedHost.Height = 240; expandedHost.UpdateLayout();
         await Task.Delay(100);
         Check(card.ActualWidth <= 381 && toolbar.TransformToVisual(card).TransformPoint(new(toolbar.ActualWidth, toolbar.ActualHeight)).X <= card.ActualWidth + 1,
@@ -245,9 +372,20 @@ internal sealed partial class MediaPlayerView
         var oldFont = time.FontSize;
         ApplyTheme(normalBrush!, play.Foreground, time.Foreground, selectedBrush!, card.BorderBrush, position.Foreground,
             24, time.FontWeight, time.FontFamily, inlineRadius.TopLeft);
+        Check(toolbar.Background is null && videoControls.Background is LinearGradientBrush scrim &&
+            scrim.GradientStops.All(stop=>stop.Color.A<255) && imageTools.Background is SolidColorBrush imageBacking && imageBacking.Color.A<255,
+            "Normal media chrome uses translucent backings with fully opaque controls");
         expandedHost.UpdateLayout();
         Check(toolbar.TransformToVisual(card).TransformPoint(new(toolbar.ActualWidth, toolbar.ActualHeight)).X <= card.ActualWidth + 1,
             "Large text retains safe transport bounds in a narrow fullscreen viewport");
+        ApplyTheme(normalBrush!, play.Foreground, time.Foreground, selectedBrush!, card.BorderBrush, position.Foreground,
+            oldFont, time.FontWeight, time.FontFamily, inlineRadius.TopLeft);
+        ApplyTheme(normalBrush!, play.Foreground, time.Foreground, selectedBrush!, card.BorderBrush, position.Foreground,
+            oldFont, time.FontWeight, time.FontFamily, inlineRadius.TopLeft, highContrast: true);
+        Check(normalBrush is SolidColorBrush requested && toolbar.Background is SolidColorBrush painted &&
+            painted.Color == (requested.Color with { A=255 }) && videoControls.Background is SolidColorBrush &&
+            videoControls.Padding.Top == 0 && controls.OfType<Button>().All(button => button.BorderThickness.Top == 1),
+            "High contrast uses solid media controls with visible button borders");
         ApplyTheme(normalBrush!, play.Foreground, time.Foreground, selectedBrush!, card.BorderBrush, position.Foreground,
             oldFont, time.FontWeight, time.FontFamily, inlineRadius.TopLeft);
         expandedHost.ClearValue(WidthProperty); expandedHost.ClearValue(HeightProperty); expandedHost.Close();
@@ -313,5 +451,24 @@ internal sealed partial class MediaPlayerView
             var end = Environment.TickCount64 + 10000;
             while (!condition()) { if (Environment.TickCount64 >= end) throw new TimeoutException("Media preview check timed out."); await Task.Delay(25); }
         }
+    }
+
+    private List<string>? imageReversalTrace;
+    private string? imageReversalCase;
+    partial void TraceImageViewportState(string phase, double? expectedScale, float? targetZoom, bool? changeAccepted)
+    {
+        if (imageReversalTrace is not { } trace) return;
+        if (trace.Count == 32) trace.RemoveAt(0);
+        trace.Add(System.Text.Json.JsonSerializer.Serialize(new
+        {
+            time = Environment.TickCount64, scenario = imageReversalCase, phase, expectedScale, targetZoom, changeAccepted,
+            IsLoaded, viewportLoaded = imageViewport.IsLoaded, changingPlacement, IsExpanded,
+            pendingRestore = pendingImageViewportRestore is not null,
+            canvasWidth = imageCanvas.Width, canvasHeight = imageCanvas.Height,
+            viewportWidth = imageViewport.ViewportWidth, viewportHeight = imageViewport.ViewportHeight,
+            actualWidth = imageViewport.ActualWidth, actualHeight = imageViewport.ActualHeight,
+            zoom = imageViewport.ZoomFactor, fitScale = ImageFitScale, scale = RememberImageViewport()?.Scale,
+            horizontalOffset = imageViewport.HorizontalOffset, verticalOffset = imageViewport.VerticalOffset,
+        }));
     }
 }

@@ -29,6 +29,9 @@ internal static class AnchoredPresentationGeometry
         // Only the visible part of a partially clipped anchor supplies geometry.
         a = new(Math.Max(0, a.X), Math.Max(0, a.Y), Math.Min(viewportWidth, a.Right) - Math.Max(0, a.X),
             Math.Min(viewportHeight, a.Bottom) - Math.Max(0, a.Y));
+        if (preferred == AnchorPlacement.CenterOnAnchor)
+            return new(Math.Clamp(a.X + (a.Width - width) / 2, insetX, viewportWidth - insetX - width),
+                Math.Clamp(a.Y + (a.Height - height) / 2, insetY, viewportHeight - insetY - height), width, height);
         var order = preferred switch
         {
             AnchorPlacement.Left => new[] { AnchorPlacement.Left, AnchorPlacement.Right, AnchorPlacement.Below, AnchorPlacement.Above },

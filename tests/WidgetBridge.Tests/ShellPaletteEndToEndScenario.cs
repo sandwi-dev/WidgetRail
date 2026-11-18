@@ -22,7 +22,7 @@ internal static class ShellPaletteEndToEndScenario
             await using (var session = await WidgetPresentationSession.ConnectAsync(pipe, cancellationToken: deadline.Token))
             {
                 var palette = await session.ReadShellStylesAsync(deadline.Token);
-                var expected = new[] { "canvas", "backdrop", "panel", "preview", "tray", "tray-item", "tray-item:selected", "tray-item:focused",
+                var expected = new[] { "canvas", "backdrop", "panel", "preview", "preview-footer", "tray", "tray-item", "tray-item:selected", "tray-item:focused",
                     "tray-item:selected:focused", "title", "body", "hint", "controller-glyph", "status", "tray-clock", "tray-date", "tray-status-icon",
                     "dialog", "dialog-title", "dialog-description", "dialog-footer", "dialog-choice", "dialog-choice:selected", "dialog-choice:focused", "dialog-button", "dialog-button:focused", "data-red", "data-blue", "data-green", "data-gold", "data-purple", "data-orange" };
                 if (!palette.Keys.OrderBy(value => value).SequenceEqual(expected.OrderBy(value => value)))
@@ -33,6 +33,8 @@ internal static class ShellPaletteEndToEndScenario
                 if(palette["data-red"].Base["color"].Text != "#ff9fb4" || palette["data-purple"].Base["color"].Text != "#d4b3ff")
                     throw new InvalidOperationException("Categorical data colors did not survive the real theme projection.");
                 if (palette["preview"].Base["background-material"].Text != "acrylic" ||
+                    palette["preview"].Base["padding"].Text != "12px" ||
+                    palette["preview-footer"].Base["padding"].Text != "8px 0px 0px 0px" ||
                     palette["preview"].Base["background-tint-opacity"].Number != .35 ||
                     palette["preview"].Base["background-luminosity-opacity"].Number != .25 ||
                     palette["preview"].Base["shadow-blur"].Number != 12 || palette["preview"].Base["opacity"].Number != .92 ||

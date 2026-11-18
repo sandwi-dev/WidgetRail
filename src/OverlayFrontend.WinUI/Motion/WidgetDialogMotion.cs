@@ -5,11 +5,16 @@ using WidgetRail.PlatformSettings;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Motion;
 
-/// <summary>One opening per native dialog lifetime, independent of ordinary snapshot updates.</summary>
+internal enum WidgetDialogMotionRole { Dialog, Preview, MediaPreview }
+
+/// <summary>One opening per native surface lifetime, independent of ordinary snapshot updates.</summary>
 internal sealed class WidgetDialogMotion : IDisposable
 {
     private readonly FrameworkElement dialog;
-    private readonly FrameworkElement scrim;
+    private readonly FrameworkElement? scrim;
+    private readonly WidgetDialogMotionRole role;
+    private readonly TaskCompletionSource<WidgetMotionOutcome> ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    internal Task<WidgetMotionOutcome> Ready => ready.Task;
     private WidgetMotionOptions options;
     private WidgetCompositionTarget? dialogTarget;
     private WidgetCompositionTarget? scrimTarget;
@@ -21,9 +26,11 @@ internal sealed class WidgetDialogMotion : IDisposable
     internal Task<WidgetMotionOutcome>? Opening { get; private set; }
     internal Task<WidgetMotionOutcome>? Closing { get; private set; }
 
-    internal WidgetDialogMotion(FrameworkElement dialog, FrameworkElement scrim, AppearanceSettings appearance, bool systemAnimationsEnabled)
+    internal WidgetDialogMotion(FrameworkElement dialog, FrameworkElement? scrim, AppearanceSettings appearance, bool systemAnimationsEnabled,
+        WidgetDialogMotionRole role = WidgetDialogMotionRole.Dialog)
     {
-        this.dialog = dialog; this.scrim = scrim;
+        if (role == WidgetDialogMotionRole.Dialog) ArgumentNullException.ThrowIfNull(scrim);
+        this.dialog = dialog; this.scrim = scrim; this.role = role;
         options = WidgetMotionOptions.From(appearance, systemAnimationsEnabled);
         dialog.Loaded += Loaded;
         dialog.Unloaded += Unloaded;
@@ -51,12 +58,21 @@ internal sealed class WidgetDialogMotion : IDisposable
     private void Start()
     {
         if (disposed || entered || exiting || !dialog.IsLoaded || dialog.ActualWidth <= 0 || dialog.ActualHeight <= 0 ||
-            !scrim.IsLoaded || scrim.ActualWidth <= 0 || scrim.ActualHeight <= 0) return;
+            scrim is not null && (!scrim.IsLoaded || scrim.ActualWidth <= 0 || scrim.ActualHeight <= 0)) return;
         entered = true;
         dialog.LayoutUpdated -= LayoutReady;
         CreateTargets();
-        Opening = motion!.PlayAsync((WidgetMotionPlayback[])[new(dialogTarget!, WidgetMotionPolicy.Dialog(options, true)),
-            new(scrimTarget!, WidgetMotionPolicy.Dialog(options, true, scrim: true))]);
+        var recipe = role == WidgetDialogMotionRole.Dialog ? WidgetMotionPolicy.Dialog(options, true) :
+            WidgetMotionPolicy.Preview(options, role == WidgetDialogMotionRole.MediaPreview);
+        Opening = motion!.PlayAsync(scrimTarget is null ? [new(dialogTarget!, recipe)] :
+            (WidgetMotionPlayback[])[new(dialogTarget!, recipe), new(scrimTarget, WidgetMotionPolicy.Dialog(options, true, scrim: true))]);
+        _ = CompleteReadinessAsync(Opening);
+    }
+
+    private async Task CompleteReadinessAsync(Task<WidgetMotionOutcome> opening)
+    {
+        try { ready.TrySetResult(await opening.ConfigureAwait(false)); }
+        catch (Exception error) { ready.TrySetException(error); }
     }
 
     internal Task<WidgetMotionOutcome> CloseAsync()
@@ -65,8 +81,13 @@ internal sealed class WidgetDialogMotion : IDisposable
         if (Closing is not null) return Closing;
         exiting = true;
         dialog.LayoutUpdated -= LayoutReady;
+        if (role != WidgetDialogMotionRole.Dialog)
+        {
+            RetireTargets(); ready.TrySetResult(WidgetMotionOutcome.Canceled);
+            return Closing = Task.FromResult(WidgetMotionOutcome.Completed);
+        }
         if (!dialog.IsLoaded || dialog.ActualWidth <= 0 || dialog.ActualHeight <= 0 ||
-            !scrim.IsLoaded || scrim.ActualWidth <= 0 || scrim.ActualHeight <= 0)
+            scrim is not null && (!scrim.IsLoaded || scrim.ActualWidth <= 0 || scrim.ActualHeight <= 0))
             return Closing = Task.FromResult(WidgetMotionOutcome.Completed);
         if (motion is null) CreateTargets();
         // Reuse the same targets so an opening interrupted by B starts from the
@@ -79,7 +100,7 @@ internal sealed class WidgetDialogMotion : IDisposable
     {
         size = new((float)dialog.ActualWidth, (float)dialog.ActualHeight);
         dialogTarget = WidgetCompositionTarget.ForClippedDialog(dialog, size);
-        scrimTarget = WidgetCompositionTarget.ForClippedDialog(scrim, new((float)scrim.ActualWidth, (float)scrim.ActualHeight));
+        if (scrim is not null) scrimTarget = WidgetCompositionTarget.ForClippedDialog(scrim, new((float)scrim.ActualWidth, (float)scrim.ActualHeight));
         motion = new(ElementCompositionPreview.GetElementVisual(dialog).Compositor, dialog.DispatcherQueue);
     }
 
@@ -93,6 +114,6 @@ internal sealed class WidgetDialogMotion : IDisposable
     {
         if (disposed) return;
         dialog.Loaded -= Loaded; dialog.Unloaded -= Unloaded; dialog.SizeChanged -= Resized; dialog.LayoutUpdated -= LayoutReady;
-        RetireTargets(); disposed = true;
+        RetireTargets(); ready.TrySetResult(WidgetMotionOutcome.Disposed); disposed = true;
     }
 }

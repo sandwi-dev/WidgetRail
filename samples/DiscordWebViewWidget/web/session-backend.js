@@ -8,6 +8,7 @@
     let version = null;
     const validQuality=q=>q&&typeof q==='object'&&!Array.isArray(q)&&[480,720,1080].includes(q.resolution)&&[15,30,60].includes(q.frameRate);
     const commands = new Set(['enableNotifications', 'joinActivity', 'watchActivity', 'join', 'leave', 'mute', 'deafen', 'streamMute', 'streamVolume', 'streamDiagnostics', 'connectionDiagnostics', 'incomingDiagnostics', 'videoPlayback', 'voiceMute', 'voiceVolume', 'voiceSettings', 'voiceInputDevice', 'voiceOutputDevice', 'voiceInputVolume', 'watch', 'keep', 'unwatch', 'share', 'cancelPendingShare', 'stopShare']);
+    for(const command of ['messagingState','messageObserve','messageConversations','messageHistory','messageChanges','messageRecover','messageOpenDm','messagePrepareAttachments','messageSend','messageReconcile','messageNotificationTarget'])commands.add(command);
     async function snapshot(owner) {
         observation?.refresh();
         const response = await WidgetRailDiscordPrototype.invoke({ method: 'snapshot', owner });
@@ -61,6 +62,12 @@
         }
         // Account, call, channel membership, desired-state and stream lease checks remain in the domain adapter.
         const response=await WidgetRailDiscordPrototype.invoke({ method: request.method, args: request.args, owner: request.owner });
+        if(response.ok && ['messageConversations','messageHistory','messageChanges','messageRecover'].includes(request.method)) {
+            if(signal.aborted)throw new Error('Cancelled');
+            const {items,...context}=response.value;
+            if(!Array.isArray(items)||items.length>50)throw new Error('Invalid message page');
+            return result({ok:true,value:context},items);
+        }
         if(['streamDiagnostics','connectionDiagnostics','incomingDiagnostics','voiceSettings'].includes(request.method)&&signal.aborted)throw new Error('Cancelled');
         return response;
     });

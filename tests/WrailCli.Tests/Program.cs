@@ -3247,10 +3247,23 @@ static async Task UninstallWorkflow()
     var original = await browserData.RegisterAsync("dev.test.profile-cleanup", "persistent-cli", "persistent-cli.json");
     var otherData = new WidgetRail.PlatformSettings.BrowserProfileLifecycleStore(temp.Path);
     var other = await otherData.RegisterAsync("dev.test.profile-cleanup", "persistent-other", null);
+    var replaySettings = new PlatformSettingsStore(new PlatformSettingsPaths(profileRoot));
+    var otherReplaySettings = new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path));
+    var replay = new CaptureReplayPreferences { Revision = 9, Settings = new() { Enabled = true, AutoStart = true },
+        OwnerPackageId = "dev.test.profile-cleanup", OwnerPublisherId = "old.reviewed.authority", OwnerInstanceId = "old.instance",
+        ApprovedApplication = new string('a', 64), ApplicationName = "Fixture game" };
+    await replaySettings.UpdateAsync(current => current with { ReplayCapture = replay });
+    await otherReplaySettings.UpdateAsync(current => current with { ReplayCapture = replay });
     Assert.Equal(0, (await RunCli("uninstall", "dev.test.profile-cleanup", "--catalog", catalog, "--settings-root", profileRoot)).Code);
     Assert.True((await browserData.ReadAsync("dev.test.profile-cleanup")).Removed, "Custom-profile uninstall did not record browser removal.");
     Assert.True((await otherData.ReadAsync("dev.test.profile-cleanup")).Profiles.Contains(other!), "Custom-profile uninstall touched another Settings root.");
+    var retiredReplay = (await replaySettings.LoadAsync()).ReplayCapture;
+    Assert.True(!retiredReplay.Settings.Enabled && !retiredReplay.Settings.AutoStart && retiredReplay.OwnerPackageId is null && retiredReplay.ApprovedApplication is null,
+        "CLI uninstall without a running host retained replay intent.");
+    Assert.Equal(replay.Revision + 1, retiredReplay.Revision);
+    Assert.Equal(replay, (await otherReplaySettings.LoadAsync()).ReplayCapture);
     Assert.Equal(0, (await RunCli("install", profilePackage, "--catalog", catalog, "--settings-root", profileRoot)).Code);
+    Assert.Equal(retiredReplay, (await replaySettings.LoadAsync()).ReplayCapture);
     var replacement = await browserData.RegisterAsync("dev.test.profile-cleanup", "persistent-cli", "persistent-cli.json");
     Assert.True(replacement is not null && replacement.Name != original!.Name, "Custom-profile reinstall reused removed browser data.");
 

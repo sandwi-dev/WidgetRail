@@ -269,6 +269,8 @@ internal static partial class BridgeIndexedLeaseRegistryScenarios
         internal string Shortcut = "shortcut";
         internal string Caption = "caption";
         internal string ArtworkHandle = "artwork";
+        internal MediaPlayerDefinition? PreviewMedia;
+        internal string? PreviewPosterArtwork;
         internal bool ActiveOtherScope;
         internal Action? AfterAcquire;
         internal readonly List<FakeLease> Leases = [];
@@ -305,6 +307,14 @@ internal static partial class BridgeIndexedLeaseRegistryScenarios
                     ]
                 },
             };
+            if (PreviewMedia is not null)
+            {
+                var children = snapshot.Root.Children.ToArray();
+                children[1] = new() { Id = "previews", Kind = ViewNodeKind.FocusPresentationSurface,
+                    FocusPreview = new() { EnterButton = ControllerButton.RightStick, AllowMedia = true },
+                    DefaultFocusPresentation = new() { Id = "preview.empty", Kind = ViewNodeKind.Text, Text = "" }, Children = [children[1]] };
+                snapshot = snapshot with { Root = snapshot.Root with { Children = children } };
+            }
             if (ActiveOtherScope)
                 snapshot = snapshot with
                 {
@@ -338,6 +348,9 @@ internal static partial class BridgeIndexedLeaseRegistryScenarios
                 Id = "item.0", Kind = ViewNodeKind.ActionSurface,
                 ActionSurfaceOrientation = ActionSurfaceOrientation.Vertical,
                 ActionId = "item.action", AccessibilityLabel = "Item", CollectionItemKey = "item.0",
+                FocusPresentation = PreviewMedia is null ? null : new() { Id = "preview.player", Kind = ViewNodeKind.MediaPlayer,
+                    MediaPlayer = PreviewMedia, AccessibilityLabel = "Clip preview", ArtworkHandle = PreviewPosterArtwork,
+                    ImageFit = PreviewPosterArtwork is null ? null : ImageFit.Contain },
                 Children =
                 [
                     new()

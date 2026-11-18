@@ -1,5 +1,6 @@
 #define CAPTURE_WORKER_HOST_EXPORTS
 #include "CaptureWorkerProtocol.h"
+#include "CaptureWorkerLifetime.h"
 #include <WebView2.h>
 #include <WebView2Interop.h>
 #include <wrl/client.h>
@@ -12,14 +13,7 @@
 namespace {
 using Microsoft::WRL::ComPtr;
 using namespace capture_worker;
-struct Handle {
-    HANDLE value{};
-    Handle()=default;explicit Handle(HANDLE h):value(h){}
-    ~Handle(){if(value&&value!=INVALID_HANDLE_VALUE)CloseHandle(value);}
-    Handle(const Handle&)=delete;Handle& operator=(const Handle&)=delete;
-};
-HRESULT Error(){const auto code=GetLastError();return HRESULT_FROM_WIN32(code?code:ERROR_GEN_FAILURE);}
-void Check(BOOL value){if(!value)throw Error();}
+using namespace widgetrail::capture::worker;
 struct Session {
     Handle job,process,reader,controlMapping,dataReady;
     Control* control{};
@@ -30,23 +24,6 @@ struct Session {
     StopResult stopped{};
     ~Session(){if(control)UnmapViewOfFile(control);}
 };
-struct Attributes {
-    std::vector<uint8_t> storage;
-    LPPROC_THREAD_ATTRIBUTE_LIST list{};
-    Attributes(HANDLE& job,std::vector<HANDLE>& inherited){
-        SIZE_T bytes{};InitializeProcThreadAttributeList(nullptr,2,0,&bytes);
-        if(!bytes||bytes>65536)throw E_FAIL;
-        storage.resize(bytes);list=reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
-        Check(InitializeProcThreadAttributeList(list,2,0,&bytes));
-        try{
-            Check(UpdateProcThreadAttribute(list,0,PROC_THREAD_ATTRIBUTE_JOB_LIST,&job,sizeof(job),nullptr,nullptr));
-            Check(UpdateProcThreadAttribute(list,0,PROC_THREAD_ATTRIBUTE_HANDLE_LIST,inherited.data(),inherited.size()*sizeof(HANDLE),nullptr,nullptr));
-        }catch(...){DeleteProcThreadAttributeList(list);list=nullptr;throw;}
-    }
-    ~Attributes(){if(list)DeleteProcThreadAttributeList(list);}
-};
-void Inheritable(HANDLE source,Handle& target){Check(DuplicateHandle(GetCurrentProcess(),source,GetCurrentProcess(),&target.value,0,TRUE,DUPLICATE_SAME_ACCESS));}
-std::wstring Hex(HANDLE handle){wchar_t text[32]{};swprintf_s(text,L"%llx",static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(handle)));return text;}
 struct Buffers {
     ComPtr<ICoreWebView2SharedBuffer> video,audio;
     ~Buffers(){if(video)video->Close();if(audio)audio->Close();}
@@ -67,11 +44,7 @@ int32_t __stdcall WrailCaptureWorkerStart(const wchar_t* executable,const Config
         (configuration->includeAudio?(audioMapping==0||audioBytes!=AudioBytes):(audioMapping!=0||audioBytes!=0)))return E_INVALIDARG;
     try{
         auto session=std::make_unique<Session>();
-        session->job.value=CreateJobObjectW(nullptr,nullptr);if(!session->job.value)throw Error();
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
-        limits.BasicLimitInformation.LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE|JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION|JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
-        limits.BasicLimitInformation.ActiveProcessLimit=1;
-        Check(SetInformationJobObject(session->job.value,JobObjectExtendedLimitInformation,&limits,sizeof(limits)));
+        CreateJob(session->job);
         session->controlMapping.value=CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,0,sizeof(Control),nullptr);
         if(!session->controlMapping.value)throw Error();
         session->control=static_cast<Control*>(MapViewOfFile(session->controlMapping.value,FILE_MAP_READ|FILE_MAP_WRITE,0,0,sizeof(Control)));
@@ -89,16 +62,8 @@ int32_t __stdcall WrailCaptureWorkerStart(const wchar_t* executable,const Config
         Check(SetHandleInformation(session->reader.value,HANDLE_FLAG_INHERIT,0));
         std::vector<HANDLE> inherited{control.value,video.value,writer.value,ready.value};
         if(audio.value)inherited.push_back(audio.value);
-        Attributes attributes(session->job.value,inherited);
-        STARTUPINFOEXW startup{};startup.StartupInfo.cb=sizeof(startup);startup.lpAttributeList=attributes.list;
-        const auto command=L"\""+std::wstring(executable)+L"\" "+Hex(control.value)+L" "+Hex(video.value)+L" "+Hex(audio.value)+L" "+Hex(writer.value)+L" "+Hex(ready.value);
-        std::vector<wchar_t> mutableCommand(command.begin(),command.end());mutableCommand.push_back(0);
-        PROCESS_INFORMATION created{};
-        Check(CreateProcessW(executable,mutableCommand.data(),nullptr,nullptr,TRUE,
-            CREATE_SUSPENDED|CREATE_NO_WINDOW|EXTENDED_STARTUPINFO_PRESENT,nullptr,nullptr,&startup.StartupInfo,&created));
-        Handle thread(created.hThread);session->process.value=created.hProcess;session->processId=created.dwProcessId;
-        BOOL inJob{};Check(IsProcessInJob(session->process.value,session->job.value,&inJob));if(!inJob)throw E_ACCESSDENIED;
-        if(ResumeThread(thread.value)==DWORD(-1))throw Error();
+        Launch(executable,Hex(control.value)+L" "+Hex(video.value)+L" "+Hex(audio.value)+L" "+Hex(writer.value)+L" "+Hex(ready.value),
+            inherited,session->job,session->process,session->processId);
         *result=session.release();return S_OK;
     }catch(HRESULT hr){return hr;}catch(...){return E_FAIL;}
 }

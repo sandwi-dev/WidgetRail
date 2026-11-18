@@ -124,6 +124,9 @@ internal sealed partial class WidgetViewPresenter
         if (disposed || frame is null || memoryOwner != PresentationMemoryOwner.From(frame.Authority) || memoryIntent != entryIntentVersion)
         { CancelMemoryRestoration(); return; }
         if (!presentationActive || applying || !IsLoaded) return;
+        // Native focus restoration can issue BringIntoView. Reconcile the saved
+        // semantic viewport after that existing entry operation, not before it.
+        if (focusQueued || pendingRestore is not null || pendingGroupEntry is not null) return;
         foreach (var pending in pendingIndexedViewports.ToArray())
         {
             if (Matches(pending.Memory.Element) && bindings[pending.Memory.Element.Id].Element is WidgetIndexedCollectionView collection && IsMemoryVisible(collection))
@@ -192,7 +195,15 @@ internal sealed partial class WidgetViewPresenter
     // LayoutUpdated pass whose geometry we are inspecting.
     private void MemoryLayoutUpdated(object? sender, object args) => QueueMemoryRestoration();
     private void MemoryScrollLoaded(object sender, RoutedEventArgs args) => QueueMemoryRestoration();
-    private void MemoryScrollChanged(object? sender, ScrollViewerViewChangedEventArgs args) => QueueMemoryRestoration();
+    private void MemoryScrollChanged(object? sender, ScrollViewerViewChangedEventArgs args)
+    {
+        // As with indexed viewport restoration, a native BringIntoView may win
+        // after ChangeView was accepted. Retry against the settled geometry.
+        if (!args.IsIntermediate)
+            foreach (var pending in pendingScrollViewports)
+                if (ReferenceEquals(pending.Scroll, sender)) pending.Offset = null;
+        QueueMemoryRestoration();
+    }
     private void ReleaseScroll(PendingScroll pending)
     {
         if (pending.Scroll is not { } scroll) return;

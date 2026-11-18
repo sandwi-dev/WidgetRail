@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace WidgetRail.WidgetProtocol;
 
@@ -17,6 +19,28 @@ public sealed record WebSessionPageAdapter
     public IReadOnlyList<string> Origins { get; init; } = [];
     /// <summary>Optional observation of matching responses already requested by the website.</summary>
     public IReadOnlyList<WebSessionResponseRule> Responses { get; init; } = [];
+    public int GetMaximumScriptBytes() => Mode switch
+    {
+        WebSessionPageAdapterMode.IsolatedPageActions => WebSessionContract.MaximumPageActionScriptBytes,
+        WebSessionPageAdapterMode.SessionBackend => WebSessionContract.MaximumSessionBackendScriptBytes,
+        _ => throw new ArgumentException("Unknown page adapter mode."),
+    };
+    /// <summary>Admits a bounded, digest-verified UTF-8 script after sealed package resolution.</summary>
+    public string DecodeScript(string contentBase64, string sha256)
+    {
+        var maximum = GetMaximumScriptBytes();
+        if (contentBase64 is null || contentBase64.Length > ((maximum + 2) / 3) * 4 ||
+            sha256 is not { Length: 64 } || !sha256.All(char.IsAsciiHexDigit))
+            throw new ArgumentException("Invalid page adapter resource.");
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(contentBase64); }
+        catch (FormatException error) { throw new ArgumentException("Invalid page adapter encoding.", error); }
+        if (bytes.Length is 0 || bytes.Length > maximum ||
+            !Convert.ToHexString(SHA256.HashData(bytes)).Equals(sha256, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Invalid page adapter resource.");
+        try { return new UTF8Encoding(false, true).GetString(bytes); }
+        catch (DecoderFallbackException error) { throw new ArgumentException("Invalid page adapter UTF-8.", error); }
+    }
     public bool IsWellFormed() => Enum.IsDefined(Mode) && WebSessionContract.IsAssetPath(ScriptAsset) &&
         Origins is { Count: > 0 and <= 8 } && Origins.All(IsExactOrigin) &&
         Origins.Distinct(StringComparer.Ordinal).Count() == Origins.Count &&

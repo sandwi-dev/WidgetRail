@@ -45,15 +45,18 @@ public sealed partial class WidgetPresentationSession
         ArgumentNullException.ThrowIfNull(displayed);
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
+        InlinePreviewActionInput? inlinePreview = null;
         using (_gate.Enter())
         {
             var current = ValidateDisplayedOrdinaryFrameLocked(displayed, action.InputScopeId);
             var originBinding = ResolveDisplayedAction(displayed.Snapshot, action);
             var currentBinding = ResolveDisplayedAction(current.Snapshot, action);
             if (originBinding != currentBinding) throw OrdinaryInputStale("The displayed action binding changed.");
+            if (originBinding.Role == "inline-preview" && current.Snapshot.ProtocolVersion >= ProtocolConstants.InlinePreviewActionVersion)
+                inlinePreview = new(displayed.Authority.SnapshotSequence, action);
         }
         var response = await RequestAsync(BridgeMessageTypes.Action,
-            new BridgeActionRequest(displayed.Authority.WidgetId, action, displayed.Authority.WorkerRun), BridgeMessageTypes.Acknowledged,
+            new BridgeActionRequest(displayed.Authority.WidgetId, action, displayed.Authority.WorkerRun) { InlinePreview = inlinePreview }, BridgeMessageTypes.Acknowledged,
             cancellationToken).ConfigureAwait(false);
         return ReadAdmission(response.Payload);
     }
@@ -125,6 +128,12 @@ public sealed partial class WidgetPresentationSession
             action.CommittedText is { } committed && (committed.Any(char.IsControl) || action.RequestedValue is not null || action.Phase != ControllerEventPhase.Pressed))
             throw new BridgeProtocolException("The displayed action payload is invalid.");
         var scope = OrdinaryScope(snapshot);
+        try
+        {
+            if (InlinePreviewActionContract.Resolve(snapshot, action) is { } preview)
+                return new("inline-preview", action.ActionId, new(action.SourceElementId, ViewNodeKind.FocusPresentationSurface, preview.Ancestry), null, preview);
+        }
+        catch (InvalidOperationException) { throw OrdinaryInputStale("The inline preview action binding retired."); }
         var path = OrdinaryPath(scope, action.SourceElementId);
         var node = path[^1];
         var owner = Identity(path);
@@ -150,7 +159,7 @@ public sealed partial class WidgetPresentationSession
             if (node.Kind is ViewNodeKind.Button or ViewNodeKind.ActionSurface or ViewNodeKind.Slider && node.ActionId == action.ActionId)
                 return new("primary", action.ActionId, owner, focus);
             if (node.Kind == ViewNodeKind.Select && node.SelectOptions.SingleOrDefault(option => option.ActionId == action.ActionId) is { IsDisabled: false, IsBusy: false } option)
-                return new("select", action.ActionId, owner, focus, option with { IsSelected = false });
+                return new("select", action.ActionId, owner, focus, (node.IsCommandMenu == true, option with { IsSelected = false }));
             if (node.ContextActions.SingleOrDefault(candidate => candidate.ActionId == action.ActionId) is { IsDisabled: false, IsBusy: false } context)
                 return new("context", action.ActionId, owner, focus, (node.ContextMenuButton, context));
         }

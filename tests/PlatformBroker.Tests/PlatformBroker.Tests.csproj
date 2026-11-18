@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\PlatformBroker\PlatformBroker.csproj" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Capture\CaptureEncoderDiscovery.cs" Link="CaptureEncoderDiscovery.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Capture\CaptureRecordingResolver.Policy.cs" Link="CaptureRecordingResolver.Policy.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\WebCaptureSourceSelection.cs" Link="WebCaptureSourceSelection.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Validation\CaptureProbeSourceIdentity.cs" Link="CaptureProbeSourceIdentity.cs" />
   </ItemGroup>

@@ -7,6 +7,95 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed partial class PlayniteLibraryLayoutTests
 {
     [TestMethod]
+    public void HomeFilteredFavoriteDoesNotBecomeUnavailableWhenBrowseCachesItsDisplay()
+    {
+        var installed = BrowseGames(1)[0] with { Id = "saved-installed" };
+        var filtered = installed with { Id = "saved-uninstalled", Name = "Other game", IsInstalled = false, Favorite = true };
+        var authority = new PlayniteLibraryAuthorityProjection([filtered.Id], [], [],
+            new Dictionary<string, string?> { [installed.Id] = null, [filtered.Id] = null });
+        PlayniteLibraryCapturedQuery Capture(params PlayniteBridgeGame[] games) => new(new(true),
+            new(PlayniteLibraryQueryScope.Home), games, authority, [], "stable", 1, false,
+            BrowseItem, (_, _, _) => ValueTask.FromResult<WidgetEncodedArtwork?>(null));
+        var source = Capture(installed);
+        var first = new PlayniteLibraryDisplayItem(installed.Id, installed.Name, installed.Source);
+        var other = new PlayniteLibraryDisplayItem(filtered.Id, filtered.Name, filtered.Source);
+        var privateState = PlayniteLibraryPrivateState.Empty with { Items = [first] };
+        PlayniteLibraryHomeQuery Project(PlayniteLibraryPrivateState state) => new(source,
+            state with { FavoriteSavedIds = authority.FavoriteGameIds }, PlayniteLibraryFixedRows.Empty, false);
+        var before = Project(privateState);
+        var browseState = PlayniteLibraryOrganizationPolicy.ProjectDisplay(privateState, [other, first]);
+        var afterBrowse = Project(browseState);
+        Assert.IsTrue(before.SameMembership(afterBrowse),
+            "Caching a known game excluded by Home must not add an unavailable Home row.");
+        Assert.AreEqual(1, afterBrowse.Count);
+        Assert.AreEqual(0, afterBrowse.FavoriteCount, "Home's favorites remain scoped to its query.");
+        CollectionAssert.AreEqual(new[] { filtered.Id }, authority.FavoriteGameIds.ToArray(),
+            "Filtering Home display never mutates the provider's favorite authority.");
+        var afterHomeRefresh = Project(PlayniteLibraryOrganizationPolicy.ProjectDisplay(browseState, [first]));
+        Assert.IsTrue(afterBrowse.SameMembership(afterHomeRefresh));
+
+        var newlyInstalled = new PlayniteLibraryHomeQuery(Capture(installed, filtered with { IsInstalled = true }),
+            browseState with { FavoriteSavedIds = authority.FavoriteGameIds }, PlayniteLibraryFixedRows.Empty, false);
+        Assert.IsFalse(afterBrowse.SameMembership(newlyInstalled));
+        Assert.AreEqual(2, newlyInstalled.Count);
+        Assert.AreEqual(1, newlyInstalled.FavoriteCount, "A genuine provider membership change adds the favorite normally.");
+    }
+
+    [TestMethod]
+    public void HomeReferencedFallbackOrderSurvivesBrowseDisplayCacheRefresh()
+    {
+        var games = BrowseGames(1).Select(game => game with { Id = "saved-live" }).ToArray();
+        var live = new PlayniteLibraryDisplayItem(games[0].Id, games[0].Name, games[0].Source);
+        var first = new PlayniteLibraryDisplayItem("saved-missing-z", "Zebra", "Steam");
+        var second = new PlayniteLibraryDisplayItem("saved-missing-a", "Alpha", "Steam");
+        var organization = PlayniteLibraryPrivateState.Empty with
+        {
+            Items = [live, first, second],
+            FavoriteSavedIds = [first.SavedId, second.SavedId],
+        };
+        var source = BrowseCapture(games, new(true), scope: PlayniteLibraryQueryScope.Home);
+        var before = new PlayniteLibraryHomeQuery(source, organization, PlayniteLibraryFixedRows.Empty, false);
+        // Browsing the full library writes display metadata in its own sort order.
+        // Neither the Home provider membership nor the user's references changed.
+        var refreshed = PlayniteLibraryOrganizationPolicy.ProjectDisplay(organization, [second, live, first]);
+        CollectionAssert.AreEqual(organization.FavoriteSavedIds.ToArray(), refreshed.FavoriteSavedIds.ToArray());
+        var after = new PlayniteLibraryHomeQuery(source, refreshed, PlayniteLibraryFixedRows.Empty, false);
+        Assert.IsTrue(before.SameMembership(after), "Display-cache order must not renew Home's logical query.");
+        CollectionAssert.AreEqual(new[] { live.SavedId, first.SavedId, second.SavedId },
+            after.ReadRange(0, after.Count).Select(item => item.Row.Display.SavedId).ToArray());
+        CollectionAssert.AreEqual(new[] { first.SavedId, second.SavedId },
+            after.ReadFavorites(0, after.FavoriteCount, default).Select(item => item.Row.Display.SavedId).ToArray());
+        Assert.IsTrue(after.ReadRange(1, 2).All(item => item.Row.Current is null),
+            "Stable display ordering must not grant unavailable games provider authority.");
+
+        var reorderedReferences = new PlayniteLibraryHomeQuery(source, refreshed with
+        { FavoriteSavedIds = [second.SavedId, first.SavedId] }, PlayniteLibraryFixedRows.Empty, false);
+        Assert.IsFalse(after.SameMembership(reorderedReferences),
+            "An actual change to domain reference order still replaces logical membership.");
+        var removedReference = new PlayniteLibraryHomeQuery(source, refreshed with
+        { FavoriteSavedIds = [first.SavedId] }, PlayniteLibraryFixedRows.Empty, false);
+        Assert.AreEqual(2, removedReference.Count);
+        Assert.IsFalse(after.SameMembership(removedReference));
+    }
+
+    [TestMethod]
+    public void HomeWarmFallbackPreservesSavedDisplayOrderIncludingUnreferencedEntries()
+    {
+        var source = BrowseCapture([], new(true), scope: PlayniteLibraryQueryScope.Home);
+        var organization = PlayniteLibraryPrivateState.Empty with
+        {
+            Items = [new("saved-z", "Zebra", "Steam"), new("saved-a", "Alpha", "Steam"), new("saved-m", "Middle", "Steam")],
+            FavoriteSavedIds = ["saved-a", "saved-z"],
+        };
+        var warm = new PlayniteLibraryHomeQuery(source, organization, PlayniteLibraryFixedRows.Empty, false, warmDisplayOnly: true);
+        CollectionAssert.AreEqual(new[] { "saved-z", "saved-a", "saved-m" },
+            warm.ReadRange(0, warm.Count).Select(item => item.Row.Display.SavedId).ToArray());
+        var live = new PlayniteLibraryHomeQuery(source, organization, PlayniteLibraryFixedRows.Empty, false);
+        CollectionAssert.AreEqual(new[] { "saved-a", "saved-z" },
+            live.ReadRange(0, live.Count).Select(item => item.Row.Display.SavedId).ToArray());
+    }
+
+    [TestMethod]
     public void HomeIndexedMembershipKeepsManualTitleMatchProviderAndUnavailableOrder()
     {
         var games = BrowseGames(6);

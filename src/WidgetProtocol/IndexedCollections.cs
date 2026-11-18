@@ -5,17 +5,51 @@ namespace WidgetRail.WidgetProtocol;
 /// <summary>Exact indexed query identity. Payload eviction never changes Count.</summary>
 public sealed record IndexedCollectionDescriptor(string SourceId, long QueryGeneration, long ContentRevision, int Count)
 {
+    /// <summary>Earliest query in an explicit same-filter refresh chain; normal query replacement clears this proof.</summary>
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)]
+    public long? RefreshFromQuery { get; init; }
     /// <summary>Null means a complete finite query. Otherwise Count is only the discovered, addressable prefix.</summary>
     public DiscoveredCollectionState? Discovery { get; init; }
     /// <summary>Opt-in query-bound key lookup for viewport continuity; grants no item action authority.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool CanLocateItems { get; init; }
+    /// <summary>Opt-in viewport continuity domain. Equal epochs permit the host to keep an already-at-end viewport at the end; they grant no mutation or input authority.</summary>
+    public long? EndFollowingEpoch { get; init; }
+    /// <summary>Earliest preceding query in an uninterrupted verified forward-tail chain within EndFollowingEpoch. Permits coalescing intermediate publications.</summary>
+    public long? EndFollowingPreviousQuery { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool CanRecoverViewport { get; init; }
+    /// <summary>Finite loaded snapshots may append an unchanged immutable prefix without retiring its exact leases. Membership removal, edits and context changes still invalidate them.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool RetainsAppendedPrefix { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ObservesBoundaries { get; init; }
+
 }
 
 public enum DiscoveredCollectionStatus { Ready, Loading, Failed, LimitReached }
 public sealed record DiscoveredCollectionState(long Revision, bool HasMore, DiscoveredCollectionStatus Status,
     int MaximumItems, string? ErrorCode = null, string? ErrorMessage = null);
-public enum IndexedCollectionRequestKind { Range, Continue, Retry, FocusPreview, Locate }
+public enum IndexedCollectionRequestKind { Range, Continue, Retry, FocusPreview, Locate, ObserveViewport, RecoverViewport }
+
+public enum IndexedCollectionBoundary { Before, After }
+public sealed record IndexedCollectionBoundaries(bool Before, bool After);
+
+/// <summary>Entry from another control through directional navigation; explicit focus requests retain their own policy.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<IndexedDirectionalEntryMode>))]
+public enum IndexedDirectionalEntryMode { Remembered = 0, VisibleEdge = 1 }
+public sealed record IndexedViewportObservation(string ViewportId, long Sequence, bool Active, bool AtEnd)
+{
+    public IndexedCollectionBoundary? Boundary { get; init; }
+    public bool? PhysicalAtEnd { get; init; }
+    public bool? PhysicalAtStart { get; init; }
+    public IReadOnlyList<string>? ProtectedKeys { get; init; }
+}
+public sealed record IndexedViewportRecovery(string ViewportId, long Sequence, string AnchorKey)
+{
+    public IReadOnlyList<string>? NeighborKeys { get; init; }
+}
+public sealed record IndexedViewportRecoveryResult(bool Recovered, string? AnchorKey);
 
 /// <summary>One contiguous display-only heading and item run in an existing flat indexed query.</summary>
 public sealed record IndexedCollectionGroup(string Key, string Header, int Count);
@@ -32,6 +66,8 @@ public sealed record IndexedCollectionRangeRequest(
     public IndexedCollectionRequestKind Kind { get; init; }
     public string? PreviewKey { get; init; }
     public string? LocateKey { get; init; }
+    public IndexedViewportObservation? Viewport { get; init; }
+    public IndexedViewportRecovery? Recovery { get; init; }
 }
 
 public sealed record IndexedCollectionItem(string Key, ViewNode Root);
@@ -42,6 +78,8 @@ public sealed record IndexedCollectionRange(
     string? PinnedLayoutId = null)
 {
     public int? LocatedIndex { get; init; }
+    public bool? ViewportRecovered { get; init; }
+    public string? ViewportAnchorKey { get; init; }
 }
 
 public static class IndexedCollectionLimits
@@ -134,10 +172,21 @@ public static class IndexedCollectionContract
     public static void ValidateDescriptor(IndexedCollectionDescriptor source)
     {
         ArgumentNullException.ThrowIfNull(source);
+        if(source.RefreshFromQuery is {} refresh && (refresh<0 || refresh>=source.QueryGeneration || source.Discovery is not null))
+            throw new ArgumentException("Refresh provenance requires an earlier finite query.",nameof(source));
         RequireId(source.SourceId);
         ArgumentOutOfRangeException.ThrowIfNegative(source.QueryGeneration);
         ArgumentOutOfRangeException.ThrowIfNegative(source.ContentRevision);
         ArgumentOutOfRangeException.ThrowIfNegative(source.Count);
+        if (source.EndFollowingEpoch is <= 0 || source.EndFollowingEpoch is not null && source.Discovery is not null)
+            throw new ArgumentException("End following requires a positive finite-query continuity epoch.", nameof(source));
+        if (source.EndFollowingPreviousQuery is { } previous && (source.EndFollowingEpoch is null || previous < 0 || previous >= source.QueryGeneration))
+            throw new ArgumentException("End following append provenance must name an earlier query.", nameof(source));
+        if (source.RetainsAppendedPrefix && (source.EndFollowingEpoch is null || source.Discovery is not null || source.Count > IndexedCollectionLimits.MaximumContinuityItems))
+            throw new ArgumentException("Finite prefix retention requires a bounded end-following query.", nameof(source));
+        if (source.CanRecoverViewport && source.EndFollowingEpoch is null) throw new ArgumentException("Viewport recovery requires an end-following domain.", nameof(source));
+        if (source.ObservesBoundaries && (source.EndFollowingEpoch is null || source.Count>IndexedCollectionLimits.MaximumContinuityItems))
+            throw new ArgumentException("Boundary observation requires a bounded finite continuity domain.", nameof(source));
         if (source.CanLocateItems && source.Discovery is not null) throw new ArgumentException("Key lookup requires a finite query.", nameof(source));
         if (source.Discovery is { } discovery && (discovery.Revision < 0 || !Enum.IsDefined(discovery.Status) ||
             discovery.MaximumItems is < 1 or > 4096 || source.Count > discovery.MaximumItems ||
@@ -148,12 +197,16 @@ public static class IndexedCollectionContract
             throw new ArgumentException("Invalid discovered collection state.", nameof(source));
     }
 
-    /// <summary>Old prefixes retain data/action authority only for append-only discovered queries.</summary>
+    /// <summary>Old prefixes retain exact data/action authority only within an unchanged append-only query.</summary>
     public static bool RetainsPrefix(IndexedCollectionDescriptor? current, IndexedCollectionDescriptor previous) =>
-        current == previous || current is { Discovery: { } next } && previous.Discovery is { } prior &&
+        current == previous || current is not null &&
         current.SourceId == previous.SourceId && current.QueryGeneration == previous.QueryGeneration &&
         current.ContentRevision == previous.ContentRevision && current.Count >= previous.Count &&
-        next.MaximumItems == prior.MaximumItems && next.Revision >= prior.Revision;
+        (current.Discovery is { } next && previous.Discovery is { } prior &&
+            next.MaximumItems == prior.MaximumItems && next.Revision >= prior.Revision ||
+         current.RetainsAppendedPrefix && previous.RetainsAppendedPrefix &&
+            current.EndFollowingEpoch == previous.EndFollowingEpoch && current.CanRecoverViewport == previous.CanRecoverViewport &&
+            current.CanLocateItems == previous.CanLocateItems && current.ObservesBoundaries==previous.ObservesBoundaries);
 
     public static void ValidateRequest(IndexedCollectionRangeRequest request)
     {
@@ -163,6 +216,32 @@ public static class IndexedCollectionContract
         RequireId(request.DemandId);
         if (request.PinnedLayoutId is { } pinned) RequireId(pinned);
         if (!Enum.IsDefined(request.Kind)) throw new ArgumentException("Unknown indexed request kind.", nameof(request));
+        if (request.Kind is IndexedCollectionRequestKind.ObserveViewport or IndexedCollectionRequestKind.RecoverViewport)
+        {
+            if (request.Source.EndFollowingEpoch is null || request.StartIndex != 0 || request.Count != 0 || request.PreviewKey is not null || request.LocateKey is not null)
+                throw new ArgumentException("Viewport control requires an opted-in finite query and no rows.", nameof(request));
+            if (request.Kind == IndexedCollectionRequestKind.ObserveViewport)
+            {
+                if (request.Viewport is not { } observation || request.Recovery is not null || observation.Sequence <= 0 ||
+                    !Guid.TryParseExact(observation.ViewportId, "N", out _) || !observation.Active && observation.AtEnd)
+                    throw new ArgumentException("Invalid viewport observation.", nameof(request));
+                if ((observation.Boundary is not null || observation.PhysicalAtEnd is not null || observation.PhysicalAtStart is not null) && !request.Source.ObservesBoundaries ||
+                    observation.Boundary is { } boundary && (!Enum.IsDefined(boundary) || !observation.Active) ||
+                    (observation.PhysicalAtEnd==true || observation.PhysicalAtStart==true) && !observation.Active)
+                    throw new ArgumentException("Invalid boundary observation.", nameof(request));
+                if(observation.ProtectedKeys is {} protectedKeys && (observation.Boundary is null || protectedKeys.Count>IndexedCollectionLimits.MaximumContinuityItems ||
+                    protectedKeys.Any(key=>!ProtocolValidationIdentifierContext.IsSafeIdentifier(key)) || protectedKeys.Distinct(StringComparer.Ordinal).Count()!=protectedKeys.Count))
+                    throw new ArgumentException("Invalid protected boundary occurrences.",nameof(request));
+            }
+            else if (!request.Source.CanRecoverViewport || request.Recovery is not { } recovery || request.Viewport is not null || recovery.Sequence <= 0 ||
+                !Guid.TryParseExact(recovery.ViewportId, "N", out _) || !ProtocolValidationIdentifierContext.IsSafeIdentifier(recovery.AnchorKey))
+                throw new ArgumentException("Invalid viewport recovery.", nameof(request));
+            if (request.Recovery?.NeighborKeys is { } neighbors && (neighbors.Count > IndexedCollectionLimits.MaximumContinuityItems ||
+                neighbors.Any(key => !ProtocolValidationIdentifierContext.IsSafeIdentifier(key) || key == request.Recovery.AnchorKey) ||
+                neighbors.Distinct(StringComparer.Ordinal).Count() != neighbors.Count)) throw new ArgumentException("Invalid viewport recovery neighbors.", nameof(request));
+            return;
+        }
+        if (request.Viewport is not null || request.Recovery is not null) throw new ArgumentException("Only viewport controls carry viewport data.", nameof(request));
         if (request.Kind == IndexedCollectionRequestKind.Locate)
         {
             RequireId(request.LocateKey!);
@@ -204,6 +283,18 @@ public static class IndexedCollectionContract
             || range.ScopeId != binding.Scope || range.StartIndex != request.StartIndex || range.DemandId != request.DemandId
             || range.PinnedLayoutId != request.PinnedLayoutId || range.Items is null || range.Items.Count != request.Count)
             throw new ArgumentException("Indexed response authority does not match its request.", nameof(range));
+        if (request.Kind is IndexedCollectionRequestKind.ObserveViewport or IndexedCollectionRequestKind.RecoverViewport)
+        {
+            if (range.LocatedIndex is not null || request.Kind == IndexedCollectionRequestKind.RecoverViewport != (range.ViewportRecovered is not null))
+                throw new ArgumentException("Invalid viewport control response.", nameof(range));
+            if (range.ViewportRecovered == true ? range.ViewportAnchorKey is null || !ProtocolValidationIdentifierContext.IsSafeIdentifier(range.ViewportAnchorKey) : range.ViewportAnchorKey is not null)
+                throw new ArgumentException("Invalid viewport recovery anchor.", nameof(range));
+            if (range.ViewportRecovered == true && range.ViewportAnchorKey != request.Recovery!.AnchorKey &&
+                request.Recovery.NeighborKeys?.Contains(range.ViewportAnchorKey!) != true)
+                throw new ArgumentException("Recovery chose an undeclared neighbor.", nameof(range));
+            return;
+        }
+        if (range.ViewportRecovered is not null || range.ViewportAnchorKey is not null) throw new ArgumentException("Only recovery responses report recovery.", nameof(range));
         if (request.Kind == IndexedCollectionRequestKind.Locate)
         {
             if (range.LocatedIndex is { } found && (found < 0 || found >= request.Source.Count))
@@ -216,7 +307,7 @@ public static class IndexedCollectionContract
             var item=range.Items[0];
             ArgumentNullException.ThrowIfNull(item);
             if (item.Key != request.PreviewKey) throw new ArgumentException("Preview key changed during resolution.");
-            FocusPreviewContentContract.Validate(item.Root,binding.Node.FocusPreview?.EnterButton is not null);
+            FocusPreviewContentContract.Validate(item.Root,binding.Node.FocusPreview?.EnterButton is not null, binding.Node.FocusPreview?.AllowMedia == true);
             return;
         }
         var keys = new HashSet<string>(StringComparer.Ordinal);
@@ -288,7 +379,10 @@ public static class IndexedCollectionContract
                         throw new ArgumentException("Preview source or input scope has retired.", nameof(request));
                     return (entry.Node,scope,projection);
                 }
-                if (entry.Node.Kind != ViewNodeKind.IndexedCollection || !RetainsPrefix(entry.Node.IndexedCollection, request.Source))
+                var viewportControl = request.Kind is IndexedCollectionRequestKind.ObserveViewport or IndexedCollectionRequestKind.RecoverViewport;
+                if (entry.Node.Kind != ViewNodeKind.IndexedCollection || !(viewportControl
+                    ? SameViewportDomain(entry.Node.IndexedCollection, request.Source) && scope == projection.ActiveInputScopeId
+                    : RetainsPrefix(entry.Node.IndexedCollection, request.Source)))
                     throw new ArgumentException("Indexed request does not match the current parent declaration.", nameof(request));
                 return (entry.Node, scope, projection);
             }
@@ -302,4 +396,9 @@ public static class IndexedCollectionContract
         if (value is null || !ProtocolValidationIdentifierContext.IsSafeIdentifier(value))
             throw new ArgumentException("Indexed collection identity is invalid.");
     }
+
+    /// <summary>Control acknowledgments may follow their own publication, but never a replacement semantic domain. This does not admit range reads or row actions.</summary>
+    public static bool SameViewportDomain(IndexedCollectionDescriptor? current, IndexedCollectionDescriptor previous) =>
+        current is not null && current.SourceId == previous.SourceId && current.QueryGeneration >= previous.QueryGeneration && previous.EndFollowingEpoch is { } epoch && current.EndFollowingEpoch == epoch &&
+        current.CanRecoverViewport == previous.CanRecoverViewport && current.ObservesBoundaries==previous.ObservesBoundaries;
 }

@@ -5,6 +5,7 @@ using WidgetRail.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("New recording preferences use Auto while persisted explicit options remain explicit", RecordingDefaults),
     ("Overlay keyboard shortcuts preserve legacy choices and reject malformed chords", OverlayShortcutTests.Run),
     ("Browser cleanup preserves updates and isolates resets, uninstalls and reinstalls", BrowserProfileLifecycleTests.Run),
     ("All built-in themes remain isolated, selectable and readable", ThemeDesignTests.Run),
@@ -53,6 +54,7 @@ static Task DefaultPathsUseWidgetRail()
 }
 
 var failures = new List<string>();
+if(args.Contains("--recording-defaults-only",StringComparer.Ordinal))tests=tests.Where(test=>test.Run==RecordingDefaults||test.Run==SettingsRoundTrip).ToArray();
 foreach (var test in tests)
 {
     try
@@ -132,6 +134,29 @@ static async Task CaptureConfirmations()
     var full = new CaptureConfirmationSettings { Widgets = Enumerable.Range(0,256).ToDictionary(i => "widget-"+i, _ => new CaptureConfirmationChoice(true)) };
     Assert.Equal(full, full.Remember("another", false, true, true, 0));
     Assert.True(!full.Remember("widget-1", true, true, true, 0).ShouldConfirm("widget-1", true), "Bounded maps still allow updating an existing widget.");
+}
+
+static async Task RecordingDefaults()
+{
+    using var temporary=new TemporaryDirectory();
+    var paths=new PlatformSettingsPaths(temporary.Path);var store=new PlatformSettingsStore(paths);
+    Assert.True((await store.LoadAsync()).ReplayCapture.Settings.Recording.Selection is not null,"Missing preferences did not use Auto");
+    var explicitSettings=new WidgetRail.WidgetProtocol.CaptureReplaySettings();
+    Assert.True(explicitSettings.Recording.Selection is null,"Legacy DTO constructor changed meaning");
+    await store.UpdateAsync(current=>current with{ReplayCapture=new(){Settings=explicitSettings}});
+    Assert.Equal(explicitSettings,(await store.LoadAsync()).ReplayCapture.Settings);
+    var document=System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(paths.SettingsFile))!.AsObject();
+    document.Remove("replayCapture");await File.WriteAllTextAsync(paths.SettingsFile,document.ToJsonString());
+    Assert.True((await store.LoadAsync()).ReplayCapture.Settings.Recording.Selection is not null,"Existing document without recording preferences did not use Auto");
+    document["replayCapture"]=new System.Text.Json.Nodes.JsonObject();
+    await File.WriteAllTextAsync(paths.SettingsFile,document.ToJsonString());
+    Assert.True((await store.LoadAsync()).ReplayCapture.Settings.Recording.Selection is not null,"Omitted replay settings did not use Auto");
+    document["replayCapture"]=new System.Text.Json.Nodes.JsonObject{["settings"]=new System.Text.Json.Nodes.JsonObject()};
+    await File.WriteAllTextAsync(paths.SettingsFile,document.ToJsonString());
+    Assert.True((await store.LoadAsync()).ReplayCapture.Settings.Recording.Selection is not null,"Omitted recording member did not use Auto");
+    var auto=(await store.LoadAsync()).ReplayCapture.Settings;
+    await store.UpdateAsync(current=>current);
+    Assert.Equal(auto,(await store.LoadAsync()).ReplayCapture.Settings);
 }
 
 static async Task DefaultsAreSafe()

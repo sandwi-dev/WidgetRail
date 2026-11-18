@@ -13,7 +13,11 @@ public sealed record WidgetIntentPreparation(string SourceWidgetId, string? Tick
     WidgetIntentPresentation Presentation = WidgetIntentPresentation.PreferExistingSurface,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool PreparationFailed = false);
 public sealed record WidgetIntentCompletion(bool Accepted, string? ExternalUrl = null, string? BrowserFallbackUrl = null,
-    bool RequiresInteraction = false, WidgetIntentStatus Status = WidgetIntentStatus.Failed, WidgetIntentPreparation? FollowUp = null);
+    bool RequiresInteraction = false, WidgetIntentStatus Status = WidgetIntentStatus.Failed, WidgetIntentPreparation? FollowUp = null,
+    WidgetIntentFailure Failure = WidgetIntentFailure.None);
+
+[JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentFailure>))]
+public enum WidgetIntentFailure { None, FileCapacity }
 
 internal sealed record BridgeIntentPrepareRequest(string WidgetId, long SnapshotSequence,
     BridgeWorkerRun WorkerRun, WidgetActionEvent Action, string? PinnedLayoutId = null,

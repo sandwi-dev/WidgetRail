@@ -31,6 +31,7 @@ internal sealed partial class OverlayShellPage
                     new(ControllerPrompt.B, hostChoiceDialog!.ControllerBackLabel, ControllerButton.B, Required: true), new(ControllerPrompt.RightStickMove, "Scroll")]
                 : (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A), new(ControllerPrompt.B, "Back", ControllerButton.B, Required: true)];
             shellContext = "host-choice";
+            if (hostChoiceDialog?.ContentGuide is { } contentGuide) shell = contentGuide;
             if (hostChoiceDialog?.SupportsDismissChoice == true)
                 shell = (ControllerGuideHint[])[.. (hostChoiceDialog.FocusedChoiceIsActionable ? new ControllerGuideHint[] { new(ControllerPrompt.A, "Open", ControllerButton.A) } : []),
                     new(ControllerPrompt.X, "Dismiss", ControllerButton.X), new(ControllerPrompt.B, "Close", ControllerButton.B, Required: true)];
@@ -77,8 +78,6 @@ internal sealed partial class OverlayShellPage
         }
         else if (reordering)
         { shell = ControllerGuideModel.TrayHints(true); shellContext = "reorder"; }
-        else if (!interactive && RadialOpen)
-        { shell = ControllerGuideModel.WithHost(RadialGuideHints()); shellContext = "radial"; }
         else if (expandedBrowser is { } browser)
         {
             var hints = browser.Surface?.ControllerTextEntry is { } keyboard
@@ -111,8 +110,12 @@ internal sealed partial class OverlayShellPage
         var committed = !retired && visible && !switching && activeWidget == requestedWidget && surface is not null &&
             activeWidget is { } id && retainedSurfaces.TryGetValue(id, out var retained) &&
             ReferenceEquals(retained.Presenter, surface) && retained.PresentedLifecycle == DesiredLifecycle;
-        var ready = committed && surface!.IsGuidePresentationReady(requireFocus: interactive);
-        WaitForGuideLayout(committed && !ready ? surface : null);
+        // Dashboard commands are declared by the exact displayed frame, not by
+        // a focused/realized content row. Waiting for the widget's interactive
+        // layout here can suppress valid tray shortcuts indefinitely.
+        var dashboardReady = !interactive && FocusedTrayWidget() is { } dashboard && DashboardFrame(dashboard) is not null;
+        var ready = interactive ? committed && surface!.IsGuidePresentationReady(requireFocus: true) : dashboardReady;
+        WaitForGuideLayout(interactive && committed && !ready ? surface : null);
         IReadOnlyList<ControllerGuideHint> actions = ready ? interactive
             ? surface!.CaptureControllerGuide() : DashboardGuideHints() : [];
         // Requested input mode is not a new displayed owner. Keep informational
@@ -120,7 +123,7 @@ internal sealed partial class OverlayShellPage
         // meaning. Input routing changes immediately; all guide pixels publish
         // together so old widget hints never mix with new navigation hints.
         if (IntroductionRunning) actions = actions.Where(hint => hint.Button is not (ControllerButton.X or ControllerButton.B)).ToArray();
-        trayGuide.Present((surface, activeWidget, surface?.ControllerGuideContext, IntroductionRunning, introduction.Step), ready || IntroductionRunning, actions, IntroductionGuide(host));
+        trayGuide.Present((surface, activeWidget, interactive, RadialOpen, interactive ? surface?.ControllerGuideContext : null, IntroductionRunning, introduction.Step), ready || IntroductionRunning, actions, IntroductionGuide(host));
     }
 
     private void WaitForGuideLayout(WidgetViewPresenter? presenter)

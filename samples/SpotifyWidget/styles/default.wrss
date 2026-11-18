@@ -252,7 +252,7 @@
 .spotify-primary { background: var(--accent); color: var(--canvas, #090908); }
 .spotify-primary:focused,
 .spotify-secondary:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
-.spotify-primary:focused { outline-color: var(--canvas, #090908); }
+.spotify-primary:focused { outline-color: var(--focus); outline-width: var(--focus-width, 2px); outline-offset: var(--focus-filled-offset, 2px); }
 .spotify-setup-scroll {
   min-width: 0px;
   min-height: 156px;
@@ -451,7 +451,7 @@
 .spotify-transport { width: 40px; height: 40px; padding: 9px; }
 .spotify-play { width: 52px; height: 52px; padding: 13px; scale: 1; transition-duration: 140ms; transition-easing: ease-in-out; }
 .spotify-play:focused { scale: 1.06; }
-.spotify-play:focused { outline-color: var(--canvas, #090908); outline-offset: -4px; }
+.spotify-play:focused { outline-color: var(--focus); outline-width: var(--focus-width, 2px); outline-offset: var(--focus-filled-offset, 2px); }
 .spotify-play:pressed { scale: 0.96; }
 .spotify-secondary-action { width: 36px; height: 36px; padding: 8px; }
 .spotify-page {

@@ -38,6 +38,7 @@ internal static class MessageTypes
     public const string PresentationUpdate = "presentation-update";
     public const string Action = "action";
     public const string PinnedAction = "pinned-action-v1";
+    public const string InlinePreviewAction = "inline-preview-action-v1";
     public const string ControllerInput = "controller-input";
     public const string ControllerInputResult = "controller-input-result";
     // Separate request keeps the strict runtime-v2 handshake and existing

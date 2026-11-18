@@ -3,7 +3,10 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.WidgetSdk;
 
 internal sealed record WidgetActionExecutionBinding(object Identity,
-    Func<WidgetActionEvent, CancellationToken, ValueTask> Invoke);
+    Func<WidgetActionEvent, CancellationToken, ValueTask> Invoke)
+{
+    internal object? InlinePreview { get; init; }
+}
 internal sealed record WidgetIndexedItemBinding(IndexedCollectionItem Declaration,
     Func<WidgetActionEvent, CancellationToken, ValueTask> Invoke,
     Func<WidgetArtworkHandle, CancellationToken, ValueTask<WidgetEncodedArtwork?>>? ResolveArtwork,

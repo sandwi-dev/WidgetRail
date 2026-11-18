@@ -26,10 +26,6 @@ public sealed partial class PlayniteLibraryTests
         await widget.OnActionAsync(new(CaptureSettingsPrefix+".set.screenshotsEnabled.on","option"));
         Assert.IsNull(saved,"Changing a draft option must not write provider settings.");
         Assert.IsTrue(widget.RenderState.Value.CaptureSettings.Changes["screenshotsEnabled"].GetBoolean());
-        await widget.OnActionAsync(new(CaptureSettingsPrefix+".save","save"));await widget.WhenCaptureSettingsIdleAsync();
-        Assert.AreEqual(1,saved!.Count);Assert.IsTrue(saved["screenshotsEnabled"].GetBoolean());
-        Assert.AreEqual(0,widget.RenderState.Value.CaptureSettings.Changes.Count);
-        Assert.IsTrue(widget.RenderState.Value.CaptureSettings.Message!.Contains("saved",StringComparison.Ordinal));
         if(Environment.GetEnvironmentVariable("PLAYNITE_CAPTURE_FIXTURE") is {Length:>0} file)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(file))!);
@@ -38,6 +34,10 @@ public sealed partial class PlayniteLibraryTests
             var view=new WidgetView(UI.Stack("capture-settings.parent",UI.Button("Capture settings","open","capture-settings.open"))).WithModal(modal);
             WidgetRail.Tests.RendererFixtureExporter.Write(file,new CaptureModalFixture(view).RenderSnapshot("playnite.capture-settings.fixture",1),theme);
         }
+        await widget.OnActionAsync(new(CaptureSettingsPrefix+".save","save"));await widget.WhenCaptureSettingsIdleAsync();
+        Assert.AreEqual(1,saved!.Count);Assert.IsTrue(saved["screenshotsEnabled"].GetBoolean());
+        Assert.AreEqual(0,widget.RenderState.Value.CaptureSettings.Changes.Count);
+        Assert.IsTrue(widget.RenderState.Value.CaptureSettings.Message!.Contains("saved",StringComparison.Ordinal));
         Assert.IsTrue(await Route(widget,Snapshot(widget,900006),ControllerButton.B,CaptureSettingsPrefix+".modal.close"));
         await WaitIndexed(()=>!widget.RenderState.Value.CaptureSettings.Open);
         await WidgetTestHost.DestroyAsync(widget);

@@ -37,8 +37,17 @@ public abstract record WidgetElement(string Id)
         if (column < 0 || column >= ProtocolConstants.MaximumGridLayoutTracks) throw new ArgumentOutOfRangeException(nameof(column));
         if (rowSpan < 1 || rowSpan > ProtocolConstants.MaximumGridLayoutTracks - row) throw new ArgumentOutOfRangeException(nameof(rowSpan));
         if (columnSpan < 1 || columnSpan > ProtocolConstants.MaximumGridLayoutTracks - column) throw new ArgumentOutOfRangeException(nameof(columnSpan));
-        var placement = new GridCellPlacement { Row = row, Column = column, RowSpan = rowSpan, ColumnSpan = columnSpan };
+        var placement = (this is GridCellElement existing ? existing.Placement : new GridCellPlacement()) with
+            { Row = row, Column = column, RowSpan = rowSpan, ColumnSpan = columnSpan };
         return this is GridCellElement cell ? cell with { Placement = placement } : new GridCellElement(this, placement);
+    }
+
+    /// <summary>Align this direct Grid child's content inside its cell. Null restores the existing Stretch default; adds no visual wrapper.</summary>
+    public WidgetElement AlignInGrid(GridCellAlignment? horizontal=null,GridCellAlignment? vertical=null)
+    {
+        if(horizontal is {} x && !Enum.IsDefined(x))throw new ArgumentOutOfRangeException(nameof(horizontal));
+        if(vertical is {} y && !Enum.IsDefined(y))throw new ArgumentOutOfRangeException(nameof(vertical));
+        return new GridCellAlignmentElement(this,horizontal,vertical);
     }
 
     protected static string RequireId(string id)
@@ -620,7 +629,7 @@ public sealed record ButtonElement : WidgetElement
 }
 
 /// <summary>
-/// A semantic single-select control whose popup, focus capture, and dismissal
+/// A semantic value select or command dropdown whose popup, focus capture, and dismissal
 /// are owned by the host. The immutable option list remains widget authority.
 /// </summary>
 public sealed record SelectElement : WidgetElement
@@ -629,7 +638,8 @@ public sealed record SelectElement : WidgetElement
         string id,
         string label,
         IReadOnlyList<SelectOption> options,
-        string? accessibilityLabel) : base(RequireId(id))
+        string? accessibilityLabel,
+        bool isCommandMenu = false) : base(RequireId(id))
     {
         ValidateSelectText(label, nameof(label));
         ArgumentNullException.ThrowIfNull(options);
@@ -641,8 +651,8 @@ public sealed record SelectElement : WidgetElement
             throw new ArgumentException("Select option IDs must be unique.", nameof(options));
         if (options.Select(option => option.ActionId).Distinct(StringComparer.Ordinal).Count() != options.Count)
             throw new ArgumentException("Select option action IDs must be unique.", nameof(options));
-        if (options.Count(option => option.IsSelected) != 1)
-            throw new ArgumentException("A Select requires exactly one selected option.", nameof(options));
+        if (options.Count(option => option.IsSelected) != (isCommandMenu ? 0 : 1))
+            throw new ArgumentException(isCommandMenu ? "A command menu cannot have selected commands." : "A Select requires exactly one selected option.", nameof(options));
         foreach (var option in options)
         {
             StableIdentifier.Validate(option.Id, nameof(options));
@@ -653,9 +663,9 @@ public sealed record SelectElement : WidgetElement
             if (option.Glyph is { } glyph && !Enum.IsDefined(glyph))
                 throw new ArgumentOutOfRangeException(nameof(options));
         }
-        ValidateSelectText(
-            $"{label}: {options.Single(option => option.IsSelected).Label}",
-            nameof(options));
+        if (!isCommandMenu)
+            ValidateSelectText($"{label}: {options.Single(option => option.IsSelected).Label}", nameof(options));
+        this.isCommandMenu = isCommandMenu;
         Label = label;
         Options = options.ToArray();
         if (accessibilityLabel is not null)
@@ -664,6 +674,7 @@ public sealed record SelectElement : WidgetElement
         RequiredStyleClasses = ["wrail-select"];
     }
 
+    private readonly bool isCommandMenu;
     public string Label { get; init; }
     public IReadOnlyList<SelectOption> Options { get; init; }
     public string? AccessibilityLabel { get; init; }
@@ -684,19 +695,22 @@ public sealed record SelectElement : WidgetElement
     public SelectElement FocusRight(string id) => this with
         { FocusNeighbors = (FocusNeighbors ?? new()) with { Right = RequireId(id) } };
 
-    /// <summary>Hide the repeated label when a setting row supplies it externally.</summary>
+    /// <summary>Hide a value select's repeated label when a setting row supplies it externally. Command menus always show their label.</summary>
     public bool ShowLabel { get; init; } = true;
 
     internal override ViewNode ToProtocolNode()
     {
-        var selected = Options.Single(option => option.IsSelected);
+        if (isCommandMenu && Options.Any(option => option.IsSelected))
+            throw new ArgumentException("A command menu cannot have selected commands.", nameof(Options));
+        var selected = isCommandMenu ? null : Options.Single(option => option.IsSelected);
         return new()
         {
             Id = Id,
             Kind = ViewNodeKind.Select,
-            Text = ShowLabel ? $"{Label}: {selected.Label}" : selected.Label + "  ▾",
+            Text = isCommandMenu ? Label : ShowLabel ? $"{Label}: {selected!.Label}" : selected!.Label + "  ▾",
             AccessibilityLabel = AccessibilityLabel ?? Label,
-            AccessibilityValue = selected.Label,
+            AccessibilityValue = selected?.Label,
+            IsCommandMenu = isCommandMenu ? true : null,
             SelectOptions = Options.Select(option => new WidgetSelectOption(
                 option.Id,
                 option.Label,

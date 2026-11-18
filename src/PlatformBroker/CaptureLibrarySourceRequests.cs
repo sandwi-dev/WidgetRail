@@ -1,6 +1,9 @@
 namespace WidgetRail.PlatformBroker;
 
-public sealed record HostCaptureSourceRequest(string Id, BrokerWidgetIdentity Widget, string Label);
+public sealed record HostCaptureSourceRequest(string Id, BrokerWidgetIdentity Widget, string Label)
+{
+    public WidgetRail.WidgetProtocol.CaptureLibraryKnownLocation? KnownLocation { get; init; }
+}
 
 /// <summary>Only the trusted host can complete a source folder selection.</summary>
 internal static class CaptureLibrarySourceRequests
@@ -9,13 +12,14 @@ internal static class CaptureLibrarySourceRequests
     private static HostCaptureSourceRequest? pending;
     private static TaskCompletionSource<string?>? completion;
     internal static HostCaptureSourceRequest? Pending { get { lock (gate) return pending; } }
-    internal static async Task<string?> ChooseAsync(BrokerWidgetIdentity widget, string label, CancellationToken token)
+    internal static async Task<string?> ChooseAsync(BrokerWidgetIdentity widget, string label, CancellationToken token,
+        WidgetRail.WidgetProtocol.CaptureLibraryKnownLocation? knownLocation = null)
     {
         TaskCompletionSource<string?> waiting;
         lock (gate)
         {
             if (pending is not null) throw new BrokerException("capture_library_busy", "A capture folder is already being chosen.");
-            pending = new(Guid.NewGuid().ToString("N"), widget, label);
+            pending = new(Guid.NewGuid().ToString("N"), widget, label) { KnownLocation = knownLocation };
             completion = waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
         try { return await waiting.Task.WaitAsync(TimeSpan.FromSeconds(120), token).ConfigureAwait(false); }

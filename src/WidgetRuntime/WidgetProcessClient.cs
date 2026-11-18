@@ -310,6 +310,16 @@ public sealed partial class WidgetProcessClient : IAsyncDisposable
         catch (ArgumentException error) { throw new WidgetProtocolViolationException("Invalid pinned action result.", error); }
     }
 
+    internal async Task<WidgetOperationAdmission> AdmitInlinePreviewActionAsync(InlinePreviewActionInput input,
+        CancellationToken cancellationToken, int? expectedStartOrdinal = null)
+    {
+        var session = expectedStartOrdinal is { } ordinal ? DemandInputWorker(ordinal) : Volatile.Read(ref _session);
+        if (session is null || session.IsTerminal) throw new WidgetInputWorkerRetiredException();
+        var response = await RequestConnectedAsync(session, MessageTypes.InlinePreviewAction, input, cancellationToken).ConfigureAwait(false);
+        if (response.Type != MessageTypes.Acknowledged) throw new WidgetProtocolViolationException("Expected inline preview action acknowledgement.");
+        return ParseActionAdmission(response.Payload);
+    }
+
     internal static WidgetActionEvent PrepareActionForWorker(WidgetActionEvent action, int? protocolVersion) =>
         protocolVersion is >= ProtocolConstants.CursorRetentionVersion
             ? action : action with { RetainedCollectionKeys = null };

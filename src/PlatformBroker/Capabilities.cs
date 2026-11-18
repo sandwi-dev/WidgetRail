@@ -53,6 +53,7 @@ public sealed record BrokerCapabilityDefinition(
 /// <summary>Closed public capability vocabulary. Version is part of every ID.</summary>
 public static class PlatformCapabilities
 {
+    public const string FilesReadV1 = "files.references.v1";
     public const string PerformanceReadV1 = "system.performance.read.v1";
     public const string PerformanceFpsControlV1 = "system.performance.fps.control.v1";
     public const string PerformanceGet = "performance.get";
@@ -117,6 +118,7 @@ public static class PlatformCapabilities
     public const string WidgetMarketplaceV1 = "widgets.marketplace.v1";
     public const string CaptureLibrarySaveV1 = "media.capture-library.save.v1";
     public const string CaptureLibraryManageV1 = BrokerTransportOperations.CaptureLibraryManageV1;
+    public const string CaptureLibraryRecycleLinkedV1 = "media.capture-library.recycle-linked.v1";
     public const string WindowCaptureV1 = BrokerTransportOperations.WindowCaptureV1;
     public const string WindowCaptureRequest = "capture.request";
     public const string WindowCaptureStatus = "capture.status";
@@ -275,16 +277,20 @@ public static class PlatformCapabilities
                 Set(ProviderDocumentCreate, ProviderDocumentDiscard), Set(), AllowsBackground: true,
                 BackgroundOperations: Set(ProviderDocumentCreate, ProviderDocumentDiscard)),
             [CaptureLibraryReadV1] = new(CaptureLibraryReadV1, 1, BrokerCapabilityKind.Read,
-                Set("capture-library.sources", "capture-library.list", "capture-library.query", "capture-library.get-metadata", "capture-library.contexts", "capture-library.applications", "capture-library.groups", "capture-library.find", "capture-library.open", "capture-library.read", "capture-library.release", "capture-library.thumbnail"), Set("capture-library.changed"), AllowsBackground: true),
+                Set("capture-library.sources", "capture-library.list", "capture-library.query", "capture-library.query-continuity", "capture-library.get-metadata", "capture-library.contexts", "capture-library.applications", "capture-library.folders", "capture-library.groups", "capture-library.find", "capture-library.open", "capture-library.read", "capture-library.release", "capture-library.thumbnail", "capture.replay.get"), Set("capture-library.changed", "capture.replay.changed", "capture.replay.encoding-changed"), AllowsBackground: true),
             [CaptureLibrarySaveV1] = new(CaptureLibrarySaveV1, 1, BrokerCapabilityKind.Control,
-                Set("capture-library.save", "capture-library.save-current", "capture-library.save-context"), Set(), AllowsDashboardGesture: false),
+                Set("capture-library.save", "capture-library.save-current", "capture-library.save-context", "capture-library.edit-copy"), Set(), AllowsDashboardGesture: false,
+                InFlightContinuationOperations: Set("capture-library.edit-copy")),
+            [CaptureLibraryRecycleLinkedV1] = new(CaptureLibraryRecycleLinkedV1, 1, BrokerCapabilityKind.Control,
+                Set("capture-library.recycle-linked"), Set(), AllowsDashboardGesture: false),
             [CaptureLibraryManageV1] = new(CaptureLibraryManageV1, 1, BrokerCapabilityKind.Control,
-                Set("capture-library.choose-source", "capture-library.remove-source", "capture-library.link", "capture-library.remove-link", "capture-library.delete", "capture-library.export", "capture-library.open-folder", "capture-library.metadata", "capture-library.metadata-batch", "capture-library.remove-unavailable", "capture-library.recycle", "capture-library.reveal", "capture-library.copy"), Set(), AllowsDashboardGesture: false,
-                InFlightContinuationOperations: Set("capture-library.choose-source", "capture-library.open-folder", "capture-library.reveal", "capture-library.copy")),            [WindowCaptureV1] = new(WindowCaptureV1, 1, BrokerCapabilityKind.Control,
+                Set("capture-library.choose-source", "capture-library.remove-source", "capture-library.link", "capture-library.remove-link", "capture-library.unhide", "capture-library.delete", "capture-library.export", "capture-library.open-folder", "capture-library.metadata", "capture-library.metadata-batch", "capture-library.remove-unavailable", "capture-library.recycle", "capture-library.reveal", "capture-library.copy", "capture-library.save-copy"), Set(), AllowsDashboardGesture: false,
+                InFlightContinuationOperations: Set("capture-library.choose-source", "capture-library.open-folder", "capture-library.reveal", "capture-library.copy", "capture-library.save-copy")),            [WindowCaptureV1] = new(WindowCaptureV1, 1, BrokerCapabilityKind.Control,
                 Set(WindowCaptureRequest, "capture.request-original", "capture.start", "capture.stop", "capture.capabilities", "capture.recording-capabilities", "capture.validate", WindowCaptureStatus, WindowCaptureCancel, WindowCaptureDiscard, WindowCaptureRead,
+                    "capture.replay.configure", "capture.replay.start", "capture.replay.stop", "capture.replay.save",
                     "capture.web-prepare","capture.web-prepare-constrained","capture.web-status","capture.web-stop"), Set(),
                 ReadOperations: Set(WindowCaptureStatus, WindowCaptureRead, "capture.capabilities", "capture.recording-capabilities", "capture.validate","capture.web-status"), AllowsBackground: true,
-                InFlightContinuationOperations: Set("capture.web-prepare","capture.web-prepare-constrained"),
+                InFlightContinuationOperations: Set("capture.web-prepare","capture.web-prepare-constrained", "capture.replay.configure", "capture.replay.start", "capture.replay.save"),
                 BackgroundOperations: Set(WindowCaptureStatus, WindowCaptureRead, WindowCaptureCancel, WindowCaptureDiscard, "capture.stop", "capture.capabilities", "capture.recording-capabilities", "capture.validate","capture.web-status","capture.web-stop")),
             [TaskWindowsPreviewV1] = new(TaskWindowsPreviewV1, 1, BrokerCapabilityKind.Read, Set(), Set()),
             [PerformanceReadV1] = new(PerformanceReadV1, 1, BrokerCapabilityKind.Read, Set(PerformanceGet), Set()),
@@ -328,6 +334,11 @@ public static class PlatformCapabilities
                 ReadOperations: Set(PrivateStateRead),
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted,
                 AllowsBackground: true),
+            [FilesReadV1] = new(FilesReadV1,1,BrokerCapabilityKind.Control,
+                Set("files.choose","files.from-capture","files.get","files.read","files.release","files.offer","files.accept","files.cancel-offer"),Set(),
+                ReadOperations:Set("files.get","files.read"),AccessPolicy:BrokerCapabilityAccessPolicy.HostGranted,AllowsBackground:true,
+                InFlightContinuationOperations:Set("files.choose"),
+                BackgroundOperations:Set("files.get","files.read","files.release","files.cancel-offer","files.accept")),
             [WebSessionsV1] = new(WebSessionsV1, 1, BrokerCapabilityKind.Control, Set("web-session.command", "web-session.microphone", "web-session.permission"), Set(),
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true,
                 BackgroundOperations: Set("web-session.command")),

@@ -47,7 +47,15 @@ try{
  if($LASTEXITCODE){throw 'Capture worker build failed'}
  & "$($vc.FullName)/bin/Hostx64/x64/cl.exe" /nologo /MT /std:c++20 /utf-8 /EHsc /W4 /WX /O2 /DNOMINMAX /LD @validationDefines @includes "/I$webViewPackage/build/native/include" "/I$webViewPackage/build/native/include-winrt" "$PSScriptRoot/CaptureWorkerHost.cpp" "/Fo:$OutputDirectory/CaptureWorkerHost.obj" "/Fe:$OutputDirectory/CaptureWorkerHost.dll" /link @libraries windowsapp.lib ole32.lib
  if($LASTEXITCODE){throw 'Capture worker host build failed'}
+ & "$($vc.FullName)/bin/Hostx64/x64/cl.exe" /nologo /MT /std:c++20 /utf-8 /EHsc /W4 /WX /O2 /DNOMINMAX @validationDefines @includes "$PSScriptRoot/ReplayWorker.cpp" "/Fo:$OutputDirectory/ReplayWorker.obj" "/Fe:$OutputDirectory/ReplayCaptureWorker.exe" /link @libraries "$OutputDirectory/WebRtcCapturePrototype.lib" d3d11.lib dxgi.lib mf.lib mfplat.lib mfreadwrite.lib mfuuid.lib ole32.lib oleaut32.lib windowsapp.lib
+ if($LASTEXITCODE){throw 'Replay capture worker build failed'}
+ & "$($vc.FullName)/bin/Hostx64/x64/cl.exe" /nologo /MT /std:c++20 /utf-8 /EHsc /W4 /WX /O2 /DNOMINMAX /LD @validationDefines @includes "$PSScriptRoot/ReplayWorkerHost.cpp" "/Fo:$OutputDirectory/ReplayWorkerHost.obj" "/Fe:$OutputDirectory/ReplayWorkerHost.dll" /link @libraries windowsapp.lib ole32.lib
+ if($LASTEXITCODE){throw 'Replay worker host build failed'}
  if($Validation){
+ & "$($vc.FullName)/bin/Hostx64/x64/cl.exe" /nologo /MT /std:c++20 /utf-8 /EHsc /W4 /WX /O2 /DNOMINMAX @validationDefines @includes "$PSScriptRoot/../ReplayCapturePrototype/ReplayWorkerProbe.cpp" "/Fo:$OutputDirectory/ReplayWorkerProbe.obj" "/Fe:$OutputDirectory/ReplayWorkerProbe.exe" /link @libraries "$OutputDirectory/ReplayWorkerHost.lib"
+ if($LASTEXITCODE){throw 'Replay worker probe build failed'}
+ & "$($vc.FullName)/bin/Hostx64/x64/cl.exe" /nologo /MT /std:c++20 /utf-8 /EHsc /W4 /WX /O2 /DNOMINMAX @validationDefines @includes "$PSScriptRoot/../ReplayCapturePrototype/WgcReplayWorkerProbe.cpp" "/Fo:$OutputDirectory/WgcReplayWorkerProbe.obj" "/Fe:$OutputDirectory/WgcReplayWorkerProbe.exe" /link @libraries "$OutputDirectory/ReplayWorkerHost.lib" "$OutputDirectory/CaptureWorkerHost.lib" d3d11.lib dxgi.lib user32.lib windowsapp.lib ole32.lib
+ if($LASTEXITCODE){throw 'Replay WGC worker probe build failed'}
  & "$($vc.FullName)/bin/Hostx64/x64/cl.exe" /nologo /MT /std:c++20 /utf-8 /EHsc /W4 /WX /O2 /DNOMINMAX @validationDefines @includes "$PSScriptRoot/CaptureWorkerProbe.cpp" "/Fo:$OutputDirectory/CaptureWorkerProbe.obj" "/Fe:$OutputDirectory/CaptureWorkerProbe.exe" /link @libraries "$OutputDirectory/CaptureWorkerHost.lib" windowsapp.lib ole32.lib user32.lib
  if($LASTEXITCODE){throw 'Capture worker probe build failed'}
  }

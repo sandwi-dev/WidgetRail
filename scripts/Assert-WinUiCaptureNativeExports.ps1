@@ -3,12 +3,17 @@ param([Parameter(Mandatory)][string]$DllPath)
 $ErrorActionPreference = 'Stop'
 $nativePath = (Resolve-Path -LiteralPath $DllPath).Path
 $repository = Split-Path $PSScriptRoot
-# Derive requirements from the managed callers, so adding an import also makes
-# an older native payload fail qualification. Do not execute code from the DLL.
-$required = @(foreach ($source in @('src/OverlayFrontend.WinUI/Capture/NativeWindowCapture.cs', 'src/OverlayFrontend.WinUI/Previews/PreviewNative.cs')) {
-    $text = [IO.File]::ReadAllText((Join-Path $repository $source))
+# Derive requirements from managed callers and the declared capture ABI, so
+# adding an import or capture export rejects older payloads. Never execute the DLL.
+$sources = @('src/OverlayFrontend.WinUI/Previews/PreviewNative.cs') + @(Get-ChildItem -LiteralPath (Join-Path $repository 'src/OverlayFrontend.WinUI/Capture') -Filter 'NativeWindowCapture*.cs' | ForEach-Object { $_.FullName })
+$required = @(foreach ($source in $sources) {
+    $sourcePath = if ([IO.Path]::IsPathRooted($source)) { $source } else { Join-Path $repository $source }
+    $text = [IO.File]::ReadAllText($sourcePath)
     foreach ($match in [regex]::Matches($text, 'EntryPoint\s*=\s*"(Wrail[^"]+)"')) { $match.Groups[1].Value }
-}) | Sort-Object -Unique
+}
+    $captureHeader = [IO.File]::ReadAllText((Join-Path $repository 'src/WinUiWindowPreviewNative/WindowContextCapture.h'))
+    foreach ($match in [regex]::Matches($captureHeader, 'PREVIEW_API\s+int32_t\s+__stdcall\s+(Wrail[A-Za-z0-9_]+)')) { $match.Groups[1].Value }
+) | Sort-Object -Unique
 if ($required.Count -eq 0) { throw 'No managed capture/preview entry points were found.' }
 if (-not ('WidgetRailNativeExportCheck' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -33,4 +38,4 @@ try {
     $missing = @($required | Where-Object { [WidgetRailNativeExportCheck]::GetProcAddress($module, $_) -eq [IntPtr]::Zero })
     if ($missing.Count) { throw "Native capture/preview DLL is incompatible with this frontend: missing $($missing -join ', ') in $nativePath. Rebuild with scripts/Build-WinUiWindowPreview.ps1 before publishing." }
 } finally { [void][WidgetRailNativeExportCheck]::FreeLibrary($module) }
-"Verified $($required.Count) managed capture/preview imports in $nativePath."
+"Verified $($required.Count) capture/preview exports in $nativePath."

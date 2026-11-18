@@ -35,7 +35,7 @@
 .youtube-primary { min-width: 108px; background: var(--accent); color: var(--surface); border-color: transparent; }
 .youtube-secondary { min-width: 82px; background: var(--surface); color: var(--text); border-color: var(--text-subdued); }
 .youtube-primary:focused, .youtube-secondary:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
-.youtube-primary:focused { outline-color: var(--surface); outline-offset: -4px; }
+.youtube-primary:focused { outline-color: var(--focus); outline-width: var(--focus-width, 2px); outline-offset: var(--focus-filled-offset, 2px); }
 .youtube-primary:disabled, .youtube-secondary:disabled { color: var(--text-subdued); background: var(--surface-muted); border-color: var(--surface-muted); opacity: 0.7; }
 .youtube-transport-button { min-width: 38px; width: 38px; min-height: 36px; height: 36px; padding: 4px; corner-radius: 7px; }
 .youtube-play-toggle { min-width: 42px; width: 42px; }

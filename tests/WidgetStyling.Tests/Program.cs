@@ -32,6 +32,7 @@ var tests = new (string Name, Action Run)[]
     ("Invalid typed values prevent theme publication", InvalidTypedValues),
     ("Resolved property enumeration is deterministic", DeterministicResolution),
     ("Media-card properties compile to typed renderer values", MediaCardValues),
+    ("Rich text typography uses closed style and decoration keywords", RichTextTypography),
     ("Responsive viewport units remain bounded", ResponsiveUnits),
     ("Translation lengths validate clamp and cascade by axis", TranslationValues),
     ("Responsive row wrapping compiles to a closed keyword contract", ResponsiveWrapValues),
@@ -1259,6 +1260,16 @@ static void RedlineSource()
     Assert.Equal("#dec4bf", eyebrow.Get("color")!.Text);
     Assert.Equal("none", eyebrow.Get("text-transform")!.Text);
     Assert.Equal("0.02em", eyebrow.Get("letter-spacing")!.Text);
+}
+
+static void RichTextTypography()
+{
+    var compiled = Compile("copy { font-style: italic; text-decoration: underline line-through; }");
+    var style = compiled.Theme!.Resolve(Element("copy"));
+    Assert.Equal("italic", style.Get("font-style")!.Text);
+    Assert.Equal("underline line-through", style.Get("text-decoration")!.Text);
+    Assert.True(!CompileExpectingErrors("copy { font-style: sideways; }").IsValid, "Unsupported font style was accepted");
+    Assert.True(!CompileExpectingErrors("copy { text-decoration: blink; }").IsValid, "Unsupported decoration was accepted");
 }
 
 static WrssCompileResult Compile(string source)

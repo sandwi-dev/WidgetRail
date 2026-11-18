@@ -11,7 +11,7 @@ sandboxed and full-trust widgets with the same permissions and ownership checks.
 
 ## Capture
 
-For foreground capture, declare only `system.apps.windows.capture.v1`.
+For temporary foreground capture, declare `system.apps.windows.capture.v1`.
 No application list or window selection is required:
 
 ```csharp
@@ -26,6 +26,31 @@ var ticket = await HostServices.Capture.StartAsync(options, cancellationToken);
 var status = await HostServices.Capture.GetStatusAsync(ticket, cancellationToken);
 // Once Recording, StopAsync(ticket, token) retains it; CancelAsync discards it.
 ```
+
+For a library recording, also declare/request `media.capture-library.save.v1`.
+Set `OutputPurpose = CaptureOutputPurpose.LibraryRecording` and
+`MaximumBytes = CaptureLimits.MaximumLibraryRecordingBytes`, or use
+`HostServices.Capture.RequestLibraryRecordingAsync(recordingOptions, preparation, token)`.
+This reuses the same confirmation, countdown and recorder, including Windows'
+border for one-off clips. The returned `LibraryRecordingDraft` is unsaved:
+preview it, then call `CaptureLibrary.SaveAsync` or `Capture.DiscardAsync`.
+Saving moves the staged file into the library without another full-video copy.
+
+Library drafts allow completed files up to 2 GiB and 120 seconds. The broker
+checks free space and reserves duration/bitrate/audio plus headroom within the
+requested maximum; unresolved Auto and quality encoding reserve that maximum.
+Two drafts across the host and one per owner bound retained output. Size checks
+run during recording and after finalization; transient disk writes can exceed
+the final-file limit before rejection and cleanup. Discard, capture/save
+revocation, expiry and owner retirement release staging. Review does not hold
+the shared editor/replay lock. Contextual save is not supported for these drafts;
+ordinary temporary contextual captures retain their existing behavior.
+
+The omitted/default purpose remains `TemporaryAttachment` (128 MiB ceiling).
+Game Help continues requesting 8 MiB. Neither one-off recording path keeps the
+whole MP4 in RAM. `ReadContentAsync` still rejects files above 128 MiB; use
+`CopyContentToAsync` for bounded streaming. Draft presentation requires protocol
+124; unsupported hosts are not silently used as temporary-output fallbacks.
 
 The host asks for confirmation, completes its release-aware hide transition,
 shows the requested preparation countdown (zero to thirty seconds), then resolves the foreground application
@@ -88,10 +113,12 @@ capture; another window is never silently substituted. Reopening the overlay
 finishes and retains configured recordings. During preparation it cancels instead.
 The overlay does not reopen automatically.
 
-This is the only source-selection mode. Requests never accept a window ID
+This is the source-selection mode for ordinary screenshot/clip requests. Requests never accept a window ID
 or application name. Window selection and application activation are not part of
 the capture service. The native layer binds the foreground window identity once
 when capture starts and retains it until that screenshot or recording finishes.
+The separate [replay service](capture-library.md#replay-recording) has host-owned
+application approval and recording lifetime; it does not change Game Help's flow.
 
 Initiation requires interactive lifecycle. Discovery/validation never starts a
 recording or opens a dialog. Status, stop, cancellation, discard and

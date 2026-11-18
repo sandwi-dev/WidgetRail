@@ -1,10 +1,12 @@
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
-internal static class WidgetCursorResourceTests
+internal static partial class WidgetCursorResourceTests
 {
     public static async Task Run()
     {
+        await LiveMutations();
+        await ViewportRecovery();
         await CommittedGenerationDistinguishesIdenticalRefreshedWindows();
         await RefreshRejectsStalePaginationAndResumesAfterReopen();
         await PendingLoadRetainsVirtualExtent();
@@ -1096,7 +1098,7 @@ internal static class WidgetCursorResourceTests
         throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }
 
-    private sealed record Item(string Id);
+    private sealed record Item(string Id, string? Text = null);
     private sealed class FixtureWidget : Widget
     {
         public FixtureWidget(WidgetCursorResourceOptions<Item> options) =>

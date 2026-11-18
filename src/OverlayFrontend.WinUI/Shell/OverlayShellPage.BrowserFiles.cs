@@ -1,6 +1,3 @@
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using WidgetRail.OverlayFrontend.WinUI.Browser;
 using WidgetRail.OverlayPlatformClient;
 using WidgetRail.WidgetProtocol;
@@ -14,32 +11,8 @@ internal sealed partial class OverlayShellPage
         if (retired || !visible || SystemFilePickerOpen || HostChoiceActive || LocalInstallActive || !browser.CanCompleteSiteDecision || browser.XamlRoot is not { } root) return [];
         var pin = pinned is { } current && ReferenceEquals(root, current.Window.AutomationRoot.XamlRoot) ? current : null;
         if (pin is null && !ReferenceEquals(root, XamlRoot)) return [];
-        var presenter = pin is null ? surface : pin.Presenter;
-        var focus = FocusManager.GetFocusedElement(root) as Control;
-        if(pin is not null)ActivatePinForHostDialog(pin);
-        SystemFilePickerOpen = true;
-        presenter?.SetAutomaticFocusEnabled(false);
-        presenter?.SetPresentationInputEnabled(false);
-        pin?.SetInput(false);
-        shellGestures.Claim(ControllerButton.A);
-        ResetInputPresentation(); PublishControllerGuide();
-        try
-        {
-            return await BrowserFilePicker.PickAsync(root.ContentIslandEnvironment.AppWindowId, request, token);
-        }
-        finally
-        {
-            SystemFilePickerOpen = false;
-            ResetInputPresentation(); PublishControllerGuide();
-            if (!retired && visible && (pin is null ? foreground && ReferenceEquals(presenter, surface) : ReferenceEquals(pin, pinned) && PinnedInputActive))
-            {
-                presenter?.SetPresentationInputEnabled(pin is null ? interactive && !switching && activeWidget == requestedWidget : PinnedInputActive);
-                presenter?.SetAutomaticFocusEnabled(pin is null ? MainFocusEnabled : PinnedInputActive);
-                pin?.SetInput(PinnedInputActive);
-                if (focus is { IsLoaded: true, IsEnabled: true }) focus.Focus(FocusState.Keyboard);
-                else if (pin is null) QueueEntryFocus();
-            }
-        }
+        return await WithNativeFilePickerAsync(root, pin,
+            cancellation => BrowserFilePicker.PickAsync(root.ContentIslandEnvironment.AppWindowId, request, cancellation), token);
     }
 
     private bool ReceiveSystemFilePicker(ControllerFrame frame)

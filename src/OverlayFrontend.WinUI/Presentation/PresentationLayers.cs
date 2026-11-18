@@ -12,10 +12,16 @@ internal enum PresentationLayer
 {
     Content = 0,
     ContentMedia = 100,
+    ContentMediaChrome = 125,
     ContentPreview = 150,
+    ContentPreviewMedia = 175,
+    ContentPreviewMediaChrome = 180,
     WidgetDialog = 200,
     WidgetDialogMedia = 300,
+    WidgetDialogMediaChrome = 325,
     WidgetDialogPreview = 350,
+    WidgetDialogPreviewMedia = 375,
+    WidgetDialogPreviewMediaChrome = 380,
     FullscreenBackdrop = 400,
     FullscreenMedia = 500,
     FullscreenChrome = 600,
@@ -62,7 +68,18 @@ internal sealed class PresentationLayers
     internal static PresentationLayer MediaLayer(DependencyObject? slot)
     {
         for (var item = slot; item is not null; item = VisualTreeHelper.GetParent(item))
+        {
+            if (item is PresentationPortal { Layer: PresentationLayer.ContentPreview }) return PresentationLayer.ContentPreviewMedia;
+            if (item is PresentationPortal { Layer: PresentationLayer.WidgetDialogPreview }) return PresentationLayer.WidgetDialogPreviewMedia;
             if (item is WidgetModalLayer) return PresentationLayer.WidgetDialogMedia;
+        }
         return PresentationLayer.ContentMedia;
     }
+    internal static PresentationLayer MediaChromeLayer(DependencyObject slot) => MediaLayer(slot) switch
+    {
+        PresentationLayer.ContentPreviewMedia => PresentationLayer.ContentPreviewMediaChrome,
+        PresentationLayer.WidgetDialogMedia => PresentationLayer.WidgetDialogMediaChrome,
+        PresentationLayer.WidgetDialogPreviewMedia => PresentationLayer.WidgetDialogPreviewMediaChrome,
+        _ => PresentationLayer.ContentMediaChrome,
+    };
 }

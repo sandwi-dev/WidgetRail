@@ -6,6 +6,56 @@ using Windows.Foundation;
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
+    private IDisposable? previewOutsidePressInput;
+
+    private void ObservePreviewOutsidePresses()
+    {
+        previewOutsidePressInput?.Dispose();
+        previewOutsidePressInput = null;
+        if (XamlRoot?.Content is not UIElement root) return;
+        PointerEventHandler pressed = (_, args) =>
+        {
+            if (!IsFocusPreviewOpen || previewSource is not { } source) return;
+            // Its expanded native player already owns the complete fullscreen
+            // input boundary, including portaled chrome and its collapse click.
+            if (previewSurface?.Fragment?.FocusedMediaPlayer is { IsExpanded: true } or { IsMovingPresentation: true }) return;
+            for (var target = args.OriginalSource as DependencyObject; target is not null;
+                target = PresentationLayers.LogicalParent(target))
+                if (ReferenceEquals(target, previewChrome) || ReferenceEquals(target, source.Anchor)) return;
+
+            // Observe the existing routed press, including handled presses. Do not
+            // consume/replay it, hit-test another target, or return focus: native
+            // controls and the shell retain their ordinary click/pin policy.
+            ExitFocusPreview(restoreFocus: false);
+            previewPointerIntent = true;
+            previewPointerTarget = null;
+            previewPointerFocus = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot);
+            ClearFocusPreview();
+        };
+        PointerEventHandler moved = (_, args) =>
+        {
+            if (!IsFocusPreviewOpen || previewEntered ||
+                args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch ||
+                Input.OverlayMouseSession.SuppressesHover(XamlRoot) ||
+                previewSurface?.Fragment?.FocusedMediaPlayer is { IsExpanded: true } or { IsMovingPresentation: true }) return;
+            var target = args.OriginalSource as DependencyObject;
+            if (IsWithin(target, this) || previewChrome is { } chrome && IsWithin(target, chrome) ||
+                FindBinding(target) is not null) return;
+            // An overlapping sibling can receive movement without a presenter
+            // exit. Feed that real routed position into the existing corridor
+            // and bounded exit timer; leave ordinary controls and clicks alone.
+            previewPointerOverChrome = false;
+            SetPreviewPointerTarget(null, args.GetCurrentPoint(this).Position);
+        };
+        root.AddHandler(UIElement.PointerPressedEvent, pressed, true);
+        root.AddHandler(UIElement.PointerMovedEvent, moved, true);
+        previewOutsidePressInput = new InputRootLease(() =>
+        {
+            root.RemoveHandler(UIElement.PointerPressedEvent, pressed);
+            root.RemoveHandler(UIElement.PointerMovedEvent, moved);
+        });
+    }
+
     private void PreviewPointerMoved(object sender, PointerRoutedEventArgs args)
     {
         if (args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch) return;

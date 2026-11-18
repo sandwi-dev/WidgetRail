@@ -8,7 +8,8 @@ param(
     [switch]$Showcase,
     [switch]$Audio,
     [switch]$VoicePin,
-    [switch]$VoiceControls
+    [switch]$VoiceControls,
+    [switch]$Messages
 )
 $ErrorActionPreference='Stop'
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -21,6 +22,9 @@ New-Item -ItemType Directory -Force $package,"$output/profile","$output/catalog"
 Copy-Item -LiteralPath $payload -Destination "$package/payload" -Recurse
 if($VoicePin){[IO.File]::WriteAllText("$package/payload/fixture-voice-pin.enabled",'Synthetic long channel and voice controls; no media or network.')}
 if($VoiceControls){[IO.File]::WriteAllText("$package/payload/fixture-voice-controls.enabled",'Synthetic participant and device controls; no media, devices or network.')}
+if($Messages){
+    [IO.File]::WriteAllText("$package/payload/fixture-messages.enabled",[IO.Path]::GetFullPath("$output/messages-provider.json"))
+}
 Copy-Item -LiteralPath "$repo/samples/DiscordWebViewWidget/assets","$repo/samples/DiscordWebViewWidget/styles" -Destination $package -Recurse
 $manifest=Get-Content "$repo/samples/DiscordWebViewWidget/manifest.json" -Raw|ConvertFrom-Json -AsHashtable
 $manifest.id='widgetrail.tests.discord-ui';$manifest.publisher='widgetrail.tests';$manifest.name='Discord UI fixture';$manifest.version='0.0.1'

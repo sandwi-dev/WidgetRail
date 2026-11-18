@@ -261,6 +261,7 @@ public sealed class WidgetHostServices
         Capture = new WidgetCaptureService(capabilityClient);
         CaptureLibrary = new WidgetCaptureLibraryService(capabilityClient);
         Documents = new WidgetDocumentService(capabilityClient);
+        Files = new WidgetFileService(capabilityClient);
         Media = new WidgetMediaService(capabilityClient);
         Loopback = new WidgetLoopbackHttpService(capabilityClient);
         PrivateSecrets = new WidgetPrivateSecretService(capabilityClient);
@@ -285,6 +286,8 @@ public sealed class WidgetHostServices
     public WidgetCaptureService Capture { get; }
     public WidgetCaptureLibraryService CaptureLibrary { get; }
     public WidgetDocumentService Documents { get; }
+    /// <summary>Read-only references to explicitly selected or shared files. These references never disclose host paths.</summary>
+    public WidgetFileService Files { get; }
     public WidgetMediaService Media { get; }
     public WidgetLoopbackHttpService Loopback { get; }
     public WidgetPrivateSecretService PrivateSecrets { get; }

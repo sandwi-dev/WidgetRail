@@ -98,7 +98,7 @@
     <Content Include="$(WindowPreviewNativePath)"
              Condition="Exists('$(WindowPreviewNativePath)')"
              Link="WinUiWindowPreviewNative.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="$(WebCaptureNativeDirectory)\WebRtcCaptureWorker.exe;$(WebCaptureNativeDirectory)\CaptureWorkerHost.dll;$(WebCaptureNativeDirectory)\WebRtcCapturePrototype.dll"
+    <Content Include="$(WebCaptureNativeDirectory)\WebRtcCaptureWorker.exe;$(WebCaptureNativeDirectory)\CaptureWorkerHost.dll;$(WebCaptureNativeDirectory)\WebRtcCapturePrototype.dll;$(WebCaptureNativeDirectory)\ReplayCaptureWorker.exe;$(WebCaptureNativeDirectory)\ReplayWorkerHost.dll"
              Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\third_party\WinUIEx\LICENSE" Link="licenses\WinUIEx.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

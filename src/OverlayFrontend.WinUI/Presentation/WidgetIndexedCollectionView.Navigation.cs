@@ -13,10 +13,13 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetIndexedCollectionView
 {
     private int? pendingIndex;
+    private double? navigationRequestExtent;
     private bool navigationQueued;
     private bool navigationNeedsScroll;
     private bool viewportRevealQueued;
     private bool scrollOnly;
+    private double? revealPendingOffset;
+    private bool revealRequested;
 
     private void NativeViewportSizeChanged(object sender, SizeChangedEventArgs args)
     {
@@ -59,6 +62,18 @@ internal sealed partial class WidgetIndexedCollectionView
     private IndexedItemsSource<WidgetIndexedRow>.Retention? navigationRetention;
     private sealed record EntryIntent(int Index, IndexedCollectionFocusTarget? Target, bool AllowFallback);
     private EntryIntent? CaptureEntry() => entering && pendingIndex is { } index ? new(index, pendingEntry, allowEntryFallback) : null;
+    private EntryIntent? RebaseEntry(EntryIntent? entry,WidgetPresentationBinding binding,ViewNode next)
+    {
+        // Only an active exact Enter may outrank older remembered focus. A
+        // passive Reveal is not captured here and can never acquire focus.
+        if(entry?.Target is not {} target || source is null || !source.Presentation.SameSurface(binding) ||
+            source.ActiveScope!=binding.Scope || source.Declaration.Id!=next.Id || !MatchesQuery(target) ||
+            entry.Index!=target.Index || source.Declaration is not {IndexedCollection:{} previous,IndexedOccurrenceKeys:{} oldKeys} ||
+            next is not {IndexedCollection:{} query,IndexedOccurrenceKeys:{} keys} || query.QueryGeneration<=previous.QueryGeneration ||
+            !IndexedCollectionContract.SameViewportDomain(query,previous) || target.Index>=oldKeys.Count || oldKeys[target.Index]!=target.ItemKey)return null;
+        var index=keys.ToList().IndexOf(target.ItemKey);
+        return index<0?null:entry with{Index=index,Target=target with{QueryGeneration=query.QueryGeneration,Index=index}};
+    }
     private void RestoreEntry(EntryIntent? entry)
     {
         if (entry is null || entering || view is null || source is null || !CanReceiveInput || entry.Index >= source.Items.Count) return;
@@ -70,6 +85,7 @@ internal sealed partial class WidgetIndexedCollectionView
         QueueNavigation();
     }
     internal bool IsEntryPending => entering || pendingContinuity?.Focus is not null;
+    internal bool IsScrollRevealPending => scrollOnly && pendingIndex is not null;
     internal bool IsFocusParked => XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is { } focused &&
         (ReferenceEquals(focused, this) || ReferenceEquals(focused, view));
     private void ParkFocusForQueryReplacement()
@@ -78,8 +94,12 @@ internal sealed partial class WidgetIndexedCollectionView
         // Keep native focus in the logical collection, but outside ListView while
         // its ItemsSource is reset. Otherwise ListView schedules its own first-item
         // focus after realization, overriding a later authored deep-row entry.
+        ParkCollectionFocus();
+    }
+    private bool ParkCollectionFocus()
+    {
         IsTabStop = true;
-        try { Focus(FocusState.Programmatic); }
+        try { return Focus(FocusState.Programmatic); }
         finally { IsTabStop = false; }
     }
     internal event Action? NavigationSettled;
@@ -91,10 +111,19 @@ internal sealed partial class WidgetIndexedCollectionView
             ? row.Item.Root.Focus : null;
     internal Action<IndexedCollectionFocusTarget>? FocusRemembered { get; set; }
 
-    internal Control? RetainedFocusTarget(IndexedCollectionFocusTarget target) =>
+    internal Control? RetainedFocusTarget(IndexedCollectionFocusTarget target, bool requireVisible = false) =>
         MatchesQuery(target) && source!.Items[target.Index] is IndexedItem<WidgetIndexedRow> { Key: { } key } &&
-        key == target.ItemKey && view?.ContainerFromIndex(target.Index) is Control { IsLoaded: true, IsEnabled: true } control
+        key == target.ItemKey && view?.ContainerFromIndex(target.Index) is Control { IsLoaded: true, IsEnabled: true } control &&
+        (!requireVisible || ReadyTargetVisible(control))
             ? control : null;
+
+    private bool ReadyTargetVisible(Control target)
+    {
+        if (view is null || FindNativeScroll(view) is not { ViewportWidth: > 0, ViewportHeight: > 0 } scroll || target.ActualWidth <= 0 || target.ActualHeight <= 0) return false;
+        var visible = WidgetScrollViewport.ContentBounds(scroll);
+        var bounds = LayoutBoundsInScroll(target, scroll);
+        return bounds.Left >= visible.Left - .5 && bounds.Top >= visible.Top - .5 && bounds.Right <= visible.Right + .5 && bounds.Bottom <= visible.Bottom + .5;
+    }
 
     internal bool Enter(IndexedCollectionFocusTarget? target = null, bool allowFallback = false)
     {
@@ -103,11 +132,53 @@ internal sealed partial class WidgetIndexedCollectionView
         if (source.Items.Count == 0 && source.Declaration.IndexedCollection?.Discovery is not
             { HasMore: true, Status: DiscoveredCollectionStatus.Ready or DiscoveredCollectionStatus.Loading }) return false;
         if (target is not null && !MatchesQuery(target)) return false;
+        return BeginEntry(target?.Index??0,target,allowFallback||target is null);
+    }
+    internal bool EnterVisibleEdge(FocusNavigationDirection direction,FrameworkElement? origin)
+    {
+        if(disposed || source is null || view?.IsLoaded!=true || origin is null || origin.XamlRoot!=XamlRoot || !CanReceiveInput || layoutKind!=CollectionLayoutKind.List ||
+            FindNativeScroll(view) is not {ViewportWidth:>0,ViewportHeight:>0} scroll)return false;
+        var candidates=VisibleOccurrences(scroll,includeLoading:true).Where(item=>!item.Slot.Failed &&
+            item.Slot.Value is not {Lease.IsCurrent:true,Item.Root.IsDisabled:true}).ToArray();
+        if(candidates.Length==0)return false;
+        var policy=direction switch{FocusNavigationDirection.Up=>FocusDirection.Up,FocusNavigationDirection.Down=>FocusDirection.Down,
+            FocusNavigationDirection.Left=>FocusDirection.Left,FocusNavigationDirection.Right=>FocusDirection.Right,_=>(FocusDirection?)null};
+        if(policy is null)return false;
+        // Rank only the displayed slices through the same directional geometry
+        // policy as ordinary controls. Offscreen remembered rows are not input
+        // candidates; their return/navigation memory remains available separately.
+        var from=origin.TransformToVisual(scroll).TransformBounds(new(0,0,origin.ActualWidth,origin.ActualHeight));
+        var visible=WidgetScrollViewport.ContentBounds(scroll);
+        var ranked=candidates.Select(item=>
+        {
+            var clipped=item.Bounds;clipped.Intersect(visible);
+            return new FocusCandidate(item.Slot.Index.ToString(System.Globalization.CultureInfo.InvariantCulture),new(clipped.X,clipped.Y,clipped.Width,clipped.Height));
+        });
+        var chosen=DirectionalFocusPolicy.Choose(new(from.X,from.Y,from.Width,from.Height),policy.Value,ranked);
+        if(chosen is null)return false;
+        var slot=candidates.First(item=>item.Slot.Index.ToString(System.Globalization.CultureInfo.InvariantCulture)==chosen).Slot;
+        var query=source.Declaration.IndexedCollection!;
+        IndexedCollectionFocusTarget? target=slot.Key is {} key?new(source.Declaration.Id,query.SourceId,query.QueryGeneration,key,slot.Index):null;
+        CancelContinuity();
+        return BeginEntry(slot.Index,target,false);
+    }
+    private bool BeginEntry(int index,IndexedCollectionFocusTarget? target,bool allowFallback)
+    {
+        if(disposed || source is null || view is null || !CanReceiveInput)return false;
         CancelNavigation();
         entering = true;
-        allowEntryFallback = allowFallback || target is null;
+        allowEntryFallback = allowFallback;
         pendingEntry = target;
-        pendingIndex = target?.Index ?? 0;
+        pendingIndex = index;
+        // Reuse the same admission/container checks as delayed navigation. A
+        // current, already-visible row needs neither ScrollIntoView nor another
+        // dispatcher/layout round trip. Retained stale pixels never take this path.
+        if (target is not null && RetainedFocusTarget(target, requireVisible: true) is not null &&
+            source.Items[target.Index] is IndexedItem<WidgetIndexedRow> { Value: { Lease.IsCurrent: true } })
+        {
+            CompleteNavigation();
+            if (pendingIndex is null) return true;
+        }
         QueueNavigation();
         return true;
     }
@@ -137,7 +208,7 @@ internal sealed partial class WidgetIndexedCollectionView
     {
         if (entering) CancelNavigation();
     }
-    internal void CancelHostNavigation() { CancelContinuity(); CancelNavigation(); }
+    internal void CancelHostNavigation(bool preserveReader = false) { CancelInputContinuity(preserveReader); CancelNavigation(); }
 
     internal IEnumerable<Control> ScrollFocusCandidates() => containers
         .Where(pair => pair.Value.Slot.Value?.Lease.IsCurrent == true && !pair.Value.Slot.Failed)
@@ -153,12 +224,19 @@ internal sealed partial class WidgetIndexedCollectionView
 
     private void RememberItemFocus()
     {
-        if (CaptureFocusedItem() is { } item) FocusRemembered?.Invoke(item);
+        if (CaptureFocusedItem() is not { } item) return;
+        if (heldViewport is { } recovery) recovery.Focus = item;
+        if (!transferringContinuityFocus && pendingContinuity is { } continuity && continuity.OwnedFocusKey != item.ItemKey)
+        {
+            TraceContinuity("focus-departure", continuity.Viewport);
+            CancelContinuity();
+        }
+        FocusRemembered?.Invoke(item);
     }
 
     internal bool MoveFocus(FocusNavigationDirection direction)
     {
-        CancelContinuity();
+        CancelInputContinuity(true);
         CancelReveal();
         CancelPendingActivation();
         if (view is null || source is null || !CanReceiveInput || view.Items.Count == 0) return false;
@@ -197,9 +275,11 @@ internal sealed partial class WidgetIndexedCollectionView
                 if (source.Items.HasMoreItems) _ = source.ContinueAsync();
                 return true;
             }
-            if (target < 0 || target >= view.Items.Count) return pendingIndex is not null;
+            if (target < 0 || target >= view.Items.Count)
+                return RequestAdjacentBoundary(target<0?IndexedCollectionBoundary.Before:IndexedCollectionBoundary.After) || pendingIndex is not null;
         }
         pendingIndex = target;
+        RetainHeldNavigationTarget(target);
         pendingDirection = direction;
         QueueNavigation();
         return true;
@@ -221,7 +301,7 @@ internal sealed partial class WidgetIndexedCollectionView
         if (!navigationQueued)
         {
             navigationQueued = true;
-            if (!DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            if (!DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Normal, () =>
             {
                 navigationQueued = false;
                 if (pendingIndex is not { } index || view is null || index >= view.Items.Count) return;
@@ -246,6 +326,7 @@ internal sealed partial class WidgetIndexedCollectionView
                         FindNativeScroll(view) is not { ViewportWidth: > 0, ViewportHeight: > 0 }) return;
                     navigationNeedsScroll = false;
                     view.ScrollIntoView(view.Items[index], ScrollIntoViewAlignment.Default);
+                    navigationRequestExtent=NavigationExtent();
                     QueueNavigation(scrollIntoView: false);
                     return;
                 }
@@ -281,7 +362,22 @@ internal sealed partial class WidgetIndexedCollectionView
     // Realization/layout notifications report readiness. Focus is committed only
     // after those native callbacks and ScrollIntoView have unwound: WinUI may
     // still choose its own reset target inside the realization transaction.
-    private void FinishNavigation(object? sender, object args) => QueueNavigation(scrollIntoView: false);
+    private double? NavigationExtent()=>!disposed && view is not null && FindNativeScroll(view) is {} scroll
+        ?axis==ScrollAxis.Horizontal?scroll.ScrollableWidth:scroll.ScrollableHeight:null;
+    private void FinishNavigation(object? sender, object args)
+    {
+        if(disposed || pendingIndex is null || view is null)return;
+        // Real rows can displace a loading-estimate target out of realization.
+        // Reissue that same retained target only when native geometry changed,
+        // never on an unchanged frame or by accumulating future navigation.
+        var extent=NavigationExtent();
+        var retarget=pendingIndex is {} index && view?.ContainerFromIndex(index) is not FrameworkElement{IsLoaded:true} &&
+            extent is {} current && navigationRequestExtent is {} previous &&
+            Math.Abs(current-previous)>1/(view?.XamlRoot?.RasterizationScale??1);
+        if(retarget)TraceNavigationRealization(pendingIndex!.Value,navigationRequestExtent!.Value,extent!.Value);
+        QueueNavigation(scrollIntoView:retarget);
+    }
+    partial void TraceNavigationRealization(int index,double previousExtent,double currentExtent);
 
     private void CompleteNavigation()
     {
@@ -317,7 +413,43 @@ internal sealed partial class WidgetIndexedCollectionView
         if (target is not Microsoft.UI.Xaml.Controls.Primitives.SelectorItem selector ||
             !containers.TryGetValue(selector, out var bound) || !ReferenceEquals(bound.Slot, slot) ||
             target.IsEnabled != (row.Item.Root.IsDisabled != true)) return;
-        if (scrollOnly) { CancelNavigation(); return; }
+        if (scrollOnly || target.IsEnabled)
+        {
+            // Focus and passive reveal must use the same current row geometry.
+            // Committing focus against a loading estimate can leave its real
+            // container far offscreen once long rows finish arranging.
+            if (!HasCurrentRowLayout(target, row) || FindNativeScroll(view) is not { } scroll) return;
+            var bounds = LayoutBoundsInScroll(target, scroll);
+            var visible = WidgetScrollViewport.ContentBounds(scroll);
+            var horizontal = axis == ScrollAxis.Horizontal;
+            var itemStart = horizontal ? bounds.Left : bounds.Top;
+            var itemEnd = horizontal ? bounds.Right : bounds.Bottom;
+            var viewportStart = horizontal ? visible.Left : visible.Top;
+            var viewportEnd = horizontal ? visible.Right : visible.Bottom;
+            var inset = horizontal ? view.Padding.Left + view.Padding.Right + target.Margin.Left + target.Margin.Right :
+                view.Padding.Top + view.Padding.Bottom + target.Margin.Top + target.Margin.Bottom;
+            var tolerance = 1 / (view.XamlRoot?.RasterizationScale ?? 1);
+            var overlap = Math.Max(0, Math.Min(itemEnd, viewportEnd) - Math.Max(itemStart, viewportStart));
+            var required = Math.Min(itemEnd - itemStart, Math.Max(1, viewportEnd - viewportStart - inset));
+            if (scrollOnly && source.Declaration.IndexedCollection?.EndFollowingEpoch is not null && index == source.Items.Count - 1)
+            {
+                if (!RestoreFollowingEnd(slot, ref revealRequested, ref revealPendingOffset)) return;
+            }
+            else if (overlap + tolerance < required)
+            {
+                // Native ScrollIntoView may have used the loading estimate.
+                // Reconcile the same occurrence through existing viewport memory
+                // once its real row has arranged; native layout/ViewChanged owns
+                // completion, rather than a dispatcher retry loop.
+                var query = source.Declaration.IndexedCollection!;
+                var desiredLeading = itemStart < viewportStart || itemEnd - itemStart >= viewportEnd - viewportStart
+                    ? 0 : viewportEnd - viewportStart - (itemEnd - itemStart);
+                var memory = new IndexedViewportMemento(new(source.ActiveScope, source.Declaration.Id, ViewNodeKind.IndexedCollection, ""),
+                    query.SourceId, query.QueryGeneration, layoutKind!.Value, axis!.Value, index, slot.Key!, 0, desiredLeading);
+                if (!RestoreViewportGeometry(memory,target,scroll,ref revealPendingOffset)) return;
+            }
+            if(scrollOnly){CancelNavigation();return;}
+        }
         if (!target.IsEnabled)
         {
             TraceNavigation("disabled-target", index, row, target);
@@ -342,6 +474,9 @@ internal sealed partial class WidgetIndexedCollectionView
 
     private void CancelNavigation()
     {
+        navigationRequestExtent=null;
+        revealPendingOffset = null;
+        revealRequested = false;
         var wasPending = pendingIndex is not null;
         ReleaseNavigationRetention();
         CancelPendingActivation();
@@ -367,7 +502,7 @@ internal sealed partial class WidgetIndexedCollectionView
             args.InputDevice == FocusInputDeviceKind.Keyboard && args.OldFocusedElement is Control { IsEnabled: false } &&
             args.NewFocusedElement is FrameworkElement replacement && ReferenceEquals(replacement.XamlRoot, view?.XamlRoot)) return;
         extendAfterNavigation = null;
-        CancelContinuity();
+        CancelInputContinuity();
         CancelNavigation();
     }
     partial void TraceFocusDeparture(LosingFocusEventArgs args);

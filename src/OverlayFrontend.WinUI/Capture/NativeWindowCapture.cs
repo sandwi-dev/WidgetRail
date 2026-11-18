@@ -10,9 +10,24 @@ internal static partial class NativeWindowCapture
 {
     private static readonly CaptureEncoderDiscovery discovery = new(
         () => Windows.Graphics.Capture.GraphicsCaptureSession.IsSupported(), ProbeProfile, ProbeApplicationAudio);
-    private static readonly Lazy<Task<CaptureCapabilities>> capabilities = new(() => discovery.DiscoverAsync());
-    internal static Task<CaptureCapabilities> GetCapabilitiesAsync() => capabilities.Value;
-    internal static Task<CaptureCapabilities> GetRecordingCapabilitiesAsync(CaptureRecordingQuery query) => discovery.DiscoverAsync(query);
+    internal static Task<CaptureCapabilities> GetCapabilitiesAsync()
+    {
+        RefreshEncodingEnvironment();
+        return discovery.DiscoverAsync();
+    }
+    internal static Task<CaptureCapabilities> GetRecordingCapabilitiesAsync(CaptureRecordingQuery query)
+    {
+        if(query.Recording is {Selection:not null} or {Encoding:not null})return CaptureRecordingResolver.DiscoverAsync(query);
+        RefreshEncodingEnvironment();
+        return discovery.DiscoverAsync(query);
+    }
+    private static void RefreshEncodingEnvironment()
+    {
+        try { _=ReadEncodingEnvironment(); }
+        // Legacy capture exports remain independently usable. Advanced selections
+        // require the new inventory and do not take this compatibility fallback.
+        catch(Exception error) when(error is EntryPointNotFoundException or DllNotFoundException or BadImageFormatException or System.Runtime.InteropServices.COMException) { }
+    }
     internal static CaptureCapabilities ImageCapabilities() => Windows.Graphics.Capture.GraphicsCaptureSession.IsSupported()
         ? new(true, (CaptureImageFormat[])[CaptureImageFormat.Png], Array.Empty<CaptureRecordingProfile>(),
             (CaptureAudioMode[])[CaptureAudioMode.None], true, CaptureLimits.MaximumRecordingSeconds)
@@ -83,6 +98,7 @@ internal static partial class NativeWindowCapture
     internal sealed record CapturedResult(uint Width, uint Height, uint Frames, double DurationSeconds, NativeWindowPreviewTarget Target)
     {
         internal CaptureMediaProperties? Properties { get; init; }
+        internal CaptureRecordingConfiguration? ResolvedRecording { get; init; }
     }
     internal static async Task<CapturedResult> RunAsync(HostWindowCapture request, CancellationToken token, CancellationToken stop = default)
     {
@@ -106,6 +122,19 @@ internal static partial class NativeWindowCapture
             if (request.Options is { } settings)
             {
                 var video = settings.Recording;
+                ResolvedCaptureRecording? resolved=null;
+                if(video is {Selection:not null} or {Encoding:not null})
+                {
+                    resolved=CaptureRecordingResolver.ResolveAsync(identity,new CaptureReplaySettings {Recording=video},token).GetAwaiter().GetResult();
+                    if(resolved is null)throw new BrokerException("capture_encoding_unsupported","The requested encoder configuration is unavailable.");
+                    video=resolved.Configuration.Recording;
+                    var exact=new CaptureRecordingProfile("resolved",video.MaximumWidth,video.MaximumHeight,video.FramesPerSecond,
+                        video.Bitrate,video.Bitrate,video.Encoder){Encoding=video.Encoding,Adapter=resolved.Configuration.Adapter};
+                    var admission=new CaptureCapabilities(true,(CaptureImageFormat[])[CaptureImageFormat.Png],(CaptureRecordingProfile[])[exact],
+                        video.Audio==CaptureAudioMode.None?(CaptureAudioMode[])[CaptureAudioMode.None]:(CaptureAudioMode[])[CaptureAudioMode.None,video.Audio],true,CaptureLimits.MaximumRecordingSeconds)
+                        .Validate(settings with{Recording=video});
+                    if(!admission.Supported)throw new BrokerException(admission.ErrorCode!,"The resolved recording exceeds the requested output budget.");
+                }
                 var options = new Options { Size = (uint)sizeof(Options), Version = 3, Kind = (uint)request.Kind,
                     MaximumWidth = (uint)(video?.MaximumWidth ?? settings.Screenshot?.MaximumWidth ?? 0),
                     MaximumHeight = (uint)(video?.MaximumHeight ?? settings.Screenshot?.MaximumHeight ?? 0),
@@ -114,12 +143,31 @@ internal static partial class NativeWindowCapture
                     Encoder = (uint)(video?.Encoder ?? CaptureEncoderMode.Software), MaximumBytes = (ulong)settings.MaximumBytes,
                     AudioMode = (uint)(video?.Audio ?? CaptureAudioMode.None) };
                 var output = new ConfiguredResult { Size = (uint)sizeof(ConfiguredResult), Version = 3 };
-                var code = CaptureConfigured(in target, request.OutputPath, in options,
-                    (nint)(delegate* unmanaged[Stdcall]<nint, int>)&Current, GCHandle.ToIntPtr(root), ref output);
+                int code;
+                if(resolved is null)
+                    code = settings.OutputPurpose == CaptureOutputPurpose.LibraryRecording
+                        ? CaptureLibraryRecording(in target, request.OutputPath, in options, 0, 0, 0,
+                            (nint)(delegate* unmanaged[Stdcall]<nint, int>)&Current, GCHandle.ToIntPtr(root), ref output)
+                        : CaptureConfigured(in target, request.OutputPath, in options,
+                            (nint)(delegate* unmanaged[Stdcall]<nint, int>)&Current, GCHandle.ToIntPtr(root), ref output);
+                else
+                {
+                    var encoding=video!.Encoding!;
+                    var selected=new EncodingSelectionNative {Size=32,Version=1,Codec=(uint)encoding.Codec,PixelFormat=(uint)encoding.PixelFormat,
+                        RateControl=(uint)encoding.RateControl,Quality=(uint)(encoding.Quality??75),AdapterLuid=resolved.NativeAdapterLuid};
+                    code=settings.OutputPurpose == CaptureOutputPurpose.LibraryRecording
+                        ? CaptureLibraryRecording(in target,request.OutputPath,in options,(nint)(&selected),
+                            (uint)resolved.Configuration.SourceWidth,(uint)resolved.Configuration.SourceHeight,
+                            (nint)(delegate* unmanaged[Stdcall]<nint,int>)&Current,GCHandle.ToIntPtr(root),ref output)
+                        : CaptureConfiguredEncoding(in target,request.OutputPath,in options,in selected,
+                            (uint)resolved.Configuration.SourceWidth,(uint)resolved.Configuration.SourceHeight,
+                            (nint)(delegate* unmanaged[Stdcall]<nint,int>)&Current,GCHandle.ToIntPtr(root),ref output);
+                }
                 token.ThrowIfCancellationRequested();
                 if (code == unchecked((int)0x80004004) && stop.IsCancellationRequested) throw new OperationCanceledException(stop);
                 Marshal.ThrowExceptionForHR(code);
                 return new(output.Width, output.Height, output.Frames, output.DurationSeconds, identity) {
+                    ResolvedRecording = resolved?.Configuration,
                     Properties = new((int)output.SourceWidth, (int)output.SourceHeight, video?.FramesPerSecond ?? 0,
                         video is null ? 0 : (int)output.Frames, (int)output.MissedFrames,
                         video is null ? null : (CaptureEncoderMode)output.Encoder, (CaptureAudioMode)output.AudioMode) };
@@ -143,6 +191,9 @@ internal static partial class NativeWindowCapture
     private static partial int Capture(in NativePreviewTarget target, string path, uint kind, nint authority, nint context, ref Result result);
     [LibraryImport("WinUiWindowPreviewNative.dll", EntryPoint = "WrailCaptureWindowConfigured", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int CaptureConfigured(in NativePreviewTarget target, string path, in Options options, nint authority, nint context, ref ConfiguredResult result);
+    [LibraryImport("WinUiWindowPreviewNative.dll", EntryPoint = "WrailCaptureWindowLibraryV1", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int CaptureLibraryRecording(in NativePreviewTarget target, string path, in Options options,
+        nint selection, uint expectedSourceWidth, uint expectedSourceHeight, nint authority, nint context, ref ConfiguredResult result);
     [LibraryImport("WinUiWindowPreviewNative.dll", EntryPoint = "WrailProbeCaptureEncoding")]
     private static partial int ProbeEncoding(in Options options, ref EncodingProbe result);
     [LibraryImport("WinUiWindowPreviewNative.dll", EntryPoint = "WrailProbeCaptureAudio")]

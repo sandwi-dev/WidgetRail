@@ -30,6 +30,9 @@ internal sealed class ProtocolVersionRequirements
         if (snapshot.ScrollRevealRequest?.IndexedItem is not null)
             Add("indexed-scroll-reveal", ProtocolConstants.IndexedScrollRevealVersion, "$.scrollRevealRequest.indexedItem",
                 "Scroll-only reveal of an indexed occurrence requires protocol version 90 or later.");
+        if(snapshot.ScrollRevealRequest?.DeferredSource is not null)
+            Add("deferred-indexed-reveal",ProtocolConstants.TargetedCollectionPresentationVersion,"$.scrollRevealRequest.deferredSource",
+                "Deferred indexed reveal requires protocol version 122 or later.");
 
         if (snapshot.FocusGroupEntryRequest is not null)
         {
@@ -158,6 +161,9 @@ internal sealed class ProtocolVersionRequirements
             bool inferDeferredFocusGroupEntry)
         {
             if (node is null) return;
+            if (node.FocusPreview?.AllowMedia == true || node.MediaPlayer?.Source.Kind == MediaPlayerSourceKind.SavedCapture ||
+                node.Kind == ViewNodeKind.MediaPlayer && node.ArtworkHandle is not null)
+                Add("preview-media", ProtocolConstants.PreviewMediaVersion, path, "Saved capture sources and native preview media require protocol version 116 or later.");
             if (node.Disclosure is not null)
                 Add("controlled-disclosure", ProtocolConstants.DisclosureVersion, path + ".disclosure",
                     "Controlled disclosure requires protocol version 100 or later.");
@@ -168,12 +174,18 @@ internal sealed class ProtocolVersionRequirements
                 path.Contains(".defaultFocusPresentation", StringComparison.Ordinal)))
                 Add("interactive-preview-values", ProtocolConstants.InteractivePreviewValuesVersion, path,
                     "Sliders in rich previews require protocol version 110 or later.");
+            if (node.FocusPreview?.EnterButton == ControllerButton.A)
+                Add("primary-preview-entry", ProtocolConstants.PrimaryPreviewEntryVersion, path,
+                    "Primary activation entering a preview requires protocol version 115 or later.");
             if (node.FocusPreview?.EnterButton is not null)
                 Add("interactive-preview", ProtocolConstants.InteractivePreviewVersion, path,
                     "Interactive rich previews require protocol version 94 or later.");
             if (node.FocusPreview?.SizeToContentHeight == true || node.AnchoredPresentation?.SizeToContentHeight == true)
                 Add("content-sized-presentation", ProtocolConstants.ContentSizedPresentationVersion, path,
                     "Content-sized presentations require protocol version 93 or later.");
+            if (node.FocusPreview?.Placement == AnchorPlacement.CenterOnAnchor || node.AnchoredPresentation?.Placement == AnchorPlacement.CenterOnAnchor)
+                Add("centered-anchor-placement", ProtocolConstants.CenteredAnchorPlacementVersion, path,
+                    "Centering a presentation over its anchor requires protocol version 123 or later.");
             if (node.FocusPreview is not null)
                 Add("focus-preview", ProtocolConstants.AnchoredPresentationVersion, path + ".focusPreview",
                     "Anchored focus previews require protocol version 92 or later.");
@@ -186,6 +198,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.GridLayout is not null || node.GridCell is not null)
                 Add("grid-layout", ProtocolConstants.GridLayoutVersion, path,
                     $"Explicit Grid layout and cell placement require protocol version {ProtocolConstants.GridLayoutVersion} or later.");
+            if(node.GridCell is {HorizontalAlignment:not null} or {VerticalAlignment:not null})
+                Add("grid-cell-alignment",ProtocolConstants.TargetedCollectionPresentationVersion,path+".gridCell",
+                    $"Grid cell content alignment requires protocol version {ProtocolConstants.TargetedCollectionPresentationVersion} or later.");
             nodes++;
             if (nodes > ProtocolConstants.MaximumNodeCount ||
                 depth > ProtocolConstants.MaximumTreeDepth)
@@ -198,6 +213,9 @@ internal sealed class ProtocolVersionRequirements
                 Add("line-graph-empty-text", ProtocolConstants.LineGraphEmptyTextVersion, path,
                     "Authored graph empty text requires protocol version 111 or later.");
             var capture = node.CapturedMedia ?? node.MediaPlayer?.Source?.Attachment;
+            if (capture?.Origin == CaptureAttachmentOrigin.LibraryRecordingDraft)
+                Add("library-recording-draft", ProtocolConstants.LibraryRecordingDraftVersion, path,
+                    "Staged library recordings require protocol version 124 or later.");
             // The wire shape predates library playback, but earlier validators
             // admit only capture-sized video and require native encoder telemetry
             // outside their small legacy envelope. Negotiate the widened meaning.
@@ -249,6 +267,12 @@ internal sealed class ProtocolVersionRequirements
             if (node.IndexedCollection?.CanLocateItems == true)
                 Add("indexed-lookup", ProtocolConstants.IndexedLookupVersion, path + ".indexedCollection.canLocateItems",
                     "Indexed lookup requires protocol version 113 or later.");
+            if(node.IndexedCollection?.RefreshFromQuery is not null)
+                Add("indexed-query-refresh",ProtocolConstants.IndexedQueryRefreshVersion,path+".indexedCollection.refreshFromQuery",
+                    "Same-query refresh continuity requires protocol version 127 or later.");
+            if (node.IndexedCollection?.EndFollowingEpoch is not null)
+                Add("indexed-end-following", ProtocolConstants.IndexedEndFollowingVersion, path + ".indexedCollection.endFollowingEpoch",
+                    "Indexed end following requires protocol version 118 or later.");
             if (node.IndexedSelection is not null)
                 Add("indexed-selection", ProtocolConstants.IndexedSelectionVersion, path + ".indexedSelection",
                     "Indexed selection requires protocol version 112 or later.");
@@ -291,6 +315,9 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.ContextActionsVersion,
                     $"{path}.contextActions",
                     $"Context actions require protocol version {ProtocolConstants.ContextActionsVersion} or later.");
+            if (node.IsCommandMenu is not null)
+                Add("command-menu", ProtocolConstants.CommandMenuVersion, $"{path}.isCommandMenu",
+                    "Command dropdowns require protocol version 115 or later.");
             if (node.Kind is not ViewNodeKind.Select &&
                 (node.SelectOptions?.Count ?? 0) != 0)
                 Add(
@@ -377,6 +404,9 @@ internal sealed class ProtocolVersionRequirements
                     break;
                 case ViewNodeKind.RichText:
                     Add("rich-text", ProtocolConstants.RichTextVersion, path, "RichText requires protocol version 76 or later.");
+                    if (node.Children?.Any(child => child?.Kind == ViewNodeKind.Image) == true)
+                        Add("rich-text-images", ProtocolConstants.InlineRichImageVersion, path,
+                            $"Inline rich-text images require protocol version {ProtocolConstants.InlineRichImageVersion} or later.");
                     break;
                 case ViewNodeKind.Grid:
                     Add(
@@ -565,6 +595,29 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.RepeatOneGlyphVersion,
                     $"{path}.glyph",
                     $"Repeat One requires protocol version {ProtocolConstants.RepeatOneGlyphVersion} or later.");
+            if (node.Glyph is { } actionGlyph && actionGlyph >= WidgetGlyph.Back)
+                Add("common-action-glyph", ProtocolConstants.CommonActionGlyphVersion, $"{path}.glyph",
+                    $"Common action icons require protocol version {ProtocolConstants.CommonActionGlyphVersion} or later.");
+            if (node.Glyph is WidgetGlyph.ChevronLeft or WidgetGlyph.ChevronRight)
+                Add("navigation-chevron-glyph", ProtocolConstants.TargetedCollectionPresentationVersion, $"{path}.glyph",
+                    "Navigation chevrons require protocol version 122 or later.");
+            if (node.FocusVisualTargetId is not null)
+                Add("focus-visual-target", ProtocolConstants.TargetedCollectionPresentationVersion, $"{path}.focusVisualTargetId",
+                    "Targeted focus decorations require protocol version 122 or later.");
+            if(node.IndexedDirectionalEntry!=IndexedDirectionalEntryMode.Remembered)
+                Add("indexed-directional-entry",ProtocolConstants.DirectionalCollectionEntryVersion,$"{path}.indexedDirectionalEntry",
+                    "Visible-edge indexed entry requires protocol version 125 or later.");
+            if (node.IndexedCollection?.ObservesBoundaries==true || node.CollectionBoundaries is not null)
+                Add("indexed-boundary-observation", ProtocolConstants.TargetedCollectionPresentationVersion, $"{path}.collectionBoundaries",
+                    "Indexed boundary observation requires protocol version 122 or later.");
+            for (var index = 0; index < selectOptions.Count; index++)
+                if (selectOptions[index]?.Glyph is { } optionGlyph && optionGlyph >= WidgetGlyph.Back)
+                    Add("common-action-glyph", ProtocolConstants.CommonActionGlyphVersion, $"{path}.selectOptions[{index}].glyph",
+                        $"Common action icons require protocol version {ProtocolConstants.CommonActionGlyphVersion} or later.");
+            for (var index = 0; index < selectOptions.Count; index++)
+                if (selectOptions[index]?.Glyph is WidgetGlyph.ChevronLeft or WidgetGlyph.ChevronRight)
+                    Add("navigation-chevron-glyph", ProtocolConstants.TargetedCollectionPresentationVersion, $"{path}.selectOptions[{index}].glyph",
+                        "Navigation chevrons require protocol version 122 or later.");
             if (node.Glyph is WidgetGlyph.Rewind or WidgetGlyph.FastForward)
                 Add(
                     "semantic-seek-glyph",

@@ -8,6 +8,20 @@ namespace WidgetRail.WinUiShell.Tests;
 public sealed class AnchoredPresentationGeometryTests
 {
     [TestMethod]
+    public void CenterOnAnchorOverlaysItsSourceAndClampsWithoutDirectionalFallback()
+    {
+        Assert.AreEqual(new AnchorRectangle(100,140,360,280),
+            AnchoredPresentationGeometry.Place(1000,800,new(240,260,80,40),360,280,AnchorPlacement.CenterOnAnchor));
+        foreach(var (anchor,expected) in new[] {
+            (new AnchorRectangle(0,0,80,40),new AnchorRectangle(16,16,360,280)),
+            (new AnchorRectangle(920,760,80,40),new AnchorRectangle(624,504,360,280)),
+            (new AnchorRectangle(-40,300,80,40),new AnchorRectangle(16,180,360,280)),
+            (new AnchorRectangle(300,-20,80,40),new AnchorRectangle(160,16,360,280)) })
+            Assert.AreEqual(expected,AnchoredPresentationGeometry.Place(1000,800,anchor,360,280,AnchorPlacement.CenterOnAnchor));
+        Assert.AreEqual(new AnchorRectangle(16,16,168,88),
+            AnchoredPresentationGeometry.Place(200,120,new(170,90,30,30),960,800,AnchorPlacement.CenterOnAnchor));
+    }
+    [TestMethod]
     public void FlipsAtEdgesAndKeepsVisibleAnchorClear()
     {
         var right = AnchoredPresentationGeometry.Place(1000, 800, new(100, 200, 80, 40), 360, 280);

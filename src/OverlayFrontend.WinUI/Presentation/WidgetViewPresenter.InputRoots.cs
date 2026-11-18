@@ -9,6 +9,7 @@ internal sealed partial class WidgetViewPresenter
     internal IDisposable AttachPresentationInput(UIElement root)
     {
         RoutedEventHandler focused = (_, _) => { RememberFocus(); RefreshScrollFocusOutline(); NotifyControllerGuideChanged(); };
+        Windows.Foundation.TypedEventHandler<UIElement,LosingFocusEventArgs> departing=(_,args)=>ObserveDeferredRevealFocus(args.NewFocusedElement);
         PointerEventHandler pressed = (_, _) => { CancelPassiveScrollFocus(); CancelGroupEntry(); CancelScrollReveal(); scrollGesture=null;directionalScroll=null;RefreshScrollFocusOutline(); };
         PointerEventHandler wheel = (_, _) =>
         {
@@ -25,7 +26,7 @@ internal sealed partial class WidgetViewPresenter
             if (Input.GamepadKeyBoundary.Owns(this, args)) return;
             if (args.Key is Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down or
                 Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right &&
-                FindIndexedCollection() is { IsFocusParked: true, IsEntryPending: true }) return;
+                AwaitingDirectionalEntry()) return;
             if (args.Key is Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down or Windows.System.VirtualKey.Left or
                 Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Tab or Windows.System.VirtualKey.Home or
                 Windows.System.VirtualKey.End or Windows.System.VirtualKey.PageUp or Windows.System.VirtualKey.PageDown or
@@ -36,6 +37,7 @@ internal sealed partial class WidgetViewPresenter
         root.PreviewKeyDown += NativeContextKeyDown;
         root.GotFocus += focused;
         root.GettingFocus += OnGettingFocus;
+        root.LosingFocus += departing;
         // Cancel the previous intent before this key starts a new one. Doing
         // this on bubbling KeyDown cancels the collection entry just queued by
         // DirectionalKeyDown for the very same arrow press.
@@ -61,7 +63,7 @@ internal sealed partial class WidgetViewPresenter
         return new InputRootLease(() =>
         {
             root.ContextRequested -= NativeContextRequested; root.PreviewKeyDown -= NativeContextKeyDown;
-            root.GotFocus -= focused; root.GettingFocus -= OnGettingFocus; root.PreviewKeyDown -= key; root.PreviewKeyDown -= DirectionalKeyDown;
+            root.GotFocus -= focused; root.GettingFocus -= OnGettingFocus; root.LosingFocus-=departing;root.PreviewKeyDown -= key; root.PreviewKeyDown -= DirectionalKeyDown;
             root.KeyDown -= ModalKeyDown;
             root.RemoveHandler(PointerPressedEvent, pressed); root.RemoveHandler(PointerWheelChangedEvent, wheel);
             if (portal)

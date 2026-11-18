@@ -74,7 +74,7 @@ public sealed partial class WidgetPresentationSession
             if (action.VisibleCollectionKeys is not null || action.RetainedCollectionKeys is not null || !Enum.IsDefined(origin))
                 throw PinnedStale("The pinned action payload is invalid.");
         }
-        if (binding.Role is "context" or "text")
+        if (binding.Role is "context" or "text" or "inline-preview")
             return SendPinnedDeclaredActionAsync(selection, projection, action, cancellationToken);
         var button = binding.Role == "slider" ? action.ControllerButton ?? ControllerButton.DPadRight
             : binding.Role == "shortcut" ? action.ControllerButton!.Value : ControllerButton.A;

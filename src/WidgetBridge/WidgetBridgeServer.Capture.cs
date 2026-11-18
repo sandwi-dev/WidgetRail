@@ -19,6 +19,10 @@ public sealed partial class WidgetBridgeServer
             case BridgeMessageTypes.TakeCapture:
                 var pending = captures.Take();
                 var (catalog, _) = _registry.CatalogSnapshot();
+                var edit = CaptureLibraryEditRequests.Pending;
+                var editWidget = edit is null ? null : catalog.Widgets.FirstOrDefault(item => item.InstanceId == edit.Widget.InstanceId);
+                if (edit is not null && (editWidget is null || !await CaptureEditAllowedAsync(edit, token).ConfigureAwait(false)))
+                { CaptureLibraryEditRequests.Cancel(edit.Id); edit = null; }
                 var sourceFolder = CaptureLibrarySourceRequests.Pending;
                 var sourceWidget = sourceFolder is null ? null : catalog.Widgets.FirstOrDefault(item => item.InstanceId == sourceFolder.Widget.InstanceId);
                 if (sourceFolder is not null && (sourceWidget is null || !await CaptureAllowedAsync(sourceFolder.Widget, token, PlatformCapabilities.CaptureLibraryManageV1).ConfigureAwait(false)))
@@ -36,7 +40,26 @@ public sealed partial class WidgetBridgeServer
                 { captures.Complete(new(pending.RequestId, 0, 0, 0, "permission_denied")); pending = null; }
                 await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureTake(pending, widget?.Id) {
                     NeedsCapabilities = captures.NeedsCapabilities, NeedsEncodingCapabilities = captures.NeedsEncodingCapabilities,
+                    Edit = edit, EditWidgetId = editWidget?.Id,
                     SourceFolder = sourceFolder, SourceWidgetId = sourceWidget?.Id, RecordingDiscoveries = captures.RecordingDiscoveries, CopyDestination = copy, CopyWidgetId = copyWidget?.Id, OpenFolder=folder, FolderWidgetId=folderWidget?.Id }, token).ConfigureAwait(false);
+                break;
+            case BridgeMessageTypes.CheckCaptureEdit:
+                var editCheck = BridgeJson.FromElement<BridgeCaptureReference>(request.Payload);
+                var checkingEdit = CaptureLibraryEditRequests.ActiveRequest(editCheck.RequestId);
+                if (checkingEdit?.Id == editCheck.RequestId && !await CaptureEditAllowedAsync(checkingEdit, token).ConfigureAwait(false))
+                    CaptureLibraryEditRequests.Cancel(editCheck.RequestId);
+                await ReplyAsync(request.Type, request.RequestId, CaptureLibraryEditRequests.Status(editCheck.RequestId), token).ConfigureAwait(false);
+                break;
+            case BridgeMessageTypes.CompleteCaptureEdit:
+                var editComplete = BridgeJson.FromElement<BridgeCaptureEditCompletion>(request.Payload);
+                var completingEdit = CaptureLibraryEditRequests.ActiveRequest(editComplete.Id);
+                var editAllowed = completingEdit?.Id == editComplete.Id && await CaptureEditAllowedAsync(completingEdit, token).ConfigureAwait(false);
+                var acceptedEdit = editAllowed && CaptureLibraryEditRequests.Complete(editComplete.Id, editComplete.Recipe);
+                await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureCurrent(acceptedEdit), token).ConfigureAwait(false);
+                break;
+            case BridgeMessageTypes.CancelCaptureEdit:
+                var editCancel = BridgeJson.FromElement<BridgeCaptureReference>(request.Payload);
+                await ReplyAsync(request.Type, request.RequestId, CaptureLibraryEditRequests.Cancel(editCancel.RequestId), token).ConfigureAwait(false);
                 break;
             case BridgeMessageTypes.CompleteCaptureSource:
                 var sourceResult = BridgeJson.FromElement<BridgeCaptureCopyDestination>(request.Payload);
@@ -132,7 +155,7 @@ public sealed partial class WidgetBridgeServer
 
     private async Task<bool> CaptureAllowedAsync(BrokerWidgetIdentity identity, CancellationToken token, string capability = PlatformCapabilities.WindowCaptureV1)
     {
-        if (capability is not (PlatformCapabilities.WindowCaptureV1 or PlatformCapabilities.CaptureLibraryReadV1 or PlatformCapabilities.CaptureLibraryManageV1)) return false;
+        if (capability is not (PlatformCapabilities.WindowCaptureV1 or PlatformCapabilities.CaptureLibraryReadV1 or PlatformCapabilities.CaptureLibrarySaveV1 or PlatformCapabilities.CaptureLibraryManageV1)) return false;
         var (catalog, _) = _registry.CatalogSnapshot();
         var descriptor = catalog.Widgets.FirstOrDefault(item => item.InstanceId == identity.InstanceId);
         if (descriptor is null || _consentStore is null) return false;
@@ -141,4 +164,9 @@ public sealed partial class WidgetBridgeServer
             configured.DeclaredCapabilities.Contains(capability) &&
             await _consentStore.GetDecisionAsync(identity, capability, token).ConfigureAwait(false) == ConsentDecision.Grant;
     }
+
+    private async Task<bool> CaptureEditAllowedAsync(HostCaptureEditRequest edit, CancellationToken token) =>
+        CaptureLibraryEditRequests.SourcePermission(edit.Id) is { } source &&
+        await CaptureAllowedAsync(edit.Widget, token, PlatformCapabilities.CaptureLibrarySaveV1).ConfigureAwait(false) &&
+        await CaptureAllowedAsync(edit.Widget, token, source).ConfigureAwait(false);
 }

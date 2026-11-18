@@ -16,6 +16,9 @@ internal static partial class NativeContextProbeInput
         NativePoint ScreenPoint(Point point)
         {
             var client = target.TransformToVisual(null).TransformPoint(point);
+            var size = target.XamlRoot.Size;
+            if (client.X < 0 || client.Y < 0 || client.X >= size.Width || client.Y >= size.Height)
+                throw new InvalidOperationException("Native pointer target lies outside the fixture's client area.");
             var scale = target.XamlRoot.RasterizationScale;
             var screen = new NativePoint { X = (int)(client.X * scale), Y = (int)(client.Y * scale) };
             if (ClientToScreen(window, ref screen) == 0) throw new InvalidOperationException("Pointer coordinates unavailable.");

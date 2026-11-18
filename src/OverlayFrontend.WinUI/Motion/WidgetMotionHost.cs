@@ -80,13 +80,35 @@ internal sealed partial class WidgetOutgoingLayer : Canvas
 internal sealed partial class WidgetMotionStage : Panel
 {
     internal WidgetOutgoingLayer Outgoing { get; } = new();
+    internal WidgetOutgoingLayer Cached { get; } = new() { Opacity = 0 };
     internal FrameworkElement? Current { get; private set; }
     internal FrameworkElement? Modal { get; private set; }
     private PresentationPortal? modalPortal;
+    private readonly Dictionary<FrameworkElement, Size> retainedRoots = [];
     internal WidgetMotionStage()
     {
         Children.Add(Outgoing);
+        Children.Add(Cached);
         Loaded += (_, _) => MountModal();
+        GettingFocus += (_, args) =>
+        {
+            for (var node = args.NewFocusedElement; node is not null && !ReferenceEquals(node, this);
+                node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))
+                if (node is FrameworkElement element && retainedRoots.ContainsKey(element) && !ReferenceEquals(element, Current))
+                { args.TryCancel(); break; }
+        };
+    }
+    internal bool RetainRoot(FrameworkElement root)
+    {
+        if (!ReferenceEquals(Current, root) || !Children.Contains(root)) return false;
+        retainedRoots[root] = new(root.ActualWidth, root.ActualHeight);
+        return true;
+    }
+    internal bool IsRetainedRoot(FrameworkElement root) => retainedRoots.ContainsKey(root);
+    internal void ReleaseRoot(FrameworkElement root, bool remove)
+    {
+        retainedRoots.Remove(root);
+        if (remove) Children.Remove(root);
     }
     protected override AutomationPeer OnCreateAutomationPeer() => new StagePeer(this);
     private sealed partial class StagePeer(WidgetMotionStage owner) : FrameworkElementAutomationPeer(owner)
@@ -145,24 +167,30 @@ internal sealed partial class WidgetMotionStage : Panel
     internal void SetCurrent(FrameworkElement? value)
     {
         if (ReferenceEquals(Current, value)) return;
-        if (Current is not null) Children.Remove(Current);
+        if (Current is not null && !retainedRoots.ContainsKey(Current)) Children.Remove(Current);
         Current = value;
-        if (value is not null) Children.Insert(0, value);
+        if (value is not null && !Children.Contains(value)) Children.Insert(0, value);
         FrameworkElementAutomationPeer.FromElement(this)?.InvalidatePeer();
         InvalidateMeasure();
     }
     protected override Size MeasureOverride(Size availableSize)
     {
         Current?.Measure(availableSize);
+        foreach (var (root, size) in retainedRoots)
+            if (!ReferenceEquals(root, Current)) root.Measure(size);
         if (modalPortal is null) Modal?.Measure(availableSize);
         Outgoing.Measure(availableSize);
+        Cached.Measure(availableSize);
         return Current?.DesiredSize ?? new();
     }
     protected override Size ArrangeOverride(Size finalSize)
     {
         Current?.Arrange(new(new(), finalSize));
+        foreach (var (root, size) in retainedRoots)
+            if (!ReferenceEquals(root, Current)) root.Arrange(new(new(), size));
         if (modalPortal is null) Modal?.Arrange(new(new(), finalSize));
         Outgoing.Arrange(new(new(), finalSize));
+        Cached.Arrange(new(new(), finalSize));
         return finalSize;
     }
 }

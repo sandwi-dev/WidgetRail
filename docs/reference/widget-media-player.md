@@ -19,6 +19,10 @@ UI.MediaPlayer(MediaPlayerSource.PackageAsset("media/tutorial.mp4"), "tutorial")
 UI.MediaPlayer(MediaPlayerSource.FromCapture(attachment), "preview",
     options: new MediaPlayerOptions(Muted: true));
 
+// Protocol 116: reuse the gallery's scoped thumbnail handle.
+UI.MediaPlayer(MediaPlayerSource.FromSavedCapture(item.Id, item.Revision), "clip")
+    .WithPoster(new WidgetArtworkHandle("clip.thumbnail"));
+
 // Full-trust widgets only: ordinary local drive paths, not device/UNC paths.
 UI.MediaPlayer(MediaPlayerSource.LocalFile(@"C:\Videos\guide.mkv"), "local-video");
 ```
@@ -31,6 +35,12 @@ UI.MediaPlayer(MediaPlayerSource.LocalFile(@"C:\Videos\guide.mkv"), "local-video
   The native Windows player determines available codecs and stream support.
 - Capture references retain ownership, permission, expiry and revocation checks.
   Captured application metadata remains attached to the source.
+- `MediaPlayerSource.FromSavedCapture(item.Id, item.Revision)` (protocol 116)
+  declares saved-library media without opening it in the widget. The host checks
+  the current declared element, library read permission and exact content revision
+  before acquiring playback custody. Videos retain the authorized original file;
+  they are not copied to temporary storage. Cached declarations contain only IDs
+  and revisions, never file handles or attachment leases.
 - Arbitrary local file paths require full trust. A sandboxed widget cannot ask the
   host to read an arbitrary file. User-selected file grants are not implemented.
 
@@ -46,6 +56,67 @@ snapshots preserve playback. Increment `revision` to reopen the same resource.
 `MediaPlayerOptions` supplies initial autoplay, loop, mute, volume (0-1) and rate
 (0.5-2). Changes to loop/mute/volume/rate also update an already loaded player.
 Native user changes are not reset by unchanged widget snapshots.
+
+`WithPoster(WidgetArtworkHandle)` (protocol 116) supplies optional loading artwork
+through the existing scoped artwork resolver, decode sizing and lifetime. It uses
+the native `MediaPlayerElement.PosterSource` with aspect-preserving fit. A changed
+poster identity clears the prior image; late artwork cannot outlive its row or
+preview authority. Other media declarations need no changes. The platform controls
+the loading transition; its documented boundary is media opening, so this API does
+not promise a separately observed first decoded frame. No frame-server rendering
+or extra media decoder is introduced.
+
+## Inline frame styling
+
+The existing WRSS `padding`, `border-width` (including individual edges),
+`border-color`, `corner-radius`, and `background` properties style the media
+frame itself. For a player inside an already-framed preview, use
+`padding: 0px; border-width: 0px; corner-radius: 0px; background: transparent;`
+to avoid another inset or card. Without these declarations, the host retains its
+8px padding, 1px border and theme surface. Floating transport controls keep their
+accessible theme backing independently of the frame background.
+
+Fullscreen uses its existing edge-to-edge layout. Returning restores the latest
+inline styles; removing a style restores the host defaults. This does not create
+a second player or alter media authority, controls, or input routing.
+
+## Media in rich previews
+
+An interactive `FocusPresentationSurface` can opt into one native media element
+with `FocusPreviewOptions.AllowMedia = true` and an explicit `EnterButton`
+(protocol 116). Existing previews remain unchanged without this option. Indexed
+previews use the existing exact row/preview lease proof; no widget-managed open
+request or hover timer is required. Inline and deferred preview declarations use
+the same resolver and native player.
+
+Set `FocusPreviewOptions.Placement` to `AnchorPlacement.CenterOnAnchor` (protocol
+123) to overlay the source card instead of placing a second view beside it. The
+host centers over the visible anchor and clamps the panel and its shadow inside
+the widget viewport. The same placement works for `AnchoredPresentation`.
+Existing directional/default placement, entry, hover and outside-click rules
+remain unchanged; missing or fully offscreen anchors retain the bounded fallback.
+
+Rich previews enter once per visible frame lifetime. Media-enabled previews use
+a short fade without scaling their separate native video surface. The existing
+poster can appear during entry; source authority resolves in parallel, while the
+existing presentation-ready gate defers decoder creation until entry settles.
+Reduced motion presents immediately. Updating content or entering interaction
+does not restart entry, and closing retains immediate authority/lease teardown.
+
+Passive preview playback is always muted and does not register system media
+controls. Entering the preview exposes the normal playback controls; leaving
+interaction restores mute. Reopening cannot restore an unmuted playback-memory
+value. B/Escape finishes volume adjustment or collapses expanded media before
+returning to the preview source. Expansion keeps the same player and position.
+Withdrawal, hiding and disposal stop playback and release its host-owned custody,
+including a pending open that completes after cancellation.
+
+Capture Library opts available clips into this presentation after a short hover
+or focus delay, with R3/F6 to interact. Its **Play clip previews** preference can
+disable it; batch selection also suppresses previews. The grid retains its row
+geometry. A query refresh, including a favorite/title update, can retire the
+preview and restart it: the host does not reuse an old indexed proof merely
+because the capture's content revision is unchanged.
 
 ## Shared controls
 

@@ -9,6 +9,8 @@ public sealed record TaskWindowSummary(
     [property: JsonRequired] bool IsMinimized)
 {
     [JsonIgnore] public NativeWindowPreviewTarget? PreviewTarget { get; init; }
+    /// <summary>Stable host-observed application identity; never serialized to widgets.</summary>
+    [JsonIgnore] public string? ApplicationIdentity { get; init; }
 }
 
 public sealed record TaskWindowRequest([property: JsonRequired] string WindowId);

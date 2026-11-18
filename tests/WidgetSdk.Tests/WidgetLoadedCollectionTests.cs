@@ -19,6 +19,7 @@ internal static class WidgetLoadedCollectionTests
             using var deep = await host.AcquireAsync("items", 9999, 1);
             Check(widget.Renders == 1 && deep.Range.Items[0].Key == "item-9999", "Deep range was not lazy.");
             var before = widget.Source.Descriptor;
+            Check(before.EndFollowingEpoch == 1, "End following did not begin with an explicit continuity domain.");
             Check(widget.Source.Publish("initial", "context", widget.Source.Items) == WidgetLoadedCollectionChange.Unchanged &&
                 widget.Source.Descriptor == before, "Unchanged publication changed authority.");
             var copy = widget.Source.Items.ToArray();
@@ -29,6 +30,7 @@ internal static class WidgetLoadedCollectionTests
             Check(widget.KeyReads - keyReads == 1, "Updating one immutable item recomputed every occurrence key.");
             Check(widget.Source.Descriptor.QueryGeneration == before.QueryGeneration &&
                 widget.Source.Descriptor.ContentRevision > before.ContentRevision, "Content update lost query identity.");
+            Check(widget.Source.Descriptor.EndFollowingEpoch == before.EndFollowingEpoch, "Content change reset end-following domain.");
             Check(deep.RouteAction("item-9999", ControllerButton.A) is null, "Retired content accepted an old row action.");
             host.PublishSnapshot();
             using var updated = await host.AcquireAsync("items", 9999, 1);
@@ -41,17 +43,35 @@ internal static class WidgetLoadedCollectionTests
             var oldQuery = widget.Source.Descriptor.QueryGeneration;
             Check(widget.Source.Publish("different-filter", "updated-context", copy) == WidgetLoadedCollectionChange.Query &&
                 widget.Source.Descriptor.QueryGeneration > oldQuery, "Same keys concealed a semantic query change.");
+            Check(widget.Source.Descriptor.EndFollowingEpoch == before.EndFollowingEpoch + 1, "Equal keys bridged end following into a different semantic identity.");
+            var priorEndEpoch = widget.Source.Descriptor.EndFollowingEpoch;
             oldQuery = widget.Source.Descriptor.QueryGeneration;
             Check(widget.Source.Publish("different-filter", "updated-context", copy, forceReset: true) == WidgetLoadedCollectionChange.Query &&
                 widget.Source.Descriptor.QueryGeneration > oldQuery, "Explicit reset did not retire authority.");
+            Check(widget.Source.Descriptor.EndFollowingEpoch == priorEndEpoch + 1, "Force reset retained end-following authority.");
             widget.Source.Publish("small", "small-context", [new("duplicate.1", "Same"), new("duplicate.2", "Same")]);
             host.PublishSnapshot();
             Check(Find(host.CurrentSnapshot.Root, "items").IndexedOccurrenceKeys is null, "Semantic replacement bridged occurrence memory from a different context.");
+            priorEndEpoch = widget.Source.Descriptor.EndFollowingEpoch;
+            var priorAppendQuery = widget.Source.Descriptor.QueryGeneration;
+            using var retainedPrefix = await host.AcquireAsync("items", 0, 1);
             widget.Source.Publish("small", "small-context", [new("duplicate.1", "Same"), new("duplicate.2", "Same"), new("third", "Third")]);
             host.PublishSnapshot();
             Check(Find(host.CurrentSnapshot.Root, "items").IndexedOccurrenceKeys!.Count == 3,
                 "Small complete query did not publish bounded continuity keys.");
+            Check(widget.Source.Descriptor.EndFollowingEpoch == priorEndEpoch, "Live append changed the semantic end-following domain.");
+            Check(widget.Source.Descriptor.QueryGeneration == priorAppendQuery && widget.Source.Descriptor.RetainsAppendedPrefix,
+                "Unchanged finite prefix retired its query instead of preserving exact row authority.");
+            Check(retainedPrefix.RouteAction("duplicate.1", ControllerButton.A) == WidgetOperationAdmission.Enqueued,
+                "Appending an unchanged prefix retired its admitted row action.");
+            widget.Source.Publish("small", "small-context", [new("duplicate.1", "Edited"), new("duplicate.2", "Same"), new("third", "Third")]);
+            host.PublishSnapshot();
+            Check(retainedPrefix.RouteAction("duplicate.1", ControllerButton.A) is null,
+                "Editing a retained prefix left its old row action current.");
+            Check(ViewSnapshotValidator.Validate(host.CurrentSnapshot with { ProtocolVersion = 117 }).Any(issue => issue.Code.Contains("version", StringComparison.OrdinalIgnoreCase)),
+                "End following was accepted by an older protocol consumer.");
             widget.Source.Publish("small", "small-context", [new("duplicate.2", "Same"), new("duplicate.1", "Same")]);
+            Check(widget.Source.Descriptor.EndFollowingPreviousQuery is null, "Reorder/removal falsely claimed append provenance.");
             Check(widget.Source.Descriptor.ContentRevision == 0, "Reordering was misclassified as content.");
             try
             {
@@ -108,6 +128,7 @@ internal static class WidgetLoadedCollectionTests
         internal Fixture(IReadOnlyList<Item> items) => Source = CreateLoadedCollection<string, Item>("loaded-source", "initial", "context", items, new()
         {
             PreserveOccurrences = true,
+            FollowEnd = true,
             ItemKey = item => { KeyReads++; return new(item.Key); },
             RenderItem = (context, item, ids) => { Renders++; return UI.Button(context + ":" + item.Label, "open", ids.Id("row")); },
             OnAction = (context, item, _, _) => { Action.TrySetResult(context + ":" + item.Label); return ValueTask.CompletedTask; },

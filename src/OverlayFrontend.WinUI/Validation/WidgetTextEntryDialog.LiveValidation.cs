@@ -3,6 +3,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetTextEntryDialog
 {
     internal void InsertForValidation(string text) => Insert(text);
+    internal void SetCompositionForValidation(bool active) => textCompositionActive = active;
     internal Microsoft.UI.Xaml.Controls.StackPanel BodyForValidation => body;
     internal Microsoft.UI.Xaml.Controls.Control EditorForValidation => (Microsoft.UI.Xaml.Controls.Control?)text ?? password!;
     internal (double EditorY, double KeyY, double Top) SuggestionPositionForValidation

@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/PlatformBroker/PlatformBroker.csproj" /><ProjectReference Include="../../src/PlatformSettings/PlatformSettings.csproj" /></ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../src/OverlayFrontend.WinUI/Capture/ReplayCaptureCoordinator.cs" Link="ReplayCaptureCoordinator.cs" />
+    <Compile Include="../../src/OverlayFrontend.WinUI/Capture/ReplayBackendContracts.cs" Link="ReplayBackendContracts.cs" />
+  </ItemGroup>
+</Project>

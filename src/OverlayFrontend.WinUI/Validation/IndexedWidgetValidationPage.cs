@@ -140,6 +140,8 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
             { await ValidateYtmPerformanceAsync(performanceOutput); return; }
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--ytm-navigation-output") is { } musicOutput)
             { await ValidateYtmNavigationAsync(musicOutput); return; }
+            if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--inline-preview-validation") is { } inlinePreviewResult)
+            { await ValidateInlinePreviewActionsAsync(inlinePreviewResult); return; }
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--deferred-preview-validation") is { } deferredPreviewResult)
                 await ValidateDeferredPreviewsAsync(deferredPreviewResult);
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--indexed-entry-validation") is { } entryResult)
@@ -148,6 +150,10 @@ internal sealed partial class IndexedWidgetValidationPage : Page, IAsyncDisposab
                 await ValidateScrollRevealAsync(revealResult);
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--indexed-continuity-validation") is { } continuityResult)
                 await ValidateContinuityAsync(continuityResult);
+            if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--indexed-refresh-validation") is { } refreshResult)
+                await ValidateRefreshContinuityAsync(refreshResult);
+            if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--indexed-end-following-validation") is { } endFollowingResult)
+                await ValidateEndFollowingAsync(endFollowingResult);
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--indexed-preview-validation") is { } previewResult)
                 await ValidateIndexedPreviewsAsync(previewResult);
             if (Environment.GetCommandLineArgs().Contains("--indexed-state-validation"))

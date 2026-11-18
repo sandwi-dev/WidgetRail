@@ -36,11 +36,14 @@ internal sealed partial class MediaPlayerView
         // the leading edge even when content alignment is Center.
         imageCanvas.Children.Add(image);
         imageViewport.Content = imageCanvas;
+        imageViewport.Loaded += CompletePendingImageViewportRestore;
+        imageViewport.PreviewKeyDown += (_, _) => { if (input) ClearPendingImageViewportRestore(); };
         imageViewport.SizeChanged += (_, _) =>
         {
             imageCanvas.Width = Math.Max(1, imageViewport.ActualWidth);
             imageCanvas.Height = Math.Max(1, imageViewport.ActualHeight);
             UpdateImageZoomLabel();
+            TraceImageViewportState("size-changed", null, null, null);
         };
         imageControls = [zoomOut, zoomIn, imageFit, imageExpand];
         Label(zoomOut, "Zoom out", "MediaPlayer.Image.ZoomOut");
@@ -68,6 +71,7 @@ internal sealed partial class MediaPlayerView
         };
         imageViewport.PointerPressed += (_, args) =>
         {
+            if (input) ClearPendingImageViewportRestore();
             // Leave touch manipulation/pinch to ScrollViewer's native gesture path.
             if (!input || args.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse ||
                 !args.GetCurrentPoint(imageViewport).Properties.IsLeftButtonPressed) return;
@@ -113,6 +117,7 @@ internal sealed partial class MediaPlayerView
     {
         if (!input || !IsImage || XamlRoot is null || !ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), imageViewport))
         { lastImagePan = 0; return false; }
+        if (Math.Abs((int)x) > 5898 || Math.Abs((int)y) > 5898) ClearPendingImageViewportRestore();
         // Consume at Fit too: a pan gesture must not scroll the containing page.
         if (imageViewport.ScrollableWidth < 1 && imageViewport.ScrollableHeight < 1)
         { lastImagePan = 0; return true; }
@@ -126,7 +131,9 @@ internal sealed partial class MediaPlayerView
     }
     private double ImageFitScale => resolved is { Width: > 0, Height: > 0 }
         ? Math.Min(Math.Max(1, imageCanvas.Width) / resolved.Width, Math.Max(1, imageCanvas.Height) / resolved.Height) : 1;
-    private sealed record ImageViewportMemory(bool Fit, double Scale, double X, double Y);
+    private sealed record ImageViewportMemory(bool Fit, double Scale, double X, double Y, CancellationToken Lifetime);
+    private sealed record PendingImageViewportRestore(ImageViewportMemory Memory, MediaFullscreenLayer? Placement);
+    private PendingImageViewportRestore? pendingImageViewportRestore;
     private ImageViewportMemory? RememberImageViewport()
     {
         if (!IsImage || resolved is not { Width: > 0, Height: > 0 }) return null;
@@ -136,24 +143,60 @@ internal sealed partial class MediaPlayerView
         var y = (imageViewport.VerticalOffset + imageViewport.ViewportHeight / 2 - (imageCanvas.Height - resolved.Height * scale) * zoom / 2) / (resolved.Height * scale * zoom);
         if (imageViewport.ScrollableWidth < 1) x = .5;
         if (imageViewport.ScrollableHeight < 1) y = .5;
-        return new(Math.Abs(zoom - 1) < .01, scale * zoom, x, y);
+        return new(Math.Abs(zoom - 1) < .01, scale * zoom, x, y, lifetime.Token);
+    }
+    private bool ImageViewportMemoryIsCurrent(ImageViewportMemory memory) =>
+        !disposed && active && input && IsImage && !memory.Lifetime.IsCancellationRequested && memory.Lifetime == lifetime.Token;
+    private ImageViewportMemory? CaptureImageViewportForPlacement() =>
+        pendingImageViewportRestore is { } pending && ReferenceEquals(pending.Placement, expandedHost) && ImageViewportMemoryIsCurrent(pending.Memory)
+            ? pending.Memory : RememberImageViewport();
+    private void ClearPendingImageViewportRestore()
+    {
+        pendingImageViewportRestore = null;
+        imageViewport.LayoutUpdated -= CompletePendingImageViewportRestore;
     }
     private void RestoreImageViewport(ImageViewportMemory? memory)
     {
-        if (memory is null || !IsImage || resolved is not { Width: > 0, Height: > 0 }) return;
-        if (memory.Fit) { FitImage(); return; }
+        ClearPendingImageViewportRestore();
+        if (memory is null || !ImageViewportMemoryIsCurrent(memory) || resolved is not { Width: > 0, Height: > 0 }) return;
+        pendingImageViewportRestore = new(memory, expandedHost);
+        CompletePendingImageViewportRestore(null, null!);
+    }
+    private void CompletePendingImageViewportRestore(object? sender, object args)
+    {
+        if (pendingImageViewportRestore is not { } pending) return;
+        if (!ImageViewportMemoryIsCurrent(pending.Memory) || !ReferenceEquals(pending.Placement, expandedHost) ||
+            resolved is not { Width: > 0, Height: > 0 } currentImage)
+        { ClearPendingImageViewportRestore(); return; }
+        // ScrollViewer can accept ChangeView while detached, then discard it on
+        // Loaded. Keep the exact source/placement checkpoint until native layout
+        // is ready; later input or retirement revokes it instead of retrying it.
+        if (!imageViewport.IsLoaded || imageViewport.ActualWidth <= 0 || imageViewport.ActualHeight <= 0 ||
+            imageViewport.ViewportWidth <= 0 || imageViewport.ViewportHeight <= 0)
+        {
+            imageViewport.LayoutUpdated -= CompletePendingImageViewportRestore;
+            imageViewport.LayoutUpdated += CompletePendingImageViewportRestore;
+            TraceImageViewportState("restore-awaiting-layout", pending.Memory.Scale, null, null);
+            return;
+        }
+        var memory = pending.Memory;
+        ClearPendingImageViewportRestore();
+        if (memory.Fit) { FitImage(); TraceImageViewportState("restore-fit", memory.Scale, 1, null); return; }
         var scale = ImageFitScale;
         var zoom = (float)Math.Clamp(memory.Scale / scale, imageViewport.MinZoomFactor, imageViewport.MaxZoomFactor);
-        var x = ((imageCanvas.Width - resolved.Width * scale) / 2 + memory.X * resolved.Width * scale) * zoom - imageViewport.ViewportWidth / 2;
-        var y = ((imageCanvas.Height - resolved.Height * scale) / 2 + memory.Y * resolved.Height * scale) * zoom - imageViewport.ViewportHeight / 2;
-        imageViewport.ChangeView(Math.Max(0, x), Math.Max(0, y), zoom, true);
+        var x = ((imageCanvas.Width - currentImage.Width * scale) / 2 + memory.X * currentImage.Width * scale) * zoom - imageViewport.ViewportWidth / 2;
+        var y = ((imageCanvas.Height - currentImage.Height * scale) / 2 + memory.Y * currentImage.Height * scale) * zoom - imageViewport.ViewportHeight / 2;
+        var accepted = imageViewport.ChangeView(Math.Max(0, x), Math.Max(0, y), zoom, true);
+        TraceImageViewportState("restore-scale", memory.Scale, zoom, accepted);
     }
+    partial void TraceImageViewportState(string phase, double? expectedScale, float? targetZoom, bool? changeAccepted);
     private void UpdateImageZoomLabel() => imageZoom.Text = $"{ImageFitScale * imageViewport.ZoomFactor * (XamlRoot?.RasterizationScale ?? 1):P0}";
 
-    private void FitImage() { imageViewport.ChangeView(0, 0, 1, disableAnimation: true); UpdateImageZoomLabel(); }
+    private void FitImage() { ClearPendingImageViewportRestore(); imageViewport.ChangeView(0, 0, 1, disableAnimation: true); UpdateImageZoomLabel(); }
     private void ZoomImage(int direction)
     {
         if (!input || !IsImage) return;
+        ClearPendingImageViewportRestore();
         var old = imageViewport.ZoomFactor;
         var next = Math.Clamp(old * (direction > 0 ? 1.2f : 1 / 1.2f), imageViewport.MinZoomFactor, imageViewport.MaxZoomFactor);
         var x = (imageViewport.HorizontalOffset + imageViewport.ViewportWidth / 2) * next / old - imageViewport.ViewportWidth / 2;
@@ -171,6 +214,7 @@ internal sealed partial class MediaPlayerView
     private bool MoveImageFocus(FocusNavigationDirection direction)
     {
         if (!input || XamlRoot is null) return false;
+        imageChrome.Reveal();
         var focused = FocusManager.GetFocusedElement(XamlRoot);
         if (ReferenceEquals(focused, imageViewport) || ReferenceEquals(focused, this))
             return direction == FocusNavigationDirection.Down ? imageFit.Focus(FocusState.Keyboard) : IsExpanded;
@@ -185,6 +229,7 @@ internal sealed partial class MediaPlayerView
     {
         if (button is not (ControllerButton.A or ControllerButton.LeftTrigger or ControllerButton.RightTrigger or ControllerButton.LeftBumper or ControllerButton.RightBumper or ControllerButton.RightStick)) return IsExpanded;
         if (phase == ControllerEventPhase.Released) return true;
+        imageChrome.Reveal();
         if (button == ControllerButton.LeftTrigger) ZoomImage(-1);
         else if (button == ControllerButton.RightTrigger) ZoomImage(1);
         else if (phase == ControllerEventPhase.Pressed)

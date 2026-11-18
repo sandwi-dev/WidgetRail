@@ -60,13 +60,16 @@ public:
     }
     // Only commit audio covered by an encoded video frame. Retain a partial
     // packet until a later frame so an early stop never leaves an audio tail.
-    void FlushThrough(uint64_t frames) {
+    void FlushThrough(uint64_t frames,uint64_t silenceBefore=0) {
         const auto limit = std::min(frames, maximumFrames);
         while (!pending.empty() && written < limit) {
             AppendThrough(pending.front(), limit);
             if (End(pending.front()) > static_cast<int64_t>(written)) break;
             pendingSamples -= pending.front().samples.size(); pending.pop_front();
         }
+        // Continuous replay may advance silence behind a bounded audio-arrival
+        // watermark. Ordinary captures retain their existing finalize-only fill.
+        SilenceUntil(std::min(limit,silenceBefore));
     }
     void Append(const CapturedAudioPacket& packet) { AppendThrough(packet, maximumFrames); }
     void Finish(uint64_t frames) {

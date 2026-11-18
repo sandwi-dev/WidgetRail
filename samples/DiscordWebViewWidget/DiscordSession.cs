@@ -102,6 +102,9 @@ internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) 
         // Commands never reopen/replay on transport failure. A later read can recover the connection.
         var current=session??throw new InvalidOperationException("Discord is not connected.");
         var response=await current.RequestAsync<object,JsonElement>("command",new{owner,method,args},token);
+        if(method is "messageConversations" or "messageHistory" or "messageChanges" or "messageRecover" && response.TryGetProperty("context",out var batch) &&
+            batch.TryGetProperty("ok",out var batchOk) && batchOk.ValueKind==JsonValueKind.True)
+            return JsonSerializer.SerializeToElement(new{context=batch.GetProperty("value"),items=response.GetProperty("items")},Json);
         if(!response.TryGetProperty("ok",out var ok)||ok.ValueKind!=JsonValueKind.True)
             throw new DiscordCommandException(response.TryGetProperty("code",out var failure) &&
                 failure.ValueKind==JsonValueKind.String && failure.GetString() is {Length:>0 and <=80} code &&
@@ -122,6 +125,7 @@ internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) 
             var opened=await sessions.OpenAsync(new("discord.backend","Discord",WebSessionSource.Remote("https://discord.com/app"))
             {
                 NativeCapture=true,
+                NativeNotificationIntents=true,
                 Browser=new(){Storage=BrowserStorage.Persistent,ProfileKey="discord",Background=BrowserBackgroundMode.KeepAlive,
                     Chrome=BrowserChrome.OnDemand,Popups=BrowserPopupMode.SystemBrowser,ExternalLinks=BrowserExternalLinkMode.OtherOriginsInWindows},
                 PageAdapter=new(){ScriptAsset="payload/web/backend.js",Origins=["https://discord.com"],Mode=WebSessionPageAdapterMode.SessionBackend}

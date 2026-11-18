@@ -22,12 +22,14 @@ internal enum BrokerCapabilityDomain
     Activity,
     WebSessions,
     Pinning,
+    Files,
 }
 
 internal static class BrokerCapabilityDomains
 {
     internal static BrokerCapabilityDomain Resolve(string capabilityId)
     {
+        if (capabilityId == PlatformCapabilities.FilesReadV1) return BrokerCapabilityDomain.Files;
         if (capabilityId == PlatformCapabilities.WidgetPinningV1) return BrokerCapabilityDomain.Pinning;
         if (capabilityId == PlatformCapabilities.WebSessionsV1) return BrokerCapabilityDomain.WebSessions;
         if (capabilityId == PlatformCapabilities.WidgetActivityV1) return BrokerCapabilityDomain.Activity;
@@ -37,7 +39,7 @@ internal static class BrokerCapabilityDomains
         if (capabilityId is PlatformCapabilities.PerformanceReadV1 or PlatformCapabilities.PerformanceFpsControlV1)
             return BrokerCapabilityDomain.Performance;
         if (capabilityId == PlatformCapabilities.ProviderDocumentsV1) return BrokerCapabilityDomain.ProviderDocuments;
-        if (capabilityId is PlatformCapabilities.WindowCaptureV1 or PlatformCapabilities.CaptureLibraryReadV1 or PlatformCapabilities.CaptureLibrarySaveV1 or PlatformCapabilities.CaptureLibraryManageV1) return BrokerCapabilityDomain.WindowCapture;
+        if (capabilityId is PlatformCapabilities.WindowCaptureV1 or PlatformCapabilities.CaptureLibraryReadV1 or PlatformCapabilities.CaptureLibrarySaveV1 or PlatformCapabilities.CaptureLibraryManageV1 or PlatformCapabilities.CaptureLibraryRecycleLinkedV1) return BrokerCapabilityDomain.WindowCapture;
         if (capabilityId is PlatformCapabilities.DisplaysReadV1 or PlatformCapabilities.DisplaysControlV1)
             return BrokerCapabilityDomain.Displays;
         if (capabilityId is PlatformCapabilities.PowerReadV1 or PlatformCapabilities.PowerControlV1)

@@ -26,7 +26,7 @@ internal sealed partial class MediaPlayerView
         var linked = (await library.LinkAsync(new(sourceGrant.Id, Path.GetFileName(longVideo)), identity, token)).Item;
         Check(linked.Media.DurationSeconds >= 7199 && linked.Media.Properties is null, "Real decoder inspects two-hour MP4 without capture encoder telemetry");
         var lease = await library.OpenAsync(linked.Id, CaptureImageResolution.Original, token);
-        var attachment = registry.AdoptLibraryVideo(owner, identity, lease, token);
+        var attachment = registry.AdoptLibraryMedia(owner, identity, lease, token);
         var resolvedFile = registry.Resolve(identity, attachment.Id);
         Check(Path.GetFullPath(resolvedFile.Path) == longVideo && !Directory.EnumerateFiles(Path.Combine(directory, "owned")).Any(),
             "Playback retains exact linked original without a full-recording copy");
@@ -51,7 +51,7 @@ internal sealed partial class MediaPlayerView
             new(Guid.NewGuid().ToString("N"), "video/mp4", 1, 1, new FileInfo(shortVideo).Length, 1, long.MaxValue) { Origin = CaptureAttachmentOrigin.SavedLibrary }, token);
         var owned = await library.SaveAsync(new(nativeMedia, Path.GetFullPath(shortVideo)), identity, token);
         var ownedLease = await library.OpenAsync(owned.Id, CaptureImageResolution.Original, token);
-        var ownedAttachment = registry.AdoptLibraryVideo(owner, identity, ownedLease, token);
+        var ownedAttachment = registry.AdoptLibraryMedia(owner, identity, ownedLease, token);
         var ownedPath = registry.Resolve(identity, ownedAttachment.Id).Path;
         ApplyLease(ownedAttachment); SetActive(true, true);
         await Wait(() => player?.PlaybackSession.NaturalDuration.TotalSeconds > 4.9);

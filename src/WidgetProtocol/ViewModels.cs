@@ -261,6 +261,21 @@ public enum WidgetGlyph
     Rewind,
     FastForward,
     Fullscreen,
+    Back,
+    Forward,
+    Share,
+    Favorite,
+    FavoriteFilled,
+    Edit,
+    Delete,
+    Save,
+    Folder,
+    Open,
+    Attach,
+    Send,
+    Close,
+    ChevronLeft,
+    ChevronRight,
 }
 
 /// <summary>Controls whether a declared package SVG keeps its authored colors or supplies a reusable alpha mask.</summary>
@@ -442,6 +457,8 @@ public sealed record ViewNode
     public IReadOnlyList<WidgetContextAction> ContextActions { get; init; } = [];
     public ControllerButton? ContextMenuButton { get; init; }
     public IReadOnlyList<WidgetSelectOption> SelectOptions { get; init; } = [];
+    /// <summary>A Select that invokes commands without a selected option or accessible value; requires v115.</summary>
+    public bool? IsCommandMenu { get; init; }
     /// <summary>Current bounded value for a host-owned text-entry modal.</summary>
     public string? TextEntryValue { get; init; }
     public string? TextEntryPlaceholder { get; init; }
@@ -493,6 +510,13 @@ public sealed record ViewNode
     /// equivalent to <see cref="WidgetProtocol.ActionSurfacePresentation.Standard"/>.
     /// </summary>
     public ActionSurfacePresentation? ActionSurfacePresentation { get; init; }
+    /// <summary>Presentational descendant whose bounds own this action surface's focus decoration. Focus and hit testing remain on the action surface.</summary>
+    public string? FocusVisualTargetId { get; init; }
+    /// <summary>Currently loadable edges of an opted-in finite indexed window.</summary>
+    public IndexedCollectionBoundaries? CollectionBoundaries { get; init; }
+    /// <summary>Opt-in viewport-based directional entry for indexed lists. Explicit entry/return memory remains unchanged.</summary>
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingDefault)]
+    public IndexedDirectionalEntryMode IndexedDirectionalEntry { get; init; }
     /// <summary>
     /// Smallest desired logical-DIP column width for a responsive Grid. The
     /// host computes a stable column count from the grid's actual content
@@ -674,6 +698,8 @@ public sealed record FocusGroupEntryRequest
 public sealed record ScrollRevealRequest(long RequestId, string ScrollId, string? TargetId = null)
 {
     public IndexedCollectionFocusTarget? IndexedItem { get; init; }
+    /// <summary>Admits a cancellable reveal while its exact target is loading. Only a later same-ID target in this source continuity domain may complete it.</summary>
+    public IndexedCollectionDescriptor? DeferredSource { get; init; }
 }
 
 public enum EmbeddedMediaCommand

@@ -18,6 +18,8 @@ internal sealed class PlayniteSetupPackage(string directory)
     }
     private JsonObject Metadata()
     {
+        if (!File.Exists(Path.Combine(directory, "integration-package.json")) || !File.Exists(PackagePath))
+            throw new PlayniteSetupException("The Playnite widget is missing its bundled integration files. Update or reinstall the Playnite widget; your Playnite installation and library are unchanged.");
         var metadata = PlayniteSetupFiles.ReadObject(Path.Combine(directory, "integration-package.json"), 16 * 1024);
         static bool Hash(JsonNode? node) => node?.GetValue<string>() is { Length: 64 } digest && digest.All(char.IsAsciiHexDigit);
         if (metadata["version"]?.GetValue<string>() != Version || metadata["pluginId"]?.GetValue<string>() != IntegrationIdentity.PluginId ||

@@ -5,6 +5,12 @@ using WidgetRail.Samples.DiscordWebView;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
+if(args is ["--message-focus-only"])
+{
+    var focusChecks=0;
+    await MessagingTests.FocusEntryAsync((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS "+label);focusChecks++;});
+    Console.WriteLine($"Discord message focus: {focusChecks} checks passed.");return;
+}
 var passed=ActivityContractTests.Run();
 void Check(bool value,string name){if(!value)throw new Exception(name);Console.WriteLine("PASS "+name);passed++;}
 static IEnumerable<ViewNode> Nodes(ViewNode node)=>new[]{node}.Concat(node.Children.SelectMany(Nodes));
@@ -145,6 +151,13 @@ await ActivityUiTests.RunAsync(Check);
 await ReceiverHealthTests.RunAsync(Check);
 await ReceiverLifecycleTests.RunAsync(Check);
 await DomainIntentTests.RunAsync(Check);
+await DashboardTests.RunAsync(Check);
+MessageContractTests.Run(Check);
+MessageTextTests.Run(Check);
+DiscordPendingMessagesTests.Run(Check);
+await MessagingTests.RunAsync(Check);
+await DiscordAttachmentUploadTests.RunAsync(Check);
+await DiscordSharingTests.RunAsync(Check);
 await ChannelSuggestionTests.RunAsync(Check);
 await StreamAudioTests.RunAsync(Check);
 await UnifiedLayoutTests.RunAsync(Check);

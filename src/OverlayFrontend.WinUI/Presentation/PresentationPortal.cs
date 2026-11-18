@@ -27,11 +27,12 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
     private readonly bool followComposition;
     internal FrameworkElement Content { get; }
     internal FrameworkElement Anchor => anchor;
+    internal PresentationLayer Layer { get; }
 
     internal PresentationPortal(PresentationLayers layers, FrameworkElement anchor, FrameworkElement content,
         PresentationLayer layer = PresentationLayer.WidgetDialog, bool passive = false, bool followComposition = true, bool attachInput = true)
     {
-        this.anchor = anchor; root = layers.Root; Content = content;
+        this.anchor = anchor; root = layers.Root; Content = content; Layer = layer;
         this.followComposition = followComposition; paintOnly = passive;
         HorizontalAlignment = HorizontalAlignment.Left; VerticalAlignment = VerticalAlignment.Top;
         RenderTransform = placement; Clip = clip;

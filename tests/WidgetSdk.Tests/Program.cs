@@ -20,6 +20,17 @@ if (args is ["--query-resource-probe", var queryProbePath])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Indexed directional entry is opt-in lazy versioned and transport safe", IndexedDirectionalEntryTests.Run),
+    ("Indexed query refresh provenance is explicit bounded and reset scoped", IndexedQueryRefreshTests.Run),
+    ("Library recording purpose preserves attachment budgets and draft lifecycle", LibraryRecordingServiceTests.Run),
+    ("Focus visual targets preserve one semantic input owner and exact subtree bounds", FocusVisualTargetTests.Run),
+    ("Collection boundary demands preserve scope and captured reader protection", CollectionBoundaryTests.Run),
+    ("File references stream bounded reads and long seeks", FileServiceTests.Stream),
+    ("File references reject malformed stream and changed metadata", FileServiceTests.Malformed),
+    ("File references cancel in-flight reads on disposal", FileServiceTests.Cancellation),
+    ("Capture editing service validates opaque sources outcomes and never retries commits", CaptureEditingServiceTests.Run),
+    ("Inline preview actions retain source ancestry through queued execution", InlinePreviewActionTests.Run),
+    ("Command menus preserve dropdown semantics without selected values", CommandMenuTests.Run),
     ("Indexed selection bounds inputs and preserves opt-out activation", IndexedSelectionTests.Run),
     ("Indexed lookup preserves bounded query metadata and stale-result rejection", IndexedSelectionTests.Lookup),
     ("Pinning requests use declared layout handles and bounded identities", PinningServiceTests.Contract),
@@ -27,6 +38,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Web session capture service rejects foreign tickets and unconfirmed stop results", WebCaptureServiceTests.Run),
     ("Controlled disclosures own lazy content and explicit state transitions", DisclosureTests.Run),
     ("Loaded collections freeze inputs and classify explicit query publications", WidgetLoadedCollectionTests.Run),
+    ("Loaded viewport controls reject stale lifecycle and recovery completions", WidgetLoadedViewportTests.Run),
     ("Text chunks preserve exact Unicode text within authored budgets", WidgetTextChunksTests.Run),
     ("Reading surfaces retain focus and shortcuts without primary activation", ReadingSurfaceTests.Contract),
     ("File artwork sources preserve validation fallback and indexed ownership", FileArtworkTests.Contract),
@@ -40,6 +52,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Activity sources coalesce preserve ownership and stay bounded", ActivityServiceTests.Contract),
     ("Permission requests wait for consent and clean up abandoned prompts", PermissionServiceTests.Contract),
     ("Media player sources are versioned bounded and source-specific", MediaPlayerPresentationTests.Contract),
+    ("Media preview saved references are versioned bounded and opt-in", MediaPlayerPresentationTests.PreviewContract),
     ("Line graphs preserve immutable samples and incremental protocol updates", LineGraphPresentationTests.Contract),
     ("Configured capture separates options lifecycle and bounded streaming", ConfiguredCaptureTests.Contract),
     ("Web browser documents are bounded versioned and updated atomically", WebBrowserPresentationTests.Contract),
@@ -145,6 +158,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Focus-associated presentation is bounded versioned and input-inert", FocusPresentationTests.Run),
     ("Action surfaces expose bounded versioned context actions", TileComponentTests.ContextActionsAreBoundedAndVersioned),
     ("Action surfaces budget rich-text spans separately from layout", ActionSurfaceRichTextTests.Run),
+    ("Rich text image spans remain bounded presentational content", RichTextImageTests.Run),
     ("Action surfaces fail closed and route one activation", TileComponentTests.ActionSurfacesValidateAndRoute),
     ("Responsive grids round-trip typed column semantics", GridComponentTests.RoundTripsTypedSemantics),
     ("Responsive grids validate bounds and preserve old protocols", GridComponentTests.ValidatesBoundsAndCompatibility),
@@ -316,6 +330,7 @@ if (testPrefixIndex >= 0)
 }
 
 var failures = new List<string>();
+if (args.Contains("--files-only", StringComparer.Ordinal)) tests = tests.Where(test=>test.Name.StartsWith("File references",StringComparison.Ordinal)).ToArray();
 foreach (var test in tests)
 {
     try

@@ -148,6 +148,12 @@ internal static class ThemeDesignTests
             double Ink(string name) => surfaces.Min(background => Contrast(Color(styles[name], "color").Over(background), background));
             double Own(string name, string property) => Backgrounds(styles[name]).Min(background =>
                 Contrast(Color(styles[name], property).Over(background), background));
+            // A positive outline offset places the ring outside the button,
+            // separated from its fill. Measure that ring against its surrounding
+            // surfaces; retain the existing own-fill metric for inset recipes.
+            double Focus(string name) => styles[name].Get("outline-offset")?.Number > 0
+                ? surfaces.Min(background => Contrast(Color(styles[name], "outline-color").Over(background), background))
+                : Own(name, "outline-color");
             var metrics = new List<Metric>
             {
                 new("Primary text", Ink("body"), 4.5),
@@ -158,7 +164,7 @@ internal static class ThemeDesignTests
                 new("Controller glyph", Ink("glyph"), 3),
                 new("Focus edge", new[] { "focused", "selected" }.Min(name => Own(name, "outline-color")), 3),
                 new("Primary button ink", Own("primary", "color"), 4.5),
-                new("Primary button focus", Own("primary", "outline-color"), 3),
+                new("Primary button focus", Focus("primary"), 3),
                 new("Poster copy", new[] { "posterTitle", "posterMetadata" }.Min(name =>
                     Backgrounds(styles["posterScrim"]).Min(background => Contrast(Color(styles[name], "color").Over(background), background))), 4.5),
                 new("Scrollbar", Contrast(Color(styles["scroll"], "scrollbar-thumb-color"), Color(styles["scroll"], "scrollbar-track-color")), 3),

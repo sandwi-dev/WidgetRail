@@ -64,7 +64,7 @@ internal sealed partial class CaptureLibraryDeleteValidationPage : Page
                 .WithHandler(WidgetCaptureLibraryCapabilities.Open, async (request, ct) =>
                 {
                     var lease = await library.OpenAsync(request.Id, request.Resolution, ct);
-                    try { var result = registry.AdoptLibraryVideo(owner, identity, lease, ct); originalPath = registry.Resolve(identity, result.Id).Path; return result; }
+                    try { var result = registry.AdoptLibraryMedia(owner, identity, lease, ct); originalPath = registry.Resolve(identity, result.Id).Path; return result; }
                     catch { await lease.DisposeAsync(); throw; }
                 })
                 .WithHandler(WidgetCaptureLibraryCapabilities.Release, (request, _) =>
@@ -99,7 +99,7 @@ internal sealed partial class CaptureLibraryDeleteValidationPage : Page
                 await Until(() => Descendants(presenter).OfType<MediaPlayerView>().FirstOrDefault()?.CanControl == true);
                 var media = Descendants(presenter).OfType<MediaPlayerView>().First(); media.Toggle(); await Until(() => media.IsPlaying);
                 if (retainForeignLease)
-                    foreignAttachment = registry.AdoptLibraryVideo(foreignOwner, foreignIdentity,
+                    foreignAttachment = registry.AdoptLibraryMedia(foreignOwner, foreignIdentity,
                         await library.OpenAsync(saved.Id, CaptureImageResolution.Original, token), token);
                 await widget.OnActionAsync(new("capture-library.delete", "capture-library.delete"), token); Publish();
                 await Until(() => Node("capture-library.delete.confirm") is not null && Descendants(host).OfType<Button>().Any(b => b.Content?.ToString() == "Remove" || Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(b) == "Widget.capture-library.delete.confirm"));

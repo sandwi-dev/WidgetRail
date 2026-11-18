@@ -61,7 +61,15 @@ origin and a slash-terminated path prefix. Response access is explicit; declarin
 an origin alone does not grant response bodies.
 
 The default `IsolatedPageActions` mode runs the script in an isolated JavaScript
-world in the top-level document. It
+world with a 64 KiB UTF-8 script budget. `SessionBackend` permits 128 KiB for its
+sealed provider implementation. Both limits are enforced before package transfer
+and again with digest verification when the frontend admits the script. These
+asset budgets do not raise the 64 KiB message limit or change origin, full-trust,
+request-correlation, and lifecycle authority checks. Older hosts retain their
+smaller backend limit and reject an oversized script; there is no automatic
+fallback to a different execution mode.
+
+This isolated mode executes in the top-level document. It
 receives `host.onResponse(callback)` for declared JSON responses already loaded
 by the site, and `host.addAction(parentElement, actionKey, label, getPayload)` to
 insert a normal, accessible button. Actions require trusted browser clicks and an
@@ -109,7 +117,7 @@ that persists return destinations must allowlist appropriate public paths and
 query parameters; do not save sign-in redirects or action tokens. This observation
 does not permit the website to invoke widget actions.
 
-Scripts are capped at 64 KiB. Responses default to 256 KiB and may declare up to
+Isolated page-action scripts are capped at 64 KiB. Responses default to 256 KiB and may declare up to
 1 MiB; the host bounds network buffering and concurrent body reads. Results use
 the existing 64 KiB message bound. Navigation retires the document context and
 pending response authority. Only matching top-level frame/loader responses are
@@ -452,6 +460,37 @@ The frontend admits at most eight resident browser surfaces across existing brow
 and sessions. Opening beyond capacity returns an error; callers should explain the
 failure and let users close unused applications. Sharing a browser process can still
 create separate renderer processes and does not promise one operating-system process.
+
+## Native notification activation
+
+On protocol 120 hosts, a session may opt into `NativeNotificationIntents` and its
+widget may handle `WidgetIntentContracts.WebNotification`. The closed payload is
+`{sessionId, tag}`. The host supplies the original bounded native notification tag;
+the inbox's hashed deduplication tag is not a route. Empty or oversized native tags
+use ordinary source activation.
+
+This contract is host-originated. Declaring it as a widget request does not grant
+permission to fabricate notifications or route arbitrary tags. Preparation requires
+the existing native inbox entry, its current browser document, a live opted-in
+owned session, and the current worker. Only that same widget can receive it.
+The receiver must check its current session/account and translate the tag using
+reliable provider data. Do not infer destinations from notification titles.
+
+Accepted native handling consumes the activation and closes the source notification
+once without invoking its website click callback. Declined native handling keeps
+the existing source activation path: attach the owned browser view if necessary,
+then the host focuses that exact source and reports its original click once.
+A retired/replaced entry cannot call the replacement document. The notification
+list, banner preferences, lifecycle callbacks and existing intent ticket limits
+remain shared; no second notification system is created.
+
+Consumer applicability: Discord's resident backend opts in. Ordinary Browser,
+user webapps, YouTube Music, Spotify and hosted-session templates keep their existing
+native website activation by default. Widget-authored notifications (including
+Spotify/YouTube Music) and Settings/app-update intents retain their existing bool
+activation path and lifecycle behavior. The generic handled/source disposition is
+covered with source retirement, replacement and exactly-once cleanup checks;
+provider account behavior still needs native qualification.
 
 ## Validation
 

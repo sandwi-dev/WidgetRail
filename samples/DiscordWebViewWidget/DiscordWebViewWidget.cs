@@ -7,7 +7,7 @@ namespace WidgetRail.Samples.DiscordWebView;
 
 public sealed partial class DiscordWebViewWidget : Widget
 {
-    private enum Route { Home, Channels, Account, VoiceSettings, ConnectionDetails, Friends }
+    private enum Route { Home, Channels, Account, VoiceSettings, ConnectionDetails, Friends, Messages, Conversation }
     private sealed record ViewState(string Query="",string Notice="",SharePreparation? PreparingShare=null,OutgoingCapture? Outgoing=null,
         CaptureInterruption? InterruptedCapture=null,ChannelSuggestions? Suggestions=null);
     private sealed record WatchState(string? Account=null,string? Channel=null,string? StreamKey=null,string? StreamName=null,
@@ -36,20 +36,24 @@ public sealed partial class DiscordWebViewWidget : Widget
     private IDiscordSession? client;
     private readonly TimeProvider time;
     private readonly TimeSpan refreshInterval;
+    private readonly Func<DiscordUploadTarget,Stream,Action<long>,CancellationToken,Task> uploadAttachment;
 
     public DiscordWebViewWidget():this(null,TimeProvider.System,TimeSpan.FromSeconds(2)){ }
-    internal DiscordWebViewWidget(IDiscordSession? client,TimeProvider? time=null,TimeSpan? refreshInterval=null)
+    internal DiscordWebViewWidget(IDiscordSession? client,TimeProvider? time=null,TimeSpan? refreshInterval=null,
+        Func<DiscordUploadTarget,Stream,Action<long>,CancellationToken,Task>? uploadAttachment=null)
     {
         this.client=client;this.time=time??TimeProvider.System;this.refreshInterval=refreshInterval??TimeSpan.FromSeconds(2);
+        this.uploadAttachment=uploadAttachment??((target,stream,progress,token)=>DiscordAttachmentUpload.PutAsync(target,stream,token,progress:progress));
         view=CreateModel(new ViewState());
         navigation=CreateNavigatorWithOptions("discord.navigation",Route.Home,new()
         {SharedRootScopeId="discord.root",RootRoutes=[Route.Home],RouteScopeIds=new Dictionary<Route,string>{{Route.Account,"discord.account.scope"},{Route.Channels,"discord.channels.scope"},
             {Route.VoiceSettings,"discord.voice-settings-dialog.scope"},{Route.ConnectionDetails,"discord.connection-dialog.scope"},
-            {Route.Friends,"discord.friends.scope"}}});
+            {Route.Friends,"discord.friends.scope"},{Route.Messages,"discord.messages.scope"},{Route.Conversation,"discord.conversation.scope"}}});
         state=CreateResource("discord.state",new WidgetResourceOptions<DiscordState>
         {Load=ReadAsync,MapError=_=>new("discord.unavailable","Discord is unavailable. Open Discord to check the connection, then Refresh."),
             RetainLastGoodValue=false,Lifetime=WidgetOperationLifetime.Widget,CacheDuration=TimeSpan.FromSeconds(1)});
         InitializePicker();
+        InitializeMessages();
         InitializeVoiceControls();
         InitializeConnectionDetails();
         participants=CreateLoadedCollection<ParticipantContext,DiscordParticipant>("discord.participants.source","",new("",null),[],new()
@@ -95,7 +99,15 @@ public sealed partial class DiscordWebViewWidget : Widget
         },WidgetOperationLifetime.Widget);
         return ValueTask.CompletedTask;
     }
-    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime){state.EnsureLoaded();ResumeVoiceControls();ResumeConnectionDetails();return ValueTask.CompletedTask;}
+    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime){state.EnsureLoaded();ResumeVoiceControls();ResumeConnectionDetails();ResumeMessages();return ValueTask.CompletedTask;}
+    protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
+    {
+        ResetMessageUpdates(freshLoadExpected:false);
+        if(messages.Value.Query is not {} query || client is null)return;
+        using var cleanup=CancellationTokenSource.CreateLinkedTokenSource(transitionToken);
+        cleanup.CancelAfter(TimeSpan.FromSeconds(3));
+        try{await client.InvokeAsync("messageObserve",new{account=query.Account,active=false},cleanup.Token);}catch(Exception){ }
+    }
 
     private void ProviderInvalidated(WebSessionReference session)
     {
@@ -120,6 +132,7 @@ public sealed partial class DiscordWebViewWidget : Widget
         ReconcileParticipantContext(next);
         ReconcileVoiceDialog(next);
         ReconcileConnectionDetails(next);
+        ReconcileMessages(next);
         foreach(var observed in observedWatches)
         {
             var slot=observed.Slot;
@@ -138,7 +151,13 @@ public sealed partial class DiscordWebViewWidget : Widget
     {
         if(TryConnectionDetailsAction(action,cancellationToken,out var connectionAction))return connectionAction;
         if(TryVoiceControlAction(action,cancellationToken,out var voiceAction))return voiceAction;
-        if(navigation.TryHandleBack(action,action.FocusedElementId))return ValueTask.CompletedTask;
+        var leavingRecipientPicker=navigation.Value.Route==Route.Messages;
+        if(navigation.TryHandleBack(action,action.FocusedElementId))
+        {
+            if(leavingRecipientPicker)CancelIncomingShare(messages.Value);
+            ResumeMessages();return ValueTask.CompletedTask;
+        }
+        if(TryMessageAction(action,cancellationToken,out var messageAction))return messageAction;
         if(TryPickerAction(action,cancellationToken,out var pickerAction))return pickerAction;
         switch(action.ActionId)
         {

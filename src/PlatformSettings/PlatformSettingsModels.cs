@@ -156,8 +156,11 @@ public sealed record ControllerSettings
     /// <summary>Legacy F1 preference, read only when OverlayShortcut is absent.</summary>
     public bool F1ShortcutEnabled { get; init; }
     public OverlayShortcutSettings? OverlayShortcut { get; init; }
+    public OverlayShortcutSettings? ReplaySaveShortcut { get; init; }
     [JsonIgnore]
     public OverlayShortcutSettings EffectiveOverlayShortcut => OverlayShortcut ?? new() { Enabled = F1ShortcutEnabled };
+    [JsonIgnore]
+    public OverlayShortcutSettings EffectiveReplaySaveShortcut => ReplaySaveShortcut ?? OverlayShortcutSettings.ReplayDefault;
     public bool ExclusiveControl { get; init; }
     public long Revision { get; init; }
     public ControllerOpenShortcut OpenShortcut { get; init; } = ControllerOpenShortcut.ViewMenu;
@@ -185,6 +188,7 @@ public sealed record PlatformSettingsDocument
     public ControllerSettings Controllers { get; init; } = new();
     public BuiltInWidgetSettings BuiltInWidgets { get; init; } = new();
     public CaptureConfirmationSettings CaptureConfirmations { get; init; } = new();
+    public CaptureReplayPreferences ReplayCapture { get; init; } = new();
 
     public static PlatformSettingsDocument Default { get; } = new()
     {
@@ -251,6 +255,8 @@ public static class PlatformSettingsValidator
     {
         ArgumentNullException.ThrowIfNull(document);
         var errors = new List<PlatformSettingsValidationError>();
+        if (document.ReplayCapture?.IsWellFormed() != true)
+            Add("$.replayCapture", "invalid_replay_preferences", "Replay capture preferences or approved application are invalid.");
         if (document.BuiltInWidgets?.DisabledIds is not { } disabled || disabled.Count > 64 ||
             disabled.Any(id => id is "settings" or BuiltInWidgetSettings.SettingsWidgetId || !ThemeIdentity.IsValid(id)) ||
             disabled.Distinct(StringComparer.Ordinal).Count() != disabled.Count)
@@ -271,6 +277,8 @@ public static class PlatformSettingsValidator
             Add("$.controllers.openShortcut", "invalid_enum", "Controller shortcut is invalid.");
         if (document.Controllers?.OverlayShortcut is { } shortcut && !shortcut.IsWellFormed())
             Add("$.controllers.overlayShortcut", "invalid_shortcut", "Keyboard shortcut requires a supported key and modifier combination.");
+        if (document.Controllers?.ReplaySaveShortcut is { } replayShortcut && !replayShortcut.IsWellFormed())
+            Add("$.controllers.replaySaveShortcut", "invalid_shortcut", "Replay shortcut requires a supported key and modifier combination.");
         if (document.Appearance is null)
         {
             Add("$.appearance", "required", "Appearance settings are required.");

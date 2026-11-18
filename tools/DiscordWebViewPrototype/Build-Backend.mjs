@@ -3,6 +3,16 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { minify } from 'terser';
 
+// WebSessionContract.MaximumSessionBackendScriptBytes; message and isolated
+// page-action budgets remain smaller and are not changed by this build tool.
+export const maximumBackendBytes = 128 * 1024;
+export function validateBackendSource(source) {
+    const bytes = Buffer.byteLength(source, 'utf8');
+    if (bytes < 1 || bytes > maximumBackendBytes)
+        throw new Error(`Sealed backend exceeds its 1..${maximumBackendBytes} byte bound after minification (${bytes}).`);
+    return bytes;
+}
+
 // Build-time syntax minification only. No property mangling, compression,
 // external fetches or dynamic module loader enter the sealed backend.
 export async function minifySource(source) {
@@ -23,14 +33,14 @@ async function build(destination) {
     if (!Number.isSafeInteger(contract.build) || contract.build < 1) throw new Error('Invalid adapter build.');
     const adapter = await read('samples/DiscordWebViewWidget/web/provider/adapter.js');
     const source = [await read('tools/DiscordWebViewPrototype/webpack.js'),
-        await read('samples/DiscordWebViewWidget/web/provider/activity-provider.js'), adapter,
+        await read('samples/DiscordWebViewWidget/web/provider/activity-provider.js'),
+        await read('samples/DiscordWebViewWidget/web/provider/messaging-provider.js'), adapter,
         `initializeWidgetRailDiscordAdapter(${contract.build},host);`,
         await read('tools/DiscordWebViewPrototype/discord-commands.js'),
         await read('samples/DiscordWebViewWidget/web/provider/observations.js'),
         await read('samples/DiscordWebViewWidget/web/session-backend.js')].join('\n');
     const output = await minifySource(source);
-    const bytes = Buffer.byteLength(output, 'utf8');
-    if (bytes > 65536) throw new Error(`Sealed backend exceeds 65536 bytes after minification (${bytes}).`);
+    const bytes = validateBackendSource(output);
     await writeFile(destination, output);
     console.log(`Sealed backend: ${Buffer.byteLength(source, 'utf8')} source bytes → ${bytes} bytes; adapter ${contract.build}.`);
 }

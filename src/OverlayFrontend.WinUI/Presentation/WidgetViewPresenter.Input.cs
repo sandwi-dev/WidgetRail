@@ -19,10 +19,21 @@ internal sealed partial class WidgetViewPresenter
     {
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Route widget input on its WinUI dispatcher.");
         if (!presentationInputEnabled || !presentationActive || disposed || applying || presentationOnly || frame is null) return false;
+        if (pendingPrimaryPreview is not null && button == ControllerButton.B)
+        {
+            if (phase == ControllerEventPhase.Pressed)
+            {
+                pendingPrimaryPreview = null;
+                CancelDeferredPreviewRead();
+                NotifyControllerGuideChanged();
+            }
+            return true;
+        }
         if (previewEntered && previewSurface?.Fragment is { } preview)
         {
             if (button == ControllerButton.B && !preview.HasTransientControl)
             {
+                if (preview.FocusedMediaPlayer?.Handle(button, phase) == true) return true;
                 // A nested slider owns its adjustment and release before the
                 // containing preview returns focus to its source.
                 if (preview.HandleSliderButton(button, phase)) return true;

@@ -7,6 +7,25 @@
     xmlns:controls="using:Microsoft.UI.Xaml.Controls">
     <!-- Native semantic controls retain input/automation ownership. Dedicated
          paint slots inherit the same control scale without tinting its content. -->
+    <!-- A reading source that explicitly opens a preview needs its full painted
+         box (including padding) to participate in native hit testing. The base
+         ContentControl template does not forward Background. -->
+    <ControlTemplate x:Key="WidgetReadingSurfaceTemplate" TargetType="ContentControl">
+        <ContentPresenter Background="{TemplateBinding Background}"
+                          Foreground="{TemplateBinding Foreground}"
+                          BackgroundSizing="{TemplateBinding BackgroundSizing}"
+                          BorderBrush="{TemplateBinding BorderBrush}"
+                          BorderThickness="{TemplateBinding BorderThickness}"
+                          CornerRadius="{TemplateBinding CornerRadius}"
+                          Padding="{TemplateBinding Padding}"
+                          Content="{TemplateBinding Content}"
+                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                          ContentTemplateSelector="{TemplateBinding ContentTemplateSelector}"
+                          ContentTransitions="{TemplateBinding ContentTransitions}"
+                          HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                          VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                          AutomationProperties.AccessibilityView="Raw" />
+    </ControlTemplate>
     <!-- Button body and CommonStates follow Windows App SDK WinUI 2.3.9 DefaultButtonStyle. Keep native ThemeResource channels and AnimatedIcon states when updating this template. -->
     <ControlTemplate
         x:Key="WidgetDepthButtonTemplate"

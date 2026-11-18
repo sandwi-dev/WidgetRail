@@ -216,25 +216,32 @@ public sealed partial class PlayniteLibraryWidget
                 var value=Value(key);var number=value.ValueKind==JsonValueKind.Number?value.GetDouble():minimum;
                 return UI.Stack(Captures+"."+key+".group",UI.Text(label,Captures+"."+key+".label"),UI.Slider(number,minimum,maximum,step,Captures+".number."+key,Captures+"."+key,label).RequireControllerActivation().Disabled(!enabled)).Classes("playnite-capture-setting");
             }
+            WidgetElement Group(string key,string label,params WidgetElement[] content)=>
+                UI.Stack(Captures+"."+key+".options",
+                    new[]{UI.Text(label,Captures+"."+key+".heading").Classes("playnite-capture-group-title")}.Concat(content).ToArray())
+                    .Classes("playnite-capture-option-group");
             WidgetElement Folder(bool recording)
             {
                 var key=recording?"recordingDirectory":"screenshotDirectory";var value=Value(key);var path=value.ValueKind==JsonValueKind.String?value.GetString():null;
                 return UI.Stack(Captures+"."+key+".group",UI.Text(string.IsNullOrWhiteSpace(path)?recording?"Uses screenshot folder":"Choose a screenshot folder":path,Captures+"."+key+".path").Classes("playnite-library-setup-path"),
                     UI.Button(recording?"Choose clip folder…":"Choose screenshot folder…",Captures+".folder."+(recording?"recordings":"screenshots"),Captures+"."+key+".choose").Disabled(!enabled||data.Integration is null));
             }
-            items.Add(UI.Stack(Captures+".screenshots",UI.Text("Screenshots",Captures+".screenshots.title").Classes("playnite-capture-title"),Choice("screenshotsEnabled","Save achievement screenshots"),
-                UI.ResponsiveGrid(Captures+".screenshot.variants",200,3,Choice("screenshotClean","Clean"),Choice("screenshotWithToast","With notification"),Choice("screenshotFramed","Framed")),
-                UI.ResponsiveGrid(Captures+".screenshot.quality",240,2,Choice("screenshotResolution","Resolution"),Number("screenshotDelaySeconds","Capture delay (seconds)",0,10,.5)),Folder(false)).Classes("playnite-capture-section"));
-            items.Add(UI.Stack(Captures+".recordings",UI.Text("Video clips",Captures+".recordings.title").Classes("playnite-capture-title"),Choice("recordingsEnabled","Save achievement clips"),
-                UI.ResponsiveGrid(Captures+".recording.variants",200,3,Choice("recordingClean","Clean"),Choice("recordingWithToast","With notification"),Choice("recordingFramed","Framed")),
-                UI.ResponsiveGrid(Captures+".recording.quality",240,2,Choice("recordingResolution","Resolution"),Choice("recordingQuality","Quality")),
-                UI.ResponsiveGrid(Captures+".recording.timing",240,2,Number("recordingSeconds","Seconds before unlock",5,60,5),Number("recordingFps","Frames per second",10,60,10)),
-                UI.ResponsiveGrid(Captures+".recording.audio",220,3,Choice("recordingAudio","Record audio"),Choice("recordingMicrophone","Include microphone"),Choice("recordingAudioSource","Audio source")),Folder(true)).Classes("playnite-capture-section"));
-            items.Add(UI.Button("Save changes",Captures+".save",Captures+".save").Disabled(!enabled||draft.Changes.Count==0));
+            items.Add(UI.Stack(Captures+".screenshots",UI.Text("Screenshots",Captures+".screenshots.title").Classes("playnite-capture-title","playnite-capture-screenshots-title"),Choice("screenshotsEnabled","Save achievement screenshots"),
+                Group("screenshot.versions","Versions to save",UI.ResponsiveGrid(Captures+".screenshot.variants",200,3,Choice("screenshotClean","Clean"),Choice("screenshotWithToast","With notification"),Choice("screenshotFramed","Framed"))),
+                Group("screenshot.picture","Picture and timing",UI.ResponsiveGrid(Captures+".screenshot.quality",240,2,Choice("screenshotResolution","Resolution"),Number("screenshotDelaySeconds","Capture delay (seconds)",0,10,.5))),
+                Group("screenshot.location","Save location",Folder(false))).Classes("playnite-capture-section"));
+            items.Add(UI.Stack(Captures+".recordings",UI.Text("Video clips",Captures+".recordings.title").Classes("playnite-capture-title","playnite-capture-recordings-title"),Choice("recordingsEnabled","Save achievement clips"),
+                Group("recording.versions","Versions to save",UI.ResponsiveGrid(Captures+".recording.variants",200,3,Choice("recordingClean","Clean"),Choice("recordingWithToast","With notification"),Choice("recordingFramed","Framed"))),
+                Group("recording.picture","Picture and timing",
+                    UI.ResponsiveGrid(Captures+".recording.quality",240,2,Choice("recordingResolution","Resolution"),Choice("recordingQuality","Quality")),
+                    UI.ResponsiveGrid(Captures+".recording.timing",240,2,Number("recordingSeconds","Seconds before unlock",5,60,5),Number("recordingFps","Frames per second",10,60,10))),
+                Group("recording.sound","Audio",UI.ResponsiveGrid(Captures+".recording.audio",220,3,Choice("recordingAudio","Record audio"),Choice("recordingMicrophone","Include microphone"),Choice("recordingAudioSource","Audio source"))),
+                Group("recording.location","Save location",Folder(true))).Classes("playnite-capture-section"));
+            items.Add(UI.Button("Save changes",Captures+".save",Captures+".save").Disabled(!enabled||draft.Changes.Count==0).Classes("playnite-capture-save"));
         }
         if(data?.Sources is {Count:>0} sources)
         {
-            items.Add(UI.Text("Linked capture folders",Captures+".sources.title").Classes("playnite-capture-title"));
+            items.Add(UI.Text("Linked capture folders",Captures+".sources.title").Classes("playnite-capture-title","playnite-capture-folders-title"));
             foreach(var source in sources)
                 items.Add(UI.Stack(Captures+".source."+source.Id,
                     UI.Text(source.CanonicalFolderPath,Captures+".source."+source.Id+".path").Classes("playnite-library-setup-path"),

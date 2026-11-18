@@ -33,17 +33,19 @@ public sealed partial class CaptureLibraryWidget
             showSources = true; pendingSourceRemoval = null;
             Work(LoadSourcesAsync); return true;
         }
-        if (!showSources) return false;
+        if (!showSources && action.ActionId != "capture-library.sources.windows") return false;
         if (action.ActionId == "capture-library.sources.refresh") { Work(LoadSourcesAsync); return true; }
-        if (action.ActionId == "capture-library.sources.add")
+        if (action.ActionId is "capture-library.sources.add" or "capture-library.sources.windows")
         {
             Work(async token =>
             {
                 await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ReadPermission,WidgetCaptureLibraryCapabilities.ManagePermission],token);
-                var source = await HostServices.CaptureLibrary.ChooseSourceAsync("Capture folder",token);
+                var source = action.ActionId == "capture-library.sources.windows"
+                    ? await HostServices.CaptureLibrary.ChooseKnownSourceAsync(CaptureLibraryKnownLocation.WindowsGameCaptures, "Windows captures", token)
+                    : await HostServices.CaptureLibrary.ChooseSourceAsync("Capture folder",token);
                 token.ThrowIfCancellationRequested();
                 await LoadSourcesAsync(token);
-                if (source is not null) model.Update(state => state with { Message = "Folder connected. Supported captures will appear as it is scanned." });
+                if (source is not null) UpdateFeedback(state => state with { Message = "Folder connected. Supported captures will appear as it is scanned." });
                 QueueGalleryRefresh();
             }); return true;
         }
@@ -57,7 +59,7 @@ public sealed partial class CaptureLibraryWidget
                 await HostServices.CaptureLibrary.RemoveSourceAsync(selected.Id,token);
                 token.ThrowIfCancellationRequested(); pendingSourceRemoval = null;
                 await LoadSourcesAsync(token); await RefreshGalleryAsync(token);
-                model.Update(state => state with { Message = "Folder disconnected. Its original files were kept." });
+                UpdateFeedback(state => state with { Message = "Folder disconnected. Its original files were kept." });
             }); return true;
         }
         if (linkedSources?.FirstOrDefault(source => action.ActionId == "capture-library.sources.remove." + source.Id) is { } removal)
@@ -90,6 +92,7 @@ public sealed partial class CaptureLibraryWidget
             UI.Text("Link capture folders to browse their files here without moving or copying the originals.","capture-library.sources.help").Classes("capture-help"),
             UI.Row("capture-library.sources.actions",
                 UI.Button("Add folder…","capture-library.sources.add","capture-library.sources.add").Disabled(linkedSources?.Count >= CaptureLibrarySourceLimits.MaximumSources).Busy(state.Busy),
+                UI.Button("Link Windows captures…","capture-library.sources.windows","capture-library.sources.windows").Disabled(linkedSources?.Count >= CaptureLibrarySourceLimits.MaximumSources).Busy(state.Busy),
                 UI.Button("Refresh","capture-library.sources.refresh","capture-library.sources.refresh").Busy(state.Busy)),
         };
         if (linkedSources is null) items.Add(UI.Text(state.Busy ? "Loading folders…" : "Folders could not be loaded.","capture-library.sources.loading"));
@@ -102,7 +105,7 @@ public sealed partial class CaptureLibraryWidget
                 UI.Text(source.Available ? $"{source.LinkedCount:N0} captures" + (source.UnsupportedCount > 0 ? $" · {source.UnsupportedCount:N0} unsupported files" : "") : "Folder unavailable",id+".status").Classes("capture-help"),
                 UI.Button("Disconnect","capture-library.sources.remove."+source.Id,id+".remove").Busy(state.Busy)).Classes("capture-settings-section"));
         }
-        if (state.Message is { } message) items.Add(UI.Text(message,"capture-library.sources.status").Classes("capture-help"));
+        if (state.PermissionRequired && state.Message is { } message) items.Add(UI.Text(message,"capture-library.sources.status").Classes("capture-help"));
         else if (captureSources.Snapshot.Error is { } error) items.Add(UI.Text(error.Message,"capture-library.sources.status").Classes("capture-help"));
         if (captureSources.Snapshot.Error?.Code is "permission_denied" or "capability_not_declared") items.Add(PermissionsButton());
         return new("capture-library-sources","Capture folders",UI.Stack("capture-library.sources.content",items.ToArray()),

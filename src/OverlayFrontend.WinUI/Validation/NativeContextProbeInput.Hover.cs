@@ -52,7 +52,12 @@ internal static partial class NativeContextProbeInput
         try
         {
             await ContinuePointerMoveAsync(screen,previous);GetCursorPos(out var actual);
-            LastPointerTrace=$"target={screen.X},{screen.Y};actual={actual.X},{actual.Y};size={target.ActualWidth},{target.ActualHeight};scale={target.XamlRoot.RasterizationScale};hit={target.IsHitTestVisible}";
+            var latest=ScreenCenter(target);
+            var hit=WindowFromPoint(actual);GetWindowThreadProcessId(hit,out var hitProcess);
+            if(hitProcess!=Environment.ProcessId || Math.Abs(actual.X-screen.X)>2 || Math.Abs(actual.Y-screen.Y)>2)
+                throw new InvalidOperationException("Native hover did not reach the fixture's intended screen position.");
+            var rootWindow=Microsoft.UI.Win32Interop.GetWindowFromWindowId(target.XamlRoot.ContentIslandEnvironment.AppWindowId);
+            LastPointerTrace=$"target={screen.X},{screen.Y};latest={latest.X},{latest.Y};actual={actual.X},{actual.Y};size={target.ActualWidth},{target.ActualHeight};scale={target.XamlRoot.RasterizationScale};hitTestVisible={target.IsHitTestVisible};hitWindow={hit};hitRoot={GetAncestor(hit,2)};expectedRoot={rootWindow};hitProcess={hitProcess};foreground={GetForegroundWindow()}";
             await verify();
         }
         finally{SendPointerMove(previous);}
@@ -88,8 +93,28 @@ internal static partial class NativeContextProbeInput
     }
     private static NativePoint ScreenCenter(FrameworkElement target)
     {
-        // UIA includes the ContentDialog popup's screen offset. Transforming to
-        // a null visual root gives popup-local coordinates, not main-client ones.
+        if(!target.IsLoaded || target.ActualWidth<=0 || target.ActualHeight<=0 || target.XamlRoot is not { } root)
+            throw new InvalidOperationException("The pointer target is not visible.");
+        // In-process WinUI peers can return client-relative bounds for ordinary
+        // content. Use its actual XAML-root HWND, including a nonzero window
+        // origin and monitor DPI. A popup's separate visual root keeps the UIA
+        // fallback below rather than pretending it belongs to the main client.
+        for(DependencyObject? node=target;node is not null;node=Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))
+        {
+            if(node is UIElement { Visibility: Visibility.Collapsed })
+                throw new InvalidOperationException("The pointer target is not visible.");
+            if(!ReferenceEquals(node,root.Content))continue;
+            var point=target.TransformToVisual(root.Content).TransformPoint(new(target.ActualWidth/2,target.ActualHeight/2));
+            if(point.X<0 || point.Y<0 || point.X>=root.Size.Width || point.Y>=root.Size.Height)
+                throw new InvalidOperationException("Native hover target lies outside the fixture's client area.");
+            var window=Microsoft.UI.Win32Interop.GetWindowFromWindowId(root.ContentIslandEnvironment.AppWindowId);
+            GetWindowThreadProcessId(window,out var process);
+            if(process!=Environment.ProcessId)throw new InvalidOperationException("Pointer target is not owned by the fixture.");
+            var screen=new NativePoint{X=(int)Math.Round(point.X*root.RasterizationScale),Y=(int)Math.Round(point.Y*root.RasterizationScale)};
+            if(ClientToScreen(window,ref screen)==0)throw new InvalidOperationException("Pointer client projection unavailable.");
+            return screen;
+        }
+        // UIA includes the ContentDialog popup's separate screen offset.
         var bounds=FrameworkElementAutomationPeer.CreatePeerForElement(target)?.GetBoundingRectangle()
             ??throw new InvalidOperationException("The pointer target has no automation peer.");
         if(bounds.Width<=0||bounds.Height<=0)throw new InvalidOperationException("The pointer target is not visible.");

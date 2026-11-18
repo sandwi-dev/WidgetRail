@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.PlatformSettings;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
@@ -22,6 +23,7 @@ var allTests = new (string Name, Func<Task> Run)[]
         PackageSvgIconCatalogTests.Run),
     ("Reviewed updates preserve settings across exact package authorities", ReviewedSettingsContinuity),
     ("Reviewed updates preserve permission decisions and app-library identities", ReviewedPermissionContinuity),
+    ("Reviewed replay owner transfer commits after selection and preserves revocation and Stop", ReviewedReplayContinuity),
     ("Update continuity preserves destination decisions and isolates other packages", UpdateContinuitySafety),
     ("Settings transfer preserves existing values and clear markers and fails closed", SettingsTransferSafety),
     ("Install and discovery are deterministic across IDs and versions", InstallAndDiscover),
@@ -33,6 +35,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Uninstall is disabled-only and removes every immutable version", UninstallRemovesAllVersions),
     ("Pending uninstall recovery retires authority before same-package reuse",
         PendingUninstallRecoveryIsCommitBound),
+    ("Replay intent is retired only by full package uninstall", ReplayUninstallLifecycle),
     ("Missing pinned versions fail closed", MissingPinnedVersionFailsClosed),
     ("Independent catalog clients serialize state mutations", ConcurrentStatePersists),
     ("Lock-free discovery coexists with atomic state replacement", ConcurrentDiscoveryAndMutation),
@@ -69,8 +72,12 @@ var tests = args.Contains("--initial-bundle-only", StringComparer.Ordinal)
     : args.Contains("--widge-193-only", StringComparer.Ordinal)
     ? allTests.Where(test => test.Name is
         "Uninstall is disabled-only and removes every immutable version" or
-        "Pending uninstall recovery retires authority before same-package reuse")
+        "Pending uninstall recovery retires authority before same-package reuse" or
+        "Replay intent is retired only by full package uninstall")
         .ToArray()
+    : args.Contains("--replay-update-only", StringComparer.Ordinal)
+    ? allTests.Where(test => test.Name.StartsWith("Reviewed", StringComparison.Ordinal) ||
+        test.Name.StartsWith("Update continuity", StringComparison.Ordinal) || test.Name == "Replay intent is retired only by full package uninstall").ToArray()
     : allTests;
 
 var failures = new List<string>();
@@ -405,6 +412,106 @@ static async Task ReviewedSettingsContinuity()
         "Unreviewed install inherited settings.");
 }
 
+static async Task ReviewedReplayContinuity()
+{
+    foreach (var scenario in new[] { "enabled", "stopped", "source-denied", "destination-denied", "removed-capability",
+        "stop-during-update", "revoke-during-update", "destination-revoked-during-update", "publication-failed", "completion-interrupted",
+        "completion-after-settings", "old-consent-retired", "uninstall", "uninstall-pending", "unreviewed" })
+    {
+        using var temp = new TemporaryDirectory();
+        var catalog = new WidgetCatalog(Path.Combine(temp.Path, "catalog"));
+        var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
+        var settings = new PlatformSettingsStore(new(temp.Path));
+        var transfer = new WidgetSettingsTransfer(Path.Combine(temp.Path, "widget-state"), consent);
+        const string id = "dev.test.replay-update";
+        var capture = PlatformCapabilities.WindowCaptureV1;
+        var old = await catalog.InstallAsync(CreatePackage(temp.Path, id, "dev.test", "1.0.0", permissions: [capture]));
+        await catalog.SetActiveVersionAsync(id, old.Version);
+        var owner = InstalledWidgetAuthority.Identity(old);
+        var initial = new CaptureReplayPreferences { Revision = 7, OwnerPackageId = owner.PackageId,
+            OwnerPublisherId = owner.PublisherId, OwnerInstanceId = owner.InstanceId,
+            Settings = new() { Enabled = scenario != "stopped", AutoStart = true },
+            ApprovedApplication = new string('a', 64), ApplicationName = "Fixture game" };
+        await settings.UpdateAsync(document => document with { ReplayCapture = initial });
+        await consent.SetDecisionAsync(owner, capture, scenario == "source-denied" ? ConsentDecision.Deny : ConsentDecision.Grant);
+        var archive = CreatePackage(temp.Path, id, "dev.test", "2.0.0", permissions: scenario == "removed-capability" ? [] : [capture]);
+        async Task Prepare(InstalledWidgetVersion previous, InstalledWidgetVersion replacement, CancellationToken token)
+        {
+            if (scenario == "destination-denied") await consent.SetDecisionAsync(InstalledWidgetAuthority.Identity(replacement), capture, ConsentDecision.Deny, token);
+            await transfer.CopyAsync(previous, replacement, token);
+            Assert.Equal(initial, (await settings.LoadAsync()).ReplayCapture);
+            await Recover(); // The old version is still selected: preparation grants no authority.
+            Assert.Equal(initial, (await settings.LoadAsync()).ReplayCapture);
+            if (scenario == "stop-during-update")
+                await settings.UpdateAsync(document => document with { ReplayCapture = document.ReplayCapture with
+                    { Revision = 8, Settings = document.ReplayCapture.Settings with { Enabled = false } } });
+            if (scenario == "revoke-during-update") await consent.SetDecisionAsync(owner, capture, ConsentDecision.Deny);
+            if (scenario == "destination-revoked-during-update") await consent.SetDecisionAsync(InstalledWidgetAuthority.Identity(replacement), capture, ConsentDecision.Deny);
+            if (scenario == "publication-failed") throw new IOException("Injected pre-publication failure");
+        }
+        async Task Complete(InstalledWidgetVersion selected, CancellationToken token)
+        {
+            Assert.Equal(selected.Version, (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version);
+            if (scenario == "completion-after-settings")
+            {
+                var selectedOwner = InstalledWidgetAuthority.Identity(selected);
+                await settings.UpdateAsync(document => document with { ReplayCapture = document.ReplayCapture with
+                    { Revision = 8, OwnerPublisherId = selectedOwner.PublisherId, OwnerInstanceId = selectedOwner.InstanceId } });
+                throw new IOException("Injected interruption after settings commit before receipt retirement");
+            }
+            if (scenario is "completion-interrupted" or "uninstall-pending") throw new IOException("Injected post-selection interruption");
+            if (scenario == "old-consent-retired")
+            {
+                // Simulate exact old-authority consent retirement after reviewed
+                // decisions have moved. The selected successor grant remains.
+                var decisions = await consent.LoadAsync();
+                await File.WriteAllBytesAsync(consent.DocumentFile, System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
+                    decisions with { Revision = decisions.Revision + 1, Entries = decisions.Entries.Where(entry => entry.PublisherId != owner.PublisherId).ToArray() }, BrokerJson.StrictOptions));
+            }
+            await transfer.CompleteAsync(selected, token);
+        }
+        if (scenario == "unreviewed")
+        {
+            var raw = await catalog.InstallAsync(archive); await catalog.SetActiveVersionAsync(id, raw.Version);
+        }
+        else
+        {
+            await using var input = File.OpenRead(archive);
+            var update = catalog.UpdateFromFileAsync(input, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id))),
+                WidgetPackageTrustApproval.None, (_, _) => Task.CompletedTask, default, Prepare, Complete);
+            if (scenario == "publication-failed") await Assert.ThrowsAsync<IOException>(() => update);
+            else if (scenario is "completion-interrupted" or "completion-after-settings" or "uninstall-pending") await Assert.ThrowsAsync<WidgetPackageException>(() => update);
+            else await update;
+        }
+        if (scenario is "uninstall" or "uninstall-pending") await catalog.UninstallAsync(id);
+        await Recover();
+        var first = (await settings.LoadAsync()).ReplayCapture;
+        await Recover();
+        Assert.Equal(first, (await settings.LoadAsync()).ReplayCapture); // Retry is idempotent.
+        var shouldMigrate = scenario is "enabled" or "stopped" or "completion-interrupted" or "completion-after-settings" or "old-consent-retired";
+        if (shouldMigrate)
+        {
+            var selected = (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion;
+            Assert.Equal(initial with { Revision = 8, OwnerPublisherId = InstalledWidgetAuthority.PublisherId(selected),
+                OwnerInstanceId = InstalledWidgetAuthority.Identity(selected).InstanceId }, first);
+        }
+        else if (scenario == "stop-during-update")
+            Assert.Equal(initial with { Revision = 8, Settings = initial.Settings with { Enabled = false } }, first);
+        else if (scenario is "uninstall" or "uninstall-pending")
+            Assert.True(first.OwnerPackageId is null && !first.Settings.Enabled && !first.Settings.AutoStart, "Uninstall resurrected replay authority");
+        else Assert.Equal(initial, first);
+        if (scenario == "publication-failed") Assert.Equal(old.Version, (await catalog.DiscoverAsync()).Widgets.Single().ActiveVersion.Version);
+
+        async Task Recover()
+        {
+            var snapshot = await catalog.DiscoverAsync();
+            await new ReviewedReplayOwnerTransfer(temp.Path, consent).RecoverAsync(actor => snapshot.Widgets.Any(widget =>
+                InstalledWidgetAuthority.Identity(widget.ActiveVersion) == actor && widget.ActiveVersion.Manifest.Permissions
+                    .Concat(widget.ActiveVersion.Manifest.OptionalPermissions).Contains(capture)), default);
+        }
+    }
+}
+
 static async Task ReviewedPermissionContinuity()
 {
     using var temp = new TemporaryDirectory();
@@ -700,6 +807,38 @@ static async Task MissingPinnedVersionFailsClosed()
     var totalRepaired = (await totalCatalog.DiscoverAsync()).Widgets.Single();
     Assert.Equal("1.0.0", totalRepaired.ActiveVersion.Version.ToString());
     Assert.True(!totalRepaired.Enabled, "Total-loss pin repair did not remain disabled.");
+}
+
+static async Task ReplayUninstallLifecycle()
+{
+    using var temp = new TemporaryDirectory();
+    var catalog = new WidgetCatalog(Path.Combine(temp.Path, "catalog"));
+    const string id = "dev.test.replay";
+    var previous = await catalog.InstallAsync(CreatePackage(temp.Path, id, "dev.test", "1.0.0"));
+    var archive = CreatePackage(temp.Path, id, "dev.test", "2.0.0");
+    var installed = await catalog.InstallAsync(archive);
+    await catalog.SetActiveVersionAsync(id, new Version(2, 0, 0));
+    var store = new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path));
+    var enabled = new CaptureReplayPreferences { Revision = 7, Settings = new() { Enabled = true, AutoStart = true },
+        OwnerPackageId = id, OwnerPublisherId = InstalledWidgetAuthority.PublisherId(installed),
+        OwnerInstanceId = InstalledWidgetAuthority.InstanceId(id, "2.0.0"), ApprovedApplication = new string('a', 64), ApplicationName = "Fixture app" };
+    await store.UpdateAsync(current => current with { ReplayCapture = enabled });
+    await catalog.RemoveInactiveVersionAsync(id, new Version(1, 0, 0));
+    Assert.Equal(enabled, (await store.LoadAsync()).ReplayCapture);
+    await catalog.InstallAsync(CreatePackage(temp.Path, "dev.test.other", "dev.test", "1.0.0"));
+    await catalog.UninstallAsync("dev.test.other");
+    Assert.Equal(enabled, (await store.LoadAsync()).ReplayCapture);
+    // Model a host that was offline through update and inactive-version cleanup.
+    // Its last approved authority can refer to bytes no longer in the inventory.
+    await store.UpdateAsync(current => current with { ReplayCapture = enabled with
+    { OwnerPublisherId = InstalledWidgetAuthority.PublisherId(previous), OwnerInstanceId = InstalledWidgetAuthority.InstanceId(id, "1.0.0") } });
+    await catalog.UninstallAsync(id);
+    var removed = (await store.LoadAsync()).ReplayCapture;
+    Assert.True(!removed.Settings.Enabled && !removed.Settings.AutoStart && removed.OwnerPackageId is null && removed.ApprovedApplication is null,
+        "Full package uninstall retained automatic recording authority.");
+    Assert.Equal(enabled.Revision + 1, removed.Revision);
+    await catalog.InstallAsync(archive);
+    Assert.Equal(removed, (await store.LoadAsync()).ReplayCapture);
 }
 
 static async Task UninstallRemovesAllVersions()

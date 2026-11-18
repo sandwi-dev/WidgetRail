@@ -84,10 +84,11 @@ public sealed class LocalWidgetInstallTests
     }
 
     [TestMethod]
-    public async Task KeyboardEditorRequiresTheDeclaredCurrentSettingsControl()
+    [DataRow(false)][DataRow(true)]
+    public async Task KeyboardEditorRequiresTheDeclaredCurrentSettingsControl(bool replay)
     {
-        var action = new WidgetActionEvent(WidgetPresentationSession.EditKeyboardShortcutAction,
-            "controllers.keyboard-shortcut", InputScopeId: "controllers.page");
+        var action = new WidgetActionEvent(replay?WidgetPresentationSession.EditReplayShortcutAction:WidgetPresentationSession.EditKeyboardShortcutAction,
+            replay?"controllers.replay-shortcut":"controllers.keyboard-shortcut", InputScopeId: "controllers.page");
         await Run(_ => Task.CompletedTask, (session, frame) =>
         {
             session.ValidateKeyboardShortcutCommand(frame, action);

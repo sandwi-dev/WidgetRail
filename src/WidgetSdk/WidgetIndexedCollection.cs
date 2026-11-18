@@ -22,6 +22,11 @@ public sealed record WidgetIndexedCollectionOptions<TQuery, TItem> where TQuery 
     public TimeSpan ReadTimeout { get; init; } = TimeSpan.FromSeconds(10);
     /// <summary>Opt into bounded framework-owned selection; ordinary activation is unchanged until BeginSelection.</summary>
     public bool EnableSelection { get; init; }
+    /// <summary>Keep an already-at-end viewport at the end during content refresh. New queries reset the domain; loaded collections can preserve it across explicit semantic continuity.</summary>
+    public bool FollowEnd { get; init; }
+    internal bool SupportsViewportRecovery { get; init; }
+    internal bool RetainsAppendedPrefix { get; init; }
+    internal bool ObservesBoundaries { get; init; }
     /// <summary>Locate a surviving occurrence in this immutable finite query, without fetching or rendering the full collection.</summary>
     public Func<TQuery, WidgetCollectionItemKey, CancellationToken, ValueTask<int?>>? FindIndex { get; init; }
 }
@@ -46,6 +51,8 @@ internal interface IWidgetIndexedCollection
     IndexedCollectionDescriptor Descriptor { get; }
     ValueTask<WidgetIndexedRead> ReadAsync(IndexedCollectionRangeRequest request, CancellationToken cancellationToken);
     ValueTask<int?> LocateAsync(IndexedCollectionRangeRequest request, CancellationToken cancellationToken) => throw new NotSupportedException("This source does not support key lookup.");
+    ValueTask<IndexedViewportRecoveryResult?> ControlViewportAsync(IndexedCollectionRangeRequest request, CancellationToken cancellationToken) =>
+        ValueTask.FromException<IndexedViewportRecoveryResult?>(new NotSupportedException("This source does not support viewport feedback."));
     ValueTask ContinueAsync(IndexedCollectionRangeRequest request, CancellationToken cancellationToken) =>
         ValueTask.FromException(new InvalidOperationException("This source is a complete indexed query."));
 }
@@ -85,7 +92,9 @@ public sealed partial class WidgetIndexedCollection<TQuery, TItem> : IWidgetInde
         if (options.ReadTimeout < TimeSpan.FromMilliseconds(100) || options.ReadTimeout > TimeSpan.FromSeconds(30))
             throw new ArgumentOutOfRangeException(nameof(options.ReadTimeout));
         this.options = options; this.changed = changed; this.widgetLifetime = widgetLifetime;
-        current = new(query, new IndexedCollectionDescriptor(sourceId, 1, 0, count) { CanLocateItems = options.FindIndex is not null }, new(), CaptureKeys(query, count));
+        current = new(query, new IndexedCollectionDescriptor(sourceId, 1, 0, count) { CanLocateItems = options.FindIndex is not null, EndFollowingEpoch = options.FollowEnd ? 1 : null,
+            CanRecoverViewport = options.SupportsViewportRecovery, ObservesBoundaries=options.ObservesBoundaries,
+            RetainsAppendedPrefix = options.RetainsAppendedPrefix && count <= IndexedCollectionLimits.MaximumContinuityItems }, new(), CaptureKeys(query, count));
     }
 
     private IReadOnlyList<string>? CaptureKeys(TQuery query, int count)
@@ -129,6 +138,10 @@ public sealed partial class WidgetIndexedCollection<TQuery, TItem> : IWidgetInde
     public void PublishQuery(TQuery query, int count)
         => PublishQuery(query, count, null);
 
+    /// <summary>Publish changed membership for the same logical filter/sort. The host may retain its current reader/focus or a nearby survivor; later user input still wins. Use PublishQuery for a different filter, search, account or navigation destination. Requires key lookup or bounded occurrence keys and protocol127.</summary>
+    public void PublishRefresh(TQuery query,int count)
+        =>PublishQuery(query,count,null,false,false,true);
+
     /// <summary>Reveals an exact occurrence without selecting it or moving focus. Issue once for a navigation event, not on every render.</summary>
     public ScrollRevealRequest Reveal(string collectionId, long requestId, IndexedCollectionFocusTarget item)
     {
@@ -139,6 +152,9 @@ public sealed partial class WidgetIndexedCollection<TQuery, TItem> : IWidgetInde
     }
 
     internal void PublishQuery(TQuery query, int count, DiscoveredCollectionState? discovery)
+        => PublishQuery(query, count, discovery, false);
+
+    internal void PublishQuery(TQuery query, int count, DiscoveredCollectionState? discovery, bool preserveEndFollowing, bool appended = false,bool preserveView=false)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentOutOfRangeException.ThrowIfNegative(count);
@@ -148,12 +164,43 @@ public sealed partial class WidgetIndexedCollection<TQuery, TItem> : IWidgetInde
         {
             widgetLifetime.ThrowIfCancellationRequested();
             previous = current;
-            current = new(query, current.Descriptor with { QueryGeneration = checked(current.Descriptor.QueryGeneration + 1), ContentRevision = 0, Count = count, Discovery = discovery }, new(), keys);
+            if(preserveView && options.FindIndex is null && (previous.Keys is null || keys is null))
+                throw new InvalidOperationException("Query refresh continuity requires key lookup or complete bounded occurrence keys.");
+            current = new(query, current.Descriptor with { QueryGeneration = checked(current.Descriptor.QueryGeneration + 1), ContentRevision = 0, Count = count, Discovery = discovery,
+                RefreshFromQuery=preserveView?current.Descriptor.RefreshFromQuery??current.Descriptor.QueryGeneration:null,
+                RetainsAppendedPrefix = options.RetainsAppendedPrefix && count <= IndexedCollectionLimits.MaximumContinuityItems,
+                ObservesBoundaries=options.ObservesBoundaries,
+                EndFollowingPreviousQuery = preserveEndFollowing && appended && current.Descriptor.EndFollowingEpoch is not null ? current.Descriptor.EndFollowingPreviousQuery ?? current.Descriptor.QueryGeneration : null,
+                EndFollowingEpoch = current.Descriptor.EndFollowingEpoch is { } epoch ? preserveEndFollowing ? epoch : checked(epoch + 1) : null }, new(), keys);
             ResetSelectionLocked(selectionActive);
         }
         try { Retire(previous); }
         finally { changed(); }
     }
+
+    // Only the loaded adaptor may call this, after proving immutable context,
+    // values and indices of the complete old prefix are unchanged.
+    internal void AppendUnchangedPrefix(TQuery query, int count)
+    {
+        var keys = CaptureKeys(query, count);
+        lock (gate)
+        {
+            widgetLifetime.ThrowIfCancellationRequested();
+            if (!current.Descriptor.RetainsAppendedPrefix || count <= current.Descriptor.Count ||
+                count > IndexedCollectionLimits.MaximumContinuityItems || keys is null ||
+                current.Keys is not null && !current.Keys.SequenceEqual(keys.Take(current.Keys.Count)))
+                throw new InvalidOperationException("The loaded prefix is not unchanged.");
+            var descriptor = current.Descriptor with { Count = count };
+            IndexedCollectionContract.ValidateDescriptor(descriptor);
+            // Existing reads and actions keep their immutable captured snapshot.
+            // Shared lifetime is retired on the next actual edit/reset.
+            current = new(query, descriptor, current.Lifetime, keys);
+        }
+        changed();
+    }
+
+    private bool RetainsCapturedQuery(Query captured) => ReferenceEquals(current.Lifetime, captured.Lifetime) &&
+        IndexedCollectionContract.RetainsPrefix(current.Descriptor, captured.Descriptor);
 
     internal void AppendPrefix(int count, DiscoveredCollectionState discovery)
     {
@@ -227,7 +274,7 @@ public sealed partial class WidgetIndexedCollection<TQuery, TItem> : IWidgetInde
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !widgetLifetime.IsCancellationRequested)
         {
             lock (gate)
-                if (!ReferenceEquals(current, captured)) throw new InvalidOperationException("The indexed query changed during loading.");
+                if (!RetainsCapturedQuery(captured)) throw new InvalidOperationException("The indexed query changed during loading.");
             throw new TimeoutException("The indexed source read timed out.");
         }
         if (values is null || values.Count != request.Count) throw new InvalidOperationException("An indexed reader must return exactly the requested range.");
@@ -241,7 +288,7 @@ public sealed partial class WidgetIndexedCollection<TQuery, TItem> : IWidgetInde
             cancellationToken.ThrowIfCancellationRequested();
             widgetLifetime.ThrowIfCancellationRequested();
             lock (gate)
-                if (!ReferenceEquals(current, captured)) throw new InvalidOperationException("The indexed query changed during item rendering.");
+                if (!RetainsCapturedQuery(captured)) throw new InvalidOperationException("The indexed query changed during item rendering.");
             var item = copy[index];
             ArgumentNullException.ThrowIfNull(item);
             var key = options.ItemKey(item);
@@ -269,7 +316,7 @@ public sealed partial class WidgetIndexedCollection<TQuery, TItem> : IWidgetInde
         cancellationToken.ThrowIfCancellationRequested();
         widgetLifetime.ThrowIfCancellationRequested();
         lock (gate)
-            if (!ReferenceEquals(current, captured)) throw new InvalidOperationException("The indexed query changed before publication.");
+            if (!RetainsCapturedQuery(captured)) throw new InvalidOperationException("The indexed query changed before publication.");
         return new(Array.AsReadOnly(result), nodeCount);
     }
 }
@@ -306,6 +353,22 @@ public sealed record IndexedCollectionElement : ContainerElement
     public ScrollAxis Axis { get; }
     public string AccessibilityLabel { get; }
     public IReadOnlyList<IndexedCollectionGroup>? Groups { get; private init; }
+    public IndexedCollectionBoundaries? Boundaries { get; private init; }
+    public IndexedDirectionalEntryMode DirectionalEntryMode { get; private init; }
+    /// <summary>Choose remembered entry or the visible edge for directional movement into this list. Explicit focus/reveal/return requests are unaffected. Requires protocol125 when opted in.</summary>
+    public IndexedCollectionElement DirectionalEntry(IndexedDirectionalEntryMode mode)
+    {
+        if(!Enum.IsDefined(mode) || mode!=IndexedDirectionalEntryMode.Remembered && Layout.Kind!=CollectionLayoutKind.List)
+            throw new ArgumentException("Visible-edge directional entry requires an indexed list.",nameof(mode));
+        return this with{DirectionalEntryMode=mode};
+    }
+    /// <summary>Declares the currently loadable adjacent edges without changing item/query authority.</summary>
+    public IndexedCollectionElement AdjacentPages(bool before, bool after)
+    {
+        if (!Source.ObservesBoundaries || Layout.Kind!=CollectionLayoutKind.List)
+            throw new InvalidOperationException("Adjacent pages require an opted-in indexed list.");
+        return this with { Boundaries=new(before,after) };
+    }
     /// <summary>
     /// Adds display-only headings over contiguous portions of this vertical flat query.
     /// Counts must partition Source.Count exactly; zero-count groups are hidden by the host.
@@ -324,6 +387,7 @@ public sealed record IndexedCollectionElement : ContainerElement
     internal override ViewNode ToProtocolNode() => ToContainerProtocolNode(ViewNodeKind.IndexedCollection) with
     {
         IndexedCollection = Source, IndexedGroups = Groups, IndexedOccurrenceKeys = OccurrenceKeys, IndexedSelection = Selection, CollectionLayout = Layout, ScrollAxis = Axis, AccessibilityLabel = AccessibilityLabel,
+        CollectionBoundaries=Boundaries,IndexedDirectionalEntry=DirectionalEntryMode,
     };
 }
 
@@ -368,6 +432,15 @@ public abstract partial class Widget
         IWidgetIndexedCollection source;
         lock (indexedSourcesGate)
             source = indexedSources.GetValueOrDefault(request.Source.SourceId) ?? throw new InvalidOperationException("Indexed source is not registered.");
+        if (request.Kind is IndexedCollectionRequestKind.ObserveViewport or IndexedCollectionRequestKind.RecoverViewport)
+        {
+            var recovered = await source.ControlViewportAsync(request, cancellationToken).ConfigureAwait(false);
+            var response = new IndexedCollectionRange(parent.WidgetInstanceId, request.CollectionId, request.Source, scope, 0,
+                request.DemandId, [], request.PinnedLayoutId) { ViewportRecovered = recovered?.Recovered, ViewportAnchorKey = recovered?.AnchorKey };
+            parent = Volatile.Read(ref _latestSnapshot) ?? throw new InvalidOperationException("Parent presentation retired during viewport control.");
+            IndexedCollectionContract.ValidateRange(parent, request, response);
+            return response;
+        }
         if (request.Kind == IndexedCollectionRequestKind.Locate)
         {
             var found = await source.LocateAsync(request, cancellationToken).ConfigureAwait(false);

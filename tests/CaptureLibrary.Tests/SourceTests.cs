@@ -4,7 +4,7 @@ using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetBridge;
 
-internal static class SourceTests
+internal static partial class SourceTests
 {
     internal static async Task CodecProbe(string image, string video, string output)
     {

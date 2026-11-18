@@ -11,13 +11,14 @@ public sealed partial class DiscordWebViewWidget
         var data=state.Snapshot.HasValue?state.Snapshot.Value:null;
         var current=view.Value;var route=navigation.Value;
         var ready=data?.Ready==true;var busy=Operations.IsBusy("discord.command");
+        ScrollRevealRequest? messageReveal=null;
         WidgetElement content;string first;
         if(route.Route==Route.Account)
         {
             content=UI.Stack("discord.account",
                 UI.Row("discord.account.header",UI.Icon(DiscordIcons.Mark,"discord.account.brand","Discord").Classes("discord-brand"),
                     UI.Text("Discord","discord.account.title").Classes("discord-title","discord-copy"),
-                    UI.Button("Back to controls",route.BackActionId!,"discord.account.back").Classes("discord-control")).Classes("discord-header"),
+                    UI.IconButton(WidgetGlyph.Back,route.BackActionId!,"discord.account.back","Back").Classes("discord-control")).Classes("discord-header"),
                 client?.Reference is { } reference?UI.WebView(reference,"discord.account.browser","Discord sign-in and account setup",BrowserInteractionMode.ActivateToInteract).Classes("discord-body"):
                     Empty("discord.account.wait","Connecting to Discord","Go back and try Refresh.",DiscordIcons.Account)).Classes("discord-page");
             first="discord.account.back";
@@ -33,11 +34,19 @@ public sealed partial class DiscordWebViewWidget
             if(route.Route==Route.Home&&ready&&data!.ChannelId is null)
                 headerControls.Add(UI.Button("Friends","friends","discord.friends.open").Classes("discord-control","discord-quiet")
                     .VisibleWhen(ResponsiveVisibility.CompactOnly));
+            if(ready && data!.Messaging?.CanRead==true && route.Route is not (Route.Messages or Route.Conversation))
+                headerControls.Add(UI.Button("Messages","messages","discord.messages.open").Classes("discord-control","discord-quiet"));
             headerControls.Add(UI.Button("Open Discord","account","discord.account.open").Icon(DiscordIcons.Account)
                 .Disabled(client?.Reference is null).Classes("discord-control","discord-quiet"));
-            var header=UI.Row("discord.header",headerControls.ToArray()).Classes("discord-header");
+            WidgetElement header=UI.Row("discord.header",headerControls.ToArray()).Classes("discord-header");
+            if(ready && route.Route is Route.Messages or Route.Conversation)
+                header=header.VisibleWhen(ResponsiveVisibility.ExpandedOnly);
             WidgetElement body;
-            if(!ready)
+            if(route.Route==Route.Messages && messages.Value.Query is null && (messages.Value.IncomingFiles || messages.Value.Notice.Length>0))
+            {
+                body=UnboundMessageSharePage(out first);
+            }
+            else if(!ready)
             {
                 body=UI.VerticalScroll("discord.connecting",
                     route.Route is Route.Channels or Route.Friends?UI.Button("Back",route.BackActionId!,"discord.picker.back").Classes("discord-control","discord-quiet"):
@@ -47,6 +56,10 @@ public sealed partial class DiscordWebViewWidget
                     UI.Button("Open Discord","account","discord.setup.open").Disabled(client?.Reference is null).Classes("discord-control","discord-primary"),
                     current.Outgoing is not null||current.PreparingShare is not null?SharingControls(data):UI.Spacer("discord.share.inactive")).Classes("discord-page-scroll");
                 first=client?.Reference is not null?"discord.setup.open":"discord.refresh";
+            }
+            else if(route.Route is Route.Messages or Route.Conversation)
+            {
+                body=MessagePage(data!,route.Route,out first,out messageReveal);
             }
             else if(route.Route==Route.Friends)
             {
@@ -84,7 +97,8 @@ public sealed partial class DiscordWebViewWidget
                     ActivityPanel(data,"discord.activities",false).VisibleWhen(ResponsiveVisibility.ExpandedOnly)).Classes("discord-body","discord-columns");
                 first=data.ChannelId is null?PickerInitialFocusId(data):data.Capabilities.Mute?"discord.main.mute":"discord.main.servers";
             }
-            var children=new List<WidgetElement>{header};
+            var children=new List<WidgetElement>();
+            if(!ready || route.Route is not (Route.Messages or Route.Conversation))children.Add(header);
             if (route.Route == Route.Home && NeedsNotificationSetup(data) && client?.Reference is { } session)
                 children.Add(UI.Button("Enable notifications", DomainAction("notifications", session.Id, data.Account), "discord.notifications.enable")
                     .Classes("discord-control", "discord-quiet"));
@@ -97,7 +111,8 @@ public sealed partial class DiscordWebViewWidget
         // the dialog scope registered with the navigator, so Back and indexed
         // return focus use the same SDK-owned visit without duplicate scopes.
         ContainerElement root=route.Route is Route.VoiceSettings or Route.ConnectionDetails?bodyRoot.InputScope("discord.root"):navigation.Scope(route,bodyRoot);
-        if(route.InitialFocusId is { } restored&&WidgetFocusTargetLookup.Resolve(root,restored,route.InputScopeId).IsEnabled)first=restored;
+        var messageEntry=route.Route==Route.Conversation && CurrentMessageEntry(messages.Value.InitialReveal);
+        if(!messageEntry && route.InitialFocusId is { } restored&&WidgetFocusTargetLookup.Resolve(root,restored,route.InputScopeId).IsEnabled)first=restored;
         if(route.Route==Route.Home&&ready&&data!.ChannelId is not null)
         {
             if(data.Capabilities.Mute)root=root.Shortcut(ControllerButton.X,CallAction("mute",data),data.Muted?"Unmute":"Mute");
@@ -115,18 +130,36 @@ public sealed partial class DiscordWebViewWidget
         }
         else if(route.Route==Route.Home&&ready)
             root=root.ContextMenu(ControllerButton.Menu,new(VoiceSettingsAction(data!,client?.Reference),"Voice settings"),new("account","Open Discord"),new("refresh","Refresh"));
+        else if(route.Route==Route.Conversation && ready)
+            root=root.Shortcut(ControllerButton.LeftStick,"message-focus-header","Conversation controls")
+                .Shortcut(ControllerButton.X,"message-focus-composer","Write message")
+                .Shortcut(ControllerButton.Y,"message-latest","Latest messages")
+                .ContextMenu(ControllerButton.Menu,MessageCommands());
         var returnFocus=route.CollectionReturnFocus;
         var collectionFocus=returnFocus is not null&&WidgetFocusTargetLookup.Resolve(root,returnFocus.Item.CollectionId,route.InputScopeId).IsEnabled&&
             CollectionSource(returnFocus.Item.CollectionId) is { } source
             ?returnFocus.Resolve(returnFocus.Item.CollectionId,source):null;
-        var result=new WidgetView(root,first,ActiveInputScopeId:route.InputScopeId,
+        var controls=messages.Value.ControlFocus;
+        var messageFocus=route.Route==Route.Conversation && controls is not null && controls.NavigationRevision==route.Revision && controls.Selection==messages.Value.Selection
+            ?controls.Request:messageEntry?messages.Value.InitialReveal!.Request.FocusElement("discord.message.actions","discord.message.draft"):null;
+        var result=new WidgetView(root,first,QuickActions:DashboardActions(data,busy),ActiveInputScopeId:route.InputScopeId,
             Surface:new(){PreferredWidth=1040,PreferredHeight=680,MinimumWidth=420,MinimumHeight=360,Appearance=WidgetSurfaceAppearance.DesktopAcrylic})
-        {FocusGroupEntryRequest=collectionFocus??route.FocusGroupEntryRequest,PinnedLayouts=[
+        {FocusGroupEntryRequest=messageFocus??collectionFocus??route.FocusGroupEntryRequest,ScrollRevealRequest=messageReveal,PinnedLayouts=[
             ..watches.Where(slot=>slot.State.Value is {StreamKey:not null,Closed:false,Ended:false}).Select(StreamLayout),
             ..(ready&&data!.ChannelId is not null?new[]{callPin.Present(VoicePin(data,busy),
                 data.Capabilities.Mute?"discord.pin.mute":data.Capabilities.Deafen?"discord.pin.deafen":"discord.pin.leave") with {IndependentSelection=true,RestoreWhenAvailable=true},
             peoplePin.Present(ParticipantOverlay(data)) with {IndependentSelection=true,RestoreWhenAvailable=true}}:[])]};
         return ApplyConnectionDetails(ApplyVoiceDialog(result,data),data);
+    }
+
+    private IReadOnlyList<WidgetQuickAction> DashboardActions(DiscordState? data,bool busy)
+    {
+        if(busy || data is not {Ready:true,ChannelId:not null} || client?.Reference is not {} session)return [];
+        var actions=new List<WidgetQuickAction>();
+        if(data.Capabilities.Deafen)actions.Add(new(ControllerButton.LeftBumper,CallAction("deafen",data,session),data.Deafened?"Undeafen":"Deafen"));
+        if(data.Capabilities.Mute)actions.Add(new(ControllerButton.X,CallAction("mute",data,session),data.Muted?"Unmute":"Mute"));
+        actions.Add(new(ControllerButton.RightBumper,CallAction("leave",data,session),"Leave call"));
+        return actions;
     }
 
     private PinnedPresentationLayout StreamLayout(WatchSlot slot)

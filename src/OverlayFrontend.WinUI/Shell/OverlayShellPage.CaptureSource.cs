@@ -11,8 +11,11 @@ internal sealed partial class OverlayShellPage
         try
         {
             if (activeWidget != widgetId) return;
-            directory = await PickCaptureCopyDestinationAsync(async token => !retired && visible && activeWidget == widgetId && selection == selectionVersion &&
-                await owner!.Session.IsCaptureSourceCurrentAsync(request.Id, token), lifetime.Token, "Link this folder");
+            async Task<bool> Current(CancellationToken token) => !retired && visible && activeWidget == widgetId && selection == selectionVersion &&
+                await owner!.Session.IsCaptureSourceCurrentAsync(request.Id, token) && !retired && visible && activeWidget == widgetId && selection == selectionVersion;
+            directory = request.KnownLocation is { } location
+                ? await ChooseKnownCaptureSourceAsync(location, Current, lifetime.Token)
+                : await PickCaptureCopyDestinationAsync(Current, lifetime.Token, "Link this folder");
         }
         catch (Exception error) when (error is not OutOfMemoryException)
         { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("capture-source-picker", error); }

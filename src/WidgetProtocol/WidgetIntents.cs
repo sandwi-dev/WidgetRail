@@ -35,6 +35,15 @@ public static class WidgetIntentContracts
 {
     public const int MaximumDeclarations = 16;
     public const string OpenWebPage = "widgetrail.web.open";
+    public const string OpenWebNotification = "widgetrail.web.notification.open";
+    /// <summary>Host-only activation from a live owned web-session notification; delivery is restricted to that same widget.</summary>
+    public static WidgetIntentContract WebNotification { get; } = new(OpenWebNotification, 1, Schema("""
+        {"type":"object","additionalProperties":false,"properties":{
+          "sessionId":{"type":"string","minLength":32,"maxLength":32},
+          "tag":{"type":"string","minLength":1,"maxLength":256}
+        },"required":["sessionId","tag"]}
+        """));
+
     public const string OpenVideo = "widgetrail.video.open";
     public const string SearchVideo = "widgetrail.video.search";
     public const string OpenWidgetSettings = "widgetrail.settings.widget.open";
@@ -44,12 +53,28 @@ public static class WidgetIntentContracts
     public const string OpenAppearance = "widgetrail.settings.appearance.open";
     public const string OpenCaptureLibrary = "widgetrail.captures.browse";
     public const string OpenRelatedItem = "widgetrail.related-item.open";
+    public const string FileShare = "widgetrail.files.share";
+    /// <summary>A host-authorized offer ID, never a filesystem path or permission declaration.</summary>
+    public static WidgetIntentContract Files { get; } = new(FileShare, 1, Schema("""
+        {"type":"object","additionalProperties":false,"properties":{
+          "offerId":{"type":"string","minLength":32,"maxLength":32}
+        },"required":["offerId"]}
+        """));
     public static WidgetIntentContract CaptureLibrary { get; } = new(OpenCaptureLibrary, 1, Schema("""
         {"type":"object","additionalProperties":false,"properties":{
           "originPackageId":{"type":"string","minLength":3,"maxLength":128},
           "referenceKind":{"type":"string","minLength":1,"maxLength":48},
           "referenceId":{"type":"string","minLength":1,"maxLength":256}
         },"required":["originPackageId","referenceKind","referenceId"]}
+        """));
+    /// <summary>Related-capture browsing with a presentation label; matching still uses the opaque reference.</summary>
+    public static WidgetIntentContract CaptureLibraryV2 { get; } = new(OpenCaptureLibrary, 2, Schema("""
+        {"type":"object","additionalProperties":false,"properties":{
+          "originPackageId":{"type":"string","minLength":3,"maxLength":128},
+          "referenceKind":{"type":"string","minLength":1,"maxLength":48},
+          "referenceId":{"type":"string","minLength":1,"maxLength":256},
+          "referenceLabel":{"type":"string","minLength":1,"maxLength":256}
+        },"required":["originPackageId","referenceKind","referenceId","referenceLabel"]}
         """));
     public static WidgetIntentContract RelatedItem { get; } = new(OpenRelatedItem, 1, Schema("""
         {"type":"object","additionalProperties":false,"properties":{
@@ -140,9 +165,11 @@ public static class WidgetIntentContracts
                     if (contracts.TryGetValue(key, out var digest) && digest != compiled.SchemaDigest)
                         add(path, "conflicting_intent", "The same intent version has conflicting schemas.");
                     contracts[key] = compiled.SchemaDigest;
-                    var standard = compiled.Id switch { OpenWebPage => compiled.Version == 2 ? WebV2 : Web, OpenVideo => Video, SearchVideo => VideoSearch,
+                    if (kind == "requests" && compiled.Id == OpenWebNotification)
+                        add(path, "host_origin_intent", "Native web notification activation may be handled but cannot be requested by a widget.");
+                    var standard = compiled.Id switch { OpenWebPage => compiled.Version == 2 ? WebV2 : Web, OpenWebNotification => WebNotification, OpenVideo => Video, SearchVideo => VideoSearch,
                         OpenWidgetSettings => WidgetSettings, OpenWidgetPermissions => WidgetPermissions, OpenMarketplace => Marketplace, OpenAppUpdates => AppUpdates, OpenAppearance => Appearance,
-                        OpenCaptureLibrary => CaptureLibrary, OpenRelatedItem => RelatedItem, _ => null };
+                        OpenCaptureLibrary => compiled.Version == 2 ? CaptureLibraryV2 : CaptureLibrary, OpenRelatedItem => RelatedItem, FileShare => Files, _ => null };
                     if (compiled.Id.StartsWith("widgetrail.", StringComparison.Ordinal) &&
                         (standard is null || compiled.Version != standard.Version ||
                          compiled.SchemaDigest != CompiledWidgetIntentContract.Create(standard).SchemaDigest))

@@ -10,9 +10,11 @@ internal sealed partial class NativeWheelProbe : IDisposable
     private readonly nint window;
     private readonly NativePoint point;
     private readonly NativePoint previous;
+    private readonly FrameworkElement target;
     private bool movedCursor;
     internal NativeWheelProbe(FrameworkElement target)
     {
+        this.target = target;
         window = WinRT.Interop.WindowNative.GetWindowHandle(App.Window);
         DemandOwned(window);
         var bounds = target.TransformToVisual(null).TransformBounds(new Rect(0, 0, target.ActualWidth, target.ActualHeight));
@@ -23,6 +25,25 @@ internal sealed partial class NativeWheelProbe : IDisposable
     }
 
     internal object Position => new { point.X, point.Y, window = window.ToInt64() };
+    internal object Diagnostics
+    {
+        get
+        {
+            var cursorRead = GetCursorPos(out var cursor) != 0;
+            return new
+            {
+                planned = Position,
+                cursor = cursorRead ? new { cursor.X, cursor.Y } : null,
+                foreground = GetForegroundWindow().ToInt64(),
+                plannedWindow = WindowFromPoint(point).ToInt64(),
+                cursorWindow = cursorRead ? WindowFromPoint(cursor).ToInt64() : (long?)null,
+                dpi = GetDpiForWindow(window), rasterizationScale = target.XamlRoot?.RasterizationScale,
+                target.IsLoaded, target.IsHitTestVisible, visibility = target.Visibility.ToString(),
+                target.ActualWidth, target.ActualHeight,
+                bounds = target.IsLoaded ? target.TransformToVisual(null).TransformBounds(new Rect(0, 0, target.ActualWidth, target.ActualHeight)) : (Rect?)null
+            };
+        }
+    }
 
     internal void MoveToTarget()
     {
@@ -66,6 +87,8 @@ internal sealed partial class NativeWheelProbe : IDisposable
     private static partial uint GetWindowThreadProcessId(nint window, out uint process);
     [LibraryImport("user32.dll"), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static partial nint GetForegroundWindow();
+    [LibraryImport("user32.dll"), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial uint GetDpiForWindow(nint window);
     [LibraryImport("user32.dll"), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static partial nint WindowFromPoint(NativePoint point);
     [LibraryImport("user32.dll"), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

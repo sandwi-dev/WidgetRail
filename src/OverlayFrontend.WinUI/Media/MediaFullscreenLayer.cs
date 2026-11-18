@@ -40,7 +40,8 @@ internal sealed partial class MediaFullscreenLayer : Grid
         Func<short, short, bool>? AnalogMove = null, Action? Settled = null,
         Rect? Origin = null, Action? Prepare = null, FrameworkElement[]? Chrome = null,
         bool UseXamlTransform = false, Func<Rect?>? MediaBounds = null, FrameworkElement? MotionContent = null,
-        Func<short, short, bool>? PointerMove = null, Func<Task>? BeforeDetach = null, Action? Detach = null)
+        Func<short, short, bool>? PointerMove = null, Func<Task>? BeforeDetach = null, Action? Detach = null,
+        Action<FocusNavigationDirection, bool>? RepeatedNavigate = null)
     {
         internal TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -198,7 +199,12 @@ internal sealed partial class MediaFullscreenLayer : Grid
     }
 
     internal void FocusContent() { if (!IsTransitioning) current?.Focus(); }
-    internal void MoveFocus(FocusNavigationDirection direction) { if (!IsTransitioning) current?.Navigate(direction); }
+    internal void MoveFocus(FocusNavigationDirection direction, bool repeated = false)
+    {
+        if (IsTransitioning || current is not { } presentation) return;
+        if (presentation.RepeatedNavigate is { } navigate) navigate(direction, repeated);
+        else presentation.Navigate(direction);
+    }
     internal bool MoveAnalog(short x, short y) => !IsTransitioning && current?.AnalogMove?.Invoke(x, y) == true;
     internal bool MovePointer(short x, short y) => !IsTransitioning && current?.PointerMove?.Invoke(x, y) == true;
     internal bool Route(ControllerButton button, ControllerEventPhase phase)

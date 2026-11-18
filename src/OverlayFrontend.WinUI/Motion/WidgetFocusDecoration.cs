@@ -13,6 +13,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Motion;
 internal sealed class WidgetFocusDecoration : IDisposable
 {
     private readonly Control control;
+    private readonly FrameworkElement outlineElement;
     private readonly WidgetVisualAdornment adornment;
     private readonly bool nativeFocusVisuals;
     private readonly ContainerVisual viewport;
@@ -31,20 +32,21 @@ internal sealed class WidgetFocusDecoration : IDisposable
     private bool focused;
     private bool applied;
     private bool disposed;
-    internal bool IsVisible => !disposed && visual.Opacity > 0;
+    internal bool IsVisible => !disposed && target is not null && visual.Opacity > 0;
     internal Task<WidgetMotionOutcome>? Playback { get; private set; }
     internal Visual DecorationVisual => visual;
 
-    internal static WidgetFocusDecoration? Create(Control control)
+    internal static WidgetFocusDecoration? Create(Control control) => Create(control, control);
+    internal static WidgetFocusDecoration? Create(Control control, FrameworkElement outlineElement)
     {
         // Share only our adornment owner, never a media/third-party child slot.
         // Native system focus remains the fallback for foreign visual owners.
-        var adornment = WidgetVisualAdornment.Acquire(control, WidgetVisualAdornment.Layer.Focus);
-        return adornment is null ? null : new(control, adornment);
+        var adornment = WidgetVisualAdornment.Acquire(outlineElement, WidgetVisualAdornment.Layer.Focus);
+        return adornment is null ? null : new(control, outlineElement, adornment);
     }
-    private WidgetFocusDecoration(Control control, WidgetVisualAdornment adornment)
+    private WidgetFocusDecoration(Control control, FrameworkElement outlineElement, WidgetVisualAdornment adornment)
     {
-        this.control = control; this.adornment = adornment;
+        this.control = control; this.outlineElement = outlineElement; this.adornment = adornment;
         nativeFocusVisuals = control.UseSystemFocusVisuals;
         // Do not obtain the control's backing visual: WinUI facade Scale and
         // ScaleTransition prohibit that interop path. Only our child visuals
@@ -60,7 +62,7 @@ internal sealed class WidgetFocusDecoration : IDisposable
         viewport.Children.InsertAtTop(visual);
         adornment.Visual.Children.InsertAtTop(viewport);
         control.UseSystemFocusVisuals = false;
-        control.SizeChanged += Resized; control.Loaded += Loaded; control.Unloaded += Unloaded;
+        outlineElement.SizeChanged += Resized; outlineElement.Loaded += Loaded; outlineElement.Unloaded += Unloaded;
     }
     internal void Apply(Color color, float thickness, float cornerRadius, float outlineOffset,
         bool isFocused, WidgetMotionOptions policy)
@@ -88,8 +90,8 @@ internal sealed class WidgetFocusDecoration : IDisposable
         // Routed events can already have captured this handler when an earlier
         // Loaded handler withdraws pinned focus presentation and disposes us.
         if (disposed) return false;
-        var next = new Vector2((float)control.ActualWidth, (float)control.ActualHeight);
-        if (!control.IsLoaded || next.X <= 0 || next.Y <= 0) return false;
+        var next = new Vector2((float)outlineElement.ActualWidth, (float)outlineElement.ActualHeight);
+        if (!outlineElement.IsLoaded || next.X <= 0 || next.Y <= 0) return false;
         var nextPadding = Math.Max(0, offset + width);
         var rebuilt = target is null || size != next || padding != nextPadding;
         if (rebuilt)
@@ -112,7 +114,7 @@ internal sealed class WidgetFocusDecoration : IDisposable
     private void Loaded(object sender, RoutedEventArgs args)
     { if (UpdateGeometry()) target?.Set(WidgetMotionPose.Identity with { Opacity = focused ? 1 : 0 }); }
     private void Resized(object sender, SizeChangedEventArgs args) => Loaded(sender, args);
-    private void Unloaded(object sender, RoutedEventArgs args) { if (!disposed && !control.IsLoaded) RetireTargets(); }
+    private void Unloaded(object sender, RoutedEventArgs args) { if (!disposed && !outlineElement.IsLoaded) RetireTargets(); }
     private void RetireTargets()
     { motion?.Dispose(); motion = null; target?.Dispose(); target = null; }
     public void Dispose()
@@ -120,7 +122,7 @@ internal sealed class WidgetFocusDecoration : IDisposable
         if (disposed) return;
         disposed = true;
         RetireTargets();
-        control.SizeChanged -= Resized; control.Loaded -= Loaded; control.Unloaded -= Unloaded;
+        outlineElement.SizeChanged -= Resized; outlineElement.Loaded -= Loaded; outlineElement.Unloaded -= Unloaded;
         adornment.Dispose();
         control.UseSystemFocusVisuals = nativeFocusVisuals;
         viewport.Children.RemoveAll(); visual.Shapes.Clear();

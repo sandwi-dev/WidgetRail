@@ -22,6 +22,9 @@ internal sealed class BridgeWidgetSettingsTransfer(
         finally { lease?.Dispose(); lease = null; }
     }
 
+    internal Task CompleteAsync(InstalledWidgetVersion selected, CancellationToken token) =>
+        new WidgetSettingsTransfer(stateRoot, consent).CompleteAsync(selected, token);
+
     public async ValueTask DisposeAsync()
     {
         if (lease is null) return;

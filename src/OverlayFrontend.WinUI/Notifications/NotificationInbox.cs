@@ -2,6 +2,7 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.OverlayFrontend.WinUI.Notifications;
 
 internal enum NotificationPresentation { BannerAndList, ListOnly, Off }
+internal enum NotificationActivationDisposition { Unavailable, SourceActivated, Handled }
 
 internal sealed record NotificationCallbacks(Func<bool> IsCurrent, Action Shown, Action Clicked, Action Closed, Action Detach);
 
@@ -10,6 +11,7 @@ internal sealed class NotificationEntry(long id, string widget, string profile, 
 {
     internal long Id { get; } = id;
     internal WidgetNotification? Content { get; set; }
+    internal WebNotificationIntentPayload? NativeIntent { get; set; }
     internal long ContentRevision { get; private set; }
     internal bool Pending => Content?.Retention != WidgetNotificationRetention.BannerOnly;
     internal bool Interactive => Content?.Interaction != WidgetNotificationInteraction.Informational;
@@ -90,19 +92,25 @@ internal sealed class NotificationInbox(int capacity = 256) : IDisposable
         try { item.Callbacks!.Shown(); item.WasShown = true; return true; }
         catch (Exception error) when (error is not OutOfMemoryException) { Invalidate(item); Changed?.Invoke(); return false; }
     }
-    internal async Task<bool> ActivateAsync(long id, Func<NotificationEntry, Task<bool>> activate)
+    internal Task<bool> ActivateAsync(long id, Func<NotificationEntry, Task<bool>> activate) =>
+        ActivateWithDispositionAsync(id, async entry => await activate(entry)
+            ? NotificationActivationDisposition.SourceActivated : NotificationActivationDisposition.Unavailable);
+
+    internal async Task<bool> ActivateWithDispositionAsync(long id, Func<NotificationEntry, Task<NotificationActivationDisposition>> activate)
     {
         var item = Find(id);
         if (item is null || !item.Interactive || item.Activating || !item.Available || !MarkShown(id)) return false;
         item.Activating = true;
         try
         {
-            if (!await activate(item) || !ReferenceEquals(Find(id), item) || !item.Available) return false;
-            item.Callbacks!.Clicked();
-            // Activation is not an explicit dismissal. Do not immediately send
-            // ReportClosed after ReportClicked: the renderer must first deliver
-            // the click, and the website can close its notification itself.
-            if (ReferenceEquals(Find(id), item)) Remove(item, notify: false);
+            var disposition = await activate(item);
+            if (disposition == NotificationActivationDisposition.Unavailable || !Enum.IsDefined(disposition) ||
+                !ReferenceEquals(Find(id), item) || !item.Available) return false;
+            if (disposition == NotificationActivationDisposition.SourceActivated) item.Callbacks!.Clicked();
+            // Original-source activation delivers Clicked without an immediate
+            // Closed. A host handler consumes the activation instead: close the
+            // source notification once without dispatching its website click.
+            if (ReferenceEquals(Find(id), item)) Remove(item, notify: disposition == NotificationActivationDisposition.Handled);
             return true;
         }
         catch (Exception error) when (error is not OutOfMemoryException) { return false; }
@@ -110,12 +118,16 @@ internal sealed class NotificationInbox(int capacity = 256) : IDisposable
     }
     // A stale document cannot receive a click. Open its widget normally instead,
     // without dispatching callbacks to a replacement document.
-    internal async Task<bool> OpenAsync(long id, Func<NotificationEntry, Task<bool>> activate,
+    internal Task<bool> OpenAsync(long id, Func<NotificationEntry, Task<bool>> activate,
+        Func<NotificationEntry, Task<bool>> openWidget) => OpenWithDispositionAsync(id, async entry => await activate(entry)
+            ? NotificationActivationDisposition.SourceActivated : NotificationActivationDisposition.Unavailable, openWidget);
+
+    internal async Task<bool> OpenWithDispositionAsync(long id, Func<NotificationEntry, Task<NotificationActivationDisposition>> activate,
         Func<NotificationEntry, Task<bool>> openWidget)
     {
         var item = Find(id);
         if (item is null || !item.Interactive || item.Activating) return false;
-        if (await ActivateAsync(id, activate)) return true;
+        if (await ActivateWithDispositionAsync(id, activate)) return true;
         if (!ReferenceEquals(Find(id), item) || item.Activating) return false;
         item.Activating = true;
         try
@@ -143,7 +155,7 @@ internal sealed class NotificationInbox(int capacity = 256) : IDisposable
     private static void Invalidate(NotificationEntry entry)
     {
         var callbacks = entry.Callbacks;
-        entry.Callbacks = null; entry.Owner = null;
+        entry.Callbacks = null; entry.Owner = null; entry.NativeIntent = null;
         try { callbacks?.Detach(); } catch (Exception error) when (error is not OutOfMemoryException) { }
     }
     private void Remove(NotificationEntry entry, bool notify)

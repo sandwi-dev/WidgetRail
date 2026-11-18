@@ -178,6 +178,11 @@ internal sealed partial class MediaPresentationStage : Grid, IDisposable
         if (slot is not { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } target ||
             Parent is not FrameworkElement root || target.XamlRoot != XamlRoot)
         { Visibility = Visibility.Collapsed; return; }
+        // ContentControl can finish restoring a collapsed fullscreen card's
+        // visual ancestry after SetSlot. Reconcile the same owner policy when
+        // its real inline placement is ready, without another lifetime/timer.
+        var layer = PresentationLayers.MediaLayer(target);
+        if (Canvas.GetZIndex(this) != (int)layer) PresentationLayers.Order(this, layer);
         var bounds = target.TransformToVisual(root).TransformBounds(new(0, 0, target.ActualWidth, target.ActualHeight));
         var visible = bounds;
         for (DependencyObject? item = target; item is UIElement element; item = VisualTreeHelper.GetParent(item))

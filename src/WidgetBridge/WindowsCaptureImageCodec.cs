@@ -32,7 +32,9 @@ internal static class WindowsCaptureImageCodec
     {
         var file = await StorageFile.GetFileFromPathAsync(inputPath).AsTask(token).ConfigureAwait(false);
         using IRandomAccessStream input = Path.GetExtension(inputPath).Equals(".mp4", StringComparison.OrdinalIgnoreCase)
-            ? await file.GetThumbnailAsync(ThumbnailMode.VideosView, (uint)WidgetProtocol.CaptureLibraryLimits.ThumbnailWidth,
+            // VideosView produces Windows' uniform, cropped gallery frame.
+            // Keep the original frame here; presentation owns any fitting.
+            ? await file.GetThumbnailAsync(ThumbnailMode.SingleItem, (uint)WidgetProtocol.CaptureLibraryLimits.ThumbnailWidth,
                 ThumbnailOptions.UseCurrentScale).AsTask(token).ConfigureAwait(false)
                 ?? throw new BrokerException("capture_library_thumbnail_unavailable", "Windows could not create a video thumbnail.")
             : await file.OpenReadAsync().AsTask(token).ConfigureAwait(false);

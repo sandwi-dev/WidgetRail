@@ -13,7 +13,10 @@ public sealed record BridgeCaptureTake(HostWindowCapture? Request, string? Widge
     public string? CopyWidgetId { get; init; }
     public HostCaptureFolderRequest? OpenFolder { get; init; }
     public string? FolderWidgetId { get; init; }
+    public HostCaptureEditRequest? Edit { get; init; }
+    public string? EditWidgetId { get; init; }
 }
+public sealed record BridgeCaptureEditCompletion(string Id, HostCaptureEditRecipe Recipe);
 public sealed record BridgeCaptureCopyDestination(string Id, string? Destination);
 public sealed record BridgeCaptureFolderResult(string Id,bool Opened);
 public sealed record BridgeCaptureCapabilities(WidgetRail.WidgetProtocol.CaptureCapabilities Capabilities, bool EncodingProbed, string? DiscoveryId = null);

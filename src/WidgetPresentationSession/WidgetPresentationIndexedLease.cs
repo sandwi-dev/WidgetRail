@@ -17,6 +17,8 @@ public sealed class WidgetPresentationIndexedLease : IAsyncDisposable
     internal readonly CancellationTokenSource Lifetime = new();
     internal readonly TaskCompletionSource Released = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal bool Retired;
+    internal bool OwnerReleased;
+    internal int RetainedOwners;
     public string LeaseId { get; }
     public IndexedCollectionRange Range { get; }
     private BridgeResolvedStyleSnapshot styles;
@@ -28,6 +30,15 @@ public sealed class WidgetPresentationIndexedLease : IAsyncDisposable
     internal void SetStyles(BridgeResolvedStyleSnapshot value) => Volatile.Write(ref styles, value);
     internal void NotifyStylesChanged() => RenderStylesChanged?.Invoke(this, EventArgs.Empty);
     public bool IsCurrent => owner.IsIndexedLeaseCurrent(this);
+
+    /// <summary>
+    /// Retain semantic data for an admitted host operation independently of its
+    /// native preview. Source/query/session invalidation still retires every owner.
+    /// A current retained owner can hand off to another bounded owner after the
+    /// row cache releases its base ownership. Final release cannot be revived.
+    /// Dispose the returned owner when the operation completes or is cancelled.
+    /// </summary>
+    public IAsyncDisposable Retain() => owner.RetainIndexedLease(this);
 
     internal WidgetPresentationIndexedLease(WidgetPresentationSession owner, WidgetPresentationAuthority authority,
         BridgeIndexedRangeRequest request, string scopeId, string leaseId, IndexedCollectionRange range, IReadOnlyDictionary<string, BridgeNodeRenderStyles> renderStyles,

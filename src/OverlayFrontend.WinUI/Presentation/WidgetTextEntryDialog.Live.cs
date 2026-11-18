@@ -78,12 +78,8 @@ internal sealed partial class WidgetTextEntryDialog
     {
         if (liveEdit is null) return false;
         if (key == Windows.System.VirtualKey.Space) { Insert(" "); return true; }
-        if (key == Windows.System.VirtualKey.Enter)
-        {
-            if (shift && multiline) Insert("\n");
-            else SendLive(new(KeyboardEditKind.Key, Key: "Enter", KeyCode: 13));
-            return true;
-        }
+        // Physical Enter finishes the editor in HandleKeyboardKey. Sending a
+        // DOM Enter remains the explicitly labelled virtual Submit action.
         string? name = key switch
         {
             Windows.System.VirtualKey.Back => "Backspace", Windows.System.VirtualKey.Delete => "Delete",

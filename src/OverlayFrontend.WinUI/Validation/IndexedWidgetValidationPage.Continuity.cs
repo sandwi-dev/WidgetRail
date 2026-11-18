@@ -11,6 +11,59 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 internal sealed partial class IndexedWidgetValidationPage
 {
+    private async Task ValidateRefreshContinuityAsync(string path)
+    {
+        var checks=new List<string>();var traces=new List<string>();
+        try
+        {
+            await Wait(()=>View() is {IsLoaded:true});
+            await Send("refresh-probe-start");await FocusItem();
+            var query=Query();var items=View()!.ItemsSource;
+            await Send("refresh-probe-content");await Wait(()=>Current(7500)&&Query().ContentRevision>query.ContentRevision);
+            Check(Key()=="item.7500"&&Query().QueryGeneration==query.QueryGeneration&&ReferenceEquals(View()!.ItemsSource,items),
+                "Metadata update keeps the native source and focused card without rebuilding membership");
+            var oldOffset=Scroll().VerticalOffset;
+            Check(oldOffset>100,"Lazy lookup scenario begins deep in a scrolled ten-thousand-row query");
+            await Send("refresh-probe-remove");await Wait(()=>Key()=="item.7501"&&Current(7500));
+            Check(Query().RefreshFromQuery is not null&&Collection().CaptureFocusedItem()?.Index==7500&&Scroll().VerticalOffset>100,
+                "Missing-key lookup chooses the nearest current row without returning to the top");
+            traces.Add("removed focus: beforeOffset="+oldOffset+"; afterOffset="+Scroll().VerticalOffset+"; key="+Key());
+            await Send("refresh-probe-start");await FocusItem();await Send("refresh-probe-delayed");
+            await Wait(()=>Descendants(presenter).OfType<TextBlock>().Any(text=>AutomationProperties.GetAutomationId(text)=="Widget.background-state"&&text.Text=="refresh-reading"));
+            Check(Parent().Focus(FocusState.Keyboard),"An explicit user departure takes native focus during delayed refresh");
+            await Send("refresh-probe-release");await Wait(()=>!Collection().IsEntryPending&&Descendants(presenter).OfType<TextBlock>().Any(text=>AutomationProperties.GetAutomationId(text)=="Widget.background-state"&&text.Text=="refresh-completed"));
+            Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),Parent()),"Late refresh rows cannot steal focus after departure");
+            await Send("refresh-probe-start");await FocusItem();await Send("refresh-probe-empty");
+            await Wait(()=>View()!.Items.Count==0&&!Collection().IsEntryPending);
+            presenter.MoveFocus(FocusNavigationDirection.Up);
+            await Wait(()=>!Collection().IsFocusParked);
+            Check(Key() is null,"Empty refresh has no stale row focus and permits ordinary navigation out");
+            await Send("refresh-probe-start");await FocusItem();await Send("refresh-probe-reset");
+            await Wait(()=>Key()=="item.0"&&Current(0));
+            Check(Query().RefreshFromQuery is null,"Normal query replacement does not inherit nearest-neighbor refresh policy");
+            Check(failure is null,"Refresh scenario preserves strict current-row and presentation authority");
+            Write(true,null);
+        }
+        catch(Exception error){Write(false,error.ToString());}
+        finally{try{await Send("refresh-probe-release");}catch(Exception){}}
+
+        WidgetIndexedCollectionView? TryCollection()=>Descendants(presenter).OfType<WidgetIndexedCollectionView>().SingleOrDefault();
+        WidgetIndexedCollectionView Collection()=>TryCollection()??throw new InvalidOperationException("Refresh collection has not been realized.");
+        ScrollViewer Scroll()=>Descendants(Collection()).OfType<ScrollViewer>().First();
+        Button Parent()=>Descendants(presenter).OfType<Button>().Single(button=>AutomationProperties.GetAutomationId(button)=="Widget.parent");
+        IndexedCollectionDescriptor Query()=>FindNode(session!.GetState("indexed-owned")!.LastGood!.Snapshot.Root,"items")!.IndexedCollection!;
+        string? Key()=>TryCollection()?.CaptureFocusedItem()?.ItemKey;
+        bool Current(int index)=>View()!.Items.Count>index&&View()!.Items[index] is IndexedItem<WidgetIndexedRow>{Value.Lease.IsCurrent:true};
+        async Task FocusItem()
+        {await Wait(()=>TryCollection() is {IsLoaded:true,IsEnabled:true}&&View() is {IsLoaded:true} native&&native.Items.Count==Query().Count);var query=Query();Check(Collection().Enter(new("items",query.SourceId,query.QueryGeneration,"item.7500",7500)),"Current exact item is admitted");await Wait(()=>Key()=="item.7500"&&Current(7500)&&!Collection().HasPendingNativeNavigation);}
+        async Task Send(string action)
+        {var frame=session!.GetState("indexed-owned")!.LastGood!;await session.SendActionAsync(frame.Authority,new(action,"root",InputScopeId:"root"),lifetime.Token);await Wait(()=>Descendants(presenter).OfType<TextBlock>().Any(text=>AutomationProperties.GetAutomationId(text)=="Widget.status"&&text.Text==action));}
+        async Task Wait(Func<bool> condition)
+        {var deadline=Environment.TickCount64+10000;while(!condition()){if(failure is not null||Environment.TickCount64>deadline)throw new InvalidOperationException("Refresh focus did not settle: "+Key()+"; "+failure);await Task.Delay(20,lifetime.Token);}}
+        void Check(bool value,string text){if(!value)throw new InvalidOperationException(text);checks.Add(text);}
+        void Write(bool passed,string? error)
+        {Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);File.WriteAllText(path,JsonSerializer.Serialize(new{passed,checks,traces,error}));}
+    }
     private async Task ValidateContinuityAsync(string path)
     {
         var checks = new List<string>();

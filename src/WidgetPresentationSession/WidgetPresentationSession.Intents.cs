@@ -141,6 +141,9 @@ public sealed partial class WidgetPresentationSession
                     target?.Authority.WorkerRun, pinnedTarget), BridgeMessageTypes.IntentCompleted, cancellationToken).ConfigureAwait(false);
             var result = BridgeJson.FromElement<WidgetIntentCompletion>(response.Payload);
             if (!Enum.IsDefined(result.Status)) throw new BridgeProtocolException("Invalid intent status.");
+            if (!Enum.IsDefined(result.Failure) || result.Failure != WidgetIntentFailure.None &&
+                (result.Accepted || result.Status != WidgetIntentStatus.Rejected || result.ExternalUrl is not null || result.BrowserFallbackUrl is not null))
+                throw new BridgeProtocolException("Invalid intent failure.");
             if (result.FollowUp is { } followUp)
             {
                 if (result.Accepted || result.Status is not (WidgetIntentStatus.Unavailable or WidgetIntentStatus.Rejected))

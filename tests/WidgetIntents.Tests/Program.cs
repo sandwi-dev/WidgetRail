@@ -18,6 +18,7 @@ var tests = new (string Name, Action Run)[]
     ("Compiled schema outlives the source document", OwnedSchema),
     ("Absent intent declarations preserve legacy manifest serialization", LegacyManifest),
     ("Manifest declarations round trip without granting capabilities", ManifestRoundTrip),
+    ("Native web notification contract admits canonical handlers and forbids authored requests", NativeNotificationDeclaration),
     ("Passive delivery belongs to one handler mapping and preserves contract identity", HandlerPresentationMapping),
     ("Duplicate conflicting reserved and malformed declarations fail closed", BadDeclarations),
     ("Handler choice is independent of enumeration order", HandlerSelection),
@@ -30,6 +31,8 @@ var tests = new (string Name, Action Run)[]
     ("Displayed intent authority survives unrelated snapshots but rejects changed payloads", DisplayedIntentAuthority),
     ("Disabled busy and out-of-scope intent actions cannot be admitted", RejectedIntentAuthority),
     ("Indexed intents require available ancestors and exact primary action", IndexedIntentAuthority),
+    ("Inline preview intents reuse exact interactive ancestry and payload proof", InlinePreviewIntentAuthority),
+    ("Indexed and deferred preview intents resolve exact available child declarations", PreviewLeaseIntentAuthority),
 };
 var failures = 0;
 foreach (var (name, run) in tests)
@@ -181,6 +184,17 @@ static void ManifestRoundTrip()
     Check(WidgetManifestValidator.Validate(restored).Count == 0);
     var fullTrust = restored with { Entrypoint = new(WidgetEntrypointRuntimes.FullTrustApplicationV1, Executable: "payload/app.exe") };
     Check(WidgetManifestValidator.Validate(fullTrust).Count == 0);
+}
+
+static void NativeNotificationDeclaration()
+{
+    var manifest = Manifest() with { Intents = new() { Handles = [new(WidgetIntentContracts.WebNotification)] } };
+    var restored = ManifestJson.Deserialize(ManifestJson.Serialize(manifest));
+    Check(WidgetManifestValidator.Validate(restored).Count == 0);
+    Check(restored.Intents!.Handles.Single().Id == WidgetIntentContracts.OpenWebNotification);
+    CheckErrors(new() { Requests = [WidgetIntentContracts.WebNotification] }, "host_origin_intent");
+    CheckErrors(new() { Handles = [new(WidgetIntentContracts.WebNotification with { PayloadSchema = CustomSchema() })] }, "reserved_intent");
+    CheckErrors(new() { Handles = [new(WidgetIntentContracts.WebNotification with { Version = 2 })] }, "reserved_intent");
 }
 
 static void HandlerPresentationMapping()
@@ -358,6 +372,44 @@ static void IndexedIntentAuthority()
     Check(IntentActionAuthority.RevalidateIndexed([], [], item, action with { SourceElementId = "other" }) is null);
     Check(IntentActionAuthority.RevalidateIndexed([], [], item, action with { Phase = ControllerEventPhase.Repeated }) is null);
     Check(IntentActionAuthority.RevalidateIndexed([], [], item, action with { ControllerButton = ControllerButton.X }) is null);
+}
+
+static void InlinePreviewIntentAuthority()
+{
+    var button = IntentSnapshot().Root.Children[0];
+    var source = new ViewNode { Id = "source", Kind = ViewNodeKind.ActionSurface, ActionId = "source", CollectionItemKey = "row.one",
+        FocusPresentation = new() { Id = "fragment", Kind = ViewNodeKind.Stack, Children = [button] } };
+    var snapshot = new ViewSnapshot { WidgetInstanceId = "preview.widget", Sequence = 1, ActiveInputScopeId = "root",
+        Root = new() { Id = "root", Kind = ViewNodeKind.FocusPresentationSurface,
+            FocusPreview = new() { EnterButton = ControllerButton.X }, Children = [source] } };
+    var action = IntentAction() with { FocusedElementId = button.Id };
+    Check(IntentActionAuthority.Revalidate(snapshot, snapshot, action) is not null);
+    Check(IntentActionAuthority.Revalidate(snapshot, snapshot with { Root = snapshot.Root with { FocusPreview = new() } }, action) is null);
+    Check(IntentActionAuthority.Revalidate(snapshot, snapshot with { Root = snapshot.Root with { Children = [source with { CollectionItemKey = "row.two" }] } }, action) is null);
+    Check(IntentActionAuthority.Revalidate(snapshot, snapshot with { Root = snapshot.Root with { Children = [source with { IsBusy = true }] } }, action) is null);
+    var changed = source with { FocusPresentation = source.FocusPresentation! with { Children = [button with { Intent = button.Intent! with { PreparationKey = "different" } }] } };
+    Check(IntentActionAuthority.Revalidate(snapshot, snapshot with { Root = snapshot.Root with { Children = [changed] } }, action) is null);
+    Check(IntentActionAuthority.Revalidate(snapshot, snapshot, action with { FocusedElementId = "other" }) is null);
+}
+
+static void PreviewLeaseIntentAuthority()
+{
+    var button = IntentSnapshot().Root.Children[0];
+    var surface = new ViewNode { Id = "surface", Kind = ViewNodeKind.FocusPresentationSurface, FocusPreview = new() { EnterButton = ControllerButton.X } };
+    var collection = new ViewNode { Id = "list", Kind = ViewNodeKind.IndexedCollection };
+    var fragment = new ViewNode { Id = "fragment", Kind = ViewNodeKind.Stack, Children = [button] };
+    var row = new ViewNode { Id = "row", Kind = ViewNodeKind.ActionSurface, ActionId = "row", FocusPresentation = fragment };
+    var reference = new IndexedCollectionItemReference(Guid.NewGuid().ToString("N"), "row.key");
+    var action = IntentAction();
+    Check(IntentActionAuthority.RevalidateIndexed([surface, collection], [surface, collection], row, action, reference) is not null);
+    Check(IntentActionAuthority.RevalidateIndexed([surface, collection], [surface with { FocusPreview = new() }, collection], row, action, reference) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([surface, collection], [surface, collection], row with { FocusPresentation = fragment with { IsDisabled = true } }, action, reference) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([surface, collection], [surface, collection with { IsBusy = true }], row, action, reference) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([surface, collection], [surface, collection], row, action with { SourceElementId = "row" }, reference) is null);
+    var deferred = surface with { FocusPreviewSource = new("preview-source", 1, 0, 1) };
+    Check(IntentActionAuthority.RevalidateIndexed([deferred], [deferred], fragment, action, reference) is not null);
+    Check(IntentActionAuthority.RevalidateIndexed([deferred], [deferred with { IsDisabled = true }], fragment, action, reference) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([deferred], [deferred], fragment, action with { RequestedValue = 1 }, reference) is null);
 }
 
 static IntentHandlerCandidate Candidate(string id) => new(id, 42, CompiledWidgetIntentContract.Create(WidgetIntentContracts.Web), true);

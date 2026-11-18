@@ -45,13 +45,7 @@ internal sealed partial class WidgetIndexedCollectionView
         var horizontal = axis == ScrollAxis.Horizontal;
         var visible = WidgetScrollViewport.ContentBounds(scroll);
         var start = horizontal ? visible.Left : visible.Top;
-        var end = horizontal ? visible.Right : visible.Bottom;
-        var candidates = containers.Select(pair => (Container: pair.Key, Slot: pair.Value.Slot))
-            .Where(pair => pair.Container.IsLoaded && pair.Slot.Key is not null)
-            .Select(pair => (pair.Slot, Bounds: LayoutBoundsInScroll(pair.Container, scroll)))
-            .Where(pair => (horizontal ? pair.Bounds.Right : pair.Bounds.Bottom) > start &&
-                (horizontal ? pair.Bounds.X : pair.Bounds.Y) < end)
-            .OrderBy(pair => horizontal ? pair.Bounds.X : pair.Bounds.Y).ThenBy(pair => pair.Slot.Index).ToArray();
+        var candidates = VisibleOccurrences(scroll);
         if (candidates.Length == 0) return null;
         var first = preferFocused && FocusedIndex() is { } focus && candidates.Any(pair => pair.Slot.Index == focus)
             ? candidates.First(pair => pair.Slot.Index == focus) : candidates[0];
@@ -60,6 +54,19 @@ internal sealed partial class WidgetIndexedCollectionView
         var query = source.Declaration.IndexedCollection!;
         return new(identity, query.SourceId, query.QueryGeneration, layoutKind!.Value, axis!.Value,
             first.Slot.Index, first.Slot.Key!, size > 0 ? Math.Clamp(-position / size, -1, 1) : 0, preferFocused ? position : null);
+    }
+
+    private (IndexedItem<WidgetIndexedRow> Slot,Rect Bounds)[] VisibleOccurrences(ScrollViewer scroll,bool includeLoading=false)
+    {
+        var horizontal=axis==ScrollAxis.Horizontal;
+        var visible=WidgetScrollViewport.ContentBounds(scroll);
+        var start=horizontal?visible.Left:visible.Top;var end=horizontal?visible.Right:visible.Bottom;
+        return containers.Select(pair => (Container: pair.Key, Slot: pair.Value.Slot))
+            .Where(pair => pair.Container.IsLoaded && (includeLoading || pair.Slot.Key is not null))
+            .Select(pair => (pair.Slot, Bounds: LayoutBoundsInScroll(pair.Container, scroll)))
+            .Where(pair => (horizontal ? pair.Bounds.Right : pair.Bounds.Bottom) > start &&
+                (horizontal ? pair.Bounds.X : pair.Bounds.Y) < end)
+            .OrderBy(pair => horizontal ? pair.Bounds.X : pair.Bounds.Y).ThenBy(pair => pair.Slot.Index).ToArray();
     }
 
     // true means completed or no longer applicable; false waits for native readiness.
@@ -80,6 +87,18 @@ internal sealed partial class WidgetIndexedCollectionView
             if (!requested) { requested = true; view.ScrollIntoView(source.Items[memory.Index], ScrollIntoViewAlignment.Leading); }
             return false;
         }
+        // A current lease can arrive while this native container still has its
+        // loading estimate. Keep only geometry pending until the exact renderer
+        // finishes arranging that row; the immediate focus path stays available.
+        if (!HasCurrentRowLayout(container, slot.Value)) return false;
+        return RestoreViewportGeometry(memory,container,scroll,ref pendingOffset,keepAnchorVisible);
+    }
+
+    // Geometry only. Passive restoration and active navigation retain separate
+    // admission/ownership checks before using the same native viewport math.
+    private bool RestoreViewportGeometry(IndexedViewportMemento memory,FrameworkElement container,ScrollViewer scroll,
+        ref double? pendingOffset,bool keepAnchorVisible=false)
+    {
         var bounds = LayoutBoundsInScroll(container, scroll);
         var horizontal = axis == ScrollAxis.Horizontal;
         var size = horizontal ? bounds.Width : bounds.Height;
@@ -90,8 +109,9 @@ internal sealed partial class WidgetIndexedCollectionView
         var delta = position - desiredPosition;
         var current = horizontal ? scroll.HorizontalOffset : scroll.VerticalOffset;
         var desired = Math.Clamp(current + delta, 0, horizontal ? scroll.ScrollableWidth : scroll.ScrollableHeight);
-        if (Math.Abs(desired - current) <= 1 / (view.XamlRoot?.RasterizationScale ?? 1))
+        if (Math.Abs(desired - current) <= 1 / (view?.XamlRoot?.RasterizationScale ?? 1))
         {
+            TraceViewportReady(memory.Index, current, position, size, horizontal ? visible.Width : visible.Height, desiredPosition);
             // An applied request is no longer pending. Native BringIntoView may
             // subsequently move the viewport while a replacement lease loads;
             // the same target must then be eligible for reconciliation again.
@@ -109,6 +129,7 @@ internal sealed partial class WidgetIndexedCollectionView
         return false; // Confirm on native ViewChanged/layout; never assume ChangeView is synchronous.
     }
     partial void TraceViewportRestore(int index, double current, double position, double size, double desiredPosition, double desired, double? pendingOffset, bool? accepted);
+    partial void TraceViewportReady(int index, double offset, double position, double size, double extent, double desiredPosition);
 
     private static Rect LayoutBoundsInScroll(FrameworkElement container, ScrollViewer scroll)
     {

@@ -56,7 +56,7 @@ public sealed record PickerOption(
     public WidgetIcon? Icon { get; init; }
 }
 
-/// <summary>A stable option in a host-owned anchored <see cref="UI.Select"/> popup.</summary>
+/// <summary>A stable option in a host-owned anchored <see cref="UI.Select"/> or <see cref="UI.CommandMenu"/> popup.</summary>
 public sealed record SelectOption(
     string Id,
     string Label,

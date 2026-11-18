@@ -13,7 +13,7 @@ internal sealed partial class WidgetViewPresenter
         object DialogToken, string DialogId, string Action);
     private PendingModalDismissal? modalDismissPending;
     // The shell may return from pin interaction only after owned Escape contexts.
-    internal bool OwnsKeyboardEscape => previewEntered || HasTransientControl || effectiveView?.Root.Kind==ViewNodeKind.ModalLayer ||
+    internal bool OwnsKeyboardEscape => previewEntered || pendingPrimaryPreview is not null || HasTransientControl || effectiveView?.Root.Kind==ViewNodeKind.ModalLayer ||
         HasClosingModal || previewOwner is not null || bindings.Values.Any(binding=>
             binding.Element is Browser.BrowserSlot slot&&slot.Surface?.HasNativeKeyboardFocus==true);
 
@@ -47,7 +47,12 @@ internal sealed partial class WidgetViewPresenter
         if (!args.Handled && args.Key == Windows.System.VirtualKey.Escape && previewOwner is { } owner && !HasTransientControl)
         {
             args.Handled = true;
-            if (!args.KeyStatus.WasKeyDown && !HandleSliderButton(ControllerButton.B, ControllerEventPhase.Pressed)) owner.ExitFocusPreview();
+            if (!args.KeyStatus.WasKeyDown)
+            {
+                if (FocusedMediaPlayer is { } media && media.Handle(ControllerButton.B, ControllerEventPhase.Pressed))
+                    media.Handle(ControllerButton.B, ControllerEventPhase.Released);
+                else if (!HandleSliderButton(ControllerButton.B, ControllerEventPhase.Pressed)) owner.ExitFocusPreview();
+            }
             return;
         }
         if (args.Handled || args.Key != Windows.System.VirtualKey.Escape ||

@@ -57,7 +57,11 @@ internal static class BridgeRenderStyleResolver
             var headerStyle = node.Kind == ViewNodeKind.IndexedCollection && node.IndexedGroups is not null
                 ? ResolveState(new ViewNode { Id = node.Id + ".group-header", Kind = ViewNodeKind.Text },
                     new HashSet<string>(["wrail-section-header__title"], StringComparer.Ordinal), new HashSet<WrssPseudoState>()) : null;
-            totalProperties += baseStyle.Count + focusedStyle.Count + pressedStyle.Count + (headerStyle?.Count ?? 0);
+            var ownsPreview = theme is not null && node.Kind == ViewNodeKind.FocusPresentationSurface && node.FocusPreview is not null;
+            var previewFrame = ownsPreview ? ResolveState(node, classes, baseStates, "preview") : null;
+            var previewFooter = ownsPreview ? ResolveState(node, classes, baseStates, "preview-footer") : null;
+            totalProperties += baseStyle.Count + focusedStyle.Count + pressedStyle.Count + (headerStyle?.Count ?? 0) +
+                (previewFrame?.Count ?? 0) + (previewFooter?.Count ?? 0);
             if (totalProperties > BridgeRenderStyleLimits.MaximumTotalProperties)
                 throw new BridgeProtocolException(
                     $"Computed style map exceeds {BridgeRenderStyleLimits.MaximumTotalProperties} properties.");
@@ -67,6 +71,8 @@ internal static class BridgeRenderStyleResolver
                 Focused = focusedStyle,
                 Pressed = pressedStyle,
                 GroupHeader = headerStyle,
+                PreviewFrame = previewFrame,
+                PreviewFooter = previewFooter,
             });
             if (node.FocusPresentation is { } focusPresentation)
                 Visit(focusPresentation, prefix);
@@ -87,12 +93,13 @@ internal static class BridgeRenderStyleResolver
         IReadOnlyDictionary<string, BridgeComputedStyleValue> ResolveState(
             ViewNode node,
             IReadOnlySet<string> classes,
-            IReadOnlySet<WrssPseudoState> states)
+            IReadOnlySet<WrssPseudoState> states, string? part = null)
         {
             if (theme is null)
                 return new ReadOnlyDictionary<string, BridgeComputedStyleValue>(
                     new SortedDictionary<string, BridgeComputedStyleValue>(StringComparer.Ordinal));
-            var resolved = theme.Resolve(new WrssElement(RoleFor(node.Kind), node.Id, classes, states));
+            var element = new WrssElement(part ?? RoleFor(node.Kind), node.Id, classes, states);
+            var resolved = part is null ? theme.Resolve(element) : theme.ResolvePart(element);
             if (resolved.Properties.Count > BridgeRenderStyleLimits.MaximumPropertiesPerState)
                 throw new BridgeProtocolException(
                     $"Node '{node.Id}' has too many computed style properties.");

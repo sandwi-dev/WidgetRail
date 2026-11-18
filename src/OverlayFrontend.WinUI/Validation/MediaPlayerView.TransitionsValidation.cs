@@ -36,7 +36,7 @@ internal sealed partial class MediaPlayerView
             var retained = player;
             unloads = 0; // Initial placement is complete; measure fullscreen handoffs only.
             retainedParent = parent; renderWidth = width; renderHeight = height;
-            speed.Focus(FocusState.Keyboard);
+            playbackOptions.Focus(FocusState.Keyboard);
             await File.WriteAllTextAsync(result + ".ready", "ready");
             await Until(() => File.Exists(result + ".go"));
             for (var cycle = 0; cycle < 4; cycle++)
@@ -51,7 +51,7 @@ internal sealed partial class MediaPlayerView
                 phase = $"cycle-{cycle}-expanded"; await Task.Delay(600);
                 phase = $"cycle-{cycle}-exit"; host.Close(); await completion;
                 phase = $"cycle-{cycle}-returned"; await Task.Delay(600);
-                if (!ReferenceEquals(player, retained) || IsPlaying != playing || !ReferenceEquals(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot), speed))
+                if (!ReferenceEquals(player, retained) || IsPlaying != playing || !ReferenceEquals(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot), playbackOptions))
                     throw new InvalidOperationException("Playback or focused control changed during transition");
                 checks.Add($"Cycle {cycle}: playback and focus lifetime settle inline");
                 if (strict && (unloads != 0 || renderChanged))

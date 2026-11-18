@@ -84,6 +84,7 @@ internal sealed partial class WidgetViewPresenter
         image.ApplyStyle(ResolveArtworkStyle(binding, node));
         UpdateArtwork(binding, node, value =>
         {
+            TraceArtworkReview(node.Id, image.Source is not null, value is not null);
             var firstPixels = image.Source is null && value is not null;
             image.Source = value;
             if (value is null) { if (artworkReveals.Remove(binding, out var old)) old.Dispose(); return; }
@@ -96,10 +97,29 @@ internal sealed partial class WidgetViewPresenter
             reveal.Play(appearance, systemAnimationsEnabled);
         }, ResolveArtworkAsync, ArtworkGeneration, ArtworkAuthorityCurrent, ResolveArtworkFallbackAsync);
     }
+    partial void TraceArtworkReview(string id, bool hadPixels, bool hasPixels);
+
+    private void UpdateMediaPoster(Binding binding, Media.MediaPlayerView media, ViewNode node)
+    {
+        if (node.ArtworkHandle is null && !imageDemands.ContainsKey(binding)) return;
+        UpdateArtwork(binding, node, image => media.SetPoster(image ?? (node.ArtworkHandle is { } handle ? BorrowPreviewArtwork?.Invoke(handle) : null)), ResolveArtworkAsync, ArtworkGeneration,
+            ArtworkAuthorityCurrent, ResolveArtworkFallbackAsync, retainOnReplacement: false);
+    }
+
+    // Borrow existing pixels only from the still-current renderer; no new
+    // cache, file authority or decoding work is introduced by this handoff.
+    internal ImageSource? BorrowDecodedArtwork(string handle)
+    {
+        if (disposed || !presentationActive || ArtworkAuthorityCurrent?.Invoke() == false) return null;
+        return imageDemands.Where(pair => pair.Value.Completed &&
+                declarations.TryGetValue(pair.Key.Identity.Id, out var declaration) && declaration.Node.ArtworkHandle == handle)
+            .Select(pair => pair.Value.Native?.LastDecode).OfType<NativeArtworkDecode>()
+            .OrderByDescending(value => (long)value.Decoded.Width * value.Decoded.Height).FirstOrDefault()?.Image;
+    }
 
     private void UpdateArtwork(Binding binding, ViewNode node, Action<ImageSource?> publish,
         Func<string, CancellationToken, Task<WidgetArtworkSource?>>? resolver, string generation, Func<bool>? sourceCurrent = null,
-        Func<string, CancellationToken, Task<WidgetEncodedArtwork?>>? fallback = null)
+        Func<string, CancellationToken, Task<WidgetEncodedArtwork?>>? fallback = null, bool retainOnReplacement = true)
     {
         if (!presentationActive || sourceCurrent?.Invoke() == false) return;
         var artworkStyle = ResolveArtworkStyle(binding, node);
@@ -119,9 +139,13 @@ internal sealed partial class WidgetViewPresenter
             // Retained pixels can survive a snapshot; a later size upgrade must
             // resolve against the newly displayed authority, never the old one.
             prior.Origin = origin;
+            // Media may have released its presentation while this exact artwork
+            // demand remained valid. Reuse the demand's existing decoded image.
+            if (!retainOnReplacement && prior.Completed) publish(prior.Native?.LastDecode?.Image);
             prior.Native?.Refresh(fit, artworkStyle.NaturalSize); return;
         }
         if (imageDemands.Remove(binding, out prior)) { prior.Lifetime.Cancel(); prior.Lifetime.Dispose(); }
+        if (!retainOnReplacement) publish(null);
         var lifetime = new CancellationTokenSource();
         var demand = new ImageDemand(identity, origin, lifetime);
         imageDemands.Add(binding, demand);
@@ -239,6 +263,7 @@ internal sealed partial class WidgetViewPresenter
         ClearEntryLayoutWait();
         SettleTransitions();
         SettleModalExit();
+        ClearPageCache();
         WidgetControllerPrompts.Changed -= ControllerPromptsChanged;
         DismissTransientControl();
         ClearSurfaceState();

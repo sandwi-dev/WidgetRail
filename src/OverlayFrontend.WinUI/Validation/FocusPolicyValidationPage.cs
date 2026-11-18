@@ -29,6 +29,7 @@ internal sealed partial class FocusPolicyValidationPage : Page
     private bool groupNeighbor;
     private bool passive;
     private bool publicationScroll, publicationRetired, publicationPartial;
+    private bool publicationHeaderDisabled;
     private string publicationScope = "page";
     private readonly Button outside = new() { Content = "Host tray" };
 
@@ -104,7 +105,7 @@ internal sealed partial class FocusPolicyValidationPage : Page
             FocusGroupEntryRequest = request == 0 ? null : new() { RequestId = request, GroupId = "group", TargetId = exactTarget },
             Root = new() { Id = "page", Kind = publicationScroll && !publicationPartial ? ViewNodeKind.Scroll : ViewNodeKind.Stack,
                 ScrollAxis = publicationScroll && !publicationPartial ? ScrollAxis.Vertical : null, InputScopeId = publicationScope, Children = (ViewNode[])[
-                new() { Id = "header", Kind = ViewNodeKind.Button, Text = "Header", ActionId = "header", Focus = ready && groupNeighbor ? new FocusNeighbors(Right: "group") : null }, groupContainer,
+                new() { Id = "header", Kind = ViewNodeKind.Button, Text = "Header", ActionId = "header", IsDisabled = publicationHeaderDisabled, Focus = ready && groupNeighbor ? new FocusNeighbors(Right: "group") : null }, groupContainer,
                 new() { Id = "other", Kind = ViewNodeKind.Stack, InputScopeId = "other", Children = (ViewNode[])[
                     new() { Id = "foreign", Kind = ViewNodeKind.Button, Text = "Inactive scope", ActionId = "foreign" },
                 ] },

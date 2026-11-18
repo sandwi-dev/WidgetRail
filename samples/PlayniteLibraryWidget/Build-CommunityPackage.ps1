@@ -163,6 +163,7 @@ if ($LASTEXITCODE -ne 0) { throw 'wrail validate rejected Playnite Library.' }
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
     throw 'wrail pack did not produce Playnite Library.'
 }
+& (Join-Path $widgetRoot 'Test-CommunityPackage.ps1') -PackagePath $packagePath
 
 if ($Install) {
     & (Join-Path $repositoryRoot 'scripts/Install-CommunityPackage.ps1') `

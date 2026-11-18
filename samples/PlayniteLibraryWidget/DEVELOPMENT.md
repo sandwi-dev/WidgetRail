@@ -340,3 +340,7 @@ section tabs share the scroll owner with their content so directional fallback
 can read sections with no action controls. The SDK modal's default whole-content
 scroll is disabled explicitly. Opening identities and scroll IDs still survive
 background/resume and refresh, and optional providers remain on-demand.
+
+## Development candidate completeness
+
+Run `Test-CommunityPackage.ps1 -PackagePath <wrwidget>` on the exact archive before updating a development candidate. `Build-CommunityPackage.ps1` runs it after packing. The archive must include `payload/integration/integration-package.json` and the matching `WidgetRail.Playnite.pext`, including all six hashed plugin files. Copying only the application publish output is insufficient: setup checks the bundled integration even when Playnite is already installed. A missing bundle now reports a widget packaging problem instead of suggesting that the user's Playnite folders are wrong.

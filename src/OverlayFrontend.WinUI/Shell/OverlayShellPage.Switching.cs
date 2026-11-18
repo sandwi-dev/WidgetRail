@@ -16,7 +16,8 @@ internal sealed partial class OverlayShellPage
     private readonly PlatformInputDiagnostics? switchDiagnostics;
 
     private async Task SelectAsync(string id, bool enterWidget = true, bool preserveIntent = false,
-        Func<WidgetPresentationFrame, CancellationToken, Task>? beforeReveal = null, CancellationToken selectionCancellation = default)
+        Func<WidgetPresentationFrame, CancellationToken, Task>? beforeReveal = null, CancellationToken selectionCancellation = default,
+        bool retainIntentSource = false)
     {
         if (retired || owner is null) return;
         if (enterWidget || id != activeWidget) CloseUtilityPanel();
@@ -50,6 +51,7 @@ internal sealed partial class OverlayShellPage
         try
         {
             await transitions.WaitAsync(token);
+            string? deferredSourceLifecycle = null;
             try
             {
                 token.ThrowIfCancellationRequested();
@@ -60,7 +62,15 @@ internal sealed partial class OverlayShellPage
                     presentationMemory.Remember(StateOwner(previous.Descriptor), memory);
                 // The outgoing tree remains drawable, including live regions, but
                 // neither it nor the incoming tree may dispatch input during preparation.
-                if (previousId is not null) await TryBackgroundAsync(previousId);
+                if (previousId is not null)
+                {
+                    // An already-admitted intent still needs its exact source
+                    // declaration during commit. Native input was revoked above;
+                    // defer source lifecycle retirement until that bounded handoff
+                    // finishes, rather than exempting stale leases from checks.
+                    if (beforeReveal is not null && retainIntentSource) deferredSourceLifecycle = previousId;
+                    else await TryBackgroundAsync(previousId);
+                }
                 token.ThrowIfCancellationRequested();
                 if (owner.Session.GetTarget(id).Descriptor is { IsStopped: true } stopped)
                 {
@@ -89,6 +99,11 @@ internal sealed partial class OverlayShellPage
                         // loading state, rather than flashing its default home.
                         await beforeReveal(incoming.Frame!, token);
                         token.ThrowIfCancellationRequested();
+                        if (deferredSourceLifecycle is { } sourceId)
+                        {
+                            await TryBackgroundAsync(sourceId);
+                            deferredSourceLifecycle = null;
+                        }
                         await EstablishWidgetPresentationAsync(incoming, preparedLifecycle, token);
                     }
                     SizePreparingSurface(incoming);
@@ -164,7 +179,14 @@ internal sealed partial class OverlayShellPage
                     }
                 }
             }
-            finally { transitions.Release(); }
+            finally
+            {
+                // Failure, cancellation, stopped targets and supersession must
+                // not leave the old source lifecycle admitted. This runs while
+                // the same selection still owns the serialized transition lane.
+                try { if (deferredSourceLifecycle is { } sourceId) await TryBackgroundAsync(sourceId); }
+                finally { transitions.Release(); }
+            }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {

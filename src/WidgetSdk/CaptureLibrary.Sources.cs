@@ -9,6 +9,7 @@ public static class WidgetCaptureLibrarySourceCapabilities
     public static WidgetCapabilityOperation<CaptureLibrarySourceReference, WidgetCapabilityAcknowledgement> Remove { get; } = new(WidgetCaptureLibraryCapabilities.ManagePermission, "capture-library.remove-source");
     public static WidgetCapabilityOperation<CaptureLibraryLinkRequest, CaptureLibraryLinkResult> Link { get; } = new(WidgetCaptureLibraryCapabilities.ManagePermission, "capture-library.link");
     public static WidgetCapabilityOperation<CaptureLibraryMutationReference, WidgetCapabilityAcknowledgement> RemoveLink { get; } = new(WidgetCaptureLibraryCapabilities.ManagePermission, "capture-library.remove-link");
+    public static WidgetCapabilityOperation<CaptureLibraryMutationReference, CaptureLibraryItem> Unhide { get; } = new(WidgetCaptureLibraryCapabilities.ManagePermission, "capture-library.unhide");
 }
 
 public sealed partial class WidgetCaptureLibraryService
@@ -18,6 +19,16 @@ public sealed partial class WidgetCaptureLibraryService
     {
         if (!CaptureLibrarySourceLimits.ValidLabel(label)) throw new ArgumentException("Invalid source label.", nameof(label));
         var result = await client.InvokeAsync(WidgetCaptureLibrarySourceCapabilities.Choose, new(label), cancellationToken).ConfigureAwait(false);
+        if (result is null || result.Source is not null && !CaptureLibrarySourceLimits.Valid(result.Source)) throw Malformed();
+        return result.Source;
+    }
+    /// <summary>Ask the host to resolve a known capture folder and obtain user approval. Falls back to its folder picker if unavailable.</summary>
+    public async ValueTask<CaptureLibrarySource?> ChooseKnownSourceAsync(CaptureLibraryKnownLocation location, string label,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Enum.IsDefined(location) || !CaptureLibrarySourceLimits.ValidLabel(label)) throw new ArgumentException("Invalid capture source.");
+        var result = await client.InvokeAsync(WidgetCaptureLibrarySourceCapabilities.Choose,
+            new(label) { KnownLocation = location }, cancellationToken).ConfigureAwait(false);
         if (result is null || result.Source is not null && !CaptureLibrarySourceLimits.Valid(result.Source)) throw Malformed();
         return result.Source;
     }
@@ -44,12 +55,24 @@ public sealed partial class WidgetCaptureLibraryService
         if (result is null || !CaptureLibraryLimits.Valid(result.Item) || result.Item.SourceId != sourceId) throw Malformed();
         return result.Item;
     }
-    /// <summary>Remove a linked entry from the library while preserving its provider file.</summary>
+    /// <summary>Hide a linked entry from normal discovery while preserving its original and known-ID reads.</summary>
     public async ValueTask RemoveLinkAsync(CaptureLibraryMutationReference item, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(item); DemandId(item.Id);
         if (item.ContentRevision < 0 || item.MetadataRevision < 0) throw new ArgumentException("Invalid linked capture revision.");
         var result = await client.InvokeAsync(WidgetCaptureLibrarySourceCapabilities.RemoveLink, item, cancellationToken).ConfigureAwait(false);
         if (result?.Acknowledged != true) throw Malformed();
+    }
+    /// <summary>Hide a linked entry; equivalent to the compatible RemoveLink operation.</summary>
+    public ValueTask HideAsync(CaptureLibraryMutationReference item, CancellationToken cancellationToken = default) => RemoveLinkAsync(item, cancellationToken);
+
+    /// <summary>Restore an exact hidden linked entry to normal discovery without modifying its original.</summary>
+    public async ValueTask<CaptureLibraryItem> UnhideAsync(CaptureLibraryMutationReference item, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(item); DemandId(item.Id);
+        if (item.ContentRevision < 0 || item.MetadataRevision < 0) throw new ArgumentException("Invalid linked capture revision.");
+        var result = await client.InvokeAsync(WidgetCaptureLibrarySourceCapabilities.Unhide, item, cancellationToken).ConfigureAwait(false);
+        if (!CaptureLibraryLimits.Valid(result) || result.Id != item.Id || result.SourceId is null) throw Malformed();
+        return result;
     }
 }

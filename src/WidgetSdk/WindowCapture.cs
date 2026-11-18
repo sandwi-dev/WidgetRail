@@ -19,13 +19,15 @@ public static class WidgetCaptureCapabilities
 }
 
 /// <summary>Bounded host-confirmed captures of the foreground application.</summary>
-public sealed class WidgetCaptureService
+public sealed partial class WidgetCaptureService
 {
     private readonly IWidgetCapabilityClient client;
     internal WidgetCaptureService(IWidgetCapabilityClient client)
-    { this.client = client; WebStreams = new(client); }
+    { this.client = client; WebStreams = new(client); Replay = new(client); }
     /// <summary>Application capture for an owned backend page, selected through the native host chooser.</summary>
     public WidgetWebCaptureService WebStreams { get; }
+    /// <summary>Persistent host recording, independent of this widget's lifetime.</summary>
+    public WidgetCaptureReplayService Replay { get; }
     /// <summary>Read advertised options; this does not open a capture prompt or begin recording.</summary>
     public async ValueTask<CaptureCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default)
     {
@@ -33,7 +35,8 @@ public sealed class WidgetCaptureService
         if (result is null || !result.IsWellFormed()) throw Malformed();
         return result with { ImageFormats = result.ImageFormats.ToArray(), RecordingProfiles = result.RecordingProfiles.ToArray(), AudioModes = result.AudioModes.ToArray() };
     }
-    /// <summary>Discover only profiles supporting these recording settings. Null finds the recommended silent profile. Use GetCapabilitiesAsync for the complete settings catalog.</summary>
+    /// <summary>Discover only profiles supporting these recording settings. Null finds the legacy recommended silent profile.
+    /// Use GetRecordingChoicesAsync for a bounded Auto/codec settings survey; GetCapabilitiesAsync retains the legacy catalog.</summary>
     public async ValueTask<CaptureCapabilities> GetRecordingCapabilitiesAsync(RecordingOptions? recording = null, CancellationToken cancellationToken = default)
     {
         var query = new CaptureRecordingQuery(recording);
@@ -51,7 +54,19 @@ public sealed class WidgetCaptureService
             (result.ErrorCode is not { Length: > 0 and <= 80 } || result.ErrorCode.Any(c => !char.IsAsciiLetterOrDigit(c) && c != '_'))) throw Malformed();
         return result;
     }
-    /// <summary>Begin a host-confirmed screenshot or recording. The host rechecks support at admission.</summary>
+
+    /// <summary>Request a bounded survey for a settings UI. Capture admission uses targeted discovery instead.</summary>
+    public async ValueTask<CaptureCapabilities> GetRecordingChoicesAsync(RecordingOptions recording,CancellationToken cancellationToken=default)
+    {
+        var query=new CaptureRecordingQuery(recording){DiscoverAlternatives=true};
+        if(!query.IsWellFormed())throw new ArgumentException("Recording choices require a valid requested selection.",nameof(recording));
+        var result=await client.InvokeAsync(WidgetCaptureCapabilities.RecordingCapabilities,query,cancellationToken).ConfigureAwait(false);
+        if(result?.IsWellFormed()!=true)throw new InvalidDataException("The host returned invalid recording choices.");
+        return result with{ImageFormats=result.ImageFormats.ToArray(),RecordingProfiles=result.RecordingProfiles.ToArray(),AudioModes=result.AudioModes.ToArray()};
+    }
+    /// <summary>Begin a host-confirmed screenshot or recording. The host rechecks support at admission.
+    /// LibraryRecording stages a disk-backed video for review/save/discard and requires library-save permission
+    /// in addition to capture permission. It does not publish a library item automatically.</summary>
     public async ValueTask<WindowCaptureTicket> StartAsync(CaptureSessionRequest request, CancellationToken cancellationToken = default)
     {
         if (request is null || !request.IsWellFormed()) throw new ArgumentException("Invalid capture options.", nameof(request));
@@ -63,6 +78,11 @@ public sealed class WidgetCaptureService
         CancellationToken cancellationToken = default) => StartAsync(new() { Screenshot = options, Preparation = preparation ?? new() }, cancellationToken);
     public ValueTask<WindowCaptureTicket> RequestRecordingAsync(RecordingOptions options, CapturePreparation? preparation = null,
         CancellationToken cancellationToken = default) => StartAsync(new() { Recording = options, Preparation = preparation ?? new() }, cancellationToken);
+    /// <summary>Record a library draft without the temporary-attachment size ceiling. Save through CaptureLibrary.SaveAsync;
+    /// use DiscardAsync to abandon it. Settings, consent, cancellation and encoding use the same capture pipeline.</summary>
+    public ValueTask<WindowCaptureTicket> RequestLibraryRecordingAsync(RecordingOptions options, CapturePreparation? preparation = null,
+        CancellationToken cancellationToken = default) => StartAsync(new() { Recording = options, Preparation = preparation ?? new(),
+            OutputPurpose = CaptureOutputPurpose.LibraryRecording, MaximumBytes = CaptureLimits.MaximumLibraryRecordingBytes }, cancellationToken);
     /// <summary>Finish and retain a configured recording. CancelAsync instead discards it.</summary>
     public async ValueTask StopAsync(WindowCaptureTicket ticket, CancellationToken cancellationToken = default)
     {

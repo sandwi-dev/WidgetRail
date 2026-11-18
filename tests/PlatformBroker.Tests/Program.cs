@@ -5,6 +5,21 @@ using WidgetRail.PlatformBroker;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Library recording drafts stage move and retain exact authority",LibraryRecordingDraftTests.StorageAndRetirement),
+    ("Library recording drafts require both capture and save grants",LibraryRecordingDraftTests.Authorization),
+    ("Library recording drafts verify resolved exact source configuration",LibraryRecordingDraftTests.ResolvedConfiguration),
+    ("Library recording drafts share bounded pending entry reservations",LibraryRecordingDraftTests.EntryReservations),
+    ("Library recording drafts preserve failed publication recovery evidence",LibraryRecordingDraftTests.PartialPublication),
+    ("Recording selection preserves explicit constraints and legacy response shapes", CaptureEncodingSelectionTests.Constraints),
+    ("Recording selection invalidates driver epochs and rejects late probe results", CaptureEncodingSelectionTests.CacheEpoch),
+    ("Recording selection refreshes broker catalogs without repeating native work", CaptureEncodingSelectionTests.BrokerFreshness),
+    ("File references hand off independently without copying originals", FileReferenceTests.Handoff),
+    ("File references deduplicate originals only within recipient lifetime", FileReferenceTests.ContentIdentity),
+    ("File references preserve exact capture authority and source cleanup", FileReferenceTests.CaptureAuthority),
+    ("File references reject revoked provisional and retired worker authority", FileReferenceTests.Revocation),
+    ("File references read large files with bounded expiry and cancellation", FileReferenceTests.BoundedRead),
+    ("File references bind native picker completion to current owner", FileReferenceTests.Picker),
+    ("File references require host grants and interactive selection", FileReferenceTests.BrokerPolicy),
     ("Web capture streams source picker filters targets and bounds native identities", WebCaptureSourcePolicyTests.Run),
     ("Web capture streams synthetic source requires exact process incarnation", CaptureProbeSourceIdentityTests.Run),
     ("Web capture streams preserve source ownership cancellation and bounds", WebCaptureStreamTests.Ownership),
@@ -13,6 +28,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Web sessions bind owner and retire pending authority", WebSessionTests.OwnershipAsync),
     ("Web session canceled startup retires native work", WebSessionTests.CancellationAsync),
     ("Web session sources validate package and network boundaries", WebSessionTests.SourcesAsync),
+    ("Web session script resources preserve mode, byte and integrity boundaries", WebSessionTests.ScriptResourcesAsync),
     ("Web session adapters require explicit operation and retain remote messaging isolation", WebSessionTests.AdaptedAsync),
     ("Web session backends require explicit trusted authority and operation", WebSessionTests.BackendAsync),
     ("Web session microphone consent is interactive owned typed and cancellable", WebSessionMicrophoneTests.Run),
@@ -108,7 +124,13 @@ var allTests = new (string Name, Func<Task> Run)[]
 
 var runningRegistrationOnly =
     args.Contains("--running-registration-only", StringComparer.Ordinal);
-var tests = args.Contains("--web-capture-only", StringComparer.Ordinal)
+var tests = args.Contains("--library-recording-only", StringComparer.Ordinal)
+    ? allTests.Where(test=>test.Name.StartsWith("Library recording drafts",StringComparison.Ordinal)).ToArray()
+    : args.Contains("--recording-selection-only", StringComparer.Ordinal)
+    ? allTests.Where(test=>test.Name.StartsWith("Recording selection",StringComparison.Ordinal)).ToArray()
+    : args.Contains("--files-only", StringComparer.Ordinal)
+    ? allTests.Where(test=>test.Name.StartsWith("File references",StringComparison.Ordinal) || test.Run==CapabilityVocabularyIsClosed || test.Run==CapabilityDomainAuthorityIsSingular || test.Run==CapabilityDomainPoliciesAreBounded).ToArray()
+    : args.Contains("--web-capture-only", StringComparer.Ordinal)
     ? allTests.Where(test=>test.Name.StartsWith("Web capture streams",StringComparison.Ordinal)).ToArray()
     : args.Contains("--pinning-only", StringComparer.Ordinal)
     ? allTests.Where(test=>test.Name.StartsWith("Pinning",StringComparison.Ordinal) || test.Run==CapabilityVocabularyIsClosed || test.Run==CapabilityDomainAuthorityIsSingular || test.Run==CapabilityDomainPoliciesAreBounded).ToArray()
@@ -168,7 +190,7 @@ static Task CapabilityDomainAuthorityIsSingular()
     Assert.True(rootFields.Any(field => field.Name == "_subscriptions"));
     Assert.True(rootFields.Any(field => field.Name == "_dashboardGestureAuthorities"));
     Assert.True(rootFields.Any(field => field.Name == "_eventSequence"));
-    Assert.Equal(16, rootFields.Count(field =>
+    Assert.Equal(17, rootFields.Count(field =>
         field.FieldType.Name.EndsWith("CapabilityDomain", StringComparison.Ordinal)));
 
     Type[] domainTypes =
@@ -190,6 +212,7 @@ static Task CapabilityDomainAuthorityIsSingular()
         typeof(PrivateStateCapabilityDomain),
         typeof(MarketplaceCapabilityDomain),
         typeof(WindowCaptureCapabilityDomain),
+        typeof(FileCapabilityDomain),
     ];
     foreach (var domainType in domainTypes)
     {
@@ -480,7 +503,10 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(53, PlatformCapabilities.All.Count);
+    Assert.Equal(55, PlatformCapabilities.All.Count);
+    Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.CaptureLibraryRecycleLinkedV1,out var linkedRecycle));
+    Assert.Equal(BrokerCapabilityKind.Control,linkedRecycle.KindForOperation("capture-library.recycle-linked"));
+    Assert.True(linkedRecycle.Operations.SetEquals(["capture-library.recycle-linked"])&&!linkedRecycle.AllowsBackground&&!linkedRecycle.AllowsDashboardGesture);
     Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceReadV1, out var performanceRead));
     Assert.Equal(BrokerCapabilityKind.Read, performanceRead.KindForOperation(PlatformCapabilities.PerformanceGet));
     Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.PerformanceFpsControlV1, out var performanceControl));
@@ -533,17 +559,30 @@ static Task CapabilityVocabularyIsClosed()
             capability.Id != PlatformCapabilities.TaskWindowsSwitchV1 &&
             capability.Id != PlatformCapabilities.DisplaysControlV1 &&
             capability.Id != PlatformCapabilities.CaptureLibraryManageV1 &&
+            capability.Id != PlatformCapabilities.CaptureLibrarySaveV1 &&
             capability.Id != PlatformCapabilities.WindowCaptureV1 &&
+            capability.Id != PlatformCapabilities.FilesReadV1 &&
             capability.Id != PlatformCapabilities.ProviderDocumentsV1)
         .All(capability => capability.InFlightContinuationOperations is null ||
             capability.InFlightContinuationOperations.Count == 0));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.WindowCaptureV1)
-        .InFlightContinuationOperations!.SetEquals(["capture.web-prepare", "capture.web-prepare-constrained"]));
+        .InFlightContinuationOperations!.SetEquals(["capture.web-prepare", "capture.web-prepare-constrained", "capture.replay.configure", "capture.replay.start", "capture.replay.save"]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.CaptureLibraryManageV1)
-        .InFlightContinuationOperations!.SetEquals(["capture-library.open-folder", "capture-library.reveal", "capture-library.copy", "capture-library.choose-source"]));
+        .InFlightContinuationOperations!.SetEquals(["capture-library.open-folder", "capture-library.reveal", "capture-library.copy", "capture-library.save-copy", "capture-library.choose-source"]));
+    var copyOptions = new BrokerPipeTransportOptions { RequestTimeout = TimeSpan.FromSeconds(10) };
+    var defaultCopy = BrokerJson.ParseRequest(Request(Identity(), PlatformCapabilities.CaptureLibraryManageV1, "capture-library.save-copy", new { }));
+    Assert.Equal(TimeSpan.FromSeconds(BrokerTransportLimits.CaptureCopyTimeoutSeconds + 5), BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, defaultCopy));
+    Assert.Equal(TimeSpan.FromSeconds(900), BrokerPipeRequestTimeoutPolicy.Resolve(new() { RequestTimeout = TimeSpan.FromSeconds(900) }, defaultCopy));
+    Assert.Equal(copyOptions.RequestTimeout, BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, defaultCopy with { Operation = "capture-library.metadata" }));
+    var replayRequest = defaultCopy with { CapabilityId = PlatformCapabilities.WindowCaptureV1 };
+    Assert.Equal(TimeSpan.FromSeconds(130), BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, replayRequest with { Operation = "capture.replay.start" }));
+    Assert.Equal(TimeSpan.FromSeconds(130), BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, replayRequest with { Operation = "capture.replay.configure" }));
+    Assert.Equal(TimeSpan.FromSeconds(50), BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, replayRequest with { Operation = "capture.replay.save" }));
+    Assert.Equal(TimeSpan.FromSeconds(15), BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, replayRequest with { Operation = "capture.replay.stop" }));
+    Assert.Equal(copyOptions.RequestTimeout, BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, replayRequest with { Operation = "capture.replay.get" }));
     var captureSave = PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.CaptureLibrarySaveV1);
-    Assert.True(captureSave.Operations.SetEquals(["capture-library.save", "capture-library.save-current", "capture-library.save-context"]));
-    Assert.True(!captureSave.AllowsBackground && !captureSave.AllowsDashboardGesture && (captureSave.InFlightContinuationOperations?.Count ?? 0) == 0);
+    Assert.True(captureSave.Operations.SetEquals(["capture-library.save", "capture-library.save-current", "capture-library.save-context", "capture-library.edit-copy"]));
+    Assert.True(!captureSave.AllowsBackground && !captureSave.AllowsDashboardGesture && captureSave.InFlightContinuationOperations!.SetEquals(["capture-library.edit-copy"]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.AppLibraryLaunchV1)
         .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.AppLibraryLaunch, PlatformCapabilities.AppLibraryLaunchObserved]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.TaskWindowsSwitchV1)

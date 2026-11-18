@@ -107,7 +107,7 @@ internal sealed partial class OverlayShellPage
         };
         if (!radialNavigation && direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None)
         {
-            if (IsMediaFullscreen) fullscreenLayer.MoveFocus(next);
+            if (IsMediaFullscreen) fullscreenLayer.MoveFocus(next, direction.Phase == NavigationPhase.Repeated);
             else if (PinnedInputActive)
             {
                 if (pinned!.Presenter is { } widget) widget.MoveFocus(next, direction.Phase == NavigationPhase.Repeated);

@@ -115,11 +115,20 @@ public sealed partial class PlayniteLibraryWidget
             if(page.Total==0)children.Add(UI.Text("No captures for this selection yet.",RelatedCapturePrefix+".empty"));
             else children.Add(UI.CollectionGrid(RelatedCapturePrefix+".items",relatedCaptureRows!,260,160,"Related captures",maximumColumns:2).Classes("playnite-captures-grid"));
             children.Add(UI.Button(page.Total>4?$"View all {page.Total:N0} captures":"Open Capture Library",RelatedCapturePrefix+".browse",RelatedCapturePrefix+".browse")
-                .OpenIntent(WidgetIntentContracts.CaptureLibrary,JsonSerializer.SerializeToElement(new{originPackageId=PlaynitePackage,referenceKind=page.Kind,referenceId=page.Reference})));
+                .OpenIntent(WidgetIntentContracts.CaptureLibraryV2,JsonSerializer.SerializeToElement(new{originPackageId=PlaynitePackage,referenceKind=page.Kind,referenceId=page.Reference,
+                    referenceLabel=RelatedCaptureLabel(state.DetailsExtras.CaptureAchievementName??state.DetailsItem.Presentation.DisplayName)})));
         }
         return UI.Stack(RelatedCapturePrefix+".content",children.ToArray()).Classes("playnite-capture-content");
     }
     private static WidgetArtworkHandle CaptureArtwork(CaptureLibraryItem item)=>new("playnite.capture."+item.Id+"."+item.Revision);
+    internal static string RelatedCaptureLabel(string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0) return "Related captures";
+        var length = Math.Min(name.Length, 256);
+        if (length < name.Length && char.IsHighSurrogate(name[length - 1])) --length;
+        return name[..length];
+    }
 
     private static bool RelatedRequest(WidgetIntentRequest request)=>request.IsWellFormed()&&request.ContractId==relatedIntent.Id&&request.Version==relatedIntent.Version&&
         request.SchemaDigest==relatedIntent.SchemaDigest&&relatedIntent.Accepts(request.Payload)&&request.Payload.GetProperty("packageId").GetString()==PlaynitePackage;

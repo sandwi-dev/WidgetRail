@@ -17,6 +17,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     private readonly IDisplayProfilesPlatformBackend? _displays;
     private readonly IPerformancePlatformBackend? _performance;
     public CaptureLibraryStore? CaptureLibrary { get; }
+    public CaptureReplayService? CaptureReplay { get; init; }
     private int _disposed;
 
     public CompositePlatformBrokerBackend(
@@ -348,6 +349,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        if (CaptureReplay is not null) await CaptureReplay.DisposeAsync().ConfigureAwait(false);
         CaptureLibrary?.Dispose();
         if (_performance is IAsyncDisposable performance) await performance.DisposeAsync().ConfigureAwait(false);
         if (_displays is not null) _displays.EventPublished -= ForwardDisplayEvent;

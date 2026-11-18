@@ -68,6 +68,21 @@ public sealed class WidgetIndexedCollectionTestHost : IDisposable
         _ = await widget.ReadIndexedRangeAsync(request, cancellation.Token).ConfigureAwait(false);
     }
 
+    /// <summary>Reports a synthetic host viewport through production admission. This does not establish native scrolling evidence.</summary>
+    public async ValueTask ObserveViewportAsync(string collectionId,IndexedViewportObservation observation,CancellationToken cancellationToken=default)
+    {
+        ArgumentNullException.ThrowIfNull(observation);
+        IndexedCollectionRangeRequest request;
+        lock(gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed,this);
+            var source=Find(snapshot.Root,collectionId)?.IndexedCollection??throw new ArgumentException("Missing collection.",nameof(collectionId));
+            request=new(collectionId,source,0,0,Guid.NewGuid().ToString("N")){Kind=IndexedCollectionRequestKind.ObserveViewport,Viewport=observation};
+        }
+        using var cancellation=CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token,cancellationToken);
+        _=await widget.ReadIndexedRangeAsync(request,cancellation.Token).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Acquires a bounded range from the current declared main or pinned collection.
     /// Reads obey the production provider, cancellation, timeout and retention limits.

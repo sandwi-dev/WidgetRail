@@ -8,7 +8,7 @@
            Text="Missing OverlayPlatformInterop.dll at '$(OverlayPlatformInteropPath)'. Run scripts/Build-OverlayPlatform.ps1 -Configuration Release, or set OverlayPlatformInteropPath to the freshly built DLL." />
     <Error Condition="!Exists('$(WindowPreviewNativePath)')"
            Text="Missing WinUiWindowPreviewNative.dll at '$(WindowPreviewNativePath)'. Run scripts/Build-WinUiWindowPreview.ps1 -Configuration Release, or set WindowPreviewNativePath to the freshly built DLL." />
-    <Error Condition="'$(WebCaptureNativeDirectory)' != '' and (!Exists('$(WebCaptureNativeDirectory)\WebRtcCaptureWorker.exe') or !Exists('$(WebCaptureNativeDirectory)\CaptureWorkerHost.dll') or !Exists('$(WebCaptureNativeDirectory)\WebRtcCapturePrototype.dll'))"
+    <Error Condition="'$(WebCaptureNativeDirectory)' != '' and (!Exists('$(WebCaptureNativeDirectory)\WebRtcCaptureWorker.exe') or !Exists('$(WebCaptureNativeDirectory)\CaptureWorkerHost.dll') or !Exists('$(WebCaptureNativeDirectory)\WebRtcCapturePrototype.dll') or !Exists('$(WebCaptureNativeDirectory)\ReplayCaptureWorker.exe') or !Exists('$(WebCaptureNativeDirectory)\ReplayWorkerHost.dll'))"
            Text="Missing native web capture inputs at '$(WebCaptureNativeDirectory)'. Run scripts/Build-WebCapture.ps1, or set WebCaptureNativeDirectory to the freshly built directory." />
   </Target>
 </Project>

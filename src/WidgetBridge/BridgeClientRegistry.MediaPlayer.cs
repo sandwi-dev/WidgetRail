@@ -25,6 +25,7 @@ internal sealed partial class BridgeClientRegistry
             return client.Configured;
         }
         static MediaPlayerDefinition? Find(ViewNode node, string id) => node.Id == id ? MediaPlayerDefinition.FromNode(node) :
+            (node.FocusPresentation is { } preview ? Find(preview, id) : null) ??
             node.Children.Select(child => Find(child, id)).FirstOrDefault(value => value is not null);
     }
 }

@@ -11,6 +11,11 @@ var audioMode=args.Contains("--audio",StringComparer.Ordinal)||File.Exists(Path.
 var voicePinMode=File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-voice-pin.enabled"));
 var voiceControlsMode=File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-voice-controls.enabled"));
 var fixtureArgs=args.Where(arg=>arg!="--audio").ToArray();
+if(fixtureArgs is ["--messages-contract-check",var messageCheckDirectory])
+{
+    await SyntheticMessagesContractCheck.RunAsync(messageCheckDirectory);
+    return;
+}
 if(fixtureArgs is ["--snapshots",var destination])
 {
     Directory.CreateDirectory(destination);
@@ -50,10 +55,19 @@ if(fixtureArgs is ["--snapshots",var destination])
     await WidgetTestHost.DestroyAsync(widget);
     return;
 }
-Environment.ExitCode=await WidgetApplicationBootstrap.RunAsync(fixtureArgs,()=>new DiscordWebViewWidget(new SyntheticDiscordSession(audioMode,voicePinMode,voiceControlsMode)));
+if(File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-messages.enabled")))
+{
+    await SyntheticMessagesWorker.RunAsync(fixtureArgs);
+    return;
+}
+Environment.ExitCode=await WidgetApplicationBootstrap.RunAsync(fixtureArgs,()=>
+{
+    var session=new SyntheticDiscordSession(audioMode,voicePinMode,voiceControlsMode);
+    return new DiscordWebViewWidget(session,uploadAttachment:session.UploadMessagesFixtureAsync);
+});
 static IEnumerable<ViewNode> Nodes(ViewNode root)=>new[]{root}.Concat(root.Children.SelectMany(Nodes));
 
-internal sealed class SyntheticDiscordSession:IDiscordSession
+internal sealed partial class SyntheticDiscordSession:IDiscordSession
 {
     private readonly bool audioMode;
     private readonly bool voiceControlsMode;
@@ -71,10 +85,11 @@ internal sealed class SyntheticDiscordSession:IDiscordSession
          new("3","Morgan","idle","listening","Evening playlist","",null,null,null,null,false,null,false),
          new("4","Sky","online","voice","Co-op night","Friends & games","11","100","Co-op night","Friends & games",true,null,false),
          new("5","Reese","dnd","playing","Hollow Knight: Silksong","",null,null,null,null,false,null,false)],"ready"){VoiceConnection="connected"};
-    internal SyntheticDiscordSession(bool audioMode=false,bool voicePinMode=false,bool voiceControlsMode=false)
+    internal SyntheticDiscordSession(bool audioMode=false,bool voicePinMode=false,bool voiceControlsMode=false,string? messagesAuditPath=null)
     {
         this.audioMode=audioMode;
         this.voiceControlsMode=voiceControlsMode;
+        InitializeMessagesFixture(messagesAuditPath);
         state=state with{Channels=[..state.Channels,..Enumerable.Range(40,20)
             .Select(id=>new DiscordChannel(id.ToString(),"300","Voice "+id,"After hours"))]};
         if(voiceControlsMode)state=state with{Participants=state.Participants.Select(person=>person.Id==state.Account?person:person with{Audio=new(true,false,50)}).ToArray()};
@@ -94,6 +109,7 @@ internal sealed class SyntheticDiscordSession:IDiscordSession
     public ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token)
     {
         token.ThrowIfCancellationRequested();var value=JsonSerializer.SerializeToElement(args);
+        if (messageAuditPath is not null && method.StartsWith("message", StringComparison.Ordinal)) return InvokeMessagesFixtureAsync(method, value, token);
         if(method=="connectionDiagnostics")
         {
             if(value.GetProperty("account").GetString()!=state.Account||value.GetProperty("channelId").GetString()!=state.ChannelId)

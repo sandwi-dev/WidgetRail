@@ -1,5 +1,27 @@
 # Discord UI fixture
 
+`Stage.ps1 -Messages` and `Test-Messages.ps1` add an opt-in native Messages case.
+It runs the production widget with two synthetic conversations and 120 synthetic
+long messages, served in bounded cursor pages. The worker writes only a provider
+audit in that fixture's isolated result directory and rejects every send/DM
+creation request. Native checks cover controller inbox/conversation entry, lazy
+history, Older/Newer window bounds, A/F6/B/Escape long-text preview entry/return,
+mouse transit, the actual composer viewport and mouse/keyboard draft editing.
+The upload case selects only `messages-upload-fixture.txt` through deterministic
+SDK test services, using the same worker bootstrap seam as CaptureLibraryWidgetFixture.
+The injected uploader reads half of the synthetic stream, reports50%, and waits for native
+controller Cancel. It has no HTTP client and cannot transmit bytes. The native
+checks verify busy-row bounds, cancellation and retained draft/file selection.
+This does not qualify Windows chooser selection or broker file authorization;
+those boundaries have separate broker and picker-lifetime fixtures.
+No Discord page, credentials, external messages or network uploads are involved. Incoming
+file-intent routing requires a second authorized sender and is qualified separately;
+this single-widget fixture does not bypass the broker to fabricate that authority.
+The published fixture's `--messages-contract-check <fresh-directory>` command runs
+nine non-UI checks against these exact synthetic replies and production declarations
+before desktop qualification, including both history cursor directions and full
+preview text. It writes its own bounded provider audit and never launches a window.
+
 This worker renders the real Discord widget with synthetic friends, voice channels,
 participants and stream rows. It never opens a Discord page, accesses an account,
 captures an application or broadcasts media. Mute, deafen, leave and join mutate

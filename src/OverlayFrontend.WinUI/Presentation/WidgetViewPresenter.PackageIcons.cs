@@ -105,10 +105,14 @@ internal sealed partial class WidgetViewPresenter
         if (button.Content is not TextBlock label) button.Content = label = new TextBlock();
         WidgetTextStyleAdapter.SetSource(label, source);
     }
-    private WidgetNativePackageIcon? CreateSelectIcon(ToggleMenuFlyoutItem item, WidgetSelectOption option)
+    private WidgetNativePackageIcon? CreateSelectIcon(MenuFlyoutItemBase item, WidgetSelectOption option)
     {
         if (option.Glyph is not { } glyph) return null;
-        var icon = new WidgetNativePackageIcon(value => item.Icon = value, () => XamlRoot);
+        var icon = new WidgetNativePackageIcon(value =>
+        {
+            if (item is MenuFlyoutItem command) command.Icon = value;
+            else if (item is ToggleMenuFlyoutItem choice) choice.Icon = value;
+        }, () => XamlRoot);
         icon.Update(glyph, option.PackageIcon, option.AccessibilityLabel ?? option.Label, IconResolver(), PackageGeneration, IconDiagnostic);
         return icon;
     }

@@ -126,23 +126,30 @@ internal sealed partial class OverlayShellPage
         if (browserOwner is not { } browsers) return;
         var inbox = browsers.Notifications;
         if (!long.TryParse(selected, out var id) || retired) return;
-        var opened = await inbox.OpenAsync(id, async entry =>
+        var opened = await inbox.OpenWithDispositionAsync(id, async entry =>
         {
             if (ReferenceEquals(entry.Owner, appUpdateNotificationOwner) && owner is { } updateOwner)
-                return await InvokeIntentCoreAsync(prepareNotification: updateOwner.Session.PrepareAppUpdateIntentAsync);
+                return Disposition(await InvokeIntentCoreAsync(prepareNotification: updateOwner.Session.PrepareAppUpdateIntentAsync));
             if (entry.Available && entry.Owner is WidgetRail.WidgetPresentationSession.WidgetPresentationNotification { IntentToken: not null } notification && owner is { } current)
-                return await InvokeIntentCoreAsync(prepareNotification: token => current.Session.PrepareNotificationIntentAsync(notification, token));
-            if (!entry.Available || entry.Owner is not BrowserSurface source || retired) return false;
+                return Disposition(await InvokeIntentCoreAsync(prepareNotification: token => current.Session.PrepareNotificationIntentAsync(notification, token)));
+            if (owner is { } nativeOwner && browsers.TryGetNativeNotificationIntent(entry, out var nativeIntent))
+            {
+                bool Current() => browsers.TryGetNativeNotificationIntent(entry, out var currentIntent) && currentIntent == nativeIntent;
+                if (await InvokeIntentCoreAsync(prepareNotification: token => nativeOwner.Session.PrepareWebNotificationIntentAsync(entry.Widget, nativeIntent!, token),
+                    notificationCurrent: Current)) return NotificationActivationDisposition.Handled;
+                if (!Current()) return NotificationActivationDisposition.Unavailable;
+            }
+            if (!entry.Available || entry.Owner is not BrowserSurface source || retired) return NotificationActivationDisposition.Unavailable;
             if (source.XamlRoot is { } root && pins.FirstOrDefault(pin=>pin.WidgetId==entry.Widget && pin.IsCurrent &&
                 ReferenceEquals(root,pin.Window.AutomationRoot.XamlRoot)) is { } target)
             {
                 if(!ReferenceEquals(pinned,target))ExitPinnedInteraction(restoreMain:false);
                 pinned=target;
                 await EnterPinnedAsync();
-                return PinnedInputActive && await browsers.FocusNotificationSourceAsync(source);
+                return Disposition(PinnedInputActive && await browsers.FocusNotificationSourceAsync(source));
             }
             await SelectAsync(entry.Widget, enterWidget: true);
-            return !retired && foreground && await browsers.FocusNotificationSourceAsync(source);
+            return Disposition(!retired && foreground && await browsers.FocusNotificationSourceAsync(source));
         }, async entry =>
         {
             if (retired || !visible || !catalogItems.Any(widget => widget.Id == entry.Widget)) { inbox.Dismiss(entry.Id); return false; }
@@ -151,6 +158,8 @@ internal sealed partial class OverlayShellPage
         });
         if (!opened && !retired && visible && !HostChoiceActive)
             await ShowNotificationsAsync(inbox.Find(id) is null ? "This notification is no longer available." : "Couldn't open the widget. You can try again later.");
+        static NotificationActivationDisposition Disposition(bool activated) => activated
+            ? NotificationActivationDisposition.SourceActivated : NotificationActivationDisposition.Unavailable;
     }
     private HostDialogChoice NotificationChoice(NotificationEntry entry)
     {

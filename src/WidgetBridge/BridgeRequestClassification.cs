@@ -16,6 +16,7 @@ internal enum BridgeRequestKind
     Capture,
     WebSessions,
     Permissions,
+    FilePicker,
     GetSnapshot,
     ReadIndexedRange,
     SuggestText,
@@ -169,9 +170,12 @@ internal static class BridgeRequestClassifier
                     request.Payload, BridgeRequestKind.ListWidgets),
                 BridgeMessageTypes.GetPlatformAppearance => Appearance(request.Payload),
                 BridgeMessageTypes.ControllerControl => ControllerControl(request.Payload),
-                BridgeMessageTypes.CaptureCapabilities or BridgeMessageTypes.TakeCapture or BridgeMessageTypes.CheckCapture or BridgeMessageTypes.RecordingCapture or
-                    BridgeMessageTypes.CompleteCapture or BridgeMessageTypes.CompleteCaptureFolder or BridgeMessageTypes.CheckCaptureFolder or BridgeMessageTypes.CompleteCaptureSource or BridgeMessageTypes.CheckCaptureSource or BridgeMessageTypes.CompleteCaptureCopy or BridgeMessageTypes.CheckCaptureCopy or BridgeMessageTypes.ResolveMediaPlayer or BridgeMessageTypes.ResolveCaptureAttachment or BridgeMessageTypes.ResolveProviderDocument => BridgeRequestKey.Global(BridgeRequestKind.Capture),
+                BridgeMessageTypes.GetReplayStatus or BridgeMessageTypes.TakeReplayWork or BridgeMessageTypes.CheckReplayCommand or BridgeMessageTypes.CompleteReplayCommand or
+                    BridgeMessageTypes.SaveReplay or BridgeMessageTypes.StopReplay or BridgeMessageTypes.ReplayPowerState or
+                    BridgeMessageTypes.ReleaseMediaPlayer or BridgeMessageTypes.CaptureCapabilities or BridgeMessageTypes.TakeCapture or BridgeMessageTypes.CheckCapture or BridgeMessageTypes.RecordingCapture or
+                    BridgeMessageTypes.CheckCaptureEdit or BridgeMessageTypes.CompleteCaptureEdit or BridgeMessageTypes.CancelCaptureEdit or BridgeMessageTypes.CompleteCapture or BridgeMessageTypes.CompleteCaptureFolder or BridgeMessageTypes.CheckCaptureFolder or BridgeMessageTypes.CompleteCaptureSource or BridgeMessageTypes.CheckCaptureSource or BridgeMessageTypes.CompleteCaptureCopy or BridgeMessageTypes.CheckCaptureCopy or BridgeMessageTypes.ResolveMediaPlayer or BridgeMessageTypes.ResolveCaptureAttachment or BridgeMessageTypes.ResolveProviderDocument => BridgeRequestKey.Global(BridgeRequestKind.Capture),
                 BridgeMessageTypes.TakePermission or BridgeMessageTypes.CheckPermission or BridgeMessageTypes.CompletePermission => BridgeRequestKey.Global(BridgeRequestKind.Permissions),
+                BridgeMessageTypes.TakeFilePicker or BridgeMessageTypes.CheckFilePicker or BridgeMessageTypes.CompleteFilePicker => BridgeRequestKey.Global(BridgeRequestKind.FilePicker),
                 BridgeMessageTypes.WindowPreviewPermissions => WindowPreviewPermissions(request.Payload),
                 BridgeMessageTypes.ApplicationControl => BridgeRequestKey.Global(BridgeRequestKind.ApplicationControl),
                 BridgeMessageTypes.CancelTextSuggestions => Widget(BridgeJson.FromElement<BridgeTextSuggestionsRequest>(request.Payload).WidgetId, BridgeRequestKind.CancelTextSuggestions),
@@ -210,6 +214,7 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.PrepareIntent => Widget(
                     BridgeJson.FromElement<BridgeIntentPrepareRequest>(request.Payload).WidgetId, BridgeRequestKind.PrepareIntent),
                 BridgeMessageTypes.PrepareNotificationIntent => NotificationIntent(request.Payload, BridgeRequestKind.PrepareIntent),
+                BridgeMessageTypes.PrepareWebNotificationIntent => WebNotificationIntent(request.Payload),
                 BridgeMessageTypes.ReleaseNotificationIntent => NotificationIntent(request.Payload, BridgeRequestKind.CancelIntent),
                 BridgeMessageTypes.PrepareWidgetSettingsIntent => Widget(BridgeJson.FromElement<BridgeWidgetManagementRequest>(request.Payload).WidgetId, BridgeRequestKind.PrepareIntent),
                 BridgeMessageTypes.PrepareAppUpdateIntent or BridgeMessageTypes.PrepareAppearanceIntent or BridgeMessageTypes.StartAppUpdateCheck => Empty(request.Payload, BridgeRequestKind.ApplicationControl),
@@ -246,6 +251,12 @@ internal static class BridgeRequestClassifier
             throw new BridgeProtocolException("Indexed identity is invalid.");
     }
 
+    private static BridgeRequestKey WebNotificationIntent(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgeWebNotificationIntentPrepare>(payload);
+        if (request.Notification?.IsWellFormed() != true) throw new BridgeProtocolException("Invalid native notification intent.");
+        return Widget(request.WidgetId, BridgeRequestKind.PrepareIntent);
+    }
     private static BridgeRequestKey NotificationIntent(JsonElement payload, BridgeRequestKind kind)
     {
         var request = BridgeJson.FromElement<BridgeNotificationIntentPrepare>(payload);

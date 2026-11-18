@@ -39,7 +39,12 @@ public sealed class WindowsTaskWindowCatalog
                 var name = Clean(item.DisplayName);
                 if (name.Length == 0) name = title.Length == 0 ? "Application" : title;
                 next.Add(id, item);
-                result.Add(new(id, name, title.Length == 0 ? name : title, item.Window.IsMinimized) { PreviewTarget = target });
+                result.Add(new(id, name, title.Length == 0 ? name : title, item.Window.IsMinimized)
+                {
+                    PreviewTarget = target,
+                    ApplicationIdentity = string.IsNullOrWhiteSpace(item.RegistrationIdentity) ? null :
+                        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(item.RegistrationIdentity))),
+                });
             }
             targets.Clear();
             foreach (var item in next) targets.Add(item.Key, item.Value);

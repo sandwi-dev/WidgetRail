@@ -39,6 +39,13 @@ internal static class ControllerSettingsScenarios
             await widget.OnActionAsync(new("controllers.f1-shortcut.toggle", "controllers.f1-shortcut"));
             if ((await store.LoadAsync()).Controllers.EffectiveOverlayShortcut != shortcut)
                 throw new Exception("Retired F1 actions must not bypass host registration.");
+            var replay=OverlayShortcutSettings.ReplayDefault with{Enabled=true};
+            await store.UpdateAsync(value=>value with{Controllers=value.Controllers with{ReplaySaveShortcut=replay}});
+            await widget.OnActionAsync(new("controllers.replay-shortcut.edit","controllers.replay-shortcut"));
+            static ViewNode? FindReplay(ViewNode node)=>node.Id=="controllers.replay-shortcut"?node:node.Children.Select(FindReplay).FirstOrDefault(item=>item is not null);
+            if(FindReplay(widget.Render().CreateSnapshot("settings",3).Root)?.Text?.StartsWith(replay.DisplayName)!=true||
+                (await store.LoadAsync()).Controllers.EffectiveOverlayShortcut!=shortcut)
+                throw new Exception("Replay shortcut summary failed to reload independently of the overlay binding.");
         }
         finally
         {

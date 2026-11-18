@@ -29,7 +29,7 @@ public sealed record CaptureApplicationContext(string ApplicationName, string Wi
         !ApplicationName.Any(char.IsControl) && WindowTitle is not null && WindowTitle.Length <= 240 && !WindowTitle.Any(char.IsControl);
 }
 [JsonConverter(typeof(JsonStringEnumConverter<CaptureAttachmentOrigin>))]
-public enum CaptureAttachmentOrigin { WindowCapture = 0, SavedLibrary = 1 }
+public enum CaptureAttachmentOrigin { WindowCapture = 0, SavedLibrary = 1, LibraryRecordingDraft = 2 }
 /// <summary>Host-issued temporary media; contains no local path or native handle.</summary>
 public sealed record CaptureAttachment(string Id, string ContentType, int Width, int Height,
     long ByteLength, double DurationSeconds, long ExpiresAtUnixMilliseconds)
@@ -43,7 +43,13 @@ public sealed record CaptureAttachment(string Id, string ContentType, int Width,
     public bool IsWellFormed() => Enum.IsDefined(Origin) && (SourceApplication is null || SourceApplication.IsWellFormed()) && CaptureLimits.ValidToken(Id) && ContentType is "image/png" or "video/mp4" &&
         Width is > 0 and <= CaptureLimits.MaximumWidth && Height is > 0 and <= CaptureLimits.MaximumHeight &&
         ((long)Width * Height <= CaptureLimits.MaximumPixels) &&
-        ByteLength > 0 && ByteLength <= (Origin == CaptureAttachmentOrigin.SavedLibrary && ContentType == "video/mp4" ? CaptureLibraryLimits.MaximumVideoBytes : CaptureLimits.MaximumAttachmentBytes) &&
+        (Origin != CaptureAttachmentOrigin.LibraryRecordingDraft || ContentType == "video/mp4" && Properties is not null) &&
+        ByteLength > 0 && ByteLength <= (ContentType == "video/mp4" ? Origin switch
+        {
+            CaptureAttachmentOrigin.SavedLibrary => CaptureLibraryLimits.MaximumVideoBytes,
+            CaptureAttachmentOrigin.LibraryRecordingDraft => CaptureLimits.MaximumLibraryRecordingBytes,
+            _ => CaptureLimits.MaximumAttachmentBytes,
+        } : CaptureLimits.MaximumAttachmentBytes) &&
         (Properties is null || Properties.IsWellFormed(ContentType == "video/mp4")) &&
         (ContentType != "video/mp4" || Properties is not null || Origin == CaptureAttachmentOrigin.SavedLibrary || Width <= 1280 && Height <= 720 && ByteLength <= CaptureLimits.MaximumContextBytes) && double.IsFinite(DurationSeconds) &&
         (ContentType == "image/png" ? DurationSeconds == 0 : DurationSeconds > 0 && DurationSeconds <= (Origin == CaptureAttachmentOrigin.SavedLibrary ? CaptureLibraryLimits.MaximumVideoSeconds : Properties is null ? CaptureLimits.VideoSeconds : CaptureLimits.MaximumRecordingSeconds) + 0.25) &&
@@ -66,6 +72,8 @@ public static class CaptureLimits
     public const long MaximumPixels = 33554432;
     public const int MaximumContextBytes = 8 * 1024 * 1024;
     public const int MaximumAttachmentBytes = 128 * 1024 * 1024;
+    /// <summary>Maximum completed file size for a staged library recording; does not allocate memory.</summary>
+    public const long MaximumLibraryRecordingBytes = 2L * 1024 * 1024 * 1024;
     public const int ChunkBytes = 32 * 1024;
     public const int MaximumPerWidget = 4;
     public const int MaximumTotal = 16;

@@ -25,7 +25,23 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 114;
+    public const int CurrentVersion = 127;
+    public const int IndexedQueryRefreshVersion = 127;
+    public const int DirectionalCollectionEntryVersion = 125;
+    public const int CaptureLibraryHiddenQueryVersion = 126;
+    public const int LibraryRecordingDraftVersion = 124;
+    public const int CenteredAnchorPlacementVersion = 123;
+    public const int RecordingEncodingSelectionVersion = 121;
+    public const int TargetedCollectionPresentationVersion = 122;
+    public const int NativeNotificationIntentVersion = 120;
+    public const int InlineRichImageVersion = 119;
+    public const int IndexedEndFollowingVersion = 118;
+    public const int MaximumInlineRichImages = 16;
+    public const int CommonActionGlyphVersion = 117;
+    public const int PreviewMediaVersion = 116;
+    public const int CommandMenuVersion = 115;
+    public const int InlinePreviewActionVersion = 115;
+    public const int PrimaryPreviewEntryVersion = 115;
     public const int ExtendedSavedMediaVersion = 114;
     public const int IndexedLookupVersion = 113;
     public const int IndexedSelectionVersion = 112;

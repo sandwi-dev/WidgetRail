@@ -21,7 +21,7 @@ $optimization = if ($Configuration -eq 'Release') { @('/O2','/DNDEBUG') } else {
 $captureSources = if ($TestCapture) { @('/DWRAIL_CAPTURE_VALIDATION', (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowCaptureFixture.cpp')) } else { @() }
 $arguments = @('/nologo','/MT','/std:c++20','/utf-8','/EHsc','/W4','/permissive-','/DUNICODE','/D_UNICODE','/DWIN32_LEAN_AND_MEAN','/DNOMINMAX','/DWRAIL_PREVIEW_EXPORTS','/LD') + $optimization + $includes + $captureSources + @(
     (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowPreviewNative.cpp'), (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowContextCapture.cpp'), "/Fo:$objectDirectory\", "/Fe:$OutputDirectory\WinUiWindowPreviewNative.dll", '/link',
-    "/IMPLIB:$OutputDirectory\WinUiWindowPreviewNative.lib", "/PDB:$OutputDirectory\WinUiWindowPreviewNative.pdb") + $libraries + @('d3d11.lib','dxgi.lib','d2d1.lib','dwmapi.lib','user32.lib','ole32.lib','windowsapp.lib','gdi32.lib','windowscodecs.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','evr.lib')
+    "/IMPLIB:$OutputDirectory\WinUiWindowPreviewNative.lib", "/PDB:$OutputDirectory\WinUiWindowPreviewNative.pdb") + $libraries + @('d3d11.lib','dxgi.lib','d2d1.lib','dwmapi.lib','user32.lib','ole32.lib','oleaut32.lib','windowsapp.lib','gdi32.lib','windowscodecs.lib','mf.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','evr.lib')
 $arguments += 'mmdevapi.lib'
 $oldPath = $env:PATH
 try {
@@ -52,7 +52,7 @@ try {
     if ($TestAudio -or $TestAudioWgc) {
         $audio = @('/nologo','/MT','/std:c++20','/utf-8','/EHsc','/W4','/permissive-','/DNOMINMAX','/DUNICODE','/D_UNICODE','/O2') + $includes + @(
             (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowCaptureAudioTests.cpp'), "/Fo:$objectDirectory\AudioTests.obj", "/Fe:$OutputDirectory\WindowCaptureAudioTests.exe", '/link') +
-            $libraries + @('ole32.lib','windowsapp.lib','mmdevapi.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','d3d11.lib','user32.lib','gdi32.lib',
+            $libraries + @('ole32.lib','oleaut32.lib','windowsapp.lib','mmdevapi.lib','mf.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','d3d11.lib','user32.lib','gdi32.lib',
                 (Join-Path $OutputDirectory 'WinUiWindowPreviewNative.lib'))
         & $compiler @audio
         if ($LASTEXITCODE -ne 0) { throw 'Process audio probe build failed.' }
@@ -63,7 +63,7 @@ try {
     if ($TestEncoding) {
         $encoding = @('/nologo','/MT','/std:c++20','/utf-8','/EHsc','/W4','/permissive-','/DNOMINMAX','/DUNICODE','/D_UNICODE','/O2') + $includes + @(
             (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowCaptureEncodingTests.cpp'), "/Fo:$objectDirectory\EncodingTests.obj", "/Fe:$OutputDirectory\WindowCaptureEncodingTests.exe", '/link') +
-            $libraries + @('d3d11.lib','dxgi.lib','ole32.lib','windowsapp.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','evr.lib','psapi.lib')
+            $libraries + @('d3d11.lib','dxgi.lib','ole32.lib','oleaut32.lib','windowsapp.lib','mf.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','evr.lib','psapi.lib')
         & $compiler @encoding
         if ($LASTEXITCODE -ne 0) { throw 'Capture encoding probe build failed.' }
         & (Join-Path $OutputDirectory 'WindowCaptureEncodingTests.exe') $OutputDirectory

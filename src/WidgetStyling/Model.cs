@@ -230,7 +230,14 @@ public sealed class WrssTheme
 
     internal WrssTheme(IReadOnlyList<CompiledRule> rules) => _rules = rules;
 
-    public WrssResolvedStyle Resolve(WrssElement element)
+    public WrssResolvedStyle Resolve(WrssElement element) => Resolve(element, part: false);
+
+    /// <summary>Resolves a host-owned component part through the same cascade.
+    /// Only selectors explicitly naming the part role apply; the owner's generic
+    /// ID/classes continue styling its ordinary content without leaking into chrome.</summary>
+    public WrssResolvedStyle ResolvePart(WrssElement element) => Resolve(element, part: true);
+
+    private WrssResolvedStyle Resolve(WrssElement element, bool part)
     {
         ArgumentNullException.ThrowIfNull(element);
         ArgumentException.ThrowIfNullOrWhiteSpace(element.Role);
@@ -238,7 +245,7 @@ public sealed class WrssTheme
         foreach (var rule in _rules)
         {
             var specificity = rule.Selectors
-                .Where(selector => selector.Matches(element))
+                .Where(selector => (!part || string.Equals(selector.Role, element.Role, StringComparison.Ordinal)) && selector.Matches(element))
                 .Select(selector => (int?)selector.Specificity)
                 .Max();
             if (specificity is null) continue;

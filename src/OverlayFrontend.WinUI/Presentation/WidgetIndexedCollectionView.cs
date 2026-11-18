@@ -15,7 +15,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
 {
     private readonly PresentationSession session;
     private readonly Action<Exception> failed;
-    private readonly Dictionary<SelectorItem, (IndexedItem<WidgetIndexedRow> Slot, EventHandler Changed)> containers = [];
+    private readonly Dictionary<SelectorItem, (IndexedItem<WidgetIndexedRow> Slot, EventHandler Changed, WidgetIndexedRowView? LayoutOwner)> containers = [];
     private readonly HashSet<Task> retiring = [];
     private WidgetIndexedRows? source;
     private IndexedItemsSource<WidgetIndexedRow>.Retention? measurementRetention;
@@ -29,6 +29,8 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     internal async Task SetPresentationActiveAsync(bool active)
     {
         presentationActive = active;
+        if (!active) CancelViewportRecovery(false);
+        QueueViewportObservation(!active);
         if (!active) { CancelContinuity(); CancelNavigation(); CancelPendingActivation(); }
         if (view is not null)
         {
@@ -52,7 +54,11 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     private long paddingToken;
     internal ListViewBase NativeView => view ?? throw new InvalidOperationException("Collection is not initialized.");
     internal Action? PresentationChanged { get; set; }
+    internal Func<DependencyObject, bool>? PrimaryPreviewRequested { get; set; }
     internal Action? ScrollOwnerRetiring { get; set; }
+    internal Func<WidgetIndexedCollectionView, bool>? HasPendingViewportScroll { get; set; }
+    internal Func<WidgetIndexedCollectionView, bool>? BoundaryObservationReady { get; set; }
+    internal Func<WidgetIndexedCollectionView, bool>? HasReadingPreview { get; set; }
     internal void RefreshAppearanceBinding(WidgetPresentationBinding binding)
     {
         if (source is not null) source.Update(binding, source.Declaration);
@@ -75,15 +81,24 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
         SizeChanged += (_, _) => UpdateGridWidth();
-        GotFocus += (_, _) => { ValidatePendingActivation(); RememberItemFocus(); CompleteSelectionNavigation(); };
-        LostFocus += (_, _) => ValidatePendingActivation();
+        GotFocus += (_, _) => { ValidatePendingActivation(); RememberItemFocus(); CompleteSelectionNavigation(); RefreshReaderOwnership(); };
+        LostFocus += (_, _) => { ValidatePendingActivation(); RefreshReaderOwnership(); };
         // Observe departures from both realized rows and the temporary parking
         // owner so an explicit choice outside can cancel a pending handoff.
         LosingFocus += OnLosingFocus;
         Unloaded += (_, _) => { if (!IsLoaded) CancelPendingActivation(); };
+        Loaded += (_, _) => AttachViewportObservation();
+        LayoutUpdated += (_, _) => { if(source?.Declaration.IndexedCollection?.ObservesBoundaries==true)QueueViewportObservation(); };
+        Unloaded += (_, _) => { if (!IsLoaded) QueueViewportObservation(true); };
         GotFocus += (_, _) => PresentationChanged?.Invoke();
-        AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => { extendAfterNavigation = null; CancelContinuity(); CancelNavigation(); }), true);
-        AddHandler(PointerWheelChangedEvent, new PointerEventHandler((_, _) => CancelContinuity()), true);
+        AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => { extendAfterNavigation = null; CancelInputContinuity(true); CancelNavigation(); }), true);
+        AddHandler(PointerWheelChangedEvent, new PointerEventHandler((_, args) =>
+        {
+            CancelInputContinuity(true);
+            var properties=args.GetCurrentPoint(this).Properties;
+            ObserveBoundaryScrollInput(properties.IsHorizontalMouseWheel?-properties.MouseWheelDelta:0,
+                properties.IsHorizontalMouseWheel?0:-properties.MouseWheelDelta);
+        }), true);
         AddHandler(TappedEvent, new TappedEventHandler(SelectionTapped), true);
         AddHandler(KeyDownEvent, new KeyEventHandler((_, args) =>
         {
@@ -93,7 +108,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             if (args.Key is Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down or Windows.System.VirtualKey.Left or
                 Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Tab or Windows.System.VirtualKey.Home or
                 Windows.System.VirtualKey.End or Windows.System.VirtualKey.PageUp or Windows.System.VirtualKey.PageDown)
-                { CancelContinuity(); CancelNavigation(); }
+                { CancelInputContinuity(true); CancelNavigation(); }
         }), true);
     }
 
@@ -101,14 +116,21 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     internal void Apply(WidgetPresentationBinding binding, ViewNode declaration, string scope)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        if (TryHoldViewportRecovery(binding, declaration, scope)) return;
         var entry = CaptureEntry();
         var previousSource = source;
         var layout = declaration.CollectionLayout ?? throw new InvalidDataException("Indexed collection layout is missing.");
         var replaceView = view is null || layoutKind != layout.Kind || axis != declaration.ScrollAxis;
         var replaceSource = source is null || !source.CanUpdate(binding, declaration);
+        var rebasedEntry=replaceSource&&!replaceView?RebaseEntry(entry,binding,declaration):null;
+        var userScrollPending = IsViewportScrollPending;
         if (replaceView || replaceSource) ScrollOwnerRetiring?.Invoke();
-        var continuity = replaceSource && !replaceView ? CaptureContinuity(binding, declaration) : null;
-        if (replaceSource || replaceView) CancelContinuity();
+        var continuity = rebasedEntry is not null?null:replaceSource && !replaceView ? CaptureContinuity(binding, declaration, !userScrollPending) :
+            !replaceView && !userScrollPending && !HasReadingOwner && source?.Declaration.IndexedCollection is { EndFollowingEpoch: not null } prior &&
+            declaration.IndexedCollection is { } next && (next.ContentRevision > prior.ContentRevision || next.RetainsAppendedPrefix && prior.Count > 0 && next.Count > prior.Count) &&
+            presentationActive && inputActive && (pendingContinuity?.FollowEnd == true || ViewportAtEnd())
+                ? new Continuity(null, null) { FollowEnd = true } : null;
+        if (replaceSource || replaceView || continuity is not null) CancelContinuity();
         // Protect current row focus before either native view or source retires.
         // Default entry and same-request query refresh need this just as much as
         // exact-item requests; WinUI otherwise focuses the empty ListView itself.
@@ -121,8 +143,10 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             DetachContainers();
             if (view is not null)
             {
+                DetachViewportObservation();
                 view.UnregisterPropertyChangedCallback(ForegroundProperty, discoveryForegroundToken);
                 view.UnregisterPropertyChangedCallback(Control.PaddingProperty, paddingToken);
+                view.UnregisterPropertyChangedCallback(Control.FontFamilyProperty, fontFamilyToken);
                 view.Footer = null;
                 view.ItemsSource = null; view.ItemClick -= Clicked; view.ContainerContentChanging -= ContainerChanged;
                 view.SizeChanged -= NativeViewportSizeChanged;
@@ -135,6 +159,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             // Recompute the same grid capacity used by layout and navigation,
             // independently of semantic source updates and provider retry policy.
             paddingToken = view.RegisterPropertyChangedCallback(Control.PaddingProperty, (_, _) => UpdateGridWidth());
+            fontFamilyToken = view.RegisterPropertyChangedCallback(Control.FontFamilyProperty, (_, _) => RefreshInheritedFonts());
             layoutKind = layout.Kind; axis = declaration.ScrollAxis;
             view.SelectionMode = ListViewSelectionMode.None;
             view.IsItemClickEnabled = true;
@@ -155,7 +180,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             DetachItems();
             DetachContainers();
             var replacement = new WidgetIndexedRows(session, binding, declaration, DispatcherQueue) { Failed = failed };
-            if (continuity is not null && source is not null && declaration.IndexedOccurrenceKeys is { } keys)
+            if ((continuity is not null || rebasedEntry is not null) && source is not null && declaration.IndexedOccurrenceKeys is { } keys)
                 replacement.Items.SeedPresentation(source.Items, keys);
             if (source is not null) RetireSource(source);
             source = replacement;
@@ -195,10 +220,13 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         // Native controls may be rebuilt for presentation changes. Logical entry
         // belongs to the unchanged query, not that discarded control instance.
         if (ReferenceEquals(previousSource, source)) RestoreEntry(entry);
+        else RestoreEntry(rebasedEntry);
         if (continuity is not null) BeginContinuity(continuity);
         ValidatePendingActivation();
         RefreshSelectionState();
         ContextChanged?.Invoke();
+        AttachViewportObservation();
+        QueueViewportObservation();
     }
 
     private void UpdateGridWidth()
@@ -245,7 +273,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         if (containers.Remove(container, out var prior)) prior.Slot.StateChanged -= prior.Changed;
         if (args.InRecycleQueue || args.Item is not IndexedItem<WidgetIndexedRow> slot) return;
         EventHandler changed = (_, _) => UpdateContainer(container, slot);
-        containers.Add(container, (slot, changed));
+        containers.Add(container, (slot, changed, null));
         slot.StateChanged += changed;
         UpdateContainer(container, slot);
     }
@@ -272,6 +300,13 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     internal void RefreshContainerLayout()
     {
         foreach (var container in containers.Keys) NativeComputedStyleAdapter.For(container)?.RefreshBoxLayout();
+    }
+    private long fontFamilyToken;
+    private void RefreshInheritedFonts()
+    {
+        if (view is null) return;
+        foreach (var container in containers.Keys.ToArray())
+            NativeComputedStyleAdapter.For(container)?.UpdateInheritedFontFamily(view.FontFamily);
     }
     internal void SuspendForTransition()
     {
@@ -351,6 +386,12 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
             if (!row.Lease.IsCurrent) { if (allowDeferredActivation) DeferActivation(row); return true; }
         }
         if (!row.Lease.IsCurrent) return true;
+        if (button == ControllerButton.A && phase == ControllerEventPhase.Pressed &&
+            row.Item.Root is { IsDisabled: not true, IsBusy: not true })
+        {
+            var anchor = containers.FirstOrDefault(pair => ReferenceEquals(pair.Value.Slot.Value, row)).Key;
+            if (anchor is not null && PrimaryPreviewRequested?.Invoke(anchor) == true) return true;
+        }
         var capturedSource = source;
         var capturedBinding = capturedSource.Presentation;
         var displayed = capturedBinding.Frame;
@@ -388,10 +429,14 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
     public async ValueTask DisposeAsync()
     {
         if (disposed) return;
+        CancelViewportRecovery(false);
+        QueueViewportObservation(true);
         disposed = true;
+        DetachViewportObservation();
         LosingFocus -= OnLosingFocus;
         view?.UnregisterPropertyChangedCallback(ForegroundProperty, discoveryForegroundToken);
         view?.UnregisterPropertyChangedCallback(Control.PaddingProperty, paddingToken);
+        view?.UnregisterPropertyChangedCallback(Control.FontFamilyProperty, fontFamilyToken);
         CancelContinuity();
         CancelPendingActivation();
         CancelNavigation();
@@ -401,6 +446,7 @@ internal sealed partial class WidgetIndexedCollectionView : ContentControl, IAsy
         DetachContainers(); Content = null;
         if (source is not null) RetireSource(source);
         await Task.WhenAll(retiring.ToArray());
+        if (viewportObservationPump is { } observation) await observation;
     }
 
     private void RetireSource(WidgetIndexedRows previous)

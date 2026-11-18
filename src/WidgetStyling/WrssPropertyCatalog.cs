@@ -14,6 +14,8 @@ public static partial class WrssPropertyCatalog
         Scale,
         Duration,
         FontWeight,
+        FontStyle,
+        TextDecoration,
         FontFamily,
         Align,
         Justify,
@@ -96,6 +98,8 @@ public static partial class WrssPropertyCatalog
             ["object-position"] = new(PropertyType.ObjectPosition),
             ["shape"] = new(PropertyType.Shape),
             ["font-weight"] = new(PropertyType.FontWeight),
+            ["font-style"] = new(PropertyType.FontStyle),
+            ["text-decoration"] = new(PropertyType.TextDecoration),
             ["font-family"] = new(PropertyType.FontFamily),
             ["line-height"] = new(PropertyType.LineHeight, 0.8, 3),
             ["max-lines"] = new(PropertyType.PositiveInteger, 1, 128),
@@ -199,6 +203,10 @@ public static partial class WrssPropertyCatalog
                 return true;
             case PropertyType.Align:
                 return TryKeyword(value, ["start", "center", "end", "stretch"], out computed, out error);
+            case PropertyType.FontStyle:
+                return TryKeyword(value, ["normal", "italic", "oblique"], out computed, out error);
+            case PropertyType.TextDecoration:
+                return TryKeyword(value, ["none", "underline", "line-through", "underline line-through", "line-through underline"], out computed, out error);
             case PropertyType.Justify:
                 return TryKeyword(value, ["start", "center", "end", "space-between", "space-around"], out computed, out error);
             case PropertyType.Direction:

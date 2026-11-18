@@ -23,6 +23,27 @@
   "iconAssets": {
     "captures.mark": {
       "path": "assets/icons/captures.svg"
+    },
+    "captures.record": {
+      "path": "assets/icons/record.svg"
+    },
+    "captures.replay": {
+      "path": "assets/icons/replay.svg"
+    },
+    "captures.filter": {
+      "path": "assets/icons/filter.svg"
+    },
+    "captures.select": {
+      "path": "assets/icons/select.svg"
+    },
+    "captures.view": {
+      "path": "assets/icons/view.svg"
+    },
+    "captures.show": {
+      "path": "assets/icons/show.svg"
+    },
+    "captures.hide": {
+      "path": "assets/icons/hide.svg"
     }
   },
   "permissions": [
@@ -31,7 +52,8 @@
     "media.capture-library.save.v1"
   ],
   "optionalPermissions": [
-    "media.capture-library.manage.v1"
+    "media.capture-library.manage.v1",
+    "media.capture-library.recycle-linked.v1"
   ],
   "intents": {
     "requests": [
@@ -82,6 +104,24 @@
             "id"
           ]
         }
+      },
+      {
+        "id": "widgetrail.files.share",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "offerId": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 32
+            }
+          },
+          "required": [
+            "offerId"
+          ]
+        }
       }
     ],
     "handles": [
@@ -112,6 +152,42 @@
             "originPackageId",
             "referenceKind",
             "referenceId"
+          ]
+        }
+      },
+      {
+        "id": "widgetrail.captures.browse",
+        "version": 2,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "originPackageId": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128
+            },
+            "referenceKind": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 48
+            },
+            "referenceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "referenceLabel": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "originPackageId",
+            "referenceKind",
+            "referenceId",
+            "referenceLabel"
           ]
         }
       }

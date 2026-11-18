@@ -15,12 +15,15 @@ public sealed partial class CaptureLibraryStore
     }
 
     public Task<CaptureLibraryBatchResult> RecycleAsync(CaptureLibraryRecycleRequest request, CancellationToken token)
+        =>RecycleBatchAsync(request,RecycleOneAsync,token);
+    private static Task<CaptureLibraryBatchResult> RecycleBatchAsync(CaptureLibraryRecycleRequest request,
+        Func<CaptureLibraryMutationReference,CancellationToken,Task> recycleOne,CancellationToken token)
     {
         if (request.Items is not { Count: > 0 and <= CaptureLibraryLimits.MaximumQueryItems } ||
             request.Items.Any(item => item is null || !CaptureLimits.ValidToken(item.Id) || item.ContentRevision < 0 || item.MetadataRevision < 0) ||
             request.Items.Select(item => item.Id).Distinct().Count() != request.Items.Count) throw Error("invalid_payload");
         var items = request.Items.ToArray();
-        return BatchAsync(items, item => item.Id, async item => { await RecycleOneAsync(item, token).ConfigureAwait(false); return null; }, token);
+        return BatchAsync(items, item => item.Id, async item => { await recycleOne(item, token).ConfigureAwait(false); return null; }, token);
     }
 
     private static async Task<CaptureLibraryBatchResult> BatchAsync<T>(IReadOnlyList<T> items, Func<T,string> id,
@@ -64,7 +67,7 @@ public sealed partial class CaptureLibraryStore
             catch { DeleteOwned(marker); throw; }
             if (!removed || File.Exists(path)) { DeleteOwned(marker); throw Error("capture_library_recycle_unavailable"); }
             IndexRecycled(saved); DeleteOwned(MetadataPath(reference.Id));
-            IndexRemove(reference.Id); verified.Remove(reference.Id); DeleteOwned(Path.Combine(root, reference.Id + ".thumbnail"));
+            IndexRemove(reference.Id); verified.Remove(reference.Id); DeleteThumbnails(reference.Id);
         }
         finally { gate.Release(); }
     }
@@ -86,7 +89,7 @@ public sealed partial class CaptureLibraryStore
             // delete the public media path, even if a file appears after checking.
             if (!DeleteOwned(MetadataPath(reference.Id))) throw Error("capture_library_io_failed");
             IndexRemove(reference.Id); verified.Remove(reference.Id);
-            DeleteOwned(Path.Combine(root, reference.Id + ".thumbnail"));
+            DeleteThumbnails(reference.Id);
         }
         finally { gate.Release(); }
     }
@@ -113,6 +116,17 @@ public sealed partial class CaptureLibraryStore
             var saved = ReadMetadata(marker); var path = MediaPath(saved); PlainPath(path);
             if (File.Exists(path))
             {
+                if(saved.Item.SourceId is not null&&saved.ExternalIdentity is {} original)
+                {
+                    using var pinned=CapturePinnedFile.Open(path);
+                    var actual=pinned.Identity;
+                    if(actual.VolumeSerialNumber!=original.VolumeSerialNumber||actual.FileIdLow!=original.FileIdLow||actual.FileIdHigh!=original.FileIdHigh)
+                    {
+                        // A different file at a restored name is not the recycled
+                        // original. Let normal source discovery index it afresh.
+                        DeleteOwned(marker);Execute("DELETE FROM recycled WHERE id=$id",("$id",id));return;
+                    }
+                }
                 // A failed recycle can leave a marker beside newer metadata.
                 // Never replace a newer user edit during recovery.
                 if (File.Exists(MetadataPath(id)))

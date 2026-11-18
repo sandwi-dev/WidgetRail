@@ -16,7 +16,7 @@ public sealed partial class PerformanceMonitorWidget : Widget
     private IReadOnlyList<WidgetPerformanceTarget> _targets = [];
     private Task _loop = Task.CompletedTask;
     private string? _selection, _error;
-    private bool _busy;
+    private bool _busy, _monitoringAccessRequired;
     private long _generation;
     private long _revision;
 
@@ -32,7 +32,7 @@ public sealed partial class PerformanceMonitorWidget : Widget
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
         long generation;
-        lock (_gate) { generation = ++_generation; _snapshot = null; _error = null; _busy = false; }
+        lock (_gate) { generation = ++_generation; _snapshot = null; _error = null; _busy = false; _monitoringAccessRequired = false; }
         _loop = PollAsync(generation, activeLifetime);
         return ValueTask.CompletedTask;
     }
@@ -73,7 +73,7 @@ public sealed partial class PerformanceMonitorWidget : Widget
             lock (_gate)
             {
                 if (generation != _generation || revision != _revision || selection != _selection) return;
-                _snapshot = snapshot; _targets = snapshot.Targets; _error = null;
+                _snapshot = snapshot; _targets = snapshot.Targets; _error = null; _monitoringAccessRequired = false;
                 _history.Observe(snapshot, DateTimeOffset.UtcNow);
                 if (_selection is not null && !snapshot.Targets.Any(t => t.Id == _selection)) _selection = null;
             }
@@ -86,9 +86,11 @@ public sealed partial class PerformanceMonitorWidget : Widget
                 var code = (error as WidgetCapabilityException)?.ErrorCode;
                 if (code == "performance_target_unavailable") _selection = null;
                 _snapshot = null;
-                _error = code is "permission_denied" or "consent_required" or "capability_not_granted"
-                    ? "Select Refresh to approve performance monitoring here."
-                    : "Performance readings are unavailable. Check permissions or try again.";
+                var accessRequired = code is "permission_denied" or "consent_required" or "capability_not_granted";
+                if (!accessRequired || !_monitoringAccessRequired)
+                    _error = accessRequired ? "Allow access to view CPU, GPU and memory usage."
+                        : "Performance readings are unavailable. Check permissions or try again.";
+                _monitoringAccessRequired = accessRequired;
             }
         }
         finally { _refresh.Release(); Invalidate(); }
@@ -115,7 +117,7 @@ public sealed partial class PerformanceMonitorWidget : Widget
                 _selection = id;
                 _history.ResetTarget();
             }
-            else if (action.ActionId is not ("performance.refresh" or "performance.fps")) return;
+            else if (action.ActionId is not ("performance.refresh" or "performance.access" or "performance.fps")) return;
             ++_revision;
             _busy = true;
         }
@@ -151,12 +153,12 @@ public sealed partial class PerformanceMonitorWidget : Widget
 
     public override WidgetView Render()
     {
-        WidgetPerformanceSnapshot? snapshot; string? selection, error; bool busy;
+        WidgetPerformanceSnapshot? snapshot; string? selection, error; bool busy, accessRequired;
         IReadOnlyList<WidgetPerformanceTarget> targets;
         LineGraphDefinition fpsGraph, frameGraph, cpuGraph, gpuGraph, ramGraph, vramGraph;
         lock (_gate)
         {
-            snapshot = _snapshot; selection = _selection; error = _error; busy = _busy;
+            snapshot = _snapshot; selection = _selection; error = _error; busy = _busy; accessRequired = _monitoringAccessRequired;
             targets = _targets;
             var now = DateTimeOffset.UtcNow;
             fpsGraph = _history.Graph(s => s.FramesPerSecond, now, "FPS", application: true);
@@ -184,7 +186,22 @@ public sealed partial class PerformanceMonitorWidget : Widget
             new SelectOption(t.Id, t.ApplicationName + " · " + t.Title, "performance.target." + t.Id, IsSelected: selection == t.Id)));
         var items = new List<WidgetElement>
         {
-            UI.Text("Performance Monitor", "performance.heading").Classes("performance-title"),
+            UI.Row("performance.header",
+                UI.Text("Performance Monitor", "performance.heading").Classes("performance-title"),
+                UI.Button("Refresh", "performance.refresh", "performance.refresh").Busy(busy)).Classes("performance-header"),
+        };
+        if (accessRequired)
+            items.Add(UI.Stack("performance.access.notice",
+                UI.Text("Monitoring access needed", "performance.access.heading").Classes("performance-subtitle", "performance-warning"),
+                UI.Text(error ?? "Allow access to view CPU, GPU and memory usage.", "performance.status").Classes("performance-help"),
+                UI.Button("Enable monitoring", "performance.access", "performance.access")
+                    .Busy(busy || Operations.IsBusy("permissions.action")).Classes("performance-enable")).Classes("performance-metric"));
+        else if ((error ?? Status(snapshot?.FpsState)) is { } status)
+            items.Add(UI.Text(status, "performance.status").Classes("performance-status",
+                error is not null || snapshot?.FpsState is "missing" or "failed" or "unavailable" ? "performance-error" :
+                snapshot?.FpsState is "permission-required" or "declined" ? "performance-warning" : "performance-help"));
+        items.AddRange(new WidgetElement[]
+        {
             UI.Select("Application", choices, "performance.target").Busy(busy),
             UI.Button(Enabled(snapshot?.FpsState) ? "Stop FPS" : "Enable FPS", "performance.fps", "performance.fps.control")
                 .Busy(busy || snapshot?.FpsState == "enabling"),
@@ -209,10 +226,7 @@ public sealed partial class PerformanceMonitorWidget : Widget
             UI.ResponsiveGrid("performance.system-graphs", 260, 2,
                 Chart("CPU", cpuGraph, "performance.cpu.graph"), Chart("GPU", gpuGraph, "performance.gpu.graph"),
                 Chart("RAM", ramGraph, "performance.ram.graph"), Chart("VRAM", vramGraph, "performance.vram.graph")),
-        };
-        if ((error ?? Status(snapshot?.FpsState)) is { } status)
-            items.Add(UI.Text(status, "performance.status").Classes("performance-help"));
-        items.Add(UI.Button("Refresh", "performance.refresh", "performance.refresh").Busy(busy));
+        });
         var root = UI.VerticalScroll("performance.page", items.ToArray()).InputScope("performance.page")
             .Shortcut(ControllerButton.Y, "performance.refresh", label: "Refresh").Classes("performance-widget", "performance-dashboard");
         var pin = UI.Stack("performance.pin",
@@ -222,7 +236,7 @@ public sealed partial class PerformanceMonitorWidget : Widget
             UI.Text("CPU " + Percent(snapshot?.CpuPercent) + "    GPU " + Percent(snapshot?.GpuPercent), "performance.pin.usage"),
             UI.Text("RAM " + Bytes(snapshot?.MemoryUsedBytes) + "    VRAM " + Bytes(snapshot?.DedicatedGpuMemoryBytes), "performance.pin.memory"))
             .InputScope("performance.pin").Shortcut(ControllerButton.Y, "performance.refresh", label: "Refresh").Classes("performance-widget", "performance-pin");
-        return new(root, "performance.target", ActiveInputScopeId: "performance.page", Surface: new()
+        return new(root, accessRequired ? "performance.access" : "performance.target", ActiveInputScopeId: "performance.page", Surface: new()
         {
             Mode = WidgetSurfaceMode.Standard, WidthMode = WidgetSurfaceAxisMode.Preferred, HeightMode = WidgetSurfaceAxisMode.Preferred,
             PreferredWidth = 720, PreferredHeight = 660, MinimumWidth = 380, MinimumHeight = 380,

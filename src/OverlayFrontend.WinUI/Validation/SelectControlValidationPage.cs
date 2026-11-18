@@ -28,6 +28,7 @@ internal sealed partial class SelectControlValidationPage : Page, IAsyncDisposab
     private bool disabled;
     private bool removed;
     private bool thirdDisabled;
+    private bool commandMenu;
     private string thirdAction = "choose.third";
     private Task? run;
     private Exception? failure;
@@ -164,6 +165,8 @@ internal sealed partial class SelectControlValidationPage : Page, IAsyncDisposab
             Check(captured.Action.ActionId == "choose.first" && captured.Action.SourceElementId == "picker",
                 "pending popup action keeps captured target and payload");
             acknowledged.SetResult();
+            presenter.DispatchActionAsync = request => { actions.Add(request); return Task.CompletedTask; };
+            await VerifyCommandMenuAsync();
             await OpenAsync();
             await presenter.DisposeAsync();
             await Task.Delay(150);
@@ -215,7 +218,7 @@ internal sealed partial class SelectControlValidationPage : Page, IAsyncDisposab
     private void Apply()
     {
         var options = new WidgetSelectOption[] {
-            new("first", "First", "choose.first", IsSelected: true),
+            new("first", "First", "choose.first", IsSelected: !commandMenu),
             new("disabled", "Unavailable", "choose.disabled", IsDisabled: true),
             new("busy", "Busy", "choose.busy", IsBusy: true),
             new("third", "Third", thirdAction, IsDisabled: thirdDisabled),
@@ -224,8 +227,8 @@ internal sealed partial class SelectControlValidationPage : Page, IAsyncDisposab
             ActiveInputScopeId = alternateScope ? "other" : "page", InitialFocusId = alternateScope ? "other.button" : removed ? "after" : "picker",
             Root = new() { Id = "page", Kind = ViewNodeKind.Stack, Children = (ViewNode[])[
                 removed ? new() { Id = "replacement", Kind = ViewNodeKind.Text, Text = "Removed" } :
-                    new() { Id = "picker", Kind = ViewNodeKind.Select, Text = "Choice: First", AccessibilityLabel = "Choice",
-                        AccessibilityValue = "First", SelectOptions = options, IsDisabled = disabled },
+                    new() { Id = "picker", Kind = ViewNodeKind.Select, Text = commandMenu ? "More" : "Choice: First", AccessibilityLabel = "Choice",
+                        IsCommandMenu = commandMenu ? true : null, AccessibilityValue = commandMenu ? null : "First", SelectOptions = options, IsDisabled = disabled },
                 new() { Id = "after", Kind = ViewNodeKind.Button, Text = "After", ActionId = "after" },
                 new() { Id = "other", Kind = ViewNodeKind.Stack, InputScopeId = "other", Children = (ViewNode[])[
                     new() { Id = "other.button", Kind = ViewNodeKind.Button, Text = "Other scope", ActionId = "other" }] },

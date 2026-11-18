@@ -35,6 +35,8 @@ internal sealed partial class OverlayShellPage
                         choosingCaptureCopy = ChooseCaptureCopyAsync(copy, next.CopyWidgetId);
                     if(next.OpenFolder is { } folder && openingCaptureFolder is not { IsCompleted:false })
                         openingCaptureFolder=OpenCaptureFolderAsync(folder,next.FolderWidgetId);
+                    if (next.Edit is { } edit && editingCapture is not { IsCompleted: false })
+                        editingCapture = EditCaptureAsync(edit, next.EditWidgetId);
                     if (next.Request is not null) capturing = RunCaptureAsync(next);
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { break; }
@@ -107,8 +109,7 @@ internal sealed partial class OverlayShellPage
             var delay = preparation.DelaySeconds == 0 ? "after WidgetRail hides" : $"after a {preparation.DelaySeconds}-second countdown";
             var imageSize = request.Options?.Screenshot is { } image ? image.MaximumWidth is null ? "full-resolution" : $"up to {image.MaximumWidth} × {image.MaximumHeight}" :
                 request.Resolution == CaptureImageResolution.Original ? "full-resolution" : "up to 1920 × 1080";
-            var encoding = request.Options?.Recording is { } settings ?
-                $"\n{settings.MaximumWidth} × {settings.MaximumHeight} maximum · {settings.FramesPerSecond} fps · {settings.Encoder.ToString().ToLowerInvariant()} encoding." : "";
+            var encoding = request.Options?.Recording is { } settings ? "\n"+CaptureRecordingSummary.Video(settings) : "";
             var applicationAudio = request.Options?.Recording?.Audio == CaptureAudioMode.Application;
             var audioDescription = applicationAudio ? "Application audio will be recorded. The microphone will not be recorded." : "No audio will be recorded.";
             var description = "WidgetRail will hide. Bring the application you want to capture to the foreground.\n\n" +
@@ -140,7 +141,7 @@ internal sealed partial class OverlayShellPage
                 indicator?.Show(video ? $"Recording · up to {duration}s · {(applicationAudio ? "application audio" : "no audio")}" : "Taking screenshot…");
                 var result = await NativeWindowCapture.RunAsync(request, token, stop.Token);
                 committed = await session.CompleteCaptureAsync(new(request.RequestId, (int)result.Width, (int)result.Height, result.DurationSeconds, Target: result.Target)
-                    { Properties = result.Properties }, token);
+                    { Properties = result.Properties, ResolvedRecording = result.ResolvedRecording }, token);
             }
             finally { indicator?.Dispose(); }
         }

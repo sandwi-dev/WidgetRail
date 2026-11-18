@@ -287,6 +287,8 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
     Task<WidgetIntentRequest?> PrepareOutgoingIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken) => Task.FromResult<WidgetIntentRequest?>(null);
     Task<WidgetIntentResult> DeliverIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken) =>
         Task.FromResult(WidgetIntentResult.Rejected);
+    Task<WidgetOperationAdmission> AdmitInlinePreviewActionAsync(InlinePreviewActionInput input, CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
+        Task.FromException<WidgetOperationAdmission>(new NotSupportedException("Inline preview actions are unavailable."));
     Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
         Task.FromException<WidgetOperationAdmission?>(new NotSupportedException("Pinned action v1 is unavailable."));
     Task<TextSuggestionResult> SuggestTextAsync(TextSuggestionQuery query, int startOrdinal, CancellationToken token) =>
@@ -379,6 +381,8 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         client.PrepareOutgoingIntentAsync(intent, expectedStartOrdinal, cancellationToken);
     public Task<WidgetIntentResult> DeliverIntentAsync(WidgetIntentRequest intent, int expectedStartOrdinal, CancellationToken cancellationToken) =>
         client.DeliverIntentAsync(intent, expectedStartOrdinal, cancellationToken);
+    public Task<WidgetOperationAdmission> AdmitInlinePreviewActionAsync(InlinePreviewActionInput input, CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
+        client.AdmitInlinePreviewActionAsync(input, cancellationToken, expectedStartOrdinal);
     public Task<WidgetOperationAdmission?> AdmitPinnedActionAsync(PinnedActionInput input, CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
         client.AdmitPinnedActionAsync(input, cancellationToken, expectedStartOrdinal);
     public Task<TextSuggestionResult> SuggestTextAsync(TextSuggestionQuery query, int startOrdinal, CancellationToken token) =>
@@ -900,11 +904,11 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         WidgetActionEvent action,
         CancellationToken sessionCancellation,
         CancellationToken cancellationToken,
-        BridgeWorkerRun? expectedWorkerRun = null)
+        BridgeWorkerRun? expectedWorkerRun = null, InlinePreviewActionInput? inlinePreview = null)
     {
         var registration = await GetOrCreateAsync(widgetId, cancellationToken).ConfigureAwait(false);
         return await AdmitActionAsync(
-            registration, action, sessionCancellation, cancellationToken, expectedWorkerRun).ConfigureAwait(false);
+            registration, action, sessionCancellation, cancellationToken, expectedWorkerRun, inlinePreview).ConfigureAwait(false);
     }
 
     internal async Task<BridgeClientPublication<WidgetOperationAdmission>> AdmitQuickActionAsync(
@@ -2011,7 +2015,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         WidgetActionEvent action,
         CancellationToken sessionCancellation,
         CancellationToken cancellationToken,
-        BridgeWorkerRun? expectedWorkerRun = null)
+        BridgeWorkerRun? expectedWorkerRun = null, InlinePreviewActionInput? inlinePreview = null)
     {
         using var heldRegistration = AdmitInputPublication(registration, registration);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -2022,9 +2026,25 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             if (registration.HostLifecycle == WidgetLifecycleState.Background)
                 return AdmitInputPublication(registration, WidgetOperationAdmission.RejectedInactive);
             registration.CancelIdleUnload();
+            if (inlinePreview is not null)
+            {
+                if (inlinePreview.Action != action || inlinePreview.SnapshotSequence <= 0 ||
+                    registration.CachedSnapshot is not { } current || current.ProtocolVersion < ProtocolConstants.InlinePreviewActionVersion ||
+                    registration.FindInputOriginSnapshot(inlinePreview.SnapshotSequence) is not { } origin)
+                    throw new BridgeStaleControllerInputAuthorityException("Inline preview origin retired.");
+                try
+                {
+                    var binding = InlinePreviewActionContract.Resolve(origin, action);
+                    if (binding is null || binding != InlinePreviewActionContract.Resolve(current, action))
+                        throw new InvalidOperationException("Inline preview source changed.");
+                }
+                catch (InvalidOperationException) { throw new BridgeStaleControllerInputAuthorityException("Inline preview binding retired."); }
+                inlinePreview = inlinePreview with { SnapshotSequence = current.Sequence };
+            }
             var admission = await ExecuteClientOperationAsync(
                     registration,
-                    (client, token) => client.AdmitActionAsync(action, token, expectedWorkerRun?.StartOrdinal),
+                    (client, token) => inlinePreview is null ? client.AdmitActionAsync(action, token, expectedWorkerRun?.StartOrdinal) :
+                        client.AdmitInlinePreviewActionAsync(inlinePreview, token, expectedWorkerRun?.StartOrdinal),
                     cancellationToken)
                 .ConfigureAwait(false);
             DemandCurrentInputRegistration(registration);

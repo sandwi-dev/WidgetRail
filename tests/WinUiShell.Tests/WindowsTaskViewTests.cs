@@ -10,14 +10,14 @@ public sealed class WindowsTaskViewTests
     [TestMethod]
     public void ShortcutSubmitsOneBalancedWindowsTabChord()
     {
-        var calls = new List<WindowsTaskView.NativeInput[]>();
+        var calls = new List<GuardedKeyboardChord.NativeInput[]>();
         var result = WindowsTaskView.Request(_ => false, events => { calls.Add(events); return (uint)events.Length; });
         Assert.AreEqual(WindowsTaskViewResult.Requested, result);
         Assert.HasCount(1, calls);
         CollectionAssert.AreEqual(new ushort[] { 0x5B, 9, 9, 0x5B }, calls[0].Select(x => x.Data.Keyboard.VirtualKey).ToArray());
         CollectionAssert.AreEqual(new uint[] { 1, 0, 2, 3 }, calls[0].Select(x => x.Data.Keyboard.Flags).ToArray());
         Assert.IsTrue(calls[0].All(x => x.Type == 1));
-        Assert.AreEqual(IntPtr.Size == 8 ? 40 : 28, Marshal.SizeOf<WindowsTaskView.NativeInput>());
+        Assert.AreEqual(IntPtr.Size == 8 ? 40 : 28, Marshal.SizeOf<GuardedKeyboardChord.NativeInput>());
     }
 
     [TestMethod]
@@ -33,7 +33,7 @@ public sealed class WindowsTaskViewTests
     {
         foreach (uint accepted in new uint[] { 0, 1, 2, 3 })
         {
-            var calls = new List<WindowsTaskView.NativeInput[]>();
+            var calls = new List<GuardedKeyboardChord.NativeInput[]>();
             var result = WindowsTaskView.Request(_ => false, events =>
             { calls.Add(events); return calls.Count == 1 ? accepted : (uint)events.Length; });
             Assert.AreEqual(WindowsTaskViewResult.InputRejected, result);

@@ -7,6 +7,10 @@ public sealed partial class CaptureLibraryStore
     {
         if (!File.Exists(path) || inspect is null) return saved;
         using var pinned = CapturePinnedFile.Open(path);
+        // A known-ID open/thumbnail can beat the source watcher. It must not
+        // refresh a hidden snapshot onto a different physical file and thereby
+        // accidentally transfer the old exclusion to the replacement.
+        if (ReleaseReplacedHidden(saved.Item.Id, pinned.Identity)) throw Error("capture_library_not_found");
         if (saved.ExternalIdentity == pinned.Identity && saved.Item.Media.ByteLength == pinned.Stream.Length) return saved;
         var media = await inspect(path, saved.Item.Media, token).ConfigureAwait(false);
         if (!media.IsWellFormed() || media.Id != saved.Item.Id || media.Origin != CaptureAttachmentOrigin.SavedLibrary ||
@@ -16,7 +20,7 @@ public sealed partial class CaptureLibraryStore
         var updated = saved with { ExternalIdentity = pinned.Identity, Sha256 = hash, MediaStamp = stamp.Ticks,
             Item = saved.Item with { Media = media, Available = true, Revision = pinned.Identity.ChangeTime,
                 FileModifiedAtUnixMilliseconds = FileModifiedTime(stamp) } };
-        DeleteOwned(Path.Combine(root, saved.Item.Id + ".thumbnail")); WriteMetadata(updated); IndexPut(updated, media.ByteLength);
+        DeleteThumbnails(saved.Item.Id); WriteMetadata(updated); IndexPut(updated, media.ByteLength);
         verified.Remove(saved.Item.Id);
         return updated;
     }

@@ -109,6 +109,7 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
             (next.Discovery is null) == (source.Discovery is null) &&
             next.QueryGeneration == source.QueryGeneration &&
             (next.Discovery is not null ? IndexedCollectionContract.RetainsPrefix(next, source) :
+                IndexedCollectionContract.RetainsPrefix(next, source) ||
                 next.Count == source.Count && next.ContentRevision >= source.ContentRevision);
     }
 

@@ -101,14 +101,26 @@ $present = Join-Path $evidence 'present.dll'
 $absent = Join-Path $evidence 'absent.dll'
 $capture = Join-Path $evidence 'capture'
 New-Item -ItemType Directory -Path $capture | Out-Null
-foreach ($name in @('WebRtcCaptureWorker.exe','CaptureWorkerHost.dll','WebRtcCapturePrototype.dll')) {
+foreach ($name in @('WebRtcCaptureWorker.exe','CaptureWorkerHost.dll','WebRtcCapturePrototype.dll','ReplayCaptureWorker.exe','ReplayWorkerHost.dll')) {
     [IO.File]::WriteAllBytes((Join-Path $capture $name), [byte[]]@(0))
+}
+$missingReplayWorker = Join-Path $evidence 'missing-replay-worker'
+$missingReplayHost = Join-Path $evidence 'missing-replay-host'
+foreach ($partial in @($missingReplayWorker, $missingReplayHost)) {
+    New-Item -ItemType Directory -Path $partial | Out-Null
+    foreach ($name in @('WebRtcCaptureWorker.exe','CaptureWorkerHost.dll','WebRtcCapturePrototype.dll','ReplayCaptureWorker.exe','ReplayWorkerHost.dll')) {
+        if (($partial -eq $missingReplayWorker -and $name -eq 'ReplayCaptureWorker.exe') -or
+            ($partial -eq $missingReplayHost -and $name -eq 'ReplayWorkerHost.dll')) { continue }
+        [IO.File]::WriteAllBytes((Join-Path $partial $name), [byte[]]@(0))
+    }
 }
 $cases = @(
     @{ Name='missing-platform'; Target='Build'; Platform=$absent; Preview=$present; Error='Missing OverlayPlatformInterop.dll' },
     @{ Name='missing-preview'; Target='Build'; Platform=$present; Preview=$absent; Error='Missing WinUiWindowPreviewNative.dll' },
     @{ Name='missing-web-capture'; Target='Build'; Platform=$present; Preview=$present; Capture=$absent; Error='Missing native web capture inputs' },
     @{ Name='publish-missing-web-capture'; Target='Publish'; Platform=$present; Preview=$present; Capture=$absent; Error='Missing native web capture inputs' },
+    @{ Name='missing-replay-worker'; Target='Build'; Platform=$present; Preview=$present; Capture=$missingReplayWorker; Error='Missing native web capture inputs' },
+    @{ Name='publish-missing-replay-host'; Target='Publish'; Platform=$present; Preview=$present; Capture=$missingReplayHost; Error='Missing native web capture inputs' },
     @{ Name='publish-no-build'; Target='Publish'; Platform=$absent; Preview=$absent; Error='Missing OverlayPlatformInterop.dll' },
     @{ Name='explicit-inputs'; Target='Build'; Platform=$present; Preview=$present },
     @{ Name='explicit-publish-inputs'; Target='Publish'; Platform=$present; Preview=$present },
@@ -132,4 +144,4 @@ foreach ($case in $cases) {
         throw "Native-input guard rejected $($case.Name). See $evidence."
     }
 }
-Write-Output "NuGet build execution contract passed (1 restore owner, audited guidance, 9 native-input build/publish/restore checks). Evidence: $evidence"
+Write-Output "NuGet build execution contract passed (1 restore owner, audited guidance, $($cases.Count) native-input build/publish/restore checks). Evidence: $evidence"

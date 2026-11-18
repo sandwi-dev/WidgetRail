@@ -89,6 +89,7 @@ if (expectedRuntime is not null && !RuntimeEnvironment.GetRuntimeDirectory().Sta
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Indexed wire compatibility preserves ordinary old-worker requests", IndexedWireCompatibilityTests.OrdinaryRequestsKeepLegacyShape),
     ("Text suggestions isolate timeout cancellation and late providers", TextSuggestionLaneTests.Run),
     ("Text suggestions preserve configured deadlines and cancellation across the process boundary", TextSuggestionLaneTests.ProcessBoundary),
     ("Data package leases pin larger inventories and enforce the shared ceiling", DataPackageLeaseTests.Run),

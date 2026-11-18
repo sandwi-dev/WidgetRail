@@ -122,4 +122,40 @@ public sealed class NotificationInboxTests
         Assert.HasCount(1, inbox.Entries); Assert.AreNotEqual(item.Id, inbox.Entries[0].Id);
     }
 
+    [TestMethod]
+    public async Task NativeHandlerConsumesWithoutWebsiteClickAndClosesExactlyOnce()
+    {
+        using var inbox = new NotificationInbox(); var source = new Source(); var item = Add(inbox, source);
+        item.NativeIntent = new(new string('a', 32), "message");
+        Assert.IsTrue(await inbox.OpenWithDispositionAsync(item.Id, _ => Task.FromResult(NotificationActivationDisposition.Handled),
+            _ => throw new InvalidOperationException("Unexpected fallback")));
+        Assert.IsFalse(await inbox.ActivateWithDispositionAsync(item.Id, _ => Task.FromResult(NotificationActivationDisposition.Handled)));
+        Assert.AreEqual(1, source.Shown); Assert.AreEqual(0, source.Clicked);
+        Assert.AreEqual(1, source.Closed); Assert.AreEqual(1, source.Detached);
+        Assert.IsNull(item.NativeIntent);
+    }
+
+    [TestMethod]
+    public async Task NativeDeclineWithOriginalSourceFallbackStillClicksExactlyOnce()
+    {
+        using var inbox = new NotificationInbox(); var source = new Source(); var item = Add(inbox, source);
+        Assert.IsTrue(await inbox.OpenWithDispositionAsync(item.Id, _ => Task.FromResult(NotificationActivationDisposition.SourceActivated),
+            _ => throw new InvalidOperationException("Source fallback was already activated")));
+        Assert.AreEqual(1, source.Clicked); Assert.AreEqual(0, source.Closed); Assert.AreEqual(1, source.Detached);
+    }
+
+    [TestMethod]
+    public async Task NativeHandlerCannotNotifyAReplacedOrRetiredSource()
+    {
+        using var inbox = new NotificationInbox(); var source = new Source(); var item = Add(inbox, source);
+        Assert.IsFalse(await inbox.ActivateWithDispositionAsync(item.Id, _ =>
+        { inbox.InvalidateOwner(source); return Task.FromResult(NotificationActivationDisposition.Handled); }));
+        Assert.AreEqual(0, source.Clicked + source.Closed); Assert.AreEqual(1, source.Detached);
+        var replacementSource = new Source(); var replacement = Add(inbox, replacementSource, "same");
+        Assert.IsFalse(await inbox.ActivateWithDispositionAsync(replacement.Id, _ =>
+        { Add(inbox, new(), "same"); return Task.FromResult(NotificationActivationDisposition.Handled); }));
+        Assert.AreEqual(0, replacementSource.Clicked); Assert.AreEqual(1, replacementSource.Closed);
+        Assert.AreEqual(1, replacementSource.Detached);
+    }
+
 }

@@ -10,6 +10,8 @@
     <ProjectReference Include="..\..\src\PlatformSettings\PlatformSettings.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\src\FirstPartyWidgets\CaptureLibraryWidget\styles\default.wrss" Link="FilledFocusFixtures\CaptureLibrary.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\FirstPartyWidgets\PerformanceMonitorWidget\styles\default.wrss" Link="FilledFocusFixtures\PerformanceMonitor.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\FirstPartyWidgets\MediaSessionsWidget\styles\default.wrss" Link="ThemeFixtures\NowPlaying.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\FirstPartyWidgets\SettingsWidget\styles\default.wrss" Link="ThemeFixtures\Settings.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SpotifyWidget\styles\default.wrss" Link="ThemeFixtures\Spotify.wrss" CopyToOutputDirectory="PreserveNewest" />

@@ -41,7 +41,7 @@ try {
     & dotnet publish $Project --no-restore @properties -o $published -m:1 -nr:false "-bl:$logs/frontend-publish.binlog"
     if ($LASTEXITCODE -ne 0) { throw 'Trimmed WinUI publication failed.' }
 } finally { Pop-Location }
-foreach ($native in @(@('OverlayPlatformInterop.dll',$platform),@('WinUiWindowPreviewNative.dll',$preview),@('WebRtcCaptureWorker.exe',$webCapture),@('CaptureWorkerHost.dll',$webCapture),@('WebRtcCapturePrototype.dll',$webCapture))) {
+foreach ($native in @(@('OverlayPlatformInterop.dll',$platform),@('WinUiWindowPreviewNative.dll',$preview),@('WebRtcCaptureWorker.exe',$webCapture),@('CaptureWorkerHost.dll',$webCapture),@('WebRtcCapturePrototype.dll',$webCapture),@('ReplayCaptureWorker.exe',$webCapture),@('ReplayWorkerHost.dll',$webCapture))) {
     if ((Get-FileHash (Join-Path $published $native[0])).Hash -cne (Get-FileHash (Join-Path $native[1] $native[0])).Hash) { throw "Stale native publication: $($native[0])" }
 }
 foreach ($required in @('OverlayFrontend.WinUI.exe','OverlayFrontend.WinUI.dll','OverlayFrontend.WinUI.pri','coreclr.dll')) {

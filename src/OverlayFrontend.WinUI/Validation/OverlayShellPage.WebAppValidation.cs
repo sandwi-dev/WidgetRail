@@ -138,6 +138,13 @@ internal sealed partial class OverlayShellPage
                     await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
                     return;
                 }
+                if (Environment.GetCommandLineArgs().Contains("--webapp-native-notification-intents"))
+                {
+                    step = "hosted native notification intent";
+                    await VerifyNativeNotificationIntentsAsync(Check);
+                    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, step, checks }));
+                    return;
+                }
                 if (Environment.GetCommandLineArgs().Contains("--webapp-notifications-only"))
                 {
                     step = "notification integration";
@@ -476,7 +483,7 @@ internal sealed partial class OverlayShellPage
                 }
             }
             catch (Exception failure) { error = failure.ToString(); hostChoiceDialog?.Hide(); await Task.Delay(100); }
-            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = error is null, step, checks, error, filePickerTrace, expansionFocusTrace, pinState = new { exists = pinned is not null, current = pinned?.IsCurrent, interactive = pinned?.Window.Interactive, focused = pinned?.HasForeground, foreground, mainInteractive=interactive, activeWidget, MainFocusEnabled, expanded = expandedBrowser is not null }, pages = Slots(surface).Select(slot => new { ready = slot.Surface?.IsReady, loading = slot.Surface?.IsNavigationInProgress, title = slot.Surface?.CurrentTitle, profile = slot.Surface?.ProfileName, permissions = slot.Surface?.FixturePermissionTrace, childPermissions=slot.Surface?.PinnablePopup?.FixturePermissionTrace }).ToArray(), retained = browserOwner?.BackgroundSessionCount, focus=surface?.FocusDiagnostics(), controllerPage=surface?.ControllerBrowser?.CurrentUrl }));
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = error is null, step, checks, error, bridgeDiagnostics = owner?.Diagnostics.TakeLast(16).ToArray(), filePickerTrace, expansionFocusTrace, pinState = new { exists = pinned is not null, current = pinned?.IsCurrent, interactive = pinned?.Window.Interactive, focused = pinned?.HasForeground, foreground, mainInteractive=interactive, activeWidget, MainFocusEnabled, expanded = expandedBrowser is not null }, pages = Slots(surface).Select(slot => new { ready = slot.Surface?.IsReady, loading = slot.Surface?.IsNavigationInProgress, title = slot.Surface?.CurrentTitle, profile = slot.Surface?.ProfileName, permissions = slot.Surface?.FixturePermissionTrace, childPermissions=slot.Surface?.PinnablePopup?.FixturePermissionTrace }).ToArray(), retained = browserOwner?.BackgroundSessionCount, focus=surface?.FocusDiagnostics(), controllerPage=surface?.ControllerBrowser?.CurrentUrl }));
 
             async Task<BrowserSurface> CurrentBrowser()
             {

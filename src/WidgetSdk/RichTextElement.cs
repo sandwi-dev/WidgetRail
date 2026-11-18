@@ -2,15 +2,18 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.WidgetSdk;
 
-/// <summary>A native paragraph of text and inline intent links. Links retain their own stable focus/action identities.</summary>
+/// <summary>A native paragraph of text, small images and inline intent links. Links retain their own stable focus/action identities.</summary>
 public sealed record RichTextElement : WidgetElement
 {
     internal RichTextElement(string id, IReadOnlyList<WidgetElement> spans) : base(RequireId(id))
     {
         ArgumentNullException.ThrowIfNull(spans);
-        if (spans.Count is < 1 or > 512 || spans.Any(span => span is not TextElement && span is not ButtonElement { Intent: not null }))
-            throw new ArgumentException("Rich text accepts 1-512 UI.Text or UI.InlineLink spans.", nameof(spans));
-        Spans = spans.ToArray();
+        if (spans.Count is < 1 or > 512 || spans.Any(span => span is not TextElement && span is not ImageElement && span is not ButtonElement { Intent: not null }))
+            throw new ArgumentException("Rich text accepts 1-512 text, image or inline intent-link spans.", nameof(spans));
+        if (spans.Count(span => span is ImageElement) > ProtocolConstants.MaximumInlineRichImages)
+            throw new ArgumentException("Rich text accepts at most 16 inline images.", nameof(spans));
+        Spans = spans.Select(span => span is ImageElement image
+            ? image with { RequiredStyleClasses = [.. image.RequiredStyleClasses, "wrail-inline-image"] } : span).ToArray();
         RequiredStyleClasses = ["wrail-rich-text"];
     }
     public IReadOnlyList<WidgetElement> Spans { get; }

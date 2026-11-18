@@ -47,14 +47,20 @@ public sealed record CaptureLibraryQuery
 {
     public string? Search { get; init; }
     public string? Application { get; init; }
+    /// <summary>Null selects all folders; empty selects WidgetRail-owned captures; otherwise an opaque linked-source ID.</summary>
+    public string? SourceId { get; init; }
     public CaptureLibraryMediaKind MediaKind { get; init; }
     public bool FavoritesOnly { get; init; }
+    /// <summary>Select hidden linked captures instead of the normal visible library. Known-ID reads retain their existing authorization.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool HiddenOnly { get; init; }
     public long? FromUnixMilliseconds { get; init; }
     public long? ToUnixMilliseconds { get; init; }
     public CaptureLibrarySort Sort { get; init; }
     public string? OriginPackageId { get; init; }
     public CaptureLibraryReferenceFilter? Reference { get; init; }
     public bool IsWellFormed() => Enum.IsDefined(MediaKind) && Enum.IsDefined(Sort) &&
+        (SourceId is null or "" || CaptureLimits.ValidToken(SourceId)) &&
         (OriginPackageId is null || CaptureContextLimits.Identity(OriginPackageId)) &&
         (Reference is null || OriginPackageId is not null && Reference.IsWellFormed()) &&
         CaptureLibraryLimits.ValidText(Search, 160) && CaptureLibraryLimits.ValidText(Application, 120) &&
@@ -64,10 +70,16 @@ public sealed record CaptureLibraryQuery
 /// <summary>Revision pins every range to one library ordering; mismatch requires a fresh query.</summary>
 public sealed record CaptureLibraryQueryRequest(CaptureLibraryQuery Query, int Offset = 0, int Count = 40, string? Revision = null);
 public sealed record CaptureLibraryQueryPage(IReadOnlyList<CaptureLibraryItem> Items, int Offset, int TotalCount, long StoredBytes, string Revision);
+/// <summary>Ordering proof for the same query: only favorite-only metadata edits may retain it. FavoritesOnly uses the full query revision.</summary>
+public sealed record CaptureLibraryContinuityPage(CaptureLibraryQueryPage Page, string OrderingRevision);
 public sealed record CaptureLibraryApplicationsRequest(CaptureLibraryQuery Query, string? Search = null, int Limit = 128);
 /// <summary>An empty name means a capture has no known source application.</summary>
 public sealed record CaptureLibraryApplication(string Name, int Count);
 public sealed record CaptureLibraryApplications(IReadOnlyList<CaptureLibraryApplication> Items, bool HasMore);
+public sealed record CaptureLibraryFoldersRequest(CaptureLibraryQuery Query, string? Revision = null);
+/// <summary>Read-only library facet. Empty ID means WidgetRail-owned captures. Label is presentation data, never file authority.</summary>
+public sealed record CaptureLibraryFolder(string SourceId, string Label, int Count);
+public sealed record CaptureLibraryFolders(IReadOnlyList<CaptureLibraryFolder> Items, string Revision);
 public sealed record CaptureLibraryGroupsRequest(CaptureLibraryQuery Query, string? Revision = null);
 /// <summary>Local-calendar month key (yyyy-MM), or older/newer for a bounded remainder. Labels belong to the widget.</summary>
 public sealed record CaptureLibraryGroup(string Key, int Count);

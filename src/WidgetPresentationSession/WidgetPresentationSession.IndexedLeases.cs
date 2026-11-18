@@ -50,8 +50,42 @@ public sealed partial class WidgetPresentationSession
 
     internal Task ReleaseIndexedLeaseAsync(WidgetPresentationIndexedLease lease)
     {
-        using (_gate.Enter()) RetireIndexedLeaseLocked(lease);
-        return lease.Released.Task;
+        using (_gate.Enter())
+        {
+            lease.OwnerReleased = true;
+            if (lease.Retired) return lease.Released.Task;
+            if (lease.RetainedOwners != 0) return Task.CompletedTask;
+            RetireIndexedLeaseLocked(lease);
+            return lease.Released.Task;
+        }
+    }
+
+    internal IAsyncDisposable RetainIndexedLease(WidgetPresentationIndexedLease lease)
+    {
+        using (_gate.Enter())
+        {
+            DemandIndexedLeaseLocked(lease);
+            if (lease.OwnerReleased && lease.RetainedOwners == 0 || lease.RetainedOwners >= 16)
+                throw new WidgetPresentationSessionException("indexed_input_stale", "Indexed semantic retention is unavailable.");
+            ++lease.RetainedOwners;
+            return new IndexedLeaseRetention(this, lease);
+        }
+    }
+
+    private sealed class IndexedLeaseRetention(WidgetPresentationSession owner, WidgetPresentationIndexedLease lease) : IAsyncDisposable
+    {
+        private WidgetPresentationSession? owner = owner;
+        public ValueTask DisposeAsync()
+        {
+            var current = Interlocked.Exchange(ref owner, null);
+            if (current is null) return ValueTask.CompletedTask;
+            using (current._gate.Enter())
+            {
+                --lease.RetainedOwners;
+                if (lease.OwnerReleased && lease.RetainedOwners == 0) current.RetireIndexedLeaseLocked(lease);
+                return lease.Retired ? new(lease.Released.Task) : ValueTask.CompletedTask;
+            }
+        }
     }
 
     private void RetireIndexedLeasesLocked(string? widgetId, WidgetPresentationAuthority? retained)

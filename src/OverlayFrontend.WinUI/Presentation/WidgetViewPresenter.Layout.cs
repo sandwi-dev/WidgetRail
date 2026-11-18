@@ -41,6 +41,7 @@ internal sealed partial class WidgetViewPresenter
         element.Margin = containerOwnsBox ? new Thickness(0) :
             NativeComputedStyleAdapter.Spacing(presentation?.RenderStyles.GetValueOrDefault(node.Id)?.Base, "margin") ?? new Thickness(0);
         if (element is WidgetSpacer spacer) spacer.SetAspectRatio(ComputedStyle(node, "aspect-ratio")?.Number);
+        if (element is WidgetExplicitGrid explicitGrid) explicitGrid.SetAspectRatio(ComputedStyle(node, "aspect-ratio")?.Number);
     }
 
     private void UpdateContainerLayout(Binding binding, ViewNode node)

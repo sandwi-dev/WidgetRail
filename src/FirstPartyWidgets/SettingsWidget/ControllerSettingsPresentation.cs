@@ -48,6 +48,10 @@ internal static class ControllerSettingsPresentation
                     (state.Settings.Controllers.EffectiveOverlayShortcut.Enabled ? "" : "Off · ") + state.Settings.Controllers.EffectiveOverlayShortcut.DisplayName + "  ›",
                     "controllers.keyboard-shortcut.edit", "controllers.keyboard-shortcut").Busy(state.Busy).Classes("setting-row"),
                     "Choose a keyboard shortcut to open and close WidgetRail from any application."),
+                SettingsPresentation.Field("Save replay shortcut", UI.Button(
+                    (state.Settings.Controllers.EffectiveReplaySaveShortcut.Enabled ? "" : "Off · ")+state.Settings.Controllers.EffectiveReplaySaveShortcut.DisplayName+"  ›",
+                    "controllers.replay-shortcut.edit","controllers.replay-shortcut").Busy(state.Busy).Classes("setting-row"),
+                    "Save the current replay buffer without opening the overlay. Start replay recording in Capture Library first."),
             };
             if (features.HeldDpadScroll) navigation.AddRange([
                 UI.Text("Input behavior", "controllers.input-heading").Classes("section-heading"),

@@ -47,6 +47,10 @@ public sealed record WebSessionDefinition(string Key, string AccessibleName, Web
     /// Does not grant capture permission or select a source.</summary>
     [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingDefault)]
     public bool NativeCapture { get; init; }
+    /// <summary>Opt into same-widget native notification intents. Only an existing current host notification can authorize activation.</summary>
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingDefault)]
+    public bool NativeNotificationIntents { get; init; }
+
     public WebBrowserOptions Browser { get; init; } = new()
     { Chrome = BrowserChrome.OnDemand, Background = BrowserBackgroundMode.KeepAlive };
     public bool IsWellFormed() => WebSessionContract.IsKey(Key) &&
@@ -105,6 +109,8 @@ public static class WebSessionContract
 {
     public const int MaximumPageActionBatchItems = 100;
     public const int MaximumBackendBatchItems = 1000;
+    public const int MaximumPageActionScriptBytes = 64 * 1024;
+    public const int MaximumSessionBackendScriptBytes = 128 * 1024;
     // Package applications include local scripts, fonts and artwork. Keep these
     // separate from the smaller embedded-media adapter budget. A host batch
     // carries one session; base64 plus envelopes fits the existing bridge frame.

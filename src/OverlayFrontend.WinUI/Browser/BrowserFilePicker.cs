@@ -6,7 +6,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 /// <summary>Windows chooses paths; only the owning native browser receives them.</summary>
 internal static class BrowserFilePicker
 {
-    internal static async Task<string[]> PickAsync(WindowId windowId, BrowserFileRequest request, CancellationToken token)
+    internal static async Task<string[]> PickAsync(WindowId windowId, BrowserFileRequest request, CancellationToken token, string? commitButtonText = null)
     {
         if (request.Save)
         {
@@ -19,7 +19,7 @@ internal static class BrowserFilePicker
             var chosen = await Shell.NativeFilePickerLifetime.RunAsync(windowId, () => picker.PickSaveFileAsync().AsTask(), token);
             return chosen is null ? [] : [chosen.Path];
         }
-        var openPicker = new FileOpenPicker(windowId) { SuggestedStartLocation = PickerLocationId.DocumentsLibrary, CommitButtonText = "Select for upload" };
+        var openPicker = new FileOpenPicker(windowId) { SuggestedStartLocation = PickerLocationId.DocumentsLibrary, CommitButtonText = commitButtonText ?? "Select for upload" };
         openPicker.FileTypeFilter.Add("*");
         if (request.Multiple)
         {

@@ -32,7 +32,17 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         Loaded += async (_, _) =>
         {
             if (started) return; started = true;
-            try { await RunAsync(); status.Text = $"PASS: {checks.Count} native style checks\n" + string.Join("\n", checks); }
+            try
+            {
+                if (Environment.GetCommandLineArgs().Contains("--await-validation-foreground"))
+                {
+                    status.Text = "Waiting for validation window activation";
+                    using var activationDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    while (App.Window is not MainWindow { ValidationOwnsForeground: true })
+                        await Task.Delay(25, activationDeadline.Token);
+                }
+                await RunAsync(); status.Text = $"PASS: {checks.Count} native style checks\n" + string.Join("\n", checks);
+            }
             catch (Exception error) { status.Text = "FAIL: " + error; }
             finally { WidgetViewPresenter.SetHighContrastStyleOverride(null); }
         };
@@ -40,6 +50,31 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--preview-parts-output") is { } previewParts)
+        { await PreviewPartsAsync(previewParts, Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--capture-mp4")
+            ?? throw new ArgumentException("An owned16:9 clip is required.")); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--page-cache-output") is { } pageCacheOutput)
+        {
+            Exception? failure = null;
+            try { await NativePageCacheAsync(); await NativeSectionCacheAsync(); await NativePageCacheBudgetAsync(); await NativeCachedDragAsync(); await NativePresentationMemoryAsync(); await NativeSectionTransitionsAsync(); }
+            catch (Exception error) { failure = error; }
+            Directory.CreateDirectory(pageCacheOutput);
+            await File.WriteAllTextAsync(Path.Combine(pageCacheOutput, "result.json"), System.Text.Json.JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString() }));
+            if (failure is not null) throw failure;
+            return;
+        }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--button-paint-output") is { } buttonPaintOutput)
+        {
+            Exception? failure = null;
+            try { await NativeButtonPaintAsync(); await NativeBusyFocusAsync(); }
+            catch (Exception error) { failure = error; }
+            Directory.CreateDirectory(buttonPaintOutput);
+            await File.WriteAllTextAsync(Path.Combine(buttonPaintOutput, "result.json"), System.Text.Json.JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString() }));
+            if (failure is not null) throw failure;
+            return;
+        }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--capture-editor-output") is { } editorOutput)
+        { await CaptureEditorAsync(editorOutput); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--playnite-capture-settings-fixture") is { } captureSettings)
         { await PlayniteCaptureSettingsAsync(captureSettings); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--disclosure-output") is { } disclosureOutput)
@@ -79,6 +114,8 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         { await AcrylicPreviewsAsync(acrylicOutput); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--interactive-previews-output") is { } interactivePreviewsOutput)
         { await InteractivePreviewsAsync(interactivePreviewsOutput); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--media-previews-output") is { } mediaPreviewsOutput)
+        { await MediaPreviewsAsync(mediaPreviewsOutput, Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--capture-mp4") ?? throw new ArgumentException("Synthetic MP4 required.")); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--pob-workflow-fixtures") is { } workflowFixtures)
         { await PobWorkflowsAsync(workflowFixtures); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--pob-readonly-preview-fixtures") is { } readonlyFixtures)
@@ -140,10 +177,27 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         { await PlayniteProductionLayoutAsync(playniteFixture); return; }
         if (Environment.GetCommandLineArgs().Contains("--artwork-fit-only"))
         { await NativeArtworkFitAsync(); return; }
+        if(Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--focus-decoration-result") is {} focusDecorationResult)
+        {
+            Exception? failure=null;
+            try{await NativeFocusDecorationAsync();}
+            catch(Exception error){failure=error;}
+            await File.WriteAllTextAsync(focusDecorationResult,System.Text.Json.JsonSerializer.Serialize(new{passed=failure is null,checks,error=failure?.ToString()}));
+            if(failure is not null)throw failure;
+            return;
+        }
         if (Environment.GetCommandLineArgs().Contains("--flow-layout-only"))
         { await FlowSpacingAndJustificationAsync(); return; }
         if (Environment.GetCommandLineArgs().Contains("--explicit-grid-only"))
         { await ExplicitGridAsync(); return; }
+        if(Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--explicit-grid-result") is {} gridResult)
+        {
+            Exception? failure=null;
+            try{await ExplicitGridAsync();}catch(Exception error){failure=error;}
+            await File.WriteAllTextAsync(gridResult,System.Text.Json.JsonSerializer.Serialize(new{passed=failure is null,checks,error=failure?.ToString()}));
+            if(failure is not null)throw failure;
+            return;
+        }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--youtube-slider-fixture") is { } youtubeSlider)
         { await YouTubeSliderSpacingAsync(youtubeSlider); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--content-sizing-result") is { } sizingResult)
@@ -251,6 +305,7 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         await NativeTypographyAsync();
         await NativeAppearancePublicationAsync();
         await NativeBusyFocusAsync();
+        await NativeButtonPaintAsync();
         await NativeScrollFocusAsync();
         await NativeWidgetRevealAsync();
         await NativeTrayContentAsync();

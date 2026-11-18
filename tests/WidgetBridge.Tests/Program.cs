@@ -22,6 +22,11 @@ if (args is ["--export-gallery-scroll", var galleryDirectory, var galleryStylePa
 
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
+if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "replay-ui-fixture.marker")))
+{
+    await ReplayUiFixture.ServeAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
+    return 0;
+}
 if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "catalogue-native-fixture.json")))
 {
     await MarketplaceNativeFixture.ServeAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
@@ -134,6 +139,8 @@ if (args.Length is 4 or 5 && args[0] == "--export-styled-fixture")
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Replay capture crosses SDK and host pipes with independent save continuation", ReplayPipeScenarios.EndToEnd),
+    ("Corrupt replay update metadata preserves catalog publication and strict recording authority", ReplayUpdateRecoveryScenarios.CorruptReceipt),
     ("Bridge handshake precedes startup catalogue notifications", BridgeHandshakeScenarios.CatalogPublicationWaitsForHello),
     ("Pinning effects require successful current user actions", PinningEffectTests.Contract),
     ("Artwork file admission preserves full-access and package boundaries", ArtworkFileAdmissionTests.Run),
@@ -145,11 +152,25 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Media player source crosses both pipes for inline and pinned projections", MediaPlayerScenarios.ThroughPipes),
     ("Media player resolves sealed assets URLs and authorized local files", MediaPlayerScenarios.Sources),
     ("Media player source resolution rejects forged and stale declarations", MediaPlayerScenarios.Authority),
+    ("Capture editing crosses SDK capability and host pipes for saved and temporary sources", CaptureEditingPipeScenarios.EndToEnd),
     ("Capture application metadata crosses host pipe without trusting caller labels", CaptureApplicationMetadataScenarios.ThroughHostPipe),
     ("Capture capabilities cross host pipe only after an explicit discovery request", CaptureApplicationMetadataScenarios.DiscoveryThroughHostPipe),
     ("Capture folder messages have generated metadata and retain the shared session", CaptureApplicationMetadataScenarios.FolderMessagesThroughHostPipe),
     ("Permission prompts cross host pipe and approval unlocks the same broker", PermissionScenarios.HostPipe),
+    ("File picker host pipe scopes selection cancellation and stale completion", FilePickerScenarios.HostPipe),
+    ("Media preview resolves only its exact indexed lease and declaration", BridgeIndexedLeaseRegistryScenarios.PreviewMediaUsesExactLease),
+    ("Capture startup preferences cannot discard the acknowledged refresh", CaptureLibraryStartupScenarios.StartupPreferencesCannotDiscardAcknowledgedRefresh),
+    ("Capture startup cancelled and failed preferences retry on reactivation", CaptureLibraryStartupScenarios.StartupPreferencesRetryAfterCancellationAndFailure),
+    ("Media preview retains originals and retires playback custody", HostMediaPlaybackScenarios.RetainedOriginalAndRetirement),
+    ("Media preview drains late opens without displacing replacement", HostMediaPlaybackScenarios.PendingOpenDrainsBeforeReplacement),
+    ("Media preview original-file custody and revocation cross both pipes", MediaPreviewPipeScenarios.SavedCaptureThroughPipes),
+    ("Media preview PNG original-file custody and revocation cross both pipes", MediaPreviewPipeScenarios.SavedPngThroughPipes),
     ("Intent bridge prepared payloads cannot change routes schemas or stale actions", BridgeIntentScenarios.PreparedPayloads),
+    ("Intent bridge file contract is exact reserved and path-free", BridgeIntentScenarios.FileContract),
+    ("Intent bridge file handoff owns recipient authority after source hides", BridgeIntentScenarios.FileHandoff),
+    ("Intent bridge file discovery starts only the chosen receiver and retains admission", BridgeIntentScenarios.FileDiscoveryStartsOnlyChosenReceiver),
+    ("Intent bridge file rejection cancellation and foreign offers revoke authority", BridgeIntentScenarios.FileRejectedAndCancelled),
+    ("Intent bridge file capacity preserves drafts and allows retry", BridgeIntentScenarios.FileCapacityPreservesDrafts),
     ("Intent bridge preparation cancellation is exact before and during execution", BridgeIntentScenarios.PreparationCancellation),
     ("Intent bridge prepared payloads and cancellation cross both pipes", BridgeIntentEndToEnd.PreparationThroughBothPipes),
     ("Intent bridge search readiness and background feedback cross both pipes", BridgeIntentEndToEnd.SearchFeedbackThroughBothPipes),
@@ -160,9 +181,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Intent bridge compact media requires the same live media declaration", BridgeIntentScenarios.CompactMediaDelivery),
     ("Intent bridge end-to-end crosses both pipes and preserves cancellation", BridgeIntentEndToEnd.ThroughBothPipes),
     ("Intent bridge pinned and indexed sources cross both pipes with exact leases", BridgeIntentEndToEnd.SourceProjections),
+    ("Intent bridge inline indexed and deferred preview sources retain exact chooser proof", BridgeIntentEndToEnd.PreviewSources),
     ("Intent bridge admission checks displayed action and manifest", BridgeIntentScenarios.Admission),
     ("Intent bridge widget management and interactive category admission", BridgeIntentScenarios.WidgetManagementAndCategoryAdmission),
     ("Intent bridge notification grants require declared exact current content and explicit activation", BridgeIntentScenarios.NotificationIntents),
+    ("Intent bridge native notifications require the exact live opted-in session and same widget", BridgeIntentScenarios.NativeNotificationIntents),
     ("Intent bridge actual Settings accepts cold and warm navigation before slow inspections", SettingsNavigationFixture.ThroughPipes),
     ("Intent bridge exposes only the matched handler mapping presentation policy", BridgeIntentScenarios.HandlerMappingPolicy),
     ("Intent bridge passive delivery requires live projection and per-mapping opt-in", BridgeIntentScenarios.PassiveDelivery),
@@ -188,6 +211,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Pinned action bridge rejects stale binding scope version and foreign artwork", PinnedActionBridgeScenarios.Authority),
     ("Discovered prefixes cross real worker bridge and session with retained action authority", DiscoveredBridgeScenarios.EndToEnd),
     ("Indexed styles failure releases acquired runtime semantics", BridgeIndexedLeaseRegistryScenarios.StylePreparationFailureReleasesExactRuntimeLease),
+    ("Preview component styles honor cascade and owner isolation", PreviewPartStyleScenarios.CascadeAndIsolation),
+    ("Preview component styles retain bounded immutable transport", PreviewPartStyleScenarios.TransportBounds),
     ("Indexed styles match parent cascade and focus fragments", BridgeIndexedStyleScenarios.RangeStylesMatchSnapshotCascadeAndFragments),
     ("Indexed styles refresh retained semantics without provider reload", BridgeIndexedLeaseRegistryScenarios.StyleRefreshUsesRetainedSemanticsAndRejectsRetirement),
     ("Indexed lease wire contracts and strict classification", BridgeIndexedLeaseWireScenarios.ContractsAndClassification),
@@ -494,6 +519,10 @@ static Task MarketplaceAuthority()
 static async Task<int> RunWorkerAsync(string[] arguments)
 {
     var instance = RequiredValue(arguments, "--widget-instance");
+    if (instance == "capture-replay.instance")
+        return await WidgetWorkerBootstrap.RunAsync(arguments, () => new WidgetRail.FirstPartyWidgets.CaptureLibrary.CaptureLibraryWidget());
+    if (instance == "replay-approval.instance")
+        return await WidgetWorkerBootstrap.RunAsync(arguments, () => new ReplayUiFixture.ApprovalProbe());
     if (instance.StartsWith("ytm-navigation-", StringComparison.Ordinal))
         return await WidgetWorkerBootstrap.RunAsync(arguments, () => new WidgetRail.Samples.YtMusicWidget.Standalone.StandaloneMusicWidget(
             new YtmNavigationFixture.Service(instance["ytm-navigation-".Length..])));
@@ -514,6 +543,7 @@ static async Task<int> RunWorkerAsync(string[] arguments)
         arguments,
         services => instance == "game-help.instance" ? new WidgetRail.Samples.GameHelp.GameHelpWidget(new BridgeGameHelpFixture.FakeGemini(() => services))
             : instance == "media-player.instance" ? new MediaPlayerScenarios.Probe()
+            : instance == "media-preview.instance" ? new MediaPreviewPipeScenarios.Probe()
             : instance == "browser.instance" ? new WidgetRail.Samples.Browser.BrowserWidget()
             : instance == "browser-modes.instance" ? new ActivationBrowserFixture()
             : instance == "settings.fixture" ? new ShellSettingsFixture()
@@ -3407,7 +3437,7 @@ static async Task PrivateStateAuthorityIsHostSynthesized()
         "dev.example.widget", "dev.example", "default", [],
         new ConsentStore(temporary.Path), new SimulatedPlatformBrokerBackend(), context);
     Assert.Equal(0, companion.DeclaredCapabilities.Count);
-    Assert.SequenceEqual(new[] { PlatformCapabilities.WidgetActivityV1, PlatformCapabilities.WidgetNotificationsV1, PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1, PlatformCapabilities.WidgetPinningV1 }.Order(StringComparer.Ordinal),
+    Assert.SequenceEqual(new[] { PlatformCapabilities.FilesReadV1, PlatformCapabilities.WidgetActivityV1, PlatformCapabilities.WidgetNotificationsV1, PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1, PlatformCapabilities.WidgetPinningV1 }.Order(StringComparer.Ordinal),
         companion.HostGrantedCapabilities.Order(StringComparer.Ordinal));
     Assert.True(companion.WorkerArguments.Contains("--broker-pipe", StringComparer.Ordinal),
         "The host-granted state service did not create an authenticated broker channel.");

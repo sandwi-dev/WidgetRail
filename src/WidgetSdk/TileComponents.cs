@@ -154,6 +154,9 @@ public sealed record ActionSurfaceElement : WidgetElement
     public string AccessibilityLabel { get; init; }
     public ActionSurfaceOrientation Orientation { get; init; }
     public ActionSurfacePresentation? Presentation { get; init; }
+    public string? FocusVisualTargetId { get; init; }
+    /// <summary>Uses one presentational descendant's bounds for the shared focus outline without creating another input target.</summary>
+    public ActionSurfaceElement FocusVisualTarget(string childId) => this with { FocusVisualTargetId = RequireId(childId) };
     public IReadOnlyList<WidgetElement> Children { get; init; }
     public bool? IsDisabled { get; init; }
     public bool? IsSelected { get; init; }
@@ -269,6 +272,7 @@ public sealed record ActionSurfaceElement : WidgetElement
         ContextMenuButton = ContextMenuButton,
         ActionSurfaceOrientation = Orientation,
         ActionSurfacePresentation = Presentation,
+        FocusVisualTargetId = FocusVisualTargetId,
         IsDisabled = IsDisabled,
         IsSelected = IsSelected,
         IsBusy = IsBusy,

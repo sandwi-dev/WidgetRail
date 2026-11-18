@@ -1080,6 +1080,7 @@ public interface IPlatformBrokerBackend : IAudioPlatformBrokerBackend,
     IPrivateStatePlatformBrokerBackend, ILoopbackHttpPlatformBrokerBackend
 {
     CaptureLibraryStore? CaptureLibrary => null;
+    CaptureReplayService? CaptureReplay => null;
 }
 
 internal static partial class ContractValidation

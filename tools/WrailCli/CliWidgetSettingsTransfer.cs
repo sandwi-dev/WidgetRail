@@ -24,4 +24,7 @@ internal sealed class CliWidgetSettingsTransfer(string stateRoot) : IDisposable
         var consent = new ConsentStore(Path.Combine(Path.GetDirectoryName(stateRoot)!, "consent"));
         await new WidgetSettingsTransfer(stateRoot, consent).CopyAsync(previous, replacement, token).ConfigureAwait(false);
     }
+    internal Task CompleteAsync(InstalledWidgetVersion selected, CancellationToken token) =>
+        new WidgetSettingsTransfer(stateRoot, new ConsentStore(Path.Combine(Path.GetDirectoryName(stateRoot)!, "consent")))
+            .CompleteAsync(selected, token);
 }

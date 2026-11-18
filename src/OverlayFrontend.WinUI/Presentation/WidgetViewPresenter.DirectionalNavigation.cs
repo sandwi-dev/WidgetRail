@@ -41,7 +41,7 @@ internal sealed partial class WidgetViewPresenter
     private bool MoveDirectionalFocus(FocusNavigationDirection direction, bool isRepeat)
     {
         CancelScrollReveal();
-        if (FocusedMediaPlayer?.MoveFocus(direction) == true) return true;
+        if (FocusedMediaPlayer?.MoveFocus(direction, isRepeat) == true) return true;
         if (FocusedBinding() is not { } origin || !NavigationTarget(origin) ||
             presentation?.IsCurrent != true) return true; // No current geometry is not a root exit.
         if (ReverseDirectionalScroll(origin, direction, isRepeat)) return true;
@@ -169,7 +169,7 @@ internal sealed partial class WidgetViewPresenter
                 !NavigationTarget(target)) return;
             indexed?.CancelHostNavigation();
             directionalScroll = null;
-            if (FocusBinding(target)) target.Element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+            if (FocusBinding(target,direction,indexed?.FocusedNavigationElement??origin.Element)) target.Element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
         }
     }
 

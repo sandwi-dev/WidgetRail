@@ -207,8 +207,6 @@ internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
         {
             var key = (Button)FindDialog("Widget.TextEntry." + id)!;
             Check(key.Focus(FocusState.Keyboard), "native keyboard focus reaches " + id);
-            Check(!dialog.HandleKeyboardKey(Windows.System.VirtualKey.Enter) && actions.Count == count,
-                "dialog preserves native Enter activation for " + id);
             ((Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider)new ButtonAutomationPeer(key)
                 .GetPattern(PatternInterface.Invoke)).Invoke();
             await Task.Delay(100);
@@ -229,10 +227,25 @@ internal sealed partial class TextEntryValidationPage : Page, IAsyncDisposable
         dialog = (WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;
         editor = (TextBox)Editor();
         Check(editor.Focus(FocusState.Keyboard), "native editor accepts keyboard focus");
+        dialog.RestoreFocus();
+        Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),editor),"host focus reassertion preserves the native editor instead of selecting a virtual key");
         Check(dialog.HandleKeyboardKey(Windows.System.VirtualKey.Enter), "Enter in the native editor remains a commit shortcut");
         await Closed();
         Check(actions.Count == count + 1 && actions[^1].Action.CommittedText == "ab",
             "editor Enter commits the final value exactly once");
+        foreach (var id in new[] { "Key.10", "Clear", "Space", "Cancel" })
+        {
+            await Open();
+            dialog = (WidgetTextEntryDialog)FindDialog("Widget.TextEntry.Dialog")!;
+            ((Control)FindDialog("Widget.TextEntry." + id)!).Focus(FocusState.Keyboard);
+            var before = actions.Count;
+            Check(dialog.HandleKeyboardKey(Windows.System.VirtualKey.Enter), "Physical Enter commits with virtual " + id + " focused");
+            dialog.HandleKeyboardKey(Windows.System.VirtualKey.Enter);
+            await Closed();
+            Check(actions.Count == before + 1 && actions[^1].Action.CommittedText == "ab",
+                "Physical Enter does not activate virtual " + id + " or commit twice");
+        }
+        await VerifyPhysicalEnterModesAsync();
         actions.Clear();
     }
 

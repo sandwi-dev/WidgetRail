@@ -2,20 +2,25 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.WidgetSdk;
 
-public static class WidgetCaptureLibraryCapabilities
+public static partial class WidgetCaptureLibraryCapabilities
 {
     public const string ReadPermission = "media.capture-library.read.v1";
     public const string SavePermission = "media.capture-library.save.v1";
     public const string ManagePermission = "media.capture-library.manage.v1";
+    public const string RecycleLinkedPermission = "media.capture-library.recycle-linked.v1";
     public static WidgetCapabilityOperation<CaptureLibraryReference, CaptureLibraryItem> GetMetadata { get; } = new(ReadPermission, "capture-library.get-metadata");
     public static WidgetCapabilityOperation<CaptureLibraryQueryRequest, CaptureLibraryQueryPage> Query { get; } = new(ReadPermission, "capture-library.query");
+    public static WidgetCapabilityOperation<CaptureLibraryQueryRequest, CaptureLibraryContinuityPage> QueryContinuity { get; } = new(ReadPermission, "capture-library.query-continuity");
     public static WidgetCapabilityOperation<CaptureLibraryApplicationsRequest, CaptureLibraryApplications> Applications { get; } = new(ReadPermission, "capture-library.applications");
+    public static WidgetCapabilityOperation<CaptureLibraryFoldersRequest, CaptureLibraryFolders> Folders { get; } = new(ReadPermission, "capture-library.folders");
     public static WidgetCapabilityOperation<CaptureLibraryGroupsRequest, CaptureLibraryGroups> Groups { get; } = new(ReadPermission, "capture-library.groups");
     public static WidgetCapabilityOperation<CaptureLibraryFindRequest, CaptureLibraryPosition> Find { get; } = new(ReadPermission, "capture-library.find");
     public static WidgetCapabilityOperation<CaptureLibraryMetadataRequest, CaptureLibraryItem> UpdateMetadata { get; } = new(ManagePermission, "capture-library.metadata");
     public static WidgetCapabilityOperation<CaptureLibraryBatchMetadataRequest, CaptureLibraryBatchResult> UpdateMetadataBatch { get; } = new(ManagePermission, "capture-library.metadata-batch");
     public static WidgetCapabilityOperation<CaptureLibraryRecycleRequest, CaptureLibraryBatchResult> Recycle { get; } = new(ManagePermission, "capture-library.recycle");
+    public static WidgetCapabilityOperation<CaptureLibraryRecycleRequest, CaptureLibraryBatchResult> RecycleLinked { get; } = new(RecycleLinkedPermission, "capture-library.recycle-linked");
     public static WidgetCapabilityOperation<CaptureLibraryCopyRequest, CaptureLibraryBatchResult> Copy { get; } = new(ManagePermission, "capture-library.copy");
+    public static WidgetCapabilityOperation<CaptureLibraryMutationReference, CaptureLibraryItem> SaveCopy { get; } = new(ManagePermission, "capture-library.save-copy");
     public static WidgetCapabilityOperation<CaptureLibraryMutationReference, WidgetCapabilityAcknowledgement> RemoveUnavailable { get; } = new(ManagePermission, "capture-library.remove-unavailable");
     public static WidgetCapabilityOperation<CaptureLibraryReference, WidgetCapabilityAcknowledgement> Reveal { get; } = new(ManagePermission, "capture-library.reveal");
     public static WidgetCapabilityEvent<CaptureLibraryChanged> Changed { get; } = new(ReadPermission, "capture-library.changed");
@@ -56,6 +61,21 @@ public sealed partial class WidgetCaptureLibraryService
         return result with { Items = result.Items.ToArray() };
     }
 
+    /// <summary>Read a bounded range with a broker proof that ordering and membership survived favorite-only edits. Compare only for identical query filters; range reads still require Page.Revision.</summary>
+    public async ValueTask<CaptureLibraryContinuityPage> QueryContinuityAsync(CaptureLibraryQuery query, int offset = 0, int count = 40,
+        string? revision = null, CancellationToken cancellationToken = default)
+    {
+        if (query?.IsWellFormed() != true || offset < 0 || count is < 1 or > CaptureLibraryLimits.MaximumQueryItems ||
+            revision is not null && !CaptureLibraryLimits.ValidRevision(revision)) throw new ArgumentException("Invalid capture library query.");
+        var result = await client.InvokeAsync(WidgetCaptureLibraryCapabilities.QueryContinuity, new(query, offset, count, revision), cancellationToken).ConfigureAwait(false);
+        var page = result?.Page;
+        if (page is null || !CaptureLibraryLimits.ValidRevision(result!.OrderingRevision) || page.Offset != offset || page.TotalCount < 0 || page.StoredBytes < 0 ||
+            !CaptureLibraryLimits.ValidRevision(page.Revision) || revision is not null && page.Revision != revision ||
+            page.Items is null || page.Items.Count > count || page.Items.Count > Math.Max(0, page.TotalCount - offset) ||
+            page.Items.Any(item => !CaptureLibraryLimits.Valid(item)) || page.Items.Select(item => item.Id).Distinct().Count() != page.Items.Count) throw Malformed();
+        return result with { Page = page with { Items = page.Items.ToArray() } };
+    }
+
     /// <summary>Lists bounded application facets for the query, ignoring its current application selection. An empty name is Unknown application.</summary>
     public async ValueTask<CaptureLibraryApplications> ApplicationsAsync(CaptureLibraryQuery query, string? search = null, int limit = 128,
         CancellationToken cancellationToken = default)
@@ -64,6 +84,20 @@ public sealed partial class WidgetCaptureLibraryService
         var result = await client.InvokeAsync(WidgetCaptureLibraryCapabilities.Applications, new(query, search, limit), cancellationToken).ConfigureAwait(false);
         if (result?.Items is null || result.Items.Count > limit || result.Items.Any(item => item is null || item.Name is null || !CaptureLibraryLimits.ValidText(item.Name, 120) || item.Count <= 0) ||
             result.Items.Select(item => item.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != result.Items.Count) throw Malformed();
+        return result with { Items = result.Items.ToArray() };
+    }
+
+    /// <summary>Lists library-wide folder facets without granting source management or path access. Counts honor other filters.</summary>
+    public async ValueTask<CaptureLibraryFolders> FoldersAsync(CaptureLibraryQuery query, string? revision = null, CancellationToken cancellationToken = default)
+    {
+        if (query?.IsWellFormed() != true || revision is not null && !CaptureLibraryLimits.ValidRevision(revision))
+            throw new ArgumentException("Invalid capture folder query.");
+        var result = await client.InvokeAsync(WidgetCaptureLibraryCapabilities.Folders, new(query, revision), cancellationToken).ConfigureAwait(false);
+        if (result?.Items is null || result.Items.Count > CaptureLibrarySourceLimits.MaximumSources + 1 ||
+            !CaptureLibraryLimits.ValidRevision(result.Revision) || revision is not null && result.Revision != revision ||
+            result.Items.Any(item => item is null || item.SourceId is null || item.SourceId.Length > 0 && !CaptureLimits.ValidToken(item.SourceId) ||
+                string.IsNullOrWhiteSpace(item.Label) || !CaptureLibraryLimits.ValidText(item.Label, 240) || item.Count < 0) ||
+            result.Items.Select(item => item.SourceId).Distinct(StringComparer.Ordinal).Count() != result.Items.Count) throw Malformed();
         return result with { Items = result.Items.ToArray() };
     }
 
@@ -124,13 +158,19 @@ public sealed partial class WidgetCaptureLibraryService
         return ValidateBatch(result, captured.Select(item => item.Id).ToArray());
     }
     /// <summary>Requests recoverable removal only. An unsupported recycle destination fails instead of permanently deleting files.</summary>
-    public async ValueTask<CaptureLibraryBatchResult> RecycleAsync(IReadOnlyList<CaptureLibraryMutationReference> items, CancellationToken cancellationToken = default)
+    public ValueTask<CaptureLibraryBatchResult> RecycleAsync(IReadOnlyList<CaptureLibraryMutationReference> items, CancellationToken cancellationToken = default)
+        =>RecycleCoreAsync(WidgetCaptureLibraryCapabilities.Recycle,items,cancellationToken);
+    /// <summary>Explicitly recycles exact indexed originals from connected folders. Requires separate permission; RemoveLinkAsync only hides library entries.</summary>
+    public ValueTask<CaptureLibraryBatchResult> RecycleLinkedAsync(IReadOnlyList<CaptureLibraryMutationReference> items, CancellationToken cancellationToken = default)
+        =>RecycleCoreAsync(WidgetCaptureLibraryCapabilities.RecycleLinked,items,cancellationToken);
+    private async ValueTask<CaptureLibraryBatchResult> RecycleCoreAsync(WidgetCapabilityOperation<CaptureLibraryRecycleRequest,CaptureLibraryBatchResult> operation,
+        IReadOnlyList<CaptureLibraryMutationReference> items,CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(items);
         var captured = items.ToArray();
         if (captured.Length is < 1 or > CaptureLibraryLimits.MaximumQueryItems || captured.Any(item => item is null || !CaptureLimits.ValidToken(item.Id) || item.ContentRevision < 0 || item.MetadataRevision < 0) ||
             captured.Select(item => item.Id).Distinct().Count() != captured.Length) throw new ArgumentException("Invalid capture recycle batch.");
-        var result = await client.InvokeAsync(WidgetCaptureLibraryCapabilities.Recycle, new(captured), cancellationToken).ConfigureAwait(false);
+        var result = await client.InvokeAsync(operation, new(captured), cancellationToken).ConfigureAwait(false);
         return ValidateBatch(result, captured.Select(item => item.Id).ToArray());
     }
     /// <summary>Removes stale library metadata only when the referenced original is still absent. Never permanently deletes a restored file.</summary>
@@ -215,7 +255,8 @@ public sealed partial class WidgetCaptureLibraryService
         if (attachment is null || !attachment.IsWellFormed()) throw new ArgumentException("Invalid capture.", nameof(attachment));
         CaptureLibraryItem result;
         try { result = await client.InvokeAsync(WidgetCaptureLibraryCapabilities.SaveCurrent, new(attachment), cancellationToken).ConfigureAwait(false); }
-        catch (WidgetCapabilityException error) when (error.ErrorCode is "unsupported_capability" or "unsupported_operation")
+        catch (WidgetCapabilityException error) when (attachment.Origin != CaptureAttachmentOrigin.LibraryRecordingDraft &&
+            error.ErrorCode is "unsupported_capability" or "unsupported_operation")
         {
             // Older brokers reject an unknown operation before any mutation.
             // Do not retry permission, cancellation, transport or host failures.

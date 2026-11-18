@@ -61,6 +61,16 @@ own key/account configuration but must not activate a window or perform the acti
 No availability cache is used. Existing handlers without the opt-in remain static.
 YouTube opts in for search only; known-video playback needs no search API key.
 
+The standard file-sharing intent is an exception to preflight probing: its chooser
+discovers compatible handlers from the catalog without starting their workers,
+even if a mapping opts into dynamic availability. Only the chosen destination is
+activated. An opted-in availability check still runs against that selected worker
+before delivery, and `OnIntentAsync` must preserve its own account/draft/file
+admission rules. Other intent mappings retain the Background preflight behavior
+above. Do not wait for browser startup or network authentication inside a bounded
+availability callback; the chosen widget can accept a cancellable local handoff
+and use its existing resource loading state before offering recipient selection.
+
 ## Calculate an intent payload after a click
 
 Protocol 85 adds optional preparation for destinations that require asynchronous

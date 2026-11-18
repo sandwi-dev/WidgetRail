@@ -64,6 +64,7 @@ internal sealed partial class WidgetViewPresenter
             // Optional preview failure must not turn a usable page into a rendering failure.
             // Never publish provider exception text or retry continuously while focus stays put.
             if(!cancellation.IsCancellationRequested&&CurrentPreviewSource()?.Key.Equals(source.Key)==true)deferredPreviewFailure=source.Key;
+            if (pendingPrimaryPreview?.Key.Equals(source.Key) == true) pendingPrimaryPreview = null;
         }
         finally
         {

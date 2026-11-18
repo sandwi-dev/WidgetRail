@@ -12,6 +12,25 @@ namespace WidgetRail.Tests.PlayniteLibraryCommunityApplication;
 public sealed class PlayniteSetupTests
 {
     [TestMethod]
+    [DataRow("integration-package.json")]
+    [DataRow("WidgetRail.Playnite.pext")]
+    public async Task MissingCandidateBundleReportsWidgetPackagingFailureWithoutChangingPlaynite(string missing)
+    {
+        using var fixture = new Fixture();
+        new PlayniteSetupDiscoveryService(fixture.Platform, fixture.State).Remember(fixture.Installation);
+        fixture.Install(PlayniteSetupPackage.Version, Fixture.Replacement);
+        var original = File.ReadAllBytes(fixture.Dll);
+        File.Delete(Path.Combine(Path.GetDirectoryName(fixture.Package.PackagePath)!, missing));
+
+        var found = await fixture.Service.DiscoverAsync(null, null, default);
+        Assert.AreEqual(1, found.Installations.Count, "Missing widget assets must not masquerade as a missing Playnite installation.");
+        var error = await Assert.ThrowsExactlyAsync<PlayniteSetupException>(async () => await fixture.Service.CheckSetupAsync(default));
+        StringAssert.Contains(error.Message, "widget is missing its bundled integration files");
+        Assert.AreEqual(0, fixture.Platform.Starts + fixture.Platform.Stops);
+        CollectionAssert.AreEqual(original, File.ReadAllBytes(fixture.Dll));
+    }
+
+    [TestMethod]
     [TestCategory("LivePlaynite")]
     public async Task LiveRunningPortableOffersSetupWithoutChangingEitherInstallation()
     {

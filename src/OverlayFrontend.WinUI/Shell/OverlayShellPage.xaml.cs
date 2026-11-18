@@ -160,7 +160,9 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             owner.Session.HostEffectReceived += HostEffectReceived;
             applicationControlPump = PumpApplicationControlAsync();
             capturePump = PumpCaptureAsync();
+            InitializeReplayCapture();
             permissionPump = PumpPermissionsAsync();
+            filePickerPump = PumpFilePickersAsync();
             if (ControllerControlStatusRequested is not null) controllerControlPump = PumpControllerControlAsync();
             BridgeReady?.Invoke();
             Phase("bridge-notifications-queued");
@@ -735,7 +737,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                     else await ManageUserWebAppsAsync();
                 }
                 else if (request.IndexedLease is not null) await InvokeIntentAsync(request);
-                else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EditKeyboardShortcutAction)
+                else if (request.Action.ActionId is WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EditKeyboardShortcutAction or WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EditReplayShortcutAction)
                     await EditKeyboardShortcutAsync(request);
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.ReplayIntroductionAction)
                 {
@@ -908,6 +910,9 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         interactionAdmission.Invalidate();
         retired = true;
+        // Replay owns an independent lifetime and must stop renewing authority
+        // before unrelated UI, persistence, or browser cleanup can suspend.
+        var stoppingReplay = replayCoordinator?.DisposeAsync().AsTask() ?? Task.CompletedTask;
         CloseUtilityPanel();
         await utilityRefresh;
         DisposeNotificationBanner();
@@ -935,6 +940,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         switchCancellation?.Cancel();
         lifetime.Cancel();
         if (startup is not null) await startup;
+        await stoppingReplay;
         if (applicationControlPump is not null) await applicationControlPump;
         if (startupUpdateCheck is not null) await startupUpdateCheck;
         if (controllerControlPump is not null) await controllerControlPump;
@@ -942,6 +948,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (capturing is not null) await capturing;
         if (permissionPump is not null) await permissionPump;
         if (permissionPrompt is not null) await permissionPrompt;
+        if (filePickerPump is not null) await filePickerPump;
+        if (choosingWidgetFiles is not null) await choosingWidgetFiles;
         await SavePreferencesAsync();
         await transitions.WaitAsync();
         try

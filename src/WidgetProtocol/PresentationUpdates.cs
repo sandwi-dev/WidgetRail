@@ -99,6 +99,7 @@ public enum PresentationProperty
     FocusPreviewKey,
     Disclosure,
     ModalDismissal,
+    IsCommandMenu,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -201,6 +202,12 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Accessibility,
         PresentationProperty.AccessibilityLabel or
         PresentationProperty.AccessibilityValue =>
+            PresentationPropertyImpact.Accessibility,
+        PresentationProperty.IsCommandMenu =>
+            PresentationPropertyImpact.Authority |
+            PresentationPropertyImpact.Interaction |
+            PresentationPropertyImpact.MeasureLayout |
+            PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Accessibility,
         PresentationProperty.SelectOptions =>
             PresentationPropertyImpact.Authority |

@@ -70,6 +70,14 @@ public static partial class UI
         string? accessibilityLabel = null) =>
         new(id, label, options, accessibilityLabel);
 
+    /// <summary>Creates a host-owned anchored dropdown of commands. Commands have no selected value.</summary>
+    public static SelectElement CommandMenu(
+        string label,
+        IReadOnlyList<SelectOption> commands,
+        string id,
+        string? accessibilityLabel = null) =>
+        new(id, label, commands, accessibilityLabel, isCommandMenu: true);
+
     /// <summary>Creates a host-owned bounded text-entry trigger.</summary>
     public static TextEntryElement TextEntry(
         string value,

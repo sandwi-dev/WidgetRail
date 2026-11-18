@@ -3,19 +3,31 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.WidgetBridge;
 
-/// <summary>Resolves only the primary intent actually shown in the admitted input scope.</summary>
+/// <summary>Resolves the exact intent declaration shown in the admitted input scope.</summary>
 internal static class IntentActionAuthority
 {
     internal static WidgetIntentRequest? RevalidateIndexed(IReadOnlyList<ViewNode> originOwners,
-        IReadOnlyList<ViewNode> currentOwners, ViewNode item, WidgetActionEvent action)
+        IReadOnlyList<ViewNode> currentOwners, ViewNode item, WidgetActionEvent action,
+        IndexedCollectionItemReference? reference = null)
     {
         if (action.Phase != ControllerEventPhase.Pressed || action.ControllerButton is not (null or ControllerButton.A) ||
             action.RequestedValue is not null || action.CommittedText is not null ||
             action.VisibleCollectionKeys is not null || action.RetainedCollectionKeys is not null ||
-            item.Kind is not (ViewNodeKind.Button or ViewNodeKind.ActionSurface) || item.ActionId != action.ActionId ||
-            item.Id != action.SourceElementId || item.IsDisabled == true || item.IsBusy == true ||
-            originOwners.Concat(currentOwners).Any(node => node.IsDisabled == true || node.IsBusy == true) ||
-            item.Intent is not { } intent || !intent.IsWellFormed()) return null;
+            originOwners.Concat(currentOwners).Any(node => node.IsDisabled == true || node.IsBusy == true)) return null;
+        ViewNode? declaration = item;
+        if (reference is not null)
+        {
+            var preview = action.SourceElementId != item.Id ||
+                originOwners.LastOrDefault() is { Kind: ViewNodeKind.FocusPresentationSurface, FocusPreviewSource: not null };
+            var request = new IndexedCollectionInputRequest(reference, ControllerButton.A)
+            { PreviewAction = preview ? new(action.SourceElementId, action.ActionId) : null };
+            var before = IndexedCollectionInputContract.Resolve(originOwners, item, request, out var original);
+            var after = IndexedCollectionInputContract.Resolve(currentOwners, item, request, out declaration);
+            if (before is null || before != after || !ReferenceEquals(original, declaration)) return null;
+        }
+        if (declaration is not { Kind: ViewNodeKind.Button or ViewNodeKind.ActionSurface } ||
+            declaration.ActionId != action.ActionId || declaration.Id != action.SourceElementId ||
+            declaration.IsDisabled == true || declaration.IsBusy == true || declaration.Intent is not { } intent || !intent.IsWellFormed()) return null;
         // The host's live semantic lease owns this immutable item; parent paths
         // have independently passed the lease's query and active-scope checks.
         return intent;
@@ -37,6 +49,16 @@ internal static class IntentActionAuthority
 
     private static (string Identity, WidgetIntentRequest Intent)? Resolve(ViewSnapshot snapshot, WidgetActionEvent action)
     {
+        // The same proof used for ordinary preview actions owns interactive
+        // ancestry, occurrence identity and disabled/busy ancestors. Do not
+        // invent a second traversal for intent buttons inside inline fragments.
+        try
+        {
+            if (InlinePreviewActionContract.Resolve(snapshot, action, out var preview) is { } proof)
+                return preview is { Kind: ViewNodeKind.Button or ViewNodeKind.ActionSurface, Intent: { } previewIntent } && previewIntent.IsWellFormed()
+                    ? ("preview:" + proof.Ancestry, previewIntent) : null;
+        }
+        catch (InvalidOperationException) { return null; }
         var scope = FindScope(snapshot.Root, snapshot.ActiveInputScopeId, true);
         if (scope is null) return null;
         var path = new List<ViewNode>();

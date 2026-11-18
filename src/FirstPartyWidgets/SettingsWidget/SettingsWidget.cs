@@ -467,7 +467,7 @@ public sealed partial class SettingsWidget : Widget
                 }).ConfigureAwait(false);
                 return;
             }
-            if (action.ActionId == "controllers.keyboard-shortcut.edit" && CurrentPage == SettingsPage.Controllers)
+            if (action.ActionId is "controllers.keyboard-shortcut.edit" or "controllers.replay-shortcut.edit" && CurrentPage == SettingsPage.Controllers)
             {
                 // Windows registration and editing are host-owned. The host sends
                 // this declared action after committing the reviewed preference.

@@ -68,7 +68,7 @@
 
 .music-transport, .music-secondary-action { color: var(--text-muted); background: transparent; border-color: transparent; border-width: 1px; }
 .music-transport:focused, .music-secondary-action:focused, .music-play:focused { outline-color: var(--focus); outline-width: var(--focus-width, 1.5px); outline-offset: var(--focus-offset, -1.5px); }
-.music-play:focused { outline-color: var(--canvas, #090908); outline-offset: -4px; }
+.music-play:focused { outline-color: var(--focus); outline-width: var(--focus-width, 2px); outline-offset: var(--focus-filled-offset, 2px); }
 .music-transport:focused, .music-secondary-action:focused { color: var(--text); }
 .music-secondary-action:selected { color: var(--accent); }
 

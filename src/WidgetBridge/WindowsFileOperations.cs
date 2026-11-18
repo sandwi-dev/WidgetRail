@@ -8,6 +8,10 @@ internal static class WindowsFileOperations
     // ITransferSource has a dedicated recycle operation. Do not fall back to
     // RemoveItem, File.Delete, or SHFileOperation when the volume cannot recycle.
     internal static Task<bool> RecycleAsync(string path, CancellationToken token)
+        =>RecycleCoreAsync(path,null,token);
+    internal static Task<bool> RecycleLinkedAsync(string path,Func<bool> isCurrent,CancellationToken token)
+        =>RecycleCoreAsync(path,isCurrent,token);
+    private static Task<bool> RecycleCoreAsync(string path,Func<bool>? isCurrent,CancellationToken token)
     {
         if (!Path.IsPathFullyQualified(path) || !File.Exists(path) || Directory.Exists(path)) return Task.FromResult(false);
         for (var current = Path.GetFullPath(path); !string.IsNullOrEmpty(current); current = Path.GetDirectoryName(current))
@@ -15,7 +19,7 @@ internal static class WindowsFileOperations
         var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
-            try { token.ThrowIfCancellationRequested(); completion.TrySetResult(Recycle(path, token)); }
+            try { token.ThrowIfCancellationRequested(); completion.TrySetResult(Recycle(path, isCurrent,token)); }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { completion.TrySetCanceled(token); }
             catch (Exception error) when (error is COMException or IOException or UnauthorizedAccessException)
             { completion.TrySetResult(false); }
@@ -24,7 +28,7 @@ internal static class WindowsFileOperations
         return completion.Task;
     }
 
-    private static bool Recycle(string path, CancellationToken token)
+    private static bool Recycle(string path,Func<bool>? isCurrent,CancellationToken token)
     {
         IShellItem? source = null, parent = null, bin = null, recycled = null;
         ITransferSource? transfer = null;
@@ -39,6 +43,7 @@ internal static class WindowsFileOperations
             var binId = new Guid("b7534046-3ecb-4c18-be4e-64cd4cb7d6ac");
             Marshal.ThrowExceptionForHR(SHGetKnownFolderItem(in binId, 0, 0, in itemId, out bin));
             token.ThrowIfCancellationRequested();
+            if(isCurrent?.Invoke()==false)return false;
             var result = transfer.RecycleItem(source, bin, 0, out recycled);
             // Once Windows has moved the file, report the committed result even
             // if cancellation arrived while the synchronous operation was running.

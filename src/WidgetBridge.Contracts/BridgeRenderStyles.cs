@@ -31,4 +31,10 @@ public sealed record BridgeNodeRenderStyles
     /// <summary>Shared section-title typography for a grouped collection's host-generated headers.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyDictionary<string, BridgeComputedStyleValue>? GroupHeader { get; init; }
+    /// <summary>Normal cascade for the anchored owner's explicitly qualified preview part.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, BridgeComputedStyleValue>? PreviewFrame { get; init; }
+    /// <summary>Normal cascade for the same owner's preview-footer box.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, BridgeComputedStyleValue>? PreviewFooter { get; init; }
 }

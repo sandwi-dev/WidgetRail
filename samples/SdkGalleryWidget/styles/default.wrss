@@ -122,7 +122,9 @@
 }
 .wrail-icon-button--primary:focused {
   color: var(--canvas, #090908);
-  outline-color: var(--canvas, #090908);
+  outline-color: var(--focus);
+  outline-width: var(--focus-width, 2px);
+  outline-offset: var(--focus-filled-offset, 2px);
 }
 .wrail-icon-button:pressed { opacity: 0.68; }
 

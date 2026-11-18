@@ -2,21 +2,22 @@
 
 Capture Library is preinstalled in Production and available through Catalogue in
 Bare. It keeps screenshots and
-configurable clips only when you explicitly save them. There is no automatic game
-recording, upload, or eviction of saved media.
+configurable clips only when you explicitly save them. Optional replay recording
+keeps a bounded recent buffer after you explicitly start it. Saving a replay
+creates a library clip; neither browsing nor recording uploads or evicts saved media.
 
-Recording checks only the saved video profile and its requested audio mode. With
-no saved profile, it selects the first verified recommendation (1080p/30 hardware
-preferred, with supported fallbacks). Opening Settings discovers the full catalog.
+Recording checks the saved video constraints and requested audio mode. With
+no saved profile, it uses the qualified Auto policy. Existing explicit settings
+remain explicit. Opening Settings discovers supported choices.
 Both paths share encoder results for the overlay process lifetime; recording does
 not need to initialize every quality/audio combination before confirmation.
 
 ## Controller flow
 
 - **Y / Take screenshot** uses the saved image settings (original resolution by default).
-- **X / Record clip** uses the saved recording settings. On first use, prefer
-  qualified hardware 1080p30, otherwise another supported profile; default duration
-  is five seconds and audio is off.
+- **X / Record clip** uses the saved recording settings and shared library-output
+  mode. It is independent of continuous replay's Enabled switch. One-off clips
+  retain Windows' yellow capture border.
 - **Capture settings** groups screenshot resolution/format, recording quality,
   bitrate, maximum duration, audio, preparation delay/countdown and cursor.
   Settings persist privately across restarts. Unavailable saved settings remain
@@ -28,7 +29,11 @@ not need to initialize every quality/audio combination before confirmation.
   Images support controller zoom/pan and an expanded viewer. Choose **Save to library** or
   **Discard**. Save writes the original directly to **Pictures → WidgetRail → Captures**.
   Leaving an unsaved capture does not retain it across worker restarts.
-- Browse a virtualized thumbnail grid with search, application/type/date filters,
+- Library clip drafts use disk-backed staging, with a 2 GiB completed-file ceiling
+  independent of the 128 MiB temporary attachment limit. Save publishes the staged
+  original by move; discard and permission retirement clean it up. Recording
+  settings remain bounded by the host's duration and encoding capabilities.
+- Browse a virtualized thumbnail grid with search, folder/application/type/date filters,
   favorites, sorting and date groups. Titles and favorites do not alter originals.
   Selected captures can be updated together, copied to a chosen folder, or removed.
   Removal starts on Cancel: owned files go to the Recycle Bin; linked provider
@@ -43,6 +48,59 @@ images use a bounded context rendition and videos retain a read-only original.
 Videos exceeding the 8 MiB Game Help payload limit remain visible but unavailable
 for context. Only **Send to Gemini** sends it to the provider.
 Optional library read access is separate from permission to capture a new window.
+
+## Replay recording
+
+**More → Start replay recording** asks you to choose and approve one external application.
+The host owns that recording, so closing or idling Capture Library does not stop
+it. **Save replay** saves the available recent video to the default capture folder;
+the saved duration can be shorter while the buffer fills, at its memory limit,
+or because the clip must begin on a decodable keyframe. **Stop** ends recording.
+
+Capture settings contain duration, memory budget, hardware quality, application
+audio, cursor and optional automatic start for the previously approved application.
+Stop an active session before changing those settings; changes never silently
+discard its buffer. Defaults are 60 seconds, 128 MiB and hardware 720p at 30 fps with application
+audio. There is no continuous software fallback. Unsupported encoder/audio
+configuration fails visibly. Minimize pauses the active recording timeline;
+sleep retires the buffer. Application exit never switches capture to the desktop
+or another application. Automatic start needs fresh eligibility and authority.
+
+The host tray exposes recording status and Save/Stop independently of widget
+residency. Configure the optional replay keyboard shortcut in host controller/input
+settings; its disabled default is Ctrl+Shift+F10. Removing the controlling feature
+or its capture permission retires its recorder. Removing library-save permission
+cancels that caller's pending save without stopping an independently authorized
+recording. Closing WidgetRail releases
+the worker and buffer. An already-admitted save is drained before normal Stop.
+
+`HostServices.Capture.Replay` exposes `GetAsync`, `OpenChangesSubscriptionAsync`,
+`ConfigureAsync`, `StartAsync`, `StopAsync` and `SaveAsync`. Subscribe before reading
+initial status, accept only newer revisions, and use widget active lifetime for
+observation. Recording itself belongs to the host. Status requires library read;
+controls require window capture; saving additionally requires library save.
+Settings updates carry the displayed settings revision. Stop/Save carry the
+displayed session ID, so stale controls cannot affect a replacement session.
+Save returns a validated library item and actual duration, rather than a shortcut
+dispatch acknowledgment. Do not automatically retry ambiguous save side effects.
+
+## External Windows captures
+
+**Capture folders → Link Windows captures…** resolves Windows' configured
+`KnownFolders.AppCaptures` folder, including relocation, and asks you to approve
+linking it. You can choose another folder, or use the picker if Windows cannot
+resolve the location. Linked files stay in place and use the existing discovery,
+thumbnail, query and original-file playback paths. This does not duplicate videos.
+
+Windows folder import is independent of replay recording. WidgetRail does not
+toggle Windows recording settings or send Game Bar recording shortcuts.
+
+`HostServices.CaptureLibrary.ChooseKnownSourceAsync(
+CaptureLibraryKnownLocation.WindowsGameCaptures, "Windows captures", token)` uses
+the existing source-choice grant and requires library manage permission. Manual
+`ChooseSourceAsync` callers, including Playnite achievements, retain their normal
+folder picker. Integrations provide domain metadata separately; Windows filenames
+are not reliable game or achievement identifiers.
 
 ## Resolution and resource limits
 
@@ -97,13 +155,40 @@ reopening hint; the native player uses the renewable host lease deadline.
 |---|---|
 | `system.apps.windows.capture.v1` | Existing host-confirmed capture; original-resolution screenshot request is explicit |
 | `media.capture-library.read.v1` | List/query/group saved captures, receive change invalidations, open/read/release temporary library references, obtain image/video thumbnails |
-| `media.capture-library.save.v1` | Explicit interactive save of this widget's owned temporary media |
+| `media.capture-library.save.v1` | Explicit interactive save of owned temporary media, or host-owned Edit copy with separate source permission |
 | `media.capture-library.manage.v1` | Explicit interactive metadata edits, bounded batches, recycling/deletion, and opening/revealing captures in the fixed Pictures folder |
+| `media.capture-library.recycle-linked.v1` | Explicitly recycle exact indexed originals in connected capture folders, including folders connected by other widgets; no permanent-delete fallback |
 
 Read access covers the user's shared saved library, including other widgets' saved
 captures. It grants no authority to initiate screen capture. Save/manage operations
 are not dashboard shortcuts and require interactive lifecycle. Both sandboxed and
 full-trust widgets use the same service and checks.
+
+### Edit a copy
+
+`HostServices.CaptureLibrary.EditCopyAsync` accepts either an exact saved
+`CaptureLibraryMutationReference` or this widget's issued, owned temporary
+`CaptureAttachment`. The host supplies crop/quarter-turn rotation for PNG images
+and start/end trimming for supported MP4 videos. Widgets do not supply recipes,
+file paths, crop handles, or editor focus state. Video output is limited to ten
+minutes and 2 GiB; imported playback limits do not enlarge the edit output budget.
+
+Saved sources require both library read and save consent. Temporary sources require
+capture and save consent and cannot impersonate an opened library reference. Both
+permission leases remain live through encoding and commit. Entry requires an
+interactive widget; the host closes the editor when its owner or source retires.
+
+The result is `Saved` with a new owned `CaptureLibraryItem`, or `Cancelled` with no
+item. Source, permission, revision, and encoder failures remain typed failures.
+Neither the original bytes nor linked-provider files are modified. Preserve the
+current preview on cancel/failure and open the returned item only on success.
+There is no automatic retry or fallback to another operation after transport
+failure: a committed result may already exist. Duplicate host Save submissions
+share one result identity, and a late Cancel cannot erase a committed copy.
+
+The editor and encoder each have a ten-minute deadline. The host polls a bounded
+status record while encoding; the ordinary bridge request lane does not wait for
+the encoder. Terminal status remains available briefly while the dialog closes.
 
 ```csharp
 // Existing RequestAsync(kind, token) keeps context resolution for compatibility.
@@ -262,6 +347,18 @@ presentation; the service does not dictate gallery UI.
 an optional application-name search. It honors the query's other filters but ignores
 its selected application. Empty application name is the explicit unknown-source
 bucket; null `CaptureLibraryQuery.Application` means all applications.
+
+`FoldersAsync(query, revision)` returns the WidgetRail-owned folder and enabled linked
+folders across the library, bounded by the global source limit plus one. Counts
+honor other query filters but ignore the selected folder. Empty `SourceId` selects
+owned captures; null `CaptureLibraryQuery.SourceId` means all folders; otherwise
+use the opaque source ID. The query applies to all indexed rows, including paging,
+month groups, application facets and anchor lookup. Removed sources match no rows;
+clients must not silently clear that selection. Friendly labels can contain a short
+folder-name qualifier, but no absolute path or source-management authority is granted.
+The separate source-management API remains owner-scoped. Pass the query revision
+to reject a folder result from a different library ordering.
+
 `GroupsAsync` returns the complete month partition for Newest/Oldest ordering using
 the host's local calendar. Its at most 256 keys are `yyyy-MM`, `unknown` for a date
 outside the platform conversion range, and a final `older`/`newer` remainder when
@@ -376,12 +473,50 @@ pass). It never scans an entire source during each gallery query. Files still
 being written are retried. Unsupported media stays in its original folder.
 
 A linked item's `SourceId` is non-null. Query, thumbnail, preview, favorite,
-metadata, reveal and copy operations work on linked items. Delete/recycle reject
-them with `capture_library_read_only_source`. `RemoveLinkAsync` removes only its
-index/derived thumbnail and persists a suppression marker so discovery does not
-immediately add it again. `RemoveSourceAsync` removes a source's linked index
+metadata, reveal and copy operations work on linked items. The original Delete
+and `RecycleAsync` contracts reject them with `capture_library_read_only_source`.
+`HideAsync` (the compatible `RemoveLinkAsync` alias) hides a linked entry from
+normal discovery without changing its original or revoking known-ID reads.
+`CaptureLibraryQuery.HiddenOnly` selects hidden entries through the same bounded
+Query/Groups/Find/facet pipeline; default requests omit the new flag, and item
+response envelopes remain unchanged. `UnhideAsync` accepts an exact content and
+metadata revision under Manage permission and returns the restored item. Both
+operations advance MetadataRevision. Missing originals can be unhidden while
+the source remains authorized; retired sources are omitted and unreadable.
+
+Hidden choices and their last-known metadata snapshots live transactionally in
+`library-user-state.sqlite`, separate from rebuildable `library.sqlite`. New
+hides retain the original volume/file identity: editing that file stays hidden,
+while replacing it at the same source-relative path creates a visible entry
+without inheriting the old hidden metadata. Renames retain existing path-based
+capture identity semantics. Legacy `.unlinked` markers migrate conservatively:
+the path remains hidden even after replacement until explicit Unhide. Legacy
+IDs lacking snapshots gain labels only through normal bounded discovery.
+A missing/corrupt canonical database is never recreated empty after initialization.
+Linked discovery pauses; owned captures remain usable. Restore a backup and
+restart after `capture_library_user_state_unavailable`; originals are untouched. `RemoveSourceAsync` removes a source's linked index
 entries and stops its watcher. Neither operation removes provider media or its
 metadata companions. Older list clients see only owned library items.
+
+`RecycleLinkedAsync` is a separate, optional-permission operation using the same
+bounded mutation references and per-item results as `RecycleAsync`. Request
+`WidgetCaptureLibraryCapabilities.RecycleLinkedPermission` only after an explicit
+user action that clearly identifies deletion of the original file. Existing
+manage grants and read-only source grants do not imply this permission. Capture
+Library presents both **Hide from library** and **Move to Recycle Bin** for an
+available linked item; its existing mixed-source batch removal behavior is
+unchanged.
+
+The broker verifies the current enabled source, opaque item identity, content and
+metadata revisions, canonical relative path, and recorded filesystem identity.
+It rejects traversal/reparse points, retains the directory chain during the OS
+operation, and rechecks the current identity and request cancellation immediately
+before Windows recycling. Revocation or a changed file while queued prevents the
+operation. Completed OS moves are reconciled even if cancellation arrives during
+the move; later items report cancellation. Unsupported recycling leaves the file
+intact. Only the media original is recycled, not provider context companions.
+Restoring the same original to its source path reuses retained metadata; a
+different file at that name is discovered as new content.
 
 Providers can optionally publish a generic companion next to each media file:
 `example.png.widgetrail-context.json` or `example.mp4.widgetrail-context.json`.
@@ -439,3 +574,36 @@ only when the broker explicitly rejects the modern operation as unsupported,
 before any mutation. Permission failures, cancellation, unavailable authenticated
 channels, transport errors and missing test handlers never trigger a second save.
 Both operations retain the same interactive save permission and lifecycle rules.
+
+## Default-folder copies
+
+`HostServices.CaptureLibrary.SaveCopyAsync(reference)` creates a new owned capture in the host's default capture folder without opening a file picker. It requires the library manage permission and an interactive request, returns the new `CaptureLibraryItem`, and rejects stale content/metadata revisions. The host generates a collision-resistant filename and a title ending in `(copy)`; the widget can use its normal title editor afterward. Related contexts and the original capture timestamp are retained. Favorites are not copied.
+
+Original bytes are streamed with bounded memory, including long linked videos; no codec, full temporary import, or trim-duration limit applies. The original is unchanged. Copies receive independent IDs and remain after cancellation once committed. For batches, call this operation sequentially with bounded selection and report individual outcomes. `CopyAsync` remains available for explicit export to a user-selected folder; its compatibility and picker behavior are unchanged.
+
+### Named browse filters
+
+`WidgetIntentContracts.CaptureLibraryV2` adds required `referenceLabel` (1–256 characters) to the existing `originPackageId`, `referenceKind`, and `referenceId` payload. The label is presentation text only and never participates in SQLite matching or authorization. Capture Library continues to handle the unchanged v1 contract, so existing senders remain compatible.
+
+### Gallery previews
+
+Screenshots and available clips use the shared [native media rich preview](widget-media-player.md#media-in-rich-previews), with saved ID/content revision declarations and retained-original access. Screenshots do not allocate a video decoder. **Play clip previews** controls passive autoplay; it is always muted until interaction and is suppressed during selection. R3/F6 enters the preview's normal controls. Open, Share and Favorite remain available there. Fullscreen preserves the same player and playback position, then returns to the valid preview. Preview expansion does not resize gallery rows or replace the grid. Changed or removed sources retire the preview rather than retaining obsolete actions or media access.
+
+### Sharing captures
+
+Share is available from a gallery preview, capture detail and the selection toolbar for up to ten captures. It uses the standard [file-sharing intent](file-sharing.md); any compatible installed widget can receive the offer. Capture Library does not choose a recipient or send a message. The receiving widget owns recipient review and explicit sending.
+
+Selected sharing uses the indexed collection's bounded selection reader and independently retained original-file grants. Changing the query, selection or navigation during preparation cancels that preparation; changed or unavailable originals are rejected. Terminal feedback releases sender resources without revoking custody already accepted by a recipient. Sharing leaves the original files and gallery selection intact.
+
+
+### Favorite-only query continuity
+
+`QueryContinuityAsync` returns `CaptureLibraryContinuityPage(Page, OrderingRevision)`
+through a separate Read operation. The original Query reply remains unchanged.
+For the same exact query/filter and count, an unchanged OrderingRevision proves
+that only favorite metadata changed; the existing indexed collection can refresh
+row content without replacing membership or focus ownership. Inserts, removals,
+Hide/Unhide, title/content changes and context-association changes invalidate the
+proof. FavoritesOnly uses the full query revision because toggling favorite can
+change membership. Range reads always use the new `Page.Revision`; ordering proof
+never authorizes stale range reads or bypasses row/preview authority.

@@ -46,6 +46,13 @@ internal static class WidgetGlyphs
                 WidgetGlyph.Wifi => 0xE701, WidgetGlyph.Ethernet => 0xE839,
                 WidgetGlyph.Rewind => (int)Symbol.Back, WidgetGlyph.FastForward => (int)Symbol.Forward,
                 WidgetGlyph.Fullscreen => (int)Symbol.FullScreen,
+                WidgetGlyph.Back => (int)Symbol.Back, WidgetGlyph.Forward => (int)Symbol.Forward,
+                WidgetGlyph.Share => (int)Symbol.Share, WidgetGlyph.Favorite => 0xE734, WidgetGlyph.FavoriteFilled => 0xE735,
+                WidgetGlyph.Edit => (int)Symbol.Edit, WidgetGlyph.Delete => (int)Symbol.Delete,
+                WidgetGlyph.Save => (int)Symbol.Save, WidgetGlyph.Folder => 0xE8B7,
+                WidgetGlyph.Open => (int)Symbol.OpenFile, WidgetGlyph.Attach => (int)Symbol.Attach,
+                WidgetGlyph.Send => (int)Symbol.Send, WidgetGlyph.Close => (int)Symbol.Cancel,
+                WidgetGlyph.ChevronLeft => 0xE76B, WidgetGlyph.ChevronRight => 0xE76C,
                 _ => throw new ArgumentOutOfRangeException(nameof(node)),
             });
             AutomationProperties.SetName(icon, node.AccessibilityLabel ?? glyph.ToString());

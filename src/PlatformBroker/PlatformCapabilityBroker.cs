@@ -108,7 +108,7 @@ public sealed class BrokerEventSubscription : IAsyncDisposable
 /// authority set, capability shape, and lifecycle before reaching a backend;
 /// manifest capabilities additionally require durable consent.
 /// </summary>
-public sealed class PlatformCapabilityBroker : IAsyncDisposable
+public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
 {
     public static readonly TimeSpan MaximumDashboardGestureLifetime = TimeSpan.FromSeconds(2);
     public const int MaximumDashboardGestureAuthorities = 16;
@@ -129,6 +129,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private readonly PrivateSecretCapabilityDomain _privateSecretDomain;
     private readonly PrivateStateCapabilityDomain _privateStateDomain;
     private readonly WindowCaptureCapabilityDomain _captureDomain;
+    private readonly FileCapabilityDomain? _fileDomain;
     private readonly ProviderDocumentCapabilityDomain _documentDomain;
     private readonly PermissionCapabilityDomain _permissionDomain;
     private readonly MarketplaceCapabilityDomain _marketplaceDomain;
@@ -200,7 +201,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         _mediaDomain = new MediaCapabilityDomain(_backend);
         _privateSecretDomain = new PrivateSecretCapabilityDomain(_backend, _identity);
         _privateStateDomain = new PrivateStateCapabilityDomain(_backend, _identity);
-        _captureDomain = new(_identity, _backend.CaptureLibrary, webSessionOwner);
+        _captureDomain = new(_identity, _backend.CaptureLibrary, webSessionOwner, _backend.CaptureReplay);
+        if (_hostGrantedCapabilities.Contains(PlatformCapabilities.FilesReadV1)) _fileDomain = new(_identity,_captureDomain.ResolveForHost);
         _documentDomain = new(_identity);
         _permissionDomain = new(_identity, _declaredCapabilities, _consentStore, RefreshConsentAsync);
         _marketplaceDomain = new(marketplace);
@@ -209,6 +211,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         _webSessionDomain = new(webSessions);
         _backend.EventPublished += OnBackendEvent;
         if (_backend.CaptureLibrary is { } captureLibrary) captureLibrary.Changed += OnCaptureLibraryChanged;
+        if (_backend.CaptureReplay is { } replay) replay.Changed += OnReplayChanged;
     }
 
     public BrokerLifecycleState Lifecycle { get { lock (_gate) return _lifecycle; } }
@@ -365,6 +368,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         return BrokerCapabilityDomains.Resolve(request.CapabilityId) switch
         {
             BrokerCapabilityDomain.Pinning => PinningCapabilityDomain.Admit(request.Operation,request.Payload),
+            BrokerCapabilityDomain.Files => await (_fileDomain??throw new BrokerException("permission_denied","File references are unavailable.")).ExecuteAsync(request.Operation,request.Payload,requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.WebSessions => await _webSessionDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Activity => await _activityDomain.ExecuteAsync(request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Notifications => await _notificationDomain.ExecuteAsync(request.Payload, requestToken).ConfigureAwait(false),
@@ -372,7 +376,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             BrokerCapabilityDomain.Marketplace => await _marketplaceDomain.ExecuteAsync(request.Operation,request.Payload,requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Performance => await _performanceDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.ProviderDocuments => _documentDomain.Execute(request.Operation, request.Payload, requestToken),
-            BrokerCapabilityDomain.WindowCapture => await _captureDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
+            BrokerCapabilityDomain.WindowCapture => await ExecuteCaptureDomainAsync(request, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Displays =>
                 await _displayProfilesDomain.ExecuteAsync(request.Operation, request.Payload, _identity, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Power =>
@@ -481,6 +485,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         foreach (var lease in canceled) lease.SignalCancellation();
         if (!granted.Contains(PlatformCapabilities.WindowCaptureV1)) _captureDomain.Revoke(PlatformCapabilities.WindowCaptureV1);
         if (!granted.Contains(PlatformCapabilities.CaptureLibraryReadV1)) _captureDomain.Revoke(PlatformCapabilities.CaptureLibraryReadV1);
+        if (!granted.Contains(PlatformCapabilities.CaptureLibrarySaveV1)) _captureDomain.Revoke(PlatformCapabilities.CaptureLibrarySaveV1);
         if (!granted.Contains(PlatformCapabilities.ProviderDocumentsV1)) _documentDomain.Revoke();
     }
 
@@ -501,6 +506,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         }
         foreach (var lease in canceled) lease.SignalCancellation();
         _captureDomain.Dispose();
+        _fileDomain?.Dispose();
         _documentDomain.Revoke();
         _permissionDomain.CancelPending();
     }
@@ -564,7 +570,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private RequestLease CreateRequestLease(
         BrokerCapabilityDefinition capability,
         BrokerRequestEnvelope request,
-        CancellationToken callerCancellation)
+        CancellationToken callerCancellation,
+        bool continueAdmittedOperation = false)
     {
         lock (_gate)
         {
@@ -601,7 +608,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             }
             var lease = new RequestLease(
                 this, capability.Id, operationKind, capability.AllowsBackgroundForOperation(request.Operation),
-                capability.AllowsInFlightContinuationForOperation(request.Operation),
+                continueAdmittedOperation || capability.AllowsInFlightContinuationForOperation(request.Operation),
                 dashboardGestureAuthorized,
                 callerCancellation);
             _requestLeases.Add(lease);
@@ -790,16 +797,22 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         }
     }
 
-    private void OnCaptureLibraryChanged(CaptureLibraryChanged change)
+    private void OnCaptureLibraryChanged(CaptureLibraryChanged change) => PublishCaptureReadEvent("capture-library.changed", BrokerJson.ToElement(change));
+    private void OnReplayChanged(CaptureReplayStatus change)
+    {
+        PublishCaptureReadEvent("capture.replay.changed", BrokerJson.ToElement(CaptureReplayProjection.ForReader(change, false)));
+        PublishCaptureReadEvent("capture.replay.encoding-changed", BrokerJson.ToElement(change));
+    }
+    private void PublishCaptureReadEvent(string eventType, JsonElement payload)
     {
         var envelope = new BrokerEventEnvelope(BrokerJson.ProtocolVersion, Interlocked.Increment(ref _eventSequence),
-            PlatformCapabilities.CaptureLibraryReadV1, "capture-library.changed", BrokerJson.ToElement(change));
+            PlatformCapabilities.CaptureLibraryReadV1, eventType, payload);
         BrokerEventSubscription[] subscribers;
         lock (_gate)
         {
             if (_disposed) return;
             subscribers = _subscriptions.Where(subscription => subscription.CapabilityId == PlatformCapabilities.CaptureLibraryReadV1 &&
-                subscription.EventType == "capture-library.changed").ToArray();
+                subscription.EventType == eventType).ToArray();
         }
         foreach (var subscriber in subscribers) subscriber.Publish(envelope);
     }
@@ -866,6 +879,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             ClearDashboardGestureAuthoritiesLocked();
             _backend.EventPublished -= OnBackendEvent;
             if (_backend.CaptureLibrary is { } captureLibrary) captureLibrary.Changed -= OnCaptureLibraryChanged;
+            if (_backend.CaptureReplay is { } replay) replay.Changed -= OnReplayChanged;
             foreach (var subscription in _subscriptions) subscription.Revoke();
             _subscriptions.Clear();
             canceled = _requestLeases.ToList();
@@ -874,6 +888,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         foreach (var lease in canceled) lease.SignalCancellation();
         _appLibraryDomain.Dispose();
         _captureDomain.Dispose();
+        _fileDomain?.Dispose();
         _documentDomain.Dispose();
         _permissionDomain.Dispose();
         return ValueTask.CompletedTask;

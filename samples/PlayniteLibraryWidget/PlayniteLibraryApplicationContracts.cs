@@ -21,6 +21,10 @@ internal sealed record PlayniteLibraryAuthorityProjection(
     IReadOnlyList<PlayniteLibraryCategory> Categories,
     IReadOnlyDictionary<string, string?> CompletionStatuses)
 {
+    // Projected from the full catalog before applying Home/Library filters.
+    // Every known game has a key, including games with no completion status.
+    internal bool ContainsGame(string savedId) => CompletionStatuses.ContainsKey(savedId);
+
     internal static PlayniteLibraryAuthorityProjection Empty { get; } =
         new([], [], [], new Dictionary<string, string?>(StringComparer.Ordinal));
 }

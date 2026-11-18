@@ -21,6 +21,7 @@ internal sealed record WidgetActionRequest(WidgetPresentationFrame Displayed, Wi
     internal WidgetPinnedProjection? PinnedProjection { get; init; }
     internal WidgetPresentationIndexedLease? IndexedLease { get; init; }
     internal string? IndexedItemKey { get; init; }
+    internal bool IsPreviewIntent { get; init; }
 }
 
 /// <summary>
@@ -72,6 +73,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         needsEntry = needsEntry || FocusedBinding() is not { } focused || !Navigable(focused) ||
             focused.Element is WidgetIndexedCollectionView { IsFocusParked: true, IsEntryPending: false } ||
             RememberedBinding() is { } preferred && !ReferenceEquals(preferred, focused);
+        CaptureEntryOwnership(replace: true);
         QueueEntryFocus();
     }
 
@@ -84,6 +86,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         automaticFocusEnabled = enabled;
         if (!enabled)
         {
+            pendingEntryRestore = null;
             SuspendCollectionReturn();
             CancelPassiveScrollFocus();
             scrollGesture = null;
@@ -146,6 +149,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (fragmentRootId is null && !presentationOnly && nextPresentation.IsAppearanceUpdateOf(presentation))
         { ApplyAppearanceFrame(nextPresentation); return; }
         var plan = Plan(root, rootScope);
+        PreparePreviewRefreshFocus(plan,nextPresentation);
         // Transition preparation already revokes and detaches native controls.
         // Capture logical focus and enter the publication transaction before any
         // such mutation can trigger WinUI's focused-element-removal recovery.
@@ -156,10 +160,13 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         // or retains the fallback produced by that structural transaction. A
         // later real focus choice supersedes that authority instead.
         var restoreIntent = entryIntentVersion;
+        var entryFocusBeforePublication = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        var entryOwnedBeforePublication = pendingEntryRestore is { } entryBefore && NativeRestoreStillOwnsFocus(EntryTarget(), entryBefore.NativeFallback);
         var pendingFocus = sameOwner && focused is null && pendingRestore is { } pending &&
             NativeRestoreStillOwnsFocus(pending) ? pending.Target : null;
         var reconciliationFocus = focused ?? pendingFocus;
         var oldScope = activeScope;
+        if (!sameOwner || oldScope != nextPresentation.Scope) pendingEntryRestore = null;
         var collapsedHeader = hasExpandedDisclosures && sameOwner && oldScope == nextPresentation.Scope && presentationActive &&
             presentationInputEnabled && automaticFocusEnabled && !presentationOnly
                 ? CollapsedDisclosureHeader(plan, focused) : null;
@@ -169,12 +176,15 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (sameOwner && oldScope != nextPresentation.Scope && focused is not null)
             RememberFocus(focused);
         TransitionCommit transition;
+        CachedPage? restoredPage;
         ModalExit? modalExit;
         applying = true;
         try
         {
             CaptureReturnViewport(plan, sameOwner, focused);
             PreparePageMemory(plan, sameOwner);
+            restoredPage = PreparePageCache(plan, sameOwner && frame!.Authority.WorkerRun == next.Authority.WorkerRun &&
+                frame.Descriptor.PackageContentDigest == next.Descriptor.PackageContentDigest);
             transition = PrepareTransitions(plan, sameOwner);
             modalExit = PrepareModalExit(plan, sameOwner);
             var nextBindings = new Dictionary<string, Binding>(StringComparer.Ordinal);
@@ -182,8 +192,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             foreach (var declaration in plan.Values)
             {
                 nextHasExpandedDisclosures |= declaration.Node.Disclosure?.IsExpanded == true;
-                nextBindings.Add(declaration.Node.Id, sameOwner && !transition.ReplacedIds.Contains(declaration.Node.Id)
+                nextBindings.Add(declaration.Node.Id, restoredPage?.Bindings.GetValueOrDefault(declaration.Node.Id) ?? (sameOwner && !transition.ReplacedIds.Contains(declaration.Node.Id)
                     && bindings.TryGetValue(declaration.Node.Id, out var retained)
+                    && !IsCachedBinding(retained)
                     && retained.Identity == declaration.Identity
                     && (declarations[declaration.Node.Id].Node.Disclosure is null) == (declaration.Node.Disclosure is null)
                     && SameGridLayoutMode(declarations[declaration.Node.Id].Node, declaration.Node)
@@ -193,7 +204,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     && declarations[declaration.Node.Id].Node.ActionSurfacePresentation == declaration.Node.ActionSurfacePresentation
                     && (declaration.Node.Kind != ViewNodeKind.ActionSurface ||
                         (declarations[declaration.Node.Id].Node.ActionId is null) == (declaration.Node.ActionId is null))
-                    ? retained : Create(declaration, IsModalDialog(declaration, plan), IsInlineLink(declaration, plan)));
+                    ? retained : Create(declaration, IsModalDialog(declaration, plan), IsInlineLink(declaration, plan))));
             }
             var currentRoot = nextBindings[root.Kind == ViewNodeKind.ModalLayer ? root.Children[0].Id : root.Id].LayoutElement;
             if (sameOwner) RetainBackgroundPaint(nextBindings, plan);
@@ -213,6 +224,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             else if (Content is FrameworkElement previousRoot && !ReferenceEquals(previousRoot, nextBindings[root.Id].LayoutElement)) Content = null;
             foreach (var (id, binding) in bindings)
             {
+                if (IsCachedBinding(binding)) continue;
                 if (binding.Element is WidgetRichTextView rich)
                     rich.DetachExcept(child => child.Tag is WidgetElementIdentity childIdentity &&
                         plan.TryGetValue(childIdentity.Id, out var nextChild) && nextChild.ParentId == id &&
@@ -270,6 +282,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             UpdateModalGeometry();
             if (motionStage is not null) { motionStage.SetCurrent(currentRoot); motionStage.SetModal(currentModal); Content = motionStage; }
             else Content = bindings[root.Id].LayoutElement;
+            ParkCachedPage();
+            ResumeCachedPage(restoredPage);
             RefreshReadingFocus();
             needsEntry = needsEntry || !sameOwner || oldScope != nextPresentation.Scope
                 || focused?.Element is WidgetIndexedCollectionView { IsFocusParked: true, IsEntryPending: false }
@@ -277,6 +291,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     || !ReferenceEquals(current, reconciliationFocus) || !Navigable(current)));
             if (!presentationOnly && fragmentRootId is null) UpdateFocusPolicy(nextPresentation.View);
             else needsEntry = false;
+            CaptureEntryOwnership(beforePublication: entryFocusBeforePublication, ownedBeforePublication: entryOwnedBeforePublication);
             // New group/navigation intent can cancel restoration during policy
             // reconciliation. Never resurrect that cancelled target.
             var restoreTarget = focused ?? (restoreIntent == entryIntentVersion ? pendingFocus : null);
@@ -300,6 +315,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         ValidateSliderAdjustment();
         QueueMediaRefresh();
         RestorePageMemory();
+        if (restoredPage is not null && needsEntry && automaticFocusEnabled && presentationInputEnabled)
+            RestoreRetainedFocusPresentation(requireVisible: true);
         if (needsEntry || pendingRestore is not null || pendingGroupEntry is not null) QueueEntryFocus();
         if (fragmentRootId is null) UpdateScrollReveal(nextPresentation.View);
         QueueSurfaceUpdate();
@@ -316,7 +333,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (!presentationActive || presentationOnly || !automaticFocusEnabled) return;
         if (focusQueued) return;
         focusQueued = true;
-        if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, RestoreFocus)) focusQueued = false;
+        if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => { RestoreFocus(); QueueMemoryRestoration(); })) focusQueued = false;
     }
 
     private void RestoreFocus()
@@ -328,11 +345,12 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         restoreNativeFocus = false;
         if (TryRestoreTransientFocus()) return;
         if (TryRestoreGroupEntry()) return;
+        if (needsEntry && !EntryStillOwnsNativeFocus()) return;
         if (reassertFocus && FocusedBinding() is { } current && Navigable(current) &&
             current.Element is not WidgetIndexedCollectionView { IsFocusParked: true } &&
             (RememberedBinding() is not { } preferred || ReferenceEquals(preferred, current)) &&
             FocusManager.GetFocusedElement(XamlRoot) is Control leaf && leaf.Focus(FocusState.Keyboard))
-            needsEntry = false;
+        { needsEntry = false; pendingEntryRestore = null; }
         if (pendingRestore is { } pending)
         {
             pendingRestore = null;
@@ -350,16 +368,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             }
         }
         if (!needsEntry) return;
-        var scope = activeScope;
-        Binding? target = null;
-        if (remembered.TryGetValue(scope, out var identity) && bindings.TryGetValue(identity.Id, out var rememberedBinding)
-            && rememberedBinding.Identity == identity && Navigable(rememberedBinding)) target = rememberedBinding;
-        if (target is null && effectiveView!.InitialFocusId is { } initial && bindings.TryGetValue(initial, out var initialBinding)
-            && Navigable(initialBinding)) target = initialBinding;
-        target ??= bindings.Values.FirstOrDefault(Navigable);
+        var target = EntryTarget();
         if (target is not null)
         {
-            if (FocusBinding(target)) { needsEntry = false; ClearEntryLayoutWait(); }
+            if (FocusBinding(target)) { needsEntry = false; pendingEntryRestore = null; ClearEntryLayoutWait(); }
             else WaitForEntryLayout(target);
         }
     }
@@ -367,11 +379,17 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private NativeFocusRestore? CaptureNativeRestore(Binding? target) => target is null ? null :
         new(target, XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject);
 
-    private bool NativeRestoreStillOwnsFocus(NativeFocusRestore restore)
+    private bool NativeRestoreStillOwnsFocus(NativeFocusRestore restore) => NativeRestoreStillOwnsFocus(restore.Target, restore.NativeFallback);
+
+    private bool NativeRestoreStillOwnsFocus(Binding? target, DependencyObject? fallback)
     {
         var current = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
-        return current is null || ReferenceEquals(current, restore.NativeFallback) ||
-            ReferenceEquals(FindBinding(current), restore.Target);
+        return NativeRestoreStillOwnsFocus(target,fallback,current);
+    }
+    private bool NativeRestoreStillOwnsFocus(Binding? target,DependencyObject? fallback,DependencyObject? current)
+    {
+        return current is null || ReferenceEquals(current, fallback) ||
+            target is not null && ReferenceEquals(FindBinding(current), target);
     }
 
     public bool MoveFocus(FocusNavigationDirection direction, bool isRepeat = false)
@@ -391,7 +409,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         UseFocusedPreviewSource();
         // No row is focused yet. Directions cannot use the parking container as
         // a spatial target or cancel the only pending route back to real content.
-        if (FindIndexedCollection() is { IsFocusParked: true, IsEntryPending: true }) return true;
+        if (AwaitingDirectionalEntry()) return true;
         if (FocusedBrowser is { IsInteracting: true } browser && browser.MoveFocus(direction)) return true;
         CancelPassiveScrollFocus();
         scrollGesture?.Stop();
@@ -414,6 +432,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (ActivateContextMenu() || ActivateTextEntry() || ActivateSelect() || HandleSliderButton(ControllerButton.A, ControllerEventPhase.Pressed)) return;
         if (FocusedBinding() is { Identity.Kind: ViewNodeKind.Slider } slider && Eligible(slider))
         { _ = InvokeAsync(slider.Identity, slider.Token); return; }
+        if (TryEnterFocusPreview(ControllerButton.A, ControllerEventPhase.Pressed)) return;
         if (FocusedBrowser is { } browser) { browser.Enter(); return; }
         if (FocusedMediaPlayer is { } captured) { captured.ActivateFocusedControl(); return; }
         if (FindIndexedCollection()?.ActivateFocused() == true) return;
@@ -434,7 +453,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private Binding? FindBinding(DependencyObject? element)
     {
         for (var focused = element; focused is not null && !ReferenceEquals(focused, this);
-            focused = VisualTreeHelper.GetParent(focused))
+            focused = PresentationLayers.LogicalParent(focused))
         {
             var id = focused is FrameworkElement { Tag: WidgetElementIdentity identity } ? identity.Id : string.Empty;
             if (bindings.TryGetValue(id, out var binding) && ReferenceEquals(binding.Element, focused)) return binding;
@@ -452,6 +471,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             // A new native/pointer/automation focus choice after structural
             // reconciliation supersedes the pending low-priority restoration.
             pendingRestore = null;
+            pendingEntryRestore = null;
             if (waitingEntry is not null) { needsEntry = false; ClearEntryLayoutWait(); }
             remembered.Remove(binding.Identity.Scope);
             remembered[binding.Identity.Scope] = binding.Identity;
@@ -470,9 +490,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
 
     private async Task InvokeAsync(WidgetElementIdentity identity, object token)
     {
-        if (applying || presentationOnly || frame is null || !CanDispatchAction || !bindings.TryGetValue(identity.Id, out var binding)
-            || binding.Identity != identity || !ReferenceEquals(binding.Token, token) || !Eligible(binding)
-            || declarations[identity.Id].Node.ActionId is not { } action) return;
+        if (applying || presentationOnly || frame is null || !bindings.TryGetValue(identity.Id, out var binding)
+            || binding.Identity != identity || !ReferenceEquals(binding.Token, token) || !Eligible(binding)) return;
+        if (TryActivatePrimaryPreview(binding.Element)) return;
+        if (!CanDispatchAction || declarations[identity.Id].Node.ActionId is not { } action) return;
         if (previewOwner is { } owner && !owner.EnterFocusPreview(focusFirst: false)) return;
         CancelGroupEntry();
         var displayed = presentation!;
@@ -502,7 +523,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 element = children = new WidgetModalLayer();
                 break;
             case ViewNodeKind.Grid:
-                element = children = node.GridLayout is null ? new WidgetResponsiveGrid() : new Grid();
+                element = children = node.GridLayout is null ? new WidgetResponsiveGrid() : new WidgetExplicitGrid();
                 break;
             case ViewNodeKind.Icon:
                 element = new WidgetPackageIconView();
@@ -518,7 +539,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                         if (!applying && automaticFocusEnabled && presentationActive && presentationInputEnabled)
                             RememberCollectionFocus(declaration.Identity, item);
                     }, PresentationChanged = QueueSurfaceUpdate, ScrollOwnerRetiring = () => RetireCollectionScrolling(declaration.Identity.Id),
-                    ContextChanged = IndexedContextChanged };
+                    ContextChanged = IndexedContextChanged, PrimaryPreviewRequested = TryActivatePrimaryPreview,
+                    HasPendingViewportScroll = CollectionScrollPending,
+                    BoundaryObservationReady = CollectionBoundaryReady,
+                    HasReadingPreview = collection => IsFocusPreviewOpen && ReferenceEquals(previewSource?.Source.Element, collection) };
                 ConfigureCollectionTrace((WidgetIndexedCollectionView)element);
                 break;
             case ViewNodeKind.BackgroundSurface:
@@ -539,7 +563,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 // Worker admission owns action sequencing. A pending IPC response
                 // must not suppress another deliberate press on an enabled control.
                 element = presentationOnly ? children : node.ActionId is null
-                    ? new ContentControl { Content = children, IsTabStop = true, HorizontalContentAlignment = HorizontalAlignment.Stretch, UseSystemFocusVisuals = true }
+                    ? new WidgetReadingSurface { Content = children, IsTabStop = true, HorizontalContentAlignment = HorizontalAlignment.Stretch, UseSystemFocusVisuals = true }
                     : new Button { Content = children, HorizontalContentAlignment = HorizontalAlignment.Stretch,
                     Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions) };
                 break;
@@ -570,6 +594,19 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             case ViewNodeKind.Spacer: element = new WidgetSpacer(); break;
             default: throw new NotSupportedException($"WinUI presentation for {node.Kind} is not implemented.");
         }
+        if (element is WidgetReadingSurface reading)
+        {
+            reading.HasPrimary = () => HasPrimaryPreview(reading);
+            reading.PrimaryExpanded = () => IsPrimaryPreviewExpanded(reading);
+            reading.PrimaryRequested = () => TryActivatePrimaryPreview(reading);
+            reading.CollapseRequested = () => CollapsePrimaryPreview(reading);
+            element.Tapped += (_, args) => { if (TryActivatePrimaryPreview(element)) args.Handled = true; };
+            element.KeyDown += (_, args) =>
+            {
+                if (args.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Space &&
+                    TryActivatePrimaryPreview(element)) args.Handled = true;
+            };
+        }
         element.Tag = declaration.Identity;
         if (element is HyperlinkButton inlineControl) ConfigureInlineLinkInput(inlineControl);
         if (element is Button depthButton)
@@ -598,19 +635,24 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             }
             indexed.Apply(presentation!, node, binding.Identity.Scope);
         }
+        if (element is WidgetReadingSurface readingSurface) readingSurface.SetPrimaryPresentation(DeclaresPrimaryPreview(binding.Identity.Id));
         if (element is WidgetArtworkView image) UpdateImage(binding, image, node);
         UpdateContainerLayout(binding, node);
         if (binding.Children is WidgetPosterPanel poster) UpdatePoster(poster, node);
         ApplySizeAndTypography(element, node);
         if (element is Media.WidgetMediaViewport viewport) UpdateMediaViewport(viewport, node, binding.Identity.Scope);
         if (element is Browser.BrowserSlot browser) UpdateBrowserSlot(browser, node, binding.Identity.Scope);
-        if (element is Media.MediaPlayerView captured) UpdateMediaPlayer(captured, node, binding.Identity.Scope);
+        if (element is Media.MediaPlayerView captured)
+        { UpdateMediaPlayer(captured, node, binding.Identity.Scope); UpdateMediaPoster(binding, captured, node); }
         if (element is Previews.WidgetWindowPreview preview) preview.Configure(presentationOnly || !presentationActive ? null : WindowPreviews, frame!, node);
         AutomationProperties.SetName(element, node.AccessibilityLabel ?? node.Text ?? node.Id);
         if (element is WidgetValueButton valueButton)
+        {
+            valueButton.IsCommandMenu = node.IsCommandMenu == true;
             valueButton.SetAccessibleValue(node.AccessibilityValue ?? (node.Kind == ViewNodeKind.Select
                 ? node.SelectOptions.FirstOrDefault(option => option.IsSelected)?.Label : node.TextEntryValue),
                 node.Kind == ViewNodeKind.TextEntry && node.TextEntryInputKind == TextEntryInputKind.Sensitive);
+        }
         if (element is FontIcon icon) WidgetGlyphs.Apply(icon, node, playStationPrompts);
         if (element is WidgetPackageIconView packageIcon) UpdateNativeIcon(packageIcon, node);
         if (element is TextBlock text) WidgetTextStyleAdapter.SetSource(text, node.Kind == ViewNodeKind.TextEntry ? TextEntryLabel(node) : node.Text ?? string.Empty);

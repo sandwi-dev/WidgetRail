@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.OverlayFrontend.WinUI.Collections;
+using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Validation;
@@ -103,6 +104,24 @@ internal sealed partial class IndexedWidgetValidationPage
             }
             Check(!View()!.UseSystemFocusVisuals, "inner GridView never paints a whole-region focus border");
 
+            var readyCollection = Descendants(presenter).OfType<Presentation.WidgetIndexedCollectionView>().Single();
+            var readyTarget = readyCollection.CaptureFocusedItem()!;
+            // The two-item fixture shrink-wraps its native grid. Give the row
+            // room beyond native padding and prove this fast-path precondition.
+            var readyHeight = readyCollection.Height;
+            readyCollection.Height = 160;
+            await Wait(() => readyCollection.RetainedFocusTarget(readyTarget, requireVisible: true) is not null);
+            Check(true, "ready-target fixture has a fully visible current native row");
+            var readyScroll = Descendants(View()!).OfType<ScrollViewer>().First();
+            var readyOffset = readyScroll.VerticalOffset;
+            Descendants(presenter).OfType<Button>().Single(button => AutomationProperties.GetAutomationId(button) == "Widget.parent").Focus(FocusState.Keyboard);
+            Check(readyCollection.Enter(readyTarget) && !readyCollection.IsEntryPending && FocusId() == "Widget.items.Item.0",
+                "current visible target focuses synchronously without a queued layout handoff");
+            Check(Math.Abs(readyScroll.VerticalOffset - readyOffset) < 1,
+                "ready-target fast entry does not issue an unnecessary scroll");
+            readyCollection.Height = readyHeight;
+            await Task.Delay(100, lifetime.Token);
+
             // A superseding ordinary focus request must still win. No reset
             // completion is allowed to pull focus back into the collection.
             await Send("focus-placeholder");
@@ -115,12 +134,51 @@ internal sealed partial class IndexedWidgetValidationPage
             await Wait(() => View()!.Items[33] is IndexedItem<WidgetIndexedRow> { Value.Lease.IsCurrent: true });
             await Task.Delay(200, lifetime.Token);
             Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), parent), "explicit focus outside the collection is not reclaimed");
+            foreach(var scenario in new string[]{"vertical","horizontal","reset","wrong-key","evicted","passive"})
+            {
+                parent.Focus(FocusState.Keyboard);
+                await SendRebase(scenario=="horizontal"?"entry-rebase-start-horizontal":"entry-rebase-start");
+                var pendingCollection=Descendants(presenter).OfType<WidgetIndexedCollectionView>().Single();
+                var before=FindNode(session!.GetState("indexed-owned")!.LastGood!.Snapshot.Root,"items")!.IndexedCollection!;
+                var requested=new IndexedCollectionFocusTarget("items",before.SourceId,before.QueryGeneration,
+                    scenario=="wrong-key"?"item.118":"item.119",19);
+                Check(scenario=="passive"?pendingCollection.Reveal(requested):pendingCollection.Enter(requested),
+                    "gated publication admits the initial owned intent: "+scenario);
+                await Wait(()=>pendingCollection.HasPendingNativeNavigation);
+                await SendRebase(scenario=="reset"?"entry-rebase-reset":scenario=="evicted"?"entry-rebase-evict":"entry-rebase-prepend");
+                var after=FindNode(session.GetState("indexed-owned")!.LastGood!.Snapshot.Root,"items")!.IndexedCollection!;
+                observations.Add(new{phase="pending-entry-publication",scenario,before,after,pending=pendingCollection.PendingExactEntryForValidation});
+                if(scenario is "vertical" or "horizontal")
+                {
+                    await Wait(()=>pendingCollection.PendingExactEntryForValidation is {ItemKey:"item.119",Index:39} current&&current.QueryGeneration==after.QueryGeneration);
+                    Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),parent),"rebased pending target does not focus an estimate: "+scenario);
+                }
+                else Check(pendingCollection.PendingExactEntryForValidation is null,"reset, missing/wrong key and passive reveal never acquire a rebased focus intent: "+scenario);
+                await SendRebase("entry-rebase-release");
+                if(scenario is "vertical" or "horizontal")
+                {
+                    await Wait(()=>pendingCollection.CaptureFocusedItem() is {ItemKey:"item.119",Index:39} && !pendingCollection.HasPendingNativeNavigation);
+                    var viewport=Descendants(pendingCollection.NativeView).OfType<ScrollViewer>().First();
+                    var target=(FrameworkElement)pendingCollection.NativeView.ContainerFromIndex(39);
+                    Check(WidgetReadingScrollFocus.IsVisible(target,viewport),"same-domain prepend completes the exact new target visibly: "+scenario);
+                }
+                else
+                {
+                    await Wait(()=>pendingCollection.NativeView.Items[0] is IndexedItem<WidgetIndexedRow>{Value.Lease.IsCurrent:true});
+                    Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),parent),"late payload preserves external focus for rejected/passive rebase: "+scenario);
+                }
+            }
             Write(true, null);
         }
         catch (Exception error) { Write(false, error.ToString()); }
         finally { presenter.FocusTrace = null; }
 
         string FocusId() => FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused ? AutomationProperties.GetAutomationId(focused) : "none";
+        async Task SendRebase(string action)
+        {
+            await Send(action);
+            await Wait(()=>Descendants(presenter).OfType<TextBlock>().Any(text=>AutomationProperties.GetAutomationId(text)=="Widget.status"&&text.Text==action));
+        }
         async Task Send(string action)
         {
             var frame = session!.GetState("indexed-owned")!.LastGood!;

@@ -36,6 +36,42 @@ channel navigation available and offers Refresh to retry.
 Sign-in opens the same persistent Discord
 session at a size that permits QR sign-in; authentication stays in that page.
 
+## Native messages and capture sharing
+
+Messages uses bounded native conversation/history lists. Gateway changes update
+retained text locally; opening history, paging and exceptional event-gap recovery
+can request history. Ordinary incoming messages do not cause one HTTP read each.
+Account/session changes retire the previous account's data and file grants.
+
+Incoming messages appear on the left and your messages on the right. The native
+timeline renders bounded Markdown emphasis/code/quotes, Unicode and custom emoji,
+mentions, replies, safe embed images and attachment metadata. Spoilers require an
+explicit reveal. Ordinary text stays inline; images, media and links can expose
+an interactive preview. Reactions and polls are read-only summaries; voting,
+reaction changes and unsupported animated stickers remain in Discord. This is
+not a complete renderer for every Discord message type.
+
+Live arrivals follow the end only while the host considers the current viewport
+to be reading the end. Reading older content preserves position and offers
+**New messages**. Initial and paged history remains bounded to a 40-message window.
+Opening history does not mark messages read in Discord; automatic read receipts
+are intentionally not sent without proof of which messages were actually viewed.
+
+Every external file share opens recipient selection. Incoming files remain separate
+until that choice; Cancel or Back releases only the incoming batch. Choosing the
+same recipient adds unique files to its unsent draft; another recipient gets its
+own draft. Deduplication uses the broker's opaque content identity when available,
+otherwise only exact grant IDs—not matching filenames or file sizes. Up to 16
+conversation drafts remain in this widget lifetime. Their attachment references
+retain the shared service's expiry and owner limits; they are not persistent uploads.
+
+File controls sit outside the history scroller. Remove handles one attachment;
+Clear attachments preserves the draft text. Provider count/size limits appear in
+recipient selection with removal available. An existing send can continue while a
+new incoming share waits. Unconfirmed sends retain their exact nonce and files for
+Check delivery; incoming files cannot modify that unresolved submission. Nothing
+uploads or sends until the user explicitly chooses Send.
+
 Friend activity uses read-only, feature-probed provider stores and does not require
 Discord's own Home panel to stay open. It includes at most 50 visible friend rows
 and distinguishes no current activity from unavailable provider APIs. Join checks
@@ -97,6 +133,14 @@ Use **Enable notifications** on the Discord controls page to grant website
 notifications for the native widget’s Discord profile. The host offers a
 temporary or remembered choice and delivers browser notifications to WidgetRail’s
 notification centre. Website settings can change a saved block.
+
+An exact notification-to-message association can open the native conversation and
+reveal that message. A retained target needs no history read; a cold target loads
+one bounded page around it. Drafts remain attached to their original recipient.
+Missing or stale associations use the original Discord browser activation, as do
+clicks during an unresolved recipient selection or active send. The integration
+does not match notification titles, create duplicate notifications or fetch history
+for every notification.
 
 Outgoing sharing uses the permission-bound host capture service. Its native
 chooser selects one application, optional application audio, and supported

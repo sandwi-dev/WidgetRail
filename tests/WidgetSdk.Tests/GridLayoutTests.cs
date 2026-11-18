@@ -45,6 +45,15 @@ internal static class GridLayoutTests
             """));
         Equal(1d, defaultTrack.Root.GridLayout!.Rows[0].Value);
         Equal(GridTrackSizing.Star, defaultTrack.Root.GridLayout.Columns[0].Sizing);
+        var alignedElement=UI.Text("Short","aligned").AlignInGrid(GridCellAlignment.End,GridCellAlignment.Start).InGrid(column:1);
+        var aligned=new WidgetView(UI.Grid("aligned-grid",[],[GridTrack.Auto(),GridTrack.Star()],alignedElement)).CreateSnapshot("aligned",1);
+        Equal(ProtocolConstants.TargetedCollectionPresentationVersion,aligned.ProtocolVersion);
+        Equal(GridCellAlignment.End,aligned.Root.Children[0].GridCell!.HorizontalAlignment);
+        Equal(GridCellAlignment.Start,aligned.Root.Children[0].GridCell!.VerticalAlignment);
+        True(ViewSnapshotValidator.Validate(aligned with{ProtocolVersion=121}).Any(error=>error.Code=="feature_requires_version"),"Cell alignment requires its negotiated protocol.");
+        var reset=new WidgetView(UI.Grid("aligned-grid",[],[GridTrack.Auto(),GridTrack.Star()],alignedElement.AlignInGrid())).CreateSnapshot("aligned",2);
+        Equal(ProtocolConstants.GridLayoutVersion,reset.ProtocolVersion);
+        True(!System.Text.Encoding.UTF8.GetString(SnapshotJson.Serialize(reset)).Contains("horizontalAlignment",StringComparison.Ordinal),"Default alignment must remain absent on the old wire shape.");
         return Task.CompletedTask;
     }
 
@@ -78,6 +87,8 @@ internal static class GridLayoutTests
         Throws<ArgumentOutOfRangeException>(() => GridTrack.Auto(10, 5));
         Throws<ArgumentOutOfRangeException>(() => UI.Text("X", "x").InGrid(column: 63, columnSpan: 2));
         Throws<ArgumentOutOfRangeException>(() => UI.Grid("g", [], []).Spacing(double.NaN, 0));
+        Throws<ArgumentOutOfRangeException>(()=>UI.Text("X","x").AlignInGrid((GridCellAlignment)999));
+        Reject(valid.Root with{Children=[valid.Root.Children[0] with{GridCell=new(){HorizontalAlignment=(GridCellAlignment)999}}]},"invalid_grid_alignment");
         return Task.CompletedTask;
     }
 
@@ -109,6 +120,14 @@ internal static class GridLayoutTests
                 .TransitionLayout("choices", "two", 2).InGrid(0))).CreateSnapshot("grid.widget", 1);
         Equal(0, reverse.Root.Children[0].GridCell!.Row);
         Equal(ResponsiveVisibility.CompactOnly, reverse.Root.Children[0].VisibleWhen);
+        var positioned=UI.Text("Composed","composed").InGrid(row:1,column:1).VisibleWhen(ResponsiveVisibility.ExpandedOnly)
+            .AlignInGrid(GridCellAlignment.End,GridCellAlignment.Start).TransitionLayout("grid-items","composed",1).InGrid(row:0,column:1);
+        var composed=new WidgetView(UI.Grid("composed-grid",[],[GridTrack.Auto(),GridTrack.Star()],positioned)).CreateSnapshot("composed",1);
+        var cell=composed.Root.Children[0].GridCell!;
+        Equal(0,cell.Row);Equal(1,cell.Column);Equal(GridCellAlignment.End,cell.HorizontalAlignment);Equal(GridCellAlignment.Start,cell.VerticalAlignment);
+        Equal(ResponsiveVisibility.ExpandedOnly,composed.Root.Children[0].VisibleWhen);
+        var unaligned=new WidgetView(UI.Grid("composed-grid",[],[GridTrack.Auto(),GridTrack.Star()],positioned.VisibleWhen(ResponsiveVisibility.CompactOnly).AlignInGrid())).CreateSnapshot("composed",2);
+        Equal(1,unaligned.Root.Children[0].GridCell!.Column);Equal<GridCellAlignment?>(null,unaligned.Root.Children[0].GridCell!.HorizontalAlignment);
 
         var pin = new WidgetView(UI.Text("Main", "main")) { PinnedLayouts = [WidgetView.PinnedLayout("pin", "Pin", new(), UI.Grid("pin-grid", [], []))] };
         Equal(64, pin.CreateSnapshot("pin.widget", 1).ProtocolVersion);
@@ -143,6 +162,14 @@ internal static class GridLayoutTests
             Properties = [new(PresentationProperty.GridCell, JsonSerializer.SerializeToElement(new GridCellPlacement { Row = 2 }))] }] };
         Throws<ProtocolValidationException>(() => PresentationUpdateMaterializer.Apply(reset, bad, Generation));
         True(PresentationPropertyMetadata.Impact(PresentationProperty.GridLayout).HasFlag(PresentationPropertyImpact.MeasureLayout), "Track changes require layout.");
+        var current=before with{ProtocolVersion=ProtocolConstants.TargetedCollectionPresentationVersion};
+        var aligned=current with{Sequence=2,Root=current.Root with{Children=[current.Root.Children[0] with
+            {GridCell=current.Root.Children[0].GridCell! with{HorizontalAlignment=GridCellAlignment.End,VerticalAlignment=GridCellAlignment.Start}}]}};
+        var alignmentUpdate=WidgetPresentationDiff.Create(current,aligned,Generation,1,PresentationUpdateCapabilities.Current,WidgetPresentationTransactionKind.IncrementalUpdate).Update;
+        Equal(SnapshotJson.Serialize(aligned),SnapshotJson.Serialize(PresentationUpdateMaterializer.Apply(current,alignmentUpdate!,Generation)));
+        var defaultAgain=current with{Sequence=3};
+        alignmentUpdate=WidgetPresentationDiff.Create(aligned,defaultAgain,Generation,2,PresentationUpdateCapabilities.Current,WidgetPresentationTransactionKind.IncrementalUpdate).Update;
+        Equal(SnapshotJson.Serialize(defaultAgain),SnapshotJson.Serialize(PresentationUpdateMaterializer.Apply(aligned,alignmentUpdate!,Generation)));
         return Task.CompletedTask;
     }
 

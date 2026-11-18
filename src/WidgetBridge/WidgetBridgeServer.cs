@@ -355,6 +355,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await mediaPlaybackLeases.DisposeAsync().ConfigureAwait(false);
         if (_disposed) return;
         _disposed = true;
         _taskActivations.Clear();
@@ -395,13 +396,26 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             await HandleProviderDocumentAsync(request, cancellationToken).ConfigureAwait(false);
             return;
         case BridgeMessageTypes.ResolveMediaPlayer:
+        case BridgeMessageTypes.ReleaseMediaPlayer:
             await HandleMediaPlayerAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
+        case BridgeMessageTypes.GetReplayStatus:
+        case BridgeMessageTypes.TakeReplayWork:
+        case BridgeMessageTypes.CheckReplayCommand:
+        case BridgeMessageTypes.CompleteReplayCommand:
+        case BridgeMessageTypes.SaveReplay:
+        case BridgeMessageTypes.StopReplay:
+        case BridgeMessageTypes.ReplayPowerState:
+            await HandleReplayAsync(request, cancellationToken).ConfigureAwait(false);
             return;
         case BridgeMessageTypes.TakeCapture:
         case BridgeMessageTypes.CaptureCapabilities:
         case BridgeMessageTypes.CheckCapture:
         case BridgeMessageTypes.RecordingCapture:
         case BridgeMessageTypes.CompleteCapture:
+        case BridgeMessageTypes.CheckCaptureEdit:
+        case BridgeMessageTypes.CompleteCaptureEdit:
+        case BridgeMessageTypes.CancelCaptureEdit:
         case BridgeMessageTypes.CompleteCaptureSource:
         case BridgeMessageTypes.CheckCaptureSource:
         case BridgeMessageTypes.CompleteCaptureCopy:
@@ -410,6 +424,11 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         case BridgeMessageTypes.CheckCaptureFolder:
         case BridgeMessageTypes.ResolveCaptureAttachment:
             await HandleCaptureAsync(request, cancellationToken).ConfigureAwait(false);
+            return;
+        case BridgeMessageTypes.TakeFilePicker:
+        case BridgeMessageTypes.CheckFilePicker:
+        case BridgeMessageTypes.CompleteFilePicker:
+            await HandleFilePickerAsync(request, cancellationToken).ConfigureAwait(false);
             return;
         case BridgeMessageTypes.TakePermission:
         case BridgeMessageTypes.CheckPermission:
@@ -843,7 +862,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                     actionRequest.Action,
                     _sessionCancellation,
                     cancellationToken,
-                    actionRequest.WorkerRun)
+                    actionRequest.WorkerRun, actionRequest.InlinePreview)
                 .ConfigureAwait(false);
             var actionAdmission = actionPublication.Value;
             await ReplyActionAdmissionAsync(
@@ -855,6 +874,12 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         {
             var prepare = BridgeJson.FromElement<BridgeIntentPrepareRequest>(request.Payload);
             var result = await _registry.PrepareIntentAsync(prepare, cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(BridgeMessageTypes.IntentPrepared, request.RequestId, result, cancellationToken).ConfigureAwait(false);
+            break;
+        }
+        case BridgeMessageTypes.PrepareWebNotificationIntent:
+        {
+            var result = await _registry.PrepareWebNotificationIntentAsync(BridgeJson.FromElement<BridgeWebNotificationIntentPrepare>(request.Payload), cancellationToken).ConfigureAwait(false);
             await ReplyAsync(BridgeMessageTypes.IntentPrepared, request.RequestId, result, cancellationToken).ConfigureAwait(false);
             break;
         }

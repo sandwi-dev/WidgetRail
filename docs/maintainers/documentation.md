@@ -30,6 +30,10 @@ against source before release; use [the release checklist](release-checklist.md)
 Keep current contracts and reproducible diagnostic procedures. Completed task
 plans, temporary candidate paths, speculative alternatives and per-iteration logs
 belong in Git history. Do not maintain an archive tree duplicating that history.
+The owner-requested `docs/archive/capture-library-improvements-2026-11-17.md`
+is the explicit exception: the current capture/chat goal links it as historical
+evidence. Preserve it while that owner-maintained plan requires it; it is not
+current product documentation or permission to archive unrelated notes.
 Transfer unresolved qualification categories to release preparation without
 claiming that a removed checklist was passed.
 

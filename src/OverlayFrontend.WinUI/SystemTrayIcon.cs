@@ -5,10 +5,12 @@ using System.Text;
 using Microsoft.Win32.SafeHandles;
 using Microsoft.UI.Dispatching;
 using WinUIEx.Messaging;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI;
 
-internal enum SystemTrayCommand : uint { Open = 1, Restart, RestartSilently, Quit }
+internal enum SystemTrayCommand : uint { Open = 1, Restart, RestartSilently, Quit, SaveReplay, StopReplay }
+internal sealed record SystemTrayInvocation(SystemTrayCommand Command,string? ReplaySessionId=null);
 
 /// <summary>Native notification-area icon; owns its icon and menus, never the borrowed window.</summary>
 internal sealed partial class SystemTrayIcon : IDisposable
@@ -18,7 +20,8 @@ internal sealed partial class SystemTrayIcon : IDisposable
     private const uint MessageFlag = 1, IconFlag = 2, TipFlag = 4, GuidFlag = 0x20, ShowTipFlag = 0x80;
     private readonly nint window;
     private readonly Guid identity;
-    private readonly Action<SystemTrayCommand> dispatch;
+    private readonly Action<SystemTrayInvocation> dispatch;
+    private readonly Func<CaptureReplayStatus?>? replayStatus;
     private readonly OwnedIcon icon;
     private readonly WindowMessageMonitor monitor;
     private readonly uint taskbarCreated;
@@ -26,10 +29,11 @@ internal sealed partial class SystemTrayIcon : IDisposable
     private int registrationAttempts;
     private bool disposed, showingMenu;
 
-    internal SystemTrayIcon(nint window, string profile, Action<SystemTrayCommand> dispatch)
+    internal SystemTrayIcon(nint window, string profile, Action<SystemTrayInvocation> dispatch,Func<CaptureReplayStatus?>? replayStatus=null)
     {
         this.window = window;
         this.dispatch = dispatch;
+        this.replayStatus=replayStatus;
         // Stable per profile across updates, without collisions with isolated profiles.
         identity = new Guid(SHA256.HashData(Encoding.UTF8.GetBytes(
             "WidgetRail.SystemTray|" + Path.GetFullPath(profile).TrimEnd('\\', '/').ToUpperInvariant())).AsSpan(0, 16));
@@ -60,7 +64,7 @@ internal sealed partial class SystemTrayIcon : IDisposable
                 if (args.Message.MessageId != CallbackMessage) return;
                 args.Handled = true; args.Result = 0;
                 var notification = (uint)((nuint)args.Message.LParam & 0xffff);
-                if (notification is 0x400 or 0x401) dispatch(SystemTrayCommand.Open); // NIN_SELECT / NIN_KEYSELECT
+                if (notification is 0x400 or 0x401) dispatch(new(SystemTrayCommand.Open)); // NIN_SELECT / NIN_KEYSELECT
                 else if (notification == 0x7b) // WM_CONTEXTMENU (mouse or keyboard)
                 {
                     var position = (nuint)args.Message.WParam;
@@ -121,6 +125,15 @@ internal sealed partial class SystemTrayIcon : IDisposable
             using var menu = new OwnedMenu(CreatePopupMenu());
             if (menu.IsInvalid) throw new Win32Exception(Marshal.GetLastPInvokeError());
             AddItem(SystemTrayCommand.Open, "Open WidgetRail");
+            var replay=replayStatus?.Invoke();
+            if(replay is not null && (replay.Settings.Enabled || replay.SessionId is not null || replay.Saving))
+            {
+                if(AppendMenuW(menu,0x800,0,null)==0)throw new Win32Exception(Marshal.GetLastPInvokeError());
+                var status="Replay · "+replay.Phase+(replay.TargetName is {} target?" · "+target.Replace("&","&&"):"");
+                if(AppendMenuW(menu,2,0,status)==0)throw new Win32Exception(Marshal.GetLastPInvokeError());
+                AddItem(SystemTrayCommand.SaveReplay,replay.Saving?"Saving replay…":"Save replay",replay.SessionId is null||replay.BufferedDurationSeconds<=0||replay.Saving||replay.Phase is not(CaptureReplayPhase.Recording or CaptureReplayPhase.Paused));
+                AddItem(SystemTrayCommand.StopReplay,"Stop replay recording",replay.Phase==CaptureReplayPhase.Stopping);
+            }
             if (AppendMenuW(menu, 0x800, 0, null) == 0) throw new Win32Exception(Marshal.GetLastPInvokeError());
             AddItem(SystemTrayCommand.Restart, "Restart");
             AddItem(SystemTrayCommand.RestartSilently, "Restart silently");
@@ -138,7 +151,7 @@ internal sealed partial class SystemTrayIcon : IDisposable
             PostMessageW(window, 0, 0, 0);
             if (!disposed)
             {
-                if (selected is >= 1 and <= 4) dispatch((SystemTrayCommand)selected);
+                if (selected is >= 1 and <= 6) dispatch(new((SystemTrayCommand)selected,selected is 5 or 6?replay?.SessionId:null));
                 else
                 {
                     var data = Data();
@@ -146,9 +159,9 @@ internal sealed partial class SystemTrayIcon : IDisposable
                 }
             }
 
-            void AddItem(SystemTrayCommand command, string text)
+            void AddItem(SystemTrayCommand command, string text,bool disabled=false)
             {
-                if (AppendMenuW(menu, 0, (nuint)command, text) == 0) throw new Win32Exception(Marshal.GetLastPInvokeError());
+                if (AppendMenuW(menu, disabled?2u:0u, (nuint)command, text) == 0) throw new Win32Exception(Marshal.GetLastPInvokeError());
             }
         }
         finally { showingMenu = false; }

@@ -37,7 +37,22 @@ public sealed partial class WidgetPresentationSession
                 ?? throw new WidgetPresentationSessionException("indexed_input_stale", "The intent item is outside its lease.");
             if (item.Root.ActionId is not { } actionId) return null;
             var action = new WidgetActionEvent(actionId, item.Root.Id, ControllerButton.A, InputScopeId: lease.ScopeId);
-            return IntentActionAuthority.RevalidateIndexed(owners.Origin, owners.Current, item.Root, action) is null ? null : action;
+            return IntentActionAuthority.RevalidateIndexed(owners.Origin, owners.Current, item.Root, action, new(lease.LeaseId, itemKey)) is null ? null : action;
+        }
+    }
+
+    /// <summary>Resolve an exact declared child intent, including interactive leased preview content.</summary>
+    public WidgetActionEvent? ResolveIndexedIntentAction(WidgetPresentationIndexedLease lease,
+        WidgetPresentationFrame displayed, string itemKey, WidgetActionEvent action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        using (_gate.Enter())
+        {
+            var owners = ValidateDisplayedIndexedInputLocked(lease, displayed);
+            var item = lease.Range.Items.SingleOrDefault(item => item.Key == itemKey)
+                ?? throw new WidgetPresentationSessionException("indexed_input_stale", "The intent item is outside its lease.");
+            if (action.InputScopeId != lease.ScopeId) return null;
+            return IntentActionAuthority.RevalidateIndexed(owners.Origin, owners.Current, item.Root, action, new(lease.LeaseId, itemKey)) is null ? null : action;
         }
     }
 
@@ -48,6 +63,17 @@ public sealed partial class WidgetPresentationSession
             ? await AcquirePinnedDispatchAsync(cancellationToken).ConfigureAwait(false) : null;
         var action = ResolveIndexedIntentAction(lease, displayed, itemKey);
         if (action is null || displayed.Authority.WorkerRun is null)
+            throw new WidgetPresentationSessionException("indexed_input_stale", "No current indexed intent action is available.");
+        return await PrepareIntentCoreAsync(displayed, action, lease.Request.Range.PinnedLayoutId,
+            new(lease.LeaseId, itemKey), cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<WidgetIntentPreparation> PrepareIndexedIntentAsync(WidgetPresentationIndexedLease lease,
+        WidgetPresentationFrame displayed, string itemKey, WidgetActionEvent action, CancellationToken cancellationToken)
+    {
+        using var dispatch = lease.Request.Range.PinnedLayoutId is not null
+            ? await AcquirePinnedDispatchAsync(cancellationToken).ConfigureAwait(false) : null;
+        if (ResolveIndexedIntentAction(lease, displayed, itemKey, action) is null || displayed.Authority.WorkerRun is null)
             throw new WidgetPresentationSessionException("indexed_input_stale", "No current indexed intent action is available.");
         return await PrepareIntentCoreAsync(displayed, action, lease.Request.Range.PinnedLayoutId,
             new(lease.LeaseId, itemKey), cancellationToken).ConfigureAwait(false);

@@ -189,8 +189,8 @@ void AudioBounds(){
 }
 struct SourceWindow {
     Handle process,thread;HWND window{};
-    SourceWindow(){
-        const auto exe=Directory()+L"\\WindowCaptureFixture.exe";auto text=L"\""+exe+L"\" --large";
+    explicit SourceWindow(bool stationary=false){
+        const auto exe=Directory()+L"\\WindowCaptureFixture.exe";auto text=L"\""+exe+L"\" --large"+(stationary?L" --static":L"");
         std::vector<wchar_t> command(text.begin(),text.end());command.push_back(0);STARTUPINFOW startup{};startup.cb=sizeof(startup);PROCESS_INFORMATION child{};
         Require(CreateProcessW(exe.c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&child),"Synthetic source creation");
         process.value=child.hProcess;thread.value=child.hThread;
@@ -207,6 +207,28 @@ struct SourceWindow {
     ~SourceWindow(){if(process.value&&WaitForSingleObject(process.value,0)!=WAIT_OBJECT_0){TerminateProcess(process.value,0);WaitForSingleObject(process.value,500);}}
     void Close(){Require(TerminateProcess(process.value,0),"Close exact synthetic source");Require(WaitForSingleObject(process.value,500)==WAIT_OBJECT_0,"Source process exit");}
 };
+void StaticWindowResize(){
+    SourceWindow source(true);Owner owner(30,0,false,source.window);
+    const auto picture=[&](const Packet& packet){
+        const auto left=owner.pixels[size_t(packet.height/2)*packet.width+packet.width/4];
+        const auto right=owner.pixels[size_t(packet.height/2)*packet.width+(packet.width*3)/4];
+        return (left&0x00ff0000u)>0x00e00000u&&(right&0x0000ff00u)>0x0000e000u;
+    };
+    uint32_t previousWidth{},previousHeight{};uint64_t sequence{};
+    for(;;){const auto packet=owner.Read();if(packet.kind!=Kind::Video)continue;
+        Require(picture(packet),"Initial static source picture");previousWidth=packet.width;previousHeight=packet.height;sequence=packet.sequence;owner.Ack(packet);break;}
+    for(const auto shape: {std::pair{800,600},std::pair{2400,1200}}){
+        Require(SetWindowPos(source.window,nullptr,0,0,shape.first,shape.second,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE)!=0,"Owned static source resize");
+        const auto deadline=GetTickCount64()+5000;bool changed=false;
+        while(GetTickCount64()<deadline){const auto packet=owner.Read();Require(packet.kind!=Kind::Ended,"Static resize ended streaming session");if(packet.kind!=Kind::Video)continue;
+            const auto matches=(packet.width!=previousWidth||packet.height!=previousHeight)&&picture(packet);
+            Require(packet.sequence>sequence&&packet.width<=2560&&packet.height<=720,"Static resize stays inside same ordered bounded transport");sequence=packet.sequence;
+            owner.Ack(packet);if(matches){changed=true;previousWidth=packet.width;previousHeight=packet.height;break;}}
+        Require(changed,"Static resize did not deliver a fresh resized picture");
+        printf("PASS static raw resize %dx%d -> mapped %ux%u without restarting transport\n",shape.first,shape.second,previousWidth,previousHeight);
+    }
+    StopResult stopped;Success(WrailCaptureWorkerStop(owner.session,600,&stopped),"Static resize stop");Require(stopped.exited&&!stopped.forced,"Static resize cooperative teardown");
+}
 void WindowCapture(){
     SourceWindow source;Owner owner(30,0,false,source.window);uint32_t frames{};int64_t first{},last{};bool picture=false;
     while(frames<91){
@@ -228,6 +250,8 @@ void WindowCapture(){
 }
 int wmain(int argc,wchar_t** argv){
     try{
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        if(argc==2&&wcscmp(argv[1],L"--static-resize")==0){StaticWindowResize();return 0;}
         if(argc==3&&wcscmp(argv[1],L"--parent-death-parent")==0)return ParentDeathChild(argv[2]);
         if(argc==2&&wcscmp(argv[1],L"--production-flags")==0){ProductionFlags();return 0;}
         if(argc==2&&wcscmp(argv[1],L"--audio")==0){AudioBounds();return 0;}

@@ -100,6 +100,8 @@ internal sealed partial class OverlayShellPage
                     var beforeAction = File.ReadAllText(actionPath);
                     Check(trayGuide.DisplayedHints.Any(hint => hint.Button == WidgetRail.WidgetProtocol.ControllerButton.X),
                         " guide includes current-view dashboard shortcut");
+                    Check(trayGuide.PublishedHintsForValidation.Any(hint => hint.Button == WidgetRail.WidgetProtocol.ControllerButton.X),
+                        " radial guide admits the dashboard shortcut rather than retaining stale informational paint");
                     await RouteButtonAsync(WidgetRail.WidgetProtocol.ControllerButton.X, WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed,
                         WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation);
                     await RouteButtonAsync(WidgetRail.WidgetProtocol.ControllerButton.X, WidgetRail.WidgetProtocol.ControllerEventPhase.Released,

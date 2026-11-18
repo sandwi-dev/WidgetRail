@@ -18,6 +18,6 @@ $webView = Join-Path $packages "microsoft.web.webview2/$version"
 # Same worker sources as the validation build, with test flags and source
 # generators compiled out. This entry point never launches a capture process.
 & (Join-Path $repository 'tools/DiscordWebViewPrototype/Build-Native.ps1') -OutputDirectory $output -WebViewPackageDirectory $webView
-foreach ($file in @('WebRtcCaptureWorker.exe', 'CaptureWorkerHost.dll', 'WebRtcCapturePrototype.dll')) {
+foreach ($file in @('WebRtcCaptureWorker.exe', 'CaptureWorkerHost.dll', 'WebRtcCapturePrototype.dll', 'ReplayCaptureWorker.exe', 'ReplayWorkerHost.dll')) {
     if (!(Test-Path -LiteralPath (Join-Path $output $file))) { throw "Native capture build omitted $file" }
 }

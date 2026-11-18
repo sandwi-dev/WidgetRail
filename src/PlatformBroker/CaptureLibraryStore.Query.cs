@@ -34,6 +34,29 @@ public sealed partial class CaptureLibraryStore
         try
         {
             using var ownership = Own();
+            return QueryPage(request, token);
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task<CaptureLibraryContinuityPage> QueryContinuityAsync(CaptureLibraryQueryRequest request, CancellationToken token)
+    {
+        DemandQuery(request.Query, request.Revision);
+        if (request.Offset < 0 || request.Count is < 1 or > CaptureLibraryLimits.MaximumQueryItems) throw Error("invalid_payload");
+        await gate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            using var ownership = Own();
+            var page = QueryPage(request, token);
+            if (request.Query.FavoritesOnly) return new(page, page.Revision);
+            using var command = Command("SELECT epoch || '-' || printf('%x',ordering.sequence) FROM library_revision,library_ordering ordering WHERE library_revision.id=1 AND ordering.id=1");
+            return new(page, (string)command.ExecuteScalar()!);
+        }
+        finally { gate.Release(); }
+    }
+
+    private CaptureLibraryQueryPage QueryPage(CaptureLibraryQueryRequest request, CancellationToken token)
+    {
             var revision = DemandRevision(request.Revision);
             var (where, parameters) = QueryWhere(request.Query);
             using var totals = Command("SELECT count(*),coalesce(sum(bytes),0) FROM captures " + where, parameters);
@@ -44,8 +67,6 @@ public sealed partial class CaptureLibraryStore
                 .Select(ItemView).ToArray();
             token.ThrowIfCancellationRequested();
             return new(items, request.Offset, count, bytes, revision);
-        }
-        finally { gate.Release(); }
     }
 
     public async Task<CaptureLibraryApplications> ApplicationsAsync(CaptureLibraryApplicationsRequest request, CancellationToken token)
@@ -166,9 +187,20 @@ public sealed partial class CaptureLibraryStore
         if (expected is not null && current != expected) throw Error("capture_library_query_changed");
         return current;
     }
-    private static (string Where, (string Name, object Value)[] Parameters) QueryWhere(CaptureLibraryQuery query)
+    private (string Where, (string Name, object Value)[] Parameters) QueryWhere(CaptureLibraryQuery query)
     {
         var conditions = new List<string>(); var parameters = new List<(string, object)>();
+        if (query.HiddenOnly) DemandHiddenState();
+        LoadSources();
+        if (!hiddenStateAvailable) conditions.Add("json_extract(data,'$.Item.SourceId') IS NULL");
+        else
+        {
+            conditions.Add((query.HiddenOnly ? "" : "NOT ") + "EXISTS (SELECT 1 FROM userstate.hidden h WHERE h.id=captures.id)");
+            var sources = sourceGrants.Values.Where(SourceEnabled).Select(s => s.Id).ToArray();
+            var names = sources.Select((id, i) => { var name = "$visibleSource" + i; parameters.Add((name, id)); return name; }).ToArray();
+            conditions.Add("(json_extract(data,'$.Item.SourceId') IS NULL" + (names.Length == 0 ? "" :
+                " OR json_extract(data,'$.Item.SourceId') IN (" + string.Join(",", names) + ")") + ")");
+        }
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             conditions.Add("(instr(lower(coalesce(json_extract(data,'$.Item.Title'),'')),lower($search))>0 OR instr(lower(coalesce(name,'')),lower($search))>0 OR instr(lower(coalesce(json_extract(data,'$.Item.Media.SourceApplication.ApplicationName'),'')),lower($search))>0 OR EXISTS (SELECT 1 FROM capture_associations association JOIN capture_association_refs reference ON reference.key_hash=association.key_hash WHERE association.capture_id=captures.id AND instr(lower(coalesce(reference.label,'')),lower($search))>0))");
@@ -176,6 +208,8 @@ public sealed partial class CaptureLibraryStore
         }
         if (query.Application is { } application)
         { conditions.Add("coalesce(json_extract(data,'$.Item.Media.SourceApplication.ApplicationName'),'')=$application COLLATE NOCASE"); parameters.Add(("$application", application)); }
+        if (query.SourceId is { } source)
+        { conditions.Add("coalesce(json_extract(data,'$.Item.SourceId'),'')=$source"); parameters.Add(("$source", source)); }
         if (query.MediaKind != CaptureLibraryMediaKind.All)
         { conditions.Add("json_extract(data,'$.Item.Media.ContentType')=$kind"); parameters.Add(("$kind", query.MediaKind == CaptureLibraryMediaKind.Screenshot ? "image/png" : "video/mp4")); }
         if (query.OriginPackageId is { } origin)

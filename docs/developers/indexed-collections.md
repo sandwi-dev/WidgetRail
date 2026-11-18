@@ -351,6 +351,88 @@ snapshots that intentionally retire every query, or specialized occurrence polic
 The adapter does not own data fetching, semantic selection, expansion preferences,
 permissions, or provider/account validation.
 
+### Live reading windows
+
+For a bounded loaded window within the 512-occurrence continuity limit, opt into
+`PreserveOccurrences` and `FollowEnd`. The host keeps an already-at-end reader at
+the end when rows arrive or existing content changes height. It does not move
+external focus. A focused row or a visible/entered preview is an inspected reader,
+including when its viewport is physically at the end. That native ownership
+suppresses automatic tail eviction and following until inspection ends. Scrolling
+away, hiding the view, and replacing semantic identity keep their normal rules.
+
+For these opted-in finite lists, a strictly appended suffix preserves the existing
+query and exact row leases only when the SDK proves the old immutable context,
+item values, keys and indices unchanged. This reuses indexed prefix retention;
+it does not transfer an old media lease to a different row. Edits, removals,
+reordering, context changes and resets retain normal invalidation. Captured old
+snapshots remain immutable and bounded by the existing lease budgets. An open
+preview retains one still-current semantic lease when a partial page is refilled;
+new native row actions use the new page binding. The preview releases its hold on
+close, and content/domain retirement still revokes it immediately. A chooser may
+share an existing current hold through the same bounded retention API; the last
+release cannot be resurrected.
+A full-window eviction already admitted before a new inspection can still retire
+that old lease. Recovery repairs the reader anchor; stale actions/media are never
+kept authorized merely to avoid closing a preview.
+
+An optional pure `LiveOrder` comparison supplies provider chronology for rolling
+windows. The SDK verifies ordered forward progress; it never compares opaque IDs
+or assumes that a larger count means newer data. Its source-owned epoch and
+forward-chain provenance survive coalesced appends. Semantic changes and explicit
+resets replace the epoch; reorders and backward movement break the forward chain.
+Do not reproduce these counters
+in widget state. Normal loaded lists and indexed providers remain unchanged.
+
+Automatic eviction requires a recovery-capable source. Supply
+`OnRecoverViewport(context, request, token)` and optionally `OnViewportChanged`.
+`ViewportState` conservatively combines active viewports: an older reader prevents
+following. This feedback is advisory across process boundaries; a user can move
+after an observation was sent. The host therefore retains its existing bounded
+paint and exact anchor when a rolling window evicts the newly chosen reader.
+It asks the source to recover that key, using the existing cancellable range lane.
+No controller action is synthesized and ordinary immutable `Locate` is unchanged.
+
+The callback prepares provider data outside locks, then uses
+`request.TryCommit(() => ...)` for one bounded synchronous domain commit. Do not
+perform IO or await inside the commit. For a cursor resource:
+
+```csharp
+using var scope = history.CaptureRecovery();
+var page = await ReadAroundAsync(request.AnchorKey, token);
+return request.TryCommit(history, scope, page)
+    ? WidgetViewportRecoveryResult.Recovered
+    : WidgetViewportRecoveryResult.NotFound;
+```
+
+`TryRecover` accepts at most `MaximumRetainedItems`, preserves the resource reset
+identity, replays bounded live changes received during the read, and requests no
+focus. Navigation, reset, lifetime exit, an unavailable anchor with no surviving supplied
+neighbor, and replay-journal overflow reject the result. Dispose the recovery scope even when the read fails.
+Validate the current provider account/selection as usual. A deleted anchor does
+not make a useful around-page unusable: the host supplies bounded old-neighbor
+keys, and the shared commit selects the next surviving old occurrence, then the
+previous one. The reported resolved key cannot override a newer user anchor.
+Return `NotFound` only when neither the anchor nor its supplied neighbors can be
+recovered. A provider failure releases held paint rather than leaving a
+permanent pending focus operation.
+
+Remote cancellation cannot retroactively undo a commit that beat its receipt.
+The host owns the visible guarantee: scroll changes update the held anchor,
+useful returned data can satisfy that newer anchor, and focus leaving the list
+is not reclaimed. A replacement around-read is issued only when the received
+window cannot cover the newer reader. Recovery enters reader mode before waiting,
+so ordinary incoming events do not repeatedly refetch old history. Four actual
+callback executions and eight viewport observations bound one source; cancelled
+callbacks that ignore their token still occupy their execution slot until done.
+
+Consumer applicability: Discord message history opts in. Capture Library,
+Playnite Home/Library/achievements, Settings installed widgets, Games & Apps,
+Spotify queues, YouTube/YtMusic lists, SDK Gallery and templates keep their
+existing collection behavior; these are navigation lists, not forward live tails.
+Native qualification covers the opt-in reader and ordinary occurrence continuity;
+automatic following in multiple pinned readers has no shipping adopter yet.
+
 
 ## Optional multi-selection
 

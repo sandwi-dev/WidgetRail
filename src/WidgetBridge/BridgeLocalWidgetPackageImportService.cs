@@ -182,7 +182,7 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
                 await settings.PrepareAsync(previous, replacement, token).ConfigureAwait(false);
             }
             var installed = updating
-                ? await _catalog.UpdateFromFileAsync(package, active.Request.Origin.UpdateTargetHash!, trustApproval, AdmitUpdate, active.Cancellation.Token, KeepReviewedSettings).ConfigureAwait(false)
+                ? await _catalog.UpdateFromFileAsync(package, active.Request.Origin.UpdateTargetHash!, trustApproval, AdmitUpdate, active.Cancellation.Token, KeepReviewedSettings, settings.CompleteAsync).ConfigureAwait(false)
                 : await _catalog.InstallReviewedAsync(package, AdmitUpdate, active.Cancellation.Token, trustApproval).ConfigureAwait(false);
             // Publication is the operation's linearization point. Once the
             // catalog commit returns, a late overlay/session cancellation may

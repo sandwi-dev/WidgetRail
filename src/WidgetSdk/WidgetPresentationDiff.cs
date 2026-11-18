@@ -295,6 +295,7 @@ internal static class WidgetPresentationDiff
         List<PresentationUpdateOperation> operations)
     {
         if (previous.Kind != current.Kind || previous.IndexedCollection != current.IndexedCollection ||
+            previous.FocusVisualTargetId!=current.FocusVisualTargetId || previous.CollectionBoundaries!=current.CollectionBoundaries || previous.IndexedDirectionalEntry!=current.IndexedDirectionalEntry ||
             !SameJson(previous.IndexedGroups, current.IndexedGroups) ||
             !SameJson(previous.IndexedOccurrenceKeys, current.IndexedOccurrenceKeys))
         {
@@ -380,6 +381,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.ContextActions, before.ContextActions, after.ContextActions);
         Add(PresentationProperty.ContextMenuButton, before.ContextMenuButton, after.ContextMenuButton);
         Add(PresentationProperty.SelectOptions, before.SelectOptions, after.SelectOptions);
+        Add(PresentationProperty.IsCommandMenu, before.IsCommandMenu, after.IsCommandMenu);
         Add(PresentationProperty.TextEntryValue, before.TextEntryValue, after.TextEntryValue);
         Add(PresentationProperty.TextEntryInputKind, before.TextEntryInputKind, after.TextEntryInputKind);
         Add(PresentationProperty.TextEntrySuggestions, before.TextEntrySuggestions, after.TextEntrySuggestions);

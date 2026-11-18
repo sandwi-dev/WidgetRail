@@ -29,6 +29,16 @@ internal sealed partial class IndexedWidgetValidationPage
                 await NativeContextProbeInput.SelectionClickAsync(Item(0)); await Selected(0);
                 Check(Calls() == before, mode + ": mouse selection does not invoke the row action");
                 var checkbox = Descendants(Item(0)).OfType<CheckBox>().Single();
+                Check(checkbox.ReadLocalValue(Control.BackgroundProperty) == DependencyProperty.UnsetValue,
+                    mode + ": selection hit area does not inherit the row background");
+                Check(checkbox.Resources.MergedDictionaries.OfType<WidgetIndexedSelectionResources>().Any() == (mode != "selection-list"),
+                    mode + ": on-image indicator resources apply only to thumbnail overlays");
+                await ValidateSelectionCheckboxVisualsAsync(checkbox, mode, path, Check, async value =>
+                {
+                    if (Collection().IsSelected(0) != value)
+                        await Collection().ToggleSelectionAsync(((IndexedItem<WidgetIndexedRow>)Collection().NativeView.Items[0]).Value!);
+                    await Wait(() => checkbox.IsChecked == value && Collection().IsSelected(0) == value);
+                });
                 Check(checkbox.IsChecked == true && AutomationProperties.GetItemStatus(Item(0)).Contains("Selected", StringComparison.Ordinal), mode + ": selected state is visible and accessible");
                 var pressed = false; var clicked = false;
                 checkbox.AddHandler(PointerPressedEvent, new PointerEventHandler((_, _) => pressed = true), true);

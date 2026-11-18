@@ -8,6 +8,33 @@ internal sealed partial class BridgeClientRegistry
     private sealed record NotificationIntentGrant(string WidgetId, string Key, string Fingerprint, BridgeWorkerRun Run, WidgetIntentRequest Intent);
     private readonly Dictionary<string, NotificationIntentGrant> notificationIntents = new(StringComparer.Ordinal);
 
+    private bool WebNotificationIntentCurrent(IntentTicket ticket)
+    {
+        if (ticket.WebNotification is not { } notification) return true;
+        return notification.IsWellFormed() && _clients.TryGetValue(ticket.SourceId, out var source) &&
+            WidgetRail.PlatformBroker.WebSessionRegistry.Shared.AllowsNativeNotificationIntent(ticket.SourceId,
+                new(source.Configured.PackageId, source.Configured.PublisherId, source.Configured.InstanceId), new(notification.SessionId));
+    }
+
+    internal Task<WidgetIntentPreparation> PrepareWebNotificationIntentAsync(BridgeWebNotificationIntentPrepare request, CancellationToken token)
+    {
+        IntentTicket ticket;
+        lock (_gate)
+        {
+            DemandNotDisposed();
+            if (request.Notification?.IsWellFormed() != true || !_clients.TryGetValue(request.WidgetId, out var source) ||
+                !IsCurrentLocked(source) || !source.Client.IsRunning)
+                return Task.FromResult(new WidgetIntentPreparation(request.WidgetId, null, WidgetIntentLaunchKind.Rejected, []));
+            var intent = WidgetIntentRequest.Create(WidgetIntentContracts.WebNotification,
+                JsonSerializer.SerializeToElement(request.Notification), WidgetIntentPresentation.OpenWidget);
+            ticket = new(request.WidgetId, source.Configured.WorkerFingerprint, new(source.Generation, source.Client.Starts), IntentNow(),
+                intent, WidgetIntentLaunchKind.Unavailable, new Dictionary<string, string>(), null, intent, WebNotification: request.Notification);
+            if (!WebNotificationIntentCurrent(ticket))
+                return Task.FromResult(new WidgetIntentPreparation(request.WidgetId, null, WidgetIntentLaunchKind.Rejected, []));
+        }
+        return ResolveIntentAsync(ticket, token);
+    }
+
     internal bool RegisterNotificationIntent(string widget, string fingerprint, BridgeWorkerRun run,
         WidgetNotificationCommand command, out string? token)
     {

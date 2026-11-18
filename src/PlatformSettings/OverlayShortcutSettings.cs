@@ -2,6 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace WidgetRail.PlatformSettings;
 
+public enum HostKeyboardShortcutKind { Overlay, SaveReplay }
+
 [Flags]
 public enum OverlayShortcutModifiers { None = 0, Alt = 1, Control = 2, Shift = 4, Windows = 8 }
 
@@ -12,6 +14,7 @@ public sealed record OverlayShortcutSettings
     public int Key { get; init; } = 0x70;
     public OverlayShortcutModifiers Modifiers { get; init; }
     public static OverlayShortcutSettings Default { get; } = new();
+    public static OverlayShortcutSettings ReplayDefault { get; } = new() { Key=0x79, Modifiers=OverlayShortcutModifiers.Control|OverlayShortcutModifiers.Shift };
 
     public bool IsWellFormed() => ((int)Modifiers & ~15) == 0 && IsPrimaryKey(Key);
     public static bool IsPrimaryKey(int key) => key is

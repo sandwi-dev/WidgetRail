@@ -19,6 +19,7 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
     private WidgetViewPresenter? presenter;
     private Grid? contentRoot;
     private CheckBox? selectionCheck;
+    private WidgetIndexedSelectionResources? selectionImageResources;
     internal CheckBox? SelectionToggle => selectionCheck;
     private WidgetIndexedCollectionView? selectionCollection;
     private readonly HashSet<Task> retiring = [];
@@ -58,6 +59,7 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
     }
     private void ApplyRowCore()
     {
+        TraceReviewRow("apply");
         if (disposed) return;
         if (Row is not WidgetIndexedRow row) { Retire(); return; }
         if (!ReferenceEquals(styledLease, row.Lease))
@@ -75,12 +77,14 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
         }
         else
         {
+            laidOutRow = null;
             presenter ??= new(presentationOnly: true);
             _ = presenter.SetPresentationActiveAsync(row.Owner.IsPresentationActive);
             presenter.Session = row.Owner.Session;
             presenter.UseIndexedContainerStyles();
             presenter.Failed = row.Owner.Failed;
             presenter.ArtworkGeneration = row.Lease.LeaseId;
+            presenter.ArtworkAuthorityCurrent = () => row.Lease.IsCurrent && row.Owner.IsPresentationActive;
             presenter.ResolveArtworkFallbackAsync = async (handle, token) =>
                 await row.Owner.ResolveArtworkAsync(row, handle, token, allowFileSource: false) as WidgetEncodedArtwork;
             presenter.ResolveArtworkAsync = async (handle, token) =>
@@ -108,6 +112,7 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
         }
         if (!ReferenceEquals(container, styleContainer))
         {
+            RetireRowLayout();
             containerStyle?.Dispose(); containerStyle = null; styleContainer = container;
             if (container is not null)
             {
@@ -127,8 +132,13 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
         }
         if (containerStyle is not null)
         {
+            // WinUI's default item style sets its own font family, breaking the
+            // collection's inherited typography even when the row declares none.
+            containerStyle.InheritedFontFamily = collection?.NativeView.FontFamily;
             containerStyle.ContextHintHost = contentRoot;
             containerStyle.StretchComposedContent = row.Item.Root.Kind == WidgetRail.WidgetProtocol.ViewNodeKind.ActionSurface;
+            containerStyle.SetFocusVisualTarget(presenter!.FocusVisualTarget(row.Item.Root), row.Item.Root.FocusVisualTargetId is { } visualId
+                ? row.Lease.RenderStyles.GetValueOrDefault(visualId) : null);
             containerStyle.ContextHintButton = WidgetContextIndicator.Resolve(row.Item.Root);
             containerStyle.ContextHintAdmitted = () => !disposed && ReferenceEquals(Row, row) && row.Lease.IsCurrent &&
                 collection?.ContextHintsAdmitted == true && row.Owner.IsPresentationActive &&
@@ -139,6 +149,9 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
             presenter!.SetIndexedRootInteraction(containerStyle.Interaction.Focused, containerStyle.Interaction.Pressed);
         selectionCollection = collection;
         RefreshSelection();
+        if (container is not null && collection is not null && HasCurrentLayout(row, container))
+            collection.ReportRowLayout(container, this, row);
+        else AwaitRowLayout();
     }
     internal void RefreshSelection()
     {
@@ -166,7 +179,16 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
         selectionCheck.VerticalAlignment = overlay ? VerticalAlignment.Top : VerticalAlignment.Center;
         selectionCheck.HorizontalAlignment = HorizontalAlignment.Left;
         selectionCheck.Margin = overlay ? new(8) : new(0,0,8,0);
-        selectionCheck.Background = overlay ? styleContainer?.Background : null;
+        // Do not copy row paint into the pointer target; preserve native contrast policy.
+        selectionCheck.ClearValue(Control.BackgroundProperty);
+        if (overlay)
+        {
+            selectionImageResources ??= new();
+            if (!selectionCheck.Resources.MergedDictionaries.Contains(selectionImageResources))
+                selectionCheck.Resources.MergedDictionaries.Add(selectionImageResources);
+        }
+        else if (selectionImageResources is not null)
+            selectionCheck.Resources.MergedDictionaries.Remove(selectionImageResources);
         selectionCheck.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
         selectionCheck.IsEnabled = active && row.Lease.IsCurrent && row.Item.Root.IsDisabled != true && row.Item.Root.IsBusy != true;
         var index = row.Lease.Range.StartIndex + row.Lease.Range.Items.TakeWhile(item => item.Key != row.Item.Key).Count();
@@ -185,6 +207,8 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
     }
     private void RetireCore()
     {
+        TraceReviewRow("retire");
+        RetireRowLayout();
         appliedRow = null; appliedPresentation = null; appliedStyles = null;
         if (styledLease is not null) styledLease.RenderStylesChanged -= StylesChanged;
         styledLease = null;
@@ -192,7 +216,7 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
         var previous = presenter;
         presenter = null;
         Content = null;
-        contentRoot = null; selectionCheck = null; selectionCollection = null;
+        contentRoot = null; selectionCheck = null; selectionImageResources = null; selectionCollection = null;
         if (previous is not null)
         {
             var task = previous.DisposeAsync().AsTask();
@@ -206,6 +230,7 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
             finally { retiring.Remove(task); }
         }
     }
+    partial void TraceReviewRow(string phase);
     private void StylesChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(() =>
     {
         if (disposed || !IsLoaded || !ReferenceEquals(sender, styledLease) || styledLease?.IsCurrent != true) return;

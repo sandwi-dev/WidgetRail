@@ -167,7 +167,8 @@ public sealed partial class WidgetCatalog
         Stream packageStream, string expectedTargetHash, WidgetPackageTrustApproval trustApproval,
         Func<WidgetPackageInspection, CancellationToken, Task> trustedPrePublish,
         CancellationToken cancellationToken,
-        Func<InstalledWidgetVersion, InstalledWidgetVersion, CancellationToken, Task> keepSettings)
+        Func<InstalledWidgetVersion, InstalledWidgetVersion, CancellationToken, Task> keepSettings,
+        Func<InstalledWidgetVersion, CancellationToken, Task>? completeSettings = null)
     {
         await using var operation = await _operationLock.AcquireAsync(cancellationToken);
         await RecoverPendingAndCleanupRetiredTreesAsync(cancellationToken).ConfigureAwait(false);
@@ -224,6 +225,14 @@ public sealed partial class WidgetCatalog
         {
             throw new WidgetPackageException("update_selection_failed", "The update was saved, but could not be selected. The previous version is still selected. Check storage access, then retry the update.", exception);
         }
+        if (completeSettings is not null)
+            try { await completeSettings(installed, CancellationToken.None).ConfigureAwait(false); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or
+                WidgetRail.PlatformBroker.BrokerException or WidgetRail.PlatformSettings.PlatformSettingsException)
+            {
+                throw new WidgetPackageException("update_settings_completion_pending",
+                    "The update was selected, but its reviewed settings transfer could not finish. Refresh the widget catalog to retry completion.", error);
+            }
         return await FinishRetentionAsync(installed).ConfigureAwait(false);
     }
 

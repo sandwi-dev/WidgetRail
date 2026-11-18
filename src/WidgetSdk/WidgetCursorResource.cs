@@ -42,6 +42,8 @@ public sealed record WidgetCursorResourceOptions<TItem> where TItem : notnull
     public required Func<Exception, WidgetResourceError> MapError { get; init; }
     public required IReadOnlyList<WidgetCursorViewport<TItem>> Viewports { get; init; }
     public WidgetOperationLifetime Lifetime { get; init; } = WidgetOperationLifetime.Active;
+    /// <summary>Optional provider ordering and boundary cursors for live mutations of opaque-index windows.</summary>
+    public WidgetCursorLiveOptions<TItem>? LiveUpdates { get; init; }
 }
 
 public sealed record WidgetCursorResourceSnapshot<TItem>(
@@ -95,7 +97,7 @@ public sealed class WidgetCursorPresentation<TItem> where TItem : notnull
 /// current window. The retained window, pending work, cursor history, and
 /// serialized item count are all finite.
 /// </summary>
-public sealed class WidgetCursorResource<TItem> where TItem : notnull
+public sealed partial class WidgetCursorResource<TItem> where TItem : notnull
 {
     public const int MaximumPageSize = 100;
     public const int MaximumRetainedItems = 256;
@@ -118,7 +120,9 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         internal Intent Intent { get; } = intent;
         internal long FocusIntentRevision { get; } = focusIntentRevision;
         internal long Epoch { get; } = epoch;
-        internal WidgetCursorResourceSnapshot<TItem> Before { get; } = before;
+        internal WidgetCursorResourceSnapshot<TItem> Before { get; set; } = before;
+        internal long MutationRevision { get; init; }
+        internal long BoundaryRevision { get; init; }
         internal TaskCompletionSource<WidgetOperationResult> Completion { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -146,13 +150,18 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
 
     internal WidgetCursorResource(string operationKey,
         WidgetCursorResourceOptions<TItem> options,
-        WidgetOperations operations, Action invalidate)
+        WidgetOperations operations, Action invalidate, Func<CancellationToken> mutationLifetime)
     {
         StableIdentifier.Validate(operationKey, nameof(operationKey));
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(options.LoadPage);
         ArgumentNullException.ThrowIfNull(options.MapError);
         ArgumentNullException.ThrowIfNull(options.Viewports);
+        if (options.LiveUpdates is { } live)
+        {
+            ArgumentNullException.ThrowIfNull(live.Compare);
+            ArgumentNullException.ThrowIfNull(live.BoundaryCursor);
+        }
         if (options.PageSize is < 1 or > MaximumPageSize)
             throw new ArgumentOutOfRangeException(nameof(options.PageSize));
         if (options.MaximumRetainedItems < options.PageSize ||
@@ -197,6 +206,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         _viewports = new ReadOnlyDictionary<string, WidgetCursorViewport<TItem>>(viewports);
         _operations = operations;
         _invalidate = invalidate;
+        _mutationLifetime = mutationLifetime;
     }
 
     public WidgetCursorResourceSnapshot<TItem> Snapshot { get { lock (_gate) return _snapshot; } }
@@ -218,6 +228,13 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
     /// <summary>Loads adjacent data without requesting a focus move.</summary>
     public WidgetOperationHandle Prefetch(WidgetCursorDirection direction, string sourceScrollId) =>
         MoveCore(direction, sourceScrollId, false);
+    /// <summary>Loads one adjacent page while protecting the host's captured visible/focused occurrences within the existing retained-capacity policy.</summary>
+    public WidgetOperationHandle Prefetch(WidgetCollectionBoundaryDemand demand,string sourceScrollId)
+    {
+        ArgumentNullException.ThrowIfNull(demand);
+        if(demand.ProtectedKeys.Count>_options.MaximumRetainedItems)throw new ArgumentException("Visible boundary demand exceeds retained capacity.",nameof(demand));
+        return MoveCore(demand.Direction,sourceScrollId,false,protectedKeys:demand.ProtectedKeys.Select(key=>key.Value).ToHashSet(StringComparer.Ordinal));
+    }
 
     public WidgetOperationHandle Move(WidgetCursorDirection direction, string sourceScrollId) =>
         MoveCore(direction, sourceScrollId, true);
@@ -383,6 +400,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                 _cursorHistory.Clear();
                 _cursorHistoryDirection = null;
                 _segments.Clear();
+                _liveChanges.Clear();
+                _liveRevision = 0;
                 changed = SetSnapshotLocked(WidgetPagedResourceStatus.NotLoaded,
                     [], null, null, null, null, null);
                 _snapshot = _snapshot with
@@ -420,12 +439,13 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             {
                 if (_current is { } duplicate && SameIntent(duplicate.Intent, intent))
                     return new(WidgetOperationAdmission.Joined, duplicate.Completion.Task);
+                ++_recoveryIntentRevision;
                 if (intent.MoveFocus && _navigationRequestId >= ProtocolConstants.MaximumFocusGroupEntryRequestId)
                     throw new InvalidOperationException("Navigation request generation exhausted.");
                 // Cancellation must restore settled data, never the loading
                 // status of the operation that this request superseded.
                 var before = _current?.Before ?? _snapshot;
-                request = new(intent, _epoch, before, _focusIntentRevision);
+                request = new(intent, _epoch, before, _focusIntentRevision) { MutationRevision = _liveRevision, BoundaryRevision = _liveBoundaryRevision };
                 _current = request;
                 var status = before.Items.Count == 0 ? WidgetPagedResourceStatus.Loading :
                     intent.Direction is null ? WidgetPagedResourceStatus.Refreshing :
@@ -462,6 +482,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                     WidgetRail.WidgetProtocol.ProtocolConstants.MaximumVirtualCollectionRequestGeneration)
                     throw new InvalidOperationException("Virtual collection request generation is exhausted.");
                 var proposed = Merge(page, request.Intent.Cursor, request.Intent.Direction, request.Intent.ProtectedKeys, request.Intent.RetainedKeys);
+                proposed = ReplayLiveChanges(proposed, request);
                 var merged = new ReadOnlyCollection<TItem>(proposed.SelectMany(segment => segment.Page.Items).ToArray());
                 var anchor = request.Intent.Direction is null
                     ? merged.Count == 0 ? (WidgetCollectionItemKey?)null : KeyOf(merged[0])
@@ -473,6 +494,9 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                 // Commit only after every author callback and invariant has succeeded.
                 _segments.Clear();
                 foreach (var segment in proposed) _segments.AddLast(segment);
+                if (request.Intent.Direction is null)
+                    foreach (var key in _liveChanges.Where(pair => pair.Value.Revision <= request.MutationRevision).Select(pair => pair.Key).ToArray())
+                        _liveChanges.Remove(key);
                 CommitTraversalProgress(request.Intent, page);
                 _current = null;
                 _failed = null;
@@ -521,9 +545,9 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         finally { if (!committed) Restore(request); }
     }
 
-    private WidgetCursorPage<TItem> Normalize(WidgetCursorPage<TItem>? page)
+    private WidgetCursorPage<TItem> Normalize(WidgetCursorPage<TItem>? page, int? maximumItems = null)
     {
-        if (page is null || page.Items is null || page.Items.Count > _options.PageSize ||
+        if (page is null || page.Items is null || page.Items.Count > (maximumItems ?? _options.PageSize) ||
             page.Items.Any(item => item is null))
             throw new InvalidOperationException("Invalid cursor page.");
         var keys = new HashSet<string>(StringComparer.Ordinal);
@@ -703,7 +727,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         if (outbound is { } next) _cursorHistory.Add(next.Value);
     }
     private bool CanCommit(Request request, WidgetOperationContext context) =>
-        request.Epoch == _epoch && ReferenceEquals(_current, request) && context.IsCurrent;
+        request.Epoch == _epoch && request.BoundaryRevision == _liveBoundaryRevision && ReferenceEquals(_current, request) && context.IsCurrent;
     private WidgetResourceError MapError(Exception exception)
     {
         try { return _options.MapError(exception) ?? WidgetResourceError.Unexpected; }
@@ -774,5 +798,10 @@ public abstract partial class Widget
         new(operationKey, options, Operations, () =>
         {
             if (LifecycleState != WidgetLifecycleState.Destroying) Invalidate();
+        }, () => options.Lifetime switch
+        {
+            WidgetOperationLifetime.Active => ActiveCancellationToken,
+            WidgetOperationLifetime.State => StateLifetimeToken,
+            _ => WidgetLifetimeToken,
         });
 }

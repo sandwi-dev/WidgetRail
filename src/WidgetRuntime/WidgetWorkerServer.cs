@@ -561,6 +561,13 @@ internal sealed class WidgetWorkerServer
             await ReplyAsync(MessageTypes.Acknowledged, request.RequestId,
                 new PinnedActionResult(pinnedAdmission), cancellationToken).ConfigureAwait(false);
             break;
+        case MessageTypes.InlinePreviewAction:
+            var inlineAction = RuntimeJson.FromElement<InlinePreviewActionInput>(request.Payload);
+            ValidateAction(inlineAction.Action);
+            var inlineAdmission = _widget.AdmitInlinePreviewAction(inlineAction);
+            await ReplyAsync(MessageTypes.Acknowledged, request.RequestId,
+                new ActionAdmissionPayload(inlineAdmission), cancellationToken).ConfigureAwait(false);
+            break;
         case MessageTypes.Action:
             var action = RuntimeJson.FromElement<WidgetActionEvent>(request.Payload);
             ValidateAction(action);

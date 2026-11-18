@@ -336,6 +336,114 @@ public sealed class DisplayedOrdinaryInputTests
         }, Snapshot(1, node));
     }
 
+    [TestMethod]
+    [DataRow(false)][DataRow(true)]
+    public async Task DelayedSelectActionRejectsChangedCommandMenuModeBeforeIpc(bool initiallyCommandMenu)
+    {
+        ViewNode Control(bool command) => new()
+        {
+            Id = "open", Kind = ViewNodeKind.Select, Text = "Options",
+            IsCommandMenu = command ? true : null, AccessibilityValue = command ? null : "Option",
+            SelectOptions = [new("option", "Option", "choose", IsSelected: !command)],
+        };
+        var initial = Snapshot(1, Control(initiallyCommandMenu)) with { ProtocolVersion = ProtocolConstants.CommandMenuVersion };
+        var next = Snapshot(2, Control(!initiallyCommandMenu)) with { ProtocolVersion = ProtocolConstants.CommandMenuVersion };
+        await Run(async channel =>
+        {
+            var refresh = await Read(channel);
+            await ReplySnapshot(channel, refresh.RequestId, next);
+            // Run expects Stop next: a stale action reaching the bridge fails the test.
+        }, async (session, displayed) =>
+        {
+            var captured = Action with { ActionId = "choose", ControllerButton = ControllerButton.A };
+            await session.RefreshAsync(displayed.Authority);
+            var error = await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => session.SendActionAsync(displayed, captured));
+            Assert.AreEqual("ordinary_input_stale", error.Code);
+        }, initial);
+    }
+
+    [TestMethod]
+    public async Task DelayedSelectActionSurvivesSelectedValueChangeWithoutRewritingPayload()
+    {
+        ViewNode Control(bool secondSelected) => new()
+        {
+            Id = "open", Kind = ViewNodeKind.Select, Text = "Options",
+            AccessibilityValue = secondSelected ? "Second" : "First",
+            SelectOptions = [new("first", "First", "choose-first", IsSelected: !secondSelected),
+                new("second", "Second", "choose-second", IsSelected: secondSelected)],
+        };
+        var captured = Action with { ActionId = "choose-second", ControllerButton = ControllerButton.A };
+        await Run(async channel =>
+        {
+            var refresh = await Read(channel);
+            await ReplySnapshot(channel, refresh.RequestId, Snapshot(2, Control(true)));
+            var request = await Read(channel);
+            Assert.AreEqual(BridgeMessageTypes.Action, request.Type);
+            Assert.AreEqual(captured, request.Payload.GetProperty("action").Deserialize<WidgetActionEvent>(BridgeJson.Options));
+            await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { admission = WidgetOperationAdmission.Enqueued });
+        }, async (session, displayed) =>
+        {
+            await session.RefreshAsync(displayed.Authority);
+            Assert.AreEqual(WidgetOperationAdmission.Enqueued, await session.SendActionAsync(displayed, captured));
+        }, Snapshot(1, Control(false)));
+    }
+
+    [TestMethod]
+    [DataRow("select")][DataRow("button")][DataRow("slider")]
+    public async Task InlinePreviewActionsUseBoundedPrivateWireAndKeepCapturedPayload(string kind)
+    {
+        var action = InlineAction(kind);
+        await Run(async channel =>
+        {
+            var refresh = await Read(channel); await ReplySnapshot(channel, refresh.RequestId, InlineSnapshot(2, kind));
+            var request = await Read(channel);
+            Assert.AreEqual(BridgeMessageTypes.Action, request.Type);
+            Assert.AreEqual(action, request.Payload.GetProperty("action").Deserialize<WidgetActionEvent>(BridgeJson.Options));
+            var origin = request.Payload.GetProperty("inlinePreview");
+            Assert.AreEqual(1L, origin.GetProperty("snapshotSequence").GetInt64());
+            Assert.AreEqual(2, origin.EnumerateObject().Count());
+            await Reply(channel, request.RequestId, BridgeMessageTypes.Acknowledged, new { admission = WidgetOperationAdmission.Enqueued });
+        }, async (session, displayed) =>
+        {
+            await session.RefreshAsync(displayed.Authority);
+            Assert.AreEqual(WidgetOperationAdmission.Enqueued, await session.SendActionAsync(displayed, action));
+        }, InlineSnapshot(1, kind));
+    }
+
+    [TestMethod]
+    [DataRow("disabled")][DataRow("busy")][DataRow("passive")][DataRow("source")][DataRow("fragment")][DataRow("moved")][DataRow("removed")]
+    public async Task InlinePreviewActionRejectsRetiredSourceBeforeIpc(string change)
+    {
+        await Run(async channel => { var refresh = await Read(channel); await ReplySnapshot(channel, refresh.RequestId, InlineSnapshot(2, "select", change)); },
+            async (session, displayed) =>
+            {
+                await session.RefreshAsync(displayed.Authority);
+                var error = await Assert.ThrowsAsync<WidgetPresentationSessionException>(() => session.SendActionAsync(displayed, InlineAction("select")));
+                Assert.AreEqual("ordinary_input_stale", error.Code);
+            }, InlineSnapshot(1, "select"));
+    }
+
+    private static WidgetActionEvent InlineAction(string kind) => new("commit", "preview-control", InputScopeId: "root")
+        { FocusedElementId = "preview-control", ControllerButton = kind == "select" ? ControllerButton.A : null,
+            RequestedValue = kind == "slider" ? 40 : null };
+
+    private static ViewSnapshot InlineSnapshot(long sequence, string kind, string change = "")
+    {
+        WidgetElement control = kind switch
+        {
+            "button" => UI.Button("Commit", "commit", "preview-control"),
+            "slider" => UI.Slider(30, 0, 100, 1, "commit", "preview-control", "Volume"),
+            _ => UI.Select("Type", [new("first", "First", "first", true), new("second", "Second", "commit")], "preview-control"),
+        };
+        if (change == "passive") control = UI.Text("Read only", "preview-control");
+        var source = UI.Button("Source", "open-source", change == "source" ? "other-source" : "source")
+            .Disabled(change == "disabled").Busy(change == "busy");
+        WidgetElement content = change == "removed" ? source : source.PresentOnFocus(UI.Stack(change == "fragment" ? "other-fragment" : "fragment", control));
+        var preview = UI.FocusPresentationSurface(UI.Stack(change == "moved" ? "other-parent" : "parent", content), UI.Text("Empty", "empty"), "preview-surface") with
+            { Preview = new() { EnterButton = change == "passive" ? null : ControllerButton.A } };
+        return new WidgetView(UI.Stack("root", preview)).CreateSnapshot(Descriptor.InstanceId, sequence);
+    }
+
     private static (ViewNode, WidgetActionEvent) ComplexControl(string kind) => kind switch
     {
         "slider" => (new() { Id = "open", Kind = ViewNodeKind.Slider, Minimum = 0, Maximum = 10, Step = 1, Value = 2, ValueChangedActionId = "adjust", AccessibilityLabel = "Volume", AccessibilityValue = "2" }, Action with { ActionId = "adjust", RequestedValue = 3 }),

@@ -2,6 +2,7 @@
 #include "CaptureGeometry.h"
 #include "CaptureVideoEncoder.h"
 #include "CaptureAudioTimeline.h"
+#include "CaptureEncodingProbe.h"
 #include <Windows.h>
 #include <d3d11.h>
 #include <d2d1_1.h>
@@ -22,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <vector>
 using Microsoft::WRL::ComPtr;
 using namespace winrt::Windows::Graphics::Capture;
@@ -101,16 +103,37 @@ extern "C" int32_t __stdcall WrailProbeCaptureAudio(WrailCaptureEncodingProbe* r
     result->elapsedMilliseconds=std::chrono::duration<double,std::milli>(Clock::now()-start).count();
     return S_OK;
 }
-extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarget* target, const wchar_t* path, const WrailCaptureOptions* options,
-    WrailPreviewAuthority authority, void* context, WrailCaptureResult* result) noexcept {
+static void CheckCaptureOutputSize(const wchar_t* path,uint64_t maximumBytes) {
+    WIN32_FILE_ATTRIBUTE_DATA attributes{};
+    if(!GetFileAttributesExW(path,GetFileExInfoStandard,&attributes)) {
+        const auto error=GetLastError();
+        throw winrt::hresult_error(HRESULT_FROM_WIN32(error?error:ERROR_READ_FAULT));
+    }
+    if(attributes.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_INVALID_DATA));
+    if(((uint64_t(attributes.nFileSizeHigh)<<32)|attributes.nFileSizeLow)>maximumBytes)
+        throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE));
+}
+
+static int32_t RunConfiguredCapture(const WrailPreviewTarget* target,const wchar_t* path,const WrailCaptureOptions* options,
+    WrailPreviewAuthority authority,void* context,WrailCaptureResult* result,const WrailCaptureEncodingSelection* selection=nullptr,
+    uint32_t expectedSourceWidth=0,uint32_t expectedSourceHeight=0,uint64_t maximumOutputBytes=WrailCaptureTemporaryMaximumBytes) noexcept {
     if(!target || target->size!=sizeof(*target) || target->version!=1 || !path || !*path || !authority || !result ||
         result->size!=sizeof(*result) || result->version!=3 || !options || options->size!=sizeof(*options) || options->version!=3 ||
         options->audioMode>1 || options->reserved || (options->kind!=2 && options->audioMode!=0) ||
-        options->kind<1 || options->kind>2 || options->includeCursor>1 || options->maximumBytes<1024 || options->maximumBytes>128ULL*1024*1024 ||
+        options->kind<1 || options->kind>2 || options->includeCursor>1 || options->maximumBytes<1024 || options->maximumBytes>maximumOutputBytes ||
         options->framesPerSecond<1 || options->framesPerSecond>120 || options->durationSeconds<1 || options->durationSeconds>120 ||
         options->bitrate<100000 || options->bitrate>100000000 || options->maximumWidth>16384 || options->maximumHeight>16384) return E_INVALIDARG;
     if(options->kind==2 && options->encoder!=1 && options->encoder!=2) return E_INVALIDARG;
     const auto kind=options->kind, fps=options->framesPerSecond;
+    std::optional<widgetrail::capture::CaptureEncodingProfile> encoding;
+    if(selection){
+        if(selection->size!=sizeof(*selection)||selection->version!=1||!selection->adapterLuid||kind!=2||options->encoder!=2||
+            options->maximumWidth<2||options->maximumHeight<2||options->maximumWidth>8192||options->maximumHeight>8192||options->maximumWidth%2||options->maximumHeight%2||uint64_t(options->maximumWidth)*options->maximumHeight>3840u*2160u||
+            expectedSourceWidth<2||expectedSourceHeight<2||expectedSourceWidth>8192||expectedSourceHeight>8192||uint64_t(expectedSourceWidth)*expectedSourceHeight>3840u*2160u)return E_INVALIDARG;
+        encoding=widgetrail::capture::CaptureEncodingProfile{static_cast<widgetrail::capture::CaptureVideoCodec>(selection->codec),
+            static_cast<widgetrail::capture::CapturePixelFormat>(selection->pixelFormat),static_cast<widgetrail::capture::CaptureRateControl>(selection->rateControl),selection->quality};
+        if(!encoding->Valid())return E_INVALIDARG;
+    }
     const bool gpuVideo=kind==2 && options->encoder==2;
     if(busy.exchange(true)) return HRESULT_FROM_WIN32(ERROR_BUSY);
     struct BusyGuard { ~BusyGuard(){busy=false;} } busyGuard;
@@ -125,7 +148,8 @@ extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarg
             throw winrt::hresult_error(E_ACCESSDENIED);
         if(!GraphicsCaptureSession::IsSupported()) throw winrt::hresult_error(E_NOTIMPL);
         ComPtr<ID3D11Device> device; ComPtr<ID3D11DeviceContext> immediate;
-        winrt::check_hresult(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,D3D11_CREATE_DEVICE_BGRA_SUPPORT|(gpuVideo?D3D11_CREATE_DEVICE_VIDEO_SUPPORT:0),
+        if(selection){device=widgetrail::capture::CreateEncodingDevice(selection->adapterLuid);device->GetImmediateContext(&immediate);}
+        else winrt::check_hresult(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,D3D11_CREATE_DEVICE_BGRA_SUPPORT|(gpuVideo?D3D11_CREATE_DEVICE_VIDEO_SUPPORT:0),
             nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&immediate));
         ComPtr<IDXGIDevice> dxgi; winrt::check_hresult(device.As(&dxgi));
         winrt::com_ptr<IInspectable> inspectable; winrt::check_hresult(CreateDirect3D11DeviceFromDXGIDevice(dxgi.Get(),inspectable.put()));
@@ -134,7 +158,9 @@ extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarg
         auto interop=winrt::get_activation_factory<GraphicsCaptureItem,IGraphicsCaptureItemInterop>();
         winrt::check_hresult(interop->CreateForWindow(reinterpret_cast<HWND>(target->window),winrt::guid_of<GraphicsCaptureItem>(),winrt::put_abi(capture.item)));
         auto size=capture.item.Size();
-        const auto geometry = ConfiguredCaptureSize(size.Width, size.Height, options->maximumWidth, options->maximumHeight, kind==2);
+        if(selection&&(expectedSourceWidth!=static_cast<uint32_t>(size.Width)||expectedSourceHeight!=static_cast<uint32_t>(size.Height)))return HRESULT_FROM_WIN32(ERROR_INVALID_WINDOW_HANDLE);
+        const auto geometry = selection?CaptureGeometry{options->maximumWidth,options->maximumHeight}:
+            ConfiguredCaptureSize(size.Width, size.Height, options->maximumWidth, options->maximumHeight, kind==2);
         if (!geometry.width || !geometry.height) throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE));
         const UINT width = geometry.width, height = geometry.height;
         D3D11_TEXTURE2D_DESC desc{};desc.Width=width;desc.Height=height;desc.MipLevels=1;desc.ArraySize=1;
@@ -153,7 +179,7 @@ extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarg
         capture.arrived=capture.pool.FrameArrived([signal](auto&&,auto&&){SetEvent(signal->value);});
         capture.session=capture.pool.CreateCaptureSession(capture.item);capture.session.IsCursorCaptureEnabled(options->includeCursor!=0);
         std::unique_ptr<Video> video;
-        if(kind==2)video=std::make_unique<Video>(path,width,height,*options,device.Get(),options->audioMode==1);
+        if(kind==2)video=std::make_unique<Video>(path,width,height,*options,device.Get(),options->audioMode==1,nullptr,nullptr,encoding?&*encoding:nullptr);
         std::unique_ptr<widgetrail::capture::ProcessLoopbackCapture> audio;
         std::unique_ptr<widgetrail::capture::CaptureAudioTimeline> audioTimeline;
         if(options->audioMode==1)audio=std::make_unique<widgetrail::capture::ProcessLoopbackCapture>(target->processId);
@@ -189,12 +215,29 @@ extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarg
                 struct FrameGuard {Direct3D11CaptureFrame& frame;~FrameGuard(){try{if(frame)frame.Close();}catch(...){}}} guard{frame};
                 if(frame.ContentSize().Width!=size.Width || frame.ContentSize().Height!=size.Height) throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_RETRY));
                 auto access=frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
-                ComPtr<IDXGISurface> source;winrt::check_hresult(access->GetInterface(IID_PPV_ARGS(&source)));
-                auto properties=D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),96,96);
-                ComPtr<ID2D1Bitmap1> bitmap;winrt::check_hresult(drawing->CreateBitmapFromDxgiSurface(source.Get(),&properties,&bitmap));
-                drawing->SetTarget(outputBitmap.Get());drawing->BeginDraw();drawing->Clear(D2D1::ColorF(0.f,0.f,0.f,1.f));
-                drawing->DrawBitmap(bitmap.Get(),D2D1::RectF(0,0,float(width),float(height)),1,D2D1_INTERPOLATION_MODE_LINEAR,D2D1::RectF(0,0,float(size.Width),float(size.Height)));
-                auto hr=drawing->EndDraw();drawing->SetTarget(nullptr);winrt::check_hresult(hr);
+                if(selection&&static_cast<UINT>(size.Width)<=width&&static_cast<UINT>(size.Height)<=height){
+                    ComPtr<ID3D11Texture2D> source;winrt::check_hresult(access->GetInterface(IID_PPV_ARGS(&source)));
+                    if(static_cast<UINT>(size.Width)!=width||static_cast<UINT>(size.Height)!=height){
+                        drawing->SetTarget(outputBitmap.Get());drawing->BeginDraw();drawing->Clear(D2D1::ColorF(0.f,0.f,0.f,1.f));
+                        const auto cleared=drawing->EndDraw();drawing->SetTarget(nullptr);winrt::check_hresult(cleared);
+                    }
+                    const D3D11_BOX pixelsBox{0,0,0,static_cast<UINT>(size.Width),static_cast<UINT>(size.Height),1};
+                    immediate->CopySubresourceRegion(output.Get(),0,(width-static_cast<UINT>(size.Width))/2,(height-static_cast<UINT>(size.Height))/2,0,source.Get(),0,&pixelsBox);
+                }else {
+                    ComPtr<IDXGISurface> source;winrt::check_hresult(access->GetInterface(IID_PPV_ARGS(&source)));
+                    auto properties=D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),96,96);
+                    ComPtr<ID2D1Bitmap1> bitmap;winrt::check_hresult(drawing->CreateBitmapFromDxgiSurface(source.Get(),&properties,&bitmap));
+                    drawing->SetTarget(outputBitmap.Get());drawing->BeginDraw();drawing->Clear(D2D1::ColorF(0.f,0.f,0.f,1.f));
+                    auto destination=D2D1::RectF(0,0,float(width),float(height));
+                    if(selection){
+                        const auto scale=std::min(float(width)/float(size.Width),float(height)/float(size.Height));
+                        const auto drawnWidth=scale*float(size.Width),drawnHeight=scale*float(size.Height);
+                        const auto left=(float(width)-drawnWidth)/2,top=(float(height)-drawnHeight)/2;
+                        destination=D2D1::RectF(left,top,left+drawnWidth,top+drawnHeight);
+                    }
+                    drawing->DrawBitmap(bitmap.Get(),destination,1,D2D1_INTERPOLATION_MODE_LINEAR,D2D1::RectF(0,0,float(size.Width),float(size.Height)));
+                    auto hr=drawing->EndDraw();drawing->SetTarget(nullptr);winrt::check_hresult(hr);
+                }
                 if(!gpuVideo) {
                     immediate->CopyResource(staging.Get(),output.Get());D3D11_MAPPED_SUBRESOURCE mapped{};
                     winrt::check_hresult(immediate->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped));
@@ -224,10 +267,7 @@ extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarg
                 ++frames;lastWrittenSlot=slot;nextSlot=slot+1;
                 if(now>=nextSizeCheck || kind!=2) {
                     nextSizeCheck=now+std::chrono::seconds(1);
-                    WIN32_FILE_ATTRIBUTE_DATA attributes{};
-                    if(GetFileAttributesExW(path,GetFileExInfoStandard,&attributes) &&
-                        ((uint64_t(attributes.nFileSizeHigh)<<32)|attributes.nFileSizeLow)>options->maximumBytes)
-                        throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE));
+                    CheckCaptureOutputSize(path,options->maximumBytes);
                 }
             }
             if(kind==2 && haveFrame && now-started>std::chrono::seconds(options->durationSeconds+3))throw winrt::hresult_error(HRESULT_FROM_WIN32(WAIT_TIMEOUT));
@@ -249,10 +289,7 @@ extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarg
             audio->Stop();audioTimeline->Queue(audio->Drain());audioTimeline->Finish(endFrames);
         }
         if(video)video->Finish();
-        WIN32_FILE_ATTRIBUTE_DATA finalSize{};
-        if(GetFileAttributesExW(path,GetFileExInfoStandard,&finalSize) &&
-            ((uint64_t(finalSize.nFileSizeHigh)<<32)|finalSize.nFileSizeLow)>options->maximumBytes)
-            throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE));
+        CheckCaptureOutputSize(path,options->maximumBytes);
         result->width=width;result->height=height;result->frames=frames;result->durationSeconds=kind==2?double(lastWrittenSlot+1)/fps:0.0;result->error=S_OK;
         result->sourceWidth=size.Width;result->sourceHeight=size.Height;result->missedFrames=missed;result->encoder=kind==2?options->encoder:0;
         result->audioMode=options->audioMode;
@@ -261,6 +298,20 @@ extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarg
       catch(...){result->error=E_FAIL;return E_FAIL;}
 }
 
+extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarget* target,const wchar_t* path,const WrailCaptureOptions* options,
+    WrailPreviewAuthority authority,void* context,WrailCaptureResult* result) noexcept {
+    return RunConfiguredCapture(target,path,options,authority,context,result);
+}
+extern "C" int32_t __stdcall WrailCaptureWindowConfiguredV4(const WrailPreviewTarget* target,const wchar_t* path,const WrailCaptureOptions* options,
+    const WrailCaptureEncodingSelection* selection,uint32_t sourceWidth,uint32_t sourceHeight,WrailPreviewAuthority authority,void* context,WrailCaptureResult* result) noexcept {
+    if(!selection)return E_INVALIDARG;
+    return RunConfiguredCapture(target,path,options,authority,context,result,selection,sourceWidth,sourceHeight);
+}
+extern "C" int32_t __stdcall WrailCaptureWindowLibraryV1(const WrailPreviewTarget* target,const wchar_t* path,const WrailCaptureOptions* options,
+    const WrailCaptureEncodingSelection* selection,uint32_t sourceWidth,uint32_t sourceHeight,WrailPreviewAuthority authority,void* context,WrailCaptureResult* result) noexcept {
+    if(!options||options->kind!=2||(!selection&&(sourceWidth||sourceHeight)))return E_INVALIDARG;
+    return RunConfiguredCapture(target,path,options,authority,context,result,selection,sourceWidth,sourceHeight,WrailCaptureLibraryMaximumBytes);
+}
 extern "C" int32_t __stdcall WrailCaptureWindow(const WrailPreviewTarget* target, const wchar_t* path, uint32_t kind,
     WrailPreviewAuthority authority, void* context, WrailContextCaptureResult* result) noexcept {
     if(!result || result->size!=sizeof(*result) || result->version!=1 || kind<1 || kind>3) return E_INVALIDARG;
@@ -274,4 +325,44 @@ extern "C" int32_t __stdcall WrailCaptureWindow(const WrailPreviewTarget* target
     result->width=output.width;result->height=output.height;result->frames=output.frames;
     result->durationSeconds=output.durationSeconds;result->error=status;
     return status;
+}
+
+extern "C" int32_t __stdcall WrailGetCaptureEncodingEnvironment(WrailCaptureEncodingEnvironment* result) noexcept {
+    if(!result||result->size!=sizeof(*result)||result->version!=1)return E_INVALIDARG;
+    try{*result=widgetrail::capture::ReadEncodingEnvironment();return S_OK;}catch(...){return winrt::to_hresult();}
+}
+
+extern "C" int32_t __stdcall WrailReadCaptureSourceSize(const WrailPreviewTarget* target,uint32_t* width,uint32_t* height) noexcept {
+    if(!target||target->size!=sizeof(*target)||target->version!=1||target->reserved||!width||!height)return E_INVALIDARG;
+    *width=*height=0;
+    try {
+        CaptureDpiContext dpi;
+        if(!dpi.previous)throw winrt::hresult_error(HRESULT_FROM_WIN32(GetLastError()));
+        winrt::init_apartment(winrt::apartment_type::multi_threaded);
+        struct Apartment{~Apartment(){winrt::uninit_apartment();}} apartment;
+        const auto metadataAuthority=[](void*)->int32_t{return 1;};
+        if(!Current(*target,metadataAuthority,nullptr))return E_ACCESSDENIED;
+        GraphicsCaptureItem item{nullptr};auto interop=winrt::get_activation_factory<GraphicsCaptureItem,IGraphicsCaptureItemInterop>();
+        winrt::check_hresult(interop->CreateForWindow(reinterpret_cast<HWND>(target->window),winrt::guid_of<GraphicsCaptureItem>(),winrt::put_abi(item)));
+        const auto size=item.Size();
+        if(size.Width<2||size.Height<2||size.Width>16384||size.Height>16384||int64_t(size.Width)*size.Height>33554432)return E_INVALIDARG;
+        if(!Current(*target,metadataAuthority,nullptr))return E_ACCESSDENIED;
+        *width=static_cast<uint32_t>(size.Width);*height=static_cast<uint32_t>(size.Height);return S_OK;
+    }catch(...){return winrt::to_hresult();}
+}
+
+extern "C" int32_t __stdcall WrailProbeCaptureEncodingV2(const WrailCaptureOptions* options,const WrailCaptureEncodingSelection* selection,
+    WrailCaptureEncodingProbeV2* result) noexcept {
+    if(!options||options->size!=sizeof(*options)||options->version!=3||options->kind!=2||options->encoder!=2||options->audioMode>1||options->reserved||
+        options->maximumWidth<2||options->maximumHeight<2||options->maximumWidth>8192||options->maximumHeight>8192||
+        options->maximumWidth%2||options->maximumHeight%2||uint64_t(options->maximumWidth)*options->maximumHeight>3840u*2160u||
+        (options->framesPerSecond!=15&&options->framesPerSecond!=30&&options->framesPerSecond!=60)||options->bitrate<100000||options->bitrate>100000000||
+        !selection||selection->size!=sizeof(*selection)||selection->version!=1||!result||result->size!=sizeof(*result)||result->version!=2)return E_INVALIDARG;
+    const auto start=Clock::now();
+    try {
+        winrt::init_apartment(winrt::apartment_type::multi_threaded);struct Apartment{~Apartment(){winrt::uninit_apartment();}} apartment;
+        winrt::check_hresult(MFStartup(MF_VERSION));struct Foundation{~Foundation(){MFShutdown();}} foundation;
+        widgetrail::capture::ProbeExplicitEncoding(*options,*selection,*result);
+    }catch(...){result->supported=0;result->error=winrt::to_hresult();}
+    result->elapsedMilliseconds=std::chrono::duration<double,std::milli>(Clock::now()-start).count();return S_OK;
 }

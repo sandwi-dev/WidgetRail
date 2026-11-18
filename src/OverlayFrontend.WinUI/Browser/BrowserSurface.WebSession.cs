@@ -19,6 +19,7 @@ internal sealed partial class BrowserSurface
     private readonly Channel<string> hostedMessages = Channel.CreateBounded<string>(WebSessionContract.MaximumQueuedMessages);
     internal bool IsHostedPackage => hostedDefinition?.Source.Kind == WebSessionSourceKind.Package;
     internal bool IsHostedSession => hostedDefinition is not null;
+    internal bool SupportsNativeNotificationIntents => hostedDefinition?.NativeNotificationIntents == true;
     internal bool SupportsNativeCapture => IsBackendSession && hostedDefinition?.NativeCapture==true;
     internal ChannelReader<string> HostedMessages => hostedMessages.Reader;
 
@@ -135,12 +136,10 @@ internal sealed partial class BrowserSurface
         if (hostedDefinition.PageAdapter is { } adapter)
         {
             var resource=hostedResources.SingleOrDefault();
-            if(resource is null||resource.Path!=adapter.ScriptAsset||resource.ContentType!="text/javascript"||resource.ContentBase64.Length>90000)
+            if(resource is null||resource.Path!=adapter.ScriptAsset||resource.ContentType!="text/javascript")
                 throw new InvalidOperationException("Page adapter resource is unavailable.");
-            var scriptBytes=Convert.FromBase64String(resource.ContentBase64);
-            if(scriptBytes.Length>64*1024||!Convert.ToHexString(SHA256.HashData(scriptBytes)).Equals(resource.Sha256,StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Page adapter resource is invalid.");
-            pageAdapter=new(core,adapter,Encoding.UTF8.GetString(scriptBytes),()=>!retired&&!faulted&&visible&&input&&!loading,json=>
+            var script=adapter.DecodeScript(resource.ContentBase64,resource.Sha256);
+            pageAdapter=new(core,adapter,script,()=>!retired&&!faulted&&visible&&input&&!loading,json=>
             {
                 var encoded=Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
                 try {WebSessionContract.DecodeMessage(encoded);}

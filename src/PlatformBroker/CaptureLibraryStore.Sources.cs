@@ -132,7 +132,8 @@ public sealed partial class CaptureLibraryStore
     }
     private CaptureLibrarySource SourceView(SourceGrant source)
     {
-        using var query = Command("SELECT count(*) FROM captures WHERE json_extract(data,'$.Item.SourceId')=$id", ("$id", source.Id));
+        using var query = Command("SELECT count(*) FROM captures WHERE json_extract(data,'$.Item.SourceId')=$id AND " +
+            (hiddenStateAvailable ? "NOT EXISTS (SELECT 1 FROM userstate.hidden h WHERE h.id=captures.id)" : "0"), ("$id", source.Id));
         return new(source.Id, source.Label, SourceEnabled(source) && Directory.Exists(source.Directory), Convert.ToInt32(query.ExecuteScalar()),
             sourceWatches.TryGetValue(source.Id, out var watch) ? watch.Unsupported.Count : 0, source.Directory);
     }
@@ -147,6 +148,7 @@ public sealed partial class CaptureLibraryStore
             // Persist revocation before cleanup. A cancelled/failed cleanup resumes
             // in the broker, without reauthorizing or rediscovering provider files.
             WriteSource(source with { Enabled = false });
+            WriteSourceMarker(SourceRetiredPath(root, id));
             if (sourceWatches.TryRemove(id, out var watch)) watch.Dispose();
             while (true)
             {
@@ -161,14 +163,23 @@ public sealed partial class CaptureLibraryStore
     }
     public async Task RemoveLinkAsync(CaptureLibraryMutationReference reference, CancellationToken token)
     {
+        ArgumentNullException.ThrowIfNull(reference); DemandId(reference.Id);
         await gate.WaitAsync(token).ConfigureAwait(false);
         try
         {
-            using var ownership = Own(); var saved = Read(reference.Id);
+            using var ownership = Own(); DemandHiddenState(); var saved = Read(reference.Id);
             if (saved.Item.SourceId is null) throw Error("capture_library_not_linked");
             if (saved.Item.Revision != reference.ContentRevision || saved.Item.MetadataRevision != reference.MetadataRevision) throw Error("capture_library_metadata_conflict");
-            var suppressed = Path.Combine(root, reference.Id + ".unlinked"); PlainPath(suppressed);
-            File.WriteAllText(suppressed, string.Empty); RemoveLinkedMetadata(saved);
+            using var original = File.Exists(MediaPath(saved)) ? CapturePinnedFile.Open(MediaPath(saved)) : null;
+            if (original is not null && saved.ExternalIdentity != original.Identity) throw Error("capture_library_metadata_conflict");
+            if (HiddenRecord(reference.Id).Exists) throw Error("capture_library_already_hidden");
+            token.ThrowIfCancellationRequested();
+            var updated = saved with { Item = saved.Item with { MetadataRevision = checked(saved.Item.MetadataRevision + 1) } };
+            Execute("INSERT INTO userstate.hidden(id,legacy,snapshot) VALUES($id,$legacy,$snapshot)",
+                ("$id",reference.Id),("$legacy", HasStableFileIdentity(saved.ExternalIdentity) ? 0 : 1),("$snapshot",JsonSerializer.Serialize(updated)));
+            DiscoveryChanged();
+            try { WriteMetadata(updated); IndexPut(updated, updated.Item.Available ? updated.Item.Media.ByteLength : 0); }
+            catch { Interlocked.Exchange(ref rescan, 1); throw; }
         }
         finally { gate.Release(); }
     }
@@ -176,7 +187,7 @@ public sealed partial class CaptureLibraryStore
     {
         // Provider files and context receipts are deliberately untouched.
         if (!DeleteOwned(MetadataPath(saved.Item.Id))) throw Error("capture_library_io_failed");
-        DeleteOwned(Path.Combine(root, saved.Item.Id + ".thumbnail"));
+        DeleteThumbnails(saved.Item.Id);
         IndexRemove(saved.Item.Id); verified.Remove(saved.Item.Id);
     }
     private Saved[] SourceRows(string sourceId, int offset) => IndexRows("WHERE json_extract(data,'$.Item.SourceId')=$source ORDER BY id LIMIT 64 OFFSET $offset", ("$source", sourceId), ("$offset", offset));
@@ -213,15 +224,16 @@ public sealed partial class CaptureLibraryStore
             if (!SourceEnabled(source) || !trustedScan && !HasSourceAccess(source, owner)) throw Error("permission_denied");
             var path = ResolveSourcePath(source, relative);
             var id = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source.Id + "/" + relative.Replace('\\', '/').ToUpperInvariant())))[..32].ToLowerInvariant();
-            var suppressed = Path.Combine(root, id + ".unlinked"); PlainPath(suppressed);
-            if (File.Exists(suppressed)) throw Error("capture_library_link_removed");
+            DemandHiddenState();
+            if(File.Exists(Path.Combine(root,id+".recycled")))RefreshRecycled(id);
             var previous = IndexRows("WHERE id=$id", ("$id", id)).FirstOrDefault();
             var file = new FileInfo(path);
             if (!file.Exists) throw Error("capture_library_not_found");
             if (!ValidName(file.Name)) throw Error("capture_library_unsupported_media");
             using var pinned = CapturePinnedFile.Open(path);
+            if (ReleaseReplacedHidden(id, pinned.Identity)) previous = null;
             if (previous is not null && previous.ExternalIdentity == pinned.Identity)
-            { RefreshEntry(id); return ItemView(Read(id)); }
+            { RefreshEntry(id); if (!trustedScan && HiddenRecord(id).Exists) throw Error("capture_library_link_removed"); return ItemView(Read(id)); }
             if (inspect is null) throw Error("capture_library_codec_unavailable");
             var contentType = Path.GetExtension(path).ToLowerInvariant() switch { ".png" => "image/png", ".mp4" => "video/mp4", _ => throw Error("capture_library_unsupported_media") };
             if (file.Length <= 0 || file.Length > (contentType == "video/mp4" ? CaptureLibraryLimits.MaximumVideoBytes : CaptureLimits.MaximumAttachmentBytes)) throw Error("capture_library_unsupported_media");
@@ -239,6 +251,7 @@ public sealed partial class CaptureLibraryStore
             item = item with { Media = media, Available = true, Revision = pinned.Identity.ChangeTime, FileModifiedAtUnixMilliseconds = FileModifiedTime(file.LastWriteTimeUtc) };
             var saved = new Saved(2, item, hash, file.Name, stamp) { RelativePath = relative.Replace('\\', '/'), ExternalIdentity = pinned.Identity };
             token.ThrowIfCancellationRequested(); WriteMetadata(saved); IndexPut(saved, file.Length);
+            if (!trustedScan && HiddenRecord(id).Exists) throw Error("capture_library_link_removed");
             return ItemView(saved);
         }
         finally { gate.Release(); }

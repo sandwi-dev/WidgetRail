@@ -50,8 +50,9 @@ pending controls busy rather than removing or disabling them. For catalogs, reso
 the row batch.
 
 The shared frame supplies theme-aware shading, an outer shadow, edge highlights
-and 12 DIP of padding. Style the content rather than adding another padded frame.
-Theme authors can configure the global [`preview` role](../reference/wrss.md#rich-preview-frame);
+and a default 12 DIP of padding. Scoped part styles can remove that inset for
+edge-to-edge media without adding another padded frame.
+Theme and widget authors can configure the scoped [`preview` part](../reference/wrss.md#rich-preview-frame);
 background opacity does not fade text. Built-in themes use native in-app acrylic
 with .35 tint and .25 luminosity opacity (.55/.5 for Mineral Light). Themes can override these values or
 choose `background-material: standard` for a shaded fill. High contrast and reduced transparency override
@@ -60,6 +61,21 @@ decoration; widget activation and focus rules are unchanged.
 Leave `EnterButton` unset for read-only previews such as Undo/Redo. Their passive
 content validation and focus behavior remain unchanged. Ordinary blocking dialogs
 continue to use `WithModal`; interactive previews do not wrap that API.
+
+### Primary activation opens the preview
+
+For a source whose only primary operation is opening its preview, set
+`EnterButton = ControllerButton.A` (protocol 115). A controller press, keyboard
+activation, or click on that exact source enters the same preview shown on hover
+or focus, without dispatching its action or constructing a second dialog. Use
+`UI.ReadingSurface(...).PresentOnFocus(...)` when the source has no domain action.
+B returns to the source; existing X/Y/stick entry previews retain normal primary
+activation. Indexed sources retain their exact resident row lease and reject
+retired occurrences before entry. A cold provider read retains one host-owned entry
+intent; leaving the source or retiring its provider cancels that intent. A primary
+reading source exposes native Invoke and ExpandCollapse accessibility patterns;
+ordinary reading sources remain non-actionable. In indexed selection mode, A
+continues to select or deselect rows; the preview entry hint yields to selection.
 
 ## On-demand preview sources
 
@@ -282,3 +298,11 @@ first; browser keyboard focus and transient native controls retain their own
 handling. A repeated key or pending request cannot dismiss another modal instance,
 and late completion cannot block or release a newer modal's dismissal guard.
 Passive focus previews do not consume Escape or change the selected action.
+
+### Outside pointer dismissal
+
+A pointer press outside an open rich preview and its opener dismisses the preview without consuming or replaying the press and without restoring focus to the opener. The ordinary control, widget, pin and overlay click rules continue to decide the action. Clicking inside the preview, its opener, or a native selector owned by it preserves that interaction. B/Escape still unwinds a selector/slider first and then returns to the source; this keyboard/controller behavior is distinct from outside-click dismissal.
+
+Composed source labels and artwork resolve through declared parents to their nearest focusable source. Hovering text inside a reading/action surface has the same preview semantics as hovering its padding; disabled nested controls do not borrow an outer action.
+
+Native navigation retention also applies to eligible keyed Page and Content regions. The host retains up to two previous destinations per widget, subject to three cached destinations across the host and a per-entry declaration limit. Stable region keys and input scopes allow existing widgets to benefit without an SDK opt-in. Current declarations are reconciled before interaction resumes; cached pixels never keep old range/action authority alive. Scope, owner, incompatible structure and independently owned live media can require reconstruction. Existing logical focus and viewport memory remains the fallback after eviction. Native scroll anchoring reconciles after focus/BringIntoView settles rather than assuming a cached ScrollViewer cannot move. A realized visible retained row can show focus before fresh admission, while commands still use current authority; an already-current visible target can complete normal entry without another scroll/layout cycle.

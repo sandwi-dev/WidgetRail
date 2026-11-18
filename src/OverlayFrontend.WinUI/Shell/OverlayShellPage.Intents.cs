@@ -34,25 +34,36 @@ internal sealed partial class OverlayShellPage
     private Task<bool> InvokeIntentAsync(WidgetActionRequest request) => InvokeIntentCoreAsync(request);
 
     private async Task<bool> InvokeIntentCoreAsync(WidgetActionRequest? request = null,
-        Func<CancellationToken, Task<WidgetIntentPreparation>>? prepareNotification = null)
+        Func<CancellationToken, Task<WidgetIntentPreparation>>? prepareNotification = null, Func<bool>? notificationCurrent = null)
     {
         if (intentCancellation is not null || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen || owner is null) return false;
         var session = owner.Session;
+        // Chooser input suspension may close and release a deferred preview.
+        // Keep only its admitted semantic lease, never native controls. Session
+        // invalidation still revokes this owner immediately.
+        await using var sourceRetention = request?.IsPreviewIntent == true ? request.IndexedLease?.Retain() : null;
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         intentCancellation = cancellation;
+        void DemandNotificationCurrent()
+        {
+            if (notificationCurrent?.Invoke() == false) cancellation.Cancel();
+            cancellation.Token.ThrowIfCancellationRequested();
+        }
         WidgetIntentPreparation? prepared = null;
         // Notification activation follows a dialog's asynchronous close. That
         // dialog already owns the release, which may have arrived before here.
         if (prepareNotification is null) shellGestures.Claim(ControllerButton.A);
         try
         {
+            DemandNotificationCurrent();
             preparingIntent = true;
             prepared = prepareNotification is not null ? await prepareNotification(cancellation.Token) : request!.IndexedLease is { } lease && request.IndexedItemKey is { } key
-                ? await session.PrepareIndexedIntentAsync(lease, request.Displayed, key, cancellation.Token)
+                ? await session.PrepareIndexedIntentAsync(lease, request.Displayed, key, request.Action, cancellation.Token)
                 : request.PinnedSelection is { } sourceSelection && request.PinnedProjection is { } sourceProjection
                     ? await session.PreparePinnedIntentAsync(sourceSelection, sourceProjection, request.Action, cancellation.Token)
                     : await session.PrepareIntentAsync(request.Displayed, request.Action, cancellation.Token);
             preparingIntent = false;
+            DemandNotificationCurrent();
             if (prepared.PreparationFailed) return false;
             var sourcePin = request?.PinnedSelection is not null ? pinned : null;
             if (request?.PinnedSelection is not null && (sourcePin is null || !sourcePin.IsCurrent || !sourcePin.HasForeground ||
@@ -114,14 +125,15 @@ internal sealed partial class OverlayShellPage
                     else
                     {
                         await SelectAsync(selected, preserveIntent: true,
-                            beforeReveal: async (frame, token) => completion = await session.CommitIntentAsync(prepared, frame, token),
-                            selectionCancellation: cancellation.Token);
+                            beforeReveal: async (frame, token) => { DemandNotificationCurrent(); completion = await session.CommitIntentAsync(prepared, frame, token); },
+                            selectionCancellation: cancellation.Token, retainIntentSource: request?.IsPreviewIntent == true);
                         cancellation.Token.ThrowIfCancellationRequested();
                         if (retired || !visible || !foreground || activeWidget != selected || surface?.CurrentBinding is not { } destination)
                             return false;
                         target = destination.Frame;
                     }
                 }
+                DemandNotificationCurrent();
                 completion ??= await session.CommitIntentAsync(prepared, target, cancellation.Token);
                 if (completion.FollowUp is { } followUp)
                 {
@@ -133,12 +145,15 @@ internal sealed partial class OverlayShellPage
                 var external = completion.ExternalUrl;
                 if (!completion.Accepted)
                 {
+                    if (notificationCurrent is not null) return false;
                     if (staysInSourcePin) await ReturnIntentToMainAsync(cancellation.Token);
                     if (completion.BrowserFallbackUrl is { } fallback)
                     {
                         if (await ShowHostChoiceAsync("Could not open the link", "The selected widget could not open this page.",
                             (HostDialogChoice[])[new("browser", "Open in default browser")], cancellation.Token, directDecisionButtons:true) == "browser") external = fallback;
                     }
+                    else if (completion.Failure == WidgetIntentFailure.FileCapacity)
+                        await ShowHostChoiceAsync("Could not attach files", "Too many files are waiting to be shared. Send or remove attachments from existing drafts, then try again. Your drafts were kept.", [], cancellation.Token);
                     else await ShowHostChoiceAsync("Cannot open this item", "The destination is no longer available. Please try again.", [], cancellation.Token);
                 }
                 if (external is not null && OpenExternalWebPageRequested is { } open)
@@ -331,9 +346,12 @@ internal sealed partial class OverlayShellPage
             NavigationDirection.Up => FocusNavigationDirection.Up, NavigationDirection.Down => FocusNavigationDirection.Down,
             _ => FocusNavigationDirection.None,
         };
-        if (direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None) dialog.MoveFocus(next);
+        if (direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None) dialog.MoveFocus(next, direction.Phase == NavigationPhase.Repeated);
         foreach (var (mask, button) in Buttons)
+        {
             if ((frame.PressedButtons & mask) != 0) { shellGestures.Claim(button); HandleHostChoiceButton(dialog, button, ControllerEventPhase.Pressed); }
+            if ((frame.ReleasedButtons & mask) != 0) HandleHostChoiceButton(dialog, button, ControllerEventPhase.Released);
+        }
         return true;
     }
 }

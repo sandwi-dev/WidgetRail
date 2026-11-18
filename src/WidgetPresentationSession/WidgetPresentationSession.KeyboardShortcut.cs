@@ -6,6 +6,7 @@ namespace WidgetRail.WidgetPresentationSession;
 public sealed partial class WidgetPresentationSession
 {
     public const string EditKeyboardShortcutAction = "controllers.keyboard-shortcut.edit";
+    public const string EditReplayShortcutAction = "controllers.replay-shortcut.edit";
 
     /// <summary>Only the displayed Settings command may open the host's keyboard recorder.</summary>
     public void ValidateKeyboardShortcutCommand(WidgetPresentationFrame displayed, WidgetActionEvent action)
@@ -13,8 +14,9 @@ public sealed partial class WidgetPresentationSession
         using (_gate.Enter())
         {
             var current = ValidateDisplayedOrdinaryFrameLocked(displayed, action.InputScopeId);
-            if (displayed.Authority.WidgetId != "settings" || action.ActionId != EditKeyboardShortcutAction ||
-                action.SourceElementId != "controllers.keyboard-shortcut" || action.InputScopeId != "controllers.page" ||
+            var expectedElement=action.ActionId switch { EditKeyboardShortcutAction=>"controllers.keyboard-shortcut",EditReplayShortcutAction=>"controllers.replay-shortcut",_=>null };
+            if (displayed.Authority.WidgetId != "settings" || expectedElement is null ||
+                action.SourceElementId != expectedElement || action.InputScopeId != "controllers.page" ||
                 action.Phase != ControllerEventPhase.Pressed || action.RequestedValue is not null || action.CommittedText is not null ||
                 ResolveDisplayedAction(displayed.Snapshot, action) is not { } declared || declared != ResolveDisplayedAction(current.Snapshot, action))
                 throw OrdinaryInputStale("Keyboard shortcut editing requires the current Settings command.");

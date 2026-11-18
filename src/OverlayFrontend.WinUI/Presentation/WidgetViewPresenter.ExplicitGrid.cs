@@ -44,8 +44,12 @@ internal sealed partial class WidgetViewPresenter
             Grid.SetColumn(target, cell?.Column ?? 0);
             Grid.SetRowSpan(target, cell?.RowSpan ?? 1);
             Grid.SetColumnSpan(target, cell?.ColumnSpan ?? 1);
-            target.HorizontalAlignment = HorizontalAlignment.Stretch;
-            target.VerticalAlignment = VerticalAlignment.Stretch;
+            target.HorizontalAlignment = cell?.HorizontalAlignment switch
+            {GridCellAlignment.Start=>HorizontalAlignment.Left,GridCellAlignment.Center=>HorizontalAlignment.Center,
+                GridCellAlignment.End=>HorizontalAlignment.Right,_=>HorizontalAlignment.Stretch};
+            target.VerticalAlignment = cell?.VerticalAlignment switch
+            {GridCellAlignment.Start=>VerticalAlignment.Top,GridCellAlignment.Center=>VerticalAlignment.Center,
+                GridCellAlignment.End=>VerticalAlignment.Bottom,_=>VerticalAlignment.Stretch};
         }
     }
 

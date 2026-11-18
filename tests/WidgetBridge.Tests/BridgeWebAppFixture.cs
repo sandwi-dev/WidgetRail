@@ -20,7 +20,7 @@ internal static class BridgeWebAppFixture
             WorkerFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(id))).ToLowerInvariant(), CatalogFingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(id))).ToLowerInvariant(),
             PinningSupported = id != "webapp-idle", FullWidgetPinningSupported = id != "webapp-idle",
             ResidencyPolicy = new() { Mode = WidgetResidencyPolicies.UnloadAfterIdle, IdleSeconds = 5 },
-            Intents = id == "webapp-a" ? new() { Requests = [WidgetIntentContracts.Web], Handles = [new(WidgetIntentContracts.Web)] } : null,
+            Intents = id == "webapp-a" ? new() { Requests = [WidgetIntentContracts.Web], Handles = [new(WidgetIntentContracts.Web), new(WidgetIntentContracts.WebNotification)] } : null,
         }).Append(new ConfiguredWidget
         {
             Id = "settings", PackageId = "fixture.settings", PublisherId = "fixture.webapp", Name = "Settings fixture",
@@ -39,14 +39,15 @@ internal static class BridgeWebAppFixture
     }
 }
 
-internal sealed class WebAppFrameworkFixture : Widget
+internal sealed partial class WebAppFrameworkFixture : Widget
 {
     private readonly bool idle;
     private readonly WidgetModel<bool> second;
     private readonly WidgetModel<string> noticeStatus;
-    internal WebAppFrameworkFixture(bool idle) { this.idle = idle; second = CreateModel(false); noticeStatus = CreateModel("idle"); }
+    internal WebAppFrameworkFixture(bool idle) { this.idle = idle; second = CreateModel(false); noticeStatus = CreateModel("idle"); nativeNotice = CreateModel(new NativeNoticeState()); }
     public override ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
     {
+        if (request.ContractId == WidgetIntentContracts.OpenWebNotification) return NativeNotificationIntent(request);
         if (request.ContractId != WidgetIntentContracts.Web.Id || !request.IsWellFormed() || request.Payload.GetProperty("url").GetString() != "https://shell.fixture.invalid/secondary")
             return ValueTask.FromResult(WidgetIntentResult.Rejected);
         second.Update(_ => true);
@@ -55,6 +56,7 @@ internal sealed class WebAppFrameworkFixture : Widget
     public override WidgetView Render()
     {
         if (idle) return new(UI.Button("Idle fixture", "noop", "idle"), "idle");
+        if (nativeSession is not null) return RenderNativeNotice();
         var primary = UI.WebBrowser(new("app.primary", 1, "https://shell.fixture.invalid/primary", "Webapp primary")
         { Options = WebBrowserOptions.WebApp }, BrowserInteractionMode.InteractOnFocus, "app.page");
         var other = UI.WebBrowser(new("app.secondary", 1, "https://shell.fixture.invalid/secondary", "Webapp secondary")
@@ -62,7 +64,7 @@ internal sealed class WebAppFrameworkFixture : Widget
         return new(UI.Grid("app.root", [GridTrack.Star(), GridTrack.Auto()], [GridTrack.Star(), GridTrack.Star()],
             [primary.InGrid(columnSpan: second.Value ? 1 : 2),
                 .. (second.Value ? new[] { other.InGrid(column: 1) } : []),
-                UI.Row("app.commands", UI.Button("Toggle second session", "second", "second"),
+                UI.Row("app.commands", UI.Button("Native notification fixture", "native-open", "native-open"), UI.Button("Toggle second session", "second", "second"),
                     UI.Button("Synthetic song banner: " + noticeStatus.Value, "notify", "notify"),
                     UI.Button("Synthetic pending notification", "notify-pending", "notify-pending"),
                     UI.Button("Update synthetic metadata", "notify-update", "notify-update"),
@@ -72,6 +74,7 @@ internal sealed class WebAppFrameworkFixture : Widget
     }
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
+        if (action.ActionId.StartsWith("native-", StringComparison.Ordinal)) return NativeNotificationActionAsync(action.ActionId, cancellationToken);
         if (action.ActionId == "second") second.Update(value => !value);
         if (action.ActionId.StartsWith("notify", StringComparison.Ordinal))
             Operations.RunLatest("fixture.notification", async context =>

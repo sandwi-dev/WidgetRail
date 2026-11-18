@@ -6,11 +6,16 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Capture\CaptureRecordingSummary.cs" Link="CaptureRecordingSummary.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Media\Editing\CaptureEditGeometry.cs" Link="CaptureEditGeometry.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Media\Editing\CaptureEditAcceleration.cs" Link="CaptureEditAcceleration.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\IndexedRasterizationPolicy.cs" Link="IndexedRasterizationPolicy.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Diagnostics\PresentationPipelineTrace.cs" Link="PresentationPipelineTrace.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\WebSessionPermissionConsent.cs" Link="WebSessionPermissionConsent.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Browser\BrowserSessionStartups.cs" Link="BrowserSessionStartups.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\IntroductionProgress.cs" Link="IntroductionProgress.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\WindowsTaskView.cs" Link="WindowsTaskView.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\GuardedKeyboardChord.cs" Link="GuardedKeyboardChord.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Input\TaskSwitchConfirmation.cs" Link="TaskSwitchConfirmation.cs" />
     <ProjectReference Include="..\..\src\WindowsWindowActivation\WindowsWindowActivation.csproj" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\ApplicationRestart.cs" Link="ApplicationRestart.cs" />

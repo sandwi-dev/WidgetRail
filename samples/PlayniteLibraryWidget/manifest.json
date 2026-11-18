@@ -99,7 +99,8 @@
           "required": [
             "originPackageId",
             "referenceKind",
-            "referenceId"
+            "referenceId",
+            "referenceLabel"
           ],
           "properties": {
             "referenceKind": {
@@ -116,11 +117,16 @@
               "minLength": 1,
               "type": "string",
               "maxLength": 256
+            },
+            "referenceLabel": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
             }
           },
           "type": "object"
         },
-        "version": 1
+        "version": 2
       }
     ],
     "handles": [

@@ -1,11 +1,12 @@
 namespace WidgetRail.WidgetProtocol;
 
-public enum AnchorPlacement { Auto, Right, Left, Below, Above }
+public enum AnchorPlacement { Auto, Right, Left, Below, Above, CenterOnAnchor }
 
 /// <summary>A widget-local anchor. Indexed anchors retain exact occurrence authority, never an index alone.</summary>
 public sealed record PresentationAnchor(string? ElementId = null, IndexedCollectionFocusTarget? IndexedItem = null);
 
-/// <summary>Preferred geometry; the host flips or falls back to a centered, viewport-bounded panel.</summary>
+/// <summary>Preferred geometry; directional placements flip or fall back to the viewport center.
+/// CenterOnAnchor centers over the visible anchor and clamps to the viewport (protocol 123).</summary>
 public sealed record AnchoredPresentation(PresentationAnchor Anchor,
     double Width = 360, double Height = 280, AnchorPlacement Placement = AnchorPlacement.Auto)
 {

@@ -89,7 +89,8 @@ internal sealed partial class WidgetViewPresenter
                 if (binding.Element is Media.MediaPlayerView media) media.RetainForPageExit();
                 if (binding.Element is WidgetIndexedCollectionView collection) collection.SuspendForTransition();
             });
-            if (VisualTreeHelper.GetParent(host) is Panel parent) parent.Children.Remove(host);
+            if (motionStage?.IsRetainedRoot(host) == true) motionStage.SetCurrent(null);
+            else if (VisualTreeHelper.GetParent(host) is Panel parent) parent.Children.Remove(host);
             else if (ReferenceEquals(motionStage!.Current, host)) motionStage.SetCurrent(null);
             host.Margin = new(); host.Width = oldBounds.Width; host.Height = oldBounds.Height;
             host.MinWidth = host.MinHeight = 0; host.MaxWidth = host.MaxHeight = double.PositiveInfinity;
@@ -141,6 +142,7 @@ internal sealed partial class WidgetViewPresenter
         // and paints old dialog text over the scrim and unrelated controls.
         foreach (var section in commit.Sections)
         {
+            if (motionStage?.IsRetainedRoot(section.Outgoing) == true) continue;
             var incoming = bindings[section.IncomingId].MotionHost!;
             section.Owner = incoming;
             incoming.EnsureOutgoing().Children.Add(section.Outgoing);
@@ -250,8 +252,9 @@ internal sealed partial class WidgetViewPresenter
             commit.Motion?.Dispose();
             commit.PageMotion?.Dispose();
             foreach (var target in commit.Targets) target.Dispose();
+            ParkCachedPage();
             foreach (var section in commit.Sections) section.Owner?.ClearOutgoing();
-            foreach (var binding in commit.Retained) Retire(binding);
+            foreach (var binding in commit.Retained) if (!IsCachedBinding(binding)) Retire(binding);
             foreach (var media in bindings.Values.Select(binding => binding.Element).OfType<Media.MediaPlayerView>()) media.EndPageMotion();
         }
         finally { commit.Settled.TrySetResult(); QueueSurfaceUpdate(); }

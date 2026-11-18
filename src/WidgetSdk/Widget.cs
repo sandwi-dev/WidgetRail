@@ -151,6 +151,13 @@ public sealed record WidgetView(
             node.DefaultFocusPresentation is { } fallback && HasIndexed(fallback);
         if (HasIndexed(snapshot.Root) || snapshot.PinnedLayouts.Any(layout => layout.Root is { } root && HasIndexed(root)))
             snapshot = snapshot with { ProtocolVersion = ProtocolConstants.CurrentVersion };
+        static bool HasInlineAction(ViewNode node) => node.Kind is ViewNodeKind.Button or ViewNodeKind.ActionSurface or ViewNodeKind.Select or ViewNodeKind.Slider || node.Children.Any(HasInlineAction);
+        static bool HasInlineFragment(ViewNode node) => node.FocusPresentation is { } fragment && HasInlineAction(fragment) || node.Children.Any(HasInlineFragment);
+        static bool HasInteractiveInlinePreview(ViewNode node) =>
+            node.Kind == ViewNodeKind.FocusPresentationSurface && node.FocusPreview?.EnterButton is not null && node.Children.Any(HasInlineFragment) ||
+            node.Children.Any(HasInteractiveInlinePreview);
+        if (HasInteractiveInlinePreview(snapshot.Root))
+            snapshot = snapshot with { ProtocolVersion = Math.Max(snapshot.ProtocolVersion, ProtocolConstants.InlinePreviewActionVersion) };
         var errors = ViewSnapshotValidator.Validate(snapshot, requirements);
         if (errors.Count != 0) throw new ProtocolValidationException(errors);
         return snapshot;
@@ -684,6 +691,7 @@ public abstract partial class Widget
                 }
             Volatile.Write(ref _latestSnapshot, snapshot);
         }
+        RetireInlinePreviewActions(snapshot);
         if(retiredPins is not null)foreach(var pin in retiredPins)CancelAndDispose(pin);
     }
 

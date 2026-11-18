@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using WidgetRail.WidgetProtocol;
 using Windows.Foundation;
 
@@ -9,13 +10,21 @@ internal sealed partial class WidgetViewPresenter
 {
     private sealed record PendingScrollReveal(ScrollRevealRequest Request, Binding Scroll, Binding Target);
     private PendingScrollReveal? pendingScrollReveal;
-    private sealed record PendingIndexedScrollReveal(ScrollRevealRequest Request, Binding Collection);
+    private sealed class PendingIndexedScrollReveal(ScrollRevealRequest request,Binding collection)
+    {
+        internal ScrollRevealRequest Request {get;}=request;
+        internal Binding Collection {get;}=collection;
+        internal bool Started;
+        internal Binding? FocusTarget;
+        internal WeakReference<DependencyObject>? FocusFallback;
+        internal DependencyObject? NativeFallback=>FocusFallback is {} weak && weak.TryGetTarget(out var target)?target:null;
+    }
     private PendingIndexedScrollReveal? pendingIndexedScrollReveal;
     private long lastScrollRevealRequest;
 
     private void UpdateScrollReveal(ViewSnapshot snapshot)
     {
-        if (snapshot.ScrollRevealRequest is { IndexedItem: not null } indexedRequest)
+        if (snapshot.ScrollRevealRequest is {} indexedRequest && (indexedRequest.IndexedItem is not null || indexedRequest.DeferredSource is not null))
         {
             UpdateIndexedScrollReveal(indexedRequest);
             return;
@@ -48,20 +57,39 @@ internal sealed partial class WidgetViewPresenter
             !bindings.TryGetValue(request.ScrollId, out var binding) || binding.Element is not WidgetIndexedCollectionView ||
             binding.Identity.Scope != activeScope)
         { CancelScrollReveal(); return; }
+        var completing=false;
+        if(pendingIndexedScrollReveal is {Request.DeferredSource:{} deferred} admitted && admitted.Request.RequestId==request.RequestId &&
+            ReferenceEquals(admitted.Collection,binding) && IndexedCollectionContract.SameViewportDomain(declarations[binding.Identity.Id].Node.IndexedCollection,deferred))
+        {
+            if(request.DeferredSource is {} refreshed && IndexedCollectionContract.SameViewportDomain(refreshed,deferred) &&
+                IndexedCollectionContract.SameViewportDomain(declarations[binding.Identity.Id].Node.IndexedCollection,refreshed))return;
+            completing=request.IndexedItem is not null && NativeRestoreStillOwnsFocus(admitted.FocusTarget,admitted.NativeFallback);
+        }
         if (pendingIndexedScrollReveal is { } old && (old.Request != request || !ReferenceEquals(old.Collection, binding)))
             CancelScrollReveal();
-        if (request.RequestId <= lastScrollRevealRequest) return;
+        if (request.RequestId <= lastScrollRevealRequest && !completing) return;
         CancelPassiveScrollFocus();
         scrollGesture = null;
         CancelScrollReveal();
         lastScrollRevealRequest = request.RequestId;
         var pending = new PendingIndexedScrollReveal(request, binding);
         pendingIndexedScrollReveal = pending;
+        if(request.DeferredSource is {} starting)
+        {
+            var expected=effectiveView?.FocusGroupEntryRequest is {TargetId:{} focusId} focus && focus.RequestId==request.RequestId
+                ?bindings.GetValueOrDefault(focusId):FocusedBinding();
+            pending.FocusTarget=expected?.Element is WidgetIndexedCollectionView?null:expected;
+            if(XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is DependencyObject currentFocus)
+                pending.FocusFallback=new(currentFocus);
+            if(!IndexedCollectionContract.SameViewportDomain(declarations[binding.Identity.Id].Node.IndexedCollection,starting))CancelScrollReveal();
+            return;
+        }
         // Focus restoration is queued first. The collection rejects stale query
         // identities and waits for the exact row payload before scrolling.
         if (!DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
             if (!ReferenceEquals(pendingIndexedScrollReveal, pending)) return;
+            pending.Started=true;
             if (disposed || !presentationActive || presentationOnly || HasTransientControl ||
                 !bindings.TryGetValue(request.ScrollId, out var current) || !ReferenceEquals(current, binding) ||
                 current.Identity.Scope != activeScope ||
@@ -70,6 +98,11 @@ internal sealed partial class WidgetViewPresenter
     }
 
     private void ScrollRevealLayoutUpdated(object? sender, object args) => ApplyScrollReveal();
+    private void ObserveDeferredRevealFocus(DependencyObject? next)
+    {
+        if(!applying && pendingIndexedScrollReveal is {Request.DeferredSource:not null} pending &&
+            !NativeRestoreStillOwnsFocus(pending.FocusTarget,pending.NativeFallback,next))CancelScrollReveal();
+    }
 
     private void ApplyScrollReveal()
     {

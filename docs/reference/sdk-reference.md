@@ -18,6 +18,7 @@ with authored state and native accessibility/focus recovery.
 | Application sharing through a website backend | [Native web capture](../developers/hosted-web-sessions.md#share-an-application-through-a-backend) |
 | Native media playback | [Media player](widget-media-player.md) |
 | Capture and restricted documents | [Capture and Game Help](widget-capture-and-game-help.md) |
+| Saved captures, external folders and host-owned replay | [Capture Library](capture-library.md) |
 | Quiet notifications, categories and destinations | [Widget notifications](widget-notifications.md) |
 | Independent widget activity and badges | [Widget activity](widget-activity.md) |
 | Widget-to-widget routing and feedback | [Intents](widget-intents.md) |

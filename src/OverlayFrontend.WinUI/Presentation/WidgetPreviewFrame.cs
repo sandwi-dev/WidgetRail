@@ -13,6 +13,10 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetPreviewFrame : Grid, IDisposable
 {
     internal Border Surface { get; } = new();
+    internal Border Body { get; } = new();
+    internal Border Footer { get; } = new() { Visibility = Visibility.Collapsed, Padding = new(0, 8, 0, 0) };
+    private readonly NativeComputedStyleAdapter footerStyle;
+    private IReadOnlyDictionary<string, BridgeComputedStyleValue>? currentFooterStyle;
     internal WidgetNativeDepth Depth { get; }
     internal double ShadowInset { get; private set; } = 30;
     private PreviewFrameStyle? current;
@@ -23,10 +27,36 @@ internal sealed partial class WidgetPreviewFrame : Grid, IDisposable
     {
         HorizontalAlignment = HorizontalAlignment.Left;
         VerticalAlignment = VerticalAlignment.Top;
+        var content = new Grid();
+        content.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
+        content.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        content.Children.Add(Body); content.Children.Add(Footer); Grid.SetRow(Footer, 1);
+        Surface.Child = content;
+        footerStyle = new(Footer, interactive: false);
         var shadow = new Grid { IsHitTestVisible = false };
         var edges = new Grid { IsHitTestVisible = false };
         Children.Add(shadow); Children.Add(Surface); Children.Add(edges);
         Depth = new(Surface, (shadow, edges), outerShadowOnly: true);
+    }
+
+    internal void SetContent(UIElement? body, UIElement? footer)
+    { Body.Child = body; Footer.Child = footer; }
+
+    internal bool SetFooterVisible(bool visible)
+    {
+        var next = visible ? Visibility.Visible : Visibility.Collapsed;
+        if (Footer.Visibility == next) return false;
+        Footer.Visibility = next; return true;
+    }
+
+    internal bool ApplyFooterStyle(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style)
+    {
+        if (ReferenceEquals(currentFooterStyle, style) || currentFooterStyle is not null && style is not null &&
+            currentFooterStyle.Count == style.Count && currentFooterStyle.All(pair => style.TryGetValue(pair.Key, out var value) && pair.Value == value)) return false;
+        currentFooterStyle = style;
+        footerStyle.Update(style is null ? null : new() { Base = style, Focused = style, Pressed = style });
+        Footer.Margin = NativeComputedStyleAdapter.Spacing(style, "margin") ?? new Thickness(0);
+        return true;
     }
 
     internal bool Apply(PreviewFrameStyle style)
@@ -36,7 +66,7 @@ internal sealed partial class WidgetPreviewFrame : Grid, IDisposable
         Surface.CornerRadius = new(style.Radius);
         Surface.BorderThickness = new(style.BorderWidth);
         Surface.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        Surface.Padding = new(12);
+        Surface.Padding = style.Padding;
         if (style.HighContrast) Surface.Background = new SolidColorBrush(style.Surface);
         else if (style.Material == PreviewBackgroundMaterial.Acrylic)
         {
@@ -72,6 +102,8 @@ internal sealed partial class WidgetPreviewFrame : Grid, IDisposable
 
     public void Dispose()
     {
+        footerStyle.Dispose();
+        SetContent(null, null);
         Surface.Background = null;
         acrylic = null;
         Depth.Dispose();
@@ -85,19 +117,24 @@ internal sealed record PreviewFrameStyle(Color Surface, double Shading, float Ra
     Color Top, Color Side, Color Bottom, Color Shadow, float Blur, Vector2 Offset, bool HighContrast,
     PreviewBackgroundMaterial Material = PreviewBackgroundMaterial.Standard, double TintOpacity = .65, double? LuminosityOpacity = null)
 {
+    internal Thickness Padding { get; init; } = new(12);
     internal static PreviewFrameStyle Resolve(IReadOnlyDictionary<string, BridgeNodeRenderStyles>? styles,
         ShellChromePalette palette, AppearanceSettings appearance)
+        => ResolveRole(styles?.GetValueOrDefault("preview")?.Base, palette, appearance);
+
+    internal static PreviewFrameStyle ResolveRole(IReadOnlyDictionary<string, BridgeComputedStyleValue>? role,
+        ShellChromePalette palette, AppearanceSettings appearance)
     {
-        var role = styles?.GetValueOrDefault("preview")?.Base;
         Color ColorValue(string property, Color fallback) => role?.GetValueOrDefault(property) is { } value &&
             NativeComputedStyleAdapter.TryColor(value.Text, out var color) ? color : fallback;
         double Number(string property, double fallback, double minimum, double maximum) =>
             role?.GetValueOrDefault(property) is { Number: { } value, Unit: null or "px" } && double.IsFinite(value)
                 ? Math.Clamp(value, minimum, maximum) : fallback;
         var radius = (float)Number("corner-radius", 10, 0, 24);
+        var padding = NativeComputedStyleAdapter.Spacing(role, "padding") ?? new Thickness(12);
         if (palette.HighContrast)
             return new(palette.Surface, 0, radius, 2, palette.Text, palette.Text, palette.Text,
-                Microsoft.UI.Colors.Transparent, 0, Vector2.Zero, true);
+                Microsoft.UI.Colors.Transparent, 0, Vector2.Zero, true) { Padding = padding };
         var authoredAcrylic = role?.GetValueOrDefault("background-material")?.Text == "acrylic";
         var material = authoredAcrylic && appearance.AcrylicEffects &&
             appearance.Transparency != TransparencyPreference.Reduced ? PreviewBackgroundMaterial.Acrylic : PreviewBackgroundMaterial.Standard;
@@ -109,6 +146,6 @@ internal sealed record PreviewFrameStyle(Color Surface, double Shading, float Ra
             ColorValue("border-top-color", border), border, ColorValue("border-bottom-color", border),
             ColorValue("shadow-color", Color.FromArgb(90, 0, 0, 0)), (float)Number("shadow-blur", 12, 0, 24),
             new((float)Number("shadow-offset-x", 0, -12, 12), (float)Number("shadow-offset-y", 4, -12, 12)), false, material, Number("background-tint-opacity", .65, 0, 1),
-            role?.GetValueOrDefault("background-luminosity-opacity")?.Text is null or "auto" ? null : Number("background-luminosity-opacity", .25, 0, 1));
+            role?.GetValueOrDefault("background-luminosity-opacity")?.Text is null or "auto" ? null : Number("background-luminosity-opacity", .25, 0, 1)) { Padding = padding };
     }
 }

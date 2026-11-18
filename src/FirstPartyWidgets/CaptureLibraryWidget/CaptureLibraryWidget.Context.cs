@@ -7,14 +7,17 @@ namespace WidgetRail.FirstPartyWidgets.CaptureLibrary;
 public sealed partial class CaptureLibraryWidget
 {
     private static readonly CompiledWidgetIntentContract browseIntent = CompiledWidgetIntentContract.Create(WidgetIntentContracts.CaptureLibrary);
+    private static readonly CompiledWidgetIntentContract namedBrowseIntent = CompiledWidgetIntentContract.Create(WidgetIntentContracts.CaptureLibraryV2);
     private CaptureLibraryContextsPage? contexts;
     private bool showContexts;
     private string? contextError;
 
     public override async ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
     {
-        if (!IsActive || !request.IsWellFormed() || request.ContractId != browseIntent.Id || request.Version != browseIntent.Version ||
-            request.SchemaDigest != browseIntent.SchemaDigest || !browseIntent.Accepts(request.Payload)) return WidgetIntentResult.Rejected;
+        var contract = request.Version == namedBrowseIntent.Version ? namedBrowseIntent : browseIntent;
+        if (!IsActive || !request.IsWellFormed() || request.ContractId != contract.Id || request.Version != contract.Version ||
+            request.SchemaDigest != contract.SchemaDigest || !contract.Accepts(request.Payload)) return WidgetIntentResult.Rejected;
+        var label = request.Version == namedBrowseIntent.Version ? request.Payload.GetProperty("referenceLabel").GetString()?.Trim() : null;
         var filter = new CaptureLibraryQuery
         {
             OriginPackageId = request.Payload.GetProperty("originPackageId").GetString(),
@@ -35,7 +38,7 @@ public sealed partial class CaptureLibraryWidget
             lock (galleryGate)
             {
                 galleryNavigation.Back(); gallery.EndSelection();
-                galleryQuery = galleryQuery with { Filter = filter, Revision = null };
+                galleryQuery = galleryQuery with { Filter = filter, Revision = null, RelatedLabel = string.IsNullOrEmpty(label) ? null : label };
                 selectedCapture = null; galleryReturn = null; dateFilter = "all";
             }
             showContexts = false; contexts = null; showSources = false; pendingSourceRemoval = null;

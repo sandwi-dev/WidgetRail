@@ -33,6 +33,13 @@ internal static class BridgeMessageTypes
     public const string ControllerControl = "controller-control";
     public const string WindowPreviewPermissions = "window-preview-permissions";
     public const string TakeCapture = "capture-take";
+    public const string GetReplayStatus = "capture-replay-status";
+    public const string TakeReplayWork = "capture-replay-work";
+    public const string CheckReplayCommand = "capture-replay-current";
+    public const string CompleteReplayCommand = "capture-replay-complete";
+    public const string SaveReplay = "capture-replay-save";
+    public const string StopReplay = "capture-replay-stop";
+    public const string ReplayPowerState = "capture-replay-power";
     public const string CompleteCaptureSource = "capture-source-complete";
     public const string CheckCaptureSource = "capture-source-current";
     public const string CompleteCaptureCopy = "capture-copy-complete";
@@ -40,6 +47,9 @@ internal static class BridgeMessageTypes
     public const string CompleteCaptureFolder = "capture-folder-complete";
     public const string CheckCaptureFolder = "capture-folder-current";
     public const string TakePermission = "permission-take";
+    public const string TakeFilePicker = "file-picker-take";
+    public const string CheckFilePicker = "file-picker-current";
+    public const string CompleteFilePicker = "file-picker-complete";
     public const string CheckPermission = "permission-check";
     public const string CompletePermission = "permission-complete";
     public const string CheckCapture = "capture-check";
@@ -48,6 +58,7 @@ internal static class BridgeMessageTypes
     public const string CompleteCapture = "capture-complete";
     public const string ResolveProviderDocument = "provider-document";
     public const string ResolveMediaPlayer = "media-player-source";
+    public const string ReleaseMediaPlayer = "media-player-release";
     public const string ResolveCaptureAttachment = "capture-attachment";
     public const string ApplicationControl = "application-control";
     public const string CompleteTaskActivation = "complete-task-activation";
@@ -90,6 +101,7 @@ internal static class BridgeMessageTypes
     public const string Action = "action";
     public const string PrepareIntent = "prepare-widget-intent";
     public const string PrepareNotificationIntent = "prepare-notification-intent";
+    public const string PrepareWebNotificationIntent = "prepare-web-notification-intent";
     public const string ReleaseNotificationIntent = "release-notification-intent";
     public const string PrepareWidgetSettingsIntent = "prepare-widget-settings-intent";
     public const string PrepareAppUpdateIntent = "prepare-app-update-intent";
@@ -101,6 +113,9 @@ internal static class BridgeMessageTypes
     public const string IntentPrepared = "widget-intent-prepared";
     public const string IntentCompleted = "widget-intent-completed";
     public const string PinnedAction = "pinned-action-v1";
+    public const string CheckCaptureEdit = "check-capture-edit";
+    public const string CompleteCaptureEdit = "complete-capture-edit";
+    public const string CancelCaptureEdit = "cancel-capture-edit";
     public const string ResolvePinnedArtwork = "resolve-pinned-artwork-v1";
     public const string QuickAction = "quick-action";
     public const string ControllerInput = "controller-input";
@@ -213,7 +228,10 @@ internal sealed record BridgePinnedActionRequest(string WidgetId, string Instanc
 internal sealed record BridgePinnedArtworkRequest(int Version, string WidgetId, string InstanceId, string RuntimeGeneration,
     string PresentationGeneration, string LayoutId, long SnapshotSequence, string InputScopeId, string ArtworkHandle, string DemandId,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool AllowFileSource = false);
-internal sealed record BridgeActionRequest(string WidgetId, WidgetRail.WidgetSdk.WidgetActionEvent Action, BridgeWorkerRun? WorkerRun = null);
+internal sealed record BridgeActionRequest(string WidgetId, WidgetRail.WidgetSdk.WidgetActionEvent Action, BridgeWorkerRun? WorkerRun = null)
+{
+    public WidgetRail.WidgetSdk.InlinePreviewActionInput? InlinePreview { get; init; }
+}
 internal sealed record BridgeQuickActionRequest(string WidgetId, string QuickActionId, long Sequence = 0, long MonotonicTimestampMicroseconds = 0);
 internal sealed record BridgeControllerInputRequest(
     string WidgetId,

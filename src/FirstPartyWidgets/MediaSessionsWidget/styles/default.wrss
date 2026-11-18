@@ -139,7 +139,7 @@
   outline-width: var(--focus-width, 1.5px);
   outline-offset: var(--focus-offset, -1.5px);
 }
-.media-play:focused { color: var(--canvas, #090908); outline-color: var(--canvas, #090908); outline-offset: -4px; }
+.media-play:focused { color: var(--canvas, #090908); outline-color: var(--focus); outline-width: var(--focus-width, 2px); outline-offset: var(--focus-filled-offset, 2px); }
 .media-transport:disabled,
 .media-play:disabled { opacity: 0.48; }
 

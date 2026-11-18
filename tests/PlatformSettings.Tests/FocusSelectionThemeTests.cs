@@ -30,6 +30,7 @@ internal static class FocusSelectionThemeTests
             Check(shared, "button", ["wrail-choice-row"], ["wrail-choice-row--selected"]);
             Check(shared, "button", ["wrail-picker__option"], ["wrail-picker__option--selected"], false);
             CheckFillPreserved(shared, ["wrail-icon-button", "wrail-icon-button--primary"]);
+            CheckFilledRing(shared, ["wrail-icon-button", "wrail-icon-button--primary"], "shared primary");
             CheckDeclaredFocusFills(shared, catalog.BuiltInDefault.Package, "shared");
             foreach (var path in Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "ThemeFixtures"), "*.wrss"))
             {
@@ -63,20 +64,27 @@ internal static class FocusSelectionThemeTests
 
             // Widget-specific recipes must preserve the foreground that pairs
             // with a filled primary surface; a generic focused rule cannot
-            // replace it with ordinary page text or an identical accent edge.
+            // replace it with ordinary page text. Focus is a separated outer
+            // theme-colored ring, not a dark inset cut into that filled surface.
             foreach (var (fixture, classes) in new (string, string[])[]
                      {
                          ("SdkGallery", ["wrail-icon-button", "wrail-icon-button--primary"]),
                          ("Spotify", ["spotify-primary"]),
+                         ("Spotify", ["spotify-play"]),
+                         ("NowPlaying", ["media-play"]),
+                         ("YouTubeMusic", ["music-play"]),
                          ("EmbeddedMedia", ["media-shell-play"]),
                          ("YouTubeVideo", ["youtube-primary", "youtube-transport-button"]),
+                         ("CaptureLibrary", ["capture-primary"]),
+                         ("Playnite", ["playnite-capture-save"]),
+                         ("PerformanceMonitor", ["performance-enable"]),
                      })
             {
                 var styles = Fixture(fixture);
                 var normal = Resolve(styles, "button", classes);
                 var focused = Resolve(styles, "button", classes, WrssPseudoState.Focused);
                 Equal(normal.Get("color")?.Text, focused.Get("color")?.Text, fixture + " primary ink");
-                Equal(normal.Get("color")?.Text, focused.Get("outline-color")?.Text, fixture + " primary focus ink");
+                CheckFilledRing(styles, classes, fixture);
             }
             var network = Fixture("NetworkControls");
             Equal(Resolve(network, "button", ["network-secondary-action"]).Get("color")?.Text,
@@ -118,6 +126,7 @@ internal static class FocusSelectionThemeTests
             WrssTheme Fixture(string name)
             {
                 var path = Path.Combine(AppContext.BaseDirectory, "ThemeFixtures", name + ".wrss");
+                if (!File.Exists(path)) path = Path.Combine(AppContext.BaseDirectory, "FilledFocusFixtures", name + ".wrss");
                 var parsed = WrssParser.Parse(File.ReadAllText(path), path);
                 return Compile(new([parsed.Document], parsed.Diagnostics));
             }
@@ -151,6 +160,17 @@ internal static class FocusSelectionThemeTests
                 Equal(Resolve(compiled, "button", classes).Get("background")?.Text,
                     Resolve(compiled, "button", classes, WrssPseudoState.Focused).Get("background")?.Text,
                     theme.Descriptor.Id + ": primary/brand fill " + string.Join(".", classes));
+            }
+
+            void CheckFilledRing(WrssTheme compiled, string[] classes, string name)
+            {
+                var focused = Resolve(compiled, "button", classes, WrssPseudoState.Focused);
+                var focus = Resolve(shared, "button", [], WrssPseudoState.Focused);
+                Equal(focus.Get("outline-color")?.Text, focused.Get("outline-color")?.Text,
+                    theme.Descriptor.Id + " " + name + " uses the active theme focus ink");
+                if (focused.Get("outline-width")?.Number is not >= 2 || focused.Get("outline-offset")?.Number != 2)
+                    throw new InvalidOperationException(theme.Descriptor.Id + " " + name + " must separate its visible outer focus ring from the fill");
+                CheckFillPreserved(compiled, classes);
             }
         }
         return Task.CompletedTask;

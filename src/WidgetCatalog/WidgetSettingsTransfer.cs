@@ -29,6 +29,7 @@ internal sealed class WidgetSettingsTransfer(string stateRoot, ConsentStore cons
                 retained, deadline.Token).ConfigureAwait(false);
             await CaptureLibraryStore.KeepReviewedSourceAccessAsync(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(stateRoot))!, "capture-library-v2"),
                 InstalledWidgetAuthority.Identity(previous), InstalledWidgetAuthority.Identity(replacement), deadline.Token).ConfigureAwait(false);
+            await ReplayTransfer.PrepareAsync(previous, replacement, retained, deadline.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
@@ -41,6 +42,9 @@ internal sealed class WidgetSettingsTransfer(string stateRoot, ConsentStore cons
                 "Widget settings or permissions could not be kept. The current version is still selected. Resolve the local-data error and retry.", exception);
         }
     }
+
+    private ReviewedReplayOwnerTransfer ReplayTransfer => new(Path.GetDirectoryName(Path.GetFullPath(stateRoot))!, consent);
+    internal Task CompleteAsync(InstalledWidgetVersion selected, CancellationToken token) => ReplayTransfer.CompleteAsync(selected, token);
 
     private static BrokerWidgetIdentity Identity(InstalledWidgetVersion version) =>
         new(version.Id, InstalledWidgetAuthority.PublisherId(version), "settings-transfer");

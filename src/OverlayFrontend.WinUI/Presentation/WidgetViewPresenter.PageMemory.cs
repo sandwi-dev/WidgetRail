@@ -5,7 +5,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
-    private sealed record PageMemory(string? FocusId, Dictionary<string, (double X, double Y)> Scroll);
+    private sealed record PageMemory(string? FocusId, Dictionary<string, (double X, double Y)> Scroll, IReadOnlyList<ScrollViewportMemento> Anchors);
     private readonly OrderedDictionary<(string Group, string Key), PageMemory> pageMemory = [];
     private readonly List<PageMemory> pendingPageMemory = [];
     private long pageMemoryVersion;
@@ -28,7 +28,9 @@ internal sealed partial class WidgetViewPresenter
                 { var scroll = (ScrollViewer)pair.Value.Element; return (scroll.HorizontalOffset, scroll.VerticalOffset); });
             var key = (previous.GroupId, previous.Key);
             pageMemory.Remove(key);
-            pageMemory.Add(key, new(focused is not null && ids.Contains(focused) ? focused : null, offsets));
+            var anchors = bindings.Values.Where(binding => ids.Contains(binding.Identity.Id) && binding.Element is ScrollViewer)
+                .Select(CaptureScrollViewport).OfType<ScrollViewportMemento>().Take(64).ToArray();
+            pageMemory.Add(key, new(focused is not null && ids.Contains(focused) ? focused : null, offsets, anchors));
             while (pageMemory.Count > 32) pageMemory.RemoveAt(0);
             if (navigation.Navigation == WidgetNavigationOperation.Back && pageMemory.TryGetValue((navigation.GroupId, navigation.Key), out var memory))
                 pendingPageMemory.Add(memory);
@@ -45,14 +47,29 @@ internal sealed partial class WidgetViewPresenter
             if (memory.FocusId is { } id && bindings.TryGetValue(id, out var target) && Navigable(target))
             { remembered[target.Identity.Scope] = target.Identity; needsEntry = true; }
         var version = pageMemoryVersion;
+        var intent = entryIntentVersion;
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
-            if (disposed || !presentationActive || version != pageMemoryVersion) return;
+            if (disposed || !presentationActive || version != pageMemoryVersion || intent != entryIntentVersion) return;
             UpdateLayout();
+            var anchored = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var anchor in memories.SelectMany(memory => memory.Anchors))
+                if (Matches(anchor.Element) && Matches(anchor.Anchor))
+                {
+                    anchored.Add(anchor.Element.Id);
+                    if (!pendingScrollViewports.Any(pending => pending.Memory.Element == anchor.Element)) pendingScrollViewports.Add(new(anchor));
+                }
+            if (anchored.Count > 0 && frame is not null)
+            {
+                memoryIntent = entryIntentVersion;
+                memoryOwner = PresentationMemoryOwner.From(frame.Authority);
+                LayoutUpdated -= MemoryLayoutUpdated; LayoutUpdated += MemoryLayoutUpdated;
+                QueueMemoryRestoration();
+            }
             foreach (var memory in memories)
                 foreach (var (id, offset) in memory.Scroll)
                     if (bindings.TryGetValue(id, out var binding) && binding.Element is ScrollViewer scroll)
-                        scroll.ChangeView(offset.X, offset.Y, null, disableAnimation: true);
+                        if (!anchored.Contains(id)) scroll.ChangeView(offset.X, offset.Y, null, disableAnimation: true);
         });
     }
 }

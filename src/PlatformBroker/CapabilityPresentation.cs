@@ -36,9 +36,10 @@ public static class CapabilityPresentation
         PlatformCapabilities.AppLibraryReadV1 => "See your app library",
         PlatformCapabilities.ProviderDocumentsV1 => "Display restricted HTML documents",
         PlatformCapabilities.WindowCaptureV1 => "Capture an application window",
-        PlatformCapabilities.CaptureLibraryReadV1 => "Browse and read your saved captures",
+        PlatformCapabilities.CaptureLibraryReadV1 => "Read captures and recording status",
         PlatformCapabilities.CaptureLibrarySaveV1 => "Save captures to your library",
         PlatformCapabilities.CaptureLibraryManageV1 => "Manage saved captures",
+        PlatformCapabilities.CaptureLibraryRecycleLinkedV1 => "Recycle linked capture originals",
         PlatformCapabilities.TaskWindowsPreviewV1 => "Show live previews of open windows",
         PlatformCapabilities.PerformanceReadV1 => "Read system usage, game frame rates and open window titles",
         PlatformCapabilities.PerformanceFpsControlV1 => "Request Windows approval to enable FPS collection",
@@ -130,11 +131,13 @@ public static class CapabilityPresentation
             "See a bounded app library of current installed applications and this package's explicitly remembered apps, using conservative kinds and opaque IDs. " +
             "Widgets never receive paths, shortcuts, command lines, package identities, AUMIDs, or launch authority.",
         PlatformCapabilities.CaptureLibraryReadV1 =>
-            "Browse and read captures you explicitly saved, including captures saved by other widgets. This does not permit new screen recordings or deletion.",
+            "Browse saved captures, including captures saved by other widgets, and read replay recording status and its selected application name. This does not permit new recordings or deletion.",
         PlatformCapabilities.CaptureLibrarySaveV1 =>
-            "Keep this widget's temporary captures in your shared library across restarts. Saving is explicit and does not upload media.",
+            "Save temporary captures and requested replay clips to your shared library across restarts. Saving is explicit and does not upload media.",
         PlatformCapabilities.CaptureLibraryManageV1 =>
             "Delete saved PNG/MP4 files from Pictures/WidgetRail/Captures and open that folder in Windows Explorer.",
+        PlatformCapabilities.CaptureLibraryRecycleLinkedV1 =>
+            "Move exact indexed PNG/MP4 originals from connected capture folders to the Windows Recycle Bin, including folders connected by other widgets. Other apps lose access to those files. This does not allow permanent deletion or recycling arbitrary folder contents.",
         PlatformCapabilities.TaskWindowsPreviewV1 =>
             "Display window contents inside the overlay. Previews are view-only.",
         PlatformCapabilities.PerformanceReadV1 =>
@@ -152,7 +155,7 @@ public static class CapabilityPresentation
         PlatformCapabilities.ProviderDocumentsV1 =>
             "Display this widget's HTML documents with scripts, forms and background network access blocked.",
         PlatformCapabilities.WindowCaptureV1 =>
-            "Request a screenshot or recording of the foreground application with supported capture settings and preparation. The host asks for confirmation before each capture.",
+            "Request screenshots and recordings of an application. Replay recording requires an approved application and continues until stopped, including while the widget is closed. Saving replay clips also requires capture-library save permission.",
         PlatformCapabilities.TaskWindowsReadV1 =>
             "See open application windows and their titles. Window handles and process IDs stay private to the host.",
         PlatformCapabilities.TaskWindowsSwitchV1 =>

@@ -13,6 +13,7 @@ internal sealed partial class WidgetValueButton : Button
     private readonly FontIcon affordance = new() { FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe Fluent Icons"), IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center };
     private string accessibleValue = string.Empty;
     private bool sensitive;
+    internal bool IsCommandMenu { get; set; }
     private bool expanded;
     internal Action? ExpandRequested { get; set; }
     internal Action? CollapseRequested { get; set; }
@@ -59,7 +60,7 @@ internal sealed partial class WidgetValueButton : Button
     {
         protected override object GetPatternCore(PatternInterface pattern) => pattern switch
         {
-            PatternInterface.Value => owner.sensitive ? null! : this,
+            PatternInterface.Value => owner.sensitive || owner.IsCommandMenu ? null! : this,
             PatternInterface.ExpandCollapse => owner.ExpandRequested is null ? null! : this,
             _ => base.GetPatternCore(pattern),
         };

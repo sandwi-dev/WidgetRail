@@ -25,3 +25,18 @@ constexpr CaptureGeometry CaptureSize(int32_t width, int32_t height, uint32_t ki
     if (kind == 2) { w = std::max(2U, w & ~1U); h = std::max(2U, h & ~1U); }
     return {w, h};
 }
+
+// Replay preserves native source pixels when the source fits. Chroma-aligned
+// odd dimensions are padded, not resampled down by one pixel. Legacy screenshot
+// and manual-recording geometry is deliberately unchanged.
+constexpr CaptureGeometry ConfiguredReplayCaptureSize(int32_t width,int32_t height,uint32_t maximumWidth,uint32_t maximumHeight) {
+    const auto bounded=ConfiguredCaptureSize(width,height,maximumWidth,maximumHeight,true);
+    if(!bounded.width||!bounded.height)return {};
+    const auto evenWidth=(static_cast<uint32_t>(width)+1)&~1u,evenHeight=(static_cast<uint32_t>(height)+1)&~1u;
+    if(evenWidth<=maximumWidth&&evenHeight<=maximumHeight)return {evenWidth,evenHeight};
+    return bounded;
+}
+static_assert(ConfiguredReplayCaptureSize(1919,839,1920,1080).width==1920);
+static_assert(ConfiguredReplayCaptureSize(1919,839,1920,1080).height==840);
+static_assert(ConfiguredReplayCaptureSize(1921,1081,1920,1080).width<=1920);
+static_assert(ConfiguredCaptureSize(1919,839,1920,1080,true).width==1918);

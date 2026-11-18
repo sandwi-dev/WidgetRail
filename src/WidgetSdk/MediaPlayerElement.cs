@@ -12,8 +12,12 @@ public sealed record MediaPlayerElement : WidgetElement
     }
     public MediaPlayerDefinition Media { get; init; }
     public string AccessibleName { get; init; }
+    /// <summary>Optional scoped artwork shown by the native player while media loads.</summary>
+    public WidgetArtworkHandle? Poster { get; init; }
+    public MediaPlayerElement WithPoster(WidgetArtworkHandle artwork) => this with { Poster = artwork };
     internal override ViewNode ToProtocolNode() => new()
-    { Id = Id, Kind = ViewNodeKind.MediaPlayer, MediaPlayer = Media, AccessibilityLabel = AccessibleName, StyleClasses = StyleClasses };
+    { Id = Id, Kind = ViewNodeKind.MediaPlayer, MediaPlayer = Media, AccessibilityLabel = AccessibleName, StyleClasses = StyleClasses,
+        ArtworkHandle = Poster?.Value, ImageFit = Poster is null ? null : WidgetProtocol.ImageFit.Contain };
 }
 public static partial class UI
 {

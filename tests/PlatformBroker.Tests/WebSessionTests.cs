@@ -4,6 +4,41 @@ using WidgetRail.WidgetProtocol;
 
 internal static class WebSessionTests
 {
+    internal static Task ScriptResourcesAsync()
+    {
+        var isolated = new WebSessionPageAdapter { ScriptAsset="actions.js", Origins=["https://example.com"] };
+        var backend = isolated with { Mode=WebSessionPageAdapterMode.SessionBackend };
+        Check(isolated.GetMaximumScriptBytes()==64*1024 && backend.GetMaximumScriptBytes()==128*1024,
+            "Only full-trust backend scripts receive the larger budget.");
+        foreach (var adapter in new[] { isolated, backend })
+        {
+            var bytes=System.Text.Encoding.UTF8.GetBytes(new string('é',adapter.GetMaximumScriptBytes()/2));
+            var digest=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+            var encoded=Convert.ToBase64String(bytes);
+            Check(adapter.DecodeScript(encoded,digest).Length==bytes.Length/2,"Exact UTF-8 byte boundary is admitted.");
+            RejectScript(()=>adapter.DecodeScript(encoded,new string('0',64)));
+            RejectScript(()=>adapter.DecodeScript(encoded,"bad-digest"));
+            RejectScript(()=>adapter.DecodeScript("%",digest));
+            RejectScript(()=>adapter.DecodeScript(new string('A',((bytes.Length+2)/3)*4+4),digest));
+            var overflow=bytes.Append((byte)'x').ToArray();
+            RejectScript(()=>adapter.DecodeScript(Convert.ToBase64String(overflow),Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(overflow))));
+            var invalidUtf8=new byte[]{0xc3,0x28};
+            RejectScript(()=>adapter.DecodeScript(Convert.ToBase64String(invalidUtf8),Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(invalidUtf8))));
+        }
+        var larger=System.Text.Encoding.UTF8.GetBytes(new string('x',64*1024+1));
+        var hash=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(larger));
+        Check(backend.DecodeScript(Convert.ToBase64String(larger),hash).Length==larger.Length,"Backend admits scripts beyond the page-action limit.");
+        RejectScript(()=>isolated.DecodeScript(Convert.ToBase64String(larger),hash));
+        RejectScript(()=>(backend with{Mode=(WebSessionPageAdapterMode)99}).GetMaximumScriptBytes());
+        Check(WebSessionContract.MaximumMessageBytes==64*1024,"Script growth does not raise message budgets.");
+        return Task.CompletedTask;
+
+        static void RejectScript(Action action)
+        {
+            try { action(); } catch(ArgumentException) { return; }
+            throw new InvalidOperationException("Invalid script was admitted.");
+        }
+    }
     internal static async Task OwnershipAsync()
     {
         var registry = new WebSessionRegistry();

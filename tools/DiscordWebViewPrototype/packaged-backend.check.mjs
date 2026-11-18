@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { webcrypto } from 'node:crypto';
+import { maximumBackendBytes } from './Build-Backend.mjs';
 
 // Execute the exact composed asset written by Build-Backend, not separately
 // minified components with a replacement domain adapter supplied by the test.
@@ -78,5 +79,41 @@ test('sealed share cannot invoke a browser chooser without admitted native captu
 });
 
 test('sealed backend remains inside the host script byte limit', () => {
-    assert.ok(Buffer.byteLength(source, 'utf8') <= 65536);
+    assert.ok(Buffer.byteLength(source, 'utf8') <= maximumBackendBytes);
+});
+
+test('sealed messaging chooses authenticated bound verbs over earlier raw and tracking request families',async()=>{
+    const f=fixture();let rawCalls=0,trackingCalls=0,apiCalls=0;
+    const channel={id:'10',type:1,recipients:['456']};
+    f.runtime.c.user={exports:{getName:()=> 'UserStore',getCurrentUser:()=>({id:'123'}),getUser:id=>({id,username:'Fixture'})}};
+    f.runtime.c.channels={exports:{getName:()=> 'ChannelStore',getChannel:id=>id==='10'?channel:null,getSortedPrivateChannels:()=>[channel]}};
+    f.runtime.c.relations={exports:{getName:()=> 'RelationshipStore',isBlockedOrIgnored:()=>false}};
+    const raw=Object.assign(function rawRequest(){},{get(url,data,callback){rawCalls++;throw new Error('Wrong positional request contract');},
+        post(url,data,callback){rawCalls++;},del(){},put(){},patch(){},Request(){},Response(){},agent(){}});
+    const tracking={get(options){trackingCalls++;throw new Error('Missing trackedActionData');},post(options){trackingCalls++;throw new Error('Missing trackedActionData');},
+        put(){},patch(){},delete(){}};
+    f.runtime.c.raw={exports:raw};f.runtime.c.tracking={exports:tracking};
+    const request=async function request(method,options,context){
+        apiCalls++;assert.equal(options.url,'/channels/10/messages');assert.equal(options.retries,0);
+        const message={id:method==='GET'?'100':'101',channel_id:'10',author:{id:method==='GET'?'456':'123',username:'Fixture'},
+            content:method==='GET'?'Fixture message':options.body.content,nonce:options.body?.nonce,attachments:[],timestamp:'2026-11-16T12:00:00Z'};
+        return {body:method==='GET'?[message]:message};
+    };
+    const direct={get:request.bind(null,'GET'),post:request.bind(null,'POST'),del(){},put(){},patch(){}};
+    assert.equal(direct.get.length,2);f.runtime.c.api={exports:direct};
+    const page=await f.invoke('command',{owner,method:'messageHistory',args:{account:'123',channelId:'10',limit:20}});
+    assert.equal(page.context.ok,true);assert.equal(page.items.length,1);assert.equal(apiCalls,1);assert.equal(rawCalls,0);assert.equal(trackingCalls,0);
+    const sent=await f.invoke('command',{owner,method:'messageSend',args:{account:'123',channelId:'10',nonce:'1234',content:'Fixture explicit send'}});
+    assert.equal(sent.ok,true);assert.equal(sent.value.status,'sent');assert.equal(apiCalls,2);assert.equal(rawCalls,0);assert.equal(trackingCalls,0);
+});
+
+test('sealed messaging fails closed with only raw and tracking helpers loaded',async()=>{
+    const f=fixture();let rawCalls=0,trackingCalls=0;
+    const channel={id:'10',type:1,recipients:['456']};
+    f.runtime.c.user={exports:{getName:()=> 'UserStore',getCurrentUser:()=>({id:'123'})}};
+    f.runtime.c.channels={exports:{getName:()=> 'ChannelStore',getChannel:()=>channel,getSortedPrivateChannels:()=>[channel]}};
+    f.runtime.c.raw={exports:Object.assign(function rawRequest(){},{get(url,data,callback){rawCalls++;},post(url,data,callback){rawCalls++;},del(){},put(){},patch(){}})};
+    f.runtime.c.tracking={exports:{get(options){trackingCalls++;},post(options){trackingCalls++;},put(){},patch(){},delete(){}}};
+    const response=await f.invoke('command',{owner,method:'messageHistory',args:{account:'123',channelId:'10',limit:20}});
+    assert.equal(response.ok,false);assert.equal(response.code,'messaging_unavailable');assert.equal(rawCalls,0);assert.equal(trackingCalls,0);
 });

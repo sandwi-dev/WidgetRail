@@ -6,6 +6,10 @@ namespace WidgetRail.WidgetProtocol;
 [JsonConverter(typeof(JsonStringEnumConverter<GridTrackSizing>))]
 public enum GridTrackSizing { Auto, Pixel, Star }
 
+/// <summary>Alignment of content inside one native Grid cell.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<GridCellAlignment>))]
+public enum GridCellAlignment { Start, Center, End, Stretch }
+
 /// <summary>A bounded native row or column definition. Auto uses Value = 1.</summary>
 public sealed record GridTrackDefinition
 {
@@ -47,6 +51,10 @@ public sealed record GridCellPlacement
     public int Column { get; init; }
     public int RowSpan { get; init; } = 1;
     public int ColumnSpan { get; init; } = 1;
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)]
+    public GridCellAlignment? HorizontalAlignment { get; init; }
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)]
+    public GridCellAlignment? VerticalAlignment { get; init; }
 }
 
 internal static class GridLayoutValidation
@@ -67,6 +75,9 @@ internal static class GridLayoutValidation
         }
         if (node.GridCell is { } cell)
         {
+            if(cell.HorizontalAlignment is {} horizontal && !Enum.IsDefined(horizontal) ||
+                cell.VerticalAlignment is {} vertical && !Enum.IsDefined(vertical))
+                add(path+".gridCell","invalid_grid_alignment","Grid cell alignment must be Start, Center, End or Stretch.");
             if (parent is not { Kind: ViewNodeKind.Grid, GridLayout: { } parentLayout })
                 add(path + ".gridCell", "grid_cell_not_allowed", "Grid cell placement requires a direct explicit Grid parent.");
             else

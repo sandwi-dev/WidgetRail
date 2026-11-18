@@ -12,6 +12,6 @@ internal sealed partial class NativePopupTheme
     {
         var owner = Find(media);
         return owner?.Track(() => media.ApplyTheme(owner.surface, owner.ink, owner.muted, owner.selected,
-            owner.border, owner.focus, owner.fontSize, owner.fontWeight, owner.font, owner.cornerRadius));
+            owner.border, owner.focus, owner.fontSize, owner.fontWeight, owner.font, owner.cornerRadius, owner.palette?.HighContrast == true));
     }
 }

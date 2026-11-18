@@ -39,6 +39,23 @@ public sealed partial class WidgetPresentationSession
         (await ReadIndexedCoreAsync(authority, collectionId, source, 0, 0, pinnedLayoutId, false, cancellationToken,
             IndexedCollectionRequestKind.Locate, locateKey: itemKey).ConfigureAwait(false)).Range.LocatedIndex;
 
+    public async Task ObserveIndexedViewportAsync(WidgetPresentationAuthority authority, string collectionId,
+        IndexedCollectionDescriptor source, IndexedViewportObservation observation, string? pinnedLayoutId = null, CancellationToken cancellationToken = default) =>
+        _ = await ReadIndexedCoreAsync(authority, collectionId, source, 0, 0, pinnedLayoutId, false, cancellationToken,
+            IndexedCollectionRequestKind.ObserveViewport, viewport: observation).ConfigureAwait(false);
+
+    public async Task<bool> RecoverIndexedViewportAsync(WidgetPresentationAuthority authority, string collectionId,
+        IndexedCollectionDescriptor source, IndexedViewportRecovery recovery, string? pinnedLayoutId = null, CancellationToken cancellationToken = default) =>
+        (await RecoverIndexedViewportResultAsync(authority, collectionId, source, recovery, pinnedLayoutId, cancellationToken).ConfigureAwait(false)).Recovered;
+
+    public async Task<IndexedViewportRecoveryResult> RecoverIndexedViewportResultAsync(WidgetPresentationAuthority authority, string collectionId,
+        IndexedCollectionDescriptor source, IndexedViewportRecovery recovery, string? pinnedLayoutId = null, CancellationToken cancellationToken = default)
+    {
+        var range = (await ReadIndexedCoreAsync(authority, collectionId, source, 0, 0, pinnedLayoutId, false, cancellationToken,
+            IndexedCollectionRequestKind.RecoverViewport, recovery: recovery).ConfigureAwait(false)).Range;
+        return new(range.ViewportRecovered == true, range.ViewportAnchorKey);
+    }
+
     /// <summary>Retains bounded row action/artwork authority independently of realized controls.</summary>
     public async Task<WidgetPresentationIndexedLease> AcquireIndexedRangeAsync(
         WidgetPresentationAuthority authority, string collectionId, IndexedCollectionDescriptor source,
@@ -72,11 +89,12 @@ public sealed partial class WidgetPresentationSession
     private async Task<IndexedReadResult> ReadIndexedCoreAsync(
         WidgetPresentationAuthority authority, string collectionId, IndexedCollectionDescriptor source,
         int startIndex, int count, string? pinnedLayoutId, bool acquire, CancellationToken cancellationToken,
-        IndexedCollectionRequestKind kind = IndexedCollectionRequestKind.Range, WidgetPinnedSelection? pinnedSelection = null, string? previewKey = null, string? locateKey = null)
+        IndexedCollectionRequestKind kind = IndexedCollectionRequestKind.Range, WidgetPinnedSelection? pinnedSelection = null, string? previewKey = null, string? locateKey = null,
+        IndexedViewportObservation? viewport = null, IndexedViewportRecovery? recovery = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var range = new IndexedCollectionRangeRequest(collectionId, source, startIndex, count,
-            Guid.NewGuid().ToString("N"), pinnedLayoutId) { Kind = kind, PreviewKey = previewKey, LocateKey = locateKey };
+            Guid.NewGuid().ToString("N"), pinnedLayoutId) { Kind = kind, PreviewKey = previewKey, LocateKey = locateKey, Viewport = viewport, Recovery = recovery };
         IndexedCollectionContract.ValidateRequest(range);
         IndexedDemand operation;
         using (_gate.Enter())

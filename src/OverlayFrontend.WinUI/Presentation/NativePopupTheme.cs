@@ -66,14 +66,14 @@ internal sealed partial class NativePopupTheme
         { foreach (var control in controls)
           { control.GotFocus -= changed; control.LostFocus -= changed; control.Loaded -= loaded; if (decorations.Remove(control, out var decoration)) decoration.Dispose(); } });
     }
-    private IDisposable Track(Action apply, Action? release = null)
+    private Lease Track(Action apply, Action? release = null)
     {
         var lease = new Lease(this, apply, release); leases.Add(lease);
         try { apply(); return lease; } catch { lease.Dispose(); throw; }
     }
-    private sealed class Lease(NativePopupTheme owner, Action apply, Action? release) : IDisposable
+    internal sealed class Lease(NativePopupTheme owner, Action apply, Action? release) : IDisposable
     {
-        internal void Apply() => apply();
+        internal void Apply() { if (owner.leases.Contains(this)) apply(); }
         public void Dispose() { if (owner.leases.Remove(this)) release?.Invoke(); }
     }
 

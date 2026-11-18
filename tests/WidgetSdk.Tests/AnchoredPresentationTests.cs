@@ -19,6 +19,17 @@ internal static class AnchoredPresentationTests
         Check(WinUiPresentationContract.Validate(before).Count == 0);
         Check(ViewSnapshotValidator.Validate(legacyBefore with { ProtocolVersion = 91 }).Any(error => error.Code == "feature_requires_version"));
         var read = SnapshotJson.Deserialize(SnapshotJson.Serialize(before));
+        Check((int)AnchorPlacement.Above==4 && (int)AnchorPlacement.CenterOnAnchor==5);
+        var centered=Snapshot(new(new("opener"),Placement:AnchorPlacement.CenterOnAnchor));
+        Check(centered.ProtocolVersion==ProtocolConstants.CenteredAnchorPlacementVersion);
+        Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(centered)).Root.AnchoredPresentation?.Placement==AnchorPlacement.CenterOnAnchor);
+        Check(ViewSnapshotValidator.Validate(centered with{ProtocolVersion=122}).Any(error=>error.Code=="feature_requires_version"));
+        var preview=new WidgetView(UI.FocusPresentationSurface(UI.Button("Inspect","inspect","item")
+            .PresentOnFocus(UI.Text("Preview","preview")),UI.Text("Fallback","fallback"),"preview.surface") with
+            {Preview=new(360,280,AnchorPlacement.CenterOnAnchor)},"item")
+            .CreateSnapshot("centered.preview",1);
+        Check(preview.ProtocolVersion==ProtocolConstants.CenteredAnchorPlacementVersion);
+        Check(ViewSnapshotValidator.Validate(preview with{ProtocolVersion=122}).Any(error=>error.Code=="feature_requires_version"));
         Check(read.Root.AnchoredPresentation == before.Root.AnchoredPresentation);
         Check(read.Root.AnchoredPresentation?.SizeToContentHeight == false);
         Check(!System.Text.Encoding.UTF8.GetString(SnapshotJson.Serialize(before)).Contains("sizeToContentHeight"));

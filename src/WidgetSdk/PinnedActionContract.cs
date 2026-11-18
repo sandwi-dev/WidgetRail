@@ -65,7 +65,7 @@ internal static class PinnedActionContract
             var option=node.SelectOptions.SingleOrDefault(option=>option.ActionId==action.ActionId&&!option.IsDisabled&&!option.IsBusy);
             if (node.Kind is ViewNodeKind.Button or ViewNodeKind.ActionSurface && node.ActionId==action.ActionId ||
                 node.Kind==ViewNodeKind.Select&&option is not null)
-                return new("preview",owner,focused,action.ActionId,(node.Kind,option));
+                return new("preview",owner,focused,action.ActionId,(node.Kind,node.IsCommandMenu,option));
             throw new InvalidOperationException("Pinned preview action retired.");
         }
         if (action.CommittedText is { } text)

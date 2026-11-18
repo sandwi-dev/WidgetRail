@@ -193,7 +193,7 @@ internal sealed partial class IndexedWidgetValidationPage
             var resizedRow = (FrameworkElement)View()!.ContainerFromIndex(75);
             var resizedY = resizedRow.TransformToVisual(contentViewport).TransformPoint(default).Y;
             Check(resizedY >= -1 && resizedY + resizedRow.ActualHeight <= contentViewport.ActualHeight + 1,
-                "smaller viewport clamps return geometry to keep the focused row visible");
+                $"smaller viewport clamps return geometry to keep the focused row visible [y={resizedY}; height={resizedRow.ActualHeight}; viewport={contentViewport.ActualHeight}]");
             presenter.Height = double.NaN;
 
             var repeatedY = await Open(); await Pending();
@@ -212,9 +212,21 @@ internal sealed partial class IndexedWidgetValidationPage
             await Open(); await Pending();
             App.Window.Activate();
             var wheelEvents = 0;
+            var rootWheelEvents = 0;
+            var rootPointerMoves = 0;
             var wheelScroll = Scroll();
+            var inputRoot = XamlRoot.Content;
+            PointerEventHandler rootWheel = (_, args) =>
+            {
+                ++rootWheelEvents;
+                if (rootWheelEvents <= 8) traces.Enqueue(JsonSerializer.Serialize(new { phase = "wheel-root-event", originalSource = args.OriginalSource?.GetType().Name,
+                    position = args.GetCurrentPoint(inputRoot).Position, args.Handled, presenter.HasPendingMemoryRestore }));
+            };
+            PointerEventHandler rootMove = (_, _) => ++rootPointerMoves;
             PointerEventHandler wheel = (_, _) => ++wheelEvents;
             wheelScroll.AddHandler(UIElement.PointerWheelChangedEvent, wheel, true);
+            inputRoot.AddHandler(UIElement.PointerWheelChangedEvent, rootWheel, true);
+            inputRoot.AddHandler(UIElement.PointerMovedEvent, rootMove, true);
             try
             {
                 using var input = new NativeWheelProbe(wheelScroll);
@@ -224,27 +236,43 @@ internal sealed partial class IndexedWidgetValidationPage
                 // before emitting the distinct wheel input, as a user would.
                 await Task.Delay(100, lifetime.Token);
                 input.Send(-120);
-                await Until(() => wheelEvents > 0, "native wheel delivered");
+                traces.Enqueue(JsonSerializer.Serialize(new { phase = "wheel-injected", diagnostics = input.Diagnostics,
+                    sameScroll = ReferenceEquals(wheelScroll, Scroll()), rootWheelEvents, rootPointerMoves, presenter.HasPendingMemoryRestore }));
+                try { await Until(() => wheelEvents > 0, "native wheel delivered"); }
+                catch
+                {
+                    traces.Enqueue(JsonSerializer.Serialize(new { phase = "wheel-delivery-failed", diagnostics = input.Diagnostics,
+                        sameScroll = ReferenceEquals(wheelScroll, Scroll()), wheelEvents, rootWheelEvents, rootPointerMoves, presenter.HasPendingMemoryRestore }));
+                    throw;
+                }
                 Check(!presenter.HasPendingMemoryRestore, "native wheel cancels pending return geometry");
                 await Task.Delay(500, lifetime.Token);
                 var offset = wheelScroll.VerticalOffset;
                 var visibleBefore = WheelVisibleRows();
+                var wheelFocus=FocusManager.GetFocusedElement(XamlRoot);
+                var wheelFocusId=FocusId();
+                traces.Enqueue(JsonSerializer.Serialize(new{phase="wheel-before-data",focus=wheelFocusId,hasFocus=wheelFocus is not null}));
                 await Send("return-release"); await Task.Delay(500, lifetime.Token);
                 var visibleAfter = WheelVisibleRows();
-                traces.Enqueue(JsonSerializer.Serialize(new { phase = "wheel-after-data", before = offset, after = wheelScroll.VerticalOffset, visibleBefore, visibleAfter, focus = FocusId() }));
+                traces.Enqueue(JsonSerializer.Serialize(new { phase = "wheel-after-data", before = offset, after = wheelScroll.VerticalOffset, visibleBefore, visibleAfter,focusBefore=wheelFocusId, focus = FocusId() }));
                 // Native anchoring legitimately changes the pixel offset when
                 // 48px placeholders acquire 44px rows. The user's visible anchor
                 // must stay fixed, and the canceled return must not steal focus.
                 Check(!presenter.HasPendingMemoryRestore && visibleBefore.Length > 0 && visibleAfter.Length > 0 &&
                     visibleBefore[0].Index == visibleAfter[0].Index && Math.Abs(visibleBefore[0].Y - visibleAfter[0].Y) < 2 &&
-                    FocusId() == "Widget.return-back",
+                    wheelFocus is not null && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),wheelFocus),
                     "late rows do not rewind a wheel-owned viewport");
 
                 ReturnVisibleRow[] WheelVisibleRows() => Descendants(View()!).OfType<ListViewItem>().Select(row => new ReturnVisibleRow(
                     View()!.IndexFromContainer(row), row.TransformToVisual(wheelScroll).TransformPoint(default).Y, row.ActualHeight))
                     .Where(row => row.Y + row.Height > 0 && row.Y < wheelScroll.ViewportHeight).OrderBy(row => row.Y).ToArray();
             }
-            finally { wheelScroll.RemoveHandler(UIElement.PointerWheelChangedEvent, wheel); }
+            finally
+            {
+                wheelScroll.RemoveHandler(UIElement.PointerWheelChangedEvent, wheel);
+                inputRoot.RemoveHandler(UIElement.PointerWheelChangedEvent, rootWheel);
+                inputRoot.RemoveHandler(UIElement.PointerMovedEvent, rootMove);
+            }
         }
         catch (Exception exception) { error = exception; }
         finally

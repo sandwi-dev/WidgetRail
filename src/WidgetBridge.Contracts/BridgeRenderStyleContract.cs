@@ -23,7 +23,9 @@ internal static class BridgeRenderStyleContract
             if (!nodeIds.Contains(id) || style is null)
                 throw new BridgeProtocolException("Computed style map contains a foreign or null node.");
             frozen.Add(id, new() { Base = Freeze(style.Base), Focused = Freeze(style.Focused), Pressed = Freeze(style.Pressed),
-                GroupHeader = style.GroupHeader is null ? null : Freeze(style.GroupHeader) });
+                GroupHeader = style.GroupHeader is null ? null : Freeze(style.GroupHeader),
+                PreviewFrame = style.PreviewFrame is null ? null : Freeze(style.PreviewFrame),
+                PreviewFooter = style.PreviewFooter is null ? null : Freeze(style.PreviewFooter) });
         }
         return new ReadOnlyDictionary<string, BridgeNodeRenderStyles>(frozen);
 

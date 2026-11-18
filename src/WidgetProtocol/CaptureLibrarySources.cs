@@ -4,7 +4,13 @@ namespace WidgetRail.WidgetProtocol;
 /// it is not file-access authority. Library operations always require the opaque source ID.</summary>
 public sealed record CaptureLibrarySource(string Id, string Label, bool Available, int LinkedCount, int UnsupportedCount, string CanonicalFolderPath);
 public sealed record CaptureLibrarySources(IReadOnlyList<CaptureLibrarySource> Items);
-public sealed record CaptureLibraryChooseSourceRequest(string Label);
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<CaptureLibraryKnownLocation>))]
+public enum CaptureLibraryKnownLocation { WindowsGameCaptures }
+public sealed record CaptureLibraryChooseSourceRequest(string Label)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public CaptureLibraryKnownLocation? KnownLocation { get; init; }
+}
 public sealed record CaptureLibrarySourceChoice(CaptureLibrarySource? Source);
 public sealed record CaptureLibrarySourceReference(string SourceId);
 /// <summary>A provider reference relative to an owned source grant; never an absolute path.</summary>

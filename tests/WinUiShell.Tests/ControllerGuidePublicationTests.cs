@@ -14,6 +14,24 @@ public sealed class ControllerGuidePublicationTests
     private static readonly ControllerGuideHint[] Host = [Back, Close];
 
     [TestMethod]
+    public void DashboardDeclarationPublishesAcrossChooserModesAndEmptyOwnerClearsActions()
+    {
+        var state = new ControllerGuidePublication();
+        var dashboardAction = new ControllerGuideHint(ControllerPrompt.X, "Mute", ControllerButton.X);
+        var radial = new ControllerGuideHint[] { new(ControllerPrompt.LeftStickMove, "Choose widget"),
+            new(ControllerPrompt.A, "Open widget", ControllerButton.A), Back };
+        state.Update(("widget", "interactive"), false, [], Host, 0);
+        state.Update(("widget", "radial"), true, [dashboardAction], radial, 1);
+        AssertHints(state.Latest, dashboardAction, radial[0], radial[1], Back);
+        AssertHints(state.Displayed, dashboardAction, radial[0], radial[1], Back);
+        state.Update(("widget", "tray"), true, [dashboardAction], ControllerGuideModel.TrayHints(false), 2);
+        Assert.AreEqual(1, state.Latest.Count(hint => hint.Button == dashboardAction.Button));
+        state.Update(("empty-widget", "radial"), true, [], radial, 3);
+        AssertHints(state.Latest, radial);
+        AssertHints(state.Displayed, radial);
+    }
+
+    [TestMethod]
     public void PendingContextNeverPublishesByElapsedTimeAndReadyPublishesImmediately()
     {
         var state = new ControllerGuidePublication();

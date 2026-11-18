@@ -44,7 +44,8 @@ internal sealed partial class WidgetRichTextView : Grid
                 {
                     NativeTextScaleScope.SetSpanParent(source, this);
                     var properties = new[] { TextBlock.TextProperty, TextBlock.ForegroundProperty, TextBlock.FontSizeProperty,
-                        TextBlock.FontFamilyProperty, TextBlock.FontWeightProperty, TextBlock.CharacterSpacingProperty };
+                        TextBlock.FontFamilyProperty, TextBlock.FontWeightProperty, TextBlock.CharacterSpacingProperty,
+                        TextBlock.FontStyleProperty, TextBlock.TextDecorationsProperty };
                     watches.Add(source, properties.Select(property => (property,
                         source.RegisterPropertyChangedCallback(property, (_, _) => UpdateRun(source, textRun)))).ToList());
                 }
@@ -65,6 +66,8 @@ internal sealed partial class WidgetRichTextView : Grid
         Copy(text, TextBlock.FontFamilyProperty, run, TextElement.FontFamilyProperty);
         Copy(text, TextBlock.FontWeightProperty, run, TextElement.FontWeightProperty);
         Copy(text, TextBlock.CharacterSpacingProperty, run, TextElement.CharacterSpacingProperty);
+        Copy(text, TextBlock.FontStyleProperty, run, TextElement.FontStyleProperty);
+        Copy(text, TextBlock.TextDecorationsProperty, run, TextElement.TextDecorationsProperty);
     }
     private void ConstrainLinks()
     {

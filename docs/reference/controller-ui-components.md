@@ -3,11 +3,21 @@
 Use shared components when they already express the interaction you need.
 They provide consistent focus, actions, and theme classes across widgets.
 
+Use `UI.IconButton` for familiar compact actions and always supply an accessible
+verb label (the host also uses it for the tooltip). Protocol 117 adds semantic
+`Back`, `Forward`, `Share`, `Favorite`, `FavoriteFilled`, `Edit`, `Delete`, `Save`,
+`Folder`, `Open`, `Attach`, `Send` and `Close` glyphs. These use the native icon
+renderer; do not substitute track-skipping or seeking icons for navigation.
+Keep text on ambiguous commands and in confirmations. The SDK negotiates the
+required protocol from the declaration, including icons in select options.
+
 ## Choose a component
 
 | Component | Good use |
 |---|---|
 | Button | One named action |
+| Command menu | Related commands in an anchored dropdown |
+| Select | One selected value from a set of choices |
 | Slider | A bounded numeric adjustment |
 | Settings row | A setting's label, explanation, and control |
 | Action surface | A custom card with one interaction owner |
@@ -93,6 +103,33 @@ the control remains understandable without relying on its thumb position alone.
 Let the shared slider own adjustment and its presented value. Do not implement
 a competing left/right handler or a second optimistic thumb state in the widget.
 The host reconciles the displayed adjustment with the acknowledged value.
+
+## Command dropdowns
+
+Use `UI.CommandMenu` for an opener such as **More** that contains commands rather
+than a selected setting. The host owns its anchored popup, keyboard/controller
+navigation, dismissal and focus return through the same native dropdown path as
+`UI.Select`.
+
+```csharp
+UI.CommandMenu("More", [
+    new SelectOption("refresh", "Refresh", "captures.refresh"),
+    new SelectOption("export", "Save copies…", "captures.copy", IsDisabled: !hasSelection),
+], "captures.more", accessibilityLabel: "More capture actions");
+```
+
+Commands must have unique stable IDs and action IDs, and none may be selected.
+The opener displays only its authored label and exposes no selected accessibility
+value. Busy/disabled options use the existing option flags; opening or dismissing
+the dropdown never invokes a command. Options retain the ordinary select count
+and text bounds. `ShowLabel` does not hide a command opener's label.
+
+This is `ViewNodeKind.Select` with `IsCommandMenu=true` and requires protocol115.
+Ordinary selects omit the field and continue requiring exactly one selected option,
+with their existing selected value and minimum protocol version. Updates to menu
+mode/options/value are one atomic publication; mode changes invalidate prior
+interaction authority. The SDK does not infer command semantics from labels or
+style classes.
 
 ## State and appearance
 

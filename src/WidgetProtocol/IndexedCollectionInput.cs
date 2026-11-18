@@ -93,11 +93,16 @@ public static class IndexedCollectionInputContract
 
     internal static IndexedInputBinding? Resolve(IReadOnlyList<ViewNode> owners, ViewNode item,
         IndexedCollectionInputRequest request)
+        => Resolve(owners, item, request, out _);
+
+    internal static IndexedInputBinding? Resolve(IReadOnlyList<ViewNode> owners, ViewNode item,
+        IndexedCollectionInputRequest request, out ViewNode? declaration)
     {
+        declaration = null;
         ValidateInput(request);
         if (owners.LastOrDefault() is { Kind: ViewNodeKind.FocusPresentationSurface, FocusPreviewSource: not null } surfaceOwner)
             return surfaceOwner.FocusPreview?.EnterButton is not null && request.PreviewAction is { } deferred
-                ? ResolvePreview(item,deferred,available:true) : null;
+                ? ResolvePreview(item,deferred,available:true, out declaration) : null;
         var path = owners.Append(item).ToArray();
         var collectionAvailable = owners.Where(node => node.Kind == ViewNodeKind.IndexedCollection)
             .All(ControllerShortcutResolutionContract.OwnerAvailable);
@@ -113,32 +118,39 @@ public static class IndexedCollectionInputContract
             var surface = owners.LastOrDefault(node => node.Kind == ViewNodeKind.FocusPresentationSurface);
             return surface?.FocusPreview?.EnterButton is not null && collectionAvailable &&
                 ControllerShortcutResolutionContract.OwnerAvailable(item) && item.FocusPresentation is { } fragment
-                ? ResolvePreview(fragment, preview, available: true) : null;
+                ? ResolvePreview(fragment, preview, available: true, out declaration) : null;
         }
         if (request.ContextActionId is not null || request.ContextActionOwnerId is not null)
         {
             if (request.ContextActionId is null || request.ContextActionOwnerId is null || request.Phase != ControllerEventPhase.Pressed)
                 throw new ArgumentException("Context selection requires an exact owner, action and pressed phase.", nameof(request));
             var owner = path.SingleOrDefault(node => node.Id == request.ContextActionOwnerId);
+            declaration = owner;
             var action = owner?.ContextActions.SingleOrDefault(candidate => candidate.ActionId == request.ContextActionId);
             return owner is not null && ControllerShortcutResolutionContract.OwnerAvailable(owner) &&
                 action is { IsDisabled: false, IsBusy: false } && (!ReferenceEquals(owner, item) || collectionAvailable)
                 ? new(action.ActionId, owner.Id, owner.Kind, ReferenceEquals(owner, item)) : null;
         }
         if (request.Button == ControllerButton.A)
+        {
+            declaration = item;
             return request.Phase == ControllerEventPhase.Pressed && item.ActionId is { } action &&
                 collectionAvailable && ControllerShortcutResolutionContract.OwnerAvailable(item) ? new(action, item.Id, item.Kind, true) : null;
+        }
         var shortcut = ControllerShortcutResolver.ResolvePath(path, request.Button, request.Phase);
+        declaration = shortcut.Owner;
         return shortcut.Status == ControllerShortcutResolutionStatus.Resolved && (!ReferenceEquals(shortcut.Owner, item) || collectionAvailable)
             ? new(shortcut.Shortcut!.ActionId, shortcut.Owner!.Id, shortcut.Owner.Kind, ReferenceEquals(shortcut.Owner, item)) : null;
     }
 
-    private static IndexedInputBinding? ResolvePreview(ViewNode node, IndexedCollectionPreviewAction action, bool available)
+    private static IndexedInputBinding? ResolvePreview(ViewNode node, IndexedCollectionPreviewAction action, bool available, out ViewNode? declaration)
     {
+        declaration = null;
         available &= ControllerShortcutResolutionContract.OwnerAvailable(node);
         if (node.Id == action.OwnerId)
         {
             if (!available) return null;
+            declaration = node;
             if (node.Kind == ViewNodeKind.Slider)
                 return action.ActionId == node.ValueChangedActionId && action.RequestedValue is { } value &&
                     node.Minimum is { } minimum && node.Maximum is { } maximum && node.Step is { } step &&
@@ -149,7 +161,7 @@ public static class IndexedCollectionInputContract
                 ? new(action.ActionId, node.Id, node.Kind, true) : null;
         }
         foreach (var child in node.Children)
-            if (ResolvePreview(child, action, available) is { } match) return match;
+            if (ResolvePreview(child, action, available, out declaration) is { } match) return match;
         return null;
     }
 }

@@ -51,6 +51,21 @@ internal static class WebSessionAssetBudgetTests
             File.WriteAllBytes(Path.Combine(root, "asset-31.webp"), Enumerable.Repeat((byte)1, 32).ToArray());
             Assert.Throws<BridgeProtocolException>(() => EmbeddedMediaAssetResolver.ResolveWebSessionResources(configured, [declared[^1]]));
 
+            var adapter = new WebSessionPageAdapter { ScriptAsset="backend.js", Origins=["https://example.com"], Mode=WebSessionPageAdapterMode.SessionBackend };
+            Replace("backend.js", Enumerable.Repeat((byte)'x', WebSessionContract.MaximumSessionBackendScriptBytes).ToArray());
+            var script = EmbeddedMediaAssetResolver.ResolveWebSessionAdapter(configured, adapter).Single();
+            Assert.Equal(WebSessionContract.MaximumSessionBackendScriptBytes, adapter.DecodeScript(script.ContentBase64,script.Sha256).Length);
+            Assert.True(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(script).Length < 180*1024 && 180*1024 < BridgeProtocol.DefaultMaximumMessageBytes,
+                "Maximum backend resource leaves ample room in the existing bridge frame without transport changes.");
+            Assert.Throws<BridgeProtocolException>(()=>EmbeddedMediaAssetResolver.ResolveWebSessionAdapter(configured,
+                adapter with{Mode=WebSessionPageAdapterMode.IsolatedPageActions}));
+            Replace("backend.js", new byte[WebSessionContract.MaximumSessionBackendScriptBytes+1]);
+            Assert.Throws<BridgeProtocolException>(()=>EmbeddedMediaAssetResolver.ResolveWebSessionAdapter(configured,adapter));
+            Replace("backend.js", Enumerable.Repeat((byte)'x',WebSessionContract.MaximumPageActionScriptBytes).ToArray());
+            Assert.Equal(1,EmbeddedMediaAssetResolver.ResolveWebSessionAdapter(configured,adapter with{Mode=WebSessionPageAdapterMode.IsolatedPageActions}).Count);
+            File.WriteAllBytes(Path.Combine(root,"backend.js"),new byte[WebSessionContract.MaximumPageActionScriptBytes]);
+            Assert.Throws<BridgeProtocolException>(()=>EmbeddedMediaAssetResolver.ResolveWebSessionAdapter(configured,adapter));
+
             void Replace(string path, byte[] bytes)
             {
                 File.WriteAllBytes(Path.Combine(root, path), bytes);

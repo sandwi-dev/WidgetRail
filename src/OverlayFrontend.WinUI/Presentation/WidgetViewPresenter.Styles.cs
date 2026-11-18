@@ -68,6 +68,9 @@ internal sealed partial class WidgetViewPresenter
             ViewNodeKind.Scroll or ViewNodeKind.FocusPresentationSurface;
         adapter.ContextHintButton = WidgetContextIndicator.Resolve(node);
         adapter.StretchComposedContent = node.Kind == ViewNodeKind.ActionSurface;
+        adapter.SetFocusVisualTarget(FocusVisualTarget(node), node.FocusVisualTargetId is { } visualId
+            ? presentation?.RenderStyles.GetValueOrDefault(visualId) : null);
+        adapter.RequiresHitTestBackground = binding.Element is WidgetReadingSurface && DeclaresPrimaryPreview(binding.Identity.Id);
         adapter.ContextHintAdmitted = () => !disposed && presentationActive && presentationInputEnabled && ContextOwnerAvailable(binding);
         if (binding.Element is WidgetIndexedCollectionView indexed)
             indexed.ContextHintAdmitted = adapter.ContextHintAdmitted;
@@ -83,6 +86,9 @@ internal sealed partial class WidgetViewPresenter
                 ReferenceEquals(binding,scrollFocusOutline)?(true,false):binding.Element is WidgetIndexedCollectionView?(false,false):null);
         if (binding.Identity.Scope != activeScope) adapter.SetControllerPressed(false);
     }
+
+    internal FrameworkElement? FocusVisualTarget(ViewNode node) => node.FocusVisualTargetId is { } target &&
+        bindings.TryGetValue(target, out var binding) ? binding.LayoutElement : null;
 
     private void RetireComputedStyles(Binding binding)
     {
@@ -121,10 +127,12 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private static WidgetMotionOptions motionOptions = WidgetMotionOptions.From(AppearanceSettings.Default, true);
     internal static TimeSpan DialogResizeDuration => motionOptions.AnimateDialogs ? motionOptions.Duration(150) : TimeSpan.Zero;
     private static WidgetAccessibilityPolicy accessibility = WidgetAccessibilityPolicy.From(AppearanceSettings.Default);
+    private static double interfaceScale = 1;
     internal static void SetAccessibilityPolicy(AppearanceSettings settings)
     {
         var next = WidgetAccessibilityPolicy.From(settings);
-        if (next == accessibility) return;
+        if (next == accessibility && interfaceScale == settings.InterfaceScale) return;
+        interfaceScale = settings.InterfaceScale;
         accessibility = next; EnvironmentChanged?.Invoke();
     }
     private static double defaultTextScale = 1;
@@ -193,12 +201,15 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private readonly FrameworkElement element;
     private readonly bool interactive;
     private readonly bool selectorInput;
+    private readonly double originalRasterizationScale;
+    private XamlRoot? rasterizationRoot;
     private RootFocusPresentation? focusRoot;
     private WidgetContextIndicator? contextIndicator;
     private WidgetScrollEdgeCues? scrollEdgeCues;
     internal WidgetScrollEdgeCues? ScrollEdgeCues => scrollEdgeCues;
     internal ControllerButton? ContextHintButton { get; set; }
     internal bool StretchComposedContent { get; set; }
+    internal bool RequiresHitTestBackground { get; set; }
     internal bool SupportsBackgroundMaterial { get; set; }
     internal Func<bool>? ContextHintAdmitted { get; set; }
     internal Panel? ContextHintHost { get; set; }
@@ -220,6 +231,13 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private bool typographyOnly;
     private WidgetControlScaleMotion? scaleMotion;
     private WidgetFocusDecoration? focusDecoration;
+    private FrameworkElement? focusVisualTarget;
+    private BridgeNodeRenderStyles? focusVisualStyles;
+    internal void SetFocusVisualTarget(FrameworkElement? target, BridgeNodeRenderStyles? targetStyles)
+    {
+        if (!ReferenceEquals(focusVisualTarget, target)) { focusDecoration?.Dispose(); focusDecoration = null; }
+        focusVisualTarget = target; focusVisualStyles = targetStyles;
+    }
     internal Border? SelectionSurface { get; set; }
     internal WidgetPosterPanel? RoundedContent { get; set; }
     internal Func<(Grid Shadow, Grid Edges)>? DepthSlotsFactory { get; set; }
@@ -232,6 +250,12 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private static readonly SolidColorBrush transparentSurface = new(Microsoft.UI.Colors.Transparent);
     internal WidgetFocusDecoration? FocusDecoration => focusDecoration;
     internal WidgetControlScaleMotion? ScaleMotion => scaleMotion;
+    internal FontFamily? InheritedFontFamily { get; set; }
+    internal void UpdateInheritedFontFamily(FontFamily family)
+    {
+        if (InheritedFontFamily?.Source == family.Source) return;
+        InheritedFontFamily = family; Apply();
+    }
     internal double ArtworkScaleEnvelope => !interactive ? 1 : Math.Max(1,
         Math.Min(2, Math.Max(Number(styles?.Base, "scale") ?? 1,
             Math.Max(Number(styles?.Focused, "scale") ?? 1, Number(styles?.Pressed, "scale") ?? 1))));
@@ -254,6 +278,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         this.interactive = interactive && element is Control;
         selectorInput = this.interactive && element is SelectorItem;
         if (owners.TryGetValue(element, out var previous)) previous.Dispose();
+        originalRasterizationScale = element.RasterizationScale;
         owners.Add(element, this);
         if (this.interactive) { element.GotFocus += Changed; element.LostFocus += Changed; }
         element.ActualThemeChanged += ThemeChanged;
@@ -286,7 +311,27 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private void Changed(object sender, RoutedEventArgs args) => Queue();
     private void ThemeChanged(FrameworkElement sender, object args) => Queue();
     private void ShapeSizeChanged(object sender, SizeChangedEventArgs args)
-    { if (styles?.Base.GetValueOrDefault("shape")?.Text is "circle" or "pill" || styles?.Focused.GetValueOrDefault("shape")?.Text is "circle" or "pill") Queue(); }
+    { UpdateRasterization(); if (styles?.Base.GetValueOrDefault("shape")?.Text is "circle" or "pill" || styles?.Focused.GetValueOrDefault("shape")?.Text is "circle" or "pill") Queue(); }
+
+    private void BindRasterizationRoot(XamlRoot? next)
+    {
+        if (ReferenceEquals(next, rasterizationRoot)) return;
+        if (rasterizationRoot is not null) rasterizationRoot.Changed -= RasterizationRootChanged;
+        rasterizationRoot = next;
+        if (next is not null) next.Changed += RasterizationRootChanged;
+    }
+    private void RasterizationRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => UpdateRasterization();
+    private void UpdateRasterization()
+    {
+        if (!selectorInput || disposed) return;
+        BindRasterizationRoot(element.IsLoaded ? element.XamlRoot : null);
+        if (rasterizationRoot is null) return;
+        var scale = IndexedRasterizationPolicy.Resolve(interfaceScale, rasterizationRoot.RasterizationScale,
+            element.ActualWidth, element.ActualHeight, originalRasterizationScale);
+        // Use the XAML API: direct composition access conflicts with the item's
+        // existing scale-animation owner. This changes paint quality, not layout.
+        if (element.RasterizationScale != scale) element.RasterizationScale = scale;
+    }
 
     private double? ShapeRadius(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style)
     {
@@ -330,6 +375,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private void Apply()
     {
         if (disposed) return;
+        UpdateRasterization();
         if (!element.DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Apply computed styles on the element dispatcher.");
         BindTextScale(NativeTextScaleScope.Find(element));
         BindFocusRoot(element.XamlRoot);
@@ -357,6 +403,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             Put(TextBlock.ForegroundProperty, Brush(style, "color", contrast, false));
             Put(TextBlock.FontSizeProperty, fontSize);
             Put(TextBlock.FontWeightProperty, Weight(style));
+            Put(TextBlock.FontStyleProperty, TextFontStyle(style));
+            Put(TextBlock.TextDecorationsProperty, Decorations(style));
             Put(TextBlock.FontFamilyProperty, Family(style));
             Put(TextBlock.CharacterSpacingProperty, CharacterSpacing(style, fontSize ?? text.FontSize));
             if (!typographyOnly) Put(TextBlock.PaddingProperty, Spacing(style, "padding"));
@@ -367,6 +415,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             Put(RichTextBlock.ForegroundProperty, Brush(style, "color", contrast, false));
             Put(RichTextBlock.FontSizeProperty, fontSize);
             Put(RichTextBlock.FontWeightProperty, Weight(style));
+            Put(RichTextBlock.FontStyleProperty, TextFontStyle(style));
+            Put(RichTextBlock.TextDecorationsProperty, Decorations(style));
             Put(RichTextBlock.FontFamilyProperty, Family(style));
             Put(RichTextBlock.CharacterSpacingProperty, CharacterSpacing(style, fontSize ?? rich.FontSize));
             Put(RichTextBlock.PaddingProperty, Spacing(style, "padding"));
@@ -387,6 +437,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             Put(Control.ForegroundProperty, Brush(style, "color", contrast, false));
             Put(Control.FontSizeProperty, fontSize);
             Put(Control.FontWeightProperty, Weight(style));
+            Put(Control.FontStyleProperty, TextFontStyle(style));
             Put(Control.FontFamilyProperty, Family(style));
             Put(Control.CharacterSpacingProperty, CharacterSpacing(style, fontSize ?? control.FontSize));
             // A live preview is a graphics viewport, not a text presenter.
@@ -431,12 +482,14 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         else { scaleMotion?.Dispose(); scaleMotion = null; }
         var focusStyle = pressed ? styles?.Pressed : styles?.Focused;
         var engagedSlider = element is Slider { IsFocusEngaged: true };
-        if (presentFocus && interactive && !contrast && !engagedSlider && element is Control focusControl &&
+        if (presentFocus && interactive && (!contrast || focusVisualTarget is not null) && !engagedSlider && element is Control focusControl &&
             Number(focusStyle, "outline-width", true) is > 0 and var outlineWidth &&
             focusStyle?.GetValueOrDefault("outline-color") is { } outlineColor && TryColor(outlineColor.Text, out var focusColor))
         {
-            focusDecoration ??= WidgetFocusDecoration.Create(focusControl);
-            focusDecoration?.Apply(focusColor, (float)outlineWidth, (float)(ShapeRadius(focusStyle) ?? 0),
+            focusDecoration ??= WidgetFocusDecoration.Create(focusControl, focusVisualTarget ?? focusControl);
+            if (contrast && focusControl.FocusVisualPrimaryBrush is SolidColorBrush systemFocus) focusColor = systemFocus.Color;
+            var shapeStyle = focusVisualStyles is null ? focusStyle : pressed ? focusVisualStyles.Pressed : focused ? focusVisualStyles.Focused : focusVisualStyles.Base;
+            focusDecoration?.Apply(focusColor, (float)outlineWidth, (float)(ShapeRadius(shapeStyle) ?? 0),
                 (float)(Number(focusStyle, "outline-offset") ?? 0), focused, motionOptions);
         }
         else { focusDecoration?.Dispose(); focusDecoration = null; }
@@ -451,6 +504,9 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         var opacity = Number(style, "opacity");
         Put(UIElement.OpacityProperty, accessibility.Opacity(opacity, contrast));
         var background = SurfaceBackground(Brush(style, "background", contrast, true), style, contrast);
+        // An explicit primary preview opener owns its whole native rectangle,
+        // including padding. Preserve authored paint; only fill an absent brush.
+        if (background is null && RequiresHitTestBackground) background = transparentSurface;
         var border = Brush(style, "border-color", contrast, false);
         var padding = Spacing(style, "padding");
         var radius = ShapeRadius(style) is { } value ? new CornerRadius(value) : (CornerRadius?)null;
@@ -485,8 +541,13 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             selection.Opacity = accessibility.Opacity(opacity, contrast) ?? 1;
             background = border = transparentSurface;
         }
+        if (element is Button)
+            UpdateButtonResources(background, Brush(style, "color", contrast, false), border);
         switch (element)
         {
+            case Media.MediaPlayerView media:
+                media.ApplyFrameStyle(background, border, padding, thickness, radius);
+                break;
             case Control:
                 Put(Control.BackgroundProperty, background); Put(Control.BorderBrushProperty, border);
                 Put(Control.BorderThicknessProperty, thickness); Put(Control.CornerRadiusProperty, radius); Put(Control.PaddingProperty, padding);
@@ -515,7 +576,6 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         }
         else if (element is Button button)
         {
-            UpdateButtonResources(background, Brush(style, "color", contrast, false), border);
             roundedBorder ??= new(button);
             roundedBorder.Update(border, thickness, radius);
         }
@@ -592,14 +652,15 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
 
     private void RestoreSurfaces()
     {
+        if (element is Media.MediaPlayerView media) media.ApplyFrameStyle(null, null, null, null, null);
         roundedBorder?.Restore();
         // A realized row's native SelectorItem owns its box, padding and opacity.
         // The noninteractive fragment receives typography only on its root.
         foreach (var property in originals.Keys.ToArray())
             if (property != TextBlock.ForegroundProperty && property != TextBlock.FontSizeProperty && property != TextBlock.FontWeightProperty &&
-                property != TextBlock.FontFamilyProperty && property != TextBlock.CharacterSpacingProperty &&
+                property != TextBlock.FontFamilyProperty && property != TextBlock.CharacterSpacingProperty && property != TextBlock.FontStyleProperty && property != TextBlock.TextDecorationsProperty &&
                 property != Control.ForegroundProperty && property != Control.FontSizeProperty && property != Control.FontWeightProperty && property != Control.FontFamilyProperty &&
-                property != Control.CharacterSpacingProperty) Put(property, null);
+                property != Control.CharacterSpacingProperty && property != Control.FontStyleProperty) Put(property, null);
         RestoreResources();
     }
 
@@ -703,6 +764,16 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private static double? Number(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, string property, bool length = false) =>
         style?.GetValueOrDefault(property) is { Number: { } value } candidate && double.IsFinite(value) &&
         (!length || candidate.Unit is null or "px") ? length ? Math.Max(0, value) : value : null;
+    private static FontStyle? TextFontStyle(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style) =>
+        style?.GetValueOrDefault("font-style")?.Text switch
+        { "normal" => FontStyle.Normal, "italic" => FontStyle.Italic, "oblique" => FontStyle.Oblique, _ => null };
+    private static TextDecorations? Decorations(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style) =>
+        style?.GetValueOrDefault("text-decoration")?.Text switch
+        {
+            "none" => TextDecorations.None, "underline" => TextDecorations.Underline, "line-through" => TextDecorations.Strikethrough,
+            "underline line-through" or "line-through underline" => TextDecorations.Underline | TextDecorations.Strikethrough,
+            _ => null,
+        };
     private static FontWeight? Weight(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style)
     {
         ushort? authored = style?.GetValueOrDefault("font-weight") is { } value
@@ -711,7 +782,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     }
     private FontFamily? Family(IReadOnlyDictionary<string, BridgeComputedStyleValue>? style)
     {
-        if (style?.GetValueOrDefault("font-family") is not { Text.Length: > 0 } value) return null;
+        if (style?.GetValueOrDefault("font-family") is not { Text.Length: > 0 } value) return InheritedFontFamily;
         var source = value.Text.Replace("\"", "").Replace("'", "");
         return fontFamily?.Source == source ? fontFamily : fontFamily = new(source);
     }
@@ -784,6 +855,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     public void Dispose()
     {
         if (disposed) return;
+        BindRasterizationRoot(null);
+        if (selectorInput) element.RasterizationScale = originalRasterizationScale;
         BindTextScale(null);
         BindFocusRoot(null);
         scrollEdgeCues?.Dispose(); scrollEdgeCues = null;
@@ -796,6 +869,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         selectorPaint?.Dispose(); selectorPaint = null;
         focusDecoration?.Dispose(); focusDecoration = null;
         foreach (var property in originals.Keys.ToArray()) Put(property, null);
+        if (element is Media.MediaPlayerView media) media.ApplyFrameStyle(null, null, null, null, null);
         surfaceAcrylic = null; acrylicFallback = null;
         shadedBackground = null;
         RestoreResources();

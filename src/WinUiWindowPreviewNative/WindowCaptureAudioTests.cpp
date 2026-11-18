@@ -195,6 +195,13 @@ int wmain(int argc, wchar_t** argv) {
             if (pulse) window = std::make_unique<PulseWindow>();
             PlayTone(440, argv[2], argv[3], pulse); return 0;
         }
+        if (argc == 4 && std::wstring(argv[1]) == L"--inspect-sync") {
+            const auto fps = static_cast<UINT>(_wtoi(argv[3]));
+            Check(fps == 15 || fps == 30 || fps == 60, "Known replay synchronization frame rate");
+            const auto decoded = DecodeAudioVideo(argv[2]);
+            Check(decoded.frames > 0 && std::abs(decoded.audioEnd - decoded.videoEnd) <= .05, "Replay audiovisual duration alignment");
+            VerifyPulseSynchronization(decoded, fps); return 0;
+        }
         if (argc == 3 && std::wstring(argv[1]) == L"--wgc") return RunAudioWgc(argv[2]);
         if (argc != 2) return 2;
         const auto prefix = L"Local\\WidgetRail.AudioProbe." + std::to_wstring(GetCurrentProcessId()) + L"." + std::to_wstring(GetTickCount64());

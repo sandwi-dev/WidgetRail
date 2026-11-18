@@ -38,6 +38,18 @@ public sealed partial class WidgetPresentationSession
         if (authority is not null) NotificationReceived?.Invoke(this, new(new(authority, message.Command, message.IntentToken)));
     }
 
+    /// <summary>Host activation of an existing current native notification. The broker restricts delivery to the live session's own widget.</summary>
+    public async Task<WidgetIntentPreparation> PrepareWebNotificationIntentAsync(string widgetId, WebNotificationIntentPayload notification,
+        CancellationToken token = default)
+    {
+        if (notification?.IsWellFormed() != true) throw new ArgumentException("Invalid native notification identity.", nameof(notification));
+        var response = await RequestAsync(BridgeMessageTypes.PrepareWebNotificationIntent,
+            new BridgeWebNotificationIntentPrepare(widgetId, notification), BridgeMessageTypes.IntentPrepared, token).ConfigureAwait(false);
+        var result = BridgeJson.FromElement<WidgetIntentPreparation>(response.Payload);
+        ValidateIntentPreparation(result, widgetId);
+        return result;
+    }
+
     public async Task<WidgetIntentPreparation> PrepareNotificationIntentAsync(WidgetPresentationNotification notification, CancellationToken token = default)
     {
         if (notification.IntentToken is null || !IsHostEffectAuthorityCurrent(notification.Authority))

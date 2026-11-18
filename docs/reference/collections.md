@@ -24,6 +24,15 @@ presenter keeps that row visible without changing focus. This is event-driven,
 including when status content reduces the available space. It does not reclaim
 focus after the user leaves the collection.
 
+For a timeline, `.DirectionalEntry(IndexedDirectionalEntryMode.VisibleEdge)` on
+`UI.CollectionList` makes directional movement from another control enter the
+nearest currently visible row in that direction (protocol125). The host uses
+native viewport geometry and its existing row readiness/entry lifetime. It does
+not reset remembered focus, refresh the query or request an adjacent page. The default remains
+remembered entry; explicit indexed focus targets, return requests, notifications
+and navigation-cache restoration retain their existing semantics. This opt-in
+does not apply to grids or ordinary reading scrolls.
+
 ## Data and identity
 
 A query freezes membership, ordering and all values needed by item rendering.
@@ -38,6 +47,17 @@ sources, `Count` is the admitted prefix; `Discovery.HasMore` indicates more resu
 may arrive. Do not fabricate a remote total. See the detailed guide for duplicate
 keys, retries, bounded discovery and query retirement.
 
+For changed membership within the **same logical filter and sort**, an indexed
+source can use `PublishRefresh(query, count)` (protocol127). It captures the prior
+query lineage in the SDK. The host preserves its current reader or focused key
+through the existing lazy lookup; if that key was removed, it may choose the
+nearest remaining index. Later user input still cancels that recovery. Supply
+`FindIndex` or complete bounded occurrence keys. This does not enumerate the
+collection, transfer old action leases, or create an explicit widget focus request.
+Use ordinary `PublishQuery` for a different search, filter, account or destination;
+that resets refresh lineage. Use `UpdateContent` when membership and order remain
+proven unchanged.
+
 UI virtualization and data retention are separate. WinUI creates controls only
 for realized items, but the provider or captured query may retain already loaded
 data. Choose provider caching and source limits deliberately; virtualization does
@@ -49,6 +69,53 @@ helpers. Their legacy `Paginate`/`Present` scroll metadata and eager
 Publish retained data through an indexed/discovered source instead. The shared
 `WinUiPresentationContract`, `WidgetTestHost.ValidateWinUiPresentation` and
 `wrail render` report unsupported declarations with replacement guidance.
+
+### Live cursor windows
+
+An ordered, opaque-index provider can opt into `WidgetCursorResourceOptions.LiveUpdates`
+with a comparison and an exact item-boundary cursor resolver. Capture `MutationScope`
+for the current query/lifetime, then call `ApplyMutations` with keyed upserts/removals.
+The SDK reconciles delayed pages, preserves reset/focus identity and bounds retained
+items. Reset, deactivation (for an Active resource), and destruction invalidate old
+mutation scopes. Known-index/total pages continue using their provider refresh path.
+
+New tail items enter only the latest loaded window. `HasUnseenItems` reports changes
+outside a retained older window or beyond its capacity. Tail eviction requires explicit
+`allowTailEviction` admission; do not infer it from keyboard focus or a timer. Excess
+deferred tail becomes an opaque paging boundary, not an unbounded local queue. Use
+the host's viewport policy to decide whether to follow the end, and preserve the
+reading position otherwise.
+
+For authoritative gap recovery, a provider can supply `WidgetCursorBoundaryUpdate`
+along with covered replacements/removals. This retires stale pending page work while
+retaining current paint and a surviving anchor. An incomplete or failed remote read
+does not authorize deletion of omitted items. `RequiresRefresh` fails closed when a
+pending mutation journal exceeds its bound; keep the current view until recovery.
+Provider event ordering, account checks, reconnect detection and network recovery
+remain provider responsibilities. See `WidgetSdk/WidgetCursorResource.Live.cs`.
+
+For a live timeline backed by `WidgetLoadedCollection`, opt into
+`PreserveOccurrences` and `FollowEnd`. Supply immutable context/items and a
+provider chronology through `LiveOrder` when a bounded tail may replace every
+old row. The host owns native at-end detection, reading focus/preview protection
+and variable-height layout reconciliation. `ViewportState` and
+`OnViewportChanged` report conservative aggregate state over active views; they
+are advisory, not atomic eviction authority or proof that messages were read.
+
+If automatic tail eviction is enabled, implement `OnRecoverViewport` for the
+race where the user starts reading just before a publication arrives. Perform
+the bounded provider read outside the commit, then use
+`request.TryCommit(history, recoveryScope, page)` to combine current-source
+admission with cursor recovery and surviving-neighbor selection. A reset, account
+change, newer navigation or retired source rejects stale commits. Cancellation
+does not make a late provider result safe by itself. The SDK bounds concurrent
+recovery callbacks even when a provider ignores cancellation.
+
+Verified append-only publications may retain unchanged prefix row leases.
+This requires the same semantic source/context, item values, indices and keys;
+equal keys alone are insufficient. Edits, removal and account/filter changes
+still retire obsolete row/media authority. A genuinely evicted preview can close
+safely during raced recovery; preserving stale controls is not a continuity fix.
 
 ## Focus, input and artwork
 

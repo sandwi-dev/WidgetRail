@@ -31,6 +31,7 @@ internal sealed partial class WidgetViewPresenter
         }
         appearance = value ?? throw new ArgumentNullException(nameof(value));
         systemAnimationsEnabled = animationsEnabled;
+        previewMotion?.ApplyAppearance(value, animationsEnabled);
         WidgetPresentationSurface.SetMotionAppearance(value, animationsEnabled);
         NativeComputedStyleAdapter.SetMotionPolicy(value, animationsEnabled);
         NativeTextScaleScope.Set(this, value.TextScale);

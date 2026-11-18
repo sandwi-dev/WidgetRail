@@ -111,6 +111,14 @@ public sealed class WidgetFocusRequest
         ArgumentNullException.ThrowIfNull(source);
         return source.Reveal(collectionId, Id, item);
     }
+    /// <summary>Publish this intent before awaiting data. Complete it later with RevealCollection using this same request; host input or lifecycle departure cancels completion.</summary>
+    public ScrollRevealRequest DeferCollectionReveal<TContext,TItem>(WidgetLoadedCollection<TContext,TItem> source,string collectionId)
+        where TContext:notnull where TItem:notnull
+    {
+        ArgumentNullException.ThrowIfNull(source);StableIdentifier.Validate(collectionId,nameof(collectionId));
+        if(source.Descriptor.EndFollowingEpoch is null)throw new ArgumentException("Deferred reveal requires a source continuity domain.",nameof(source));
+        return new(Id,collectionId){DeferredSource=source.Descriptor};
+    }
 }
 
 internal sealed class WidgetFocusRequestAllocator

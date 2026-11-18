@@ -16,8 +16,8 @@ internal sealed partial class OverlayShellPage
 {
     internal Action<bool>? KeyboardShortcutEditorVisibilityChanged { get; set; }
     internal Action<Action<OverlayShortcutSettings>?>? KeyboardShortcutCaptureChanged { get; set; }
-    internal Func<OverlayShortcutSettings, bool>? KeyboardShortcutAvailable { get; set; }
-    internal Func<OverlayShortcutSettings, OverlayShortcutSettings, CancellationToken, Task<string?>>? SaveKeyboardShortcutRequested { get; set; }
+    internal Func<HostKeyboardShortcutKind,OverlayShortcutSettings, bool>? KeyboardShortcutAvailable { get; set; }
+    internal Func<HostKeyboardShortcutKind,OverlayShortcutSettings, OverlayShortcutSettings, CancellationToken, Task<string?>>? SaveKeyboardShortcutRequested { get; set; }
 
     private async Task EditKeyboardShortcutAsync(WidgetActionRequest request)
     {
@@ -25,6 +25,8 @@ internal sealed partial class OverlayShellPage
             retired || !visible || !foreground || switching || activeWidget != "settings") return;
         var requestOwner = owner;
         requestOwner.Session.ValidateKeyboardShortcutCommand(request.Displayed, request.Action);
+        var kind=request.Action.ActionId==WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EditReplayShortcutAction?HostKeyboardShortcutKind.SaveReplay:HostKeyboardShortcutKind.Overlay;
+        var defaults=kind==HostKeyboardShortcutKind.Overlay?OverlayShortcutSettings.Default:OverlayShortcutSettings.ReplayDefault;
         var selection = selectionVersion;
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         intentCancellation = cancellation;
@@ -34,13 +36,14 @@ internal sealed partial class OverlayShellPage
         Task? saveTask = null;
         try
         {
-            var expected = (await new PlatformSettingsStore(new(options.SettingsRoot)).LoadAsync(cancellation.Token)).Controllers.EffectiveOverlayShortcut;
+            var controllers=(await new PlatformSettingsStore(new(options.SettingsRoot)).LoadAsync(cancellation.Token)).Controllers;
+            var expected=kind==HostKeyboardShortcutKind.Overlay?controllers.EffectiveOverlayShortcut:controllers.EffectiveReplaySaveShortcut;
             var selected = expected;
             var record = new Button { Content = "Change shortcut…", HorizontalAlignment = HorizontalAlignment.Stretch };
-            var reset = new Button { Content = "Reset to F1", HorizontalAlignment = HorizontalAlignment.Stretch };
+            var reset = new Button { Content = "Reset to "+defaults.DisplayName, HorizontalAlignment = HorizontalAlignment.Stretch };
             var label = new TextBlock { Text = selected.DisplayName, Style = (Style)Application.Current.Resources["SubtitleTextBlockStyle"] };
             var status = new TextBlock { TextWrapping = TextWrapping.Wrap,
-                Text = expected.Enabled && KeyboardShortcutAvailable?.Invoke(expected) != true
+                Text = expected.Enabled && KeyboardShortcutAvailable?.Invoke(kind,expected) != true
                     ? "The saved shortcut is unavailable. Windows or another application may be using it."
                     : "Choose a key, with optional Ctrl, Alt, Shift or Windows modifiers." };
             var controls = new StackPanel { Spacing = 12 };
@@ -59,7 +62,7 @@ internal sealed partial class OverlayShellPage
                 label.Text = selected.DisplayName;
                 record.Content = "Change shortcut…";
                 status.Text = selected.Modifiers == OverlayShortcutModifiers.None && selected.Key is >= 0x30 and <= 0x5A
-                    ? "When enabled, this typing key opens WidgetRail from every application."
+                    ? "When enabled, this typing key triggers the shortcut from every application."
                     : "Select Save to check availability and apply this shortcut.";
             }
             KeyboardShortcutCaptureChanged?.Invoke(Capture);
@@ -79,11 +82,11 @@ internal sealed partial class OverlayShellPage
             };
             reset.Click += (_, _) =>
             {
-                recording = true; Capture(OverlayShortcutSettings.Default);
+                recording = true; Capture(defaults);
             };
             bool Current() => !retired && visible && foreground && !switching && activeWidget == "settings" &&
                 selectionVersion == selection && ReferenceEquals(owner, requestOwner) && !cancellation.IsCancellationRequested;
-            var result = await ShowHostChoiceAsync("Overlay keyboard shortcut", "", (HostDialogChoice[])[new("save", "Save")], cancellation.Token,
+            var result = await ShowHostChoiceAsync(kind==HostKeyboardShortcutKind.Overlay?"Overlay keyboard shortcut":"Save replay shortcut", "", (HostDialogChoice[])[new("save", "Save")], cancellation.Token,
                 directDecisionButtons: true, configure: dialog =>
                 {
                     var enabled = dialog.AddBooleanOption("Enable keyboard shortcut", "Host.KeyboardShortcut.Enabled", beforeChoices: true);
@@ -119,7 +122,7 @@ internal sealed partial class OverlayShellPage
                         {
                             try
                             {
-                                var error = await SaveKeyboardShortcutRequested(expected, selected, cancellation.Token);
+                                var error = await SaveKeyboardShortcutRequested(kind,expected, selected, cancellation.Token);
                                 if (!Current()) return;
                                 if (error is null)
                                 {

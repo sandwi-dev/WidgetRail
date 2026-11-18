@@ -26,10 +26,19 @@ stays on an unchanged link when surrounding spans update. Activation uses the
 same declared-intent admission, permissions, routing and stale-action checks as
 ordinary intent buttons; there is no direct native URL-navigation bypass.
 
-Rich text accepts 1–512 text/link spans. Nested layouts, media, icons, transitions,
+Rich text accepts 1–512 text/link/image spans, with at most 16 inline images.
+Inline images require protocol119 and use ordinary bounded image/artwork sources;
+give them an accessible label and a small explicit size, for example for custom
+emoji. They are not buttons or media players. Existing Unicode emoji remains
+ordinary native text. The author owns parsing and trusted-origin policy; rich
+text does not interpret Discord syntax, Markdown or HTML itself.
+
+Nested layouts, media players, icons, transitions,
 per-span responsive visibility, context menus and shortcuts are not supported.
 Use ordinary layout controls around the paragraph for those features. Typography
 can be applied to the paragraph or text spans using the existing WRSS classes.
+`font-style: italic` and `text-decoration: underline` or `line-through` apply to
+native text runs without rasterizing the paragraph into an image.
 The SDK uses existing intent-button declarations for links inside a RichText
 node, so intent feedback and pinned-surface preferences retain their normal meaning.
 

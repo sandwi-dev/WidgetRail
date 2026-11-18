@@ -13,6 +13,9 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
         const props = (...names) => wp()?.findByProps(...names);
         const code = pattern => wp()?.findByCode(pattern);
         const dispatcher = () => wp()?.Common?.FluxDispatcher;
+        const messageCommands = new Map([['messagingState','state'],['messageObserve','observe'],['messageConversations','conversations'],
+            ['messageHistory','history'],['messageChanges','readChanges'],['messageRecover','recoverMessages'],['messageOpenDm','openDm'],['messagePrepareAttachments','prepareAttachments'],
+            ['messageSend','sendMessage'],['messageReconcile','reconcileSend'],['messageNotificationTarget','notificationTarget']]);
         const fail = code => { throw Object.assign(new Error(code), { adapterCode: code }); };
         const text = value => {
             let result = '';
@@ -23,6 +26,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             return result;
         };
         const me = () => store('UserStore')?.getCurrentUser?.();
+        const messaging = globalThis.createWidgetRailDiscordMessaging?.({store,props,me,dispatcher,invalidate:()=>videoHost?.invalidate?.()});
         const channelId = () => store('SelectedChannelStore')?.getVoiceChannelId?.() ?? null;
         const currentShare = () => store('ApplicationStreamingStore')?.getCurrentUserActiveStream?.();
         const streamKey = s => s.guildId ? `guild:${s.guildId}:${s.channelId}:${s.ownerId || s.userId}` : `call:${s.channelId}:${s.ownerId || s.userId}`;
@@ -150,7 +154,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                         audio:v.userId!==user?.id?voiceAudio(v.userId)?.state??{available:false,muted:false,volume:null}:{available:false,muted:false,volume:null},
                         avatarUrl:activities?.avatarUrl(v.userId,participant?.avatar,participant?.discriminator)??null};
                 });
-            return { revision, ready: !!user && !!wp(), account: user?.id ?? '', capabilities: capabilities(),
+            return { revision, ready: !!user && !!wp(), account: user?.id ?? '', capabilities: capabilities(), messaging:messaging?.state()??null,
                 channels: user ? channels() : [], channelId: id, channelName: text(store('ChannelStore')?.getChannel?.(id)?.name),
                 muted: !!media?.isSelfMute?.(), deafened: !!media?.isSelfDeaf?.(), participants,
                 streams: id ? streams(id).map(({ descriptor, ...value }) => ({...value,watching:watchOwnership(value.key)?.alreadyWatching===true,audio:streamAudio(value.userId)?.state??
@@ -1043,6 +1047,10 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 }
                 if (method === 'diagnostics') return { ok: true, value: lastFailure ?? {} };
                 authorize(args);
+                if(messageCommands.has(method)) {
+                    if(!messaging)fail('messaging_unavailable');
+                    return {ok:true,value:await messaging[messageCommands.get(method)](args)};
+                }
                 const relay=byLease(args.lease);
                 switch (method) {
                     case 'enableNotifications':return {ok:true,value:await enableDesktopNotifications(args)};
@@ -1172,7 +1180,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 return { ok: false, code: error.adapterCode ?? 'adapter_incompatible' };
             }
         }
-        return Object.freeze({ revision, build, invoke, dispose() { ++shareEpoch; sharePending = false;shareQualityBinding?.dispose();shareQualityWarning=null;shareError=null;shareErrorOwner=null; stopAllRelays(); } });
+        return Object.freeze({ revision, build, invoke, dispose() { messaging?.dispose(); ++shareEpoch; sharePending = false;shareQualityBinding?.dispose();shareQualityWarning=null;shareError=null;shareErrorOwner=null; stopAllRelays(); } });
     })();
 }
 

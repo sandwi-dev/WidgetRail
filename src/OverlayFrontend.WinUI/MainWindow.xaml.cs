@@ -45,6 +45,7 @@ public sealed partial class MainWindow : Window
         var configured = false;
         ConfigureValidation(arguments, ref configured);
         if (!configured) ConfigureProduction(arguments, launchOptions, configurationError);
+        InitializeReplayPower();
         if (input is not null && Environment.GetCommandLineArgs().Contains("--trace-controller-input"))
             controllerTrace = new(ShellRoot, input.TraceInput);
         if (input is not null)
@@ -107,6 +108,7 @@ public sealed partial class MainWindow : Window
         };
         Closed += (_, _) =>
         {
+            replayPowerMessages?.Dispose(); replayPowerMessages = null;
             systemTray?.Dispose(); systemTray = null;
             mouseSession?.Dispose(); mouseSession = null;
             themeSettings.Changed -= SystemThemeChanged;
@@ -114,6 +116,7 @@ public sealed partial class MainWindow : Window
             controllerTrace?.Dispose();
             gamepadKeys?.Dispose();
             keyboardShortcut?.Dispose(); keyboardShortcut = null;
+            replaySaveShortcut?.Dispose(); replaySaveShortcut = null; replaySaveCommand=null;
             input?.Dispose();
             RetireValidation();
         };
@@ -192,16 +195,19 @@ public sealed partial class MainWindow : Window
             try
             {
                 systemTray = new(WinRT.Interop.WindowNative.GetWindowHandle(this), options.SettingsRoot,
-                    command => DispatcherQueue.TryEnqueue(() =>
+                    invocation => DispatcherQueue.TryEnqueue(() =>
                     {
+                        var command=invocation.Command;
                         if (command == SystemTrayCommand.Open) ShowOverlay();
+                        else if(command==SystemTrayCommand.SaveReplay)_=page.SaveReplayFromHostAsync(invocation.ReplaySessionId);
+                        else if(command==SystemTrayCommand.StopReplay)_=page.StopReplayFromHostAsync(invocation.ReplaySessionId);
                         else RequestApplicationExit(command switch
                         {
                             SystemTrayCommand.Restart => ApplicationRestartMode.Visible,
                             SystemTrayCommand.RestartSilently => ApplicationRestartMode.Hidden,
                             _ => null,
                         });
-                    }));
+                    }),()=>page.ReplayStatusForHost);
             }
             catch (Exception error) { Diagnostics.FrontendFailureLog.Current.Write("system-tray", error); }
         }
@@ -243,9 +249,10 @@ public sealed partial class MainWindow : Window
             if (!open) _ = LoadKeyboardShortcutSettingsAsync(options.SettingsRoot);
         };
         page.KeyboardShortcutCaptureChanged = callback => keyboardCapture = callback;
-        page.KeyboardShortcutAvailable = shortcut => keyboardShortcut is { IsRegistered: true } current &&
+        replaySaveCommand=()=>_ = page.SaveReplayFromHostAsync();
+        page.KeyboardShortcutAvailable = (kind,shortcut) => KeyboardRegistration(kind) is { IsRegistered: true } current &&
             current.Shortcut.Key == shortcut.Key && current.Shortcut.Modifiers == shortcut.Modifiers;
-        page.SaveKeyboardShortcutRequested = (expected, requested, token) => SaveKeyboardShortcutAsync(options.SettingsRoot, expected, requested, token);
+        page.SaveKeyboardShortcutRequested = (kind,expected, requested, token) => SaveKeyboardShortcutAsync(options.SettingsRoot, expected, requested, token,kind);
         _ = LoadKeyboardShortcutSettingsAsync(options.SettingsRoot);
     }
 
@@ -267,23 +274,27 @@ public sealed partial class MainWindow : Window
     {
         ++keyboardSettingsVersion;
         if (cleanupStarted || keyboardEditorOpen) return;
-        var shortcut = settings.EffectiveOverlayShortcut;
+        foreach(var kind in Enum.GetValues<WidgetRail.PlatformSettings.HostKeyboardShortcutKind>())Apply(kind);
+        void Apply(WidgetRail.PlatformSettings.HostKeyboardShortcutKind kind)
+        {
+        var shortcut = KeyboardPreference(settings,kind);
         if (!shortcut.IsWellFormed()) return;
         if (!shortcut.Enabled)
         {
-            keyboardShortcut?.Dispose();
-            keyboardShortcut = null;
+            KeyboardRegistration(kind)?.Dispose();
+            SetKeyboardRegistration(kind,null);
         }
-        else if (keyboardShortcut?.IsRegistered != true || keyboardShortcut.Shortcut.Key != shortcut.Key || keyboardShortcut.Shortcut.Modifiers != shortcut.Modifiers)
+        else if (KeyboardRegistration(kind) is not {IsRegistered:true} current || current.Shortcut.Key != shortcut.Key || current.Shortcut.Modifiers != shortcut.Modifiers)
         {
-            var candidate = CreateKeyboardShortcut(shortcut);
+            var candidate = CreateKeyboardShortcut(shortcut,kind);
             if (candidate.IsRegistered)
             {
-                var previous = keyboardShortcut;
-                keyboardShortcut = candidate;
+                var previous = KeyboardRegistration(kind);
+                SetKeyboardRegistration(kind,candidate);
                 previous?.Dispose();
             }
             else candidate.Dispose();
+        }
         }
     }
 
@@ -354,6 +365,7 @@ public sealed partial class MainWindow : Window
         RetireDevelopment();
         CancelTaskHandoff();
         keyboardShortcut?.Dispose(); keyboardShortcut = null;
+        replaySaveShortcut?.Dispose(); replaySaveShortcut = null; replaySaveCommand=null;
         input?.SetVisible(false);
         (RootFrame.Content as Shell.OverlayShellPage)?.PrepareNativeShutdown();
         AppWindow.Hide();

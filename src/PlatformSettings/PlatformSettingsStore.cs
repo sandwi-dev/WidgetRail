@@ -239,6 +239,15 @@ public sealed class PlatformSettingsStore
         // members. Preserve the documented legacy omission defaults, while
         // leaving explicit nulls and required/unknown members to strict validation.
         FillMissing(root, PlatformSettingsDocument.Default, JsonContext.PlatformSettingsDocument);
+        if(root["replayCapture"] is JsonObject replay)
+        {
+            var defaults=new CaptureReplayPreferences();
+            FillMissing(replay,defaults,JsonContext.CaptureReplayPreferences);
+            if(replay["settings"] is JsonObject recordingSettings)
+                FillMissing(recordingSettings,defaults.Settings,JsonContext.CaptureReplaySettings);
+            // An explicit recording object is never filled from Auto defaults.
+            // Its omitted Selection must retain the legacy explicit meaning.
+        }
         if (root["appearance"] is JsonObject legacyAppearance)
             FillMissing(legacyAppearance, new AppearanceSettings
             {
@@ -250,6 +259,8 @@ public sealed class PlatformSettingsStore
             FillMissing(controllers, new ControllerSettings(), JsonContext.ControllerSettings);
             if (controllers["overlayShortcut"] is JsonObject shortcut)
                 FillMissing(shortcut, OverlayShortcutSettings.Default, JsonContext.OverlayShortcutSettings);
+            if (controllers["replaySaveShortcut"] is JsonObject replayShortcut)
+                FillMissing(replayShortcut, OverlayShortcutSettings.ReplayDefault, JsonContext.OverlayShortcutSettings);
         }
         if (root["builtInWidgets"] is JsonObject builtIns)
             FillMissing(builtIns, new BuiltInWidgetSettings(), JsonContext.BuiltInWidgetSettings);

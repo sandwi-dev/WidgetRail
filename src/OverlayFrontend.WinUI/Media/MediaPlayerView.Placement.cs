@@ -12,7 +12,7 @@ internal sealed partial class MediaPlayerView
     {
         retainedForPageExit = true;
         input = false;
-        timer.Stop(); videoChrome.Stop();
+        timer.Stop(); StopMediaChrome();
         expandedHost?.Close(restoreFocus: false);
         foreach (var control in controls.Concat(imageControls).Append(position).Append(volume).Append(imageViewport))
         { control.IsTabStop = false; control.IsHitTestVisible = false; }
@@ -48,10 +48,12 @@ internal sealed partial class MediaPlayerView
         videoStage.Configure(VideoAspectRatio);
         videoStage.SetPageBackground(normalBrush);
         if (!IsExpanded) videoStage.SetSlot(stage);
+        EnsureInlineChrome();
     }
 
     private void ReleaseVideoStage()
     {
+        RestoreInlineChrome();
         if (videoStage is not { } resident) return;
         resident.SetCovered(true);
         videoStage = null;

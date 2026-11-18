@@ -10,6 +10,7 @@
   --depth-lowlight: rgba(0, 0, 0, 0.18);
   --focus-width: 2px;
   --focus-offset: -2px;
+  --focus-filled-offset: 2px;
 
   --canvas: #090908;
   --canvas-veil: rgba(0, 0, 0, 0.70);
@@ -1164,9 +1165,10 @@ button:disabled, select:disabled, .wrail-action-surface:disabled {
 
 /* Inline intent links share the theme accent; native focus supplies the outline. */
 .wrail-inline-link { color: var(--accent); }
+.wrail-inline-image { width: 1.25em; height: 1.25em; max-width: 64px; max-height: 64px; object-fit: contain; }
 
-/* Keep an inset focus ring legible on an accent-filled primary action. */
-.wrail-icon-button--primary:focused { outline-color: var(--canvas); }
+/* Separate the theme focus ring from an accent-filled action's own paint. */
+.wrail-icon-button--primary:focused { outline-color: var(--focus); outline-width: var(--focus-width, 2px); outline-offset: var(--focus-filled-offset, 2px); }
 /* Readable categorical ink, also projected to host-owned packaged pages. */
 .wrail-data-red { color: var(--data-red); }
 .wrail-data-blue { color: var(--data-blue); }
@@ -1177,6 +1179,7 @@ button:disabled, select:disabled, .wrail-action-surface:disabled {
 
 /* Host-owned focus previews. Opacity affects the fill, never the content. */
 preview {
+  padding: 12px;
   background-material: acrylic;
   background-tint-opacity: var(--acrylic-tint-opacity, .35);
   background-luminosity-opacity: var(--acrylic-luminosity-opacity, .25);
@@ -1193,3 +1196,6 @@ preview {
   shadow-offset-x: 0px;
   shadow-offset-y: 4px;
 }
+
+/* Preview hints remain a distinct, styleable box inside the frame. */
+preview-footer { padding: 8px 0px 0px 0px; }

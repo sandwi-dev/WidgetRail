@@ -1,229 +1,126 @@
-# Capture Library and shared interaction improvements
+# Capture, chat and shared UI: active implementation plan
 
-Status: active. User authorized implementation and thorough testing on 2026-11-15.
-Base: 2ae52d5e. Branch: codex/capture-library-upgrade.
+Updated: November 17, 2026. Branch: `codex/capture-library-upgrade`.
+Status: implemented and qualified within the documented scope; normal candidate PID27708 launched November17 at08:49 Pacific. Gallery/screenshot/Share/fullscreen, chat presentation/notification routing, replay media/controls and focus/preview continuity have native evidence. The task bullets below retain the original scope; the current checkpoint and limitations in [evidence](maintainers/capture-chat-followup-evidence.md) describe what was actually verified.
 
-## Scope and ownership
+This is the authoritative active plan. The [archived plan and evidence](archive/capture-library-improvements-2026-11-17.md) preserve prior decisions, failures, test artifacts and the previous candidate checkpoint. Archived completion statements do not apply to this follow-up. Keep this file concise: current decisions, tasks, ownership, evidence pointers and unresolved issues only.
 
-- Host tooltip cleanup: remove redundant tips on labeled controls; retain useful icon,
-  truncated-label/status tips and accessibility names. Adjust pin Save/Cancel/Opacity
-  currently share a blanket tooltip assignment (PinnedAdjustmentToolbar.cs:81).
-- Shared graph contract: bounded optional empty text; domain widget maps actual FPS
-  state. WidgetLineGraph.cs:18 currently assumes every empty graph is collecting.
-- Shared media collapse mouse bug: reported opening Notifications, even though a
-  widget tray icon was underneath. Do not assume click-through. Reproduce native
-  press/release and trace focus restoration; utility icons open panels on GotFocus.
-- Capture confirmation: per-widget/per-kind skip, saved only on Proceed, resettable
-  in Settings. Retain permission checks, countdown, target validation and stop controls.
-- Capture Library: bounded indexed search/filter/sort, favorites/titles, revisioned live
-  updates, virtualized gallery with density controls, viewer previous/next and return
-  position. Stage two: reusable multi-selection and bounded safe batch file/metadata
-  operations with recoverable deletion, export and reveal-file behavior.
-- Keep existing cards/media backgrounds and the accepted 1180 x 700 preferred extent.
-- Capture service owns files/index/authority; widget owns gallery policy and workflow;
-  SDK/host owns reusable collection input, rendering, selection and lifetimes.
-- EXCLUDED: capture pipeline consolidation, border behavior changes, trimming,
-  annotations, cloud sync, visual-content search. Do not modify real captures in tests.
+## Authorization and working rules
 
-## Reuse approach — agreed refinement
+- Implement the agreed changes; parallelize independent work where ownership is clear.
+- Overlay interaction, closing/restarting and candidate validation are authorized. The earlier user-testing restriction is lifted. Leave a qualified normal candidate running for user verification.
+- No installer, release, merge or real Discord test sends/uploads. Preserve user captures, folder links, settings and unrelated working-tree changes.
+- No existing users depend on these unreleased changes: remove superseded APIs/code rather than add unnecessary compatibility aliases or migrations. Preserve unrelated supported behavior.
+- Follow repository AGENTS.md: use existing SDK/host contracts, preserve authority/account/order/lifecycle safeguards, check all applicable consumers, and reject abstractions that weaken working behavior.
+- Favor familiar interaction patterns and standard semantic icons to reduce learning effort; reuse host mechanisms instead of widget-specific substitutes for common sharing, chat, media and navigation behavior.
+- Native focus/navigation/media claims require native evidence. Run targeted tests after relevant changes, not repeated unchanged broad suites. Record unverified behavior explicitly.
 
-The framework shares interaction mechanics, not all widget data or product policy.
-Reuse existing indexed collections, row artwork, media playback/zoom, navigation and
-subscriptions. Add opt-in collection multi-selection as the concrete shared gap.
-Do not introduce a universal gallery, provider query engine, favorites database or
-batch-operation framework. Capture queries/metadata/revisions remain capture-service
-contracts, usable by Capture Library and Game Help. Widgets choose filters and
-available operations; the broker executes authorized domain commands. Shared internal
-Windows helpers may implement recycle/reveal/export, but widgets submit authorized
-capture IDs rather than unrestricted paths. No other widget is forced into selection.
+## Work and acceptance criteria
 
-Game Help's picker benefits from richer discovery but does not become a management
-screen. Existing List/Open consumers remain compatible. Extend navigator/collection
-continuity only if real large-query requirements reveal a concrete missing contract;
-retain proven behavior if a proposed abstraction fails representative consumers.
+### 1. Dashboard guide and onscreen keyboard
 
-## Consumer matrix
+- Restore dashboard shortcuts in tray guide. Investigate readiness gating, publication and fitting; reuse exact dashboard frame authority, not Discord-specific flags.
+- Physical Enter finishes onscreen editing regardless of selected virtual key. Controller A/mouse activates that key; Escape cancels; Shift+Enter inserts a multiline newline. Preserve IME confirmation, suggestions and exactly-once commit. Finishing editing does not implicitly send a message.
+- Native checks: tray/interactive switching, Discord/Spotify/Audio Mixer/no-action widget; search and chat fields, multiline/suggestions/IME, mouse/keyboard/controller.
 
-| Change | Affected/migrated | Already compliant or not applicable |
-|---|---|---|
-| Graph empty states | Performance Monitor | Discord ping conditionally shows graph; SDK Gallery verify compatibility |
-| Capture query API | Capture Library; Game Help adopts query search, filters, favorites and live updates | Legacy List/Save response shapes remain unchanged for older packages |
-| Capture confirmation | Capture Library, Game Help, other Capture SDK consumers | Discord live sharing uses separate chooser |
-| Media collapse | Captured image/video, Game Help, embedded player and browser expansion audit | Pins/banner shared focus boundary regression checks |
-| Indexed selection | Capture Library representative migration; documented opt-in example | Playnite, PoB, Discord, music widgets, Games & Apps, Settings and full-app reference remain opt-out; YouTube has no indexed collection |
-| Tooltips | Adjust pin and host labeled controls | Keep meaningful icon/status/truncation tips |
-| Linked folder sources | Capture Library settings and read-only removal; Playnite setup and metadata companions | Game Help consumes the resulting query/open path; SDK Gallery/templates keep owned-capture flows |
-| Related-item intents | Capture Library and Playnite | Existing dynamic availability filters handlers before chooser and rechecks delivery; no new routing engine |
-| Saved-video read leases | Capture Library/native player; Game Help keeps its small attachment limit and disabled oversized rows | Temporary recording budgets and explicit copy/export behavior remain bounded separately |
+Evidence: shared guide/editor corrections are implemented. Native keyboard209 and shortcut28 pass; Discord native45 covers composer/dashboard guide. Physical hardware IME remains outside this qualification.
 
-## Validation requirements
+### 2. Folder filter and gallery proportions
 
-- Behavior tests: queries across full library; stable ordering/revisions; stale results;
-  bounded memory; titles/favorites persistence; external edits/deletes; permission
-  revocation; cancellation and partial batch outcomes; Game Help compatibility.
-- Native mouse/keyboard/controller: media collapse, rapid transitions, no unintended
-  utility panel, exact return focus, multi-select range semantics, collection viewport
-  restoration, dialogs/cancel/reset and tooltip overlap. Real press/release evidence.
-- Performance: thousands of synthetic entries, bounded row/thumbnail demand, first
-  load vs warm query costs; profile thumbnail lock before any concurrency rewrite.
-- Theme/scaling: light/dark/high contrast, acrylic toggle, narrow and wide viewport,
-  no clipping, unchanged preview/media appearance. No source audit treated as runtime proof.
-- Record rejected/narrowed abstraction proposals with evidence rather than force
-  migrations. Existing protocol/API compatibility and integrity boundaries remain.
+- Folder filter: All folders, WidgetRail captures and linked folders, independent of application/type/date/search. Query the entire index by stable source identity; preserve counts, paging, live updates and stale-query handling.
+- Capture gallery L3 focuses the top control bar (Search entry), using the existing shortcut/focus-request mechanism as in PoB. Preserve grid scroll/selection and navigation return memory; do not intercept L3 in modal/media interaction or add a custom input router.
+- Friendly labels and disambiguation for same-name folders. Do not expose other widgets' management authority or unrestricted paths through the filter API. Existing source-management listing is owner-scoped and cannot serve as the complete library facet.
+- Cover mixed filters, unavailable/disconnected sources, same-name folders, empty matches and source changes. Choosing a filter never grants access or registers a folder.
+- Default to four larger columns at the demonstrated width using existing density controls. Increase card size before widget dimensions; monitor-constrained layout with room for guide/tray. Small libraries stay left-aligned at normal card size.
+- Approximately 16:9 landscape thumbnails with deliberate Fit/Fill for other shapes; lighter captions, useful title/date, compact clip-duration badge and tighter search-to-month spacing.
+- Preserve existing custom-title/game-name precedence. Repeated timestamp names in the first screenshot were mostly missing-metadata fallback. Do not invent metadata or confuse source-image blur with text rendering.
+- Standard accessible icons throughout Capture Library for familiar actions; retain labels for ambiguous choices, folder linking and destructive confirmations. Reuse icon buttons, tooltips and controller guide.
 
-## Work log
+### 3. Screenshot/video previews, Share and fullscreen
 
-- Started parallel graph, confirmation and library-service lanes. Parent owns
-  media collapse/tooltip diagnosis, widget UI and shared selection integration.
-- Protocol allocation: graph empty text v111; indexed selection reserved v112.
+- Add screenshots to existing gallery rich previews; retain grid geometry, dwell/placement/pointer-travel/input rules, selection-mode exclusions and bounded resources.
+- Validate preparatory retained-original PNG access and inactive bitmap/poster cleanup. These source edits existed before this goal but were not built, qualified or staged.
+- Add preview Share through generic intent routing. Reuse exact indexed/inline preview proof and operation-owned semantic lease retention across the chooser. Do not duplicate tree walkers or retain native controls unnecessarily. Source/query/account/worker invalidation must still revoke authority.
+- Sharing regression reported November 17: current candidate showed “Cannot open this item / The destination is no longer available. Please try again.” across files/folders. User subsequently identified an existing unfinished Discord share; Cancel share was not visible and removing its attachment required navigating/scrolling into the chat. Treat this as user-reported causal evidence pending reproduction, not as a file-source failure. Screenshot: `codex-clipboard-c32e4b97-24b1-4182-8618-498bc9defb0a.png`.
+- Streamline the complete Capture -> receiver -> recipient -> composer -> send/cancel/return flow. Latest user correction: EVERY new external Share opens recipient selection. Never reuse an old share's recipient or jump straight into its composer. An unfinished share/draft must not block incoming files or trigger a routine Continue/Replace/Cancel prompt. Keep incoming files separate from existing drafts until the user chooses a recipient; then add/deduplicate into that recipient's compatible unsent draft and preserve its text/files. A different recipient receives only the new incoming files, never another conversation's draft. Explicit Send remains required. Reuse host intent/result/presentation and shared draft/operation mechanisms, not a Capture-specific second router.
+- Keep pending attachments, upload state and Cancel sharing/Remove attachment immediately reachable in a fixed composer/share area, independent of message-history scroll. Preserve drafts across back/reopen. Cancelling recipient selection releases only the new incoming share and leaves existing drafts intact. Never silently discard text/files, move a draft across accounts/conversations or mutate a send already in flight. Real attachment/size limits require concise actionable feedback identifying the constraint; do not fall back to destination-unavailable. Stage incoming files separately from an active send if supported, with bounded ownership and no duplicate send; otherwise expose a truthful actionable busy state. No generic existing-draft conflict prompt for ordinary repeated sharing.
+- Own incoming file grants through resolution, then release only superseded/cancelled grants exactly once; cancel must not erase another conversation's draft. Avoid staging the same file twice or leaking offers after repeated Share. In-flight/uncertain external sends retain existing cancellation/reconciliation safeguards: do not promise that stopping waiting unsends a message. Surface plain-language progress/recovery, not file-offer counts, lease conflicts or multiple-attachment-operation jargon.
+- Dedup contract checkpoint: broker issues optional opaque recipient-scoped original/version identity (no path or whole-file hash), with10 passing file-reference/authority checks. Discord adopts it when available and otherwise only exact grant identity, never filename/size guesses. Recipient-first repeat sharing, admission/account races and cancellation are included in813 managed checks.
+- Sharing acceptance: begin an unsent share then share different files/folder again; ALWAYS show recipient selection, cancel without changing prior drafts, choose same recipient (append/dedup only after choice), choose different recipient (no draft leakage), limits, remove/cancel, back/reopen, scrolled history, upload cancellation, uncertain send, account changes and stale source. No silent data loss, duplicate sends, automatic recipient reuse, routine draft-conflict prompt, hidden cancel action or generic destination error for an existing draft. Test ordinary detail/batch Share and preview Share; explicit Send remains required, with controlled providers for mutation tests.
+- Fix user-reported preview fullscreen. Reuse the same player and existing fullscreen owner, preserving playback/position and valid media lease. Return to the same valid preview/focus; if invalidated, return safely to the current gallery/owner without resurrecting content. Hide/disable genuinely unavailable expansion, not all video controls.
+- Passive previews are muted/minimal; interactive previews offer playback, seeking, audio and fullscreen. Entry must not restart playback or shrink the video.
+- Maintain fitted poster until first decoded frame. Stable bounds and overlay controls; no empty flash, source mismatch or incorrect video layer.
+- Restrained anchored reveal/dismiss through existing motion/portal mechanisms. Initial tuning: roughly 160–220 ms open, 100–160 ms close. Prefer opacity/small translation to text-blurring scale. Coordinate frame, video and controls; use opacity if native video cannot safely track transforms.
+- Interruptible hover/focus/reversal/source switching with no stale reopen, focus theft or duplicate click routing. One preview decoder; deterministic retirement; reduced-motion support.
+- Native before/after evidence: cold/warm opening, controls entry/exit, fullscreen reversal, source removal/recycling, Share chooser, viewport edges, slow decode/errors, mouse/keyboard/controller, 90%/100% UI scale and representative DPI.
 
-- Resumed after user scope review. Graph tests 15/15 and SDK transport 1/1 passed;
-  confirmation PlatformSettings 35/35 passed; core capture service query tests 2/2
-  passed before batch additions. These are partial evidence, not final qualification.
-- Native baseline media-collapse clicks: six cycles did not reproduce the reported
-  notification panel. Guard edits remain experimental until native fixture evidence.
-- Gallery partial authoring is unfinished and not yet compiled; do not deploy this tree.
+Evidence: user video `20261117-0911-19.3561274.mp4` shows the original empty opening rectangle and shrink. Fullscreen failure was reproduced: valid handoff hid the preview anchor and retired its player. Existing owner/lifecycle correction passes28/28 native ordinary/dialog checks and final actual Capture gallery30; same player/position survives fullscreen return. Offline contact sheets remain in `artifacts/capture-sources`.
 
-- Source-based review found and corrected: unsafe permanent-delete fallback for a
-  previously unavailable capture (new RemoveUnavailable rejects restored originals);
-  late canceled batch replies overwriting newer confirmation/selection; simultaneous
-  initial and post-subscription query publications (now one SDK RunLatest lane);
-  metadata-only edits upgrading a changed preview's destructive content revision.
-  Deterministic regression tests are being integrated; no guard is justified by
-  cancellation alone.
-- Shared selection is bounded to 256 explicit query items; oversized gestures reject
-  atomically. Select all is only offered for matching sets within the bound, never
-  as an alias for loaded rows. Long-running unlimited query-wide jobs are not added.
-- Added optional provider key-to-index lookup (v113) on the existing indexed request
-  lane for large-query focus/viewport rebasing. Legacy consumers opt out unchanged.
-- Capture browse uses existing grouped indexed grid/list for complete monthly
-  partitions, application facets, and adjustable thumbnail density. No new gallery
-  renderer or universal metadata/batch engine.
-- Native media transition checks passed 48: WinUI pointer-focus fallback onto the
-  notifications icon is confirmed in traces. Shared fullscreen entry/exit owns focus
-  through detach/restore; no utility opens after the fix in those native cycles.
-- Native graph checks passed 13; confirmation native checks passed 23 (automation
-  peers, not physical clicks). Service tests include 3,001 indexed captures and
-  SQLite deletion/corruption. Native temporary-file recycle/restore preserves bytes.
+### 4. Shared media player
 
-## Added scope: existing achievement captures and Playnite integration
+- Improve existing MediaPlayerView: larger aspect-preserving stage, quieter borders/padding, bottom gradient, timeline and compact primary icons. Speed/loop in a small menu; replay prominent at end.
+- Reuse existing visibility/fullscreen mechanisms. Controls fade without resizing video; stay available during scrubbing/menu/keyboard/controller interaction. Stable focus and hit targets, high contrast/reduced motion.
+- Scrub target time, generous hit areas, accelerating controller seeks and brief non-layout-changing seek/volume feedback. Distinct loading/buffering/paused/ended/error states.
+- Matching image zoom/Fit/fullscreen toolbar, no video-only controls. Preserve original-file playback, bounded decoders and interrupted image restoration.
+- Verify shared consumers and native pixel/lifetime behavior. Thumbnail scrub generation is deferred; do not add a frame cache merely for visual polish.
 
-User authorized integration on 2026-11-15 and then explicitly chose reusing
-Playnite Achievements' existing screenshots/clips over a second automatic recorder.
-The earlier automatic-screenshot proposal is superseded, not an implementation
-requirement. Capture-pipeline consolidation remains excluded.
+### 5. Discord chat and reusable conversation facilities
 
-Provider evidence: installed Playnite Achievements 4.1.1; upstream Captures wiki
-and README describe clean/notification/framed screenshots, buffered recording,
-provider-owned folders and achievement/game galleries. Reusing that recorder avoids
-competing capture sessions; no quality/performance superiority is claimed.
+- Compact variable-height virtualized DM timeline: incoming left, own right, text left-aligned; author/avatar/time grouping and date boundaries; stable composer and familiar icons. Ordinary text is readable inline, not through a rich preview.
+- Adopt/improve Game Help rich text, disclosures, composer and notification-intent precedents. Shared presentation improvements may benefit both; keep AI-answer and Discord-message domain state separate.
+- Add bounded keyed mutation support to the existing SDK cursor resource. Preserve provider page segments/cursors, reverse navigation, reset scopes and delayed-load safeguards; no second widget-owned timeline. Check Spotify queue.
+- Preserve Discord event payloads and apply creates/partial edits/deletes locally. Bounded journal, revisions/tombstones, send ID/nonce dedup and account/session/watch fencing. History GET only for initial/paged loads or coalesced genuine recovery gaps, not each event.
+- Host-owned follow-end based on actual viewport: follow new messages when at bottom, preserve reader position otherwise and show jump-to-latest. No widget scroll counters/focus theft. Resolve bounded-window eviction versus protected reading anchor explicitly.
+- Rich text/link/image primitives: markdown, readable mentions, custom/Unicode emoji, spoilers, quotes/code, replies, embeds and reaction summaries. Add only missing reusable inline-image/style support. Provider syntax stays outside host; no arbitrary HTML renderer.
+- Inline attachment images/video posters and on-demand media/link previews. Bounded demand and explicit playback; readable fallback for unsupported stickers/polls/system content rather than empty cards or silent truncation. Do not claim full Discord parity.
+- One existing notification pipeline: investigate reliable structured account/conversation/message activation enrichment, reuse OpenIntent and exact-message reveal with bounded history load. Preserve drafts, account/access checks and browser fallback. No title/timing guesses or duplicate notifications.
+- Assess supported client read acknowledgments, coalesced only for messages actually viewed. No guessed endpoints or background-fetch acknowledgment.
 
-- Keep generic capture context: authenticated origin, bounded subject/event references,
-  readable labels, optional provider event time, origin-scoped idempotency. Recorded
-  time is distinct from actual capture time; unknown actual time stays unknown.
-  Preserve strict legacy List/Save shapes. No Playnite semantics in host or SDK.
-- Add generic linked-source registration only after checking existing authority APIs:
-  user-authorized folder/source, opaque source ID, contained relative references,
-  supported media validation, no traversal/reparse escape. Do not copy provider
-  originals into our library. Thumbnails and bounded temporary playback leases may
-  use caches. Persist source ownership explicitly; removing a linked library entry
-  must not delete a provider original. Provider retention/deletion remains visible.
-- Widget setup must expose supported provider capture configuration through the
-  Playnite integration plugin, with version/capability checks, validation, persistence
-  and readback. Inspect the actual public provider API before choosing controls.
-  Do not silently edit settings JSON behind a running addon or claim unsupported
-  settings can be configured safely. Missing addon remains a normal unavailable state.
-- Preserve the widget's unload-after-idle behavior where possible. The recorder runs
-  inside Playnite independently; source discovery/reconciliation must not rely on an
-  always-interactive widget. Audit durable generic sources versus provider-plugin
-  inventory and existing application lifetimes before selecting the smallest mechanism.
-  Current source manifest defaults to 300 seconds; verify installed/user overrides
-  rather than assuming the reported two minutes is the source default.
-- Bidirectional UI: context captions and authorized Open related item; game/achievement
-  details show linked captures and View in Capture Library. Uninstalled providers keep
-  readable metadata but disable unavailable actions. Reuse generic intents/queries.
-- Tests: no persistent media duplication; source-root authority/isolation; traversal,
-  replacement, missing/moved roots and files; partial writes/recordings; rescans after
-  widget unload/restart; dedup/replay; metadata/index recovery; provider missing/version
-  mismatch; settings round-trip/cancellation; no deletion without original-file authority;
-  old widget wire compatibility and Game Help browse/open of supported linked media.
+### 6. Native replay recording: measured prototype, then integration
 
-Research sources:
-- https://github.com/justin-delano/PlayniteAchievements/wiki/Captures
-- https://github.com/justin-delano/PlayniteAchievements#overlay
+- Replace Game Bar shortcut recording with a host-owned replay session. First prototype: one selected game/window, hardware-encoded SDR video, game audio and a 60-second target. No silent continuous software-encoder fallback.
+- Reuse native streaming worker pacing/queues/isolation/target handling, process-loopback audio and current recording encoder. Discord currently receives raw BGRA/PCM and encodes via WebRTC; it does not expose an encoded stream we can simply retain. Recording currently writes a Media Foundation MP4 sink.
+- Prototype compressed-sample or continuous-segment output and keyframe-aligned assembly without interruption/re-encoding where feasible. Do not rotate ordinary recordings if that introduces gaps.
+- Share frame/audio acquisition for compatible targets/settings/authority where practical; independently bounded consumers so saving cannot stall Discord. Separate WebRTC/local encoding is expected initially; do not promise one encoder.
+- Hard duration/byte/GPU-queue/save-operation bounds, actual available replay duration. Compare RAM versus disk segments before choosing defaults. At 10/20 Mbps, video payload is approximately 75/150 MB per minute, excluding overhead; estimates are not measurements.
+- Measure CPU/GPU encode/copy use, private/managed/GPU memory, disk writes, frame pacing/game frame times and save latency, including concurrent streaming/manual recording. Qualify audio sync, keyframes, overlapping saves, slow/full disk, resize/minimize/exit, sleep, device loss and audio changes.
 
-## Added scope: large saved recordings without temporary media duplication
+### 7. Recording lifecycle, settings and Game Bar cleanup
 
-User explicitly requested fixing whole-recording temporary playback copies after
-reviewing Windows' two-hour recording option. This is shared media-library work,
-not a Windows Game Bar-specific adapter and not capture-pipeline consolidation.
+- Host service owns target authority, encoder/buffer, real status, save results and library publication. Capture Library remains an ordinary idle-able control panel. Hidden/closed widget or overlay does not stop explicitly enabled recording; host shortcut can save without starting the widget.
+- Game exit stops that session, never silently captures desktop/another app. WidgetRail exit releases resources; finalize saves/clean abandoned temporary segments safely. Automatic-start preference is separate from actual recording; no idle encoder with no eligible game.
+- Keep ordinary screenshot request and Discord browser/document lifetimes unchanged. Explicit user-approved host recording ownership is a separate session policy.
+- Capture Library settings backed by host preferences: replay enable/duration/budget/auto-start; existing video quality controls; supported game/microphone audio; save/buffer storage. Main page exposes Off/Waiting/Recording/Error, buffered duration, Start/Stop/Save. Global shortcut stays in host shortcut settings.
+- Recording status/Stop remain reachable if the widget is unavailable. Define shared disable/uninstall/CLI behavior; do not rely on a GUI uninstall prompt. Default to stopping when the controlling feature is removed unless independently supported host controls remain.
+- Playnite can supply generic game/context policy; no Playnite-specific capture-service code. Saved clips reuse metadata, library events and sharing.
+- Replace obsolete request-only recent-gameplay contracts/outcomes with native session/save semantics. Remove Win+Alt+G injection and capture-specific foreground handoff, dead handlers, guidance and shortcut-only fixtures after the replacement is qualified. Retain shared helpers still used elsewhere.
+- Keep external Windows capture-folder linking/indexing/playback, including redirected folders and duplicate prevention. Preserve captures/metadata/links; never change Windows recording settings, uninstall Game Bar or silently enable our recorder. No compatibility wrappers/migration machinery solely for this unpublished path.
 
-- Existing library Open obtains a verified original lease, but registry Import then
-  copies it into temporary capture storage. Replace saved-video playback import
-  with an explicit adopted read lease; release/revoke/expiry/disposal must close
-  authority and never delete the original. Retain bounded image normalization and
-  explicit export/copy operations where requested.
-- Separate saved-library playback limits from WidgetRail recording-creation budgets.
-  Use bounded streaming/inspection/thumbnail work for long or large media. Avoid a
-  whole-file hash/copy on every playback open; preserve file identity, revision and
-  containment safeguards using verified handles rather than trusting filenames,
-  length and modification time alone.
-- Audit parent-directory/reparse replacement between validation and media open;
-  preserve the same verified resource through playback. Keep linked originals
-  read-only. Reuse media authority renewal while a player remains active.
-- Consumer checks: Capture Library, Game Help's bounded attachment/export path,
-  native media player, expanded/pinned media, permission revocation and old widget
-  wire compatibility. Measure large-file open/seek/memory/temporary-disk behavior;
-  source review alone is not performance evidence.
-- Generic folder linking also supports compatible external capture exports. Dedicated
-  Windows settings controls, SteelSeries library/export/settings adapters, timelines
-  and editing are not added to this implementation merely because discussed as examples.
+## Shared consumer matrix
 
-## Additional qualification
+Concrete shipping entry points and current disposition. Numbers refer to the evidence note; native coverage is not implied by a source audit.
 
-- Full Capture Library suite passed 54/54 before the latest folder-management UI,
-  file-modification timestamp and direct-video-playback changes. New context cases
-  cover owner-scoped associations, replay/recovery, modal close versus late results,
-  and related-item intents. These newer changes require another qualification pass.
-- Native shared selection/lookup passed 84/84 twice. Checkbox hit target moved during
-  parent-row press animation; suppressing that motion only for its own checkbox
-  stabilized repeated list/grid/grouped clicks. Opt-out consumers retain normal press
-  motion. Deferred focus dispatch removed the observed crash; its original exact
-  cause is not conclusively established.
-- Native embedded media passed 49 checks; source-folder picker passed 4 checks.
-- Production gallery fixture at 1180 x 700 logical / 125% scaling shows ten complete
-  medium cards with spacing and truncation. Selection uses overlay checkboxes; all
-  1,200 synthetic entries stay virtualized. Other sizes/themes remain to qualify.
-- Playnite capture settings adapter uses public provider ISettings transaction with
-  active-edit/revision guards and persisted readback; 56 isolated API/framework checks
-  passed. No live user settings were changed by those tests.
+| Mechanism | Consumers and required disposition |
+| --- | --- |
+| Capture/session/worker | Migrated: CaptureLibraryWidget.Replay + host coordinator. Native recorder/library13, control UI14 and broker101 pass. Discord raw streaming/replay coexistence passes. GameHelpWidget capture regression passes; ordinary capture native imports remain covered. Playnite provides generic metadata, no host-specific branch. |
+| Folder query | Migrated: CaptureLibraryWidget.Gallery/Filters. SQL predicate applies count/ranges/groups/application facets/anchors. Playnite/Game Help/null-source readers already compliant; Windows/other linked sources retain management boundaries. Capture regression114 and native gallery30. |
+| Preview intents/lifetimes | Migrated: Capture preview Share/fullscreen. Native gallery30 at both scales; exact indexed lease54 and intent proof checks. Discord Messages native45; protected partial-page continuity26 passes. PoB previews use existing shared lifecycle, no widget migration; no claim of a new full PoB live run. |
+| Media controls | Shared renderer change: Capture detail/edit/preview, GameHelpWidget.Presentation, Discord.Messages and SdkGallery.Modern. Native baseline113/lifetime19/content36/dialog36/interactive61 plus actual gallery30. Browser-owned YouTube/Netflix-style players are not changed by this native control work. |
+| Cursor/live/follow-end | Migrated: Discord Messages resource. Spotify indexed queue is already compliant and two targeted regressions pass. Protected native reader26 and ordinary focus recovery16 pass. Game Help does not adopt provider-specific Discord event state. |
+| Rich text | Migrated Discord parser uses shared native runs/images. Game Help rich-link/notification/capture7 pass; PlayniteAchievementPresentation and PoB RichText/Planning/Trade/Workspace remain compatible consumers. Templates/examples require no new declaration; inline images are optional. Unsupported Discord formats use explicit fallback. |
+| Keyboard/guide | Shared editor209 and shortcut28 native checks; Discord native45 includes composer/dashboard guide. Settings35 plus shortcut1 and Session authority2 pass. Spotify/Audio Mixer/no-action use the existing shared dashboard declaration path; no duplicate widget input routing. Hardware IME and OS notification-area menu drawing remain unverified. |
 
-## Final integration evidence before installer update
+## Execution and checkpoints
 
-- Capture Library 64/64, SDK 181/181, compatibility 17/17, catalog 52/52,
-  documentation 250 files and native parity 200 constants passed. Modern SaveAsync
-  uses an additive current-response operation; legacy wire shapes remain closed.
-- Native long-media playback passed 8 checks with a real two-hour / 134 MiB MP4,
-  including seek into the second hour, renewal and source disconnect. Actual widget
-  confirm-delete passed normal and deliberately delayed scene updates; another
-  widget's lease correctly blocks recycling and the failed preview recovers.
-- Adjust pin native checks passed 104; text entry passed 207. Redundant labeled
-  tooltips are absent; accessible names and useful icon/truncation/status tips remain.
-- Gallery and selection inspected in light, high contrast and maximum text/interface
-  scaling. Source management enlarged to 760 x 520 logical so two folder actions fit;
-  real mouse open/close returns to Settings. Batch buttons use the existing responsive
-  grid and selected count shares the existing count line.
-- Source access survives idle unload, reviewed package updates and old-version
-  cleanup. Actual catalog uninstall removes exact access; the final owner revokes
-  discovery. Reinstall can register a fresh source. No catalog-absence heuristic.
-- Playnite widget 0.4.6 and plugin 1.2.0: 246 widget, 119 community, 14 core,
-  72 framework/API checks; native settings 29, details geometry 22, navigation 47.
-  Six live community opt-ins were skipped. Actual provider API verification follows
-  installation; no achievement unlock has been triggered on the user's account.
-- Metadata companions remain optional; ordinary folder discovery needs none.
-  API-based SDK integrations can submit context directly. New Playnite companions
-  are hidden, preserve existing visibility and never change original attributes.
-  Display-only references are plain text; related actions require explicit opt-in.
-- Qualified candidate and Playnite/Game Help packages are running/installed. The
-  registered host installer update is still pending, so the overall goal remains
-  active. No merge to main is performed for this feature branch at this stage.
+1. Bounded guide/keyboard fixes; folder query; finish preview authority/resource/fullscreen work.
+2. Gallery/media polish and Discord live/text/chat/notifications in independent slices.
+3. Native replay prototype -> measured design decision -> production session/settings -> Game Bar command cleanup.
+4. Targeted shared-consumer/native qualification, remove diagnostics, update documentation and launch normal candidate.
+
+Current owners: root = plan/Capture replay UI/Discord presentation/provider/notification consumer; discord_messaging_provider = viewport recovery/native focus plus shared notification-intent assessment; windows_capture_plan_probe = replay broker/bridge authority and atomic library publication (media slice qualified); shared_attachment_audit = replay native worker/IPC/backend (Discord delta/share slice handed back). Root coordinates native builds/candidate restarts. No agent edits this plan concurrently.
+
+Checkpoints: native media baseline113/lifetime19/content36/dialog36/interactive61, Discord chat45, keyboard209 and shortcut28 pass. Chat managed813/provider44, native generic notification routing7, Spotify queue2 and Game Help7 pass. Capture114 earlier regression plus latest replay3/toolbar1/navigation2/permission1 pass; final actual gallery30 checks each at100% and90%. File intent5, file streaming3 and Settings/session shortcut1+2 pass. Replay policy25, coordinator28, broker101, native recorder→library13, real SDK/host pipe scenario and durable catalog/CLI removal pass. Corrected production replay's uncontended76s run saved59.4s/1782frames/0missed, with memory plateau around132MiB and~2.7%one-core CPU in an owned animated-window/audio fixture. Concurrent raw streaming/replay and independent stop pass. Real-game performance is not established. Fresh local candidate packages validate; no installer/release/merge.
+
+Final qualification: ordinary focus/scroll16, protected preview/recovery26, replay UI14 and final actual gallery30 pass. Candidate staging and normal launch are complete in `artifacts/capture-chat-candidate-20261117`; Capture0.2.0.13 and Discord0.1.0.35 preserve settings through reviewed local CLI updates. First launch exposed an omitted Settings integrity seal in candidate assembly; restored through the existing seal tool, without bypassing checks. PID27708 is the successful normal launch. No test fixture remains open.
+
+Narrowed/deferred scope: automatic read acknowledgments require exact viewed-message evidence; reactions/polls are read-only and some animated Discord content has fallback. Replay auto-start uses the explicitly approved application, hardware SDR/application audio, and a strict duration upper bound with keyframe shortening. Acquisition code is reused; independent bounded raw-streaming/replay workers are qualified, not a new cross-authority shared-frame service. Real-game performance across hardware, physical PC sleep, hardware IME and notification-area menu drawing were not exercised; controlled native capture/audio, injected power transitions, editor guards and overlay tray/hotkey paths were. Thumbnail scrub generation remains deferred. Historical preview-lease failure evidence was ambiguous; the corrected actual-preview assertion passes without broad observer effects. These limits are recorded rather than represented as universal runtime/performance proof.

@@ -10,6 +10,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Monitor and compact pin are valid controller surfaces with unavailable distinct from zero", Presentation),
     ("FPS enablement is explicit and button focus survives its busy state", Enablement),
     ("Missing FPS access asks on action, and only approval starts the collector", PermissionContinuation),
+    ("Missing monitoring access is explained at the top and denial never samples", MissingMonitoringAccess),
+    ("Enable monitoring resumes only after approval without enabling FPS", MonitoringAccessApproval),
+    ("Errors and collector failures appear beside the top refresh control", TopStatus),
     ("An older periodic read cannot undo a newly admitted FPS action", StaleRead),
     ("Correction uses opaque target IDs and automatic selection can be restored", Selection),
     ("Manual application selection survives reopening before fresh readings", ReopenSelection),
@@ -341,27 +344,108 @@ static async Task PermissionContinuation()
     finally { await Hide(widget); }
 }
 
+static async Task MissingMonitoringAccess()
+{
+    var fake = new Fake { ReadGranted = false }; var widget = fake.Create();
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    try
+    {
+        await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "performance.access"));
+        var snapshot = Snapshot(widget); var notice = snapshot.Root.Children[1];
+        Check(snapshot.InitialFocusId == "performance.access" && notice.Id == "performance.access.notice" &&
+            Walk(notice).Any(n => n.Id == "performance.status") && Walk(notice).Any(n => n.ActionId == "performance.access"),
+            "Permission explanation and action are not adjacent above monitoring controls");
+        Check(Node(widget, "performance.access").Text == "Enable monitoring" &&
+            Node(widget, "performance.access").StyleClasses.Contains("performance-enable"), "Missing themed permission action");
+        Check(fake.PermissionRequests == 0 && fake.Samples == 0, "Activation prompted or sampled without access");
+        await widget.OnActionAsync(new("performance.refresh", "performance.refresh"));
+        Check(fake.PermissionRequests == 0 && fake.Samples == 0, "Refresh secretly requested access");
+        await widget.OnActionAsync(new("performance.access", "performance.access"));
+        await Until(() => Node(widget, "performance.status").Text!.Contains("Access was not allowed"));
+        await Task.Delay(1100);
+        Check(Node(widget, "performance.status").Text!.Contains("Access was not allowed") && fake.Samples == 0 && fake.Enables == 0,
+            "Denied access sampled data or lost its visible explanation");
+        Check(fake.LastPermissionIds.SequenceEqual(new[] { "system.performance.read.v1" }), "Monitoring asks for unrelated FPS control");
+    }
+    finally { await Hide(widget); }
+}
+static async Task MonitoringAccessApproval()
+{
+    var fake = new Fake { ReadGranted = false, PermissionOutcome = WidgetPermissionOutcome.Granted,
+        PermissionGate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+    var widget = fake.Create(); await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    try
+    {
+        await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "performance.access"));
+        await widget.OnActionAsync(new("performance.access", "performance.access"));
+        await Until(() => fake.PermissionRequests == 1);
+        Check(Node(widget, "performance.access").IsBusy == true && Node(widget, "performance.access").IsDisabled != true,
+            "Pending consent removed the action or its focus");
+        Check(fake.Samples == 0 && fake.Enables == 0, "Read or FPS started before consent completed");
+        fake.PermissionGate.TrySetResult();
+        await Until(() => fake.Samples > 0 && !Walk(Snapshot(widget).Root).Any(n => n.Id == "performance.access"));
+        Check(fake.Enables == 0 && Node(widget, "performance.fps.graph").Graph!.EmptyText == "FPS collection is off",
+            "Monitoring approval silently enabled FPS or changed its disabled state");
+        await widget.OnActionAsync(new("performance.refresh", "performance.refresh"));
+        Check(fake.PermissionRequests == 1, "Granted refresh prompted again");
+    }
+    finally { fake.PermissionGate.TrySetResult(); await Hide(widget); }
+}
+static async Task TopStatus()
+{
+    var fake = new Fake(); var widget = fake.Create(); await Activate(widget);
+    try
+    {
+        Check(!Walk(Snapshot(widget).Root).Any(n => n.Id == "performance.access"), "Granted access still shows a permission prompt");
+        fake.FailRead = true; await widget.OnActionAsync(new("performance.refresh", "performance.refresh"));
+        var snapshot = Snapshot(widget);
+        Check(snapshot.Root.Children[0].Id == "performance.header" &&
+            Walk(snapshot.Root.Children[0]).Any(n => n.Id == "performance.refresh") &&
+            snapshot.Root.Children[1].Id == "performance.status" &&
+            Node(widget, "performance.status").StyleClasses.Contains("performance-error"), "Read failure or retry is below the graphs");
+        fake.FailRead = false; fake.Sample = fake.Sample with { FpsState = "missing" };
+        await widget.OnActionAsync(new("performance.refresh", "performance.refresh"));
+        Check(Node(widget, "performance.status").Text!.Contains("failed its integrity check") &&
+            Snapshot(widget).Root.Children[1].Id == "performance.status" &&
+            Node(widget, "performance.status").StyleClasses.Contains("performance-error"), "Collector failure was hidden or reworded");
+    }
+    finally { await Hide(widget); }
+}
+
 file sealed class Fake
 {
-    public int Reads, Enables;
+    public int Reads, Enables, Samples;
     public bool Granted = true;
+    public bool ReadGranted = true;
     public bool FailRead;
     public int PermissionRequests;
     public WidgetPermissionOutcome PermissionOutcome = WidgetPermissionOutcome.Denied;
     public string? Requested;
-    public TaskCompletionSource? EnableGate, ReadGate;
+    public string[] LastPermissionIds = [];
+    public TaskCompletionSource? EnableGate, ReadGate, PermissionGate;
     public WidgetPerformanceSnapshot Sample = new(DateTimeOffset.UtcNow, 10, 0, 2L << 30, 8L << 30, 0, null,
         "not-enabled", "target-a", [new("target-a", "Game", "Game window"), new("target-b", "Editor", "Document")]);
     public WidgetHostServices Client() => new WidgetTestHostServicesBuilder()
             .WithHandler(WidgetPermissionCapabilities.Check, (query, _) => ValueTask.FromResult(
-                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, Granted ? WidgetPermissionState.Granted : WidgetPermissionState.NotDecided)).ToArray())))
-        .WithHandler(WidgetPermissionCapabilities.Request, (_, _) => { PermissionRequests++; return ValueTask.FromResult(new WidgetPermissionRequestState(PermissionOutcome)); })
+                new WidgetPermissionStatuses(query.CapabilityIds.Select(id => new WidgetPermissionStatus(id, (id == "system.performance.read.v1" ? ReadGranted : Granted) ? WidgetPermissionState.Granted : WidgetPermissionState.NotDecided)).ToArray())))
+        .WithHandler(WidgetPermissionCapabilities.Request, async (query, token) =>
+        {
+            PermissionRequests++; LastPermissionIds = query.CapabilityIds.ToArray();
+            if (PermissionGate is { } permission) await permission.Task.WaitAsync(token);
+            if (PermissionOutcome == WidgetPermissionOutcome.Granted)
+            {
+                if (query.CapabilityIds.Contains("system.performance.read.v1")) ReadGranted = true;
+                if (query.CapabilityIds.Contains("system.performance.fps.control.v1")) Granted = true;
+            }
+            return new WidgetPermissionRequestState(PermissionOutcome);
+        })
         .WithHandler(WidgetPerformanceCapabilities.Get, async (request, token) =>
         {
             Requested = request.TargetId; Interlocked.Increment(ref Reads);
+            if (!ReadGranted) throw new WidgetCapabilityException("permission_denied", "Fixture access denied.");
             if (ReadGate is { } read) await read.Task.WaitAsync(token);
             if (FailRead) throw new WidgetCapabilityException("unavailable", "Fixture read failed.");
-            return Sample;
+            Interlocked.Increment(ref Samples); return Sample;
         })
         .WithHandler(WidgetPerformanceCapabilities.EnableFps, async (_, token) =>
         {

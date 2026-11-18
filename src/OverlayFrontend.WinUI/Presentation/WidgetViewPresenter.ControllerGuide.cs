@@ -33,7 +33,7 @@ internal sealed partial class WidgetViewPresenter
     {
         if (previewEntered && previewSurface?.Fragment is { } preview) return preview.IsGuidePresentationReady(requireFocus);
         if (disposed || applying || !presentationActive || frame is null || !IsLoaded) return false;
-        if (HasTransientControl) return true;
+        if (HasTransientControl || OwnsSelectFocusReturn) return true;
         if (requireFocus && (restoreNativeFocus || pendingRestore is not null || pendingGroupEntry is not null ||
             needsEntry && bindings.Values.Any(Navigable))) return false;
         foreach (var binding in bindings.Values)
@@ -69,6 +69,9 @@ internal sealed partial class WidgetViewPresenter
         if (disposed || applying || presentationOnly || !presentationActive || presentation is null) return [];
         if (previewEntered && previewSurface?.Fragment is { } preview) return preview.CaptureControllerGuide();
         if (ControllerTextEntry is { } keyboard) return CaptureKeyboardGuide(keyboard);
+        if (FocusedMediaPlayer is { HasOptionsMenu: true })
+            return (ControllerGuideHint[])[new(ControllerPrompt.A, "Choose", ControllerButton.A),
+                new(ControllerPrompt.B, "Back", ControllerButton.B), new(ControllerPrompt.LeftStickMove, "Navigate")];
         if (HasTransientControl) return (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A)];
         if (FocusedMediaPlayer is { IsExpanded: true, CanControl: false })
             return (ControllerGuideHint[])[new(ControllerPrompt.B, "Back", ControllerButton.B)];
@@ -127,8 +130,8 @@ internal sealed partial class WidgetViewPresenter
                 .. (previewOwner is not null ? (ControllerGuideHint[])[new(ControllerPrompt.B, adjusting ? "Finish adjustment" : "Back to source", ControllerButton.B)] : [])];
         }
         if (previewOwner is not null) return (ControllerGuideHint[])[..hints, new(ControllerPrompt.B,"Back to source",ControllerButton.B)];
-        if (PreviewEnterButton(CurrentPreviewSource()) is { } enter) return (ControllerGuideHint[])[..hints.Where(hint=>hint.Button!=enter),
-            new(enter switch {ControllerButton.X=>ControllerPrompt.X,ControllerButton.Y=>ControllerPrompt.Y,
+        if (PreviewEnterButton(CurrentPreviewSource() ?? FocusedPrimaryPreviewSource()) is { } enter) return (ControllerGuideHint[])[..hints.Where(hint=>hint.Button!=enter),
+            new(enter switch {ControllerButton.A=>ControllerPrompt.A,ControllerButton.X=>ControllerPrompt.X,ControllerButton.Y=>ControllerPrompt.Y,
                 ControllerButton.LeftStick=>ControllerPrompt.LeftStickPress,_=>ControllerPrompt.RightStickPress},"Interact",enter)];
         return hints;
     }

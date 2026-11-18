@@ -30,6 +30,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     internal bool SupportsShift => !NumericLayout;
     private Button DefaultKey => characters[NumericLayout?4:10];
     private bool completed;
+    private bool textCompositionActive;
     private bool needsInitialFocus = true;
     private bool keyboardInputStarted;
     private int secretCaret;
@@ -58,6 +59,7 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
         CommitLabel = commitLabel;
         Input.GamepadKeyBoundary.ObserveDialog(this);
         this.finish = finish;
+        FocusBodies.Add(body, this);
         maximumLength = node.TextEntryMaximumLength ?? ProtocolConstants.MaximumTextEntryLength;
         heading.Text = node.AccessibilityLabel ?? node.TextEntryPlaceholder ?? "Enter text";
         var placeholder = string.Equals(node.TextEntryPlaceholder?.Trim(), heading.Text.Trim(), StringComparison.OrdinalIgnoreCase)
@@ -84,6 +86,8 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
                 PlaceholderText = placeholder, IsSpellCheckEnabled = false, IsTextPredictionEnabled = false,
                 MaxHeight = this.multiline ? 160 : double.PositiveInfinity };
             text.Select(text.Text.Length, 0);
+            text.TextCompositionStarted += (_, _) => textCompositionActive = true;
+            text.TextCompositionEnded += (_, _) => textCompositionActive = false;
             if (IsLive) { text.IsReadOnly = true; text.IsTabStop = false; text.Header = null; }
             body.Children.Add(text);
         }
@@ -163,13 +167,22 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
 
     internal bool HandleKeyboardKey(Windows.System.VirtualKey key, bool control = false, bool shift = false)
     {
-        if (completed) return false;
+        if (completed) return key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Escape;
+        var editorFocused = XamlRoot is not null && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), (Control?)text ?? password);
+        // The native editor owns IME confirmation/cancellation. A physical Enter
+        // must not finish the surrounding edit while composition is in progress.
+        if (textCompositionActive && editorFocused && key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Escape) return false;
         keyboardInputStarted = true;
         ResetRepeat();
         if (key == Windows.System.VirtualKey.Escape) { Complete(false); return true; }
+        if (key == Windows.System.VirtualKey.Enter)
+        {
+            if (shift && multiline) Insert("\n");
+            else Complete(true);
+            return true;
+        }
         if (HandleLiveKey(key, control, shift)) return true;
         if (HandleSuggestionKey(key)) return true;
-        var editorFocused = ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), (Control?)text ?? password);
         if (key == Windows.System.VirtualKey.Space && !editorFocused) { Insert(" "); return true; }
         // The controller keyboard owns initial focus. A physical paste shortcut
         // should still reach the native editor, without reading or logging the
@@ -181,9 +194,6 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
             else password!.PasteFromClipboard();
             return true;
         }
-        // Focused virtual keys retain native Enter activation, including
-        // Cancel. The commit shortcut applies only within the native editor.
-        if (key == Windows.System.VirtualKey.Enter && editorFocused && !multiline) { Complete(true); return true; }
         if (key == Windows.System.VirtualKey.Back && !editorFocused) { Backspace(); return true; }
         if (!editorFocused && !control && !shift && key is Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right)
         { MoveCaret(key == Windows.System.VirtualKey.Left ? -1 : 1); return true; }
@@ -278,7 +288,10 @@ internal sealed partial class WidgetTextEntryDialog : FrameworkDialog
     internal void RestoreFocus()
     {
         if (completed) return;
-        if (FocusManager.GetFocusedElement(XamlRoot) is Button key && (commands.ContainsKey(key) || suggestionButtons.Contains(key))) key.Focus(FocusState.Keyboard);
+        var focused=FocusManager.GetFocusedElement(XamlRoot);
+        var editor=(Control?)text??password!;
+        if(ReferenceEquals(focused,editor)){editor.Focus(FocusState.Keyboard);return;}
+        if (focused is Button key && (commands.ContainsKey(key) || suggestionButtons.Contains(key))) key.Focus(FocusState.Keyboard);
         else DefaultKey.Focus(FocusState.Keyboard);
     }
     private void FocusInitialKey()

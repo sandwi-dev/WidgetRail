@@ -54,7 +54,7 @@ internal static class LocalWidgetUpdateCommand
                 var latest = (await catalog.DiscoverAsync(ct)).Widgets.SingleOrDefault(item => item.Id == id);
                 if (latest is null || latest.Enabled || latest.ActiveVersion.ContentDigest != current.ActiveVersion.ContentDigest)
                     throw new CliOperationException("The selected widget changed. Review the update again.");
-            }, token, settings.PrepareAsync);
+            }, token, settings.PrepareAsync, settings.CompleteAsync);
         await output.WriteLineAsync($"Selected {id} {installed.Version} (disabled). Widget settings were kept. Enable the widget when ready.");
         if (installed.RetentionCleanupPending) await output.WriteLineAsync("Older files are still in use. Cleanup will retry on the next catalog change.");
         return 0;

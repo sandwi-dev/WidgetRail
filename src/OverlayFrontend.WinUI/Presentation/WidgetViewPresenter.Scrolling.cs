@@ -9,6 +9,13 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     private PassiveScrollFocus? passiveScrollFocus;
+    private bool CollectionBoundaryReady(WidgetIndexedCollectionView collection) => !applying &&
+        (!ReferenceEquals(pendingIndexedScrollReveal?.Collection.Element,collection) ||
+            pendingIndexedScrollReveal is {Started:true} && !collection.IsScrollRevealPending);
+    private bool CollectionScrollPending(WidgetIndexedCollectionView collection) =>
+        scrollGesture is { } gesture && ReferenceEquals(gesture.Owner.Element, collection) &&
+            (gesture.Intermediate || gesture.Horizontal.IsPending || gesture.Vertical.IsPending) ||
+        directionalScroll is { Pending: true } directional && ReferenceEquals(directional.Owner.Element, collection);
     private void RetireCollectionScrolling(string id)
     {
         // Called before native source replacement, while the old viewport still
@@ -164,7 +171,11 @@ internal sealed partial class WidgetViewPresenter
             ReferenceEquals(prior.Owner, owner) && prior.Scope == activeScope
                 ? prior : new ScrollGesture(target, owner, activeScope);
         scrollGesture = gesture;
-        if (owner.Element is WidgetIndexedCollectionView indexed) indexed.CancelHostNavigation();
+        if (owner.Element is WidgetIndexedCollectionView indexed)
+        {
+            indexed.CancelHostNavigation(preserveReader: true);
+            indexed.ObserveBoundaryScrollInput(horizontalDelta,verticalDelta);
+        }
         var horizontalDirection = Math.Sign(horizontalDelta);
         var verticalDirection = Math.Sign(verticalDelta);
         var reversing = horizontalDirection != 0 && gesture.HorizontalDirection != 0 && horizontalDirection != gesture.HorizontalDirection ||

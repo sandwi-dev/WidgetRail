@@ -38,7 +38,7 @@ public:
 struct AudioVideoDecode {
     std::vector<int16_t> pcm;
     std::vector<std::pair<double, bool>> videoEdges;
-    double audioEnd{}, videoEnd{};
+    double audioStart{}, audioEnd{}, videoEnd{};
     UINT frames{};
 };
 static AudioVideoDecode DecodeAudioVideo(const std::wstring& path) {
@@ -72,11 +72,18 @@ static AudioVideoDecode DecodeAudioVideo(const std::wstring& path) {
             ComPtr<IMFMediaBuffer> buffer; winrt::check_hresult(sample->ConvertToContiguousBuffer(&buffer));
             BYTE* bytes{}; DWORD length{}; winrt::check_hresult(buffer->Lock(&bytes, nullptr, &length));
             if (video) {
-                const auto value = length >= 4 && bytes[(length / 8) * 4 + 2] > 128;
+                ComPtr<IMFMediaType> actual; winrt::check_hresult(reader->GetCurrentMediaType(stream, &actual));
+                UINT width{}, height{}, stride{}; winrt::check_hresult(MFGetAttributeSize(actual.Get(), MF_MT_FRAME_SIZE, &width, &height));
+                if (FAILED(actual->GetUINT32(MF_MT_DEFAULT_STRIDE, &stride))) stride = width * 4;
+                const auto signedStride = static_cast<int32_t>(stride);
+                const auto rowBytes = static_cast<uint64_t>(signedStride < 0 ? -int64_t(signedStride) : signedStride);
+                const auto center = uint64_t(height / 2) * rowBytes + uint64_t(width / 2) * 4 + 2;
+                const auto value = center < length && bytes[static_cast<size_t>(center)] > 128;
                 if (result.frames > 0 && value != light) result.videoEdges.emplace_back(double(time) / 10000000, value);
                 light = value; ++result.frames; result.videoEnd = double(time + duration) / 10000000;
             } else {
                 const auto values = reinterpret_cast<int16_t*>(bytes);
+                if (result.pcm.empty()) result.audioStart = double(time) / 10000000;
                 result.pcm.insert(result.pcm.end(), values, values + length / 2);
                 result.audioEnd = double(time + duration) / 10000000;
             }
@@ -84,6 +91,26 @@ static AudioVideoDecode DecodeAudioVideo(const std::wstring& path) {
         }
     }
     return result;
+}
+static void VerifyPulseSynchronization(const AudioVideoDecode& decoded, UINT fps) {
+    std::vector<std::pair<double, bool>> edges;
+    bool audible = false;
+    for (size_t offset = 0; offset + 4800 <= decoded.pcm.size(); offset += 960) {
+        std::vector<int16_t> slice(decoded.pcm.begin() + offset, decoded.pcm.begin() + offset + 4800);
+        const bool value = Amplitude(slice, 440) > 300;
+        if (offset && value != audible) edges.emplace_back(decoded.audioStart + double(offset / 2 + 1200) / 48000, value);
+        audible = value;
+    }
+    double worst = 0; size_t matched = 0;
+    for (const auto& visual : decoded.videoEdges) {
+        if (visual.first < .15 || visual.first > decoded.videoEnd - .15) continue;
+        double nearest = 10;
+        for (const auto& sound : edges) if (sound.second == visual.second) nearest = std::min(nearest, std::abs(sound.first - visual.first));
+        std::printf("Sync edge video=%.4f state=%d nearestAudioDeltaMs=%.1f\n",visual.first,visual.second,nearest*1000);
+        worst = std::max(worst, nearest); ++matched;
+    }
+    std::printf("AV sync transitions=%zu worstMs=%.1f videoEnd=%.4f audioEnd=%.4f\n",matched,worst*1000,decoded.videoEnd,decoded.audioEnd);
+    Check(matched >= 2 && worst <= 1.0 / fps + .05, "Decoded visual/audio transitions align within one video frame plus 50 ms");
 }
 struct CaptureAuthority {
     ULONGLONG started = GetTickCount64();
@@ -149,24 +176,7 @@ static int RunAudioWgc(const std::wstring& directory) {
             "Audio and video durations agree within AAC padding");
         const auto included = Amplitude(decoded.pcm, 660), excluded = Amplitude(decoded.pcm, 990);
         Check(included > 50 && excluded < included * .03, "WGC recording includes the child and excludes competing process audio");
-        std::vector<std::pair<double, bool>> edges;
-        bool audible = false;
-        for (size_t offset = 0; offset + 4800 <= decoded.pcm.size(); offset += 960) {
-            std::vector<int16_t> slice(decoded.pcm.begin() + offset, decoded.pcm.begin() + offset + 4800);
-            const bool value = Amplitude(slice, 440) > 300;
-            if (offset && value != audible) edges.emplace_back(double(offset / 2 + 1200) / 48000, value);
-            audible = value;
-        }
-        double worst = 0; size_t matched = 0;
-        for (const auto& visual : decoded.videoEdges) {
-            if (visual.first < .15 || visual.first > 1.85) continue;
-            double nearest = 10;
-            for (const auto& sound : edges) if (sound.second == visual.second) nearest = std::min(nearest, std::abs(sound.first - visual.first));
-            std::printf("Sync edge video=%.4f state=%d nearestAudioDeltaMs=%.1f\n",visual.first,visual.second,nearest*1000);
-            worst = std::max(worst, nearest); ++matched;
-        }
-        std::printf("AV sync transitions=%zu worstMs=%.1f videoEnd=%.4f audioEnd=%.4f\n",matched,worst*1000,decoded.videoEnd,decoded.audioEnd);
-        Check(matched >= 2 && worst <= 1.0 / profile.fps + .05, "Decoded visual/audio transitions align within one video frame plus 50 ms");
+        VerifyPulseSynchronization(decoded, profile.fps);
     }
     WrailCaptureOptions options; options.kind = 2; options.audioMode = 1; options.durationSeconds = 5;
     options.maximumWidth = 1280; options.maximumHeight = 720; options.encoder = 2; options.framesPerSecond = 30;

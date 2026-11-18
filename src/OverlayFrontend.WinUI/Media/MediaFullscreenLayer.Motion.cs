@@ -31,6 +31,9 @@ internal sealed partial class MediaFullscreenLayer
     }
     private TimeSpan MotionDuration => WidgetMotionOptions.From(motionAppearance, systemAnimations)
         .Duration(Math.Clamp(TransitionDuration.TotalMilliseconds, 0, 1000));
+    internal TimeSpan ControlsFadeDuration => motionAppearance.Transparency == TransparencyPreference.Reduced ||
+        motionAppearance.Contrast == ContrastPreference.High ? TimeSpan.Zero :
+        WidgetMotionOptions.From(motionAppearance, systemAnimations).Duration(120);
 
     private void InitializeTransition()
     {

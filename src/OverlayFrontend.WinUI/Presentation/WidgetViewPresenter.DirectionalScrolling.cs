@@ -118,7 +118,7 @@ internal sealed partial class WidgetViewPresenter
         if (Math.Abs(destination - requested) <= .5 && pending) return true;
         if (FocusManager.GetFocusedElement(XamlRoot) is not DependencyObject anchor) return true;
         scrollGesture = null;
-        if (owner.Element is WidgetIndexedCollectionView indexed) indexed.CancelHostNavigation();
+        if (owner.Element is WidgetIndexedCollectionView indexed) indexed.CancelHostNavigation(preserveReader: true);
         // WinUI retargets its own scroll animation; reduced motion uses immediate
         // steps. There is no application animation timer or queued input backlog.
         directionalScroll = new(viewport, owner, origin, anchor, activeScope, direction, destination);

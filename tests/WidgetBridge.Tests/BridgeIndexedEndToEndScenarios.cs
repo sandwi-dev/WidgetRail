@@ -191,9 +191,22 @@ internal static class BridgeIndexedEndToEndScenarios
 internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
 {
     private readonly WidgetIndexedCollection<int, int> source;
+    private readonly WidgetLoadedCollection<string, int> endFollowingSource;
+    private bool endFollowingMode;
+    private string endFollowingIdentity = "first";
+    private TaskCompletionSource? viewportRecoveryGate;
+    private int viewportRecoveries;
+    private int viewportRecoveryCommits;
+    private int viewportRecoveryFinished;
+    private bool deleteRecoveryAnchor;
     private readonly WidgetFocusPreviewSource<(int Revision,bool ReadOnly)> previews;
-    private bool deferredMode;private bool deferredReadonly;private int previewRevision;private long previewReads;
+    private bool deferredMode;private bool deferredReadonly;private bool deferredPrimary;private bool deferredReading;private int previewRevision;private long previewReads;
     private string status = "initial";
+    private bool inlinePreviewMode;
+    private bool inlineSourceVisible = true;
+    private string inlineChoice = "all";
+    private int inlineApplied;
+    private double inlineVolume = 50;
     private bool grid;
     private bool grouped;
     private int headerRevision;
@@ -207,24 +220,88 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
     private readonly TaskCompletionSource releaseBackground = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private string backgroundState = "idle";
     private TaskCompletionSource? activationReadGate;
+    private TaskCompletionSource? previewReadGate;
     private long calls;
     private readonly WidgetNavigator<int> returnNavigation;
     private FocusGroupEntryRequest? entry;
     private ScrollRevealRequest? reveal;
+    private WidgetFocusRequest? deferredRevealIntent;
+    private readonly WidgetLoadedCollection<string,int> deferredActivationSource;
+    private bool deferredActivationMode;
+    private readonly WidgetIndexedCollection<int,int> entryRebaseSource;
+    private TaskCompletionSource? entryRebaseGate;
+    private bool entryRebaseMode,entryRebaseHorizontal;
+    private bool refreshProbeMode;
     internal IndexedOwnedBridgeProbeWidget(bool returnFixture = false, bool selectionFixture = false)
     {
+        entryRebaseSource=CreateIndexedCollection<int,int>("entry-rebase",0,20,new()
+        {
+            FollowEnd=true,OccurrenceKeys=query=>EntryRebaseItems(query).Select(item=>new WidgetCollectionItemKey("item."+item)).ToArray(),
+            ReadRange=async(query,start,count,token)=>
+            {
+                if(entryRebaseGate is {} gate)await gate.Task.WaitAsync(token);
+                return EntryRebaseItems(query).Skip(start).Take(count).ToArray();
+            },
+            ItemKey=item=>new("item."+item),
+            RenderItem=(query,item,ids)=>UI.Button("Entry item "+item+(entryRebaseHorizontal?new string('W',query==1?120:3):""),"open",ids.Id("row")),
+            OnAction=(_,_,_,_)=>ValueTask.CompletedTask
+        });
+        deferredActivationSource=CreateLoadedCollection<string,int>("deferred-activation","initial","initial",[],new()
+        {
+            PreserveOccurrences=true,FollowEnd=true,ItemKey=item=>new("item."+item),
+            RenderItem=(_,item,ids)=>UI.Button("Item "+item+string.Concat(Enumerable.Repeat("\nDeferred initial content",40)),"open",ids.Id("row")),
+            OnAction=(_,_,_,_)=>ValueTask.CompletedTask
+        });
+        endFollowingSource = CreateLoadedCollection<string, int>("end-following", "first", "first", Enumerable.Range(0, 30).ToArray(), new()
+        {
+            PreserveOccurrences = true, FollowEnd = true,
+            LiveOrder = (left, right) => left.CompareTo(right),
+            ItemKey = item => new("item." + item),
+            RenderItem = (context, item, ids) => UI.Button("Item " + item + (context == "long" ? string.Concat(Enumerable.Repeat("\nLong initial content", 40 + item % 5)) : context == "expanded" ? "\nMore detail\nAdditional detail" : ""), "open", ids.Id("row")).PresentOnFocus(UI.Button("Inspect item " + item + (context == "edited" ? " edited" : ""), "inspect", ids.Id("inspect"))),
+            OnAction = (_, _, _, _) => ValueTask.CompletedTask,
+            OnViewportChanged = (_, state, _) =>
+            {
+                var text = state.FollowsEnd ? "following" : "reading";
+                if (Volatile.Read(ref backgroundState) != text) { Volatile.Write(ref backgroundState, text); Invalidate(); }
+                return ValueTask.CompletedTask;
+            },
+            OnRecoverViewport = async (context, request, _) =>
+            {
+                Interlocked.Increment(ref viewportRecoveries); Invalidate();
+                try
+                {
+                var release = Volatile.Read(ref viewportRecoveryGate);
+                if (release is not null) await release.Task; // Deliberately ignores cancellation to test late commit rejection.
+                var key = int.Parse(request.AnchorKey.Value.AsSpan(5), System.Globalization.CultureInfo.InvariantCulture);
+                var values = Enumerable.Range(Math.Max(0, key - 10), 30).Where(value => !deleteRecoveryAnchor || value != key).ToArray();
+                var resolved = deleteRecoveryAnchor ? request.NeighborKeys.FirstOrDefault(candidate => values.Contains(int.Parse(candidate.Value.AsSpan(5), System.Globalization.CultureInfo.InvariantCulture))) : request.AnchorKey;
+                if (resolved.Value is null) return WidgetViewportRecoveryResult.NotFound;
+                return request.TryCommit(resolved, () => { endFollowingSource!.Publish(context, context, values); Interlocked.Increment(ref viewportRecoveryCommits); return true; })
+                    ? WidgetViewportRecoveryResult.Recovered : WidgetViewportRecoveryResult.NotFound;
+                }
+                finally { Interlocked.Increment(ref viewportRecoveryFinished); Invalidate(); }
+            },
+        });
         returnNavigation = CreateNavigatorWithOptions("probe-navigation", 0, new WidgetNavigatorOptions<int>
         { RouteScopeIds = new Dictionary<int, string> { [0] = "root", [1] = "detail" } });
         previews=CreateFocusPreviewSource("preview-provider",(0,false),new WidgetFocusPreviewOptions<(int Revision,bool ReadOnly)>
         {
             Resolve=async(context,key,token)=>
             {
+                var gate = key == "item.0" ? Volatile.Read(ref previewReadGate) : null;
                 Interlocked.Increment(ref previewReads);Invalidate();
-                await Task.Delay(key=="item.0"?350:35,token);
+                if (gate is not null)
+                {
+                    if (context.Revision == Volatile.Read(ref previewRevision)) { Volatile.Write(ref backgroundState, "preview-waiting"); Invalidate(); }
+                    await gate.Task.WaitAsync(token);
+                }
+                else await Task.Delay(key=="item.0"?350:35,token);
                 var text=UI.Stack("preview.copy",UI.Text(key,"preview.key"),UI.RichText("preview.rich",UI.Text("Details for ","preview.prefix"),UI.Text(key,"preview.value")));
                 return UI.Stack("preview.content",UI.Text("Context "+context.Revision,"preview.context"),text,
                     context.ReadOnly?UI.Text("Read only","preview.readonly"):UI.Stack("preview.actions",
                         UI.Button("Apply","preview-apply","preview.apply"),
+                        UI.Select("Equip in", new[] { new SelectOption("none", "Choose slot", "preview-none", true),
+                            new SelectOption("slot", "Weapon", "preview-equip") }, "preview.equip"),
                         UI.Slider(50,0,100,5,"preview-volume","preview.volume","Volume").RequireControllerActivation()));
             },
             OnAction=(context,key,action,token)=>{Volatile.Write(ref status,$"preview:{context.Revision}:{key}:{action.ActionId}"+(action.RequestedValue is { } value?":"+value.ToString(System.Globalization.CultureInfo.InvariantCulture):""));Invalidate();return ValueTask.CompletedTask;},
@@ -235,11 +312,14 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
             FindIndex = selectionFixture ? FindProbeIndexAsync : null,
             ReadRange = async (query, start, count, token) =>
             {
+                if(query==813&&Volatile.Read(ref activationReadGate) is {} refreshGate)
+                {Volatile.Write(ref backgroundState,"refresh-reading");Invalidate();await refreshGate.Task;}
                 if (query == 605 && Volatile.Read(ref activationReadGate) is { } continuityGate) await continuityGate.Task.WaitAsync(token);
                 if (query == 500) throw new InvalidOperationException("Native theme fixture provider failure.");
                 if ((query is >= 300 and <= 303 or 97) && Volatile.Read(ref activationReadGate) is { } gate) await gate.Task.WaitAsync(token);
-                await Task.Delay(query == 99 ? 500 : 80, token);
-                return query >= 800 ? Enumerable.Range(start,count).Select(index => query == 801 ? index == 0 ? 10000 : index - 1 : query == 802 ? 9999-index : index).ToArray() :
+                await Task.Delay(query == 99 ? 500 : 80, query==813?CancellationToken.None:token);
+                if(query==813){Volatile.Write(ref backgroundState,"refresh-completed");Invalidate();}
+                return query >= 800 ? Enumerable.Range(start,count).Select(index => query is 811 or 813 ? index>=7500?index+1:index : query == 801 ? index == 0 ? 10000 : index - 1 : query == 802 ? 9999-index : index).ToArray() :
                     query >= 600 ? ContinuityOrder(query).Skip(start).Take(count).ToArray() : Enumerable.Range(start, count).ToArray();
             },
             OccurrenceKeys = query => query is >= 600 and < 800 ? ContinuityOrder(query).Select(item => new WidgetCollectionItemKey("item." + item)).ToArray() : null,
@@ -257,11 +337,14 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
                 if (query == 303) tile = ((ActionSurfaceElement)tile).Disabled();
                 if (query is 304 or 305) tile = ((ActionSurfaceElement)tile).Selected();
                 if (query == 305) tile = ((ActionSurfaceElement)tile).Busy();
+                if (deferredMode && deferredReading) tile = UI.ReadingSurface(context.Id("row"), $"Item {item}",
+                    ActionSurfaceOrientation.Horizontal, UI.Text($"Item {item}", context.Id("title")));
                 if(deferredMode)return tile.PresentOnFocus("item."+item);
                 return query is >= 100 and < 600 ? tile.FocusBackground(new("background")).PresentOnFocus(UI.Text($"Summary {query}:{item}", context.Id("summary"))) : tile;
             },
             OnAction = (query, item, action, _) =>
             {
+                if(action.ActionId.StartsWith("refresh-probe-",StringComparison.Ordinal))return OnActionAsync(action);
                 Interlocked.Increment(ref calls);
                 Volatile.Write(ref status, $"row:{query}:{item}:{action.ActionId}");
                 if (action.ActionId == "replace") source!.PublishQuery(query + 1, 100);
@@ -298,7 +381,8 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
     {
         if (query == 803 && Volatile.Read(ref activationReadGate) is { } gate) await gate.Task;
         if (!int.TryParse(key.Value.AsSpan("item.".Length), out var item) || item < 0) return null;
-        return query switch { 801 when item == 10000 => 0, 801 when item < 10000 => item+1,
+        return query switch { 811 or 813 when item==7500=>null,811 or 813 when item<10000=>item>7500?item-1:item,814=>null,
+            801 when item == 10000 => 0, 801 when item < 10000 => item+1,
             802 when item < 10000 => 9999-item, >=800 when item <10000 => item, <600 when item<source.Descriptor.Count => item, _ => null };
     }
     private static int[] ContinuityOrder(int query) => query switch
@@ -311,7 +395,7 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
         _ => Enumerable.Range(0, 100).ToArray(),
     };
     private WidgetView RenderParent() => new(UI.Stack("root", UI.Text(Volatile.Read(ref status), "status"),
-        UI.Text($"Calls: {Interlocked.Read(ref calls)}", "calls"), UI.Text(Interlocked.Read(ref previewReads).ToString(),"preview.reads"), UI.Text(Volatile.Read(ref backgroundState), "background-state"),
+        UI.Text($"Calls: {Interlocked.Read(ref calls)}", "calls"), UI.Text(endFollowingMode ? $"{Volatile.Read(ref viewportRecoveries)}:{Volatile.Read(ref viewportRecoveryCommits)}:{Volatile.Read(ref viewportRecoveryFinished)}" : Interlocked.Read(ref previewReads).ToString(),"preview.reads"), UI.Text(Volatile.Read(ref backgroundState), "background-state"),
         UI.Row("toolbar", UI.Button("Parent", "parent", "parent").FocusDown("items"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid"), UI.Button("Toggle groups", "groups", "groups"), UI.Button("Surfaces", "surfaces", "surfaces"), UI.Button("Loaded source", "loaded", "loaded")),
         Collection())
         .Shortcut(ControllerButton.LeftBumper, actionId: "focus-exact")
@@ -323,8 +407,26 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
         .Shortcut(ControllerButton.LeftStick, actionId: "group-label")
         .Shortcut(ControllerButton.X, actionId: "group-partition")
         .Shortcut(ControllerButton.B, actionId: "focus-clear"), deferredMode?"parent":"items") { FocusGroupEntryRequest = entry, ScrollRevealRequest = reveal };
+    private WidgetView RenderInlinePreview() => new(UI.Stack("root",
+        UI.Text(inlineChoice, "inline.choice"), UI.Text(inlineApplied.ToString(), "inline.applied"),
+        UI.Text(inlineVolume.ToString(System.Globalization.CultureInfo.InvariantCulture), "inline.volume.status"),
+        UI.Text(Volatile.Read(ref status), "status"),
+        UI.Button("Refresh", "inline.refresh", "inline.refresh"),
+        UI.FocusPresentationSurface(inlineSourceVisible
+            ? UI.ReadingSurface("inline.source", "Filters and view", ActionSurfaceOrientation.Horizontal,
+                UI.Text("Filters and view", "inline.source.label"))
+                .PresentOnFocus(UI.Stack("inline.preview",
+                    UI.Select("Type", (SelectOption[])[new("all", "All captures", "inline.all", inlineChoice == "all"),
+                        new("screenshots", "Screenshots", "inline.screenshots", inlineChoice == "screenshots"),
+                        new("clips", "Clips", "inline.clips", inlineChoice == "clips")], "inline.type"),
+                    UI.Button("Apply", "inline.apply", "inline.apply"),
+                    UI.Slider(inlineVolume, 0, 100, 5, "inline.volume", "inline.volume", "Volume").RequireControllerActivation()))
+            : UI.Text("Source removed", "inline.removed"), UI.Text("", "inline.empty"), "inline.surface")
+        with { Preview = new(360, 360) { EnterButton = ControllerButton.A, SizeToContentHeight = true } }), "inline.refresh");
+
     public override WidgetView Render()
     {
+        if (inlinePreviewMode) return RenderInlinePreview();
         if (returnProbe is not null) return RenderReturnProbe();
         if (loadedProbe is not null) return RenderLoadedProbe();
         var parent = RenderParent();
@@ -339,6 +441,32 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
     }
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
+        if(action.ActionId.StartsWith("refresh-probe-",StringComparison.Ordinal))
+        {
+            refreshProbeMode=true;entryRebaseMode=endFollowingMode=deferredActivationMode=deferredMode=modalMode=surfaces=focusPreviews=grouped=false;grid=true;modalItem=null;entry=null;reveal=null;
+            if(action.ActionId=="refresh-probe-start"){activationReadGate?.TrySetResult();activationReadGate=null;source.PublishQuery(810,10000);}
+            else if(action.ActionId=="refresh-probe-content")source.UpdateContent(812);
+            else if(action.ActionId=="refresh-probe-remove")source.PublishRefresh(811,9999);
+            else if(action.ActionId=="refresh-probe-delayed"){activationReadGate=new(TaskCreationOptions.RunContinuationsAsynchronously);source.PublishRefresh(813,9999);}
+            else if(action.ActionId=="refresh-probe-release")activationReadGate?.TrySetResult();
+            else if(action.ActionId=="refresh-probe-empty")source.PublishRefresh(814,0);
+            else if(action.ActionId=="refresh-probe-reset")source.PublishQuery(811,9999);
+            Volatile.Write(ref status,action.ActionId);Invalidate();return ValueTask.CompletedTask;
+        }
+        if(action.ActionId.StartsWith("entry-rebase-",StringComparison.Ordinal))
+        {
+            entryRebaseMode=true;endFollowingMode=false;entry=null;reveal=null;grid=grouped=surfaces=modalMode=false;modalItem=null;
+            if(action.ActionId is "entry-rebase-start" or "entry-rebase-start-horizontal")
+            {
+                entryRebaseHorizontal=action.ActionId.EndsWith("horizontal",StringComparison.Ordinal);
+                entryRebaseGate=new(TaskCreationOptions.RunContinuationsAsynchronously);entryRebaseSource.PublishQuery(0,20);
+            }
+            else if(action.ActionId=="entry-rebase-prepend")entryRebaseSource.PublishQuery(1,40,null,preserveEndFollowing:true);
+            else if(action.ActionId=="entry-rebase-evict")entryRebaseSource.PublishQuery(3,39,null,preserveEndFollowing:true);
+            else if(action.ActionId=="entry-rebase-reset")entryRebaseSource.PublishQuery(2,20);
+            else if(action.ActionId=="entry-rebase-release")entryRebaseGate?.TrySetResult();
+            Volatile.Write(ref status,action.ActionId);Invalidate();return ValueTask.CompletedTask;
+        }
         if (action.ActionId.StartsWith("locator-", StringComparison.Ordinal))
         {
             if (action.ActionId == "locator-release") activationReadGate?.TrySetResult();
@@ -371,11 +499,34 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
         { HandleLoadedProbe(action.ActionId); return ValueTask.CompletedTask; }
         Interlocked.Increment(ref calls);
         Volatile.Write(ref status, action.ActionId);
-        if(action.ActionId is "deferred-mode" or "deferred-readonly")
+        if (action.ActionId == "inline-preview-mode") { inlinePreviewMode = inlineSourceVisible = true; inlineChoice = "all"; inlineApplied = 0; inlineVolume = 50; }
+        if (action.ActionId == "inline.screenshots") inlineChoice = "screenshots";
+        if (action.ActionId == "inline.clips") inlineChoice = "clips";
+        if (action.ActionId == "inline.all") inlineChoice = "all";
+        if (action.ActionId == "inline.apply") inlineApplied++;
+        if (action.ActionId == "inline.volume" && action.RequestedValue is { } value) inlineVolume = value;
+        if (action.ActionId == "inline.hide") inlineSourceVisible = false;
+        if(action.ActionId is "deferred-mode" or "deferred-readonly" or "deferred-primary" or "deferred-reading")
         {
             deferredMode=true;surfaces=focusPreviews=grid=grouped=modalMode=false;modalItem=null;entry=null;
+            deferredPrimary=action.ActionId is "deferred-primary" or "deferred-reading";deferredReading=action.ActionId=="deferred-reading";
+            Volatile.Write(ref previewReadGate, deferredPrimary ? new(TaskCreationOptions.RunContinuationsAsynchronously) : null);
+            Volatile.Write(ref backgroundState, deferredPrimary ? "preview-holding" : "idle");
             deferredReadonly=action.ActionId=="deferred-readonly";previews.Publish((++previewRevision,deferredReadonly));source.PublishQuery(0,100);
+            if (deferredPrimary) entry = source.Enter("items", CreateFocusRequest().Id, source.FocusTarget("items", new("item.0"), 0));
         }
+        if (action.ActionId == "deferred-hold")
+        {
+            Volatile.Write(ref previewReadGate, new(TaskCreationOptions.RunContinuationsAsynchronously));
+            Volatile.Write(ref backgroundState, "preview-holding");
+            previews.Publish((++previewRevision, deferredReadonly));
+        }
+        if (action.ActionId == "deferred-release")
+        {
+            Interlocked.Exchange(ref previewReadGate, null)?.TrySetResult();
+        }
+        if (action.ActionId == "deferred-focus-first") entry = source.Enter("items", CreateFocusRequest().Id, source.FocusTarget("items", new("item.0"), 0));
+        if (action.ActionId == "deferred-selection") source.BeginSelection();
         if(action.ActionId=="deferred-replace")previews.Publish((++previewRevision,deferredReadonly));
         if (action.ActionId == "parent" && surfaces) releaseBackground.TrySetResult();
         if (action.ActionId == "content") source.UpdateContent(surfaces ? 101 : 1);
@@ -475,6 +626,63 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
             activationReadGate = query == 605 ? new(TaskCreationOptions.RunContinuationsAsynchronously) : null;
             source.PublishQuery(query, ContinuityOrder(query).Length);
         }
+        if (action.ActionId.StartsWith("end-following-", StringComparison.Ordinal))
+        {
+            endFollowingMode = true; entry = null; reveal = null; grid = grouped = surfaces = modalMode = false; modalItem = null;
+            deferredActivationMode=action.ActionId is "end-following-unobserved-defer" or "end-following-unobserved-middle";
+            if(action.ActionId=="end-following-unobserved-defer")
+            {
+                deferredActivationSource.Publish("initial","initial",[],forceReset:true);
+                deferredRevealIntent=CreateFocusRequest();
+                reveal=deferredRevealIntent.DeferCollectionReveal(deferredActivationSource,"items");
+            }
+            else if(action.ActionId=="end-following-unobserved-middle")
+            {
+                deferredActivationSource.Publish("initial","initial",Enumerable.Range(0,20).ToArray());
+                reveal=deferredRevealIntent!.RevealCollection(deferredActivationSource,"items",deferredActivationSource.FocusTarget("items",new("item.7"),7));
+            }
+            else if (action.ActionId == "end-following-start") endFollowingSource.Publish(endFollowingIdentity, endFollowingIdentity, Enumerable.Range(0, 30).ToArray(), forceReset: true);
+            else if (action.ActionId == "end-following-empty") endFollowingSource.Publish(endFollowingIdentity, endFollowingIdentity, [], forceReset: true);
+            else if(action.ActionId=="end-following-defer")
+            {
+                endFollowingSource.Publish(endFollowingIdentity,endFollowingIdentity,[],forceReset:true);
+                deferredRevealIntent=CreateFocusRequest();
+                reveal=deferredRevealIntent.DeferCollectionReveal(endFollowingSource,"items");
+            }
+            else if(action.ActionId=="end-following-defer-replace")
+            {
+                endFollowingSource.Publish(endFollowingIdentity,endFollowingIdentity,[],forceReset:true);
+                reveal=deferredRevealIntent!.DeferCollectionReveal(endFollowingSource,"items");
+            }
+            else if(action.ActionId is "end-following-defer-complete" or "end-following-defer-middle")
+            {
+                endFollowingSource.Publish(endFollowingIdentity,"long",Enumerable.Range(0,20).ToArray());
+                var target=action.ActionId=="end-following-defer-middle"?7:19;
+                reveal=deferredRevealIntent!.RevealCollection(endFollowingSource,"items",endFollowingSource.FocusTarget("items",new("item."+target),target));
+            }
+            else if (action.ActionId == "end-following-long")
+            {
+                endFollowingSource.Publish(endFollowingIdentity, "long", Enumerable.Range(0, 20).ToArray());
+                reveal = endFollowingSource.Reveal("items", CreateFocusRequest().Id, endFollowingSource.FocusTarget("items", new("item.19"), 19));
+            }
+            else if (action.ActionId == "end-following-reset")
+            {
+                endFollowingIdentity = endFollowingIdentity == "first" ? "second" : "first";
+                endFollowingSource.Publish(endFollowingIdentity, endFollowingIdentity, Enumerable.Range(0, 36).ToArray());
+            }
+            else if (action.ActionId == "end-following-append")
+                endFollowingSource.Publish(endFollowingIdentity, endFollowingIdentity, endFollowingSource.Items.Concat([endFollowingSource.Items.Max() + 1]).ToArray());
+            else if (action.ActionId == "end-following-prepend")
+                endFollowingSource.Publish(endFollowingIdentity, endFollowingIdentity, new[] { endFollowingSource.Items.Min() - 1 }.Concat(endFollowingSource.Items).ToArray());
+            else if (action.ActionId == "end-following-roll")
+                endFollowingSource.Publish(endFollowingIdentity, endFollowingIdentity, Enumerable.Range(endFollowingSource.Items.Max() + 1, 30).ToArray());
+            else if (action.ActionId == "end-following-hold") viewportRecoveryGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            else if (action.ActionId == "end-following-release") viewportRecoveryGate?.TrySetResult();
+            else if (action.ActionId == "end-following-delete-anchor") deleteRecoveryAnchor = true;
+            else if (action.ActionId == "end-following-edit") endFollowingSource.Publish(endFollowingIdentity, "edited", endFollowingSource.Items);
+            else if (action.ActionId is "end-following-grow" or "end-following-shrink")
+                endFollowingSource.Publish(endFollowingIdentity, action.ActionId == "end-following-grow" ? "expanded" : endFollowingIdentity, endFollowingSource.Items);
+        }
         if (action.ActionId is "reveal-exact" or "reveal-wrong" or "reveal-delayed")
         {
             entry = null; grid = grouped = surfaces = modalMode = false; modalItem = null;
@@ -500,9 +708,13 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
     }
     private WidgetElement Collection()
     {
+        if(entryRebaseMode)return UI.CollectionList("items",entryRebaseSource,64,"Items",entryRebaseHorizontal?ScrollAxis.Horizontal:ScrollAxis.Vertical);
+        if(refreshProbeMode)return UI.CollectionGrid("items",source,160,80,"Refresh items",4);
+        if (endFollowingMode) return UI.FocusPresentationSurface(UI.CollectionList("items", deferredActivationMode?deferredActivationSource:endFollowingSource, 64, "Items"),
+            UI.Text("", "end.preview.empty"), "end.preview.surface") with { Preview = new(280, 140, DelayMilliseconds: 100) { EnterButton = ControllerButton.X } };
         var element = grid ? UI.CollectionGrid("items", source, 180, 100, "Items", 5) : UI.CollectionList("items", source, 64, "Items");
         if(deferredMode)return UI.FocusPresentationSurface(element,UI.Text("","preview.empty"),"deferred.surface")
-            with{Preview=new(360,280,DelayMilliseconds:100){SizeToContentHeight=true,EnterButton=deferredReadonly?null:ControllerButton.X},PreviewSource=previews.Descriptor};
+            with{Preview=new(360,280,DelayMilliseconds:100){SizeToContentHeight=true,EnterButton=deferredReadonly?null:deferredPrimary?ControllerButton.A:ControllerButton.X},PreviewSource=previews.Descriptor};
         if (focusPreviews) return UI.FocusPresentationSurface(element, UI.Text("No selection", "preview-default"), "preview-surface")
             with { Preview = new(320, 180, DelayMilliseconds: 100) };
         if (surfaces) return UI.BackgroundSurface(
@@ -512,4 +724,5 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
         return (grouped ? element.Grouped(new("first", $"Section A {headerRevision}", 5), new("empty", "Empty section", 0),
             new("second", $"Section B {headerRevision}", 7), new("third", $"Section C {headerRevision}", 88)) : element).Shortcut(ControllerButton.X, "parent");
     }
+    private static int[] EntryRebaseItems(int query)=>query is 1 or 3?Enumerable.Range(80,query==1?40:39).ToArray():Enumerable.Range(query==2?200:100,20).ToArray();
 }

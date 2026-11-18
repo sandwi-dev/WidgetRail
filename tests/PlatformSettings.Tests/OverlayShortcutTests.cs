@@ -7,6 +7,8 @@ internal static class OverlayShortcutTests
     {
         if (new ControllerSettings().EffectiveOverlayShortcut != OverlayShortcutSettings.Default)
             throw new Exception("Fresh profiles must leave the keyboard shortcut disabled.");
+        if(new ControllerSettings().EffectiveReplaySaveShortcut!=OverlayShortcutSettings.ReplayDefault||OverlayShortcutSettings.ReplayDefault.Enabled)
+            throw new Exception("Replay shortcut must remain opt-in and independent of overlay opening.");
         if (new ControllerSettings { F1ShortcutEnabled = true }.EffectiveOverlayShortcut != new OverlayShortcutSettings { Enabled = true })
             throw new Exception("Legacy opt-in must retain F1.");
         var explicitOff = new ControllerSettings { F1ShortcutEnabled = true, OverlayShortcut = new() { Enabled = false, Key = 0x4A } };
@@ -44,11 +46,21 @@ internal static class OverlayShortcutTests
                 catch (PlatformSettingsException) { }
             }
             await File.WriteAllTextAsync(store.Paths.SettingsFile, canonical);
+            var replay=OverlayShortcutSettings.ReplayDefault with{Enabled=true};
+            await store.UpdateAsync(value=>value with{Controllers=value.Controllers with{ReplaySaveShortcut=replay}});
+            var both=await store.LoadAsync();
+            if(both.Controllers.EffectiveOverlayShortcut!=choice||both.Controllers.EffectiveReplaySaveShortcut!=replay)
+                throw new Exception("Replay shortcut overwrote the overlay chord.");
+            try{await store.UpdateAsync(value=>value with{Controllers=value.Controllers with{ReplaySaveShortcut=replay with{Key=0}}});throw new Exception("Invalid replay chord admitted.");}
+            catch(PlatformSettingsException) { }
             var omitted = JsonNode.Parse(canonical)!;
             omitted["controllers"]!["overlayShortcut"] = JsonNode.Parse("{\"enabled\":false}");
+            omitted["controllers"]!["replaySaveShortcut"] = JsonNode.Parse("{\"enabled\":false}");
             await File.WriteAllTextAsync(store.Paths.SettingsFile, omitted.ToJsonString());
             if ((await store.LoadAsync()).Controllers.EffectiveOverlayShortcut != OverlayShortcutSettings.Default)
                 throw new Exception("Omitted chord fields did not retain safe defaults.");
+            if((await store.LoadAsync()).Controllers.EffectiveReplaySaveShortcut!=OverlayShortcutSettings.ReplayDefault)
+                throw new Exception("Omitted replay chord fields did not retain safe defaults.");
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

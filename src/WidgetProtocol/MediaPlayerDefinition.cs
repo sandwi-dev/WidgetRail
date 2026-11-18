@@ -2,21 +2,31 @@ using System.Text.Json.Serialization;
 namespace WidgetRail.WidgetProtocol;
 
 [JsonConverter(typeof(JsonStringEnumConverter<MediaPlayerSourceKind>))]
-public enum MediaPlayerSourceKind { Capture, PackageAsset, WebUrl, LocalFile }
+public enum MediaPlayerSourceKind { Capture, PackageAsset, WebUrl, LocalFile, SavedCapture }
+
+/// <summary>Exact saved-library content, independent of title/favorite metadata. Contains no path or open-file grant.</summary>
+public sealed record SavedCaptureMediaReference(string Id, long Revision)
+{
+    public bool IsWellFormed() => CaptureLimits.ValidToken(Id) && Revision >= 0;
+}
 
 /// <summary>Declarative media location. LocalFile is admitted only for full-trust widgets.</summary>
 public sealed record MediaPlayerSource(MediaPlayerSourceKind Kind, string? Location = null, CaptureAttachment? Attachment = null)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SavedCaptureMediaReference? SavedCapture { get; init; }
+    public static MediaPlayerSource FromSavedCapture(string id, long revision) => new(MediaPlayerSourceKind.SavedCapture) { SavedCapture = new(id, revision) };
     public static MediaPlayerSource FromCapture(CaptureAttachment attachment) => new(MediaPlayerSourceKind.Capture, Attachment: attachment);
     public static MediaPlayerSource PackageAsset(string path) => new(MediaPlayerSourceKind.PackageAsset, path);
     public static MediaPlayerSource WebUrl(string url) => new(MediaPlayerSourceKind.WebUrl, url);
     public static MediaPlayerSource LocalFile(string path) => new(MediaPlayerSourceKind.LocalFile, path);
-    public bool IsWellFormed() => Kind switch
+    public bool IsWellFormed() => (Kind == MediaPlayerSourceKind.SavedCapture || SavedCapture is null) && Kind switch
     {
         MediaPlayerSourceKind.Capture => Location is null && Attachment?.IsWellFormed() == true,
         MediaPlayerSourceKind.PackageAsset => Attachment is null && IsPackagePath(Location),
         MediaPlayerSourceKind.WebUrl => Attachment is null && WebBrowserDocument.IsWebUrl(Location),
         MediaPlayerSourceKind.LocalFile => Attachment is null && IsLocalPath(Location),
+        MediaPlayerSourceKind.SavedCapture => Location is null && Attachment is null && SavedCapture?.IsWellFormed() == true,
         _ => false,
     };
     public static bool IsPackagePath(string? path) => path is { Length: > 0 and <= 1024 } &&

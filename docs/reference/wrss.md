@@ -30,12 +30,38 @@ button.primary:focused {
 
 ## Rich preview frame
 
-Global themes can style the host-owned `preview` role. This applies to both
-read-only and interactive focus previews, including deferred content. Widget-local
-WRSS styles the content; it does not replace this outer frame.
+Global themes and widget styles can style the host-owned `preview` and
+`preview-footer` parts. These use the normal platform, user-theme, then widget
+cascade for both read-only and interactive focus previews, including deferred
+content. Each part receives the owning `FocusPresentationSurface` ID and style
+classes. Only selectors explicitly naming that part role apply: a generic owner
+class continues to style ordinary content without changing its popup chrome.
+
+For example, a surface with the `capture-gallery-preview` class can use:
+
+```css
+preview.capture-gallery-preview { padding: 0px; }
+preview-footer.capture-gallery-preview { padding: 8px 12px 12px; }
+```
+
+This leaves unrelated previews, such as filters, at their theme defaults.
+Indexed previews use the enclosing surface's identity and classes, not row
+positions or visible labels. Part styles remain attached to the current
+presentation or indexed lease and refresh through the existing style pipeline.
+The host consumes base part styles; live `:focused`/`:pressed` chrome states and
+custom footer glyph/text typography are not exposed by these parts.
+
+`padding` accepts the existing one-to-four-value spacing shorthand. There are no
+`padding-left`/`padding-top` longhands. The frame defaults to 12px; the footer box
+defaults to 8px top padding and zero on the other edges. The frame supports the
+paint, border, depth and spacing properties below. The footer supports padding,
+margin, background, border, corner radius and opacity through the ordinary
+native style adapter; its hint content keeps host accessibility and input rules.
+Absent part payloads retain the global-theme fallback.
 
 ```css
 preview {
+  padding: 12px;
   background-material: acrylic;
   background-tint-opacity: .35;
   background-luminosity-opacity: .25;
@@ -87,7 +113,7 @@ The separate tint setting is intentional: tint density is not subtree opacity.
 High contrast replaces either material with the Windows surface/text pair and
 a two-DIP outline. Reduced transparency detaches acrylic and makes the fill
 opaque. Windows also controls acrylic's native fallback when advanced effects
-are unavailable. These frame properties apply to the global `preview` role. Panel containers also
+are unavailable. These frame properties apply to the scoped `preview` part as well as its global role. Panel containers also
 support the opt-in material properties described below.
 
 In-app acrylic samples compatible content in the same compositor. It is not a
@@ -237,6 +263,11 @@ The canonical runtime list is `WrssPropertyCatalog.AllowedProperties`. It curren
   A `Spacer` with `aspect-ratio` can reserve artwork-shaped space before content
   loads, using the same width/minimum/maximum and margin classes as a poster.
   It stays noninteractive; spacers without a ratio retain ordinary sizing.
+  An explicit-track `Grid` also supports `aspect-ratio`: when its width is bounded
+  and height is automatic, it measures a width-derived viewport, capped by the
+  available height. Use a star row and column for media that must fit that viewport;
+  an auto track still measures its content intrinsically. An explicit height takes
+  precedence. Grids without a ratio retain ordinary native track sizing.
 - Scroll indicators: `scrollbar-width`, `scrollbar-track-color`, and
   `scrollbar-thumb-color`.
 - Effects: `scale`, `surface-shading`, `background-blur`, shadow color/blur/offset,

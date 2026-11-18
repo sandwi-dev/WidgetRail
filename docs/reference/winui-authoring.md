@@ -76,6 +76,15 @@ single star track. `.InGrid(...)` places an existing element without adding a
 layout or focus wrapper. Unspecified cells use row/column zero and spans one.
 Overlapping cells are allowed and follow declaration drawing order.
 
+Grid children stretch by default. With protocol v122, append
+`.AlignInGrid(GridCellAlignment.End, GridCellAlignment.Start)` to keep an element
+content-sized at the right/top of its cell. Both axes accept `Start`, `Center`,
+`End` or `Stretch`; a null axis restores the original stretch behavior. For a
+message bubble, use a star column to constrain long-text wrapping, then align the
+bubble within it so short messages do not fill the entire column. This uses the
+same native element and adds no layout or focus wrapper. Existing declarations
+without alignment retain their v64 wire shape and stretch behavior.
+
 Positions and spans must fit the explicit parent's tracks. Tracks, lengths and
 weights are bounded and validated; nonfinite sizes and misplaced cell declarations
 fail with property paths. The Grid definitions own track geometry, so CSS-like

@@ -23,6 +23,7 @@ internal sealed partial class WidgetTextEntryDialog
     {
         if (XamlRoot is not { } root || completed) return;
         keyboardOrigin = origin;
+        CaptureFocusOwner(origin);
         var host = new Grid();
         var popup = new Popup { XamlRoot = root, Child = host, ShouldConstrainToRootBounds = false,
             IsLightDismissEnabled = false };

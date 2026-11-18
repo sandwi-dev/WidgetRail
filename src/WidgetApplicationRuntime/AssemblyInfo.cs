@@ -12,3 +12,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("WidgetSwitchFixture")]
 
 [assembly: InternalsVisibleTo("CaptureLibraryWidgetFixture")]
+[assembly: InternalsVisibleTo("DiscordWebViewWidget.Fixture")]

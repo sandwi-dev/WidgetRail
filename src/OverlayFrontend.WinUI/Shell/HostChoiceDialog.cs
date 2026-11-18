@@ -477,11 +477,12 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
         Hide();
     }
 
-    internal void MoveFocus(FocusNavigationDirection direction)
+    internal void MoveFocus(FocusNavigationDirection direction, bool repeated = false)
     {
         if (closing) return;
         if (selectionPopup is { } popup) { Presentation.NativeMenuFocus.Move(popup.Items, direction, ref selectionFocus); return; }
         initialFocusRequired = false;
+        if (interactiveContent?.Move(direction, repeated) == true) return;
         RevealVisibleChoice();
         if (ListFocused()) choices.SelectedIndex = FocusedChoiceIndex();
         if (messageViewport is not null && IsWithinFocused(messageViewport) && (direction is FocusNavigationDirection.Up or FocusNavigationDirection.Down) &&
@@ -493,7 +494,7 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
     internal void ConstrainMessageViewport(double rootHeight)
     { if (messageViewport is not null) messageViewport.MaxHeight = Math.Clamp(rootHeight - 200, 40, 360); }
     internal void ResetController()
-    { ControllerAdmission.Reset(); messageScroll.Reset(); choiceScrollPending = false; }
+    { ControllerAdmission.Reset(); messageScroll.Reset(); choiceScrollPending = false; interactiveContent?.ResetInput(); }
     internal void SampleScroll(short x, short y, long timestamp)
     {
         if (selectionPopup is not null) return;
@@ -545,10 +546,13 @@ internal sealed partial class HostChoiceDialog : Presentation.FrameworkDialog
 
     internal void Handle(ControllerButton button, ControllerEventPhase phase)
     {
-        if (closing || !ControllerAdmission.IsArmed || phase != ControllerEventPhase.Pressed) return;
+        if (closing || !ControllerAdmission.IsArmed) return;
+        if (phase != ControllerEventPhase.Pressed)
+        { interactiveContent?.Handle(button, phase); return; }
         ClearChoiceHover();
         initialFocusRequired = false;
         if (HandleSelection(button)) return;
+        if (interactiveContent?.Handle(button, phase) == true) return;
         if (button == ControllerButton.B) { ControllerAdmission.Reset(); Hide(); }
         else if (button == ControllerButton.X && SupportsDismissChoice && FocusedChoice() is { Tag: string id })
             DismissChoiceRequested?.Invoke(id);

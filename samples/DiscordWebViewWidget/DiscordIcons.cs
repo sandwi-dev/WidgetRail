@@ -19,6 +19,7 @@ internal static class DiscordIcons
     internal static WidgetIcon ManagePin=>Get("manage-pin",WidgetGlyph.Settings);
     internal static WidgetIcon Person=>Get("person",WidgetGlyph.Connection);
     internal static WidgetIcon Refresh=>Get("refresh",WidgetGlyph.Refresh);
+    internal static WidgetIcon Latest=>Get("latest",WidgetGlyph.Refresh);
     internal static WidgetIcon Account=>Get("account",WidgetGlyph.Connection);
     internal static WidgetIcon Activity=>Get("activity",WidgetGlyph.Play);
     internal static WidgetIcon Share=>Get("share",WidgetGlyph.Fullscreen);

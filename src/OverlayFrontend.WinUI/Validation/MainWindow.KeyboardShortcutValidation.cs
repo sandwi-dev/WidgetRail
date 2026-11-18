@@ -117,10 +117,32 @@ public sealed partial class MainWindow
                     await Until(() => overlayMotion?.Playback is { IsCompleted: true });
                     Check(await SaveKeyboardShortcutAsync(root, custom, custom with { Enabled = false }, default) is null && keyboardShortcut is null,
                         "disabling a custom binding releases it after persistence");
+                    var overlay=custom with{Enabled=false};
+                    Check(await SaveKeyboardShortcutAsync(root,overlay,custom,default) is null,"Overlay binding can be restored alongside replay");
+                    var replayDefault=OverlayShortcutSettings.ReplayDefault;
+                    var replayConflict=await SaveKeyboardShortcutAsync(root,replayDefault,custom,default,HostKeyboardShortcutKind.SaveReplay);
+                    Check(replayConflict is not null&&keyboardShortcut?.Shortcut==custom&&replaySaveShortcut is null,
+                        "Replay cannot steal the overlay chord or change either saved preference on conflict");
+                    var replay=replayDefault with{Enabled=true,Key=0x84,Modifiers=OverlayShortcutModifiers.Control|OverlayShortcutModifiers.Alt};
+                    Check(await SaveKeyboardShortcutAsync(root,replayDefault,replay,default,HostKeyboardShortcutKind.SaveReplay) is null&&replaySaveShortcut?.IsRegistered==true,
+                        "Replay gets an independent reserved native hotkey");
+                    var replayCalls=0;replaySaveCommand=()=>replayCalls++;
+                    var unchangedVisibility=overlayVisibilityVersion;
+                    InjectKey(0x11,false);InjectKey(0x12,false);InjectKey(0x84,false);InjectKey(0x84,true);InjectKey(0x12,true);InjectKey(0x11,true);
+                    await Until(()=>replayCalls==1);
+                    Check(overlayVisibilityVersion==unchangedVisibility&&input?.IsActive==true,"Replay shortcut invokes only its command without toggling overlay input");
+                    SetKeyboardEditorOpen(true);
+                    var replayCaptured=0;keyboardCapture=chord=>{if(chord.Key==0x84)replayCaptured++;};
+                    InjectKey(0x11,false);InjectKey(0x12,false);InjectKey(0x84,false);InjectKey(0x84,true);InjectKey(0x12,true);InjectKey(0x11,true);
+                    await Until(()=>replayCaptured==1);
+                    Check(replayCalls==1,"Keyboard recording suppresses replay saves as well as overlay toggles");
+                    Check(await SaveKeyboardShortcutAsync(root,replay,replay with{Enabled=false},default,HostKeyboardShortcutKind.SaveReplay) is null&&replaySaveShortcut is null&&keyboardShortcut?.Shortcut==custom,
+                        "Disabling replay releases only its own registration");
                 }
                 finally
                 {
                     InjectKey(0x86, true); InjectKey(0x12, true); InjectKey(0x11, true);
+                    InjectKey(0x84,true);replaySaveCommand=null;
                     SetKeyboardEditorOpen(false);
                     ApplyKeyboardShortcutSettings(new());
                     if (Directory.Exists(root)) Directory.Delete(root, true);

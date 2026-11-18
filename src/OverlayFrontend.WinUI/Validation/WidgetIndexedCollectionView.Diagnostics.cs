@@ -16,13 +16,16 @@ internal sealed partial class WidgetIndexedCollectionView
         cacheLength=view?.ItemsPanelRoot switch{ItemsWrapGrid grid=>grid.CacheLength,ItemsStackPanel stack=>stack.CacheLength,_=>(double?)null}
     };
     internal bool HasPendingNativeNavigation => pendingIndex is not null;
+    internal WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? PendingExactEntryForValidation=>entering?pendingEntry:null;
     internal object NavigationDiagnosticState()
     {
         var slot = navigationRetention?.Slot;
         var scroll = view is null ? null : FindNativeScroll(view);
         var native = pendingIndex is { } pending ? view?.ContainerFromIndex(pending) as Microsoft.UI.Xaml.Controls.Primitives.SelectorItem : null;
         var tracked = native is not null && containers.TryGetValue(native, out var binding) ? binding.Slot : null;
-        return new { pendingIndex, entering, scrollOnly, navigationQueued, navigationNeedsScroll, CanReceiveInput,
+        return new { focusedIndex = FocusedIndex(), IsFocusParked, IsEntryPending,
+            sourceIdentity = source is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(source),
+            pendingIndex, entering, scrollOnly, navigationQueued, navigationNeedsScroll,navigationRequestExtent, CanReceiveInput,
             current = slot?.Value?.Lease.IsCurrent, key = slot?.Key, failed = slot?.Failed,
             targetLoaded = pendingIndex is { } index && view?.ContainerFromIndex(index) is FrameworkElement { IsLoaded: true },
             offset = scroll?.VerticalOffset, extent = scroll?.ScrollableHeight, viewport = scroll?.ViewportHeight,
@@ -48,8 +51,18 @@ internal sealed partial class WidgetIndexedCollectionView
     }
     private static string Id(DependencyObject? element) => element is null ? "null" : AutomationProperties.GetAutomationId(element);
     internal Action<string>? NavigationTrace { get; set; }
+    partial void TraceNavigationRealization(int index,double previousExtent,double currentExtent)=>
+        NavigationTrace?.Invoke($"realization-retarget index={index} previousExtent={previousExtent} currentExtent={currentExtent}");
+    partial void TraceBoundaryDemand(WidgetRail.WidgetProtocol.IndexedCollectionBoundary direction)
+    {
+        if(NavigationTrace is null || observedScroll is not {} scroll)return;
+        var visible=VisibleOccurrences(scroll);
+        NavigationTrace($"boundary direction={direction} query={source?.Declaration.IndexedCollection?.QueryGeneration} count={source?.Items.Count} offset={scroll.VerticalOffset} maximum={scroll.ScrollableHeight} viewport={scroll.ViewportHeight} visible={string.Join(",",visible.Select(item=>item.Slot.Index))} pendingIndex={pendingIndex} continuity={pendingContinuity is not null}");
+    }
     partial void TraceViewportRestore(int index, double current, double position, double size, double desiredPosition, double desired, double? pendingOffset, bool? accepted) =>
         NavigationTrace?.Invoke($"viewport index={index} current={current} position={position} size={size} targetPosition={desiredPosition} desired={desired} pending={pendingOffset} accepted={accepted}");
+    partial void TraceViewportReady(int index, double offset, double position, double size, double extent, double desiredPosition) =>
+        NavigationTrace?.Invoke($"viewport-ready index={index} offset={offset} position={position} size={size} extent={extent} targetPosition={desiredPosition} rowLayout=True");
     partial void TraceNavigation(string phase, int index, WidgetIndexedRow row, Control target) =>
         NavigationTrace?.Invoke($"{phase} index={index} entry={pendingEntry?.Index} entering={entering} nativeEnabled={target.IsEnabled} rowDisabled={row.Item.Root.IsDisabled} rowBusy={row.Item.Root.IsBusy} current={row.Lease.IsCurrent}");
     partial void TraceContinuity(string phase, IndexedViewportMemento? viewport)
