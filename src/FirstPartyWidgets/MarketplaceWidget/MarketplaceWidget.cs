@@ -11,7 +11,8 @@ public sealed partial class MarketplaceWidget : Widget
 {
     private enum Section { Browse, Installed, Updates }
     private sealed record State(MarketplaceSnapshot Snapshot, string? Selected = null, int Screenshot = 0,
-        string? ReviewToken = null, Section Section = Section.Browse, bool Busy = false, string? Error = null, string? LastSelected = null, string Search = "", long FocusRequest = 0, bool SearchFocusRequested = false);
+        string? ReviewToken = null, Section Section = Section.Browse, bool Busy = false, string? Error = null, string? LastSelected = null, string Search = "", long FocusRequest = 0, bool SearchFocusRequested = false,
+        WidgetNavigationOperation Navigation = WidgetNavigationOperation.Replace);
     private readonly WidgetModel<State> model;
     private static readonly CompiledWidgetIntentContract open = CompiledWidgetIntentContract.Create(WidgetIntentContracts.Marketplace);
     public MarketplaceWidget() => model = CreateModel(new State(MarketplaceSnapshot.Unavailable));
@@ -41,7 +42,7 @@ public sealed partial class MarketplaceWidget : Widget
         cancellationToken.ThrowIfCancellationRequested();
         if (!IsActive || !request.IsWellFormed() || request.ContractId != open.Id || request.Version != open.Version ||
             request.SchemaDigest != open.SchemaDigest || !open.Accepts(request.Payload)) return ValueTask.FromResult(WidgetIntentResult.Rejected);
-        model.Update(s => s with { Selected = null, ReviewToken = null, Section = Section.Browse, SearchFocusRequested = false });
+        model.Update(s => s with { Selected = null, ReviewToken = null, Section = Section.Browse, SearchFocusRequested = false, Navigation = WidgetNavigationOperation.Replace });
         return ValueTask.FromResult(WidgetIntentResult.Accepted);
     }
     public override ValueTask OnActionAsync(WidgetActionEvent action,CancellationToken cancellationToken = default)
@@ -51,7 +52,7 @@ public sealed partial class MarketplaceWidget : Widget
         if (action.ActionId == "marketplace.search.focus")
         {
             if (state.ReviewToken is null)
-                model.Update(s => s with { Selected = null, SearchFocusRequested = true, FocusRequest = checked(s.FocusRequest + 1) });
+                model.Update(s => s with { Selected = null, SearchFocusRequested = true, FocusRequest = checked(s.FocusRequest + 1), Navigation = WidgetNavigationOperation.Back });
             return ValueTask.CompletedTask;
         }
         if (state.SearchFocusRequested) model.Update(s => s with { SearchFocusRequested = false });
@@ -59,22 +60,22 @@ public sealed partial class MarketplaceWidget : Widget
         {
             if (state.Selected is null && state.ReviewToken is null &&
                 (action.ActionId == "marketplace.search.clear" || action.CommittedText is not null))
-                model.Update(s => s with { Search = action.ActionId == "marketplace.search.clear" ? "" : action.CommittedText!.Trim(), LastSelected = null });
+                model.Update(s => s with { Search = action.ActionId == "marketplace.search.clear" ? "" : action.CommittedText!.Trim(), LastSelected = null, Navigation = WidgetNavigationOperation.Replace });
             return ValueTask.CompletedTask;
         }
-        if (action.ActionId == "marketplace.back") { model.Update(s => s with { Selected = null, ReviewToken = null }); return ValueTask.CompletedTask; }
+        if (action.ActionId == "marketplace.back") { model.Update(s => s with { Selected = null, ReviewToken = null, Navigation = WidgetNavigationOperation.Back }); return ValueTask.CompletedTask; }
         if (action.ActionId == "marketplace.review.cancel") { model.Update(s => s with { ReviewToken = null }); return ValueTask.CompletedTask; }
         if (action.ActionId.StartsWith("marketplace.tab.", StringComparison.Ordinal))
         {
             var section = action.ActionId switch { "marketplace.tab.browse" => Section.Browse, "marketplace.tab.installed" => Section.Installed,
                 "marketplace.tab.updates" => Section.Updates, _ => (Section?)null };
-            if (section is not null && state.Selected is null && state.ReviewToken is null) model.Update(s => s with { Section = section.Value, Selected = null, ReviewToken = null });
+            if (section is not null && state.Selected is null && state.ReviewToken is null) model.Update(s => s with { Section = section.Value, Selected = null, ReviewToken = null, Navigation = WidgetNavigationOperation.Replace });
             return ValueTask.CompletedTask;
         }
         if (action.ActionId.StartsWith("marketplace.select.",StringComparison.Ordinal))
         {
             var selected = state.Snapshot.Items.FirstOrDefault(i => Key(i.Id) == action.ActionId["marketplace.select.".Length..]);
-            if (selected is not null) model.Update(s => s with { Selected = selected.Id, LastSelected = selected.Id, Screenshot = 0, ReviewToken = null });
+            if (selected is not null) model.Update(s => s with { Selected = selected.Id, LastSelected = selected.Id, Screenshot = 0, ReviewToken = null, Navigation = WidgetNavigationOperation.Forward });
             return ValueTask.CompletedTask;
         }
         if (action.ActionId is "marketplace.screenshot.next" or "marketplace.screenshot.previous")
@@ -273,10 +274,14 @@ public sealed partial class MarketplaceWidget : Widget
             header.Add(commands.Count > 0 ? UI.ResponsiveGrid("marketplace.toolbar", 340, 2, tools, checkedLabel) : checkedLabel);
         }
         else if (commands.Count > 0) header.Add(tools);
+        var scope = selected is null ? "marketplace.list." + state.Section.ToString().ToLowerInvariant() : "marketplace.details";
+        // Separate detail reading focus from list focus. Page navigation lets the
+        // host retain the selected card and viewport across detail visits.
+        var pageKey = selected is null ? scope + "." + Key(state.Search) : "detail." + Key(selected.Id);
         var root = UI.Grid("marketplace.page", [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
             UI.Stack("marketplace.header", header.ToArray()).Classes("marketplace-header"),
             UI.VerticalScroll("marketplace.content", items.ToArray()).Classes("marketplace-content").InGrid(row: 1))
-            .Spacing(12, 0).InputScope("marketplace.page").Classes("marketplace-widget");
+            .Spacing(12, 0).InputScope(scope).Classes("marketplace-widget");
         if (selected is not null) root = root.Shortcut(ControllerButton.B,"marketplace.back",label: "Catalogue");
         else root = root.Shortcut(ControllerButton.X,"marketplace.tab.updates",label: "Updates");
         if (state.ReviewToken is null) root = root.Shortcut(ControllerButton.LeftStick, "marketplace.search.focus", label: "Search");
@@ -292,7 +297,7 @@ public sealed partial class MarketplaceWidget : Widget
         }
         else if (state.ReviewToken is null && selected?.Screenshots.Count > 1) root = root.Shortcut(ControllerButton.LeftBumper,"marketplace.screenshot.previous",label: "Previous screenshot")
             .Shortcut(ControllerButton.RightBumper,"marketplace.screenshot.next",label: "Next screenshot");
-        var view = new WidgetView(root,initial, Surface: new WidgetSurfaceHints
+        var view = new WidgetView(root.TransitionPage("marketplace.pages", pageKey, state.Navigation), initial, ActiveInputScopeId: scope, Surface: new WidgetSurfaceHints
         {
             PreferredWidth = 1000, PreferredHeight = 640, MinimumWidth = 520, MinimumHeight = 400,
             HeightMode = WidgetSurfaceAxisMode.Preferred,

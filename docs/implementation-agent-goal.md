@@ -166,39 +166,49 @@ The review and planning agent may send lane identity, assignment
 clarifications, bounded integration instructions, corrections, or stop
 instructions directly to this task.
 
-A first genuine red pauses only the affected ordered gate. Preserve the exact
-worktree and evidence and report the red directly to the reviewer immediately;
-do not wait for a scheduled heartbeat. When the cause and correction are
-concrete, bounded, within the current assignment and owning layer, and preserve
-the accepted product and architecture, continue without waiting: make the
-smallest such correction and rerun that exact failed gate once. Do not weaken
-an oracle, extend a deadline, repeat an unchanged command, or include adjacent
-cleanup merely to get green. If the replacement gate is green, continue the
-remaining independent gates and include the original failure, diagnosis,
-correction, and replacement result in the terminal report.
+The default verification rule is **stop on the second genuine red from the same
+underlying issue, not the first**. A first genuine red pauses only the affected
+ordered gate; it does not end the assignment or the implementation turn.
+Preserve the exact evidence and report it directly to the reviewer immediately,
+but do not wait for a scheduled heartbeat or reviewer reply when the diagnosis
+and correction are concrete, bounded, within the current assignment and owning
+layer, and preserve the accepted product and architecture. Make the smallest
+such correction and rerun that exact failed gate once. Do not weaken an oracle,
+extend a deadline, repeat an unchanged command, or include adjacent cleanup
+merely to get green. If the replacement gate is green, continue the remaining
+independent gates and include the original failure, diagnosis, correction, and
+replacement result in the terminal report.
 
-Stop and request `reviewer disposition` when the same underlying issue produces
-a second genuine red. Include both failures, what executed, what did not, the
-retained diff/commit state, the source-supported cause if known, and the
-smallest bounded next action. A genuinely independent failure starts its own
-first-red allowance only when continuing cannot mask, overwrite, or invalidate
-the earlier evidence.
+When the exact replacement gate produces a second genuine red from that same
+underlying issue, the implementation agent stops and requests `reviewer
+disposition`. Include both failures, what executed, what did not, the retained
+diff/commit state, the source-supported cause if known, and the smallest bounded
+next action. Do not make a second correction or relabel the same cause to obtain
+another allowance. A genuinely independent failure starts its own two-red
+sequence only when it has been independently classified and continuing cannot
+mask, overwrite, or invalidate the earlier evidence.
 
-Stop on the first red, without using the self-correction allowance, when a
-correction would expand the subsystem, public contract, assignment, trust, or
-file boundary; require a destructive/install/launch/merge/push action,
-credentials or private live data, a material product decision, a substantial
-conflict, or unsafe diagnostic expansion. An environmental or harness-owned
-setup failure permits only one source-proven safe-state or invocation
-correction before the same-issue second-red stop.
+The one-correction allowance does not authorize crossing an authority or safety
+boundary. If a proposed correction would expand the subsystem, public contract,
+assignment, trust, or file boundary; require a destructive, install, launch,
+merge, or push action; involve credentials or private live data; make a material
+product decision; resolve a substantial conflict; or require unsafe diagnostic
+expansion, preserve the evidence and request reviewer disposition without making
+that correction. This is an authority-boundary stop, not a first-red
+verification rule. An environmental or harness-owned setup failure receives the
+same bounded treatment: one source-proven safe-state or invocation correction,
+then stop if the same underlying setup issue is red again.
 
-After a second-red or immediate-stop report, do not infer that the planner goal
-or other lane is paused. If task-specific edits are retained, wait only for the
-reviewer's bounded follow-up for this assignment. When that follow-up arrives,
-continue directly under its exact edit and gate authority and report the next
-terminal result back to the reviewer. The reviewer, not the implementation
-agent, decides whether the evidence permits another bounded correction,
-reclassification, another eligible item, or a user-owned escalation.
+After a second-same-cause-red or authority-boundary report, do not infer that the
+planner goal or other lane is paused. If task-specific edits are retained, wait
+only for the reviewer's bounded follow-up for this assignment. The stop applies
+to the implementation agent, not to the reviewer's authority: the reviewer may
+classify the evidence and explicitly authorize the implementation agent to
+continue. When that follow-up arrives, continue directly under its exact edit
+and gate authority and report the next terminal result back to the reviewer.
+The reviewer, not the implementation agent, decides whether the evidence permits
+another bounded correction, reclassification, another eligible item, or a
+user-owned escalation.
 
 An ordinary review correction applies at the next clean assignment boundary;
 it does not cancel a different milestone already in progress. Finish that

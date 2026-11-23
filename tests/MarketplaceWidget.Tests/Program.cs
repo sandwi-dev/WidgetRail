@@ -363,10 +363,17 @@ static async Task Navigation()
     await f.Act("marketplace.tab.updates");
     Check(Walk(f.View().Root).Count(n=>n.ActionId?.StartsWith("marketplace.update.", StringComparison.Ordinal)==true)==1,"Updates filter included an uninstalled widget");
     await f.Act("marketplace.tab.installed");
+    var listScope = f.View().ActiveInputScopeId;
+    var listPage = f.View().Root.Transition;
     var card=Walk(f.View().Root).Single(n=>n.Kind==ViewNodeKind.ActionSurface);
     await f.Act(card.ActionId!);Check(Node(f,"marketplace.description") is not null,"Details did not open");
+    Check(f.View().ActiveInputScopeId != listScope, "Detail reading focus shares the list's focus scope");
+    Check(f.View().Root.Transition is { Kind: WidgetTransitionKind.Page, Navigation: WidgetNavigationOperation.Forward } detailPage &&
+        detailPage.GroupId == listPage?.GroupId && detailPage.Key != listPage.Key, "Opening details does not save the list page");
     Check(Node(f,"marketplace.manage")?.Intent?.ContractId==WidgetIntentContracts.OpenWidgetSettings,"Installed management does not route to Settings");
     await f.Act("marketplace.back");Check(f.View().InitialFocusId==card.Id,"Back did not restore selected card");
+    Check(f.View().ActiveInputScopeId == listScope && f.View().Root.Transition is { Navigation: WidgetNavigationOperation.Back } backPage &&
+        backPage.Key == listPage?.Key, "Back does not request the original list's viewport and focus");
     Check(ViewSnapshotValidator.Validate(f.View()).Count==0 && WinUiPresentationContract.Validate(f.View()).Count==0,"Catalog snapshot invalid");
 }
 static async Task Review()

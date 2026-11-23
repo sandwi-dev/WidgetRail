@@ -306,6 +306,8 @@ public sealed partial class MainWindow
             page.EnableIntentValidation(intentResult, () => ValidateWebIntentHandoffAsync(page));
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-introduction") is { } introductionResult)
             page.EnableIntroductionValidation(introductionResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-catalogue-return") is { } catalogueResult)
+            page.EnableCatalogueReturnValidation(catalogueResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-appearance-settings") is { } appearanceResult)
             page.EnableAppearanceSettingsValidation(appearanceResult);
         if (arguments.Contains("--shell-no-controller")) ConfigureValidationActivation(arguments);
