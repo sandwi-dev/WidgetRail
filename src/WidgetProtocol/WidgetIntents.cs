@@ -45,6 +45,7 @@ public static class WidgetIntentContracts
         """));
 
     public const string OpenVideo = "widgetrail.video.open";
+    public const string AskGameHelp = "widgetrail.game.help";
     public const string SearchVideo = "widgetrail.video.search";
     public const string OpenWidgetSettings = "widgetrail.settings.widget.open";
     public const string OpenWidgetPermissions = "widgetrail.settings.permissions.open";
@@ -53,6 +54,15 @@ public static class WidgetIntentContracts
     public const string OpenAppearance = "widgetrail.settings.appearance.open";
     public const string OpenCaptureLibrary = "widgetrail.captures.browse";
     public const string OpenRelatedItem = "widgetrail.related-item.open";
+    public const string AssociateCaptures = "widgetrail.captures.associate";
+    /// <summary>Ask a receiver to let the user choose a related item. Saved capture IDs grant no library access.</summary>
+    public static WidgetIntentContract CaptureAssociation { get; } = new(AssociateCaptures, 1, Schema("""
+        {"type":"object","additionalProperties":false,"properties":{
+          "captures":{"type":"array","minItems":1,"maxItems":64,"items":{"type":"object","additionalProperties":false,
+            "properties":{"id":{"type":"string","minLength":32,"maxLength":32},
+            "revision":{"type":"integer","minimum":0,"maximum":9223372036854775807}},"required":["id","revision"]}}
+        },"required":["captures"]}
+        """));
     public const string FileShare = "widgetrail.files.share";
     /// <summary>A host-authorized offer ID, never a filesystem path or permission declaration.</summary>
     public static WidgetIntentContract Files { get; } = new(FileShare, 1, Schema("""
@@ -100,6 +110,7 @@ public static class WidgetIntentContracts
         """));
     public static WidgetIntentContract WidgetPermissions { get; } = new(OpenWidgetPermissions, 1, WidgetSettings.PayloadSchema);
 
+    public static WidgetIntentContract GameHelp { get; } = new(AskGameHelp, 1, Schema("""{"type":"object","additionalProperties":false,"properties":{"gameName":{"type":"string","minLength":1,"maxLength":256}},"required":["gameName"]}"""));
     public static WidgetIntentContract VideoSearch { get; } = new(SearchVideo, 1, Schema("""
         {"type":"object","additionalProperties":false,"properties":{
           "provider":{"type":"string","minLength":1,"maxLength":64},
@@ -167,9 +178,10 @@ public static class WidgetIntentContracts
                     contracts[key] = compiled.SchemaDigest;
                     if (kind == "requests" && compiled.Id == OpenWebNotification)
                         add(path, "host_origin_intent", "Native web notification activation may be handled but cannot be requested by a widget.");
-                    var standard = compiled.Id switch { OpenWebPage => compiled.Version == 2 ? WebV2 : Web, OpenWebNotification => WebNotification, OpenVideo => Video, SearchVideo => VideoSearch,
+                    var standard = compiled.Id switch { OpenWebPage => compiled.Version == 2 ? WebV2 : Web, OpenWebNotification => WebNotification, OpenVideo => Video, SearchVideo => VideoSearch, AskGameHelp => GameHelp,
                         OpenWidgetSettings => WidgetSettings, OpenWidgetPermissions => WidgetPermissions, OpenMarketplace => Marketplace, OpenAppUpdates => AppUpdates, OpenAppearance => Appearance,
-                        OpenCaptureLibrary => compiled.Version == 2 ? CaptureLibraryV2 : CaptureLibrary, OpenRelatedItem => RelatedItem, FileShare => Files, _ => null };
+                        OpenCaptureLibrary => compiled.Version == 2 ? CaptureLibraryV2 : CaptureLibrary, OpenRelatedItem => RelatedItem,
+                        AssociateCaptures => CaptureAssociation, FileShare => Files, _ => null };
                     if (compiled.Id.StartsWith("widgetrail.", StringComparison.Ordinal) &&
                         (standard is null || compiled.Version != standard.Version ||
                          compiled.SchemaDigest != CompiledWidgetIntentContract.Create(standard).SchemaDigest))

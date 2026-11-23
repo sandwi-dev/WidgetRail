@@ -19,8 +19,12 @@ internal static class IntentActionAuthority
         {
             var preview = action.SourceElementId != item.Id ||
                 originOwners.LastOrDefault() is { Kind: ViewNodeKind.FocusPresentationSurface, FocusPreviewSource: not null };
+            var inline = item.IsReadingGroup && action.SourceElementId != item.Id;
             var request = new IndexedCollectionInputRequest(reference, ControllerButton.A)
-            { PreviewAction = preview ? new(action.SourceElementId, action.ActionId) : null };
+            {
+                InlineAction = inline ? new(action.SourceElementId,action.ActionId) : null,
+                PreviewAction = preview && !inline ? new(action.SourceElementId, action.ActionId) : null
+            };
             var before = IndexedCollectionInputContract.Resolve(originOwners, item, request, out var original);
             var after = IndexedCollectionInputContract.Resolve(currentOwners, item, request, out declaration);
             if (before is null || before != after || !ReferenceEquals(original, declaration)) return null;

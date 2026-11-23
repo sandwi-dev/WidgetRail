@@ -62,7 +62,11 @@ internal sealed partial class WidgetIndexedCollectionView
         var visible=WidgetScrollViewport.ContentBounds(scroll);
         var start=horizontal?visible.Left:visible.Top;var end=horizontal?visible.Right:visible.Bottom;
         return containers.Select(pair => (Container: pair.Key, Slot: pair.Value.Slot))
-            .Where(pair => pair.Container.IsLoaded && (includeLoading || pair.Slot.Key is not null))
+            // Removed slots are marked -1 synchronously, but WinUI may keep
+            // their recycled containers loaded until its next content callback.
+            // They cannot represent this query's reader or protected boundary.
+            .Where(pair => pair.Container.IsLoaded && pair.Slot.Index >= 0 &&
+                pair.Slot.Index < (source?.Items.Count ?? 0) && (includeLoading || pair.Slot.Key is not null))
             .Select(pair => (pair.Slot, Bounds: LayoutBoundsInScroll(pair.Container, scroll)))
             .Where(pair => (horizontal ? pair.Bounds.Right : pair.Bounds.Bottom) > start &&
                 (horizontal ? pair.Bounds.X : pair.Bounds.Y) < end)
@@ -105,7 +109,15 @@ internal sealed partial class WidgetIndexedCollectionView
         var visible = WidgetScrollViewport.ContentBounds(scroll);
         var position = horizontal ? bounds.X - visible.X : bounds.Y - visible.Y;
         var desiredPosition = memory.LeadingPosition ?? -Math.Clamp(memory.ClippedFraction, -1, 1) * size;
-        if (keepAnchorVisible) desiredPosition = Math.Clamp(desiredPosition, 0, Math.Max(0, (horizontal ? visible.Width : visible.Height) - size));
+        if (keepAnchorVisible)
+        {
+            var available = horizontal ? visible.Width : visible.Height;
+            // Oversized reading rows have useful clipped positions (for example
+            // their attachment action). Preserve the saved slice while it still
+            // intersects the viewport instead of snapping every return to its top.
+            if (size <= available) desiredPosition = Math.Clamp(desiredPosition, 0, available - size);
+            else if (desiredPosition <= -size || desiredPosition >= available) desiredPosition = 0;
+        }
         var delta = position - desiredPosition;
         var current = horizontal ? scroll.HorizontalOffset : scroll.VerticalOffset;
         var desired = Math.Clamp(current + delta, 0, horizontal ? scroll.ScrollableWidth : scroll.ScrollableHeight);

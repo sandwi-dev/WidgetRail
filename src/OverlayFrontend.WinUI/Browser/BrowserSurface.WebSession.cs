@@ -11,6 +11,12 @@ internal sealed partial class BrowserSurface
 {
     private WebSessionDefinition? hostedDefinition;
     private WebSessionPageAdapterHost? pageAdapter;
+    private bool ownerMainViewVisible;
+    internal void SetOwnerMainViewVisible(bool value)
+    {
+        ownerMainViewVisible=value;
+        pageAdapter?.SetMainViewVisible(value);
+    }
     private string? pageActionStyle;
     private IReadOnlyList<BridgeWebSessionResource> hostedResources = [];
     private Uri? localResource;
@@ -147,6 +153,7 @@ internal sealed partial class BrowserSurface
                 if(!hostedMessages.Writer.TryWrite(encoded))FailHostedSession("Page adapter message queue exceeded its bound.");
             },()=>!retired&&!faulted&&!profileChanging&&!loading&&
                 (visible||adapter.Mode==WebSessionPageAdapterMode.SessionBackend));
+            pageAdapter.SetMainViewVisible(ownerMainViewVisible);
             if(pageActionStyle is not null)pageAdapter.SetStyle(pageActionStyle);
             await pageAdapter.StartAsync();
         }

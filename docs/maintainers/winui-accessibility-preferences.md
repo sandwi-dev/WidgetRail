@@ -8,9 +8,11 @@ The native style adapter projects saved settings after WRSS resolution:
 - Contrast follows System, Standard or High explicitly. Standard preserves the
   authored palette even when Windows high contrast is enabled; High uses native
   system colors. The focus-decoration owner restores native high-contrast focus.
-- Reduced Transparency makes painted translucent backgrounds and explicit subtree
-  opacity opaque. Intentionally absent fills remain absent instead of becoming
-  new opaque boxes. Borders and text alpha retain their separate meaning.
+- Reduced Transparency makes translucent backgrounds and partially transparent
+  subtrees opaque. Fully transparent fills and zero-opacity layout reservations
+  keep their original appearance. Borders and text alpha retain their separate meaning.
+- High contrast paints the system canvas behind content over focus-driven wallpaper.
+  Foreground media and fixed hero images retain their artwork.
 
 Policy updates notify existing native style owners, including realized indexed
 containers and presentation fragments. They do not publish widget snapshots,

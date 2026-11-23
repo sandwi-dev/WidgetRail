@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:collections="using:WidgetRail.OverlayFrontend.WinUI.Collections"
     xmlns:local="using:WidgetRail.OverlayFrontend.WinUI.Presentation"
+    xmlns:shell="using:WidgetRail.OverlayFrontend.WinUI.Shell"
     xmlns:controls="using:Microsoft.UI.Xaml.Controls">
     <!-- Native semantic controls retain input/automation ownership. Dedicated
          paint slots inherit the same control scale without tinting its content. -->
@@ -173,6 +174,17 @@
         <local:WidgetIndexedRowView
             Row="{x:Bind Content, Mode=OneWay}" />
     </DataTemplate>
+    <DataTemplate x:Key="WidgetIndexedGridTileTemplate" x:DataType="collections:IndexedItem">
+        <Grid>
+            <Border x:Name="LoadingTile"
+                    x:Load="{x:Bind IsAwaitingContent, Mode=OneWay}"
+                    Margin="4" CornerRadius="6"
+                    Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw" />
+            <local:WidgetIndexedRowView Row="{x:Bind Content, Mode=OneWay}" />
+        </Grid>
+    </DataTemplate>
     <!-- Native header containers otherwise add their own 12-DIP inset, minimum
          height and an OS-colored divider around our already styled header.
          Keep their semantic container while the shared section label owns paint. -->
@@ -208,11 +220,30 @@
             </Setter.Value>
         </Setter>
     </Style>
+    <DataTemplate x:Key="FileEntryTemplate" x:DataType="shell:FileBrowserRow">
+        <Grid ColumnSpacing="8" MinHeight="36">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <CheckBox Grid.Column="0" IsChecked="{x:Bind Checked, Mode=OneWay}" Visibility="{x:Bind CheckVisibility}" Opacity="{x:Bind CheckOpacity}" MinWidth="0" Padding="0"
+                      IsHitTestVisible="False" IsTabStop="False" AutomationProperties.AccessibilityView="Raw"/>
+            <FontIcon Grid.Column="1" FontFamily="Segoe Fluent Icons" FontSize="17" Glyph="{x:Bind Glyph}" AutomationProperties.AccessibilityView="Raw"/>
+            <TextBlock Grid.Column="2" Text="{x:Bind Name}" FontWeight="Normal" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Grid.Column="3" Text="{x:Bind Detail}" FontWeight="Normal" MaxWidth="140" VerticalAlignment="Center" Opacity=".75" TextTrimming="CharacterEllipsis"/>
+        </Grid>
+    </DataTemplate>
+    <x:Double x:Key="HostChoiceTitleFontSize">20</x:Double>
+    <DataTemplate x:Key="HostChoiceListTitle">
+        <TextBlock Text="{Binding}" FontSize="{ThemeResource HostChoiceTitleFontSize}" FontWeight="SemiBold" TextWrapping="Wrap" />
+    </DataTemplate>
     <DataTemplate x:Key="HostChoiceGroupHeaderTemplate" x:DataType="local:DialogChoiceGroup">
-        <TextBlock Text="{x:Bind Title}" Style="{StaticResource CaptionTextBlockStyle}"
-                   Visibility="{x:Bind HeaderVisibility}"
-                   FontWeight="SemiBold" Margin="12,12,12,8" TextWrapping="Wrap"
-                   AutomationProperties.HeadingLevel="Level2" />
+        <Grid Visibility="{x:Bind HeaderVisibility}" Margin="12,12,12,4" RowSpacing="6">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}"
+                    IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw" />
+            <TextBlock Grid.Row="1" Text="{x:Bind Title}" Style="{StaticResource CaptionTextBlockStyle}"
+                       FontWeight="SemiBold" TextWrapping="Wrap" AutomationProperties.HeadingLevel="Level2" />
+        </Grid>
     </DataTemplate>
     <ItemsPanelTemplate x:Key="HostChoiceGroupedPanel">
         <ItemsStackPanel AreStickyGroupHeadersEnabled="False" />
@@ -222,6 +253,7 @@
         x:DataType="collections:WidgetIndexedGroup">
         <local:WidgetGroupHeader
             Text="{x:Bind Header, Mode=OneWay}"
+            ShowRule="{x:Bind ShowHeaderRule, Mode=OneWay}"
             HeaderStyle="{x:Bind HeaderStyle, Mode=OneWay}" />
     </DataTemplate>
     <ItemsPanelTemplate

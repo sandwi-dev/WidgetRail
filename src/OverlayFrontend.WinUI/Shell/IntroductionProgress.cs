@@ -6,6 +6,14 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed record IntroductionProgress(int Version, string Step, bool Paused = false)
 {
     internal static readonly string[] Steps = ["welcome", "guide", "commands", "utilities", "catalogue", "appearance", "appearance-details", "complete"];
+    internal static readonly string[] TourSteps = Steps.Where(step => step is not ("welcome" or "appearance" or "complete")).ToArray();
+    internal static string[] VisibleSteps(bool catalogue, bool appearance) =>
+        TourSteps.Where(step => (catalogue || step != "catalogue") && (appearance || step != "appearance-details")).ToArray();
+    internal string NextVisible(IReadOnlyList<string> visible)
+    {
+        var current = Array.IndexOf(Steps, Step);
+        return visible.FirstOrDefault(step => Array.IndexOf(Steps, step) > current) ?? "complete";
+    }
     internal static IntroductionProgress New => new(1, "welcome");
     internal static IntroductionProgress SafeFallback => New with { Paused = true };
     internal bool Valid => Version == 1 && Step is not null && Steps.Contains(Step, StringComparer.Ordinal);

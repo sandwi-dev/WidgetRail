@@ -24,7 +24,9 @@ public sealed partial class DiscordWebViewWidget
         });
     }
 
-    private static string VoiceConnectionLabel(DiscordState data)=>data.VoiceConnection switch
+    private static string VoiceConnectionLabel(DiscordState data)=>data.Calls?.Current?.Phase is "unavailable"?"Call unavailable":
+        data.Calls?.Current?.Phase is "outgoing"?"Ringing…":
+        data.Calls?.Current?.Phase is "waiting" && data.VoiceConnection=="connected"?"Waiting for others":data.VoiceConnection switch
     {
         "connected"=>"Voice connected","connecting"=>"Connecting to voice…","reconnecting"=>"Reconnecting to voice…",
         "disconnected"=>"Voice disconnected",_=>"Voice status unavailable"
@@ -39,9 +41,11 @@ public sealed partial class DiscordWebViewWidget
     private WidgetElement ParticipantRow(ParticipantContext context,DiscordParticipant participant,WidgetIndexedItemContext ids)
     {
         var copy=new List<WidgetElement>{UI.Text(participant.Name,ids.Id("name")).Classes("discord-row-title")};
-        if(participant.Id==context.Account)copy.Add(UI.Text("You",ids.Id("self")).Classes("discord-person-self"));
+        if(participant.Id==context.Account&&!string.Equals(participant.Name,"You",StringComparison.OrdinalIgnoreCase))
+            copy.Add(UI.Text("You",ids.Id("self")).Classes("discord-person-self"));
         var content=new WidgetElement[]{
-            UI.Stack(ids.Id("avatar-frame"),Avatar(participant.AvatarUrl,ids.Id("avatar"),participant.Name))
+            UI.Grid(ids.Id("avatar-frame"),[GridTrack.Star()],[GridTrack.Star()],
+                Avatar(participant.AvatarUrl,ids.Id("avatar"),participant.Name).InGrid().AlignInGrid(GridCellAlignment.Center,GridCellAlignment.Center))
                 .Classes(participant.Speaking&&!participant.Muted&&!participant.Deafened?"discord-avatar-speaking":"discord-avatar-frame"),
             UI.Stack(ids.Id("copy"),copy.ToArray()).Classes("discord-copy"),
             participant.Muted||participant.Deafened||participant.Audio is {Available:true,Muted:true}?UI.Icon(participant.Deafened?DiscordIcons.Voice:DiscordIcons.Muted,ids.Id("status"),ParticipantStatus(participant)).Classes("discord-person-state"):

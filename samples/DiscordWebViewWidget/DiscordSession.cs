@@ -13,6 +13,8 @@ internal sealed class DiscordCommandException(string code) : InvalidOperationExc
 internal interface IDiscordSession : IAsyncDisposable
 {
     event Action<WebSessionReference>? Invalidated { add { } remove { } }
+    bool MainViewVisible => true;
+    event Action<WebSessionReference>? MainViewVisibilityChanged { add { } remove { } }
     WebSessionReference? Reference { get; }
     ValueTask<DiscordState> ReadAsync(CancellationToken token);
     ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token);
@@ -31,6 +33,9 @@ internal interface IDiscordReceiver : IAsyncDisposable
 internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) : IDiscordSession
 {
     public event Action<WebSessionReference>? Invalidated;
+    public event Action<WebSessionReference>? MainViewVisibilityChanged;
+    private volatile bool mainViewVisible=true;
+    public bool MainViewVisible=>mainViewVisible;
     internal static readonly JsonSerializerOptions Json=new(JsonSerializerDefaults.Web);
     private readonly SemaphoreSlim connectionGate=new(1,1);
     private readonly SemaphoreSlim readGate=new(1,1);
@@ -106,9 +111,13 @@ internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) 
             batch.TryGetProperty("ok",out var batchOk) && batchOk.ValueKind==JsonValueKind.True)
             return JsonSerializer.SerializeToElement(new{context=batch.GetProperty("value"),items=response.GetProperty("items")},Json);
         if(!response.TryGetProperty("ok",out var ok)||ok.ValueKind!=JsonValueKind.True)
-            throw new DiscordCommandException(response.TryGetProperty("code",out var failure) &&
+        {
+            var exception=new DiscordCommandException(response.TryGetProperty("code",out var failure) &&
                 failure.ValueKind==JsonValueKind.String && failure.GetString() is {Length:>0 and <=80} code &&
                 code.All(c=>char.IsAsciiLetterLower(c)||c=='_') ? code : "provider_error");
+            DiscordReadDiagnostics.Log.RecordFailure(method,exception.Code);
+            throw exception;
+        }
         return response.GetProperty("value").Clone();
     }
 
@@ -131,6 +140,7 @@ internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) 
                 PageAdapter=new(){ScriptAsset="payload/web/backend.js",Origins=["https://discord.com"],Mode=WebSessionPageAdapterMode.SessionBackend}
             },linked.Token);
             if(linked.IsCancellationRequested){await opened.DisposeAsync();linked.Token.ThrowIfCancellationRequested();}
+            mainViewVisible=true;
             session=opened;drain=DrainAsync(opened,lifetime.Token);return opened;
         }
         finally{connectionGate.Release();}
@@ -147,9 +157,16 @@ internal sealed class DiscordWebSessionClient(WidgetWebSessionService sessions) 
     {
         try { await foreach(var message in current.ReadMessagesAsync(token))
         {
-            if(!disposed && ReferenceEquals(session,current) && message.ValueKind==JsonValueKind.Object &&
-                message.TryGetProperty("kind",out var kind) && kind.ValueKind==JsonValueKind.String && kind.GetString()=="backend-invalidated")
+            if(disposed || !ReferenceEquals(session,current) || message.ValueKind!=JsonValueKind.Object ||
+                !message.TryGetProperty("kind",out var kind) || kind.ValueKind!=JsonValueKind.String)continue;
+            if(kind.GetString()=="backend-invalidated")
                 Invalidated?.Invoke(current.Reference);
+            else if(kind.GetString()=="main-view-visibility" && message.TryGetProperty("visible",out var visible) &&
+                visible.ValueKind is JsonValueKind.True or JsonValueKind.False && mainViewVisible!=visible.GetBoolean())
+            {
+                mainViewVisible=visible.GetBoolean();
+                MainViewVisibilityChanged?.Invoke(current.Reference);
+            }
         } }
         catch(Exception) { /* Requests and Completion expose the connection failure to its owner. */ }
     }

@@ -20,7 +20,8 @@ internal sealed record IndexedRangeResult<T>(IndexedQueryIdentity Query, long Re
 /// One query and one native items control's demand. Complete counts are fixed;
 /// discovered counts grow only by admitted tail appends. Cache eviction
 /// releases payload/slot references without deleting logical positions. WinUI owns
-/// item realization, layout and scrolling. Replace the source for a new query.
+/// item realization, layout and scrolling. Bounded ordered occurrence updates
+/// can rebase in place; unrelated queries still replace the source.
 /// The trusted range reader must bound its work and honor cancellation; widget
 /// code must execute behind the service boundary, never in this delegate.
 /// </summary>
@@ -40,7 +41,7 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
         public void Dispose()
         {
             // A wrong-thread call must not consume the token before CheckAccess fails.
-            owner?.ReleaseRetention(Slot.Index);
+            owner?.ReleaseRetention(Slot);
             owner = null;
         }
     }
@@ -63,8 +64,9 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
     private readonly HashSet<Task> releases = [];
     private Exception? releaseFailure;
     private readonly int pageSize;
+    internal int PageSize => pageSize;
     private readonly int concurrency;
-    private readonly Dictionary<int, int> retainedIndices = [];
+    private readonly Dictionary<IndexedItem<T>, int> retainedSlots = [];
     private IReadOnlyList<int> visiblePages = [];
     private IReadOnlyList<int> trackedPages = [];
     private HashSet<int> demandedPages = [];
@@ -85,7 +87,7 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
         if (HasMoreItems && LoadMore is { } load) await load(token);
         return new LoadMoreItemsResult { Count = (uint)Math.Max(0, Count - before) };
     });
-    public IndexedQueryIdentity Query { get; }
+    public IndexedQueryIdentity Query { get; private set; }
     internal bool IsPresentationActive => active;
     internal Task SetPresentationActiveAsync(bool value)
     {
@@ -112,7 +114,11 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
     public int CancelledLoads { get; private set; }
     public int FailedLoads { get; private set; }
     public int PendingReleases { get { lock (releaseGate) return releases.Count; } }
-    internal int RetainedIndices => retainedIndices.Count;
+    internal int RetainedIndices => retainedSlots.Count;
+    internal bool IsDemanded(int index) => index >= 0 && index < Count && demandedPages.Contains(index / pageSize);
+    internal bool DemandIsSettled => !ownedFetches.Any(fetch => fetch.Request.Query == Query && fetch.Request.ContentRevision == ContentRevision) &&
+        demandedPages.All(page => failedPages.Contains(page) || pages.TryGetValue(page, out var loaded) &&
+            loaded.Query == Query && loaded.ContentRevision == ContentRevision && loaded.Items.Count >= Math.Min(pageSize, Count - page * pageSize));
     public event EventHandler? StateChanged;
 
     public IndexedItemsSource(IndexedQueryIdentity query, int count, DispatcherQueue dispatcher,
@@ -144,6 +150,20 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
         foreach (var old in previous.slots.Values)
             if (old.Key is { } key && old.Value is { } value && positions.TryGetValue(key, out var index))
                 GetSlot(index).SetValue(key, value);
+    }
+
+    // A recreated native view of the exact ordered query can show already
+    // resident rows while it acquires its own ranges. This copies presentation
+    // only: no page, lease, demand, retention or request ownership is transferred.
+    internal void SeedSameQueryPresentation(IndexedItemsSource<T> previous, Func<T, T>? copyPaint = null)
+    {
+        CheckAccess();
+        previous.CheckAccess();
+        if (Query != previous.Query || Count != previous.Count || ContentRevision < previous.ContentRevision)
+            throw new InvalidOperationException("Presentation seeding requires the same ordered query.");
+        foreach (var (index, old) in previous.slots)
+            if (old.Key is { } key && old.Value is { } value)
+                GetSlot(index).SetValue(key, copyPaint is null ? value : copyPaint(value));
     }
 
     /// <summary>Refresh payloads without replacing logical slots, focus or scroll position.</summary>
@@ -221,20 +241,22 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
     {
         CheckAccess();
         if (index < 0 || index >= Count) throw new ArgumentOutOfRangeException(nameof(index));
-        if (!retainedIndices.TryGetValue(index, out var references) && retainedIndices.Count >= MaximumRetainedIndices)
+        var slot = GetSlot(index);
+        if (!retainedSlots.TryGetValue(slot, out var references) && retainedSlots.Count >= MaximumRetainedIndices)
             throw new InvalidOperationException("The indexed presentation-retention limit has been reached.");
-        retainedIndices[index] = checked(references + 1);
-        var retention = new Retention(this, GetSlot(index));
+        retainedSlots[slot] = checked(references + 1);
+        var retention = new Retention(this, slot);
         RebuildDemand();
         return retention;
     }
 
-    private void ReleaseRetention(int index)
+    private void ReleaseRetention(IndexedItem<T> slot)
     {
         if (disposed) return;
         CheckAccess();
-        if (retainedIndices[index] == 1) retainedIndices.Remove(index);
-        else --retainedIndices[index];
+        if (!retainedSlots.TryGetValue(slot, out var references)) return;
+        if (references == 1) retainedSlots.Remove(slot);
+        else retainedSlots[slot] = references - 1;
         RebuildDemand();
     }
 
@@ -273,7 +295,7 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
         var next = new HashSet<int>();
         var order = new List<int>();
         Include(visiblePages);
-        Include(retainedIndices.Keys.Select(index => index / pageSize));
+        Include(retainedSlots.Keys.Select(slot => slot.Index / pageSize));
         Include(trackedPages);
         demandedPages = next;
         demandOrder = order;
@@ -401,7 +423,7 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
                     // Every continuation rechecks ownership, including changes
                     // caused reentrantly by a binding notification.
                     if (disposed || !active || fetch.Cancellation.IsCancellationRequested ||
-                        ContentRevision != fetch.Request.ContentRevision ||
+                        Query != fetch.Request.Query || ContentRevision != fetch.Request.ContentRevision ||
                         !pages.TryGetValue(page, out var published) || !ReferenceEquals(published, items)) break;
                     var index = nextIndex++;
                     GetSlot(fetch.Request.StartIndex + index).SetValue(admitted[index].Key, admitted[index].Value);
@@ -445,7 +467,7 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
                 retained && nextIndex == fetch.Request.Count ? PipelineOutcome.Completed : PipelineOutcome.Retired);
             try
             {
-                if (accepted && !disposed && active && ContentRevision == fetch.Request.ContentRevision &&
+                if (accepted && !disposed && active && Query == fetch.Request.Query && ContentRevision == fetch.Request.ContentRevision &&
                     failure is not null && !fetch.Cancellation.IsCancellationRequested)
                 {
                     failedPages.Add(page); ++FailedLoads;
@@ -495,15 +517,16 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
         return copy;
     }
 
-    // Existing order never changes. Only explicit Append emits structural Add;
-    // payload cache refill/eviction notifies slots and never resets the collection.
+    // Explicit append/window edits emit structural notifications; payload cache
+    // refill/eviction notifies slots and never resets the collection.
     public event NotifyCollectionChangedEventHandler? CollectionChanged;
     public bool IsReadOnly => true;
     public bool IsFixedSize => CanLoadMore is null;
     public bool IsSynchronized => false;
     public object SyncRoot => identity;
     public bool Contains(object? value) => IndexOf(value) >= 0;
-    public int IndexOf(object? value) => value is IndexedItem<T> item && ReferenceEquals(item.Owner, identity) ? item.Index : -1;
+    public int IndexOf(object? value) => value is IndexedItem<T> item && ReferenceEquals(item.Owner, identity) &&
+        slots.TryGetValue(item.Index, out var current) && ReferenceEquals(current, item) ? item.Index : -1;
     public int Add(object? value) => throw new NotSupportedException();
     public void Clear() => throw new NotSupportedException();
     public void Insert(int index, object? value) => throw new NotSupportedException();
@@ -528,7 +551,7 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
         foreach (var page in pages.Values) Release(page.Lifetime);
         pages.Clear();
         slots.Clear(); demandedPages.Clear(); demandOrder = []; failedPages.Clear(); fetching.Clear();
-        retainedIndices.Clear(); visiblePages = []; trackedPages = [];
+        retainedSlots.Clear(); visiblePages = []; trackedPages = [];
     }
     public ValueTask DisposeAsync()
     {

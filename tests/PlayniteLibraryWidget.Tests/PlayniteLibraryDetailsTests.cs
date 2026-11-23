@@ -89,6 +89,7 @@ public sealed partial class PlayniteLibraryTests
             PlayniteDescriptionText.Normalize("First paragraph.\r\n\r\nSecond paragraph."));
         Assert.AreEqual("First paragraph.\n\nSecond paragraph.",
             PlayniteDescriptionText.Normalize("First paragraph.<br><br>Second paragraph."));
+        Assert.AreEqual("\u2022 Explore the caverns", PlayniteDescriptionText.Normalize("<ul><li><p>Explore the caverns</p></li></ul>"));
         Assert.AreEqual("A formatted source line.",
             PlayniteDescriptionText.Normalize("<p>A formatted\nsource line.</p>"));
     }
@@ -107,6 +108,35 @@ public sealed partial class PlayniteLibraryTests
         Assert.AreEqual("Playing", extras.ResolveCompletionStatus("Not Played"),
             "An older in-flight full response must not override a confirmed mutation.");
         Assert.AreEqual("Completed", (extras with { ConfirmedCompletionStatus = null }).ResolveCompletionStatus("Not Played"));
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task GameOptionsChangesCompletionWithoutLeavingTheSelectedSection()
+    {
+        var host = new FakeHost(1);
+        var widget = Create(host, out TestApplicationService app);
+        app.CompletionStatusesHandler = _ => ValueTask.FromResult<IReadOnlyList<string>>(["Playing", "Completed"]);
+        await Interactive(widget);
+        await Ready(widget, host);
+        var game = PageNodes(widget, Snapshot(widget, 131_001).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
+        await Bounded(widget.WhenDetailsIdleAsync(), "completion statuses");
+        var page = Snapshot(widget, 131_002);
+        var options = Nodes(page.Root).Single(node => node.Id == PlayniteLibraryDetailsPresentation.OptionsId);
+        var choose = options.ContextActions.Single(action => action.ActionId == DetailAction + "choose-status");
+        await widget.OnActionAsync(new(choose.ActionId, options.Id));
+        var dialog = Snapshot(widget, 131_003);
+        Assert.AreEqual(ViewNodeKind.ModalLayer, dialog.Root.Kind);
+        Assert.IsTrue(await Route(widget, dialog, ControllerButton.B, dialog.InitialFocusId!));
+        await WaitFor(() => !widget.RenderState.Value.DetailsExtras.ChoosingCompletion, "cancel completion chooser");
+        Assert.AreEqual(0, app.CompletionRequests.Count);
+        await widget.OnActionAsync(new(choose.ActionId, options.Id));
+        var complete = Nodes(Snapshot(widget, 131_004).Root).Single(node => node.Text == "Completed" && node.ActionId != null);
+        await widget.OnActionAsync(new(complete.ActionId!, complete.Id));
+        Assert.AreEqual(("saved-00000", "Completed"), app.CompletionRequests.Single());
+        Assert.AreEqual(page.ActiveInputScopeId, Snapshot(widget, 131_005).ActiveInputScopeId);
+        Assert.AreEqual(PlayniteDetailsTab.Description, widget.RenderState.Value.DetailsExtras.Tab);
+        await Background(widget);
     }
 
     [TestMethod, Timeout(30_000)]
@@ -163,7 +193,10 @@ public sealed partial class PlayniteLibraryTests
         Assert.AreEqual(1, select.SelectOptions.Count);
         Assert.IsTrue(select.SelectOptions[0].IsSelected);
         Assert.IsNotNull(widget.RenderState.Value.DetailsExtras.CompletionStatusesError);
+        Assert.IsTrue(PageNodes(widget, view.Root).Any(node => node.Id == DetailAction + "completion.error"));
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(view).Count);
+        await widget.OnActionAsync(new(DetailAction + "tab.links", "tab"));
+        Assert.IsFalse(PageNodes(widget, Snapshot(widget, 130_003).Root).Any(node => node.Id == DetailAction + "completion.error"));
         await Background(widget);
     }
 
@@ -244,6 +277,96 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
+    public async Task LargeSessionHistoryRealizesOnlyRequestedRowsAndDrillsWithTheCachedProviderRead()
+    {
+        const string prefix = DetailAction + "sessions.";
+        var provider = new FakeHost(3);
+        var widget = Create(provider, out TestApplicationService app);
+        var reads = 0;
+        var sessions = Enumerable.Range(0, 10000)
+            .Select(i => new PlayniteSession(DateTimeOffset.UnixEpoch.AddDays(i), 1800, "Play")).ToArray();
+        app.ActivityHandler = (_, _) =>
+        {
+            reads++;
+            return ValueTask.FromResult(new PlayniteActivity(true, 18000000, sessions));
+        };
+        await Interactive(widget);
+        await Ready(widget, provider);
+        var game = PageNodes(widget, Snapshot(widget, 126001).Root).First(n => n.ActionId == PlayniteLibraryActions.DetailsOpen);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
+        await widget.OnActionAsync(new(DetailAction + "tab.activity", "tab"));
+        await Bounded(widget.WhenDetailsIdleAsync(), "activity read");
+        using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "large-sessions");
+        await Bounded(widget.WhenDetailsIdleAsync(), "weekly analysis");
+        host.PublishSnapshot();
+        await widget.OnActionAsync(new(prefix + "range", prefix + "range"));
+        host.PublishSnapshot();
+        await Bounded(widget.WhenDetailsIdleAsync(), "all-history analysis");
+        var snapshot = host.PublishSnapshot();
+        var list = Nodes(snapshot.Root).Single(n => n.Id == prefix + "history");
+        Assert.AreEqual(10000, list.IndexedCollection!.Count);
+        Assert.IsNull(list.IndexedGroups);
+        Assert.IsNull(list.IndexedOccurrenceKeys);
+        Assert.IsTrue(Nodes(snapshot.Root).Count() < 512);
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(snapshot));
+        using var tail = await host.AcquireAsync(list.Id, 9997, 3);
+        Assert.HasCount(3, tail.Range.Items);
+        var period = Nodes(snapshot.Root).Last(n => n.ActionId?.StartsWith(prefix + "period.") == true);
+        await widget.OnActionAsync(new(period.ActionId!, period.Id));
+        var detail = host.PublishSnapshot();
+        Assert.AreEqual(list.Id, detail.FocusGroupEntryRequest?.GroupId);
+        Assert.IsTrue(Nodes(detail.Root).Single(n => n.Id == list.Id).IndexedCollection!.Count < 10000);
+        Assert.IsTrue(await Route(widget, detail, ControllerButton.B, list.Id));
+        await WaitFor(() => widget.RenderState.Value.DetailsExtras.SessionPeriodKey is null, "return to chart");
+        Assert.AreEqual(period.Id, host.PublishSnapshot().FocusGroupEntryRequest?.TargetId);
+        Assert.AreEqual(1, reads);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
+    public async Task SessionHighlightsArriveAfterActivityAndReturnFocusToTheirOccurrence()
+    {
+        const string list = DetailAction + "sessions.history";
+        var provider = new FakeHost(2);
+        var widget = Create(provider, out TestApplicationService app);
+        var awards = new TaskCompletionSource<PlayniteAchievements>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var start = DateTimeOffset.UnixEpoch;
+        app.AchievementsHandler = (_, token) => new(awards.Task.WaitAsync(token));
+        app.ActivityHandler = (_, _) => ValueTask.FromResult(new PlayniteActivity(true, 240, [new(start, 240, "Play")]));
+        await Interactive(widget);
+        await Ready(widget, provider);
+        var game = PageNodes(widget, Snapshot(widget, 127001).Root).First(n => n.ActionId == PlayniteLibraryActions.DetailsOpen);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
+        await widget.OnActionAsync(new(DetailAction + "tab.activity", "tab"));
+        await WaitFor(() => widget.RenderState.Value.DetailsExtras.Activity?.Available == true, "early session history");
+        using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "session-highlights");
+        using var early = await host.AcquireAsync(list, 0, 1);
+        Assert.IsNull(early.Range.Items[0].Root.ActionId);
+        var unlocks = Enumerable.Range(1, 8).Select(i => new PlayniteAchievement("Unlock " + i, "", true,
+            start.AddSeconds(i), null, null, false)).ToArray();
+        awards.SetResult(new(true, 8, 8, unlocks));
+        await Bounded(widget.WhenDetailsIdleAsync(), "achievement evidence");
+        host.PublishSnapshot();
+        using var enriched = await host.AcquireAsync(list, 0, 1);
+        var key = enriched.Range.Items[0].Key;
+        Assert.IsTrue(Nodes(enriched.Range.Items[0].Root).Any(n => n.Text == "+5"));
+        Assert.AreEqual(early.Range.Items[0].Key, key);
+        Assert.AreEqual(WidgetOperationAdmission.Enqueued, enriched.RouteAction(key, ControllerButton.A));
+        await WaitFor(() => widget.RenderState.Value.DetailsExtras.ExpandedSession == key, "expanded highlights");
+        var expanded = host.PublishSnapshot();
+        Assert.AreEqual(9, Nodes(expanded.Root).Single(n => n.Id == list).IndexedGroups!.Single().Count);
+        using var open = await host.AcquireAsync(list, 0, 9);
+        Assert.IsTrue(Nodes(open.Range.Items[^1].Root).Any(n => n.Text == "Unlock 8"));
+        Assert.AreEqual(WidgetOperationAdmission.Enqueued, open.RouteAction(open.Range.Items[^1].Key, ControllerButton.B));
+        await WaitFor(() => widget.RenderState.Value.DetailsExtras.ExpandedSession is null, "collapse highlights");
+        Assert.AreEqual(key, host.PublishSnapshot().FocusGroupEntryRequest?.IndexedItem?.ItemKey);
+        using var current = await host.AcquireAsync(list, 0, 1);
+        Assert.AreEqual(WidgetOperationAdmission.Enqueued, current.RouteAction(key, ControllerButton.RightBumper));
+        await WaitFor(() => widget.RenderState.Value.DetailsExtras.Tab != PlayniteDetailsTab.Activity, "section switch from session");
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task DetailsResumeWithSameTabScopeAndCompletedDataUntilExplicitlyDismissed()
     {
         var host = new FakeHost(3);
@@ -269,8 +392,10 @@ public sealed partial class PlayniteLibraryTests
         await Bounded(widget.WhenDetailsIdleAsync(), "resumed details");
         var after = Snapshot(widget, 124_004);
         Assert.AreEqual(before.ActiveInputScopeId, after.ActiveInputScopeId);
-        Assert.AreEqual(PageNodes(widget, before.Root).Single(n => n.StyleClasses.Contains("playnite-library-details-scroll")).Id,
-            PageNodes(widget, after.Root).Single(n => n.StyleClasses.Contains("playnite-library-details-scroll")).Id);
+        var history = PageNodes(widget, before.Root).Single(n => n.StyleClasses.Contains("sessions-history"));
+        var resumedHistory = PageNodes(widget, after.Root).Single(n => n.StyleClasses.Contains("sessions-history"));
+        Assert.AreEqual(history.Id, resumedHistory.Id);
+        Assert.AreEqual(history.IndexedCollection!.QueryGeneration, resumedHistory.IndexedCollection!.QueryGeneration);
         Assert.AreEqual(PlayniteDetailsTab.Activity, widget.RenderState.Value.DetailsExtras.Tab);
         Assert.AreSame(full, widget.RenderState.Value.DetailsExtras.Full);
         Assert.AreSame(activity, widget.RenderState.Value.DetailsExtras.Activity);
@@ -383,8 +508,9 @@ public sealed partial class PlayniteLibraryTests
         var games = PageNodes(widget, page.Root).Where(node => node.ActionId == PlayniteLibraryActions.DetailsOpen).Take(2).ToArray();
         await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, games[0].Id));
         var first = Snapshot(widget, 123_002);
-        var firstScroll = PageNodes(widget, first.Root).Single(node => node.StyleClasses.Contains("playnite-library-details-scroll")).Id;
-        Assert.AreEqual(PlayniteLibraryDetailsPresentation.PlayId, first.InitialFocusId);
+        Assert.AreEqual(DetailAction + "tab.description", Nodes(first.Root).Single(n => n.Id == first.InitialFocusId).ActionId);
+        await widget.OnActionAsync(new(DetailAction + "tab.information", "tab"));
+        var firstScroll = PageNodes(widget, Snapshot(widget, 123_020).Root).Single(node => node.StyleClasses.Contains("playnite-library-details-scroll")).Id;
         await Bounded(widget.WhenDetailsIdleAsync(), "detail loading");
         Assert.AreEqual(first.ActiveInputScopeId, Snapshot(widget, 123_003).ActiveInputScopeId);
         await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
@@ -398,8 +524,9 @@ public sealed partial class PlayniteLibraryTests
         await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, games[1].Id));
         var second = Snapshot(widget, 123_007);
         Assert.AreNotEqual(first.ActiveInputScopeId, second.ActiveInputScopeId);
-        Assert.AreNotEqual(firstScroll, PageNodes(widget, second.Root).Single(node => node.StyleClasses.Contains("playnite-library-details-scroll")).Id);
-        Assert.AreEqual(PlayniteLibraryDetailsPresentation.PlayId, second.InitialFocusId);
+        Assert.AreEqual(DetailAction + "tab.description", Nodes(second.Root).Single(n => n.Id == second.InitialFocusId).ActionId);
+        await widget.OnActionAsync(new(DetailAction + "tab.information", "tab"));
+        Assert.AreNotEqual(firstScroll, PageNodes(widget, Snapshot(widget, 123_021).Root).Single(node => node.StyleClasses.Contains("playnite-library-details-scroll")).Id);
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(second).Count);
         await Background(widget);
         Assert.IsNotNull(widget.RenderState.Value.DetailsItem);
@@ -416,7 +543,7 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task OptionalDetailsLoadLazilyAndCacheUntilRefresh()
+    public async Task HomeAndDedicatedSectionsShareReadsUntilRefresh()
     {
         var host = new FakeHost(3);
         var widget = Create(host, out TestApplicationService application);
@@ -445,8 +572,8 @@ public sealed partial class PlayniteLibraryTests
         await widget.OnActionAsync(new(DetailAction + "tab.next", "tab"));
         Assert.AreEqual(PlayniteDetailsTab.Information, widget.RenderState.Value.DetailsExtras.Tab);
         await Bounded(widget.WhenDetailsIdleAsync(), "local sections do not request optional providers");
-        Assert.AreEqual(0, achievementReads);
-        Assert.AreEqual(0, activityReads);
+        Assert.AreEqual(1, achievementReads);
+        Assert.AreEqual(1, activityReads);
         await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
         await Bounded(widget.WhenDetailsIdleAsync(), "achievements");
         var empty = Snapshot(widget, 120_002);
@@ -474,7 +601,9 @@ public sealed partial class PlayniteLibraryTests
         var host = new FakeHost(3);
         var widget = Create(host, out TestApplicationService application);
         var completion = new TaskCompletionSource<PlayniteAchievements>(TaskCreationOptions.RunContinuationsAsynchronously);
-        application.AchievementsHandler = (_, _) => new(completion.Task);
+        var secondGame = new PlayniteAchievements(true, 3, 2, []);
+        var reads = 0;
+        application.AchievementsHandler = (_, _) => Interlocked.Increment(ref reads) == 1 ? new(completion.Task) : ValueTask.FromResult(secondGame);
         await Interactive(widget);
         await Ready(widget, host);
         var games = PageNodes(widget, Snapshot(widget, 121_001).Root).Where(node => node.ActionId == PlayniteLibraryActions.DetailsOpen).Take(2).ToArray();
@@ -486,7 +615,7 @@ public sealed partial class PlayniteLibraryTests
         completion.SetResult(new(true, 0, 0, []));
         await Bounded(widget.WhenDetailsIdleAsync(), "late optional result");
         Assert.AreEqual(savedId, widget.RenderState.Value.DetailsItem!.Value.SavedId);
-        Assert.IsNull(widget.RenderState.Value.DetailsExtras.Achievements);
+        Assert.AreSame(secondGame, widget.RenderState.Value.DetailsExtras.Achievements);
         Assert.AreEqual(PlayniteDetailsTab.Description, widget.RenderState.Value.DetailsExtras.Tab);
         await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsClose, "close"));
         Assert.IsNull(widget.RenderState.Value.DetailsItem);
@@ -639,8 +768,8 @@ public sealed partial class PlayniteLibraryLayoutTests
         });
         var page = (await CapturePresentationAsync(State(Snapshot(WidgetPagedResourceStatus.Ready, [game]),
             PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []))).View;
-        var snapshot = new PresentationWidget(page.WithModal(PlayniteLibraryDetailsPresentation.Create(
-            game, true, null, "Ready", null))).RenderSnapshot("description.paragraphs", 1);
+        var snapshot = new PresentationWidget(PlayniteLibraryDetailsPresentation.Create(page,
+            game, true, null, "Ready", null, extras: new() { Tab = PlayniteDetailsTab.Information })).RenderSnapshot("description.paragraphs", 1);
         var paragraphs = Nodes(snapshot.Root).Single(node => node.Id == "playnite-library.details.description.paragraphs");
         Assert.AreEqual(3, paragraphs.Children.Count);
         Assert.AreEqual(paragraph, paragraphs.Children[0].Text);
@@ -673,16 +802,16 @@ public sealed partial class PlayniteLibraryLayoutTests
             organization, PlayniteLibraryRoute.Library, []))).View;
         foreach (var tab in Enum.GetValues<PlayniteDetailsTab>())
         {
-            var modal = PlayniteLibraryDetailsPresentation.Create(item, true, null, "Ready", null,
+            var modal = PlayniteLibraryDetailsPresentation.Create(page, item, true, null, "Ready", null,
                 extras: new() { Full = new(item.Value, metadata), Tab = tab }, categories: organization.Categories);
-            var snapshot = new PresentationWidget(page.WithModal(modal)).RenderSnapshot("populated.details", 1);
+            var snapshot = new PresentationWidget(modal).RenderSnapshot("populated.details", 1);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
-            var nodes = Nodes(snapshot.Root.Children[1]).ToArray();
+            var nodes = Nodes(snapshot.Root).ToArray();
             Assert.AreEqual(ProtocolConstants.MaximumContextActionCount,
                 nodes.Single(node => node.Id == PlayniteLibraryDetailsPresentation.OptionsId).ContextActions.Count);
             var button = nodes.SingleOrDefault(node => node.Id == "playnite-library.details.completion.action");
-            Assert.IsNotNull(button);
-            Assert.AreEqual(tab == PlayniteDetailsTab.Description, nodes.Any(node => node.Id == "playnite-library.details." + "description"));
+            Assert.AreEqual(tab == PlayniteDetailsTab.Information, button is not null);
+            Assert.AreEqual(tab == PlayniteDetailsTab.Information, nodes.Any(node => node.Id == "playnite-library.details." + "description"));
             Assert.AreEqual(tab == PlayniteDetailsTab.Information, nodes.Any(node => node.Id == "playnite-library.details." + "developers"));
             Assert.AreEqual(tab == PlayniteDetailsTab.Links, nodes.Any(node => node.Id == "playnite-library.details." + "link.0"));
             if (tab == PlayniteDetailsTab.Links)
@@ -712,9 +841,9 @@ public sealed partial class PlayniteLibraryLayoutTests
             organization, PlayniteLibraryRoute.Library, []));
         var page = captured.View;
         var tile = captured.RowNodes.Single(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
-        var modal = PlayniteLibraryDetailsPresentation.Create(game, true, null, "Ready", null,
+        var modal = PlayniteLibraryDetailsPresentation.Create(page, game, true, null, "Ready", null,
             categories: organization.Categories, openingId: "details.opening.7", favorite: true);
-        var snapshot = new PresentationWidget(page.WithModal(modal)).RenderSnapshot("details.options", 2);
+        var snapshot = new PresentationWidget(modal).RenderSnapshot("details.options", 2);
         var nodes = Nodes(snapshot.Root.Children[1]).ToArray();
         var options = nodes.Single(node => node.Id == PlayniteLibraryDetailsPresentation.ContentId);
         Assert.AreEqual(ViewNodeKind.Row, nodes.Single(node => node.Id == "playnite-library.details.actions").Kind);
@@ -724,29 +853,43 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(GridTrackSizing.Star, options.GridLayout.Rows[2].Sizing);
         var section = options.Children[2];
         Assert.AreEqual("playnite-library.details.overview-header", options.Children[0].Id);
-        Assert.AreEqual(ViewNodeKind.Scroll, section.Children[0].Kind);
-        Assert.IsTrue(options.Children[1].StyleClasses.Contains("playnite-library-details-tabs"));
+        Assert.AreEqual(ViewNodeKind.Grid, section.Children[0].Kind);
+        Assert.IsTrue(Nodes(options.Children[1]).Any(node => node.StyleClasses.Contains("playnite-library-details-tabs")));
+        var strip = options.Children[1];
+        Assert.AreEqual(5, strip.Children.Count(node => node.StyleClasses.Contains("wrail-navigation-shell__separator")));
+        for (var i = 2; i < strip.Children.Count - 1; i += 2)
+        {
+            Assert.AreEqual(ViewNodeKind.Spacer, strip.Children[i].Kind);
+            Assert.AreNotEqual(true, strip.Children[i].IsFocusable);
+            Assert.AreEqual(strip.Children[i+1].Id, strip.Children[i-1].Focus?.Right);
+        }
         Assert.IsFalse(Nodes(options.Children[1]).Any(node => node.Id == "playnite-library.details." + "poster"));
-        CollectionAssert.AreEqual(new[] { "Overview", "Information", "Achievements", "Captures", "Activity", "Links" },
+        CollectionAssert.AreEqual(new[] { "Home", "Information", "Achievements", "Captures", "Sessions", "Links" },
             Nodes(options.Children[1]).Where(node => node.ActionId?.StartsWith("playnite-library.details." + "tab.") == true)
                 .Select(node => node.Text).ToArray());
         Assert.IsFalse(nodes.Any(node => node.Kind == ViewNodeKind.Button && node.Text is "Close" or "Refresh"));
-        var header = snapshot.Root.Children[1].Children[0];
-        Assert.AreEqual("playnite-library.details.header-hints", header.Children[1].Id);
-        Assert.IsTrue(Nodes(header).Any(node => node.Text == "Refresh"));
-        Assert.IsTrue(Nodes(header).Any(node => node.Text == "Close"));
+        var header = nodes.Single(node => node.Id == "playnite-library.details.heading");
+        Assert.IsTrue(Nodes(header).Any(node => node.Id == "playnite-library.details.title"));
+        var back = nodes.Single(node => node.Id == "playnite-library.details.back");
+        Assert.AreEqual("Back to games", back.AccessibilityLabel);
+        Assert.AreEqual(PlayniteLibraryActions.DetailsClose, back.ActionId);
 
         var anchor = nodes.Single(node => node.Id == PlayniteLibraryDetailsPresentation.OptionsId);
         CollectionAssert.IsSubsetOf(tile.ContextActions.ToArray(), anchor.ContextActions.ToArray());
         Assert.IsTrue(anchor.ContextActions.Any(action => action.ActionId == "playnite-library.details.uninstall"));
         Assert.AreEqual(ControllerButton.X, anchor.ContextMenuButton);
         Assert.AreEqual(0, options.ContextActions.Count);
-        Assert.AreEqual(anchor.Id, header.Children[1].Children[0].Id);
-        Assert.IsTrue(Nodes(header.Children[1].Children[1]).Any(node => node.Text == "Refresh"));
-        Assert.AreEqual("Steam", nodes.Single(node => node.Id == "playnite-library.details.source").Text);
-        Assert.IsTrue(Nodes(nodes.Single(node => node.Id == "playnite-library.details.controls")).Any(node => node.Id == "playnite-library.details.completion.action"));
+        Assert.IsTrue(Nodes(header).Any(node => node.Id == anchor.Id));
+        Assert.IsTrue(anchor.ContextActions.Any(action => action.Label == "Refresh details"));
+        var facts = nodes.Single(node => node.Id == "playnite-library.details.identity");
+        var platform = facts.Children.Last();
+        Assert.AreEqual("Platform", platform.Children[0].Text);
+        Assert.AreEqual("Steam", platform.Children[1].Text);
+        Assert.IsFalse(Nodes(header).Any(node => node.Text == "Steam"));
+        Assert.IsTrue(anchor.ContextActions.Any(option => option.ActionId == "playnite-library.details.choose-status"));
         Assert.IsFalse(nodes.Any(node => node.Text is "Installed" or "Not installed"));
-        Assert.AreEqual("poster-handle", nodes.Single(node => node.Id == "playnite-library.details." + "poster").ArtworkHandle);
+        Assert.AreEqual("poster-handle", nodes.Single(node => node.Id == "playnite-library.details.poster").ArtworkHandle,
+            "The compact header retains one identifying poster when store media is unavailable.");
         Assert.IsFalse(nodes.Any(node => node.Id == "playnite-library.details." + "categories.title"));
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
     }
@@ -781,7 +924,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         string? sharedHeader = null;
         foreach (var state in cases)
         {
-            var view = page.WithModal(PlayniteLibraryDetailsPresentation.Create(game, true, null, "Ready", null, extras: state));
+            var view = PlayniteLibraryDetailsPresentation.Create(page, game, true, null, "Ready", null, extras: state);
             var snapshot = new PresentationWidget(view).RenderSnapshot("details.fixture", 1);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count, state.ToString());
             Assert.IsTrue(Nodes(snapshot.Root).Count() < 300, "Optional lists must not expand the entire provider result into the view.");
@@ -796,7 +939,7 @@ public sealed partial class PlayniteLibraryLayoutTests
                 Assert.AreEqual(sharedHeader, headerJson, "Artwork and game controls must retain the same layout on every tab and load state.");
                 Assert.IsTrue(Nodes(header).All(node => node.Transition is null), "The shared game header must not animate with a section.");
                 var rail = layout.Children[1];
-                Assert.IsTrue(rail.StyleClasses.Contains("playnite-library-details-tabs"),
+                Assert.IsTrue(Nodes(rail).Any(node => node.StyleClasses.Contains("playnite-library-details-tabs")),
                     "Tabs stay below the shared header, ahead of every variable-height section.");
                 Assert.IsFalse(Nodes(rail).Any(node => node.Id == "playnite-library.details.overview-header"));
                 var section = layout.Children[2];
@@ -806,8 +949,8 @@ public sealed partial class PlayniteLibraryLayoutTests
                 Assert.AreEqual(GridTrackSizing.Star, layout.GridLayout!.Rows[2].Sizing);
                 Assert.AreEqual(GridTrackSizing.Star, section.GridLayout!.Rows[0].Sizing);
                 Assert.IsFalse(Nodes(section).Any(node => node.Id is "playnite-library.details.overview-header" or "playnite-library.details.play"));
-                Assert.AreEqual(state.Tab == PlayniteDetailsTab.Achievements ? ViewNodeKind.Grid : ViewNodeKind.Scroll,
-                    section.Children[0].Kind, "The virtualized achievement viewport must not acquire an outer scroll viewer.");
+                Assert.AreEqual(state.Tab is PlayniteDetailsTab.Achievements or PlayniteDetailsTab.Description ? ViewNodeKind.Grid : ViewNodeKind.Scroll,
+                    section.Children[0].Kind, "Each virtualized list owns its viewport.");
             }
             ExportFixture("Details-" + state.Tab + "-" + state.Page + "-" + state.AchievementsLoading + "-" + state.ActivityLoading + "-" + state.ConfirmUninstall, snapshot);
         }

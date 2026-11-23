@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.youtube-video",
   "publisher": "widgetrail.samples",
   "name": "YouTube Video",
-  "version": "0.3.47",
+  "version": "0.3.50",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -101,6 +101,11 @@
       }
     ]
   },
+  "trayActions": [
+    { "id": "play-pause", "label": "Play or pause" },
+    { "id": "seek-back", "label": "Seek backward 10 seconds" },
+    { "id": "seek-forward", "label": "Seek forward 10 seconds" }
+  ],
   "residencyPolicy": {
     "schemaVersion": 1,
     "mode": "keep-alive"

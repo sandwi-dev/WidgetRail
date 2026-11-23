@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.game-help",
   "publisher": "widgetrail.samples",
   "name": "Game Help",
-  "version": "0.1.8",
+  "version": "0.1.11",
   "pinningSupported": true,
   "fullWidgetPinningSupported": true,
   "hostApi": {
@@ -126,6 +126,7 @@
       }
     ],
     "handles": [
+      {"id": "widgetrail.game.help", "version": 1, "payloadSchema": {"type": "object", "additionalProperties": false, "properties": {"gameName": {"type": "string", "minLength": 1, "maxLength": 256}}, "required": ["gameName"]}},
       {
         "id": "community.widgetrail.game-help.result.open",
         "version": 1,

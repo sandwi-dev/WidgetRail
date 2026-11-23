@@ -78,6 +78,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
         try
         {
             _lastGood = null;
+            Interlocked.Exchange(ref lastEventPosition, null);
             _traversals.Clear();
             InvalidateCatalog();
             lock (_artworkGate)
@@ -289,8 +290,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
                 throw new PlayniteBridgeDataException("game_not_found");
             if (!await _client.LaunchAsync(game.Id, cancellationToken).ConfigureAwait(false))
                 throw new PlayniteBridgeDataException("game_not_found");
-            // Bridge acknowledges request admission only. WIDGE-121 owns observed-start and
-            // overlay-close semantics; HTTP success is deliberately not projected as started.
+            // Callers without a foreground widget action only receive launch admission.
             return new(WidgetAppLaunchObservationState.RequestAccepted,
                 SupportsRunning: false, SupportsEnded: false);
         }
@@ -525,7 +525,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
         try { await _lifetime.CancelAsync().ConfigureAwait(false); }
         finally
         {
-            try { await _client.DisposeAsync().ConfigureAwait(false); }
+            try { await Task.WhenAll(storeClient.DisposeAsync().AsTask(), _client.DisposeAsync().AsTask()).ConfigureAwait(false); }
             finally
             {
                 // Catalog and artwork waiters use _lifetime and are cancelled.
@@ -593,6 +593,20 @@ internal sealed partial class PlayniteLibraryApplicationService(
             if (page.Total != expectedTotal || page.Offset != offset ||
                 games.Count + page.Games.Count > PlayniteBridgeClient.MaximumGames)
                 throw new PlayniteBridgeDataException("invalid_playnite_data");
+            if (offset == 0 && snapshotRevision is { Length: > 0 } &&
+                _lastGood is { } cached && cached.ProviderRevision == snapshotRevision && cached.Games.Count == page.Total)
+            {
+                // Game pages share an immutable process-qualified revision. The
+                // named category catalog is separate and can change independently.
+                var names = await _client.ListCategoriesAsync(cancellationToken).ConfigureAwait(false);
+                if (names.SequenceEqual(cached.NamedCategories))
+                    return cached with { RetrievedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
+                var updated = ProjectCategories(cached.Games, names);
+                var revisionAfterEdit = Revision(cached.Games, updated);
+                return cached with { Categories = updated, NamedCategories = names.ToArray(), Revision = revisionAfterEdit,
+                    Sequence = cached.Sequence + (revisionAfterEdit == cached.Revision ? 0 : 1),
+                    RetrievedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
+            }
             games.AddRange(page.Games);
             if (games.Count == page.Total) break;
             if (page.Games.Count == 0)
@@ -600,13 +614,13 @@ internal sealed partial class PlayniteLibraryApplicationService(
         }
         if (games.Select(game => game.Id).Distinct(StringComparer.Ordinal).Count() != games.Count)
             throw new PlayniteBridgeDataException("invalid_playnite_data");
-        var categories = ProjectCategories(games,
-            await _client.ListCategoriesAsync(cancellationToken).ConfigureAwait(false));
+        var categoryNames = await _client.ListCategoriesAsync(cancellationToken).ConfigureAwait(false);
+        var categories = ProjectCategories(games, categoryNames);
         var revision = Revision(games, categories);
         var sequence = _lastGood is null ? 1 : _lastGood.Sequence +
             (string.Equals(_lastGood.Revision, revision, StringComparison.Ordinal) ? 0 : 1);
         return new(games, categories, revision, sequence,
-            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), snapshotRevision, categoryNames.ToArray());
     }
 
     private static IEnumerable<PlayniteBridgeGame> ApplyQuery(
@@ -982,7 +996,7 @@ internal sealed partial class PlayniteLibraryApplicationService(
         IReadOnlyList<PlayniteLibraryCategory> Categories,
         string Revision,
         long Sequence,
-        long RetrievedAt);
+        long RetrievedAt, string? ProviderRevision, IReadOnlyList<PlayniteBridgeNamedItem> NamedCategories);
 
     private sealed record ArtworkRegistration(
         string GameId,

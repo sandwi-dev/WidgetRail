@@ -57,8 +57,8 @@ public sealed partial class WidgetBridgeServer
                     completion = completion with { SourceApplication = await ResolveCaptureApplicationAsync(target, token).ConfigureAwait(false) };
                 await ReplyAsync(request.Type, request.RequestId, new BridgeCaptureCurrent(await replay.CompleteHostAsync(completion, token).ConfigureAwait(false)), token).ConfigureAwait(false); break;
             case BridgeMessageTypes.StopReplay:
-                var stop = BridgeJson.FromElement<CaptureReplaySessionRequest>(request.Payload);
-                await ReplyAsync(request.Type, request.RequestId, await replay.StopAsync(stop.ExpectedSessionId, token).ConfigureAwait(false), token).ConfigureAwait(false); break;
+                var stop = BridgeJson.FromElement<BridgeReplayStop>(request.Payload);
+                await ReplyAsync(request.Type, request.RequestId, await replay.StopAsync(stop.ExpectedSessionId, stop.ExpectedRevision, token).ConfigureAwait(false), token).ConfigureAwait(false); break;
             case BridgeMessageTypes.SaveReplay:
                 var save = BridgeJson.FromElement<CaptureReplaySaveRequest>(request.Payload);
                 var actor = replay.Owner;

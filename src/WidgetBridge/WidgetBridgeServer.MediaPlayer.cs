@@ -15,6 +15,9 @@ public sealed partial class WidgetBridgeServer
         }
         var request = BridgeJson.FromElement<BridgeMediaPlayerRequest>(envelope.Payload);
         using var admission = _registry.AdmitMediaPlayer(request);
+        // Admission retains the complete displayed declaration. Only an exact
+        // member of that declaration may enter the existing source/custody path.
+        request = request with { Media = request.Media.SelectGalleryItem(request.GalleryItemId) };
         var widget = admission.Widget;
         HostMediaPlayerSource resolved;
         if (request.Media.Source.Kind == MediaPlayerSourceKind.SavedCapture)

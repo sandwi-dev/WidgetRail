@@ -7,11 +7,38 @@ internal static class ProtocolVersionRequirementsTests
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ" +
         "AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
 
+    public static Task ReplayTrayHintsFollowRecorderState()
+    {
+        var off = new CaptureReplayStatus(10, 0, new(), CaptureReplayPhase.Off);
+        var idle = TrayReplayState.From(off);
+        Equal(new TrayCaptureCommand("capture.replay.start", Revision: 10), idle.CommandFor("capture.replay.start")!);
+        True(!idle.CanSave && !idle.CanStop, "Offered a save or stop while off.");
+        var live = off with { Settings = new() { Enabled = true }, SessionId = "recording", Phase = CaptureReplayPhase.Recording };
+        True(!TrayReplayState.From(live).CanSave, "An empty buffer was offered for saving.");
+        live = live with { BufferedDurationSeconds = 2 };
+        var buffered = TrayReplayState.From(live);
+        Equal(new TrayCaptureCommand("capture.replay.save", "recording"), buffered.CommandFor("capture.replay.save")!);
+        Equal(buffered, TrayReplayState.From(live with { Revision = 400, BufferedDurationSeconds = 60 }));
+        True(TrayReplayState.From(live with { Phase = CaptureReplayPhase.Paused }).CanSave, "Paused buffer lost its save action.");
+        True(!TrayReplayState.From(live with { Saving = true }).CanSave, "Offered a concurrent save.");
+        True(!TrayReplayState.From(live with { Phase = CaptureReplayPhase.Stopping }).CanStop, "Offered a duplicate stop.");
+        True(!TrayReplayState.From(off with { Issue = CaptureReplayIssue.HostUnavailable }).CanStart, "Unavailable recorder offers Start.");
+        True(!TrayActionContract.ValidDefinitions([new("one", "One") { StatusOperation = "capture.replay.save" }]), "Resident action accepted a preparation hint.");
+        True(!TrayActionContract.ValidDefinitions([new("one", "One") { WakeOnInvoke = true, StatusOperation = "invalid" }]), "Unknown status operation accepted.");
+        return Task.CompletedTask;
+    }
+
     public static Task SdkSnapshotsUseSharedMaximum()
     {
         var baseline = new WidgetView(UI.Text("Ready", "root"))
             .CreateSnapshot("requirements.baseline", 1);
         Equal(ProtocolConstants.BaselineVersion, baseline.ProtocolVersion);
+        var offered = new WidgetView(UI.Text("Ready", "root"), QuickActions:
+            [new WidgetQuickAction(ControllerButton.X, "play", "Play") { TrayOffer = new("play", "current-device") }])
+            .CreateSnapshot("requirements.tray", 1);
+        Equal(ProtocolConstants.TrayActionOfferVersion, offered.ProtocolVersion);
+        True(!TrayActionContract.ValidDefinitions([new("one", "One", "two"), new("two", "Two", "one")]), "Circular fallback accepted.");
+        True(!TrayActionContract.ValidDefinitions([new("one", "One"), new("one", "Duplicate")]), "Duplicate tray action accepted.");
 
         var combined = new WidgetView(
             UI.Stack("root", UI.Text("Ready", "status")),
@@ -231,6 +258,13 @@ internal static class ProtocolVersionRequirementsTests
                         },
                     ],
                 }, "$.root.children[0].children[0].focusPresentation"),
+            NodeCase("scoped command menu", "scoped-command-menu", ProtocolConstants.ScopedCommandMenuVersion,
+                new() { Id = "toolbar", Kind = ViewNodeKind.Select, Text = "Menu", IsCommandMenu = true,
+                    ContextMenuButton = ControllerButton.Menu, SelectOptions = [new("settings", "Settings", "settings", false)] }),
+            NodeCase("native-only row menu", "scoped-command-menu", ProtocolConstants.ScopedCommandMenuVersion,
+                new() { Id = "card", Kind = ViewNodeKind.ActionSurface, AccessibilityLabel = "Capture", ActionId = "open",
+                    ActionSurfaceOrientation = ActionSurfaceOrientation.Horizontal, Children = [Text("name")],
+                    NativeContextMenuOnly = true, ContextActions = [new("favorite", "Favorite")] }),
             NodeCase("anchored select", "anchored-select",
                 ProtocolConstants.AnchoredSelectVersion,
                 new()

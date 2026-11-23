@@ -1,6 +1,7 @@
 // Package-owned endpoint over the shared Discord domain adapter. No transport IDs or manual fragments.
 (() => {
     'use strict';
+    host.observeMainView?.();
     const observation = typeof host.invalidate === 'function' && typeof createWidgetRailDiscordObserver === 'function'
         ? createWidgetRailDiscordObserver(() => globalThis.WidgetRailWebWebpack, () => host.invalidate()) : null;
     globalThis.addEventListener?.('pagehide', () => observation?.dispose(), {once:true});
@@ -8,12 +9,17 @@
     let version = null;
     const validQuality=q=>q&&typeof q==='object'&&!Array.isArray(q)&&[480,720,1080].includes(q.resolution)&&[15,30,60].includes(q.frameRate);
     const commands = new Set(['enableNotifications', 'joinActivity', 'watchActivity', 'join', 'leave', 'mute', 'deafen', 'streamMute', 'streamVolume', 'streamDiagnostics', 'connectionDiagnostics', 'incomingDiagnostics', 'videoPlayback', 'voiceMute', 'voiceVolume', 'voiceSettings', 'voiceInputDevice', 'voiceOutputDevice', 'voiceInputVolume', 'watch', 'keep', 'unwatch', 'share', 'cancelPendingShare', 'stopShare']);
-    for(const command of ['messagingState','messageObserve','messageConversations','messageHistory','messageChanges','messageRecover','messageOpenDm','messagePrepareAttachments','messageSend','messageReconcile','messageNotificationTarget'])commands.add(command);
+    for(const command of ['messagingState','messageObserve','messageConversations','messageLocateConversation','messageHistory','messageMarkRead','messageChanges','messageRecover','messageOpenDm','messagePrepareAttachments','messageSend','messageReconcile','messageNotificationTarget'])commands.add(command);
+    for(const command of ['callStart','callAnswer','callDecline'])commands.add(command);
     async function snapshot(owner) {
         observation?.refresh();
         const response = await WidgetRailDiscordPrototype.invoke({ method: 'snapshot', owner });
         if (!response.ok) throw new Error('Discord unavailable');
         const state = response.value;
+        if(state.calls!=null && (typeof state.calls!=='object'||!Array.isArray(state.calls.incoming)||state.calls.incoming.length>8||
+            !Array.isArray(state.calls.activeChannels)||state.calls.activeChannels.length>100))throw new Error('Invalid private call state');
+        if(state.connectionState!==undefined && (!['initializing','signed-out','ready','reconnecting','unavailable'].includes(state.connectionState) ||
+            state.ready!==(state.connectionState==='ready')))throw new Error('Invalid connection state');
         if (!Array.isArray(state.channels) || state.channels.length > 1000 ||
             !Array.isArray(state.participants) || state.participants.length > 100 ||
             !Array.isArray(state.streams) || state.streams.length > 50) throw new Error('Invalid Discord catalog');

@@ -14,7 +14,8 @@
 using Microsoft::WRL::ComPtr;
 
 int wmain(int argc,wchar_t** argv) {
-    if(argc!=2 && !(argc==3 && (std::wstring(argv[2])==L"--audio" || std::wstring(argv[2])==L"--quiet-audio" || std::wstring(argv[2])==L"--gpu")))return 2;
+    const bool recovery=argc==3 && std::wstring(argv[2])==L"--audio-recovery";
+    if(argc!=2 && !(argc==3 && (std::wstring(argv[2])==L"--audio" || std::wstring(argv[2])==L"--quiet-audio" || recovery || std::wstring(argv[2])==L"--gpu")))return 2;
     const bool gpu=argc==3&&std::wstring(argv[2])==L"--gpu";
     const bool expectedAudio=argc==3&&!gpu;
     const bool quiet=expectedAudio&&std::wstring(argv[2])==L"--quiet-audio";
@@ -43,6 +44,11 @@ int wmain(int argc,wchar_t** argv) {
         }
         size_t videoFrames{},audioFrames{},crossings{};int16_t previous{};bool havePrevious=false;
         double energy{};int64_t videoFirst=INT64_MAX,audioFirst=INT64_MAX,videoEnd{},audioEnd{};
+        // The generated source plays a continuous tone. Require sustained tone, silence,
+        // then tone again in the decoded PCM rather than trusting track metadata.
+        double windowEnergy{};
+        unsigned toneWindows{},silentWindows{},recoveredWindows{};
+        LONGLONG previousVideo=-1,longestVideoGap{};
         std::array<double,81> coefficient{},q1{},q2{};
         for(size_t index=0;index<coefficient.size();++index)coefficient[index]=2*std::cos(6.283185307179586*(400+static_cast<double>(index))/48000);
         bool videoDone=false,audioDone=!expectedAudio;
@@ -63,6 +69,8 @@ int wmain(int argc,wchar_t** argv) {
             if(!sample)continue;
             LONGLONG duration{};winrt::check_hresult(sample->GetSampleDuration(&duration));
             if(major==MFMediaType_Video){++videoFrames;videoFirst=std::min(videoFirst,timestamp);videoEnd=std::max(videoEnd,timestamp+duration);
+                if(previousVideo>=0)longestVideoGap=std::max(longestVideoGap,timestamp-previousVideo);
+                previousVideo=timestamp;
                 if(quiet && leftLuma<0) {
                     UINT width{},height{},stride{};winrt::check_hresult(MFGetAttributeSize(type.Get(),MF_MT_FRAME_SIZE,&width,&height));
                     if(FAILED(type->GetUINT32(MF_MT_DEFAULT_STRIDE,&stride)))stride=width;
@@ -81,6 +89,16 @@ int wmain(int argc,wchar_t** argv) {
                 const auto values=reinterpret_cast<const int16_t*>(bytes);
                 for(size_t index=0;index<count/4;index++) {
                     const auto value=values[index*2];energy+=static_cast<double>(value)*value;
+                    if(recovery){
+                        windowEnergy+=static_cast<double>(value)*value;
+                        if((audioFrames+1)%4800==0){
+                            const auto windowRms=std::sqrt(windowEnergy/4800);
+                            windowEnergy=0;
+                            if(toneWindows<5)toneWindows=windowRms>100?toneWindows+1:0;
+                            else if(silentWindows<10)silentWindows=windowRms<10?silentWindows+1:0;
+                            else if(recoveredWindows<5)recoveredWindows=windowRms>100?recoveredWindows+1:0;
+                        }
+                    }
                     for(size_t bin=0;bin<coefficient.size();++bin){const auto q0=coefficient[bin]*q1[bin]-q2[bin]+value;q2[bin]=q1[bin];q1[bin]=q0;}
                     if(havePrevious && ((previous<0 && value>=0)||(previous>=0 && value<0)))++crossings;
                     previous=value;havePrevious=true;++audioFrames;
@@ -97,8 +115,10 @@ int wmain(int argc,wchar_t** argv) {
         std::printf("decodedVideoFrames=%zu videoStart100ns=%lld videoEnd100ns=%lld decodedAudioFrames=%zu audioStart100ns=%lld audioEnd100ns=%lld rms=%.2f zeroCrossHz=%.2f spectralPeakHz=%zu\n",
             videoFrames,videoFirst,videoEnd,audioFrames,expectedAudio?audioFirst:0,audioEnd,rms,frequency,spectralFrequency);
         if(quiet)std::printf("ownedFixtureLumaLeft=%d ownedFixtureLumaRight=%d\n",leftLuma,rightLuma);
-        const bool valid=videoDone&&audioDone&&videoFrames>0&&videoFirst==0&&videoEnd>0&&(!expectedAudio||
-            (audioFrames>0&&audioFirst>=0&&audioFirst<=213334&&std::llabs(videoEnd-audioEnd)<=213334&&rms>(quiet?100:1000)&&spectralFrequency>=435&&spectralFrequency<=445)) &&
+        if(recovery)std::printf("toneWindows=%u silentWindows=%u recoveredWindows=%u longestVideoGapMs=%.1f\n",
+            toneWindows,silentWindows,recoveredWindows,double(longestVideoGap)/10000);
+        const bool valid=(!recovery || (toneWindows>=5 && silentWindows>=10 && recoveredWindows>=5 && longestVideoGap<7500000)) && videoDone&&audioDone&&videoFrames>0&&videoFirst==0&&videoEnd>0&&(!expectedAudio||
+            (audioFrames>0&&audioFirst>=0&&audioFirst<=213334&&std::llabs(videoEnd-audioEnd)<=213334&&rms>(quiet||recovery?100:1000)&&spectralFrequency>=435&&spectralFrequency<=445)) &&
             (!quiet || leftLuma>40 && rightLuma-leftLuma>30);
         reader.Reset();MFShutdown();return valid?0:1;
     }catch(const winrt::hresult_error& error){std::printf("FAILED inspect hr=%08X stage=%s\n",static_cast<unsigned>(error.code().value),phase);MFShutdown();return 1;}

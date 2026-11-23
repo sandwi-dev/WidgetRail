@@ -51,6 +51,8 @@ public sealed partial class WidgetProcessClient : IAsyncDisposable
         _options.Validate();
     }
 
+    internal readonly record struct InputDispatch(bool Handled, Task<TrayActionResult>? Completion = null);
+    internal Task TrayWorkDrained => Volatile.Read(ref _session)?.TrayWorkDrained ?? Task.CompletedTask;
     public event EventHandler<long>? Invalidated;
     public event EventHandler<WidgetActionFailure>? ActionFailed;
     public event EventHandler<WidgetControllerActionFailure>? ControllerActionFailed;
@@ -89,7 +91,7 @@ public sealed partial class WidgetProcessClient : IAsyncDisposable
         long baseSequence,
         WidgetPresentationTransactionKind transactionKind,
         long recoveryOriginSequence,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, string? trayAction = null)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
         await _presentationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -126,6 +128,7 @@ public sealed partial class WidgetProcessClient : IAsyncDisposable
                     PresentationGeneration = incrementalCurrent
                         ? presentationGeneration : null,
                     RequireCheckpoint = !incrementalCurrent,
+                    PrepareTrayAction = trayAction,
                 },
                 cancellationToken).ConfigureAwait(false);
             var response = request.Response;
@@ -390,9 +393,9 @@ public sealed partial class WidgetProcessClient : IAsyncDisposable
         ControllerInputEvent input,
         WidgetDashboardGestureAuthority? authority,
         CancellationToken cancellationToken = default)
-        => await SendControllerInputForWorkerAsync(input, authority, cancellationToken, null).ConfigureAwait(false);
+        => (await SendControllerInputForWorkerAsync(input, authority, cancellationToken, null).ConfigureAwait(false)).Handled;
 
-    internal async Task<bool> SendControllerInputForWorkerAsync(
+    internal async Task<InputDispatch> SendControllerInputForWorkerAsync(
         ControllerInputEvent input, WidgetDashboardGestureAuthority? authority,
         CancellationToken cancellationToken, int? expectedStartOrdinal)
     {
@@ -405,21 +408,35 @@ public sealed partial class WidgetProcessClient : IAsyncDisposable
         var session = (expectedStartOrdinal is { } ordinal ? DemandInputWorker(ordinal) : Volatile.Read(ref _session)) ??
             throw new IOException("Widget pipe disconnected.");
         var authorityMayRemain = false;
+        var workPending = false;
         if (authority is not null) session.GestureReservations.Reserve(input, authority);
+        Task<TrayActionResult>? completion = null;
+        var outcome = default(TrayActionResult);
         try
         {
+            // Keep the exact task before sending. A worker can finish before the request continuation resumes.
+            if (input.TrackTrayWork) completion = session.BeginTrayWork(input.Sequence);
             var response = await RequestConnectedAsync(
                     session, MessageTypes.ControllerInput, input, cancellationToken)
                 .ConfigureAwait(false);
             if (response.Type != MessageTypes.ControllerInputResult)
                 throw new WidgetProtocolViolationException(
                     $"Expected controller input result, received '{response.Type}'.");
-            var handled = RuntimeJson.FromElement<ControllerInputResultPayload>(response.Payload).Handled;
+            var reply = RuntimeJson.FromElement<ControllerInputResultPayload>(response.Payload);
+            var handled = reply.Handled;
+            outcome = new(handled, reply.Reason);
+            if (!outcome.IsWellFormed() || (reply.Reason is not null && input.Context != ControllerInputContext.TrayQuickAction) ||
+                (reply.WorkPending && (!input.TrackTrayWork || !handled)))
+                throw new WidgetProtocolViolationException("Invalid controller action result.");
+            workPending = reply.WorkPending;
             authorityMayRemain = handled;
-            return handled;
+            if (completion is null && input.Context == ControllerInputContext.TrayQuickAction)
+                completion = Task.FromResult(outcome);
+            return new(handled, completion);
         }
         finally
         {
+            if (input.TrackTrayWork && completion is not null && !workPending) session.FinishTrayWork(input.Sequence, outcome);
             if (authority is not null && !authorityMayRemain)
             {
                 session.GestureReservations.Remove(
@@ -846,7 +863,9 @@ public sealed partial class WidgetProcessClient : IAsyncDisposable
                 await afterHandshake(phaseToken).ConfigureAwait(false);
             currentSession.StartReader(token =>
                 ReadResponsesAsync(currentSession, channel, token));
-            if (_hostLifecycle != WidgetLifecycleState.Background)
+            if (_hostLifecycle == WidgetLifecycleState.Background)
+                await SetCompanionLifecycleAsync(currentSession, WidgetLifecycleState.Background, phaseToken).ConfigureAwait(false);
+            else
             {
                 phaseDeadline.Dispose();
                 startupPhase = WidgetProcessStartupPhase.InitialLifecycle;
@@ -994,6 +1013,14 @@ public sealed partial class WidgetProcessClient : IAsyncDisposable
                             actionFailure.ActionId, actionFailure.SourceElementId,
                             actionFailure.Message));
                     }
+                    continue;
+                }
+
+                if (message.Type == MessageTypes.TrayWorkTerminal)
+                {
+                    var terminal = RuntimeJson.FromElement<TrayWorkTerminalPayload>(message.Payload);
+                    if (message.RequestId != 0 || terminal.Sequence <= 0 || !terminal.Result.IsWellFormed()) throw new WidgetProtocolViolationException("Invalid tray completion.");
+                    session.FinishTrayWork(terminal.Sequence, terminal.Result);
                     continue;
                 }
 

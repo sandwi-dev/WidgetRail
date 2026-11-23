@@ -62,5 +62,6 @@ internal static class PlayniteLibraryIndexedBrowse
         WidgetIndexedCollection<PlayniteLibraryBrowseContent, PlayniteLibraryBrowseItem> source) =>
         UI.CollectionGrid(PlayniteLibraryPresentation.ScrollId, source, 150, 225,
                 "Games", maximumColumns: 7)
+            .WithDirectionalAnchor(FocusAnchorPoint.Center, 45)
             .Classes("playnite-library-catalog-scroll", "playnite-library-browse-scroll");
 }

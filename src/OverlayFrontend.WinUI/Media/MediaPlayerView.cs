@@ -16,12 +16,15 @@ namespace WidgetRail.OverlayFrontend.WinUI.Media;
 internal sealed partial class MediaPlayerView : ContentControl, IDisposable
 {
     private readonly Grid body = new() { RowSpacing = 8 };
+    private readonly Grid mediaFrame = new();
     private readonly Border card = new() { Padding = new(8), BorderThickness = new(1) };
     private readonly Grid stage = new();
     private readonly MediaPlayerElement video = new() { AreTransportControlsEnabled = false, AutoPlay = false, Stretch = Stretch.Uniform };
     private readonly Image image = new() { Stretch = Stretch.Uniform,
         HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-    private readonly TextBlock status = new() { Text = "Opening media…", TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock status = new() { Visibility = Visibility.Collapsed, TextWrapping = TextWrapping.Wrap,
+        TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center };
     private readonly Grid toolbar = new() { ColumnSpacing = 12, Padding = new(8) };
     private readonly Button play = new() { IsTabStop = true, UseSystemFocusVisuals = true, MinHeight = 44, Padding = new(12, 8, 12, 8) };
     private readonly SymbolIcon playIcon = new(Symbol.Play);
@@ -38,10 +41,15 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     private bool refreshing, adjustingVolume, backOwned, chromeWasPlaying;
     private double requestedRate = 1;
     private object? resourceOwner;
-    private sealed record PlaybackMemory(MediaPlayerDefinition Definition, double Position, double Volume, bool Muted, bool Loop, double Rate);
+    private sealed record PlaybackMemory(MediaPlayerDefinition Definition, double Position, double Volume, bool Muted, bool Loop, double Rate,
+        bool AnimationWantsPlayback, bool AnimationManualPlayback);
     private PlaybackMemory? playbackMemory;
-    private Control PreferredFocus => rememberedControl is { IsEnabled: true, Visibility: Visibility.Visible, IsLoaded: true } remembered &&
-        (!IsImage || !imageControls.Contains(remembered) || imageChrome.Visible) ? remembered : IsImage ? imageViewport : play;
+    private NativePublicMediaSource? publicMedia;
+    private NativeDashMediaSource? dashMedia;
+    private Control PreferredFocus => embeddedReady ? PreferredEmbeddedControl : IsInlinePoster ? inlinePlay :
+        rememberedControl is { IsEnabled: true, Visibility: Visibility.Visible, IsLoaded: true } remembered &&
+        (IsImage ? imageControls.Contains(remembered) && imageChrome.Visible : controls.Contains(remembered) || ReferenceEquals(remembered, position))
+            ? remembered : IsImage ? (IsExpanded ? imageFit : imageViewport) : play;
     private MediaFullscreenLayer? expandedHost;
     internal bool IsAdjustingVolume => adjustingVolume;
     internal bool IsExpanded => expandedHost is not null;
@@ -57,14 +65,15 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     internal static int ResidentPlayers => Volatile.Read(ref residentPlayers);
     private bool ownsPlayerSlot, waitingForSlot;
     private bool imageReplacementPending;
-    internal bool CanControl => player is not null || IsImage && image.Source is not null;
+    private bool parkingSourceFocus;
+    internal bool CanControl => embeddedReady || IsInlinePoster || player is not null || IsImage && image.Source is not null;
     internal bool IsImage => !imageReplacementPending && resolved is { IsImage: true };
     private MediaPlayer? player;
     private MediaSource? source;
     private MediaPlayerDefinition? definition;
     private HostMediaPlayerSource? resolved;
     internal MediaPlayerDefinition? Definition => definition;
-    private bool disposed, active = true, input, checkingAuthority;
+    private bool disposed, active = true, input, requestedInput, checkingAuthority;
     private Func<CancellationToken, Task<HostMediaPlayerSource>>? resolveAuthority;
     private Func<bool>? currentAuthority;
     private Func<string, CancellationToken, Task<HostMediaPlayerSource>>? resolvePlaybackLease;
@@ -85,13 +94,13 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     {
         // Artwork demand owns resolution, size and stale-result rejection. The
         // platform player owns the poster-to-video loading transition.
-        if (disposed || lifetime.IsCancellationRequested) return;
+        if (disposed || lifetime.IsCancellationRequested && !IsInlinePoster) return;
         video.PosterSource = poster;
         if (IsImage) return;
         if (poster is not null)
-        { video.Visibility = Visibility.Visible; status.Visibility = Visibility.Collapsed; }
+        { video.Visibility = Visibility.Visible; HideMediaStatus(); }
         else if (player is null)
-        { video.Visibility = Visibility.Collapsed; status.Visibility = Visibility.Visible; }
+        { video.Visibility = Visibility.Collapsed; ShowLoading(!PassiveAnimation && (!IsInlineVideo || inlineLoadStarted)); }
     }
     private long nextAuthorityCheck;
     internal bool IsVideo => resolved is { IsImage: false };
@@ -105,21 +114,27 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     }
     internal bool IsPlaying => player?.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
     private bool IsEnded => player?.PlaybackSession.CanSeek == true && !IsPlaying && Duration > 0 && player.PlaybackSession.Position.TotalSeconds >= Duration - .05;
-    internal string PrimaryActionLabel => HasOptionsMenu ? "Choose" : IsImage ? ImageActionLabel : XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Control focused && !ReferenceEquals(focused, play) && !ReferenceEquals(focused, position)
+    internal string PrimaryActionLabel => GalleryActionLabel ?? (HasOptionsMenu ? "Choose" : IsImage ? ImageActionLabel : XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Control focused && !ReferenceEquals(focused, play) && !ReferenceEquals(focused, position)
         ? ReferenceEquals(focused, volume) ? adjustingVolume ? "Done" : "Adjust volume" : AutomationProperties.GetName(focused)
-        : IsEnded ? "Replay" : IsPlaying ? "Pause" : "Play";
+        : IsEnded ? "Replay" : IsPlaying ? "Pause" : "Play");
     internal Action? InteractionChanged { get; set; }
     // Resolve authority in parallel, but keep decoder creation and its first
     // layout out of the page animation's UI-thread frame budget.
     internal Task PresentationReady { private get; set; } = Task.CompletedTask;
     internal MediaPlayerView()
     {
+        AutomationProperties.SetAutomationId(status, "MediaPlayer.Status");
+        AutomationProperties.SetAutomationId(loading, "MediaPlayer.Loading");
+        AutomationProperties.SetName(loading, "Loading media");
+        NativeMotionVisibility.Prepare(image);
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
         body.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         body.RowDefinitions.Add(new() { Height = GridLength.Auto });
         InitializeImages();
-        stage.Children.Add(imageViewport); stage.Children.Add(video); stage.Children.Add(status); body.Children.Add(stage); Grid.SetRowSpan(stage, 2);
+        AutomationProperties.SetAutomationId(feedback, "MediaPlayer.Feedback");
+        feedback.Children.Add(loading); feedback.Children.Add(status);
+        stage.Children.Add(imageViewport); stage.Children.Add(video); stage.Children.Add(feedback); body.Children.Add(stage); Grid.SetRowSpan(stage, 2);
         toolbar.RowDefinitions.Add(new() { Height = GridLength.Auto });
         toolbar.RowDefinitions.Add(new() { Height = GridLength.Auto });
         toolbar.RowSpacing = 8;
@@ -160,14 +175,22 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         {
             if (refreshing || !input || player is null) return;
             player.Volume = volume.Value / 100; player.IsMuted = false;
+            RememberAudioPreferences();
             ShowMediaFeedback("Volume " + Math.Round(volume.Value) + "%");
         };
         toolbar.VerticalAlignment = VerticalAlignment.Bottom;
         videoControls.Children.Add(toolbar);
         inlineChrome.Children.Add(videoControls); Grid.SetRowSpan(inlineChrome, 2);
-        body.Children.Add(inlineChrome); card.Child = body; Content = card;
-        Grid.SetRowSpan(imageTools, 2); imageTools.VerticalAlignment = VerticalAlignment.Bottom; imageTools.Margin = new(8); body.Children.Add(imageTools);
+        body.Children.Add(inlineChrome);
+        mediaFrame.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        mediaFrame.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
+        mediaFrame.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        Grid.SetRow(body, 1); mediaFrame.Children.Add(body); card.Child = mediaFrame; Content = card;
+        Grid.SetRow(imageTools, 1); imageTools.VerticalAlignment = VerticalAlignment.Bottom; imageTools.Margin = new(8); mediaFrame.Children.Add(imageTools);
         InitializeMediaChrome();
+        InitializeGallery();
+        ObserveMediaPlacement(this);
+        InitializeInlineVideo();
 
         AutomationProperties.SetName(play, "Play or pause");
         AutomationProperties.SetAutomationId(play, "MediaPlayer.Play");
@@ -175,22 +198,26 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         card.SizeChanged += (_, _) => ReflowTransport();
         GotFocus += (_, _) =>
         {
-            if (changingPlacement) return;
+            if (changingPlacement || parkingSourceFocus) return;
             var focused = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot);
+            if (input && !IsExpanded && focused is Control && !ReferenceEquals(focused, this))
+                rememberedThumbnail = FocusedThumbnail?.Tag as string;
             if (focused is Control control && controls.Contains(control)) rememberedControl = control;
-            else if (ReferenceEquals(focused, this) && input && CanControl) PreferredFocus.Focus(FocusState.Keyboard);
+            else if (ReferenceEquals(focused, this) && input) FocusMediaEntry();
             InteractionChanged?.Invoke();
         };
         timer = DispatcherQueue.CreateTimer(); timer.Interval = TimeSpan.FromMilliseconds(250);
         timer.Tick += (_, _) => Refresh();
-        Loaded += (_, _) => { theme?.Dispose(); theme = NativePopupTheme.MediaPlayer(this); EnsureVideoStage(); SynchronizePagePlacement(true); RefreshImageChrome(); if (active && !retainedForPageExit) timer.Start(); };
-        LayoutUpdated += (_, _) => EnsureInlineChrome();
-        Unloaded += (_, _) => { timer.Stop(); StopMediaChrome(); if (!retainedForPageExit) { player?.Pause(); ReleaseVideoStage(); } theme?.Dispose(); theme = null; };
+        Loaded += (_, _) => { theme?.Dispose(); theme = NativePopupTheme.MediaPlayer(this); RefreshImageChrome(); RefreshLoadingActivity(); if (active && !retainedForPageExit) timer.Start(); };
+        Unloaded += (_, _) => { ForgetInlineResume(); loading.IsActive = false; timer.Stop(); StopMediaChrome(); if (!retainedForPageExit) { player?.Pause(); } theme?.Dispose(); theme = null; };
     }
     internal void SetActive(bool value, bool acceptsInput)
     {
         var previouslyInteractive = input;
-        active = value; input = value && acceptsInput && !editorPreviewPaused;
+        requestedInput = acceptsInput;
+        active = value; input = value && acceptsInput && !editorPreviewPaused && !PassiveAnimation;
+        if (previouslyInteractive && !input) ResetMediaEntry();
+        RefreshLoadingActivity();
         if (!input || !previouslyInteractive) seekAcceleration.Reset();
         if (!input) ClearPendingImageViewportRestore();
         if (ForcePreviewMute && player is not null) player.IsMuted = true;
@@ -202,7 +229,11 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         if (!input) { adjustingVolume = false; ClosePlaybackOptions(); expandedHost?.Close(restoreFocus: false); }
         if (!active)
         {
-            SuspendPlayer(); timer.Stop(); expandedHost?.Close(restoreFocus: false);
+            CloseEmbedded();
+            ForgetInlineResume();
+            if (IsInlineVideo) SuspendInlineVideo();
+            else if (PassiveAnimation) animationVisibility?.Refresh(); else SuspendPlayer();
+            timer.Stop(); expandedHost?.Close(restoreFocus: false);
             if (previewPlayback)
             {
                 image.Source = null; video.PosterSource = null;
@@ -213,33 +244,46 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         expand.IsEnabled = input && player is not null && CanExpand;
         imageExpand.IsEnabled = input && IsImage && CanExpand;
         position.IsEnabled = input && player?.PlaybackSession.CanSeek == true;
-        if (IsVideo && previewPlayback && !input) { StopMediaChrome(); videoControls.Visibility = Visibility.Collapsed; }
+        if (IsVideo && (previewPlayback || PassiveAnimation) && !input) { StopMediaChrome(); videoControls.Visibility = Visibility.Collapsed; }
         else if (IsVideo && input && !previouslyInteractive) videoChrome.Reveal();
         if (!IsVideo) videoControls.Visibility = Visibility.Collapsed;
         RefreshImageChrome();
+        imageAnimation?.Refresh(); RefreshImageAnimationControl();
+        animationVisibility?.Refresh();
+        RefreshInlineVideo();
         inlineChrome.IsHitTestVisible = input;
-        EnsureInlineChrome();
-        if (input && CanControl && XamlRoot is not null && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), this))
-            PreferredFocus.Focus(FocusState.Keyboard);
+        RefreshGalleryControls();
+        RefreshEmbedded();
+        if (input && XamlRoot is not null && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), this))
+            FocusMediaEntry();
     }
-    internal void Apply(Func<CancellationToken, Task<HostMediaPlayerSource>> resolve, MediaPlayerDefinition next, Func<bool> current, object? owner = null,
+    private void ApplySource(Func<CancellationToken, Task<HostMediaPlayerSource>> resolve, MediaPlayerDefinition next, Func<bool> current, object? owner = null,
         Func<string, CancellationToken, Task<HostMediaPlayerSource>>? resolveOwned = null, Func<string, Task>? releaseOwned = null,
-        ImageSource? initialPoster = null)
+        ImageSource? initialPoster = null, bool preserveExpanded = false)
     {
         if (disposed || previewPlayback && !active) return;
-        var retainImage = Equals(resourceOwner, owner) && image.Source is BitmapImage { PixelWidth: > 0 } &&
-            next.Source.Attachment?.ContentType == "image/png";
+        var retainImage = (galleryDeclaration?.InlineCarousel != true || initialPoster is null) &&
+            Equals(resourceOwner, owner) && image.Source is BitmapImage { PixelWidth: > 0 } &&
+            (next.Source.Attachment?.ContentType == "image/png" || next.Source.Kind == MediaPlayerSourceKind.WebImage);
         if (!Equals(resourceOwner, owner))
         { resourceOwner = owner; playbackMemory = null; definition = null; lifetime.Cancel(); ReleasePlayer(); video.PosterSource = null; }
         resolveAuthority = resolve; currentAuthority = current;
         resolvePlaybackLease = resolveOwned; releasePlaybackLease = releaseOwned;
         if (next == definition) return;
-        if (definition is { } previous && previous.Source == next.Source && previous.Revision == next.Revision && (player is not null || image.Source is not null && !imageReplacementPending))
+        ForgetInlineResume();
+        if (definition is { } previous && previous.Source == next.Source && previous.Revision == next.Revision &&
+            previous.Presentation == next.Presentation && previous.Options.IsAnimation == next.Options.IsAnimation &&
+            (player is not null || image.Source is not null && !imageReplacementPending))
         { definition = next; if (resolved is not null) resolved = resolved with { Media = next }; if (player is not null) ApplyOptions(next.Options); return; }
-        expandedHost?.Close(restoreFocus: false);
+        if (!preserveExpanded) expandedHost?.Close(restoreFocus: false);
+        ParkSourceFocus();
+        ResetMediaEntry();
         ClearPendingImageViewportRestore();
         lifetime.Cancel(); lifetime.Dispose(); lifetime = new();
         ReleasePlayer(); definition = next; resolved = null; adjustingVolume = false; waitingForSlot = false;
+        ConfigureAnimation(next);
+        ConfigureInlineVideo();
+        RefreshGalleryFullscreen();
         seekAcceleration.Reset(); feedbackUntil = 0;
         video.PosterSource = initialPoster;
         // A decoded frame may bridge an in-place image replacement within the
@@ -250,12 +294,29 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         video.Visibility = video.PosterSource is not null ? Visibility.Visible : Visibility.Collapsed;
         toolbar.Visibility = videoControls.Visibility = Visibility.Collapsed;
         rememberedControl = null;
-        status.Visibility = retainImage || video.PosterSource is not null ? Visibility.Collapsed : Visibility.Visible; status.Text = "Opening media…";
-        SetActive(active, input);
+        ShowLoading(!PassiveAnimation && !retainImage && video.PosterSource is null);
+        SetActive(active, requestedInput);
         if (retainImage) _ = ShowImageLoadingAsync(next, lifetime.Token);
-        if (next.Source.Kind == MediaPlayerSourceKind.SavedCapture && resolveOwned is not null && releaseOwned is not null)
+        if (!IsInlineVideo && next.Source.Kind == MediaPlayerSourceKind.SavedCapture && resolveOwned is not null && releaseOwned is not null)
         { playbackLeaseId = Guid.NewGuid().ToString("N"); currentPlaybackRelease = releaseOwned; }
-        _ = LoadAsync(playbackLeaseId is { } owned ? token => resolveOwned!(owned, token) : resolve, next, current, lifetime.Token);
+        if (next.Source.Kind == MediaPlayerSourceKind.EmbeddedSession) OpenEmbedded();
+        else if (IsInlineVideo) RefreshInlineVideo();
+        else if (PassiveAnimation) animationVisibility?.Refresh();
+        else _ = LoadAsync(playbackLeaseId is { } owned ? token => resolveOwned!(owned, token) : resolve, next, current, lifetime.Token);
+    }
+    private void ParkSourceFocus()
+    {
+        if (!input || XamlRoot is null || FocusManager.GetFocusedElement(XamlRoot) is not Control focused ||
+            !(ReferenceEquals(focused,inlinePlay)||ReferenceEquals(focused,imageViewport)||ReferenceEquals(focused,video)||ReferenceEquals(focused,position)||
+                controls.Contains(focused)||imageControls.Contains(focused)||galleryButtons.Contains(focused)||
+                ReferenceEquals(focused,embeddedWake)||embeddedControls.Contains(focused))) return;
+        // Native child teardown can otherwise move focus outside an entered
+        // preview before its replacement loads. Keep it on the stable media
+        // owner; SetActive restores ready controls only if we still own focus.
+        var tabStop=IsTabStop;
+        parkingSourceFocus=true;
+        try { IsTabStop=true; Focus(FocusState.Programmatic); }
+        finally { IsTabStop=tabStop; parkingSourceFocus=false; }
     }
     private async Task ShowImageLoadingAsync(MediaPlayerDefinition expected, CancellationToken token)
     {
@@ -263,7 +324,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         {
             await Task.Delay(200, token);
             if (!disposed && !token.IsCancellationRequested && definition == expected && imageReplacementPending)
-            { image.Source = null; status.Visibility = Visibility.Visible; }
+            { image.Source = null; ShowLoading(); }
         }
         catch (OperationCanceledException) { }
     }
@@ -274,7 +335,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
             var value = await resolve(token);
             await PresentationReady.WaitAsync(token);
             if (disposed || retainedForPageExit || token.IsCancellationRequested || definition != next) return;
-            if (!current()) { Fail(); return; }
+            if (!current()) { EndUnavailableSource(showFailure:false); return; }
             if (value.Media != next || value.ExpiresAtUnixMilliseconds <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) throw new InvalidOperationException("Media expired.");
             resolved = value;
             var uri = new Uri(value.Uri);
@@ -282,31 +343,44 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
             {
                 imageReplacementPending = false;
                 image.Source = null; imageViewport.Visibility = imageTools.Visibility = Visibility.Collapsed;
-                if (Interlocked.Increment(ref residentPlayers) > 4)
+                if (!TryAcquirePlayerSlot())
                 {
-                    Interlocked.Decrement(ref residentPlayers);
-                    waitingForSlot = true; status.Text = "Close another video before opening this one.";
+                    waitingForSlot = true; ShowMediaStatus("Close another video before opening this one.", !PassiveAnimation);
                     return;
                 }
-                ownsPlayerSlot = true;
-                player = new MediaPlayer { AutoPlay = false };
-                if (previewPlayback)
+#if ENABLE_WIDGET_VALIDATION
+                uri = ValidationVideoSource?.Invoke(uri) ?? uri;
+#endif
+                if (next.Source.IsPublicMedia)
                 {
-                    // Transient previews use our existing local controls. Never
-                    // replace the user's music session or consume media hotkeys.
+                    if (uri.AbsoluteUri != new Uri(next.Source.Location!).AbsoluteUri)
+                        throw new InvalidOperationException("Public media authority changed.");
+                    var acquisition = AttachPublicSourceAsync(uri, next, current, token);
+                    playbackRetirement = Task.WhenAll(playbackRetirement, ObservePublicAcquisitionAsync(acquisition));
+                    if (!await acquisition) return;
+                }
+                else source = MediaSource.CreateFromUri(uri);
+                // Keep the existing unavailable-controls state while checked
+                // acquisition/metadata is pending; no second readiness flag.
+                player = new MediaPlayer { AutoPlay = false };
+                if (previewPlayback || next.Options.IsAnimation)
+                {
                     player.CommandManager.IsEnabled = false;
                     player.SystemMediaTransportControls.IsEnabled = false;
                 }
                 ApplyOptions(next.Options);
-                EnsureVideoStage();
-                source = MediaSource.CreateFromUri(uri); player.Source = source; video.SetMediaPlayer(player);
-                player.MediaFailed += (_, _) => DispatcherQueue.TryEnqueue(() => { if (!disposed && !token.IsCancellationRequested) Fail(); });
-                player.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
+                player.MediaFailed += (failedPlayer, _) => DispatcherQueue.TryEnqueue(() =>
                 {
-                    if (disposed || retainedForPageExit || token.IsCancellationRequested) return;
+                    if (!disposed && !token.IsCancellationRequested && ReferenceEquals(player,failedPlayer))
+                        EndUnavailableSource(current());
+                });
+                player.MediaOpened += (openedPlayer, _) => DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (disposed || retainedForPageExit || token.IsCancellationRequested || !ReferenceEquals(player,openedPlayer)) return;
+                    if (!current()) { EndUnavailableSource(showFailure:false); return; }
+                    SizeGalleryVideo();
                     if (player is not null) player.PlaybackSession.PlaybackRate = requestedRate;
-                    EnsureVideoStage();
-                    status.Visibility = Visibility.Collapsed;
+                    HideMediaStatus();
                     if (playbackMemory is { } saved && definition is { } latest && saved.Definition.Source == latest.Source && saved.Definition.Revision == latest.Revision && player is { } resumed)
                     {
                         resumed.Volume = latest.Options.Volume == saved.Definition.Options.Volume ? saved.Volume : latest.Options.Volume;
@@ -316,59 +390,167 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
                         resumed.PlaybackSession.PlaybackRate = requestedRate;
                         if (resumed.PlaybackSession.CanSeek) resumed.PlaybackSession.Position = TimeSpan.FromSeconds(Math.Clamp(saved.Position, 0, Duration));
                     }
-                    if ((playbackMemory is null || previewPlayback) && definition?.Options.AutoPlay == true && active && !editorPreviewPaused) player?.Play();
+                    ApplyAudioPreferences(next.Options, useDefaults: false);
+                    if (!next.Options.IsAnimation && (playbackMemory is null || previewPlayback) && definition?.Options.AutoPlay == true && active && !editorPreviewPaused) player?.Play();
+                    if (IsInlineVideo && inlinePlayRequested && active && !editorPreviewPaused) player?.Play();
+                    inlinePlayRequested = false;
+                    animationVisibility?.Refresh();
                     playbackMemory = null;
-                    SetActive(active, input);
+                    SetActive(active, requestedInput);
                     Refresh(); InteractionChanged?.Invoke();
                 });
                 player.PlaybackSession.PlaybackStateChanged += (_, _) => DispatcherQueue.TryEnqueue(() => { if (!disposed && !token.IsCancellationRequested) { Refresh(); InteractionChanged?.Invoke(); } });
-                video.Visibility = toolbar.Visibility = videoControls.Visibility = Visibility.Visible;
-                if(input)videoChrome.Reveal();
+                player.Source = source;
+                if (galleryVideoFit is not null)
+                    player.PlaybackSession.NaturalVideoSizeChanged += (session, _) => DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (!disposed && !token.IsCancellationRequested && session == player?.PlaybackSession)
+                            SizeGalleryVideo();
+                    });
+                video.SetMediaPlayer(player);
+                RefreshInlineVideo();
+                video.Visibility = Visibility.Visible;
+                toolbar.Visibility = PassiveAnimation ? Visibility.Collapsed : Visibility.Visible;
+                if (input && IsInlineVideo && inlinePlayRequested) videoChrome.Enter();
+                else if (input) videoChrome.Reveal();
             }
             else
             {
-                var bitmap = new BitmapImage { DecodePixelWidth = value.Width > 0 ? value.Width : 1920 };
-                // Capture images resolve to host-authorized local files. Decode
-                // offscreen before publishing the new bitmap instead of exposing
-                // an empty Image while UriSource completes on a later frame.
-                if (!uri.IsFile) throw new InvalidOperationException("Capture image must resolve to a local file.");
-                var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(uri.LocalPath).AsTask(token);
-                using (var stream = await file.OpenReadAsync().AsTask(token))
-                    await bitmap.SetSourceAsync(stream).AsTask(token);
+                BitmapImage bitmap;
+                if (next.Source.Kind == MediaPlayerSourceKind.WebImage)
+                {
+                    // The authored source and resolved authority must identify the
+                    // same HTTPS image. Use the existing size/stream bounds; URL
+                    // extensions and advertised provider dimensions are not trusted.
+                    if (uri.Scheme != Uri.UriSchemeHttps || uri.AbsoluteUri != new Uri(next.Source.Location!).AbsoluteUri)
+                        throw new InvalidOperationException("Remote image authority changed.");
+                    var payload = new NativeArtworkPayload(ReadOnlyMemory<byte>.Empty, uri, IsPublicMedia: next.Source.IsPublicMedia);
+#if ENABLE_WIDGET_VALIDATION
+                    payload = ValidationImagePayload?.Invoke(uri) ?? payload;
+#endif
+                    var decoded = await NativeArtworkDecoder.DecodeAsync(payload,
+                        new(0, 0), ImageFit.Contain, token, naturalSize: true, autoPlay: false)
+                        ?? throw new InvalidDataException("Image is unavailable.");
+                    bitmap = decoded.Image;
+                    value = value with { Width = decoded.Source.Width, Height = decoded.Source.Height };
+                }
+                else
+                {
+                    bitmap = new BitmapImage { AutoPlay = false, DecodePixelWidth = value.Width > 0 ? value.Width : 1920 };
+                    // Capture images resolve to host-authorized local files. Decode
+                    // offscreen before publishing the new bitmap instead of exposing
+                    // an empty Image while UriSource completes on a later frame.
+                    if (!uri.IsFile) throw new InvalidOperationException("Capture image must resolve to a local file.");
+                    var file = await Windows.Storage.StorageFile.GetFileFromPathAsync(uri.LocalPath).AsTask(token);
+                    using (var stream = await file.OpenReadAsync().AsTask(token))
+                        await bitmap.SetSourceAsync(stream).AsTask(token);
+                }
                 if (disposed || retainedForPageExit || token.IsCancellationRequested || definition != next) return;
-                if (!current()) { Fail(); return; }
+                if (!current()) { EndUnavailableSource(showFailure:false); return; }
                 if (value.ExpiresAtUnixMilliseconds <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) throw new InvalidOperationException("Media expired.");
+                resolved = value;
                 video.Visibility = Visibility.Collapsed;
                 imageReplacementPending = false;
                 image.Source = bitmap;
-                imageViewport.Visibility = imageTools.Visibility = Visibility.Visible;
+                StartImageAnimation(bitmap);
+                imageViewport.Visibility = Visibility.Visible;
                 RefreshImageChrome();
                 FitImage();
             }
-            if (!IsVideo) status.Visibility = Visibility.Collapsed;
-            SetActive(active, input); Refresh();
+            if (!IsVideo) HideMediaStatus();
+            SetActive(active, requestedInput); Refresh();
+            RefreshGalleryFullscreen();
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception error) when (error is not OutOfMemoryException)
-        { if (!disposed && !token.IsCancellationRequested) Fail(); }
+        {
+            if (!disposed && !token.IsCancellationRequested) EndUnavailableSource(current());
+        }
     }
     private void ApplyOptions(MediaPlayerOptions options)
     {
         if (player is null) return;
-        player.IsMuted = ForcePreviewMute || options.Muted; player.Volume = options.Volume; player.IsLoopingEnabled = options.Loop;
+        ApplyAudioPreferences(options); player.IsLoopingEnabled = options.Loop;
         requestedRate = options.PlaybackRate; player.PlaybackSession.PlaybackRate = requestedRate;
     }
-    private void Fail()
-    { ClearPendingImageViewportRestore(); lifetime.Cancel(); timer.Stop(); ReleasePlayer(); video.PosterSource = null; imageReplacementPending = false; image.Source = null; imageViewport.Visibility = imageTools.Visibility = Visibility.Collapsed; status.Text = "This media could not be opened. The source may be unavailable or its format unsupported."; status.Visibility = Visibility.Visible; video.Visibility = toolbar.Visibility = videoControls.Visibility = Visibility.Collapsed; }
+    private async Task<bool> AttachPublicSourceAsync(Uri uri, MediaPlayerDefinition expected, Func<bool> current, CancellationToken token)
+    {
+        if (expected.Source.IsAdaptiveDash)
+        {
+            var dash = await NativeDashMediaSource.OpenAsync(uri, token);
+            if (disposed || retainedForPageExit || token.IsCancellationRequested || definition != expected || !current())
+            { await dash.DisposeAsync(); return false; }
+            dashMedia = dash;
+            source = dash.Source;
+            return true;
+        }
+        var acquired = await NativePublicMediaSource.OpenAsync(uri, token, IsInlineVideo ? TakeInlineResume(resolved) : null);
+        var transferred = false;
+        try
+        {
+            if (disposed || retainedForPageExit || token.IsCancellationRequested || definition != expected) return false;
+            if (!current()) { EndUnavailableSource(showFailure:false); return false; }
+            if (resolved?.ExpiresAtUnixMilliseconds <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
+            { EndUnavailableSource(showFailure:true); return false; }
+            publicMedia = acquired;
+            source = acquired.Source;
+            transferred = true;
+            return true;
+        }
+        finally { if (!transferred) await acquired.DisposeAsync(); }
+    }
+    private static async Task ObservePublicAcquisitionAsync(Task acquisition)
+    {
+        // LoadAsync owns error presentation. Retirement waits for late acquisition
+        // cleanup without turning an ordinary unavailable attachment into a
+        // persistent teardown fault.
+        try { await acquisition; }
+        catch (Exception error) when (error is not OutOfMemoryException) { }
+    }
+    private void EndUnavailableSource(bool showFailure)
+    {
+        ForgetInlineResume();
+        showFailure &= active && !retainedForPageExit;
+        if (showFailure && AdvancePastUnavailableItem()) return;
+        if (!showFailure)
+        {
+            // A recycled row or outgoing section no longer owns these pixels.
+            // A subsequent binding of the same source must be able to start afresh.
+            definition=null; resolved=null; playbackMemory=null; currentAuthority=null; resolveAuthority=null;
+        }
+        inlineFailed = showFailure; inlineLoadStarted = inlinePlayRequested = false; inlinePlay.Visibility = Visibility.Collapsed;
+        ClearPendingImageViewportRestore(); lifetime.Cancel(); timer.Stop(); ReleasePlayer(); video.PosterSource = null;
+        imageReplacementPending = false; image.Source = null; imageViewport.Visibility = imageTools.Visibility = Visibility.Collapsed;
+        video.Visibility = toolbar.Visibility = videoControls.Visibility = Visibility.Collapsed;
+        if (showFailure && exhaustedGallery)
+        {
+            HideMediaStatus();
+            expandedHost?.Close(restoreFocus: false);
+            ClearThumbnails();
+            Visibility = Visibility.Collapsed;
+        }
+        else if(showFailure) ShowMediaStatus("This media could not be opened. The source may be unavailable or its format unsupported.");
+        else HideMediaStatus();
+    }
     private void Refresh()
     {
+        if (embeddedViewport is not null) { RefreshEmbedded(); return; }
+        animationVisibility?.Refresh();
+        RefreshImageAnimationControl();
         ReportAudio();
         if (disposed || retainedForPageExit) return;
-        if (currentAuthority?.Invoke() == false) { Fail(); return; }
+        if (currentAuthority?.Invoke() == false) { EndUnavailableSource(showFailure:false); return; }
         if (resolved?.RequiresRevalidation == true && !checkingAuthority && Environment.TickCount64 >= nextAuthorityCheck && resolveAuthority is not null) _ = RefreshAuthorityAsync(lifetime.Token);
-        if (resolved?.ExpiresAtUnixMilliseconds is { } expiry && expiry <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) { timer.Stop(); Fail(); return; }
-        if (waitingForSlot && active && ResidentPlayers < 4 && definition is { } waiting && resolveAuthority is { } resolver && currentAuthority is { } authority)
-        { definition = null; waitingForSlot = false; Apply(resolver, waiting, authority, resourceOwner, resolvePlaybackLease, releasePlaybackLease); return; }
+        if (resolved?.ExpiresAtUnixMilliseconds is { } expiry && expiry <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) { EndUnavailableSource(showFailure:true); return; }
+        if (waitingForSlot && PassiveAnimation && active && ResidentAnimations < 2)
+        { waitingForSlot = false; animationDemandStarted = false; animationVisibility?.Refresh(); return; }
+        if (waitingForSlot && !PassiveAnimation && active && ResidentPlayers < 4 && definition is { } waiting && resolveAuthority is { } resolver && currentAuthority is { } authority)
+        {
+            waitingForSlot = false;
+            if (IsInlineVideo) { inlineLoadStarted = false; StartInlineVideo(); }
+            else { definition = null; Apply(resolver, waiting, authority, resourceOwner, resolvePlaybackLease, releasePlaybackLease); }
+            return;
+        }
         if (player is not { } value) return;
         RefreshEditRange();
         var seconds = Math.Max(0, value.PlaybackSession.Position.TotalSeconds);
@@ -377,7 +559,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         if (input && IsPlaying != chromeWasPlaying) videoChrome.Reveal();
         chromeWasPlaying = IsPlaying;
         AutomationProperties.SetName(play, playLabel.Text);
-        ToolTipService.SetToolTip(play, playLabel.Visibility == Visibility.Collapsed ? playLabel.Text : null);
+        NativePopupTheme.SetToolTip(play, playLabel.Visibility == Visibility.Collapsed ? playLabel.Text : null);
         refreshing = true;
         try
         {
@@ -390,7 +572,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         mute.Background = value.IsMuted ? selectedBrush : normalButtonBrush;
         muteIcon.Symbol = value.IsMuted ? Symbol.Mute : Symbol.Volume;
         AutomationProperties.SetName(mute, value.IsMuted ? "Unmute" : "Mute");
-        ToolTipService.SetToolTip(mute, value.IsMuted ? "Unmute" : "Mute");
+        NativePopupTheme.SetToolTip(mute, value.IsMuted ? "Unmute" : "Mute");
         if (value.PlaybackSession.PlaybackState == MediaPlaybackState.Buffering) time.Text = "Buffering…";
         else if (Environment.TickCount64 >= feedbackUntil)
             time.Text = FormatTime(seconds) + " / " + (duration > 0 ? FormatTime(duration) : "Live");
@@ -406,21 +588,35 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
             if (!disposed && !token.IsCancellationRequested && definition == expected)
             {
                 if (value.Media != expected || resolved is not { } prior || value.Uri != prior.Uri ||
-                    value.ExpiresAtUnixMilliseconds is { } expiry && expiry <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) Fail();
+                    value.ExpiresAtUnixMilliseconds is { } expiry && expiry <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())
+                    EndUnavailableSource(currentAuthority?.Invoke()==true);
                 else resolved = value; // Existing authority probes renew a retained library playback lease.
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception error) when (error is not OutOfMemoryException)
-        { if (!disposed && !token.IsCancellationRequested && definition == expected) Fail(); }
+        {
+            if (!disposed && !token.IsCancellationRequested && definition == expected) EndUnavailableSource(currentAuthority?.Invoke()==true);
+        }
         finally { checkingAuthority = false; }
     }
     private static string FormatTime(double value) => TimeSpan.FromSeconds(value).ToString(value >= 3600 ? @"h\:mm\:ss" : @"m\:ss");
     private static void Label(Button button, string name, string id, bool showToolTip = true)
-    { AutomationProperties.SetName(button, name); AutomationProperties.SetAutomationId(button, id); ToolTipService.SetToolTip(button, showToolTip ? name : null); }
+    {
+        AutomationProperties.SetName(button, name);
+        AutomationProperties.SetAutomationId(button, id);
+        NativePopupTheme.SetToolTip(button, showToolTip ? name : null);
+    }
     internal void Toggle()
     {
+        if (IsInlinePoster) { StartInlineVideo(); return; }
         if (!input || player is null) return;
+        if (definition?.Options.IsAnimation == true)
+        {
+            animationWantsPlayback = !IsPlaying;
+            animationManualPlayback = animationWantsPlayback;
+            animationVisibility?.Refresh(); Refresh(); return;
+        }
         if (IsPlaying) player.Pause();
         else { if (player.PlaybackSession.CanSeek && Duration > 0 && player.PlaybackSession.Position.TotalSeconds >= Duration - .05) player.PlaybackSession.Position = TimeSpan.Zero; player.Play(); }
         Refresh();
@@ -428,6 +624,17 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     internal void ActivateFocusedControl()
     {
         if (!input || XamlRoot is null) return;
+        if (ActivateGalleryControl()) return;
+        if (IsVideo && RevealVideoControls()) return;
+        if (embeddedReady)
+        {
+            if (RevealEmbeddedControls(enter: true)) return;
+            var target = FocusManager.GetFocusedElement(XamlRoot);
+            if (ReferenceEquals(target, embeddedControls[1])) EmbeddedCommand(EmbeddedMediaCommand.ToggleMute);
+            else if (ReferenceEquals(target, embeddedControls[2])) _ = ToggleExpandedAsync();
+            else EmbeddedCommand(EmbeddedMediaCommand.TogglePlayback);
+            return;
+        }
         if (IsImage) { ActivateImageControl(); return; }
         var focused = FocusManager.GetFocusedElement(XamlRoot);
         if (ReferenceEquals(focused, playbackOptions)) OpenPlaybackOptions();
@@ -439,6 +646,11 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     internal bool MoveFocus(FocusNavigationDirection direction, bool repeated = false)
     {
         if (HasOptionsMenu) { optionsNavigation?.Move(direction); return true; }
+        if (embeddedReady && embeddedWake is not null && XamlRoot is not null &&
+            ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), embeddedWake) && RevealEmbeddedControls(enter: true)) return true;
+        if (XamlRoot is not null && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), video) && RevealVideoControls()) return true;
+        if (MoveGalleryFocus(direction)) return true;
+        if (embeddedReady) { RevealEmbeddedControls(); return MoveEmbeddedFocus(direction); }
         if (IsImage) return MoveImageFocus(direction);
         if (!input || player is null || XamlRoot is null) return false;
         if (RevealVideoControls()) return true;
@@ -470,13 +682,36 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         player.PlaybackSession.Position = TimeSpan.FromSeconds(target);
         ShowMediaFeedback("Seek " + FormatTime(target));
     }
-    private void Replay() { if (!input || player?.PlaybackSession.CanSeek != true) return; player.PlaybackSession.Position = TimeSpan.Zero; player.Play(); }
+    private void Replay()
+    {
+        if (!input || player?.PlaybackSession.CanSeek != true) return;
+        player.PlaybackSession.Position = TimeSpan.Zero;
+        if (definition?.Options.IsAnimation == true)
+        { animationWantsPlayback = animationManualPlayback = true; animationVisibility?.Refresh(); }
+        else player.Play();
+    }
     private void ToggleLoop() { if (!input || player is null) return; player.IsLoopingEnabled = !player.IsLoopingEnabled; Refresh(); InteractionChanged?.Invoke(); }
-    private void ToggleMute() { if (!input || player is null) return; player.IsMuted = !player.IsMuted; Refresh(); InteractionChanged?.Invoke(); }
+    private void ToggleMute() { if (!input || player is null) return; player.IsMuted = !player.IsMuted; RememberAudioPreferences(); Refresh(); InteractionChanged?.Invoke(); }
     internal bool Handle(ControllerButton button, ControllerEventPhase phase)
     {
         if (phase == ControllerEventPhase.Released || button is not (ControllerButton.LeftTrigger or ControllerButton.RightTrigger)) seekAcceleration.Reset();
         if (button == ControllerButton.B && backOwned) { if (phase == ControllerEventPhase.Released) backOwned = false; return true; }
+        if (input && UsesInlineThumbnailNavigation && !HasOptionsMenu && button is ControllerButton.LeftBumper or ControllerButton.RightBumper)
+            return false;
+        if (input && HasGallery && !HasOptionsMenu && button is ControllerButton.LeftBumper or ControllerButton.RightBumper)
+        {
+            if (phase == ControllerEventPhase.Pressed) SelectGalleryOffset(button == ControllerButton.LeftBumper ? -1 : 1);
+            return true;
+        }
+        if (input && HasGallery && phase == ControllerEventPhase.Pressed && button == ControllerButton.A && ActivateGalleryControl()) return true;
+        if (input && IsExpanded && !CanControl && button == ControllerButton.B)
+        { if (phase == ControllerEventPhase.Pressed) { backOwned = true; expandedHost?.Close(); } return true; }
+        if (input && IsInlinePoster)
+        {
+            if (button is not (ControllerButton.A or ControllerButton.X)) return false;
+            if (phase == ControllerEventPhase.Pressed) StartInlineVideo();
+            return true;
+        }
         if (!input || !CanControl) return false;
         if (HasOptionsMenu)
         {
@@ -495,6 +730,19 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
             return true;
         }
         if (IsImage) return HandleImage(button, phase);
+        if (embeddedReady)
+        {
+            if (phase == ControllerEventPhase.Pressed)
+            {
+                if (button != ControllerButton.A) RevealEmbeddedControls();
+                if (button == ControllerButton.A) ActivateFocusedControl();
+                else if (button == ControllerButton.X) EmbeddedCommand(EmbeddedMediaCommand.TogglePlayback);
+                else if (button == ControllerButton.RightStick) _ = ToggleExpandedAsync();
+                else if (button == ControllerButton.LeftTrigger) EmbeddedCommand(EmbeddedMediaCommand.SeekBackward);
+                else if (button == ControllerButton.RightTrigger) EmbeddedCommand(EmbeddedMediaCommand.SeekForward);
+            }
+            return button is ControllerButton.A or ControllerButton.X or ControllerButton.RightStick or ControllerButton.LeftTrigger or ControllerButton.RightTrigger;
+        }
         if (button is not (ControllerButton.A or ControllerButton.X or ControllerButton.LeftTrigger or ControllerButton.RightTrigger or ControllerButton.LeftBumper or ControllerButton.RightBumper or ControllerButton.RightStick)) return IsExpanded;
         if (phase == ControllerEventPhase.Released) return true;
         if (button == ControllerButton.A && RevealVideoControls()) return true;
@@ -509,8 +757,17 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     }
     private void ReflowTransport()
     {
-        var width = card.ActualWidth;
+        var width = fullscreenGallery?.ActualWidth ?? carousel?.Center.ActualWidth ?? card.ActualWidth;
         var textScale = Math.Max(1, time.FontSize / 14);
+        // An inline player already lives inside a message. Keep accessible
+        // native hit targets, but remove the surrounding panel's extra padding
+        // and rounded-card treatment so chrome occupies a shallow bottom strip.
+        var inline = IsInlineVideo && !IsExpanded;
+        toolbar.Padding = inline ? new(6, 0, 6, 0) : new(8);
+        toolbar.RowSpacing = inline ? 0 : 8;
+        videoControls.Padding = inline || highContrastChrome ? new(0) : new(0, 12, 0, 0);
+        videoControls.Margin = inline ? new(0) : IsExpanded ? new(24) : new(8);
+        toolbar.CornerRadius = videoControls.CornerRadius = inline ? new(0) : inlineRadius;
         playLabel.Visibility = width < 640 * textScale ? Visibility.Collapsed : Visibility.Visible;
         volume.Visibility = width < 400 * textScale ? Visibility.Collapsed : Visibility.Visible;
         volume.Width = Math.Clamp(width * .18, 72, 160);
@@ -523,7 +780,6 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     {
         normalBrush = background; selectedBrush = selected;
         highContrastChrome = highContrast;
-        videoStage?.SetPageBackground(background);
         themeFrameBorder = border; inlineRadius = new(radius);
         ApplyFrameLayout(IsExpanded);
         // Keep text fully opaque; translucency belongs only to the backing fill.
@@ -549,16 +805,32 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
             };
         }
         toolbar.CornerRadius = imageTools.CornerRadius = videoControls.CornerRadius = new(radius);
-        imageZoom.Foreground = muted; status.Foreground = foreground; time.Foreground = muted;
+        galleryChromeBackground = chromeBackground; galleryControls.CornerRadius = new(radius);
+        galleryArrowBackground = !highContrast && background is SolidColorBrush plate
+            ? new SolidColorBrush(plate.Color with { A = 166 }) : background;
+        if (embeddedToolbar is not null)
+        {
+            embeddedToolbar.Background = chromeBackground;
+            embeddedToolbar.CornerRadius = new(radius);
+        }
+        galleryControls.BorderBrush = border; galleryControls.BorderThickness = new(highContrast ? 1 : 0);
+        galleryLabel.Foreground = foreground; galleryLabel.FontSize = fontSize; galleryLabel.FontWeight = weight;
+        // System ink needs its paired surface even when the attachment stage
+        // is transparent. Limit that surface to the transient feedback itself.
+        feedback.Background = highContrast ? background : null;
+        feedback.Padding = highContrast ? new(12, 8, 12, 8) : new(0);
+        feedback.CornerRadius = new(radius);
+        if (font is not null) galleryLabel.FontFamily = font; else galleryLabel.ClearValue(TextBlock.FontFamilyProperty);
+        imageZoom.Foreground = muted; status.Foreground = foreground; loading.Foreground = foreground; time.Foreground = muted;
         position.Foreground = focus; position.Background = border;
         imageZoom.FontSize = status.FontSize = time.FontSize = fontSize; imageZoom.FontWeight = status.FontWeight = time.FontWeight = weight;
         // Reserve one stable status cell for time and brief seek/audio feedback.
         time.Width = fontSize * 9;
-        foreach (var control in controls.Concat(imageControls).Append(imageViewport).Append(position))
+        foreach (var control in controls.Concat(imageControls).Concat(galleryButtons).Append(inlinePlay).Append(imageViewport).Append(position))
         {
             control.FocusVisualPrimaryBrush = focus; control.FocusVisualSecondaryBrush = background; control.UseSystemFocusVisuals = true;
         }
-        foreach (var button in controls.Concat(imageControls).OfType<Button>())
+        foreach (var button in controls.Concat(imageControls).Concat(galleryButtons).Concat(embeddedControls).Append(inlinePlay).OfType<Button>())
         {
             button.Background = normalButtonBrush; button.Foreground = foreground; button.BorderBrush = border;
             button.BorderThickness = new(highContrast ? 1 : 0);
@@ -570,32 +842,68 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
             if (font is not null) button.FontFamily = font; else button.ClearValue(Control.FontFamilyProperty);
         }
         playLabel.FontSize = fontSize; playLabel.FontWeight = weight; if (font is not null) playLabel.FontFamily = font;
+        // A compact chat may reveal just this button inside a taller poster.
+        // Keep its focus ring inside the revealed native control bounds.
+        inlinePlay.FocusVisualMargin = new(2);
         if (font is not null) { imageZoom.FontFamily = font; status.FontFamily = font; time.FontFamily = font; }
-        ReflowTransport(); LayoutImageTools();
+        ReflowTransport(); LayoutImageChrome(); LayoutImageTools(); RefreshGalleryControls();
         imageViewport.UseSystemFocusVisuals = !IsExpanded;
     }
     private void SuspendPlayer()
     {
-        if (definition is null || !previewPlayback && player is null && playbackLeaseId is null) return;
+        if (definition is null || !previewPlayback && player is null && playbackLeaseId is null &&
+            definition.Source.IsAdaptiveDash == false && galleryDeclaration?.Gallery?[0].PublicThumbnail is null) return;
         if (player is not null)
-            playbackMemory = new(definition, player.PlaybackSession.Position.TotalSeconds, player.Volume, player.IsMuted, player.IsLoopingEnabled, requestedRate);
+            playbackMemory = new(definition, player.PlaybackSession.Position.TotalSeconds, player.Volume, player.IsMuted, player.IsLoopingEnabled, requestedRate,
+                animationWantsPlayback, animationManualPlayback);
         player?.Pause(); lifetime.Cancel(); ReleasePlayer(); definition = null; resolved = null;
     }
     private void ReleasePlayer()
     {
+        CloseEmbedded();
+        // Clear owned references before calling WinRT: detach/close can deliver
+        // layout and media callbacks synchronously. They must not close the same
+        // player twice or mistake a retiring source for a newly admitted one.
+        var retiringPlayer = player; player = null;
+        var retiringSource = source; source = null;
+        var retiringPublicMedia = publicMedia; publicMedia = null;
+        var retiringDash = dashMedia; dashMedia = null;
+        StopImageAnimation();
         ClosePlaybackOptions();
         StopMediaChrome();
         editPreviewEnd = null;
         try
         {
-            videoStage?.SetCovered(true);
-            video.Visibility = Visibility.Collapsed;
-            video.SetMediaPlayer(null); player?.Dispose(); source?.Dispose(); ReleaseVideoStage();
+            try
+            {
+                video.Visibility = Visibility.Collapsed;
+                video.SetMediaPlayer(null);
+            }
+            finally
+            {
+                try
+                {
+                    if (retiringPlayer is not null)
+                    {
+                        try { retiringPlayer.Source = null; }
+                        finally { retiringPlayer.Dispose(); }
+                    }
+                }
+                finally
+                {
+                    if (retiringPublicMedia is not null)
+                        playbackRetirement = Task.WhenAll(playbackRetirement, retiringPublicMedia.DisposeAsync().AsTask());
+                    else if (retiringDash is not null)
+                        playbackRetirement = Task.WhenAll(playbackRetirement, retiringDash.DisposeAsync().AsTask());
+                    else retiringSource?.Dispose();
+                }
+            }
         }
         finally
         {
-            player = null; source = null; ReportAudio();
+            ReportAudio();
             if (ownsPlayerSlot) { ownsPlayerSlot = false; Interlocked.Decrement(ref residentPlayers); }
+            if (ownsAnimationSlot) { ownsAnimationSlot = false; Interlocked.Decrement(ref residentAnimations); }
             if (playbackLeaseId is { } id && currentPlaybackRelease is { } release)
             {
                 playbackLeaseId = null; currentPlaybackRelease = null;
@@ -610,5 +918,5 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         { Diagnostics.FrontendFailureLog.Current.Write("media-playback-release", error); }
     }
     public void Dispose()
-    { if (disposed) return; disposed = true; active = input = false; ClearPendingImageViewportRestore(); expandedHost?.Close(restoreFocus: false); lifetime.Cancel(); lifetime.Dispose(); timer.Stop(); StopMediaChrome(); theme?.Dispose(); ReleasePlayer(); image.Source = null; video.PosterSource = null; }
+    { if (disposed) return; disposed = true; active = input = false; ClearThumbnails(); ForgetInlineResume(); loading.IsActive = false; animationVisibility?.Dispose(); animationVisibility = null; ClearPendingImageViewportRestore(); expandedHost?.Close(restoreFocus: false); lifetime.Cancel(); lifetime.Dispose(); timer.Stop(); StopMediaChrome(); theme?.Dispose(); ReleasePlayer(); image.Source = null; video.PosterSource = null; }
 }

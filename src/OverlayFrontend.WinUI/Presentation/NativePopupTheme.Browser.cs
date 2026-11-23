@@ -7,7 +7,7 @@ internal sealed partial class NativePopupTheme
     internal static IDisposable? BrowserSlot(BrowserSlot slot)
     {
         var owner = Find(slot);
-        return owner?.Track(() => slot.ApplyFocusTheme(owner.focus, owner.cornerRadius));
+        return owner?.Track(() => slot.ApplyFocusTheme(owner.focus, owner.cornerRadius, owner.palette));
     }
     internal static IDisposable? Browser(BrowserSurface browser)
     {

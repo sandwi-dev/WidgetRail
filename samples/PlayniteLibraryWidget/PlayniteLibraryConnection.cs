@@ -249,6 +249,7 @@ public sealed partial class PlayniteLibraryWidget
             _playniteFeedbackExpiry.Cancel();
             _model.Update(state => state with { PlayniteFeedback = null });
             _playniteConnection.Reset();
+        ApplyRunningGames(null);
             var probe = _playniteConnection.Refresh();
             await probe.Completion.WaitAsync(lifetime.Token).ConfigureAwait(false);
             if (_playniteConnection.Snapshot.Value?.Kind == PlayniteBridgeConnectionKind.Connected)
@@ -289,6 +290,7 @@ public sealed partial class PlayniteLibraryWidget
             RetireConnectionPresentation();
             await _application.ResetConnectionCacheAsync().ConfigureAwait(false);
             _playniteConnection.Reset();
+        ApplyRunningGames(null);
             _model.Update(state => state with
             {
                 PlayniteKind = PlayniteBridgeConnectionKind.NotConfigured,

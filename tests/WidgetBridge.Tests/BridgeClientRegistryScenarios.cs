@@ -8,6 +8,128 @@ using WidgetRail.PlatformDiagnostics;
 
 internal static partial class BridgeClientRegistryScenarios
 {
+    internal static async Task TrayPreparationRequiresPerActionOptIn()
+    {
+        var widget = Widget("capture", worker: 'c', catalog: 'c') with
+        {
+            TrayActions = [new("screenshot", "Take screenshot") { WakeOnInvoke = true }, new("pause", "Pause")]
+        };
+        var descriptor = widget.PublicDescriptor();
+        var wake = new BridgeTrayPreparation("screenshot", descriptor.RuntimeGeneration, descriptor.PresentationGeneration);
+        await using var fixture = new RegistryFixture(Catalog(widget));
+        Task<BridgeClientPublication<BridgeClientPresentation>> Prepare(BridgeTrayPreparation request) =>
+            fixture.Registry.GetPresentationAsync(widget.Id, WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+                PresentationUpdateCapabilities.None, 0, 0, default, default, request);
+        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() => Prepare(wake with { ActionId = "pause" }));
+        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() => Prepare(wake with { RuntimeGeneration = "stale" }));
+        RegistryAssert.Equal(0, fixture.Clients.Count);
+        using (var frame = await Prepare(wake)) RegistryAssert.True(frame.Value.Snapshot.Sequence > 0);
+        RegistryAssert.Equal(1, fixture.Clients.Single().Starts);
+        using (var next = await Prepare(wake)) RegistryAssert.True(next.Value.Snapshot.Sequence > 0);
+        RegistryAssert.Equal(1, fixture.Clients.Single().Starts);
+    }
+
+    internal static async Task TrayWakeRespectsWorkAndForegroundResidency()
+    {
+        foreach (var (open, finishWhileVisible) in new[] { (false, false), (true, false), (true, true) })
+        {
+            var timers = Channel.CreateUnbounded<(TimeSpan Delay, TaskCompletionSource Fire)>();
+            Task Delay(TimeSpan duration, CancellationToken token)
+            {
+                var fire = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                timers.Writer.TryWrite((duration, fire));
+                return fire.Task.WaitAsync(token);
+            }
+            var widget = Widget("capture", worker: 'c', catalog: 'c', residency:
+                new() { Mode = WidgetResidencyPolicies.UnloadAfterIdle, IdleSeconds = 300 }) with
+                { TrayActions = [new("save", "Save") { WakeOnInvoke = true }] };
+            var offer = new TrayActionOffer("save", "device");
+            await using var fixture = new RegistryFixture(Catalog(widget), delay: Delay, configure: (_, client) =>
+                client.SnapshotFactory = sequence => new WidgetView(UI.Text("Library", "root"),
+                    QuickActions: [WidgetQuickAction.ForTray("Save", offer)]).CreateSnapshot(widget.InstanceId, sequence));
+            var descriptor = widget.PublicDescriptor();
+            using var snapshot = await fixture.Registry.GetPresentationAsync(widget.Id, WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+                PresentationUpdateCapabilities.None, 0, 0, default, default, new("save", descriptor.RuntimeGeneration, descriptor.PresentationGeneration));
+            var initial = await timers.Reader.ReadAsync();
+            RegistryAssert.Equal(TimeSpan.FromSeconds(5), initial.Delay);
+            var client = fixture.Clients.Single();
+            var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            client.TrayWorkDrained = completed.Task;
+            var input = new ControllerInputEvent(ControllerButton.X, ControllerEventPhase.Pressed, ControllerInputContext.TrayQuickAction,
+                Sequence: 1, SnapshotSequence: snapshot.Value.Snapshot.Sequence) { TrayOffer = offer with { TrayOnly = true } };
+            using var admission = await fixture.Registry.SendControllerInputAsync(widget.Id, input, descriptor.RuntimeGeneration, default, default,
+                expectedWorkerRun: snapshot.Value.WorkerRun);
+            RegistryAssert.True(admission.Value && client.ControllerInputs.Single().TrackTrayWork);
+            initial.Fire.TrySetResult();
+            if (open)
+            {
+                await fixture.SetLifecycleAsync(widget.Id, WidgetLifecycleState.Interactive);
+                if (finishWhileVisible)
+                {
+                    completed.SetResult();
+                    RegistryAssert.True(client.IsRunning && !timers.Reader.TryRead(out _));
+                }
+                await fixture.SetLifecycleAsync(widget.Id, WidgetLifecycleState.Background);
+                var normal = await timers.Reader.ReadAsync();
+                RegistryAssert.Equal(TimeSpan.FromMinutes(5), normal.Delay);
+                RegistryAssert.True(client.IsRunning && client.Starts == 1);
+                normal.Fire.TrySetResult();
+            }
+            if (!finishWhileVisible)
+            {
+                RegistryAssert.True(client.IsRunning && client.Starts == 1);
+                completed.SetResult();
+            }
+            if (!open)
+            {
+                var grace = await timers.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+                RegistryAssert.Equal(TimeSpan.FromSeconds(5), grace.Delay);
+                var repeatComplete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                client.TrayWorkDrained = repeatComplete.Task;
+                using var repeat = await fixture.Registry.SendControllerInputAsync(widget.Id, input with { Sequence = 2 },
+                    descriptor.RuntimeGeneration, default, default, expectedWorkerRun: snapshot.Value.WorkerRun);
+                RegistryAssert.True(repeat.Value);
+                grace.Fire.TrySetResult();
+                repeatComplete.SetResult();
+                var finalGrace = await timers.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+                RegistryAssert.Equal(TimeSpan.FromSeconds(5), finalGrace.Delay);
+                RegistryAssert.True(client.IsRunning && client.Starts == 1);
+                finalGrace.Fire.TrySetResult();
+            }
+            await client.Unloaded.WaitAsync(TimeSpan.FromSeconds(2));
+            RegistryAssert.Equal(1, client.UnloadCount);
+        }
+    }
+
+    internal static async Task TrayUsesOnlyTheDisplayedResidentTarget()
+    {
+        var configured = Widget("tray-race", worker: 't', catalog: 't') with { TrayActions = [new("play", "Play")] };
+        var target = new TrayActionOffer("play", "first-device");
+        await using var fixture = new RegistryFixture(Catalog(configured), configure: (_, client) => client.SnapshotFactory = sequence =>
+            new WidgetView(UI.Stack("root"), QuickActions: [new WidgetQuickAction(ControllerButton.X, "transport", "Play") { TrayOffer = target }])
+                .CreateSnapshot(configured.InstanceId, sequence));
+        var input = new ControllerInputEvent(ControllerButton.X, ControllerEventPhase.Pressed, ControllerInputContext.TrayQuickAction,
+            Sequence: 1, SnapshotSequence: 1) { TrayOffer = target };
+        var generation = configured.PublicDescriptor().RuntimeGeneration;
+        Task<BridgeClientPublication<bool>> Send(ControllerInputEvent e, BridgeWorkerRun worker) =>
+            fixture.Registry.SendControllerInputAsync(configured.Id, e, generation, default, default, expectedWorkerRun: worker);
+        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() => Send(input, new(1,1)));
+        RegistryAssert.Equal(0, fixture.Clients.Count);
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Interactive);
+        var first = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        BridgeWorkerRun run;
+        using (var admitted = fixture.Registry.TryAdmitHostEffect(configured.Id, configured.WorkerFingerprint)) run = admitted!.Value.WorkerRun;
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Background);
+        input = input with { SnapshotSequence = first.Sequence };
+        using (var result = await Send(input, run)) RegistryAssert.True(result.Value);
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => Send(input, run));
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+        target = target with { TargetKey = "replacement-device" };
+        _ = await fixture.GetSnapshotAsync(configured.Id);
+        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() => Send(input with { Sequence = 2 }, run));
+        RegistryAssert.Equal(1, fixture.Clients.Single().ControllerInputs.Count);
+    }
+
     internal static async Task DashboardRevalidatesCompatiblePublication()
     {
         var configured = Widget("dashboard-race", worker: 'd', catalog: 'd');
@@ -2728,6 +2850,7 @@ internal sealed class RegistryTestClient(
     internal Task DisposeEntered => _disposeEntered.Task;
     internal Task Unloaded => _unloaded.Task;
     internal int DisposeCount => Volatile.Read(ref _disposeCount);
+    public Task TrayWorkDrained { get; set; } = Task.CompletedTask;
     internal int UnloadCount => Volatile.Read(ref _unloadCount);
     internal List<WidgetLifecycleState> LifecycleStates { get; } = [];
     internal List<(WidgetPresentationTransactionKind TransactionKind,
@@ -2900,7 +3023,7 @@ internal sealed class RegistryTestClient(
         return Task.FromResult(WidgetOperationAdmission.Enqueued);
     }
 
-    public Task<bool> SendControllerInputAsync(
+    public Task<WidgetProcessClient.InputDispatch> SendControllerInputAsync(
         ControllerInputEvent input,
         WidgetDashboardGestureAuthority? authority,
         CancellationToken cancellationToken, int? expectedStartOrdinal = null)
@@ -2908,7 +3031,7 @@ internal sealed class RegistryTestClient(
         cancellationToken.ThrowIfCancellationRequested();
         EnsureStarted();
         ControllerInputs.Add(input);
-        return Task.FromResult(true);
+        return Task.FromResult(new WidgetProcessClient.InputDispatch(true));
     }
 
     public Task SendEmbeddedMediaPlaybackEventAsync(

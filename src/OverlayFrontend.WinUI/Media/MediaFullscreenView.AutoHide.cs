@@ -20,10 +20,11 @@ internal sealed partial class MediaFullscreenView
         AutomationProperties.SetName(videoFocus, "Video. Activate to show playback controls");
         AutomationProperties.SetAutomationId(videoFocus, compact ? "Overlay.MediaCompact.VideoFocus" : "Overlay.MediaFullscreen.VideoFocus");
         videoFocus.Click += (_, _) => Enter();
-        controlsVisibility = new([commands, progress, title], () => controlsInteractive && Visibility == Visibility.Visible, ParkControlFocus);
+        controlsVisibility = new([commands, progress, title], () => controlsInteractive && Visibility == Visibility.Visible, ParkControlFocus,
+            () => Input.PointerCaptureLifetime.HasCaptureWithin(commands) || Input.PointerCaptureLifetime.HasCaptureWithin(progress), hideWhileHovered: true);
         controlsVisibility.Initialize();
-        PointerMoved += (_, _) => RevealControls();
-        PointerPressed += (_, _) => RevealControls();
+        PointerMoved += (_, args) => { if (controlsVisibility.PointerMoved(args)) RevealControls(); };
+        PointerPressed += (_, _) => { if (controlsInteractive && !controlsVisibility.Entered) Enter(); else RevealControls(); };
 
 
         KeyDown += (_, args) =>
@@ -41,19 +42,29 @@ internal sealed partial class MediaFullscreenView
 
     internal void RevealControls()
     {
-        if (!controlsInteractive || Visibility != Visibility.Visible) return;
+        if (!controlsInteractive || !controlsVisibility.Entered || Visibility != Visibility.Visible) return;
         controlsVisibility.Reveal();
         title.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private void HideControls() => controlsVisibility.Hide();
-
     private void ParkControlFocus()
     {
         if (controlsInteractive && XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Button focused && actions.ContainsKey(focused))
-            videoFocus.Focus(FocusState.Programmatic);
+            FocusVideo();
     }
     private void FocusControls() => (remembered is { IsEnabled: true } ? remembered : back).Focus(FocusState.Keyboard);
+
+    internal void FocusPresentation()
+    {
+        if (ControlsVisible) FocusControls();
+        else FocusVideo();
+    }
+
+    private void FocusVideo()
+    {
+        videoFocus.IsTabStop = true;
+        videoFocus.Focus(FocusState.Programmatic);
+    }
 
     internal void MoveFocus(FocusNavigationDirection direction)
     {

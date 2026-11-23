@@ -53,7 +53,7 @@ bool Valid(HWND hwnd, DWORD pid, uint64_t created, const wchar_t* name) {
 }
 static int32_t RunLiveCapture(uint64_t window, uint32_t pid, uint64_t created,
     const wchar_t* className, uint32_t includeAudio, uint32_t maximumWidth, uint32_t maximumHeight,
-    uint32_t framesPerSecond, Continue current, Frame deliver,TextureFrame textureFrame=nullptr,uint32_t includeCursor=0,uint32_t* failureStage=nullptr,CaptureBorderPolicy borderPolicy=CaptureBorderPolicy::SystemDefault,uint64_t adapterLuid=0,bool exactCanvas=false) noexcept {
+    uint32_t framesPerSecond, Continue current, Frame deliver,TextureFrame textureFrame=nullptr,uint32_t includeCursor=0,uint32_t* failureStage=nullptr,CaptureBorderPolicy borderPolicy=CaptureBorderPolicy::SystemDefault,uint64_t adapterLuid=0,bool exactCanvas=false,void(__stdcall *audioUnavailable)(int32_t)=nullptr) noexcept {
     if(failureStage)*failureStage=0;
     const LiveCaptureQuality quality{maximumWidth,maximumHeight,framesPerSecond};
     const bool boundedRecording=maximumWidth>=2&&maximumWidth<=8192&&maximumHeight>=2&&maximumHeight<=8192&&
@@ -139,20 +139,50 @@ static int32_t RunLiveCapture(uint64_t window, uint32_t pid, uint64_t created,
         using Clock=std::chrono::steady_clock;
         CapturePacer pacer;
         auto next=Clock::now();auto nextAudio=next;auto lastVideo=next;bool haveVideo=false;
+        auto retryAudioAt=Clock::time_point::min();
+        auto retryDelay=std::chrono::seconds(1);
+#ifdef CAPTURE_WORKER_VALIDATION
+        wchar_t testAudioMode[16]{};
+        const bool testAudioLoss = audioUnavailable && GetEnvironmentVariableW(L"WRAIL_TEST_REPLAY_AUDIO_LOSS",testAudioMode,16)>0;
+        const bool testAudioReturn = wcscmp(testAudioMode,L"recover")==0;
+        auto testAudioDeadline = Clock::time_point::max();
+#endif
         while(current()) {
             if(!Valid(hwnd,pid,created,className))return HRESULT_FROM_WIN32(ERROR_INVALID_WINDOW_HANDLE);
             // Negotiate the hardware recorder on its first texture before
             // starting loopback; codec warmup must not accumulate stale PCM.
-            if(includeAudio&&textureFrame&&!audio&&haveVideo){
+            if(includeAudio&&textureFrame&&!audio&&haveVideo&&Clock::now()>=retryAudioAt){
                 if(failureStage)*failureStage=1;
-                audio=std::make_unique<widgetrail::capture::ProcessLoopbackCapture>(pid);
+                using namespace widgetrail::capture;
+                audio=std::make_unique<ProcessLoopbackCapture>(pid,audioUnavailable?ProcessLoopbackMode::Replay:ProcessLoopbackMode::Strict);
                 if(failureStage)*failureStage=0;
             }
             if(audio && Clock::now()>=nextAudio) {
                 nextAudio=Clock::now()+std::chrono::milliseconds(20);
                 if(failureStage)*failureStage=1;
-                auto packets=audio->Drain();
+                std::deque<widgetrail::capture::CapturedAudioPacket> packets;
+                try {
+#ifdef CAPTURE_WORKER_VALIDATION
+                    if(testAudioLoss && Clock::now()>=testAudioDeadline &&
+                        (!testAudioReturn || Clock::now()-testAudioDeadline<std::chrono::seconds(4)))throw winrt::hresult_error(AUDCLNT_E_DEVICE_INVALIDATED);
+#endif
+                    packets=audio->Drain();
+                }
+                catch(const winrt::hresult_error& error) {
+                    if(!audioUnavailable || error.code()==E_OUTOFMEMORY) throw;
+                    audio.reset();
+                    retryAudioAt=Clock::now()+retryDelay;
+                    retryDelay=std::min(retryDelay*2,std::chrono::seconds(8));
+                    audioUnavailable(error.code());
+                }
                 if(failureStage)*failureStage=0;
+                if(!packets.empty()){
+                    retryDelay=std::chrono::seconds(1);
+#ifdef CAPTURE_WORKER_VALIDATION
+                    if(testAudioLoss && testAudioDeadline==Clock::time_point::max())
+                        testAudioDeadline=Clock::now()+std::chrono::seconds(2);
+#endif
+                }
                 if(textureFrame) {
                     // Preserve each WASAPI timestamp for the shared recording
                     // timeline; live WebRTC retains its existing joined transport.
@@ -299,4 +329,12 @@ extern "C" __declspec(dllexport) int32_t __stdcall WrailLiveCaptureRunTextureV4(
     if(!texture||!failureStage||!adapterLuid)return E_INVALIDARG;
     return RunLiveCapture(window,pid,created,className,includeAudio,width,height,framesPerSecond,current,audioAndState,texture,includeCursor,failureStage,
         CaptureBorderPolicy::RequestBorderless,adapterLuid,true);
+}
+
+extern "C" __declspec(dllexport) int32_t __stdcall WrailLiveCaptureRunReplay(uint64_t window,uint32_t pid,uint64_t created,
+    const wchar_t* className,uint32_t includeAudio,uint32_t width,uint32_t height,uint32_t framesPerSecond,uint32_t includeCursor,uint64_t adapterLuid,
+    uint32_t exactCanvas,Continue current,Frame audioAndState,TextureFrame texture,uint32_t* failureStage,void(__stdcall *audioUnavailable)(int32_t)) noexcept {
+    if(!texture||!failureStage||!audioUnavailable||exactCanvas>1||(exactCanvas&&!adapterLuid))return E_INVALIDARG;
+    return RunLiveCapture(window,pid,created,className,includeAudio,width,height,framesPerSecond,current,audioAndState,texture,includeCursor,failureStage,
+        CaptureBorderPolicy::RequestBorderless,adapterLuid,exactCanvas!=0,audioUnavailable);
 }

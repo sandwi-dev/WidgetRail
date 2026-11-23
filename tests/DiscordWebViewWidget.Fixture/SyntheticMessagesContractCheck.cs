@@ -24,7 +24,7 @@ internal static class SyntheticMessagesContractCheck
             await widget.WaitForStateReadAsync().WaitAsync(TimeSpan.FromSeconds(5));
             Check(Node("discord.messages.open") is not null&&Audit().GetProperty("history").GetArrayLength()==0,"Synthetic call page exposes Messages without fetching history");
             await Act("discord.messages.open");await Until(()=>Node("discord.conversation.10") is not null);
-            Check(Snapshot().ActiveInputScopeId=="discord.messages.scope","Synthetic inbox has matching navigation and input scope");
+            Check(Snapshot().ActiveInputScopeId=="discord.root","Synthetic inbox shares the Call/Messages root scope");
             Check(WidgetTestHost.ValidateWinUiPresentation(Snapshot()).Count==0,"Synthetic inbox passes production WinUI declaration validation");
             await Act("discord.conversation.10");await Until(()=>Node("discord.message.history")?.IndexedCollection?.Count==20);
             Check(Snapshot().ActiveInputScopeId=="discord.conversation.scope","Synthetic conversation has matching navigation and input scope");
@@ -57,9 +57,10 @@ internal static class SyntheticMessagesContractCheck
         void Check(bool condition,string label){if(!condition)throw new InvalidOperationException(label);checks.Add(label);}
         JsonElement Audit(){using var value=JsonDocument.Parse(File.ReadAllText(auditPath));return value.RootElement.Clone();}
         ViewSnapshot Snapshot()=>widget.Render().CreateSnapshot("messages.fixture",1);
-        ViewNode? Node(string id)=>Nodes(Snapshot().Root).FirstOrDefault(node=>node.Id==id);
+        ViewNode? Node(string id)=>Nodes(Snapshot().Root).FirstOrDefault(node=>node.Id==id)??ConversationRowsHarness.Find(widget,Snapshot(),id);
         async Task Act(string id)
         {
+            if(ConversationRowsHarness.IsRow(id)){await ConversationRowsHarness.ActAsync(widget,id);return;}
             var snapshot=Snapshot();var node=Nodes(snapshot.Root).Single(node=>node.Id==id);
             await widget.OnActionAsync(new(node.ActionId!,id,InputScopeId:snapshot.ActiveInputScopeId){FocusedElementId=id});
         }

@@ -44,7 +44,7 @@ internal sealed partial class WidgetStylesValidationPage
         const string prefix = "Widget.playnite-library.details.";
         await Wait(() => Find<WidgetArtworkView>(prefix + "poster") is { Source: BitmapSource { PixelWidth: > 0 } });
         var panel = Find<WidgetModalPanel>("Widget.playnite-library.details")!;
-        Check(panel.Background is AcrylicBrush { TintOpacity: .8, TintLuminosityOpacity: null } && panel.Opacity == 1,
+        Check(panel.Background is AcrylicBrush { TintOpacity: .35, TintLuminosityOpacity: .25 } && panel.Opacity == 1,
             "the production modal uses a native acrylic brush without fading its text");
         var acrylic = panel.Background;
         presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
@@ -71,9 +71,8 @@ internal sealed partial class WidgetStylesValidationPage
         await Task.Delay(150);
         Check(scroll.HorizontalScrollBarVisibility == ScrollBarVisibility.Disabled && scroll.HorizontalOffset == 0 &&
             scroll.ExtentWidth <= scroll.ViewportWidth + 1, "production Playnite modal keeps finite horizontal measure despite its long description");
-        var posterSlot = LayoutInformation.GetLayoutSlot(poster);
-        var posterOrigin = Find<Grid>(prefix + "overview-header")!.TransformToVisual(scroll).TransformPoint(new(posterSlot.X, posterSlot.Y));
-        Check(posterOrigin.X >= 0 && posterOrigin.X + posterSlot.Width <= scroll.ViewportWidth + 1 && Math.Abs(poster.ActualWidth - 80) < 1 && Math.Abs(poster.ActualHeight - 120) < 1,
+        var posterOrigin = poster.TransformToVisual(panel).TransformPoint(new(0, 0));
+        Check(posterOrigin.X >= 0 && posterOrigin.X + poster.ActualWidth <= panel.ActualWidth + 1 && Math.Abs(poster.ActualWidth - 80) < 1 && Math.Abs(poster.ActualHeight - 120) < 1,
             "production Playnite decoded poster remains inside the modal viewport after focus reveal");
         var tabs = snapshot.Root.Children[1];
         var tabButtons = Walk(tabs).Where(node => node.ActionId?.StartsWith("playnite-library.details.tab.", StringComparison.Ordinal) == true).ToArray();
@@ -83,37 +82,43 @@ internal sealed partial class WidgetStylesValidationPage
             var origin = button.TransformToVisual(scroll).TransformPoint(new(0, 0));
             return button.ActualWidth > 20 && origin.X >= 0 && origin.X + button.ActualWidth <= scroll.ViewportWidth + 1;
         }), "all six production details navigation options fit the finite modal width");
-        var header = Find<Grid>(prefix + "overview-header")!;
-        var headerBefore = header.TransformToVisual(presenter).TransformPoint(new(0, 0));
+        var header = Find<WidgetPresentationSurface>(prefix + "overview-header")!;
         var playBefore = play.TransformToVisual(presenter).TransformPoint(new(0, 0));
         var firstTab = Find<Button>("Widget." + tabButtons[0].Id)!;
-        var tabBefore = firstTab.TransformToVisual(presenter).TransformPoint(new(0, 0));
         var completion = Find<FrameworkElement>(prefix + "completion.action")!;
-        var completionBefore = completion.TransformToVisual(presenter).TransformPoint(new(0, 0));
-        var sourceOrigin = Find<TextBlock>(prefix + "source")!.TransformToVisual(presenter).TransformPoint(new(0, 0));
-        Check(Math.Abs(playBefore.X - sourceOrigin.X) < 2 && Math.Abs(completionBefore.X - sourceOrigin.X) < 2,
-            "Play and Completion align with the source label instead of centering within the controls column");
+        var platform = Find<TextBlock>(prefix + "hero.platform.value")!;
+        var platformOrigin = platform.TransformToVisual(presenter).TransformPoint(new(0, 0));
+        Check(platformOrigin.X >= playBefore.X + play.ActualWidth && platformOrigin.X + platform.ActualWidth <= panel.TransformToVisual(presenter).TransformPoint(new(panel.ActualWidth, 0)).X + 1,
+            "The platform value fits beside the Play controls");
         var description = Find<TextBlock>(prefix + "description")!;
-        var descriptionBefore = description.TransformToVisual(presenter).TransformPoint(new(0, 0));
         Check(description.TransformToVisual(scroll).TransformPoint(new(0, 0)).X >= 10,
             "reading text has breathing room inside its focus outline");
         Check(scroll.ScrollableHeight > 64 && scroll.ViewportHeight > 100, "only the lower section has a bounded scrollable viewport");
-        // Use the production Description tab as the focus anchor. With no buttons
-        // in the description, directional fallback must still reveal its text.
-        Find<Button>("Widget." + tabButtons[0].Id)!.Focus(FocusState.Keyboard);
-        await Task.Delay(100);
-        Check(presenter.MoveFocus(FocusNavigationDirection.Down), "Down from Overview enters the separate reading viewport");
+        var selectedTab = tabButtons.Single(node => node.IsSelected == true);
+        Find<Button>("Widget." + selectedTab.Id)!.Focus(FocusState.Keyboard);
+        await Wait(() => play.TransformToVisual(presenter).TransformPoint(new(0, 0)).Y < playBefore.Y - 1);
+        // Entering the rail snaps away from the hero. Measure inner scrolling
+        // after that independent outer scroll has placed the rail.
+        var headerBefore = header.TransformToVisual(presenter).TransformPoint(new(0, 0));
+        var tabBefore = firstTab.TransformToVisual(presenter).TransformPoint(new(0, 0));
+        var snappedPlay = play.TransformToVisual(presenter).TransformPoint(new(0, 0));
+        var snappedPlatform = platform.TransformToVisual(presenter).TransformPoint(new(0, 0));
+        var descriptionBefore = description.TransformToVisual(scroll).TransformPoint(new(0, 0));
+        var completionTop = completion.TransformToVisual(scroll).TransformPoint(new(0, 0)).Y;
+        Check(presenter.MoveFocus(FocusNavigationDirection.Down), "Down from Information enters the separate reading viewport");
         await Task.Delay(100);
         Check(presenter.MoveFocus(FocusNavigationDirection.Down), "Down inside the reading viewport scrolls its noninteractive content");
         await Wait(() => scroll.VerticalOffset > 1);
         Check(header.TransformToVisual(presenter).TransformPoint(new(0, 0)) == headerBefore &&
-            play.TransformToVisual(presenter).TransformPoint(new(0, 0)) == playBefore,
+            play.TransformToVisual(presenter).TransformPoint(new(0, 0)) == snappedPlay,
             "artwork and game controls remain stationary while section content scrolls");
-        Check(description.TransformToVisual(presenter).TransformPoint(new(0, 0)).Y < descriptionBefore.Y,
+        Check(description.TransformToVisual(scroll).TransformPoint(new(0, 0)).Y < descriptionBefore.Y,
             "description text actually moves through the lower viewport");
         Check(firstTab.TransformToVisual(presenter).TransformPoint(new(0, 0)) == tabBefore &&
-            completion.TransformToVisual(presenter).TransformPoint(new(0, 0)) == completionBefore,
-            "details tabs and completion remain visible and stationary while content scrolls");
+            platform.TransformToVisual(presenter).TransformPoint(new(0, 0)) == snappedPlatform,
+            "The tab rail and platform value remain stationary during reading scroll");
+        Check(completion.TransformToVisual(scroll).TransformPoint(new(0, 0)).Y < completionTop,
+            "The completion control scrolls with its Information section");
         var originalExtent = scroll.ExtentHeight;
         presenter.Width = 600;
         await Wait(() => scroll.ViewportWidth < 570);

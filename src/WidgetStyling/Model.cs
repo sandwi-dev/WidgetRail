@@ -228,7 +228,12 @@ public sealed class WrssTheme
 {
     private readonly IReadOnlyList<CompiledRule> _rules;
 
-    internal WrssTheme(IReadOnlyList<CompiledRule> rules) => _rules = rules;
+    private readonly WrssComputedValue? _focusHighlight;
+    internal WrssTheme(IReadOnlyList<CompiledRule> rules, WrssComputedValue? focusHighlight)
+    {
+        _rules = rules;
+        _focusHighlight = focusHighlight;
+    }
 
     public WrssResolvedStyle Resolve(WrssElement element) => Resolve(element, part: false);
 
@@ -264,6 +269,9 @@ public sealed class WrssTheme
 
         var sorted = new SortedDictionary<string, WrssComputedValue>(StringComparer.Ordinal);
         foreach (var (property, winner) in winners) sorted[property] = winner.Value;
+        if (_focusHighlight is not null && sorted.TryGetValue("focus-outline-effect", out var effect) &&
+            effect.Text is "edge-glint" or "breathe")
+            sorted.TryAdd("focus-outline-highlight", _focusHighlight);
         return new WrssResolvedStyle(sorted);
     }
 

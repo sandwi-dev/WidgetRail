@@ -8,11 +8,11 @@ namespace WidgetRail.Samples.DiscordWebView;
 
 public sealed partial class DiscordWebViewWidget
 {
-    private sealed record ConversationQuery(string Account,WebSessionReference Session,string Search="",int Offset=0,string? Version=null);
+    private sealed record ConversationQuery(string Account,WebSessionReference Session,string Search="");
     private sealed record MessageSelection(string Account,WebSessionReference Session,string Channel,string Name,bool CanSend=true);
     private sealed record MessageLine(DiscordMessage Message,bool ShowAuthor,bool ShowDate,bool RevealSpoilers,bool ShowUnread=false);
     private sealed record InitialMessageReveal(WidgetFocusRequest Request,MessageSelection Selection,long NavigationRevision,
-        CancellationToken RouteLifetime,CancellationToken ActiveLifetime,string? MessageId=null,bool UnreadBoundary=false);
+        CancellationToken RouteLifetime,CancellationToken ActiveLifetime,string? MessageId=null,bool UnreadBoundary=false,bool SentMessage=false);
     private sealed record MessageControlFocus(FocusGroupEntryRequest Request,MessageSelection Selection,long NavigationRevision);
     private sealed class IncomingAccountBinding(WebSessionReference? session)
     {
@@ -23,7 +23,7 @@ public sealed partial class DiscordWebViewWidget
         string Notice="",string? PendingNonce=null,string? PendingContent=null,bool NewMessages=false,
         WidgetFileReference[]? Files=null,WidgetFileReference[]? Incoming=null,InitialMessageReveal? InitialReveal=null,
         bool Uploading=false,bool CancellingSend=false,string[]? RevealedSpoilers=null,string? HistoryAnchor=null,string? IncomingOfferId=null,IncomingAccountBinding? IncomingBinding=null,
-        MessageControlFocus? ControlFocus=null,string? EntryUnreadBoundaryId=null)
+        MessageControlFocus? ControlFocus=null,string? EntryUnreadBoundaryId=null,bool LatestRequired=false,MessageMediaDialog? Media=null)
     {
         internal bool IncomingFiles=>Incoming is {Length:>0};
     }
@@ -51,18 +51,19 @@ public sealed partial class DiscordWebViewWidget
             Load=async(query,token)=>
             {
                 DemandMessageAccount(query.Account,query.Session);
-                var json=await client!.InvokeAsync("messageConversations",new{account=query.Account,query=query.Search,offset=query.Offset,version=query.Version,limit=40},token);
+                var json=await client!.InvokeAsync("messageConversations",new{account=query.Account,query=query.Search,offset=0,version=(string?)null,limit=40},token);
                 var page=json.Deserialize<DiscordConversationPage>(MessageJson)??throw DiscordMessageValues.Invalid();
-                page.Validate(query.Account,query.Offset,40);
+                page.Validate(query.Account,0,40);
                 DemandMessageAccount(query.Account,query.Session);
                 return page;
             },
             MapError=_=>new("discord.messages.unavailable","Messages are unavailable. Try Refresh or open Discord."),
             CacheDuration=TimeSpan.FromSeconds(30)
         });
+        InitializeConversationRows();
         history=CreateCursorResource<DiscordMessage>("discord.message.history",new()
         {
-            PageSize=20,MaximumRetainedItems=40,
+            PageSize=20,MaximumRetainedItems=40,PrepareAdjacentPages=true,
             LiveUpdates=MessageLiveOptions,
             LoadPage=LoadMessageHistoryAsync,
             MapError=_=>new("discord.history.unavailable","Could not load messages. Try again."),
@@ -103,6 +104,17 @@ public sealed partial class DiscordWebViewWidget
         var page=json.Deserialize<DiscordMessagePage>(MessageJson)??throw DiscordMessageValues.Invalid();
         page.Validate(selected.Account,selected.Channel,before,count,after,around);
         if(!MessageSelectionCurrent(selected))throw new OperationCanceledException();
+        if(cursor is null && around is null && messages.Value.InitialReveal is {SentMessage:true,MessageId:{} sentId} sent &&
+            CurrentMessageEntry(sent) && !page.Items.Any(item=>item.Id==sentId))
+        {
+            // A busy channel can already have a full page of newer messages.
+            // Keep the explicit send destination rather than revealing a different row.
+            around=sentId;
+            json=await client.InvokeAsync("messageHistory",new{account=selected.Account,channelId=selected.Channel,around,limit=count},token);
+            page=json.Deserialize<DiscordMessagePage>(MessageJson)??throw DiscordMessageValues.Invalid();
+            page.Validate(selected.Account,selected.Channel,null,count,around:around);
+            if(!CurrentMessageEntry(sent))throw new OperationCanceledException();
+        }
         if(around is not null && messages.Value.InitialReveal is {UnreadBoundary:true} unread && unread.MessageId==around &&
             !page.Items.Any(item=>item.Id==around) && CurrentMessageEntry(unread))
         {
@@ -132,17 +144,17 @@ public sealed partial class DiscordWebViewWidget
             var current=messages.Value;
             if(current.Query is {} query && (!next.Ready || next.Account!=query.Account || client?.Reference!=query.Session))
             {
+                if(navigation.Value.Route==Route.MessageMedia)navigation.Back();
                 Operations.Cancel("discord.message.send");
                 var retired=pendingMessages.Clear().Concat(messageDrafts.Clear()).Concat(current.Files??[]).Concat(current.Incoming??[]).DistinctBy(file=>file.Id).ToArray();
-                messages.Update(_=>new MessageUi());ReleaseMessageFiles(retired);conversations.Reset();history.Reset();ResetMessageUpdates();
+                messages.Update(_=>new MessageUi());ReleaseMessageFiles(retired);conversations.Reset();ResetConversationRows();history.Reset();ResetMessageUpdates();
                 observedCatalogRevision=observedMessageRevision=-1;
                 return;
             }
             if(next.Messaging is not {} messaging)return;
-            if(navigation.Value.Route==Route.Messages && current.Query is {} active && observedCatalogRevision!=messaging.CatalogRevision)
+            if(navigation.Value.Route is Route.Messages or Route.Conversation && current.Query is {} active && observedCatalogRevision!=messaging.CatalogRevision)
             {
-                var first=active with{Offset=0,Version=null};
-                messages.Update(value=>value with{Query=first});conversations.EnsureLoaded(first,forceRefresh:true);
+                conversations.EnsureLoaded(active,forceRefresh:true);
             }
             if(messaging.WatchEpoch>0)ReconcileMessageUpdates(messaging);
             else if(navigation.Value.Route==Route.Conversation && current.Selection is {} selected &&
@@ -179,8 +191,8 @@ public sealed partial class DiscordWebViewWidget
     private void ResumeMessages()
     {
         if(messages.Value.Query is not {} query || !MessageAccountCurrent(query.Account,query.Session))return;
-        if(navigation.Value.Route==Route.Messages)conversations.EnsureLoaded(query);
-        else if(navigation.Value.Route==Route.Conversation)history.EnsureLoaded();
+        if(navigation.Value.Route is Route.Messages or Route.Conversation)conversations.EnsureLoaded(query);
+        if(navigation.Value.Route==Route.Conversation)history.EnsureLoaded();
         ObserveMessages();
     }
 
@@ -189,9 +201,20 @@ public sealed partial class DiscordWebViewWidget
         result=ValueTask.CompletedTask;
         if(action.ActionId=="messages" && CurrentState() is {Messaging.CanRead:true} data && client?.Reference is {} session)
         {
-            var query=new ConversationQuery(data.Account,session);
+            if(IsMessageRoute(navigation.Value.Route))return true;
+            var query=messages.Value.Query is {} existing && existing.Account==data.Account && existing.Session==session
+                ?existing:new ConversationQuery(data.Account,session);
             messages.Update(value=>value.Query?.Account==data.Account && value.Query.Session==session?value with{Query=query}:new(Query:query));
-            conversations.EnsureLoaded(query);PushRoute(Route.Messages,action);ObserveMessages();return true;
+            conversations.EnsureLoaded(query);
+            navigation.NavigateRoot(Route.Messages);
+            if(messages.Value.Selection is {} retained && MessageSelectionCurrent(retained) && !messages.Value.IncomingFiles)
+            {
+                var retainedRow=conversations.GetSnapshot(query).Value?.Items.FirstOrDefault(item=>item.ChannelId==retained.Channel);
+                navigation.Push(Route.Conversation,"discord.messages.list");
+                BeginReadVisit(retained,retainedRow?.LastMessageId,false);
+                history.EnsureLoaded();
+            }
+            ObserveMessages();return true;
         }
         var current=messages.Value;
         if(navigation.Value.Route==Route.Messages && TryIncomingFileAction(action,current))return true;
@@ -200,28 +223,17 @@ public sealed partial class DiscordWebViewWidget
             CancelIncomingShare(current);return true;
         }
         if(current.Query is not {} selectedQuery || !MessageAccountCurrent(selectedQuery.Account,selectedQuery.Session))return false;
-        if(navigation.Value.Route==Route.Messages)
+        if(navigation.Value.Route is Route.Messages or Route.Conversation)
         {
             if(action.ActionId=="message-search" && action.CommittedText is {Length:<=120} text)
             {
-                var query=selectedQuery with{Search=text,Offset=0,Version=null};messages.Update(value=>value with{Query=query});conversations.EnsureLoaded(query);return true;
+                var query=selectedQuery with{Search=text};messages.Update(value=>value with{Query=query});conversations.EnsureLoaded(query);return true;
             }
-            var snapshot=conversations.GetSnapshot(selectedQuery);
-            if(snapshot.HasValue)
+            if(action.ActionId=="refresh")
             {
-                var page=snapshot.Value!;
-                foreach(var item in page.Items)
-                if(action.ActionId==ConversationAction(selectedQuery,item,current))
-                {result=OpenConversationAsync(selectedQuery,item,action,token,expectedIntake:current);return true;}
-                if(action.ActionId==ConversationPageAction(selectedQuery,-40) && selectedQuery.Offset>0 ||
-                    action.ActionId==ConversationPageAction(selectedQuery,40) && page.Context.HasMore)
-                {
-                    var offset=action.ActionId==ConversationPageAction(selectedQuery,40)?selectedQuery.Offset+40:Math.Max(0,selectedQuery.Offset-40);
-                    var query=selectedQuery with{Offset=offset,Version=page.Context.Version};messages.Update(value=>value with{Query=query});conversations.EnsureLoaded(query);return true;
-                }
+                conversations.EnsureLoaded(selectedQuery,forceRefresh:true);
+                state.Refresh();return true;
             }
-            if(action.ActionId=="message-refresh")
-            {var first=selectedQuery with{Offset=0,Version=null};messages.Update(value=>value with{Query=first});conversations.EnsureLoaded(first,forceRefresh:true);return true;}
         }
         if(navigation.Value.Route!=Route.Conversation || current.Selection is not {} selection)return false;
         if(action.ActionId=="message-retry")
@@ -233,12 +245,20 @@ public sealed partial class DiscordWebViewWidget
             }
             history.Retry();return true;
         }
-        if(action.ActionId is "message-focus-header" or "message-focus-composer")
+        if(action.ActionId=="message-focus-composer")
         {
-            var composer=action.ActionId=="message-focus-composer";
-            var request=CreateFocusRequest().FocusElement(composer?"discord.message.actions":"discord.message.header",
-                composer?"discord.message.draft":"discord.messages.back");
+            var request=CreateFocusRequest().FocusElement("discord.message.actions","discord.message.draft");
             messages.Update(value=>value with{InitialReveal=null,ControlFocus=new(request,selection,navigation.Value.Revision)});
+            return true;
+        }
+        if(action.ActionId=="message-focus-call")
+        {
+            if(CurrentState() is {} callData && MessageSelectionCurrent(selection) &&
+                ConversationCallButton(callData,selection) is {IsDisabled:not true})
+            {
+                var request=CreateFocusRequest().FocusElement("discord.message.header","discord.message.call");
+                messages.Update(value=>value with{InitialReveal=null,ControlFocus=new(request,selection,navigation.Value.Revision)});
+            }
             return true;
         }
         if(action.ActionId==MessageAction("message-cancel",current) && current.PendingNonce is not null && Operations.IsBusy("discord.message.send") && !current.CancellingSend)
@@ -262,16 +282,12 @@ public sealed partial class DiscordWebViewWidget
         {
             var visit=navigation.Value;
             var reveal=new InitialMessageReveal(CreateFocusRequest(),selection,visit.Revision,visit.RouteCancellationToken,ActiveCancellationToken);
-            messages.Update(value=>value with{HistoryAnchor=null,NewMessages=false,InitialReveal=reveal,ControlFocus=null});
+            messages.Update(value=>value with{HistoryAnchor=null,NewMessages=false,LatestRequired=false,InitialReveal=reveal,ControlFocus=null});
             ResetMessageUpdates();ObserveMessages();history.Refresh();return true;
         }
         return false;
     }
 
-    private static string ConversationAction(ConversationQuery query,DiscordConversation item,MessageUi current)=>
-        DomainAction("message-open",query.Account,query.Session.Id,query.Search,query.Offset.ToString(CultureInfo.InvariantCulture),item.Id,item.ChannelId,item.UserId,current.IncomingOfferId,string.Join(",",(current.Incoming??[]).Select(file=>file.Id)));
-    private static string ConversationPageAction(ConversationQuery query,int offset)=>
-        DomainAction("message-page",query.Account,query.Session.Id,query.Search,query.Offset.ToString(CultureInfo.InvariantCulture),offset.ToString(CultureInfo.InvariantCulture));
     private static string IncomingFilesAction(MessageUi current)=>DomainAction("message-cancel-share",current.Query?.Account,current.Query?.Session.Id,current.IncomingOfferId,
         string.Join(",",(current.Incoming??[]).Select(file=>file.Id)));
 
@@ -328,14 +344,15 @@ public sealed partial class DiscordWebViewWidget
                     (entryTarget is null?history.Snapshot.After is null:history.Snapshot.Items.Any(message=>message.Id==entryTarget));
                 if(!retainedHistory){history.Reset();ResetMessageUpdates();}
                 var duplicateIncoming=(previous.Incoming??[]).Where(file=>!combined.Any(kept=>kept.Id==file.Id)).ToArray();
-                messages.Update(value=>sameConversation?value with{Selection=selection,Files=previous.IncomingFiles?combined:value.Files,Incoming=null,IncomingOfferId=null,IncomingBinding=null,Notice="",InitialReveal=null,ControlFocus=null,HistoryAnchor=entryTarget,EntryUnreadBoundaryId=item.OldestUnreadMessageId}:value with{Selection=selection,Draft=saved?.Text??pending?.Content??"",
-                    Notice=pending is null?"":"Delivery has not been confirmed. Check delivery before sending again.",PendingNonce=pending?.Nonce,PendingContent=pending?.Content,NewMessages=false,
+                messages.Update(value=>sameConversation?value with{Selection=selection,Files=previous.IncomingFiles?combined:value.Files,Incoming=null,IncomingOfferId=null,IncomingBinding=null,Notice="",InitialReveal=null,ControlFocus=null,HistoryAnchor=entryTarget,EntryUnreadBoundaryId=item.OldestUnreadMessageId,NewMessages=false,LatestRequired=false}:value with{Selection=selection,Draft=saved?.Text??pending?.Content??"",
+                    Notice=pending is null?"":"Delivery has not been confirmed. Check delivery before sending again.",PendingNonce=pending?.Nonce,PendingContent=pending?.Content,NewMessages=false,LatestRequired=false,
                     Files=pending?.Files.ToArray()??combined,Incoming=null,IncomingOfferId=null,IncomingBinding=null,InitialReveal=null,ControlFocus=null,HistoryAnchor=entryTarget,EntryUnreadBoundaryId=item.OldestUnreadMessageId});
                 ReleaseMessageFiles(duplicateIncoming);
-                if(targetMessage is not null)
+                if(route.Route==Route.Conversation)
+                    navigation.ReplaceCurrent(Route.Conversation);
+                else if(targetMessage is not null)
                 {
-                    navigation.NavigateRoot(Route.Home);
-                    navigation.Push(Route.Messages,"discord.messages.open");
+                    navigation.NavigateRoot(Route.Messages);
                     navigation.Push(Route.Conversation,"discord.messages.search");
                 }
                 else PushRoute(Route.Conversation,action);
@@ -348,6 +365,7 @@ public sealed partial class DiscordWebViewWidget
                     var visit=navigation.Value;
                     var reveal=new InitialMessageReveal(CreateFocusRequest(),selection,visit.Revision,visit.RouteCancellationToken,ActiveCancellationToken,entryTarget,unreadBoundary);
                     messages.Update(value=>value with{InitialReveal=reveal});
+                    BeginReadVisit(selection,item.LastMessageId,targetMessage is not null);
                 }
             }
             ObserveMessages();history.EnsureLoaded();
@@ -364,6 +382,8 @@ public sealed partial class DiscordWebViewWidget
     {
         var selected=captured.Selection!;
         if(!MessageSelectionCurrent(selected) || !reconcile && (!selected.CanSend || CurrentState()?.Messaging?.CanSend!=true))return;
+        var visit=navigation.Value;
+        var active=ActiveCancellationToken;
         Operations.RunSingleFlight("discord.message.send",async operation=>
         {
             if(!MessageSelectionCurrent(selected))return;
@@ -396,33 +416,42 @@ public sealed partial class DiscordWebViewWidget
                 sent.Validate(selected.Account,selected.Channel,nonce);
                 if(sent.Status is "sent" or "failed")pendingMessages.TryResolve(key,nonce,out _);
                 if(!MessageSelectionCurrent(selected)){if(sent.Status=="sent")ReleaseMessageFiles(captured.Files);return;}
-                messages.Update(value=>value.PendingNonce!=nonce?value:sent.Status=="sent"
-                    ?value with{Draft=value.Draft==content?"":value.Draft,PendingNonce=null,PendingContent=null,Notice="Sent",Files=null}
-                    :sent.Status=="failed"?value with{PendingNonce=null,PendingContent=null,Notice="Message was not sent. Your draft is saved."}
-                    :value with{Notice="Delivery has not been confirmed. Check delivery before sending again."});
-                if(sent.Status=="sent" && sent.Message is {} committed)ApplySentMessage(selected,committed);
+                var completed=messages.Update(value=>value.PendingNonce!=nonce?(value,false):sent.Status=="sent"
+                    ?(value with{Draft=value.Draft==content?"":value.Draft,PendingNonce=null,PendingContent=null,Notice="",Files=null},true)
+                    :sent.Status=="failed"?(value with{PendingNonce=null,PendingContent=null,Notice=""},true)
+                    :(value with{Notice="Delivery has not been confirmed. Check delivery before sending again."},false));
+                if(completed.Result)PublishFeedback(sent.Status=="sent"?"Message sent.":"Message was not sent. Your draft is saved.");
+                if(sent.Status=="sent" && sent.Message is {} committed)
+                {
+                    var reveal=completed.Result && visit.Route==Route.Conversation && visit==navigation.Value && !active.IsCancellationRequested
+                        ?new InitialMessageReveal(CreateFocusRequest(),selected,visit.Revision,visit.RouteCancellationToken,active,committed.Id,SentMessage:true):null;
+                    ApplySentMessage(selected,committed,reveal);
+                }
                 if(sent.Status=="sent")ReleaseMessageFiles(captured.Files);
             }
             catch(OperationCanceledException) when(operation.CancellationToken.IsCancellationRequested)
             {
                 if(!submitted)pendingMessages.TryResolve(key,nonce,out _);
-                if(MessageSelectionCurrent(selected))messages.Update(value=>value.PendingNonce!=nonce?value:submitted
-                    ?value with{Notice="Stopped waiting. Delivery may have completed. Check delivery before sending again."}
-                    :value with{PendingNonce=null,PendingContent=null,Notice="Upload cancelled. Your draft and files are kept."});
+                if(MessageSelectionCurrent(selected))
+                {
+                    var cancelled=messages.Update(value=>value.PendingNonce!=nonce?(value,false):submitted
+                        ?(value with{Notice="Stopped waiting. Delivery may have completed. Check delivery before sending again."},false)
+                        :(value with{PendingNonce=null,PendingContent=null,Notice=""},true));
+                    if(cancelled.Result)PublishFeedback("Upload cancelled. Your draft and files are kept.");
+                }
             }
             catch(DiscordCommandException error) when(!reconcile && error.Code is "recipient_unavailable" or "invalid_conversation" or "conversation_unavailable" or
                 "messaging_unavailable" or "invalid_message" or "invalid_attachments" or "attachment_batch_unavailable" or "message_send_capacity")
             {
                 pendingMessages.TryResolve(key,nonce,out _);
-                if(MessageSelectionCurrent(selected))messages.Update(value=>value.PendingNonce==nonce?
-                    value with{PendingNonce=null,PendingContent=null,Notice="Message was not sent. Your draft and files are kept."}:value);
+                CompleteFailedMessage(selected,nonce,"Message was not sent. Your draft and files are kept.");
             }
             catch(Exception)
             {
                 if(!submitted)pendingMessages.TryResolve(key,nonce,out _);
-                if(MessageSelectionCurrent(selected))messages.Update(value=>value.PendingNonce!=nonce?value:submitted
-                    ?value with{Notice="Delivery has not been confirmed. Check delivery before sending again."}
-                    :value with{PendingNonce=null,PendingContent=null,Notice="Attachment upload failed. Your draft and files are kept; try again."});
+                if(!submitted)CompleteFailedMessage(selected,nonce,"Attachment upload failed. Your draft and files are kept; try again.");
+                else if(MessageSelectionCurrent(selected))messages.Update(value=>value.PendingNonce!=nonce?value:
+                    value with{Notice="Delivery has not been confirmed. Check delivery before sending again."});
             }
             finally
             {
@@ -432,40 +461,58 @@ public sealed partial class DiscordWebViewWidget
         },WidgetOperationLifetime.Widget);
     }
 
+    private void CompleteFailedMessage(MessageSelection selected,string nonce,string feedbackText)
+    {
+        if(!MessageSelectionCurrent(selected))return;
+        var completed=messages.Update(value=>value.PendingNonce!=nonce?(value,false):
+            (value with{PendingNonce=null,PendingContent=null,Notice=""},true));
+        if(completed.Result)PublishFeedback(feedbackText);
+    }
+
+    internal Task WaitForMessageSendAsync(CancellationToken token=default)=>Operations.WhenIdleAsync("discord.message.send",token);
+
+    private WidgetElement ConversationList(ConversationQuery query,MessageUi current,bool sidebar=false)
+    {
+            var snapshot=conversations.GetSnapshot(query);
+            var search=new List<WidgetElement>();
+            if(!sidebar)search.Add(UI.IconButton(WidgetGlyph.Back,navigation.Value.BackActionId??"discord.section.call","discord.messages.back",
+                navigation.Value.CanGoBack?"Back":"Back to Servers").Classes("discord-control","discord-message-back"));
+            var searchInput=UI.TextEntry(query.Search,"Search","message-search","discord.messages.search",120).Classes("discord-search");
+            search.Add(sidebar?searchInput.FocusRight("discord.message.draft"):searchInput);
+            var content=new List<WidgetElement>();
+            if(current.IncomingFiles)content.Add(UI.Row("discord.messages.header",
+                UI.Text("Choose recipient","discord.messages.title").Classes("discord-section-title","discord-copy"),
+                UI.Button("Cancel sharing",IncomingFilesAction(current),"discord.messages.cancel-share").Classes("discord-control")).Classes("discord-message-header"));
+            content.Add(UI.Row("discord.messages.search.row",search.ToArray()));
+            if(snapshot.Value is {} catalog)content.Add(SectionTitle("discord.messages.heading",query.Search.Length==0?"Recent conversations":"Conversations",catalog.Context.TotalCount.ToString(CultureInfo.CurrentCulture))
+                .VisibleWhen(ResponsiveVisibility.ExpandedOnly));
+            content.Add(ConversationCollection(query,current,snapshot.Value,sidebar));
+            if(snapshot.Value?.Context.TotalCount is not >0)
+                content.Add(UI.Text(snapshot.Error?.Message??(snapshot.HasValue?"No conversations found.":"Loading conversations…"),"discord.messages.status"));
+            var notice=!sidebar&&current.Notice.Length>0?current.Notice:current.IncomingFiles?$"Choose a recipient for {current.Incoming?.Length??0} shared file(s).":
+                snapshot.Value?.Context.Truncated==true?"Search to narrow the available conversations.":"";
+            if(notice.Length>0)content.Add(UI.Text(notice,"discord.messages.notice").Classes("discord-secondary"));
+            if(current.IncomingFiles)content.Add(IncomingFilesPanel(current));
+            return UI.Stack("discord.messages.page",content.ToArray()).Classes("discord-page");
+    }
+
     private WidgetElement MessagePage(DiscordState data,Route route,out string first,out ScrollRevealRequest? reveal)
     {
         reveal=null;
         first="discord.messages.back";
         var current=messages.Value;
-        var back=UI.IconButton(WidgetGlyph.Back,navigation.Value.BackActionId!,"discord.messages.back","Back").Classes("discord-control","discord-message-back");
+        var back=UI.IconButton(WidgetGlyph.Back,navigation.Value.BackActionId??"discord.section.call","discord.messages.back","Back").Classes("discord-control","discord-message-back");
         if(current.Query is not {} query || !MessageAccountCurrent(query.Account,query.Session))
             return UI.Stack("discord.messages.unavailable",back,UI.Text("Messages are unavailable.","discord.messages.status"));
         if(route==Route.Messages)
         {
             first="discord.messages.search";
-            var snapshot=conversations.GetSnapshot(query);
-            var rows=new List<WidgetElement>();
-            if(snapshot.HasValue)
-                foreach(var item in snapshot.Value!.Items)
-                    rows.Add(UI.ActionSurface(ConversationAction(query,item,current),"discord.conversation."+item.Id,item.Name,ActionSurfaceOrientation.Horizontal,
-                        Avatar(item.AvatarUrl,"discord.conversation.icon."+item.Id,item.Name),
-                        UI.Stack("discord.conversation.copy."+item.Id,UI.Text(item.Name,"discord.conversation.name."+item.Id).Classes("discord-row-title"),
-                            UI.Text(item.Unread?"Unread":item.Kind=="group"?"Group message":item.Kind=="friend"?"Friend":"Direct message","discord.conversation.detail."+item.Id).Classes("discord-secondary")))
-                        .Classes("discord-row"));
-            if(rows.Count==0)rows.Add(UI.Text(snapshot.Error?.Message??(snapshot.HasValue?"No conversations found.":"Loading conversations…"),"discord.messages.status"));
-            return UI.Stack("discord.messages.page",
-                UI.Row("discord.messages.header",back,UI.Text("Messages","discord.messages.title").Classes("discord-section-title","discord-copy"),
-                    current.IncomingFiles?UI.Button("Cancel sharing",IncomingFilesAction(current),"discord.messages.cancel-share").Classes("discord-control"):MessageOptions()).Classes("discord-message-header"),
-                UI.Row("discord.messages.search.row",UI.TextEntry(query.Search,"Search conversations and friends","message-search","discord.messages.search",120).Classes("discord-search"),
-                    UI.IconButton(WidgetGlyph.Refresh,"message-refresh","discord.messages.refresh","Refresh conversations").Classes("discord-control")),
-                UI.VerticalScroll("discord.messages.list",rows.ToArray()).Classes("discord-list"),
-                UI.Text(current.Notice.Length>0?current.Notice:current.IncomingFiles?$"Choose a recipient for {current.Incoming?.Length??0} shared file(s).":snapshot.Value?.Context.Truncated==true?"Search to narrow the available conversations.":"","discord.messages.notice").Classes("discord-secondary"),
-                current.IncomingFiles?IncomingFilesPanel(current):UI.Spacer("discord.messages.no-incoming"),
-                UI.Row("discord.messages.paging",UI.Button("Previous",ConversationPageAction(query,-40),"discord.messages.previous").Disabled(query.Offset==0).Classes("discord-control"),
-                    UI.Button("Next",ConversationPageAction(query,40),"discord.messages.next").Disabled(snapshot.Value?.Context.HasMore!=true).Classes("discord-control"))).Classes("discord-page");
+            return ConversationList(query,current);
         }
         var selected=current.Selection;
         if(selected is null)return UI.Stack("discord.messages.empty",back);
+        const string sidebarTarget="discord.messages.list";
+        back=back.FocusLeft(sidebarTarget);
         first="discord.message.draft";
         var page=history.Snapshot;
         var lines=page.Items.Select((item,index)=>new MessageLine(item,
@@ -475,6 +522,7 @@ public sealed partial class DiscordWebViewWidget
         messageRows.Publish(selected.Session.Id+":"+selected.Account+":"+selected.Channel,selected.Channel,lines);
         var list=UI.CollectionList("discord.message.history",messageRows,60,"Messages")
             .DirectionalEntry(IndexedDirectionalEntryMode.VisibleEdge)
+            .FocusLeft(sidebarTarget)
             .AdjacentPages(page.Error is null&&page.HasBefore,page.Error is null&&page.HasAfter).Classes("discord-list","discord-message-history");
         if(current.InitialReveal is {} initial && CurrentMessageEntry(initial))
         {
@@ -487,18 +535,20 @@ public sealed partial class DiscordWebViewWidget
                     messageRows.FocusTarget("discord.message.history",new(page.Items[target].Id),target));
             }
         }
-        var messagePreview=UI.FocusPresentationSurface(list,UI.Text("","discord.message.preview.empty"),"discord.message.preview") with
-            {Preview=new(520,440,AnchorPlacement.Above){SizeToContentHeight=true,EnterButton=ControllerButton.A,AllowMedia=true}};
         var header=new List<WidgetElement>{back,UI.Text(selected.Name,"discord.message.title").Classes("discord-section-title","discord-copy")};
+        if(ConversationCallButton(data,selected) is {} call)
+        {
+            header.Add(call);
+            if(call.IsDisabled!=true)header.Add(UI.ControllerGlyph(ControllerButton.LeftStick,"discord.message.call.hint","Focus call button"));
+        }
         if(page.Status is WidgetPagedResourceStatus.Loading or WidgetPagedResourceStatus.LoadingAdjacent)
             header.Add(UI.Text(page.Status==WidgetPagedResourceStatus.Loading?"Loading messages…":page.LoadingDirection==WidgetCursorDirection.Before?"Loading older…":"Loading newer…",
                 "discord.message.boundary.status").Classes("discord-secondary"));
         else if(page.Status==WidgetPagedResourceStatus.Ready && page.Items.Count>0 && !page.HasBefore && messageRows.ViewportState.IsAtStart)
             header.Add(UI.Text("Beginning of conversation","discord.message.boundary.end").Classes("discord-secondary"));
-        header.Add(MessageOptions());
         var children=new List<WidgetElement>{
             UI.Row("discord.message.header",header.ToArray()).Classes("discord-message-header"),
-            messagePreview.Classes("discord-list")};
+            list};
         if(page.Status==WidgetPagedResourceStatus.Ready && page.Items.Count==0)children.Add(UI.Text("No messages yet","discord.message.empty").Classes("discord-secondary"));
         if(page.Error is not null)children.Add(UI.Button("Try again","message-retry","discord.message.retry").Classes("discord-control"));
         var missingNotification=page.Status==WidgetPagedResourceStatus.Ready && current.InitialReveal is {UnreadBoundary:false,MessageId:{} requestedMessage} &&
@@ -506,8 +556,9 @@ public sealed partial class DiscordWebViewWidget
         if((page.Error?.Message??(missingNotification?"The requested message is unavailable.":current.Notice)) is {Length:>0} notice)
             children.Add(UI.Text(notice,"discord.message.status").Classes("discord-secondary"));
         if(current.Files is {Length:>0})children.Add(MessageFiles(current));
-        var actions=new List<WidgetElement>{UI.TextEntry(current.Draft,"Write a message…",MessageAction("message-draft",current),"discord.message.draft",2000).Classes("discord-message-composer")};
-        if(current.NewMessages || page.HasAfter || messageRows.ViewportState is {ActiveViews:>0,IsAtEnd:false})
+        var actions=new List<WidgetElement>{UI.TextEntry(current.Draft,"Write a message…",MessageAction("message-draft",current),"discord.message.draft",2000)
+            .FocusLeft(sidebarTarget).Classes("discord-message-composer")};
+        if(current.NewMessages || current.LatestRequired || page.HasAfter || messageRows.ViewportState is {ActiveViews:>0,IsAtEnd:false})
             actions.Add(UI.Button(current.NewMessages?"New messages":"Latest","message-latest","discord.message.latest")
                 .Icon(DiscordIcons.Latest,"Jump to latest messages").Classes("discord-control"));
         actions.Add(Operations.IsBusy("discord.message.send") && current.PendingNonce is not null
@@ -524,9 +575,6 @@ public sealed partial class DiscordWebViewWidget
     }
 
     private static WidgetContextAction[] MessageCommands()=>[new("refresh","Refresh Discord"),new("account","Open Discord")];
-    private static SelectElement MessageOptions()=>UI.CommandMenu("More",
-        MessageCommands().Select(command=>new SelectOption(command.ActionId,command.Label,command.ActionId)).ToArray(),
-        "discord.message.options","Conversation options").Classes("discord-control");
 
     private bool CurrentMessageEntry(InitialMessageReveal? entry)=>entry is not null && entry.Selection==messages.Value.Selection &&
         entry.NavigationRevision==navigation.Value.Revision && !entry.RouteLifetime.IsCancellationRequested &&
@@ -536,7 +584,13 @@ public sealed partial class DiscordWebViewWidget
     private static WidgetElement MessageRow(MessageLine line,WidgetIndexedItemContext ids)
     {
         var item=line.Message;
-        var preview=new List<WidgetElement>();
+        var mediaItems=MessageMediaItems(line);
+        var mediaUrls=mediaItems.Select(media=>media.Source.Location!).ToHashSet(StringComparer.Ordinal);
+        if(!HideMessageEmbeds(line))mediaUrls.UnionWith(item.Embeds.Where(embed=>embed.IsAnimation).Select(embed=>embed.Url).OfType<string>());
+        var textParts=DiscordMessageText.Parse(item.Content,item.Mentions,line.RevealSpoilers,item.ContentTruncated);
+        var cardTargets=MessageCardTargets(line,mediaUrls,textParts);
+        var cardUrls=cardTargets.Values.ToHashSet(StringComparer.Ordinal);
+        var linkTargets=new HashSet<string>(StringComparer.Ordinal);
         var body=new List<WidgetElement>();
         if(line.ShowAuthor)body.Add(UI.Row(ids.Id("heading"),
             UI.Text(item.IsOwn?"You":item.AuthorName,ids.Id("author")).Classes("discord-message-author"),
@@ -545,78 +599,79 @@ public sealed partial class DiscordWebViewWidget
         if(item.Reply is {} reply)body.Add(UI.Text("↪ "+reply.Author+": "+(reply.Unavailable?"Original message unavailable":
             MessageExcerpt(reply.Content,line.RevealSpoilers)),ids.Id("reply")).Classes("discord-message-reply"));
         if(item.SystemText is {} system)body.Add(UI.Text(system,ids.Id("system")).Classes("discord-secondary"));
-        var textParts=DiscordMessageText.Parse(item.Content,item.Mentions,line.RevealSpoilers,item.ContentTruncated);
-        if(textParts.Count>0)body.Add(MessageRichText(textParts,ids));
-        foreach(var link in textParts.Where(part=>part.Url is not null).DistinctBy(part=>part.Url).Take(8))
-            preview.Add(UI.Button(link.Text,ids.Id("open-link-"+preview.Count),ids.Id("link-"+preview.Count))
-                .OpenIntent(WidgetIntentContracts.Web,JsonSerializer.SerializeToElement(new{url=link.Url})).Classes("discord-control"));
-        var attachmentCount=0;var previewMediaCount=0;
+        if(MessageRichText(textParts,ids,linkTargets,mediaUrls,cardUrls) is {} text)body.Add(text);
         foreach(var file in item.Attachments)
         {
-            if(!line.RevealSpoilers && file.FileName.StartsWith("SPOILER_",StringComparison.OrdinalIgnoreCase))
-            {
-                if(attachmentCount++<3)body.Add(UI.Text("[Spoiler attachment]",ids.Id("attachment-hidden-"+file.Id)).Classes("discord-text-spoiler"));
-                continue;
-            }
-            var image=file.ContentType is "image/png" or "image/jpeg" or "image/gif" or "image/webp";
-            if(attachmentCount++<3)
-                body.Add(image&&file.Url is {} imageUrl?UI.Image(imageUrl,ids.Id("attachment-image-"+file.Id),file.FileName,ImageFit.Contain).Classes("discord-message-image"):
-                    UI.Text(file.FileName,ids.Id("attachment-name-"+file.Id)).Classes("discord-message-file-name"));
-            if(file.Url is {} mediaUrl&&previewMediaCount<1)
-            {
-                if(image){preview.Add(UI.Image(mediaUrl,ids.Id("preview-image-"+file.Id),file.FileName,ImageFit.Contain).Classes("discord-message-preview-image"));previewMediaCount++;}
-                else if(file.ContentType is "video/mp4" or "video/webm" or "audio/mpeg" or "audio/ogg" or "audio/mp4")
-                {preview.Add(UI.MediaPlayer(MediaPlayerSource.WebUrl(mediaUrl),ids.Id("preview-media-"+file.Id),file.FileName,new(Muted:true))
-                    .Classes("discord-message-preview-media"));previewMediaCount++;}
-            }
-            preview.Add(file.Url is {} url?UI.Button(file.FileName,ids.Id("file-action-"+file.Id),ids.Id("file-"+file.Id))
-                .OpenIntent(WidgetIntentContracts.Web,JsonSerializer.SerializeToElement(new{url})).Classes("discord-control"):
-                UI.Text(file.FileName+" · Link unavailable",ids.Id("file-"+file.Id)).Classes("discord-secondary"));
+            if(!line.RevealSpoilers && file.HasSpoiler)
+            {body.Add(UI.Text("[Spoiler attachment]",ids.Id("attachment-hidden-"+file.Id)).Classes("discord-text-spoiler"));continue;}
+            if(file.HasAnimation && file.ContentType is "image/gif" or "image/png" or "image/webp" && file.Url is {} gif)
+                body.Add(UI.PublicImage(gif,ids.Id("attachment-animation-"+file.Id),file.FileName,ImageFit.Contain).Classes("discord-message-image"));
+            else if(file.HasAnimation && file.ContentType is "video/mp4" or "video/webm" && file.Url is {} animation)
+                body.Add(UI.PublicAnimation(animation,ids.Id("attachment-animation-"+file.Id),file.FileName).Classes("discord-message-image"));
+            if(mediaItems.Any(media=>media.Id=="attachment."+file.Id))continue;
+            body.Add(file.Url is {} url && linkTargets.Add(url)
+                ?UI.Button(file.FileName,ids.Id("file-action-"+file.Id),ids.Id("file-"+file.Id))
+                    .OpenIntent(WidgetIntentContracts.Web,JsonSerializer.SerializeToElement(new{url})).Classes("discord-message-file-link")
+                :UI.Text(file.FileName+(file.Url is null?" · Link unavailable":""),ids.Id("file-"+file.Id)).Classes("discord-secondary"));
         }
-        if(item.Attachments.Length>3)body.Add(UI.Text($"{item.Attachments.Length} attachments · Open preview to view all",ids.Id("files")).Classes("discord-secondary"));
-        AddMessageExtras(line,ids,body,preview);
+        AddMessageExtras(line,ids,body,linkTargets,cardTargets);
+        // Inline animations already expose the complete content. A separate
+        // gallery action only earns a focus stop when there is other media.
+        if (MessageInlineVideo(line,ids,mediaItems) is { } inlineVideo) body.Add(inlineVideo);
+        else if(mediaItems.Any(media=>media.Options?.IsAnimation!=true))
+        {
+            var label=$"Open {mediaItems.Count} attachment"+(mediaItems.Count==1?"":"s")+": "+
+                string.Join(" · ",mediaItems.Take(2).Select(media=>media.Label));
+            body.Add(UI.ActionSurface("message.media.open",ids.Id("media-open"),label,ActionSurfaceOrientation.Vertical,
+                MessageMediaThumbnails(line,ids,mediaItems))
+                .Classes("discord-message-attachments","discord-message-gallery-action"));
+        }
         if(item.ContentTruncated)body.Add(UI.Text("Message shortened · Open Discord to read all",ids.Id("truncated")).Classes("discord-secondary"));
         if(body.Count==0)body.Add(UI.Text("Message content is available in Discord",ids.Id("unsupported")).Classes("discord-secondary"));
         var avatar=line.ShowAuthor?Avatar(item.AvatarUrl,ids.Id("avatar"),item.AuthorName).AddClasses("discord-message-avatar"):
             UI.Spacer(ids.Id("avatar-space")).Classes("discord-message-avatar");
-        var bubble=UI.Stack(ids.Id("bubble"),body.ToArray()).Classes("discord-message-bubble",item.IsOwn?"discord-message-own":"discord-message-other");
+        var bubble=UI.Stack(ids.Id("bubble"),body.ToArray()).Classes("discord-message-bubble");
         // Star measurement wraps long text to available width; alignment keeps
         // short bubbles content-sized without adding another layout wrapper.
-        var content=UI.Grid(ids.Id("content"),[],item.IsOwn?[GridTrack.Star(),GridTrack.Auto()]:[GridTrack.Auto(),GridTrack.Star()],
-            bubble.InGrid(column:item.IsOwn?0:1).AlignInGrid(item.IsOwn?GridCellAlignment.End:GridCellAlignment.Start,GridCellAlignment.Start),
-            avatar.InGrid(column:item.IsOwn?1:0).AlignInGrid(GridCellAlignment.Start,GridCellAlignment.Start))
+        var content=UI.Grid(ids.Id("content"),[],[GridTrack.Auto(),GridTrack.Star()],
+            bubble.InGrid(column:1).AlignInGrid(GridCellAlignment.Start,GridCellAlignment.Start),
+            avatar.InGrid(column:0).AlignInGrid(GridCellAlignment.Start,GridCellAlignment.Start))
             .Spacing(0,8).Classes("discord-message-content");
         var children=new List<WidgetElement>();
         if(line.ShowDate)children.Add(UI.Text(MessageDate(item).ToString("D",CultureInfo.CurrentCulture),ids.Id("date")).Classes("discord-message-date"));
         if(line.ShowUnread)children.Add(UI.Text("Unread messages",ids.Id("unread")).Classes("discord-message-unread"));
         children.Add(content);
-        var row=UI.ReadingSurface(ids.Id("row"),item.AuthorName+", message",ActionSurfaceOrientation.Vertical,children.ToArray())
+        var row=UI.ReadingGroup(ids.Id("row"),item.AuthorName+", message",ActionSurfaceOrientation.Vertical,children.ToArray())
             .FocusVisualTarget(ids.Id("bubble")).Classes("discord-message-row");
         if(item.Content.Contains("||",StringComparison.Ordinal) || item.Reply?.Content.Contains("||",StringComparison.Ordinal)==true ||
             item.Embeds.Any(embed=>embed.Description.Contains("||",StringComparison.Ordinal)) ||
-            item.Attachments.Any(file=>file.FileName.StartsWith("SPOILER_",StringComparison.OrdinalIgnoreCase)))row=row.ContextAction(line.RevealSpoilers?"message.spoiler.hide":"message.spoiler.show",
+            item.Attachments.Any(file=>file.HasSpoiler))row=row.ContextAction(line.RevealSpoilers?"message.spoiler.hide":"message.spoiler.show",
             line.RevealSpoilers?"Hide spoilers":"Reveal spoilers").ContextMenuShortcut(ControllerButton.Menu);
-        return preview.Count==0?row:row.PresentOnFocus(UI.VerticalScroll(ids.Id("preview"),preview.ToArray()).Classes("discord-page-scroll"));
+        return row;
     }
 
     private ValueTask MessageRowAction(string channel,MessageLine line,WidgetActionEvent action,CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         if(messages.Value.Selection is not { } selected || selected.Channel!=channel || !MessageSelectionCurrent(selected))return ValueTask.CompletedTask;
+        if(action.ActionId=="message.media.open"){OpenMessageMedia(line,action);return ValueTask.CompletedTask;}
         if(action.ActionId is "message.spoiler.show" or "message.spoiler.hide")
             messages.Update(state=>state with{RevealedSpoilers=action.ActionId=="message.spoiler.show"
                 ?(state.RevealedSpoilers??[]).Append(line.Message.Id).Distinct().TakeLast(40).ToArray()
                 :(state.RevealedSpoilers??[]).Where(id=>id!=line.Message.Id).ToArray()});
         return ValueTask.CompletedTask;
     }
-    private static WidgetElement MessageRichText(IReadOnlyList<DiscordTextPart> parts,WidgetIndexedItemContext ids)
+    private static WidgetElement? MessageRichText(IReadOnlyList<DiscordTextPart> parts,WidgetIndexedItemContext ids,
+        HashSet<string> links,HashSet<string> mediaUrls,HashSet<string> cardUrls)
     {
-        var spans=new List<WidgetElement>();var emojiCount=0;
-        foreach(var part in parts)
+        var spans=new List<WidgetElement>();var emojiCount=0;var linkCount=0;
+        var visible=parts.Where(part=>part.Url is null || part.Text!=part.Url || !(mediaUrls.Contains(part.Url)||cardUrls.Contains(part.Url))).ToList();
+        if(visible.Count>0&&visible.Count!=parts.Count)visible[^1]=visible[^1] with {Text=visible[^1].Text.TrimEnd()};
+        foreach(var part in visible)
         {
             var id=ids.Id("span-"+spans.Count);
             if(part.EmojiId is { } emoji && emojiCount++<4)
-            {spans.Add(UI.Image("https://cdn.discordapp.com/emojis/"+emoji+".png?size=32",id,part.Text,ImageFit.Contain));continue;}
+            {spans.Add(UI.PublicImage("https://cdn.discordapp.com/emojis/"+emoji+".png?size=32",id,part.Text,ImageFit.Contain));continue;}
             var classes=new List<string>();
             if(part.Style.HasFlag(DiscordTextStyle.Bold))classes.Add("discord-text-bold");
             if(part.Style.HasFlag(DiscordTextStyle.Italic))classes.Add("discord-text-italic");
@@ -625,9 +680,14 @@ public sealed partial class DiscordWebViewWidget
             if(part.Style.HasFlag(DiscordTextStyle.Code))classes.Add("discord-text-code");
             if(part.Style.HasFlag(DiscordTextStyle.Spoiler))classes.Add("discord-text-spoiler");
             if(part.Style.HasFlag(DiscordTextStyle.Quote))classes.Add("discord-text-quote");
+            if(part.Url is {} url && (mediaUrls.Contains(url)||cardUrls.Contains(url)))
+            {if(part.Text!=url)spans.Add(UI.Text(part.Text,id).Classes(classes.ToArray()));continue;}
             if(part.Url is not null)classes.Add("discord-text-link");
-            spans.Add(UI.Text(part.Text,id).Classes(classes.ToArray()));
+            spans.Add(part.Url is {} destination && linkCount<8 && links.Add(destination)
+                ?UI.Button(part.Text,ids.Id("inline-link-"+linkCount++),id)
+                    .OpenIntent(WidgetIntentContracts.Web,JsonSerializer.SerializeToElement(new{url=destination})).Classes(classes.ToArray())
+                :UI.Text(part.Text,id).Classes(classes.ToArray()));
         }
-        return UI.RichText(ids.Id("text"),spans.ToArray()).Classes("discord-message-text");
+        return spans.Count==0?null:UI.RichText(ids.Id("text"),spans.ToArray()).Classes("discord-message-text");
     }
 }

@@ -3,50 +3,113 @@ using WidgetRail.WidgetSdk;
 
 internal static partial class GalleryTests
 {
-    internal static async Task LibraryRecordingReviewAndSave()
+    internal static async Task LibraryCaptureHandsOffWithoutReview()
     {
-        await ReviewAndSave(false);
-        await ReviewAndSave(true);
-    }
-    private static async Task ReviewAndSave(bool failSavedPreview)
-    {
-        var draft = new CaptureAttachment(new string('f', 32), "video/mp4", 3840, 2160, 160_000_000, 60, long.MaxValue)
-        { Origin = CaptureAttachmentOrigin.LibraryRecordingDraft, Properties = new(3840, 2160, 30, 1800, Encoder: CaptureEncoderMode.Hardware) };
-        CaptureSessionRequest? requested = null;
-        var saveCalls = 0; var discards = 0; var discardAfterReplacement = false;
-        await using var fixture = new GalleryFixture((builder, owner) => builder
-            .WithResponse(WidgetCaptureCapabilities.Validate, new CaptureConfigurationValidation(true))
-            .WithHandler(WidgetCaptureCapabilities.Start, (value, _) =>
-            { requested = value; return ValueTask.FromResult(new WindowCaptureTicket(new string('e', 32))); })
-            .WithResponse(WidgetCaptureCapabilities.Status, new WindowCaptureStatus(new string('e', 32), WindowCapturePhase.Ready, draft))
-            .WithHandler(WidgetCaptureLibraryCapabilities.SaveCurrent, (value, _) =>
+        CaptureSessionRequest? image = null, clip = null;
+        await using var fixture = new GalleryFixture((builder, _) => builder
+            .WithHandler(WidgetCaptureCapabilities.SaveScreenshot, (request, _) =>
             {
-                Check(value.Attachment == draft, "Save lost exact draft authority."); saveCalls++;
-                var saved = new CaptureLibraryItem(draft.Id, draft with { Origin = CaptureAttachmentOrigin.SavedLibrary }, 1000);
-                owner.Items.Add(saved); return ValueTask.FromResult(saved);
+                image = request;
+                return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
             })
-            .WithHandler(WidgetCaptureCapabilities.Discard, (value, _) =>
-            { discards++; discardAfterReplacement = Preview(owner)?.Origin == CaptureAttachmentOrigin.SavedLibrary; return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true)); }));
-        if (failSavedPreview) fixture.OpenOverride = (_, _) => ValueTask.FromException<CaptureAttachment>(
-            new WidgetCapabilityException("capture_unavailable", "fixture"));
-        await fixture.Start(); await fixture.Action("capture-library.video");
-        await fixture.Until(() => Preview(fixture)?.Id == draft.Id && !fixture.Busy);
-        Check(requested is { OutputPurpose: CaptureOutputPurpose.LibraryRecording, MaximumBytes: CaptureLimits.MaximumLibraryRecordingBytes },
-            "Record clip retained attachment budget.");
-        Check(saveCalls == 0 && fixture.Node("capture-library.save") is not null, "Recording skipped review or saved automatically.");
-        Check(ViewSnapshotValidator.Validate(fixture.View()).Count == 0 && fixture.View().ProtocolVersion >= ProtocolConstants.LibraryRecordingDraftVersion,
-            "Large draft presentation is invalid or negotiated to an old validator.");
-        await fixture.Action("capture-library.save");
-        if (failSavedPreview)
+            .WithHandler(WidgetCaptureCapabilities.RecordClip, (request, _) =>
+            {
+                clip = request;
+                return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+            }));
+        await fixture.Start();
+        await fixture.Action("capture-library.photo");
+        await fixture.Until(() => image is not null && !fixture.Busy);
+        Check(image is { Screenshot: not null, Recording: null, Preparation.DelaySeconds: 0 } && Preview(fixture) is null,
+            "A fresh gallery screenshot should be immediate and stay in the gallery");
+        await fixture.Action("capture-library.video");
+        await fixture.Until(() => clip is not null && !fixture.Busy);
+        Check(clip is { Recording: not null, Screenshot: null, Preparation.DelaySeconds: 5, OutputPurpose: CaptureOutputPurpose.LibraryRecording,
+            MaximumBytes: CaptureLimits.MaximumLibraryRecordingBytes }, "Clip did not use the library recording budget");
+        Check(fixture.View().Root.Transition?.Key == "home" && fixture.Node("capture-library.save") is null,
+            "A completed handoff opened a review page");
+    }
+
+    internal static async Task ScreenshotPreferences()
+    {
+        var state = new WidgetTestPrivateState();
+        CaptureSessionRequest? request = null;
+        GalleryFixture Open() => new((builder, _) => builder.WithHandler(WidgetCaptureCapabilities.SaveScreenshot, (value, _) =>
         {
-            await fixture.Until(() => Preview(fixture) is null && !fixture.Busy);
-            Check(saveCalls == 1 && fixture.Node("capture-library.save") is null &&
-                fixture.Node("capture-library.heading") is not null,
-                "Committed recording became an unsaved draft again after preview failure.");
-            return;
+            request = value;
+            return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+        }), state);
+        async Task TrayScreenshot(GalleryFixture fixture, int seconds)
+        {
+            request = null;
+            var snapshot = fixture.View();
+            var offer = snapshot.QuickActions.Single(item => item.TrayOffer?.Id == "screenshot");
+            Check((await WidgetTestHost.InvokeTrayActionAsync(fixture.Widget, snapshot, offer)).Handled &&
+                request?.Preparation.DelaySeconds == seconds, "Tray screenshot used the wrong delay");
         }
-        await fixture.Until(() => Preview(fixture)?.Origin == CaptureAttachmentOrigin.SavedLibrary && !fixture.Busy);
-        Check(saveCalls == 1 && discards == 1 && discardAfterReplacement && fixture.Node("capture-library.save") is null,
-            "Saving retained an invalid draft, duplicated publication, or discarded before replacement.");
+        await using (var initial = Open())
+        {
+            await initial.Start();
+            await TrayScreenshot(initial, 0);
+            await initial.Action("capture-library.settings");
+            await initial.Until(() => initial.Node("capture-library.setting.image.delay") is not null && !initial.Busy);
+            await initial.Action("capture-library.option.countdown.off");
+            await initial.Until(() => state.Revision == 1 && !initial.Busy);
+            Check(initial.Node("capture-library.setting.image.delay")!.SelectOptions.Single(o => o.IsSelected).Label == "Immediately",
+                "Changing countdown changed screenshot delay");
+            await initial.Action("capture-library.option.image.delay.10");
+            await initial.Until(() => state.Revision == 2 && !initial.Busy);
+            Check(initial.Node("capture-library.setting.delay")!.SelectOptions.Single(o => o.IsSelected).Label == "5 seconds",
+                "Changing screenshot delay changed clip delay");
+        }
+        await using (var restarted = Open())
+        {
+            await restarted.Start();
+            await TrayScreenshot(restarted, 10);
+        }
+        state.SimulateExternalWriteJson("""{"Preparation":{"DelaySeconds":5,"ShowCountdown":false}}""");
+        await using var previousProfile = Open();
+        await previousProfile.Start();
+        await TrayScreenshot(previousProfile, 5);
+    }
+
+    internal static async Task ApprovalManagementWhileRecording()
+    {
+        var reads = 0;
+        var removes = 0;
+        var game = new ReplayApprovedApplication(new string('a', 64), "Fixture game");
+        var approvals = new ReplayApplicationApprovals([game]);
+        await using var fixture = new GalleryFixture((builder, instance) => builder
+            .WithHandler(WidgetCaptureReplayCapabilities.Approvals, (_, _) =>
+            {
+                reads++;
+                return ValueTask.FromResult(new ReplayApprovalList(instance.Replay.SettingsRevision, approvals));
+            })
+            .WithHandler(WidgetCaptureReplayCapabilities.RemoveApproval, (request, _) =>
+            {
+                Check(request.ApplicationId == game.Id && request.ExpectedRevision == instance.Replay.SettingsRevision, "Removal lost its revision");
+                removes++;
+                approvals = ReplayApplicationApprovals.Empty;
+                var next = instance.Replay with { Revision = instance.Replay.Revision + 1, SettingsRevision = request.ExpectedRevision + 1 };
+                instance.NotifyReplay(next);
+                return ValueTask.FromResult(new CaptureReplayControlResult(CaptureReplayOutcome.Accepted, next));
+            }));
+        fixture.Replay = new(2, 1, new() { Enabled = true }, CaptureReplayPhase.Recording)
+            { SessionId = new string('b', 32), TargetName = game.Name };
+        await fixture.Start();
+        await fixture.Action("capture-library.settings");
+        await fixture.Until(() => !fixture.Busy && fixture.Node("capture-library.approvals.open") is { IsDisabled: not true });
+        Check(reads == 0, "Opening general settings queried the list");
+        await fixture.Action("capture-library.approvals.open");
+        var button = "capture-library.approvals." + game.Id;
+        await fixture.Until(() => fixture.Node(button) is { IsDisabled: not true });
+        Check(ViewSnapshotValidator.Validate(fixture.View()).Count == 0, "Invalid approvals modal");
+        var action = fixture.Node(button)!.ActionId!;
+        fixture.NotifyReplay(fixture.Replay with { Revision = 3, BufferedDurationSeconds = 5 });
+        await fixture.Action(action);
+        await fixture.Until(() => fixture.Node("capture-library.approvals.empty") is not null);
+        await fixture.Action(action);
+        Check(removes == 1 && reads == 2 && fixture.Replay.Phase == CaptureReplayPhase.Recording,
+            "Stale removal or buffer updates changed the approvals");
     }
 }

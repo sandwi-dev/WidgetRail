@@ -32,6 +32,8 @@ internal sealed partial class WidgetIndexedCollectionView
     private Continuity? pendingContinuity;
     private bool continuityQueued;
     private bool transferringContinuityFocus;
+    private ItemsStackPanel? continuityPanel;
+    private ItemsUpdatingScrollMode continuityScrollMode;
 
     private Continuity? CaptureContinuity(WidgetPresentationBinding binding, ViewNode next, bool allowEndFollowing)
     {
@@ -48,6 +50,12 @@ internal sealed partial class WidgetIndexedCollectionView
             (source.Declaration.IndexedOccurrenceKeys is null || next.IndexedOccurrenceKeys is null)) return null;
         var oldViewport = pendingContinuity?.Viewport ?? CaptureViewport(new(binding.Scope, next.Id, ViewNodeKind.IndexedCollection, ""), preferFocused: true);
         var oldFocus = pendingContinuity?.Focus ?? CaptureFocusedItem();
+        // Free scrolling can leave keyboard focus outside the reading viewport.
+        // Preserve a previously admitted restoration, but do not create a new
+        // focus replay from that offscreen remnant when a page window changes.
+        if (pendingContinuity?.Focus is null && oldFocus is not null && view is not null &&
+            FindNativeScroll(view) is { } focusViewport && !VisibleOccurrences(focusViewport).Any(item => item.Slot.Key == oldFocus.ItemKey))
+            oldFocus = null;
         if (followEnd)
         {
             var followingKeys = next.IndexedOccurrenceKeys!;
@@ -244,7 +252,20 @@ internal sealed partial class WidgetIndexedCollectionView
             pending.Viewport is null || RestoreViewport(pending.Viewport, ref pending.Requested, ref pending.Offset, allowRetainedPixels: true);
         // A new query can have no surviving anchor. Finish deterministically rather
         // than keeping a restoration subscription after failure or empty data.
-        if (viewportReady && pending.Focus is null) { TraceContinuity("settled", pending.Viewport); CancelContinuity(); }
+        // Native edge tracking must survive placeholder-to-content height changes
+        // throughout the demanded cache, including rows above the visible anchor.
+        // Releasing it after only the first retained row arranges causes a jump.
+        var nativePanel = view.ItemsPanelRoot as ItemsStackPanel;
+        var windowReady = continuityPanel is null || source.Items.DemandIsSettled && containers.All(pair =>
+            !pair.Key.IsLoaded || !source.Items.IsDemanded(pair.Value.Slot.Index) || pair.Value.Slot.Failed ||
+            // ItemsStackPanel can retain an offscreen measurement container
+            // (notably item zero) without ever loading its row renderer. Native
+            // estimates need no renderer acknowledgement; visible placeholders
+            // and loaded cache renderers still must finish their current layout.
+            pair.Value.LayoutOwner is null && nativePanel is { FirstVisibleIndex: >= 0 } &&
+                (pair.Value.Slot.Index < nativePanel.FirstVisibleIndex || pair.Value.Slot.Index > nativePanel.LastVisibleIndex) ||
+            pair.Value.Slot.Value is { Lease.IsCurrent: true } row && HasCurrentRowLayout(pair.Key, row));
+        if (viewportReady && pending.Focus is null && windowReady) { TraceContinuity("settled", pending.Viewport); CancelContinuity(); }
     }
 
     partial void TraceContinuity(string phase, IndexedViewportMemento? viewport);
@@ -277,6 +298,11 @@ internal sealed partial class WidgetIndexedCollectionView
 
     private void CancelContinuity()
     {
+        if (continuityPanel is { } panel)
+        {
+            continuityPanel = null;
+            panel.ItemsUpdatingScrollMode = continuityScrollMode;
+        }
         if (pendingContinuity is not { } pending) return;
         TraceContinuity("cancel", pending.Viewport);
         pendingContinuity = null;

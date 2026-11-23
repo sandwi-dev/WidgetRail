@@ -12,7 +12,37 @@ internal static class WidgetNavigatorTests
         await BackRemembersDispatchFocusAndHonorsOverridesAsync();
         await IndexedReturnTargetsAreScopedAndRetireWithQueriesAsync();
         await ScopeComposesEveryContainerAndRejectsLeafRootsAsync();
+        await ReplaceCurrentVisitIsAtomicAsync();
         CapacityAndAuthoringConflictsFailClosed();
+    }
+
+    private static async Task ReplaceCurrentVisitIsAtomicAsync()
+    {
+        using var widget=new NavigationWidget();
+        await WidgetTestHost.InitializeAsync(widget);
+        var navigation=widget.Navigation;
+        navigation.Push(Route.Detail,"player.play");
+        var before=navigation.Value;
+        var publications=new List<WidgetNavigationSnapshot<Route>>();
+        void Published(object? sender,WidgetInvalidatedEventArgs args)=>publications.Add(navigation.Value);
+        widget.Invalidated+=Published;
+        try { Equal(WidgetNavigationResult.Changed,navigation.ReplaceCurrent(Route.Detail)); }
+        finally { widget.Invalidated-=Published; }
+        Equal(1,publications.Count);
+        Equal(Route.Detail,publications[0].Route);
+        Equal(before.Depth,navigation.Value.Depth);
+        Equal(before.InputScopeId,navigation.Value.InputScopeId);
+        True(before.RouteCancellationToken.IsCancellationRequested,"Replacing detail failed to retire its prior visit.");
+        False(before.RootRouteCancellationToken.IsCancellationRequested,"Replacing detail retired its parent root.");
+        False(navigation.Value.RouteCancellationToken.IsCancellationRequested,"Replacement visit started canceled.");
+        Equal(WidgetNavigationResult.Changed,navigation.Back());
+        Equal(Route.Player,navigation.Value.Route);
+        Equal("player.play",navigation.Value.InitialFocusId);
+        var rootVisit=navigation.Value;
+        navigation.ReplaceCurrent(Route.Player);
+        True(rootVisit.RootRouteCancellationToken.IsCancellationRequested,"Replacing a root visit did not retire root-owned work.");
+        Equal(0,navigation.Value.Depth);
+        await WidgetTestHost.DestroyAsync(widget);
     }
 
     private static async Task IndexedReturnTargetsAreScopedAndRetireWithQueriesAsync()

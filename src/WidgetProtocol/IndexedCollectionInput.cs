@@ -9,8 +9,12 @@ public sealed record IndexedCollectionInputRequest(IndexedCollectionItemReferenc
     string? ContextActionOwnerId = null, string? ContextActionId = null)
 {
     public IndexedCollectionPreviewAction? PreviewAction { get; init; }
+    public IndexedCollectionInlineAction? InlineAction { get; init; }
     public IndexedSelectionInput? Selection { get; init; }
 }
+
+/// <summary>An explicit action inside the exact leased reading group, independent of preview ownership.</summary>
+public sealed record IndexedCollectionInlineAction(string OwnerId, string ActionId);
 
 /// <summary>An action declared inside the exact leased row's interactive preview.</summary>
 public sealed record IndexedCollectionPreviewAction(string OwnerId, string ActionId)
@@ -52,14 +56,20 @@ public static class IndexedCollectionInputContract
             throw new ArgumentException("Indexed context selection identity is invalid.", nameof(request));
         if (request.Selection is { } selection &&
             (selection.Epoch < 0 || !Enum.IsDefined(selection.Gesture) || request.ContextActionId is not null ||
-             request.PreviewAction is not null || request.Button != ControllerButton.A || request.Phase != ControllerEventPhase.Pressed))
+             request.PreviewAction is not null || request.InlineAction is not null || request.Button != ControllerButton.A || request.Phase != ControllerEventPhase.Pressed))
             throw new ArgumentException("Invalid indexed selection input.", nameof(request));
         if (request.PreviewAction is { } preview &&
-            (request.ContextActionId is not null || request.Button != ControllerButton.A || request.Phase != ControllerEventPhase.Pressed ||
+            (request.ContextActionId is not null || request.InlineAction is not null || request.Button != ControllerButton.A || request.Phase != ControllerEventPhase.Pressed ||
              preview.OwnerId is null || preview.ActionId is null ||
              !ProtocolValidationIdentifierContext.IsSafeIdentifier(preview.OwnerId) || !ProtocolValidationIdentifierContext.IsSafeIdentifier(preview.ActionId) ||
              preview.RequestedValue is { } requested && !double.IsFinite(requested)))
             throw new ArgumentException("Indexed preview action identity is invalid.", nameof(request));
+        if (request.InlineAction is { } inline &&
+            (request.ContextActionId is not null || request.PreviewAction is not null || request.Selection is not null ||
+             request.Button != ControllerButton.A || request.Phase != ControllerEventPhase.Pressed ||
+             inline.OwnerId is null || inline.ActionId is null ||
+             !ProtocolValidationIdentifierContext.IsSafeIdentifier(inline.OwnerId) || !ProtocolValidationIdentifierContext.IsSafeIdentifier(inline.ActionId)))
+            throw new ArgumentException("Indexed inline action identity is invalid.", nameof(request));
     }
 
     internal static IReadOnlyList<ViewNode> ResolveOwnerPath(ViewSnapshot parent, IndexedCollectionRangeRequest request)
@@ -106,11 +116,17 @@ public static class IndexedCollectionInputContract
         var path = owners.Append(item).ToArray();
         var collectionAvailable = owners.Where(node => node.Kind == ViewNodeKind.IndexedCollection)
             .All(ControllerShortcutResolutionContract.OwnerAvailable);
+        if (request.InlineAction is { } inline)
+            return collectionAvailable && !owners.Any(node=>node.IndexedSelection?.IsActive==true) && item.IsReadingGroup && ControllerShortcutResolutionContract.OwnerAvailable(item)
+                ? ResolveInline(item, inline, true, out declaration) : null;
         if (request.Selection is { } selection)
         {
             var declared = owners.LastOrDefault(node => node.Kind == ViewNodeKind.IndexedCollection)?.IndexedSelection;
+            var held=selection.Gesture is IndexedSelectionGesture.BeginAdd or IndexedSelectionGesture.Add;
             return collectionAvailable && ControllerShortcutResolutionContract.OwnerAvailable(item) &&
-                declared is { IsActive: true } && declared.Epoch == selection.Epoch
+                declared is not null && declared.Epoch == selection.Epoch &&
+                (!held || declared.SupportsHeldSelection) &&
+                (selection.Gesture==IndexedSelectionGesture.BeginAdd?!declared.IsActive:declared.IsActive)
                 ? new("indexed.selection", item.Id, item.Kind, true) : null;
         }
         if (request.PreviewAction is { } preview)
@@ -141,6 +157,24 @@ public static class IndexedCollectionInputContract
         declaration = shortcut.Owner;
         return shortcut.Status == ControllerShortcutResolutionStatus.Resolved && (!ReferenceEquals(shortcut.Owner, item) || collectionAvailable)
             ? new(shortcut.Shortcut!.ActionId, shortcut.Owner!.Id, shortcut.Owner.Kind, ReferenceEquals(shortcut.Owner, item)) : null;
+    }
+
+    private static IndexedInputBinding? ResolveInline(ViewNode node, IndexedCollectionInlineAction action, bool available, out ViewNode? declaration)
+    {
+        declaration = null;
+        available &= ControllerShortcutResolutionContract.OwnerAvailable(node);
+        if (node.Id == action.OwnerId)
+        {
+            if (!available || !ReadingGroupContentContract.IsInlineAction(node) || node.ActionId != action.ActionId) return null;
+            declaration = node;
+            return new(action.ActionId,node.Id,node.Kind,true);
+        }
+        // Controls are leaf interaction owners. Never descend through one to
+        // turn an invalid nested target into an admitted action.
+        if (node.Kind is ViewNodeKind.Button || node.Kind == ViewNodeKind.ActionSurface && !node.IsReadingGroup) return null;
+        foreach (var child in node.Children)
+            if (ResolveInline(child,action,available,out declaration) is { } match) return match;
+        return null;
     }
 
     private static IndexedInputBinding? ResolvePreview(ViewNode node, IndexedCollectionPreviewAction action, bool available, out ViewNode? declaration)

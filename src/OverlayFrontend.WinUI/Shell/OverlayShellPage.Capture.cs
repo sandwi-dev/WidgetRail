@@ -8,11 +8,17 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     internal Func<CancellationToken, Task<bool>>? HideForCaptureRequested { get; set; }
+    internal Func<NativeWindowPreviewTarget?>? ForegroundBeforeOverlay { get; set; }
     private Task? capturePump, capturing;
+    private readonly Dictionary<long, (string Widget, long VisibleSince, long Selection)> pendingTrayCaptures = [];
     private string? nativeCaptureActivityWidget;
     private readonly HashSet<string> captureDiscoveries = [];
     internal Func<string,string?,Func<Task<bool>>,CancellationToken,Task<bool>>? OpenCaptureFolderRequested { get; set; }
     private Task? openingCaptureFolder, choosingCaptureCopy, choosingCaptureSource;
+    private HostCaptureDestinationReview? reviewingDestination;
+    private CancellationTokenSource? destinationReviewLifetime;
+    private string? activeApprovalPicker;
+    private CancellationTokenSource? approvalPickerLifetime;
     private async Task PumpCaptureAsync()
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(350));
@@ -24,6 +30,14 @@ internal sealed partial class OverlayShellPage
                 try
                 {
                     var next = await owner!.Session.TakeCaptureAsync(lifetime.Token);
+                    if (reviewingDestination is { } shown && next.DestinationReview?.Id != shown.Id)
+                        destinationReviewLifetime?.Cancel();
+                    if (next.DestinationReview is { } review && reviewingDestination is null)
+                        _ = ReviewCaptureDestinationAsync(review, next.DestinationWidgetId);
+                    if (activeApprovalPicker is not null && next.ApprovalPicker?.Id != activeApprovalPicker)
+                        approvalPickerLifetime?.Cancel();
+                    if (next.ApprovalPicker is { } picker && activeApprovalPicker is null)
+                        _ = ChooseReplayApprovalAsync(picker, next.ApprovalWidgetId);
                     if (next.NeedsCapabilities)
                         await owner.Session.PublishCaptureCapabilitiesAsync(NativeWindowCapture.ImageCapabilities(), lifetime.Token, encodingProbed: false);
                     if (next.NeedsEncodingCapabilities)
@@ -47,6 +61,34 @@ internal sealed partial class OverlayShellPage
         catch (OperationCanceledException) when (retired) { }
         catch (Exception error) { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("capture-pump", error); }
     }
+    private async Task ReviewCaptureDestinationAsync(HostCaptureDestinationReview review, string? widgetId)
+    {
+        reviewingDestination = review;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        destinationReviewLifetime = cancellation;
+        var selection = selectionVersion;
+        var accepted = false;
+        bool Current() => !retired && visible && foreground && activeWidget == widgetId && selectionVersion == selection;
+        try
+        {
+            if (!Current() || !interactive || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen) return;
+            var choice = await ShowHostChoiceAsync("Unlink capture?", $"Remove the link between “{review.Capture}” and “{review.Destination}”? You can undo this in the widget.",
+                (HostDialogChoice[])[new("unlink", "Unlink capture")], cancellation.Token, directDecisionButtons: true);
+            accepted = choice == "unlink" && Current() && !cancellation.IsCancellationRequested;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("capture-destination-review", error); }
+        finally
+        {
+            try { if (!retired) await owner!.Session.DecideCaptureDestinationAsync(review.Id, accepted, lifetime.Token); }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("capture-destination-decision", error); }
+            destinationReviewLifetime = null;
+            reviewingDestination = null;
+        }
+    }
+
     private async Task OpenCaptureFolderAsync(HostCaptureFolderRequest folder,string? widgetId)
     {
         var opened=false;
@@ -95,16 +137,23 @@ internal sealed partial class OverlayShellPage
         var duration = request.Options?.Recording?.MaximumDurationSeconds ?? CaptureLimits.VideoSeconds;
         cancellation.CancelAfter(TimeSpan.FromSeconds(120 + preparation.DelaySeconds + duration));
         var token = cancellation.Token;
+        using var renewing = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task? renewal = null;
+        var immediate = request.Kind == WindowCaptureKind.Screenshot && preparation.DelaySeconds == 0;
+        var captureSelection = selectionVersion;
+        var visibleSession = visibleSince;
+        bool SameOverlay() => !retired && visible && foreground && visibleSession == visibleSince && captureSelection == selectionVersion;
         var committed = false;
         var recording = false;
         try
         {
-            if (retired || !visible || !foreground || !interactive || activeWidget != next.WidgetId || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen)
-                throw new OperationCanceledException();
             var widgetId = next.WidgetId ?? throw new OperationCanceledException();
-            var captureSelection = selectionVersion;
-            bool Current() => !retired && visible && foreground && interactive && activeWidget == widgetId && selectionVersion == captureSelection;
+            var fromTray = request.TraySequence is { } sequence && request.SaveToLibrary &&
+                pendingTrayCaptures.TryGetValue(sequence, out var admission) && admission == (widgetId, visibleSession, captureSelection);
+            if (request.TraySequence.HasValue && !fromTray) throw new OperationCanceledException();
+            bool Current() => SameOverlay() &&
+                (fromTray ? !interactive && !PinnedInputActive : interactive && activeWidget == widgetId);
+            if (!Current() || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen) throw new OperationCanceledException();
             var video = request.Kind == WindowCaptureKind.Video;
             var delay = preparation.DelaySeconds == 0 ? "after WidgetRail hides" : $"after a {preparation.DelaySeconds}-second countdown";
             var imageSize = request.Options?.Screenshot is { } image ? image.MaximumWidth is null ? "full-resolution" : $"up to {image.MaximumWidth} × {image.MaximumHeight}" :
@@ -112,20 +161,37 @@ internal sealed partial class OverlayShellPage
             var encoding = request.Options?.Recording is { } settings ? "\n"+CaptureRecordingSummary.Video(settings) : "";
             var applicationAudio = request.Options?.Recording?.Audio == CaptureAudioMode.Application;
             var audioDescription = applicationAudio ? "Application audio will be recorded. The microphone will not be recorded." : "No audio will be recorded.";
-            var description = "WidgetRail will hide. Bring the application you want to capture to the foreground.\n\n" +
+            NativeWindowCapture.OverlayScreenshot? screenshot = null;
+            string? confirmedApplication = null;
+            string description;
+            if (immediate)
+            {
+                var target = ForegroundBeforeOverlay?.Invoke();
+                var application = target is null ? null : await TaskWindows.GetCaptureApplicationNameAsync(target, token);
+                if (target is null || application is null)
+                    throw new BrokerException("capture_target_unavailable", "Open the application you want to capture, then reopen WidgetRail.");
+                screenshot = new(target, (nint)hostWindow);
+                confirmedApplication = application;
+                description = $"Take a {imageSize} screenshot of {application} while WidgetRail stays open." +
+                    (request.SaveToLibrary ? " The screenshot saves to Capture Library." : "");
+            }
+            else description = "WidgetRail will hide. Bring the application you want to capture to the foreground.\n\n" +
                 (video ? $"Recording starts {delay} and lasts up to {duration} seconds. {audioDescription}{encoding}" :
                     $"A {imageSize} screenshot will be taken {delay}.") +
                 " The application in front when capture begins will be captured." +
-                (video && request.Options is not null ? "\n\nReopen WidgetRail to finish recording and review it." : "\n\nReopen WidgetRail when finished to review your capture.");
-            if (!await ConfirmCaptureAsync(widgetId, video, description,
+                (request.SaveToLibrary
+                        ? video ? "\n\nReopen WidgetRail to finish early. The clip saves to Capture Library." : "\n\nThe screenshot saves to Capture Library."
+                        : video && request.Options is not null ? "\n\nReopen WidgetRail to finish recording and review it." : "\n\nReopen WidgetRail when finished to review your capture.");
+            if (!Current() || !await ConfirmCaptureAsync(widgetId, video, description,
                     async () => Current() && await session.IsCaptureCurrentAsync(request.RequestId, token), token) ||
-                !Current() || HideForCaptureRequested is null || !await session.IsCaptureCurrentAsync(request.RequestId, token) ||
-                !await HideForCaptureRequested(token)) throw new OperationCanceledException();
+                !await session.IsCaptureCurrentAsync(request.RequestId, token) || !Current()) throw new OperationCanceledException();
+            if (!immediate && (HideForCaptureRequested is null || !await HideForCaptureRequested(token)))
+                throw new OperationCanceledException();
             renewal = RenewAsync();
             CaptureIndicator? indicator = null;
             try
             {
-                try { indicator = new(ShellPalette, Appearance, systemUi.AnimationsEnabled); }
+                try { if (!immediate) indicator = new(ShellPalette, Appearance, systemUi.AnimationsEnabled); }
                 catch (InvalidOperationException) { /* Countdown availability is platform-dependent; confirmation states the delay. */ }
                 for (var seconds = preparation.DelaySeconds; seconds > 0; --seconds)
                 {
@@ -139,9 +205,20 @@ internal sealed partial class OverlayShellPage
                 nativeCaptureActivityWidget=next.WidgetId;
                 QueueWidgetStatusRefresh();
                 indicator?.Show(video ? $"Recording · up to {duration}s · {(applicationAudio ? "application audio" : "no audio")}" : "Taking screenshot…");
-                var result = await NativeWindowCapture.RunAsync(request, token, stop.Token);
-                committed = await session.CompleteCaptureAsync(new(request.RequestId, (int)result.Width, (int)result.Height, result.DurationSeconds, Target: result.Target)
+                var result = await NativeWindowCapture.RunAsync(request, token, stop.Token, screenshot);
+                if (immediate && !Current()) throw new OperationCanceledException();
+                await renewing.CancelAsync();
+                await renewal;
+                var receipt = await session.CompleteCaptureWithResultAsync(new(request.RequestId, (int)result.Width, (int)result.Height, result.DurationSeconds, Target: result.Target)
                     { Properties = result.Properties, ResolvedRecording = result.ResolvedRecording }, token);
+                committed = receipt.Current;
+                if (request.SaveToLibrary)
+                {
+                    var kind = video ? "Clip" : "Screenshot";
+                    var name = receipt.ApplicationName ?? confirmedApplication;
+                    var message = name is null ? $"{kind} saved." : $"{kind} saved from {name}.";
+                    await ShowCaptureResultAsync(widgetId, request.RequestId, committed ? message : "Capture could not be saved.");
+                }
             }
             finally { indicator?.Dispose(); }
         }
@@ -154,6 +231,9 @@ internal sealed partial class OverlayShellPage
                     error is OperationCanceledException ? "cancelled" : error is BrokerException configuration ? configuration.Code :
                     error.HResult == unchecked((int)0x800700DF) ? "capture_too_large" : "capture_target_unavailable"), lifetime.Token); }
                 catch (Exception report) when (report is not OutOfMemoryException) { Diagnostics.FrontendFailureLog.Current.Write("capture-report", report); }
+                if (request.SaveToLibrary && error is not OperationCanceledException && next.WidgetId is { } widget)
+                    await ShowCaptureResultAsync(widget, request.RequestId, immediate && (error is BrokerException { Code: "capture_target_unavailable" } ||
+                        error is UnauthorizedAccessException) ? "Open the application you want to capture, then reopen WidgetRail." : "Capture could not be saved.");
             }
         }
         finally
@@ -170,15 +250,28 @@ internal sealed partial class OverlayShellPage
             {
                 while (true)
                 {
-                    await Task.Delay(300, token);
-                    var state = await session.GetCaptureStateAsync(request.RequestId, token);
+                    await Task.Delay(300, renewing.Token);
+                    var state = await session.GetCaptureStateAsync(request.RequestId, renewing.Token);
                     if (retired || !state.Current) { cancellation.Cancel(); return; }
                     if (state.StopRequested || visible && recording && request.Options?.Recording is not null) stop.Cancel();
-                    else if (visible) { cancellation.Cancel(); return; }
+                    else if (immediate ? !SameOverlay() : visible) { cancellation.Cancel(); return; }
                 }
             }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (renewing.IsCancellationRequested) { }
             catch (Exception error) when (error is not OutOfMemoryException) { cancellation.Cancel(); }
         }
+    }
+
+    private async Task ShowCaptureResultAsync(string widget, string requestId, string message)
+    {
+        if (retired || notificationCenter is not { } center) return;
+        await center.Ready;
+        if (retired || !ReferenceEquals(notificationCenter, center)) return;
+        var key = "capture-result." + requestId;
+        center.Publish(widget, replayNotificationOwner, new(key, new WidgetNotification(key, "Capture Library")
+        {
+            Body = message, Visibility = WidgetNotificationVisibility.Always,
+            Interaction = WidgetNotificationInteraction.Informational, Retention = WidgetNotificationRetention.BannerOnly
+        }), () => !retired && ReferenceEquals(notificationCenter, center));
     }
 }

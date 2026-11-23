@@ -15,6 +15,10 @@ internal sealed partial class ShellControllerGuide
     private WidgetCompositionMotion? fade;
     private readonly Dictionary<GuideLayer, WidgetCompositionTarget> fadeTargets = [];
     private long fadeVersion;
+    private long fadeStarted;
+    private TimeSpan revealDelay;
+    private bool IncomingStillHidden => fade is not null &&
+        System.Diagnostics.Stopwatch.GetElapsedTime(fadeStarted) < revealDelay;
     internal long FadeCount { get; private set; }
     internal bool IsFading => fade is not null;
     internal TimeSpan LastFadeDuration { get; private set; }
@@ -22,7 +26,7 @@ internal sealed partial class ShellControllerGuide
     internal Exception? FadeFailure { get; private set; }
     internal bool OutgoingIsPassive => !back.Panel.Interactive && back.Cells.All(cell =>
         !cell.Button.IsHitTestVisible && AutomationProperties.GetAccessibilityView(cell.Button) == AccessibilityView.Raw);
-    private WidgetSectionMotion FadeRecipe => WidgetMotionPolicy.GuideCrossfade(motionAppearance, systemAnimations, palette?.HighContrast == true);
+    private WidgetSectionMotion FadeRecipe => WidgetMotionPolicy.GuideFadeThrough(motionAppearance, systemAnimations, palette?.HighContrast == true);
 
     private void PrepareFade()
     {
@@ -56,9 +60,11 @@ internal sealed partial class ShellControllerGuide
     private void StartFade()
     {
         var recipe = FadeRecipe;
-        LastFadeDuration = recipe.Incoming.Duration;
+        LastFadeDuration = recipe.Incoming.Delay + recipe.Incoming.Duration;
         var version = ++fadeVersion;
         fade ??= new(CompositionTarget.GetCompositorForCurrentThread(), DispatcherQueue);
+        fadeStarted = System.Diagnostics.Stopwatch.GetTimestamp();
+        revealDelay = recipe.Incoming.Delay;
         ++FadeCount;
         FadePlayback = fade.PlayAsync((WidgetMotionPlayback[])[new(fadeTargets[front], recipe.Incoming), new(fadeTargets[back], recipe.Outgoing)]);
         _ = CompleteFadeAsync(FadePlayback, version);

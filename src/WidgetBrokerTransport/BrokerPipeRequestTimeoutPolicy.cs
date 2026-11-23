@@ -7,7 +7,7 @@ internal static class BrokerPipeRequestTimeoutPolicy
     internal static TimeSpan Resolve(
         BrokerPipeTransportOptions options, BrokerRequestEnvelope request)
     {
-        if (request.CapabilityId == BrokerTransportOperations.WindowCaptureV1 && request.Operation is "capture.replay.configure" or "capture.replay.start")
+        if (request.CapabilityId == BrokerTransportOperations.WindowCaptureV1 && request.Operation is "capture.replay.configure" or "capture.replay.start" or "capture.replay.choose-approval")
             return options.RequestTimeout > TimeSpan.FromSeconds(130) ? options.RequestTimeout : TimeSpan.FromSeconds(130);
         if (request.CapabilityId == BrokerTransportOperations.WindowCaptureV1 && request.Operation == "capture.replay.save")
             return options.RequestTimeout > TimeSpan.FromSeconds(50) ? options.RequestTimeout : TimeSpan.FromSeconds(50);
@@ -18,6 +18,14 @@ internal static class BrokerPipeRequestTimeoutPolicy
         if (request.CapabilityId == "media.capture-library.save.v1" && request.Operation == "capture-library.edit-copy")
         {
             var deadline = TimeSpan.FromSeconds(1205); // ten minutes editor + ten minutes bounded encoding + IPC
+            return options.RequestTimeout > deadline ? options.RequestTimeout : deadline;
+        }
+        // The broker checks revisions and performs each disk or Shell mutation in sequence.
+        if ((request.CapabilityId == BrokerTransportOperations.CaptureLibraryManageV1 &&
+                request.Operation is "capture-library.recycle" or "capture-library.metadata-batch") ||
+            (request.CapabilityId == "media.capture-library.recycle-linked.v1" && request.Operation == "capture-library.recycle-linked"))
+        {
+            var deadline = TimeSpan.FromMinutes(2);
             return options.RequestTimeout > deadline ? options.RequestTimeout : deadline;
         }
         if(request.CapabilityId==BrokerTransportOperations.WindowCaptureV1 && request.Operation is "capture.web-prepare" or "capture.web-prepare-constrained")
@@ -36,7 +44,7 @@ internal static class BrokerPipeRequestTimeoutPolicy
             var deadline = TimeSpan.FromSeconds(BrokerTransportLimits.CaptureCopyTimeoutSeconds + 5);
             return options.RequestTimeout > deadline ? options.RequestTimeout : deadline;
         }
-        if (request.CapabilityId == BrokerTransportOperations.CaptureLibraryManageV1 && request.Operation == "capture-library.choose-source")
+        if (request.CapabilityId == BrokerTransportOperations.CaptureLibraryManageV1 && request.Operation is "capture-library.choose-source" or "capture-library.change-destination")
             return options.RequestTimeout > TimeSpan.FromSeconds(125) ? options.RequestTimeout : TimeSpan.FromSeconds(125);
         // Opening Explorer uses the host's release-aware handoff, not the ordinary short read deadline.
         if (request.CapabilityId == BrokerTransportOperations.CaptureLibraryManageV1 && request.Operation is "capture-library.open-folder" or "capture-library.reveal")
@@ -45,7 +53,7 @@ internal static class BrokerPipeRequestTimeoutPolicy
         // discovery in the frontend. Both pipe ends must outlive that bounded
         // registry wait; ordinary status/read/cancel requests remain short.
         if (request.CapabilityId == BrokerTransportOperations.WindowCaptureV1 &&
-            request.Operation is "capture.capabilities" or "capture.recording-capabilities" or "capture.validate" or "capture.start")
+            request.Operation is "capture.capabilities" or "capture.recording-capabilities" or "capture.validate" or "capture.start" or "capture.save-screenshot" or "capture.record-clip")
         {
             var deadline = TimeSpan.FromSeconds(BrokerTransportLimits.CaptureCapabilityDiscoveryTimeoutSeconds + 5);
             return options.RequestTimeout > deadline ? options.RequestTimeout : deadline;

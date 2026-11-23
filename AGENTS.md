@@ -1,5 +1,44 @@
 # Repository agent guidance
 
+## Design widgets and extend presentation capabilities
+
+Design for WidgetRail's controller-first experience, including keyboard and
+mouse use, readable hierarchy, obvious focus, short navigation paths, useful
+loading/error/empty states, and compact pinned layouts where applicable.
+
+Prefer existing SDK components and supported WRSS where they fit the intended
+experience. They are a starting point, not a ceiling: do not compromise a
+worthwhile design merely because a comparable component or style is missing.
+Inspect the current implementation before declaring a gap. Distinguish what
+works today from what requires implementation, and propose a scoped extension
+with its owner, complexity, and behavior-validation needs.
+
+Reusable controls, styling capabilities, and generic presentation mechanics
+belong in the SDK, WRSS, protocol, or host as appropriate. Keep domain content,
+policy, and user intent in the widget. Avoid widget-local workarounds for
+generic focus, scrolling, modal, or accessibility behavior. Evaluate shared
+extensions against real consumers using the ownership and preservation rules
+below; do not force an abstraction when the evidence argues against it.
+
+When applying Impeccable or other general design skills, translate their design
+principles into WidgetRail's native presentation model. Web/CSS examples and
+browser-only checks do not establish WRSS support or native correctness. Use
+native visual and interaction evidence for the affected widget surfaces.
+
+During design review, use realistic content to explain what each major section
+helps the user learn or do. Compare adjacent sections with the same game or item
+in both. Inspect what stands out before reading the heading, then activate an
+item and check where it leads. If the sections communicate the same information
+and lead to the same task, revisit the design or combine them. Judge references
+by the experience the user liked as well as by their visual treatment.
+
+Include transitions in visual verification, not only settled screenshots. Check
+page/detail switching, loading, pagination, return, and interrupted transitions
+for blank frames, flashing, geometry jumps, and lost scroll/focus. In chat-like
+lists, prepending older data must preserve the visible content and reading
+position; replacing the entire items source and restoring afterward is not
+equivalent to a smooth transition. Record unverified transition behavior.
+
 ## Review widget and framework ownership
 
 When investigating, implementing, or reviewing widget behavior, check whether

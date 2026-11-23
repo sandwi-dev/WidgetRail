@@ -18,6 +18,8 @@ public sealed class WidgetPresentationIndexedLease : IAsyncDisposable
     internal readonly TaskCompletionSource Released = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal bool Retired;
     internal bool OwnerReleased;
+    // Session gate only. A new publication must resolve the projection/scope again.
+    internal long VerifiedPublicationRevision = -1;
     internal int RetainedOwners;
     public string LeaseId { get; }
     public IndexedCollectionRange Range { get; }
@@ -104,6 +106,18 @@ public sealed class WidgetPresentationIndexedLease : IAsyncDisposable
         return owner.AdmitIndexedInputAsync(this, displayed.Authority,
             new(new(LeaseId, itemKey), ControllerButton.A) { PreviewAction = action },
             new(ScopeId, displayed.Authority.SnapshotSequence, sequence, monotonicTimestampMicroseconds), cancellationToken, displayed);
+    }
+
+    /// <summary>Routes a button within a reading group through the displayed query and exact row lease.</summary>
+    public Task<WidgetOperationAdmission?> AdmitInlineActionAsync(WidgetPresentationFrame displayed,
+        string itemKey, IndexedCollectionInlineAction action, long sequence = 0,
+        long monotonicTimestampMicroseconds = 0, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(displayed);
+        ArgumentNullException.ThrowIfNull(action);
+        return owner.AdmitIndexedInputAsync(this, displayed.Authority,
+            new(new(LeaseId,itemKey),ControllerButton.A) { InlineAction=action },
+            new(ScopeId,displayed.Authority.SnapshotSequence,sequence,monotonicTimestampMicroseconds),cancellationToken,displayed);
     }
 
     /// <summary>Routes a host selection gesture through the exact displayed query and leased occurrence.</summary>

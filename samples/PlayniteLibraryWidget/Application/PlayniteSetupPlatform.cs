@@ -12,6 +12,7 @@ internal interface IPlayniteSetupPlatform
     IEnumerable<string> InstallationFolders();
     ValueTask StopAsync(PlayniteSetupInstallation installation, CancellationToken token);
     ValueTask StartAsync(PlayniteSetupInstallation installation, CancellationToken token);
+    ValueTask OpenAddonInstallerAsync(PlayniteSetupProcess process, PlayniteSetupInstallation installation, PlayniteOptionalAddon addon, CancellationToken token);
 }
 
 internal sealed partial class PlayniteSetupPlatform : IPlayniteSetupPlatform
@@ -96,6 +97,21 @@ internal sealed partial class PlayniteSetupPlatform : IPlayniteSetupPlatform
     internal static ProcessStartInfo LaunchInfo(PlayniteSetupInstallation installation) => StartInfo(
         Path.Combine(installation.ProgramDirectory, "Playnite.DesktopApp.exe"),
         installation.DataDirectory, "--startclosedtotray", "--hidesplashscreen");
+
+    internal static ProcessStartInfo AddonInstallInfo(PlayniteSetupProcess process, PlayniteSetupInstallation installation, PlayniteOptionalAddon addon)
+    {
+        if (!Matches(process, installation)) throw new PlayniteSetupException("Reconnect the selected Playnite profile.");
+        var id = addon switch
+        {
+            PlayniteOptionalAddon.GameActivity => "playnite-gameactivity-plugin",
+            PlayniteOptionalAddon.Achievements => "PlayniteAchievements",
+            _ => throw new ArgumentOutOfRangeException(nameof(addon)),
+        };
+        return StartInfo(process.Executable, installation.DataDirectory, "--uridata", "playnite://playnite/installaddon/" + id);
+    }
+
+    public ValueTask OpenAddonInstallerAsync(PlayniteSetupProcess process, PlayniteSetupInstallation installation, PlayniteOptionalAddon addon, CancellationToken token) =>
+        new(PlayniteDesktopLauncher.StartAsync(AddonInstallInfo(process, installation, addon), token));
 
     private static ProcessStartInfo StartInfo(string executable, string dataDirectory, params string[] arguments)
     {

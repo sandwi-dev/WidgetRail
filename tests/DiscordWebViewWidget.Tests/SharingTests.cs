@@ -98,6 +98,16 @@ internal static class SharingTests
             await harness.Act("share");await Wait(()=>harness.Capture.Prepares.Count==1&&!harness.Preparing);
             check(harness.ShareCalls==0&&(phase!=WebCaptureStreamPhase.Failed||harness.Capture.Stops.Count==1),
                 phase+" preparation does not broadcast and releases any returned native ticket");
+            if(phase==WebCaptureStreamPhase.Cancelled)
+            {
+                await Wait(()=>harness.Capture.Notifications.Count==1);
+                var notification=harness.Capture.Notifications.Single().Notification!;
+                check(notification.Body=="Sharing cancelled. Nothing was shared." && notification.Retention==WidgetNotificationRetention.BannerOnly &&
+                    !Nodes(harness.Snapshot.Root).Any(node=>node.Text==notification.Body),
+                    "Cancelled sharing reports one expiring host banner without permanent widget text");
+                await harness.Refresh();
+                check(harness.Capture.Notifications.Count==1,"Polling after sharing cancellation does not repeat the banner");
+            }
         }
         foreach(var (reason,message) in new[]{("worker_disconnected","capture connection ended unexpectedly"),
             ("source_closed","window is no longer available"),("browser_process_failed","browser connection was interrupted"),
@@ -470,6 +480,7 @@ internal static class SharingTests
         internal WidgetPermissionOutcome Permission=WidgetPermissionOutcome.Granted;
         internal readonly ConcurrentQueue<WebCaptureStreamRequest> Prepares=new();
         internal readonly ConcurrentQueue<WebCaptureStreamTicket> Stops=new();
+        internal readonly ConcurrentQueue<WidgetNotificationCommand> Notifications=new();
         private readonly ConcurrentDictionary<string,WebCaptureStreamPhase> phases=new();
         internal readonly List<string> PermissionIds=[];
         internal int PermissionRequests,StopFailures;
@@ -484,6 +495,8 @@ internal static class SharingTests
         internal void SetPhase(WebCaptureStreamPhase phase){foreach(var id in phases.Keys)phases[id]=phase;}
         internal WidgetHostServices Services(WidgetTestPrivateState? preferences=null)=>new WidgetTestHostServicesBuilder()
             .WithPrivateState(preferences??new WidgetTestPrivateState())
+            .WithHandler(WidgetNotificationCapabilities.Publish,(request,token)=>
+            {token.ThrowIfCancellationRequested();Notifications.Enqueue(request);return ValueTask.FromResult(new WidgetNotificationReceipt(true));})
             .WithResponse(WidgetPinningCapabilities.Open,new WidgetPinReceipt(true))
             .WithHandler(WidgetPermissionCapabilities.Request,(query,token)=>
             {token.ThrowIfCancellationRequested();Interlocked.Increment(ref PermissionRequests);PermissionIds.AddRange(query.CapabilityIds);return ValueTask.FromResult(new WidgetPermissionRequestState(Permission));})

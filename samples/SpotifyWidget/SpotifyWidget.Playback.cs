@@ -8,6 +8,10 @@ namespace WidgetRail.Samples.SpotifyWidget;
 /// </summary>
 internal static class SpotifyPlaybackPolicy
 {
+    internal static WidgetRail.WidgetProtocol.TrayActionOffer? TrayOffer(SpotifyPlaybackSummary? playback, string id, string? account) =>
+        Guid.TryParseExact(account, "N", out _) && playback is { IsAvailable: true, DeviceId: { Length: > 0 and <= 128 } device }
+            ? new(id, account + "." + device + (id == "play-pause" ? playback.IsPlaying ? ".pause" : ".play" : "")) : null;
+
     internal static SpotifyPlaybackOperation ResolveToggle(
         SpotifyPlaybackSummary? playback) =>
         playback?.IsPlaying == true

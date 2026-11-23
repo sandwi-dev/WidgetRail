@@ -11,7 +11,9 @@ internal sealed partial class WidgetIndexedCollectionView
     private IReadOnlyList<string> BoundaryProtectedKeys()
     {
         var keys=observedScroll is {} scroll?VisibleOccurrences(scroll).Select(item=>item.Slot.Key!).ToHashSet(StringComparer.Ordinal):new HashSet<string>(StringComparer.Ordinal);
-        if(CaptureFocusedItem()?.ItemKey is {} focused)keys.Add(focused);
+        // Native focus may remain on an offscreen row during free scrolling.
+        // Protect the actual reader, including any visible focused row. Holding
+        // an unrelated offscreen page makes a bounded window impossible to page.
         return keys.Take(IndexedCollectionLimits.MaximumContinuityItems).ToArray();
     }
 
@@ -44,7 +46,15 @@ internal sealed partial class WidgetIndexedCollectionView
             !(direction==IndexedCollectionBoundary.Before?available.Before:available.After))return false;
         // Like discovered-list continuation, retain current focus and consume
         // only the loadable edge. No future index/movement is replayed.
-        if(heldViewport is not null || pendingIndex is not null)return true;
+        if(heldViewport is not null || pendingIndex is not null || pendingContinuity is not null)return true;
+        // A held scroll can reach the old edge while an in-place window update
+        // still has retained paint. Do not protect those stale/unfinished rows
+        // as the reader's new viewport or start another adjacent request yet.
+        if (observedScroll is not { } scroll) return true;
+        var visible = VisibleOccurrences(scroll);
+        if (visible.Length == 0 || visible.Any(item => item.Slot.Value is not { Lease.IsCurrent: true } row ||
+            view?.ContainerFromIndex(item.Slot.Index) is not Microsoft.UI.Xaml.FrameworkElement container ||
+            !HasCurrentRowLayout(container, row))) return true;
         if(boundaryInFlight!=direction && queuedViewportObservation?.Observation.Boundary!=direction)
             QueueViewportObservation(demandedBoundary:direction);
         return true;
@@ -52,11 +62,16 @@ internal sealed partial class WidgetIndexedCollectionView
 
     internal void ObserveBoundaryScrollInput(double horizontalDelta,double verticalDelta)
     {
-        if(observedScroll is not {} scroll)return;
+        if(source?.Declaration.IndexedCollection?.ObservesBoundaries!=true || observedScroll is not {} scroll)return;
         var horizontal=axis==ScrollAxis.Horizontal;var delta=horizontal?horizontalDelta:verticalDelta;
         var offset=horizontal?scroll.HorizontalOffset:scroll.VerticalOffset;
         var maximum=horizontal?scroll.ScrollableWidth:scroll.ScrollableHeight;
-        if(delta<0&&offset<=1)RequestAdjacentBoundary(IndexedCollectionBoundary.Before);
-        else if(delta>0&&maximum-offset<=1)RequestAdjacentBoundary(IndexedCollectionBoundary.After);
+        // Repeated animated ChangeView calls can keep the physical offset just
+        // shy of the exact edge until the stick is released. Demand ahead in the
+        // direction of travel, while current visible rows still authorize the
+        // bounded merge. RequestAdjacentBoundary retains all layout/lease guards.
+        var threshold=(horizontal?scroll.ViewportWidth:scroll.ViewportHeight)*.5;
+        if(delta<0&&offset<=threshold)RequestAdjacentBoundary(IndexedCollectionBoundary.Before);
+        else if(delta>0&&maximum-offset<=threshold)RequestAdjacentBoundary(IndexedCollectionBoundary.After);
     }
 }

@@ -6,6 +6,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     internal WidgetPresentationBinding? CurrentBinding => presentation;
+    internal Func<WidgetPresentationBinding,WidgetActionEvent,Task>? IndexedActionDispatch { get; set; }
     private bool IsBindingCurrent(WidgetPresentationBinding origin) => presentationInputEnabled && presentationActive && !disposed && !applying &&
         !presentationOnly && origin.SameInput(presentation) && (previewOwner is null || previewOwner.PreviewInputCurrent(this));
 
@@ -15,6 +16,7 @@ internal sealed partial class WidgetViewPresenter
     private async Task DispatchCapturedActionAsync(WidgetPresentationBinding origin, WidgetActionEvent action, bool previewIntent = false)
     {
         if (!IsBindingCurrent(origin)) return;
+        if (IndexedActionDispatch is { } inline) { await inline(origin,action); return; }
         if (previewOwner is { } owner) { await owner.DispatchPreviewActionAsync(this, origin, action); return; }
         if (origin.Selection is { } selection && origin.Projection is { } projection)
         {

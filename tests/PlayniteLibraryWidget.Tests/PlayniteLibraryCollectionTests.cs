@@ -34,7 +34,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             Assert.AreEqual(busy ? null : ControllerButton.X, lease.Range.Items[0].Root.ContextMenuButton);
             Assert.IsFalse(original.Range.Items[0].Root.IsDisabled == true, "Acquired snapshots stay immutable after content changes.");
             if (!busy)
-                StringAssert.Contains(lease.Range.Items[1].Root.AccessibilityLabel!, "Pending");
+                StringAssert.Contains(lease.Range.Items[1].Root.AccessibilityLabel!, "Launching…");
         }
     }
 

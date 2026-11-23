@@ -18,6 +18,7 @@ internal enum SettingsPreferenceKind
     ReducedTransparency,
     AcrylicEffects,
     RestoreCaptureConfirmations,
+    AnimateOverlayVisibility,
     AnimateWidgetSwitching,
     FocusAnimation,
     SectionAnimation,
@@ -147,6 +148,7 @@ internal readonly record struct SettingsPreferenceMutation(
                 ? TransparencyPreference.Full
                 : TransparencyPreference.Reduced,
         },
+        SettingsPreferenceKind.AnimateOverlayVisibility => appearance with { AnimateOverlayVisibility = !appearance.AnimateOverlayVisibility },
         SettingsPreferenceKind.AnimateWidgetSwitching => appearance with
         {
             AnimateWidgetSwitching = !appearance.AnimateWidgetSwitching,
@@ -289,6 +291,7 @@ internal static class SettingsPreferencePolicy
             "widget-animation-speed.decrease" => new(SettingsPreferenceKind.AnimationSpeedDecrease, "Animation speed saved"),
             "widget-animation-speed.increase" => new(SettingsPreferenceKind.AnimationSpeedIncrease, "Animation speed saved"),
             "overlay-position.cycle" => new(SettingsPreferenceKind.OverlayPosition, "Overlay position saved"),
+            "overlay-visibility-animation.toggle" => new(SettingsPreferenceKind.AnimateOverlayVisibility, "Overlay animation preference saved"),
             "widget-switch-animation.toggle" => new(
                 SettingsPreferenceKind.AnimateWidgetSwitching,
                 "Widget-switch animation preference saved"),

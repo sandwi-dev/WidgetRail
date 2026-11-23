@@ -49,6 +49,8 @@ for (const method of ['ready','load','toggle','play','pause','stop','seek','volu
   WidgetRailWebSession.handle(method, p => {
     p = p || {};
     if (method === 'ready') return {};
+    if (p.expectedGeneration !== undefined && (generation !== p.expectedGeneration || !audio || failed ||
+        (method === 'play' ? !audio.paused : method !== 'pause' || audio.paused))) return {applied:false};
     switch(method) {
       case 'load': load(p); break;
       case 'toggle': if(audio) {if(audio.paused) play(audio); else audio.pause();} break;
@@ -65,7 +67,7 @@ for (const method of ['ready','load','toggle','play','pause','stop','seek','volu
       case 'volume': if(Number.isFinite(p.value)) {volume=Math.max(0,Math.min(1,p.value));if(audio)audio.volume=volume;} break;
       default: throw new Error('Unknown command');
     }
-    state(); return {};
+    state(); return p.expectedGeneration === undefined ? {} : {applied:true};
   });
 }
 if(navigator.mediaSession) {

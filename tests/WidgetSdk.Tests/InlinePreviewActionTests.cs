@@ -5,7 +5,7 @@ internal static class InlinePreviewActionTests
 {
     internal static async Task Run()
     {
-        foreach (var change in new[] { "unchanged", "value", "disabled", "passive", "source", "fragment", "moved", "remove-restore" })
+        foreach (var change in new[] { "unchanged", "value", "disabled", "passive", "source", "fragment", "moved", "remove-restore", "occurrence", "kind", "entry" })
         {
             var widget = new Fixture();
             await WidgetTestHost.InitializeAsync(widget);
@@ -43,9 +43,10 @@ internal static class InlinePreviewActionTests
             WidgetElement content = Change == "remove-restore" ? source : source.PresentOnFocus(
                 UI.Stack(Change == "fragment" ? "other-fragment" : "fragment", Change == "passive" ? UI.Text("Read only", "choice") : UI.Select("Choice",
                     [new("first", "First", "first", Change != "value"), new("second", "Second", "commit", Change == "value")], "choice")));
+            WidgetElement parent = Change == "kind" ? UI.Row("parent", content) : UI.Stack(Change == "moved" ? "other-parent" : "parent", content);
             return new(UI.Stack("root", UI.FocusPresentationSurface(
-                UI.Stack(Change == "moved" ? "other-parent" : "parent", content), UI.Text("Empty", "empty"), "surface") with
-                { Preview = new() { EnterButton = Change == "passive" ? null : ControllerButton.X } }));
+                parent.CollectionItem(new(Change == "occurrence" ? "second" : "first")), UI.Text("Empty", "empty"), "surface") with
+                { Preview = new() { EnterButton = Change == "passive" ? null : Change == "entry" ? ControllerButton.A : ControllerButton.X } }));
         }
         public override async ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken token = default)
         {

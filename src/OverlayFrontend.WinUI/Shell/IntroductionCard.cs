@@ -64,35 +64,55 @@ internal sealed partial class IntroductionCard : UserControl, IDisposable
         button.Click += (_, _) => Action?.Invoke(action);
     }
 
-    internal void Present(string step, bool notifications, string openingLabel, ControllerPrompt openingPrompt, string? keyboardShortcut)
+    internal void Present(string step, bool notifications, string openingLabel, ControllerPrompt openingPrompt, string? keyboardShortcut,
+        string[]? visibleSteps = null, bool radial = false)
     {
         Step = step;
         appearance = null;
         glyphs.Clear(); labels.Clear(); rows.Children.Clear();
-        counter.Text = step == "welcome" ? "WELCOME" : $"QUICK TOUR  ·  {Math.Clamp(Array.IndexOf(IntroductionProgress.Steps, step), 1, 5)} / 5";
+        var steps = visibleSteps ?? IntroductionProgress.TourSteps;
+        var ordinal = Array.IndexOf(steps, step == "appearance" ? "appearance-details" : step) + 1;
+        counter.Text = step == "welcome" ? "WELCOME" : ordinal > 0 ? $"QUICK TOUR  ·  {ordinal} / {steps.Length}" : "QUICK TOUR";
         (title.Text, body.Text) = step switch
         {
-            "welcome" => ("Welcome to WidgetRail", "Thanks for installing! Find this tour anytime in Settings → Introduction."),
-            "guide" => ("Control guide", "The guide shows controls for your current focus. Its action hints are clickable."),
-            "commands" => ("Widget commands", "Select a widget in the tray for pinning and other commands."),
+            "welcome" => ("Welcome to WidgetRail", "Start at the tray to open a widget. You can revisit the tour in Settings → Introduction."),
+            "guide" => ("Inside a widget", "Open a widget and try moving between its controls. The guide follows your focus. You can click its hints, too."),
+            "commands" => ("Tray quick actions", radial
+                ? "Use the left stick to choose a widget. Try a D-pad direction to see what its shortcut does."
+                : "Open Quick actions beside Manage pins. During this step, choosing a shortcut shows what it does."),
             "utilities" => ("Notifications and Task Switcher", "From the tray, open notifications when available, otherwise Task Switcher."),
             "catalogue" => ("WidgetRail Catalogue", "Find and install more widgets here."),
             "appearance" => ("Appearance", "Next opens Settings → Appearance."),
             _ => ("Appearance", "Choose a theme and adjust Interface size here in Settings → Appearance."),
         };
+        if (step != "welcome" && ordinal == 0)
+            body.Text = "This destination is unavailable. Continue to move on.";
         if (step == "welcome")
         {
-            Row(ControllerPrompt.LeftStickMove, "Move focus", "D-pad or left stick · keyboard arrows");
+            Row(ControllerPrompt.LeftStickMove, "Choose a widget", "Use the left stick in the radial tray or the arrow keys on the rail");
             Row(ControllerPrompt.A, "Select", "Enter or mouse click");
             Row(ControllerPrompt.B, "Go back", "Escape");
             Row(openingPrompt, openingLabel, keyboardShortcut is not null ? keyboardShortcut + " also toggles the overlay" : "Set a keyboard shortcut in Settings → Controllers",
                 openingPrompt == ControllerPrompt.View ? ControllerPrompt.Menu : null);
         }
-        else if (step == "commands") Row(ControllerPrompt.Menu, "Commands", "Right-click a tray item or click Commands in the guide");
-        else if (step == "utilities") Row(ControllerPrompt.Y, notifications ? "Hold for Notifications" : "Hold for Task Switcher", "Mouse: click its icon · keyboard: arrows, then Enter");
-        ButtonLabel(primary, ControllerPrompt.X, step == "welcome" ? "Show me around" : step == "appearance-details" ? "Finish" : "Continue");
+        else if (step == "guide")
+        {
+            Row(ControllerPrompt.DPad, "Move focus", "D-pad, left stick or arrow keys");
+            Row(ControllerPrompt.RightStickMove, "Scroll", "Use the right stick to read through a list");
+        }
+        else if (step == "commands")
+        {
+            if (radial) Row(ControllerPrompt.DPad, "Use a shortcut", "After the tour, an assigned direction runs its action. An empty direction opens the chooser.");
+            Row(ControllerPrompt.Menu, "Change a shortcut or pin", "Open Commands on the tray widget or right-click it");
+        }
+        else if (step == "utilities")
+        {
+            Row(ControllerPrompt.Y, "Tap to reorder widgets", "Use the tray to choose which widget to move");
+            Row(ControllerPrompt.Y, notifications ? "Hold for Notifications" : "Hold for Task Switcher", "On the rail, click either icon or use the arrow keys and Enter");
+        }
+        ButtonLabel(primary, ControllerPrompt.X, step == "welcome" ? "Show me around" : step == steps[^1] ? "Finish" : "Continue");
         ButtonLabel(skip, ControllerPrompt.B, "Close tour");
-        rows.Children.Add(new TextBlock { Text = "Keyboard: F8 to continue · Esc to close", TextWrapping = TextWrapping.Wrap });
+        rows.Children.Add(new TextBlock { Text = "F8 to continue · Esc to close", TextWrapping = TextWrapping.Wrap });
         status.Visibility = Visibility.Collapsed;
         RefreshGlyphs();
     }

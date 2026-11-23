@@ -19,6 +19,16 @@ internal static class WidgetModalTests
                 UI.VerticalScroll("details.nested", UI.Button("Nested", "nested", "nested"))),
             "play", "details.close");
         var snapshot = background.WithModal(modal).CreateSnapshot("instance", 1);
+        var overlay = background.WithModal(modal with { OverlayPresentation = new() }).CreateSnapshot("instance", 1);
+        Equal(ProtocolConstants.OverlayModalVersion, overlay.ProtocolVersion);
+        Equal(0, ViewSnapshotValidator.Validate(overlay).Count);
+        True(overlay.Root.Children[1].StyleClasses.Contains("wrail-modal-overlay"));
+        True(overlay.Root.Children[1].StyleClasses.Contains("wrail-modal"));
+        True(ViewSnapshotValidator.Validate(overlay with { ProtocolVersion = 134 }).Any(error => error.Code == "feature_requires_version"));
+        foreach (var invalid in new[] { new OverlayModalPresentation(double.NaN), new OverlayModalPresentation(2000), new OverlayModalPresentation(1280,0) })
+            True(ViewSnapshotValidator.Validate(overlay with { Root = overlay.Root with { OverlayModal = invalid } }).Any(error => error.Code == "invalid_overlay_modal"));
+        True(ViewSnapshotValidator.Validate(snapshot with { Root = snapshot.Root with { Children = [snapshot.Root.Children[0] with { OverlayModal = new() }, snapshot.Root.Children[1]] } })
+            .Any(error => error.Code == "invalid_overlay_modal"));
         Equal(ProtocolConstants.ModalDismissalVersion, snapshot.ProtocolVersion);
         Equal(new WidgetModalDismissal("details.close"), snapshot.Root.ModalDismissal);
         var legacy = snapshot with { ProtocolVersion = 55, Root = snapshot.Root with { ModalDismissal = null } };
@@ -60,6 +70,15 @@ internal static class WidgetModalTests
         Equal("details.scope", ownScroll.ActiveInputScopeId);
         Equal("play", ownScroll.InitialFocusId);
         Equal(0, ViewSnapshotValidator.Validate(ownScroll).Count);
+        var mediaDialog = background.WithModal(modal with { ShowHeader = false, ScrollContent = false }).CreateSnapshot("instance", 4);
+        Equal("Game details", mediaDialog.Root.AccessibilityLabel);
+        Equal(1, mediaDialog.Root.Children[1].Children.Count);
+        Equal("details.body", mediaDialog.Root.Children[1].Children[0].Id);
+        Equal("details.scope", mediaDialog.ActiveInputScopeId);
+        Equal("play", mediaDialog.InitialFocusId);
+        Equal(new WidgetModalDismissal("details.close"), mediaDialog.Root.ModalDismissal);
+        True(mediaDialog.Root.Children[1].Shortcuts.Any(s => s.Button == ControllerButton.B && s.ActionId == "details.close"));
+        Equal(0, ViewSnapshotValidator.Validate(mediaDialog).Count);
         True(snapshot.Root.Children[1].Shortcuts.Any(s => s.Button == ControllerButton.B && s.ActionId == "details.close"));
         True(ViewSnapshotValidator.Validate(snapshot with { ActiveInputScopeId = "page.scope" })
             .Any(error => error.Code == "invalid_modal_layer"));

@@ -80,6 +80,13 @@ internal sealed partial class OverlayShellPage
                     await Send("host.embeddedMediaSession.enterFullscreen");
                     await Until(() => IsMediaFullscreen && !fullscreenLayer.IsTransitioning);
                     checks.Add($"Cycle {cycle}: fullscreen settles");
+                    await Until(() => FocusManager.GetFocusedElement(XamlRoot) is FrameworkElement focused &&
+                        AutomationProperties.GetAutomationId(focused) == "Overlay.MediaFullscreen.VideoFocus");
+                    if (fullscreenView.ControlsVisible) throw new InvalidOperationException("Fullscreen revealed transport before input.");
+                    fullscreenLayer.MoveFocus(FocusNavigationDirection.Right);
+                    await Until(() => fullscreenView.ControlsVisible && FocusManager.GetFocusedElement(XamlRoot) is Button { IsEnabled: true } command &&
+                        AutomationProperties.GetAutomationId(command) == "Overlay.MediaFullscreen.Back");
+                    checks.Add($"Cycle {cycle}: controls stay hidden through entry and the first direction focuses Back");
                     phase = $"{cycle}-full"; await Task.Delay(1000);
                     phase = $"{cycle}-exit"; await Button(ControllerButton.B);
                     await Until(() => !IsMediaFullscreen && !fullscreenLayer.IsTransitioning);

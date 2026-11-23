@@ -32,6 +32,7 @@ struct ViGEmApi final {
     std::uint32_t (*RegisterFeedback)(
         ViGEmClientHandle, ViGEmTargetHandle,
         ViGEmFeedbackCallback, void*) noexcept{};
+    // Returns after the reader and every callback have finished using the target.
     void (*UnregisterFeedback)(ViGEmTargetHandle) noexcept{};
     std::uint32_t successCode{};
     bool (*IdentifyTarget)(ViGEmTargetHandle, ControllerDeviceNodeIdentity&) noexcept{};
@@ -79,8 +80,6 @@ public:
     }
 
 private:
-    static constexpr std::uint32_t FeedbackClosed = 1U << 31;
-    static constexpr std::uint32_t FeedbackCountMask = FeedbackClosed - 1;
     [[nodiscard]] bool Succeeded(std::uint32_t result) const noexcept;
     void CloseClient() noexcept;
     static void Feedback(
@@ -96,7 +95,6 @@ private:
     bool feedbackRegistered_{};
     std::atomic<std::uint64_t> feedbackSequence_{};
     std::atomic<std::uint16_t> feedbackMotors_{};
-    std::atomic<std::uint32_t> feedbackGate_{FeedbackClosed};
     std::uint64_t consumedFeedbackSequence_{};
     ViGEmAdapterStatus status_{ViGEmAdapterStatus::Closed};
     std::uint32_t rawError_{};

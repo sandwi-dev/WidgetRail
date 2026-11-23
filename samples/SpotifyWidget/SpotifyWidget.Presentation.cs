@@ -78,7 +78,17 @@ internal static class SpotifyPresentation
                 SpotifyWidgetViewState.Ready => RenderConnected(presentation),
                 _ => RenderLoading(Header(presentation.Status, presentation.ViewState)),
             };
-        return view with
+        var reason = presentation.ViewState switch
+        {
+            SpotifyWidgetViewState.Unconfigured or SpotifyWidgetViewState.Disconnected or SpotifyWidgetViewState.Authorizing =>
+                "Connect your Spotify account to use playback controls.",
+            SpotifyWidgetViewState.PermissionDenied => "Open Spotify to review access.",
+            SpotifyWidgetViewState.Ready when presentation.PendingOperation is not null => "Wait for the current Spotify command to finish.",
+            SpotifyWidgetViewState.Ready when presentation.Playback?.DeviceId is null => "Start playback on a Spotify device.",
+            SpotifyWidgetViewState.Ready => "Spotify cannot use this control for the current playback.",
+            _ => "Open Spotify to check its connection."
+        };
+        return view.WithUnavailableTrayActions(reason, "play-pause", "previous", "next") with
         {
             PinnedLayouts =
             [
@@ -539,15 +549,16 @@ internal static class SpotifyPresentation
         if (!setup && playback is { IsAvailable: true })
         {
             var blocked = playback.DisallowedActions;
+            TrayActionOffer? Offer(string id) => presentation.PendingOperation is null ? SpotifyPlaybackPolicy.TrayOffer(playback, id, presentation.PlaybackAccount) : null;
             if (!blocked.SkippingPrevious)
                 quickActions.Add(new(ControllerButton.LeftBumper, "spotify.previous",
-                    "Previous track"));
+                    "Previous track") { TrayOffer = Offer("previous") });
             if (!(playback.IsPlaying ? blocked.Pausing : blocked.Resuming))
                 quickActions.Add(new(ControllerButton.X, "spotify.play-toggle",
-                    playback.IsPlaying ? "Pause" : "Play"));
+                    playback.IsPlaying ? "Pause" : "Play") { TrayOffer = Offer("play-pause") });
             if (!blocked.SkippingNext)
                 quickActions.Add(new(ControllerButton.RightBumper, "spotify.next",
-                    "Next track"));
+                    "Next track") { TrayOffer = Offer("next") });
         }
         return new WidgetView(root, contentEntry,
             quickActions, Surface: StandardSurface);

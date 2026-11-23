@@ -23,6 +23,7 @@ internal static class DiscordIcons
     internal static WidgetIcon Account=>Get("account",WidgetGlyph.Connection);
     internal static WidgetIcon Activity=>Get("activity",WidgetGlyph.Play);
     internal static WidgetIcon Share=>Get("share",WidgetGlyph.Fullscreen);
+    internal static WidgetIcon Presence(string status)=>Get("presence-"+status,WidgetGlyph.Connection);
     private static WidgetIcon Get(string name,WidgetGlyph fallback)=>
         WidgetIcon.PackageSvg("discord."+name,WidgetPackageIconColorMode.ThemeTint,fallback);
 }

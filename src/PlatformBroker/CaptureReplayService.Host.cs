@@ -79,13 +79,13 @@ public sealed partial class CaptureReplayService
                 }
             }
             if (authorityReady && !hostSuspended && session is null && control is null && save is null && !automaticStartBlocked && configuration.Settings is { Enabled: true, AutoStart: true } &&
-                configuration.Owner is { } approvedOwner && configuration.ApprovedApplication is { } app && lastHostContact >= nextAutomaticStart)
+                configuration.Owner is { } approvedOwner && configuration.Approvals.Applications.Count > 0 && lastHostContact >= nextAutomaticStart)
             {
                 var command = new HostReplayCommand(Guid.NewGuid().ToString("N"), HostReplayCommandKind.Start, approvedOwner,
                     Guid.NewGuid().ToString("N"), configuration.Settings, configuration.Revision)
-                { Automatic = true, ApprovedApplication = app };
+                { Automatic = true, Approvals = configuration.Approvals };
                 control = new(this, command, lifetime.Token, lastHostContact.AddSeconds(20));
-                Publish(Status with { Phase = CaptureReplayPhase.Starting, SessionId = command.SessionId, Issue = CaptureReplayIssue.None });
+                // Keep Waiting and its manual commands stable until an automatic target is admitted.
             }
             var currentId = session?.Id ?? control?.Command.SessionId;
             var saveCommand = save is { Revoked: false } currentSave && !currentSave.Session.Lifetime.IsCancellationRequested ? currentSave.Command : null;
@@ -137,7 +137,7 @@ public sealed partial class CaptureReplayService
             var command = pending.Command;
             if (completion.Outcome != CaptureReplayOutcome.Accepted)
             {
-                control = null; nextAutomaticStart = clock.GetUtcNow().AddSeconds(2);
+                control = null; nextAutomaticStart = clock.GetUtcNow() + AutomaticDiscoveryInterval;
                 if (command.Automatic && completion.Issue is not (CaptureReplayIssue.TargetUnavailable or CaptureReplayIssue.Cancelled)) automaticStartBlocked = true;
                 Idle(completion.Issue);
                 pending.Completion.TrySetResult(Result(completion.Outcome, completion.Issue)); return true;
@@ -149,14 +149,16 @@ public sealed partial class CaptureReplayService
             if (starts && (completion.Resolved is not null && !completion.Resolved.Satisfies(command.Settings.Recording) ||
                 (command.Settings.Recording.Selection is not null || command.Settings.Recording.Encoding is not null) && completion.Resolved is null))
                 throw new BrokerException("invalid_capture_configuration", "The resolved recording does not satisfy the requested settings.");
-            if (starts && (completion.Target is null || !ValidTarget(completion.Target) || completion.ApprovedApplication is not { Length: 64 } key ||
-                !key.All(char.IsAsciiHexDigit) || completion.ApplicationName is not { Length: > 0 and <= 120 } name || name.Any(char.IsControl) ||
-                command.Automatic && !string.Equals(key, configuration.ApprovedApplication, StringComparison.OrdinalIgnoreCase)))
-            { automaticStartBlocked = true; CancelPendingControl(); Idle(CaptureReplayIssue.TargetUnavailable); return false; }
+            var applicationToRecord = new ReplayApprovedApplication(completion.ApplicationIdentity!, completion.ApplicationName!);
             var sameFeature = SameFeature(configuration.Owner, command.Widget);
+            var approvals = sameFeature ? configuration.Approvals : ReplayApplicationApprovals.Empty;
+            if (completion.AddToApproved && (!starts || command.Automatic ||
+                approvals.Applications.Count >= ReplayApplicationApprovals.MaximumApplications && !approvals.Contains(applicationToRecord.Id)) ||
+                starts && (completion.Target is null || !ValidTarget(completion.Target) || !applicationToRecord.IsWellFormed() ||
+                command.Automatic && (!command.Approvals.Contains(applicationToRecord.Id) || !approvals.Contains(applicationToRecord.Id))))
+            { automaticStartBlocked = true; CancelPendingControl(); Idle(CaptureReplayIssue.TargetUnavailable); return false; }
             var next = configuration with { Settings = command.Settings, Owner = command.Widget,
-                ApprovedApplication = starts ? completion.ApprovedApplication : sameFeature ? configuration.ApprovedApplication : null,
-                ApplicationName = starts ? completion.ApplicationName : sameFeature ? configuration.ApplicationName : null };
+                Approvals = completion.AddToApproved ? approvals.Add(applicationToRecord) : approvals };
             lock (gate)
             {
                 if (!ReferenceEquals(control, pending) || pending.Token.IsCancellationRequested) return false;
@@ -178,7 +180,8 @@ public sealed partial class CaptureReplayService
             {
                 var application = completion.SourceApplication?.IsWellFormed() == true ? completion.SourceApplication :
                     new CaptureApplicationContext(completion.ApplicationName!, completion.ApplicationName!);
-                session = new(command.SessionId!, command.Widget, command.Settings, completion.Target!, application);
+                session = new(command.SessionId!, command.Widget, command.Settings, completion.Target!, application)
+                    { StartedAt = clock.GetUtcNow().ToUnixTimeMilliseconds() };
                 Publish(Status with { Phase = CaptureReplayPhase.Starting, SessionId = session.Id, Resolved = completion.Resolved, TargetName = application.ApplicationName,
                     BufferedDurationSeconds = 0, ResidentBytes = 0, DroppedFrames = 0, Saving = false, Issue = CaptureReplayIssue.None });
             }

@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using System.Runtime.CompilerServices;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
@@ -12,6 +13,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed class WidgetScrollEdgeCues : IDisposable
 {
     internal const double StripHeight = 4;
+    private static readonly ConditionalWeakTable<Control, WidgetScrollEdgeCues> Decorations = new();
     private readonly Control owner;
     private ScrollViewer? scroll;
     private Grid? templateGrid;
@@ -29,6 +31,7 @@ internal sealed class WidgetScrollEdgeCues : IDisposable
     internal WidgetScrollEdgeCues(Control owner)
     {
         this.owner = owner;
+        Decorations.Remove(owner); Decorations.Add(owner, this);
         owner.Loaded += Loaded;
         owner.Unloaded += Unloaded;
         templateToken = owner.RegisterPropertyChangedCallback(Control.TemplateProperty, (_, _) =>
@@ -47,6 +50,23 @@ internal sealed class WidgetScrollEdgeCues : IDisposable
     }
     private void Loaded(object sender, RoutedEventArgs args) => Attach();
     private void Unloaded(object sender, RoutedEventArgs args) => Detach();
+
+    // Content-sized surfaces measure before Loaded. Finish only already-realized
+    // template decorations before caching that measurement; otherwise their two
+    // reserved strips shrink the viewport after its outer height is frozen.
+    internal static bool PrepareMeasuredSubtree(DependencyObject root)
+    {
+        var changed = false;
+        if (root is Control control && Decorations.TryGetValue(control, out var decoration) &&
+            !decoration.disposed && decoration.scroll is null)
+        {
+            decoration.Attach();
+            changed = decoration.scroll is not null;
+        }
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+            changed |= PrepareMeasuredSubtree(VisualTreeHelper.GetChild(root, index));
+        return changed;
+    }
     private void Attach()
     {
         if (disposed || scroll is not null) return;
@@ -173,6 +193,7 @@ internal sealed class WidgetScrollEdgeCues : IDisposable
     {
         if (disposed) return;
         disposed = true;
+        if (Decorations.TryGetValue(owner, out var current) && ReferenceEquals(current, this)) Decorations.Remove(owner);
         owner.Loaded -= Loaded; owner.Unloaded -= Unloaded;
         owner.UnregisterPropertyChangedCallback(Control.TemplateProperty, templateToken);
         Detach();

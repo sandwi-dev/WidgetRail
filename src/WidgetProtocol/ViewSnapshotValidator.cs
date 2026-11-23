@@ -78,6 +78,7 @@ public static class ViewSnapshotValidator
         var inputScopes = new Dictionary<string, string>(StringComparer.Ordinal);
         var nodes = 0;
         var mediaViewportCount = 0;
+        var hasDialogGallerySession = false;
         string? mediaViewportSessionId = null;
 
         if (snapshot.ProtocolVersion < ProtocolConstants.MinimumSupportedVersion ||
@@ -186,6 +187,9 @@ public static class ViewSnapshotValidator
             Add("$.pinnedLayouts", "aggregate_resources_too_large",
                 $"The full widget and pinned projections may reference at most {ProtocolConstants.MaximumPinnedPresentationAggregateResourceCount} resources in total.");
         Visit(snapshot.Root, "$.root", 1, "$.root");
+        if (snapshot.Root is { Kind: ViewNodeKind.ModalLayer } && snapshot.EmbeddedMediaSession is not null &&
+            !hasDialogGallerySession)
+            Add("$.root", "unsupported_modal_surface", "A modal embedded player must belong to a gallery in its active dialog.");
         if (snapshot.Root is { Kind: ViewNodeKind.ModalLayer, Children.Count: 2, AnchoredPresentation: { Anchor: { } anchor } })
         {
             var anchorId = anchor.ElementId ?? anchor.IndexedItem?.CollectionId;
@@ -318,8 +322,14 @@ public static class ViewSnapshotValidator
         var quickActions = snapshot.QuickActions ?? [];
         if (snapshot.QuickActions is null)
             Add("$.quickActions", "required", "Quick actions cannot be null.");
-        if (quickActions.Count > ProtocolConstants.MaximumQuickActionCount)
+        if (quickActions.Count(action => action?.OnDashboard == true) > ProtocolConstants.MaximumQuickActionCount)
             Add("$.quickActions", "too_many", $"A widget may expose at most {ProtocolConstants.MaximumQuickActionCount} dashboard quick actions.");
+        if (quickActions.Count(action => action?.TrayOffer is not null) > TrayActionContract.MaximumDefinitions)
+            Add("$.quickActions", "too_many", "Too many named tray offers.");
+        if (snapshot.UnavailableTrayActions is { } reasons && (reasons.Count > TrayActionContract.MaximumDefinitions ||
+            reasons.Any(pair => !TrayActionContract.ValidId(pair.Key) || !TrayActionContract.ValidReason(pair.Value) ||
+                quickActions.Any(action => action?.TrayOffer?.Id == pair.Key))))
+            Add("$.unavailableTrayActions", "invalid_tray_reason", "Use a bounded explanation for each unavailable tray action.");
         var quickActionButtons = new HashSet<ControllerButton>();
         for (var index = 0; index < quickActions.Count; index++)
         {
@@ -331,6 +341,9 @@ public static class ViewSnapshotValidator
             }
             CheckIdentifier(quickAction.ActionId, $"$.quickActions[{index}].actionId",
                 "quick action ID", ProtocolValidationIdentifierKind.Action);
+            if (quickAction.TrayOffer is { } offer && (!TrayActionContract.ValidOffer(offer) ||
+                quickActions.Take(index).Any(other => other?.TrayOffer?.Id == offer.Id)))
+                Add($"$.quickActions[{index}].trayOffer", "invalid_tray_offer", "Tray offers require a unique ID and a bounded current target.");
             CheckString(quickAction.Label, $"$.quickActions[{index}].label");
             if (string.IsNullOrWhiteSpace(quickAction.Label))
                 Add($"$.quickActions[{index}].label", "required", "A quick action requires a visible label.");
@@ -342,7 +355,7 @@ public static class ViewSnapshotValidator
                     "View is reserved for host pinned-surface navigation and cannot be a dashboard quick action.");
             else if (!IsDashboardQuickActionButton(quickAction.Button))
                 Add($"$.quickActions[{index}].button", "reserved_button", "This button is reserved for dashboard navigation or host behavior.");
-            if (!quickActionButtons.Add(quickAction.Button))
+            if (quickAction.OnDashboard && !quickActionButtons.Add(quickAction.Button))
                 Add($"$.quickActions[{index}].button", "duplicate_button", "A dashboard button can trigger only one quick action.");
             if (!Enum.IsDefined(quickAction.RepeatPolicy))
                 Add($"$.quickActions[{index}].repeatPolicy", "invalid_repeat_policy",
@@ -394,6 +407,14 @@ public static class ViewSnapshotValidator
         HashSet<string>? disclosureContentIds = null;
         foreach (var (_, entry) in ids)
         {
+            if(entry.Node.IndexedPreferredEntryKey is {} preferred &&
+                (!ProtocolValidationIdentifierContext.IsSafeIdentifier(preferred) || entry.Node.Kind!=ViewNodeKind.IndexedCollection ||
+                 entry.Node.IndexedCollection?.CanLocateItems!=true || entry.Node.IndexedDirectionalEntry!=IndexedDirectionalEntryMode.Remembered))
+                Add(entry.Path+".indexedPreferredEntryKey","invalid_indexed_preferred_entry","Preferred entry requires a safe occurrence key and a locatable indexed collection without visible-edge entry.");
+            if (entry.Node.DirectionalAnchor is { } scrollAnchor && (!scrollAnchor.IsValid() ||
+                !(entry.Node.Kind is ViewNodeKind.Scroll or ViewNodeKind.IndexedCollection || entry.Node.Kind == ViewNodeKind.MediaPlayer &&
+                  entry.Node.MediaPlayer?.Gallery is { Count: > 0 } gallery && gallery[0]?.PublicThumbnail is not null)))
+                Add(entry.Path + ".directionalAnchor", "invalid_directional_anchor", "Use a valid anchor on a scroll container, indexed collection or gallery with thumbnails.");
             if(!Enum.IsDefined(entry.Node.IndexedDirectionalEntry) || entry.Node.IndexedDirectionalEntry!=IndexedDirectionalEntryMode.Remembered &&
                 (entry.Node.Kind!=ViewNodeKind.IndexedCollection || entry.Node.CollectionLayout?.Kind!=CollectionLayoutKind.List))
                 Add(entry.Path+".indexedDirectionalEntry","invalid_indexed_directional_entry","Visible-edge entry requires an indexed list and a defined policy.");
@@ -894,6 +915,11 @@ public static class ViewSnapshotValidator
                     Add($"{path}.focusPersistenceId", "focus_persistence_on_non_focusable_node",
                         "Only focusable nodes may declare focus persistence.");
             }
+            if (node.ForegroundBackgroundProcessKey is { } processKey &&
+                (processKey.Length != 64 || !processKey.All(char.IsAsciiHexDigitLower) ||
+                 !(node.IsFocusable || node.Kind == ViewNodeKind.BackgroundSurface && node.UsesFocusedDescendantArtwork == true)))
+                Add($"{path}.foregroundBackgroundProcessKey", "invalid_foreground_background",
+                    "Expected a lowercase SHA-256 process-instance key on a focusable node or opted-in background surface.");
             if (node.FocusBackgroundArtworkHandle is not null)
             {
                 CheckIdentifier(node.FocusBackgroundArtworkHandle,
@@ -919,7 +945,7 @@ public static class ViewSnapshotValidator
                 node.Kind is not ViewNodeKind.FocusPresentationSurface)
                 Add($"{path}.defaultFocusPresentation", "focus_presentation_default_not_allowed",
                     "Only FocusPresentationSurface may declare a default presentation fragment.");
-            if (node.Kind is not (ViewNodeKind.Image or ViewNodeKind.Button) ||
+            if (node.Kind is not (ViewNodeKind.Image or ViewNodeKind.Button or ViewNodeKind.MediaPlayer) ||
                 node.ImageSource is null)
                 CheckString(node.ImageSource, $"{path}.imageSource");
 
@@ -928,6 +954,22 @@ public static class ViewSnapshotValidator
             var isActionSurface = node.Kind is ViewNodeKind.ActionSurface;
             if (node.Kind == ViewNodeKind.MediaPlayer)
             {
+                if (node.MediaPlayer?.Gallery is { } gallery)
+                {
+                    foreach (var member in gallery.Where(item => item?.Source?.Kind == MediaPlayerSourceKind.EmbeddedSession))
+                    {
+                        mediaViewportCount++;
+                        mediaViewportSessionId ??= member.Source.Location;
+                        if (inheritedScopeKey == "$.root.children[1]" && !interactivePreview && !previewMedia &&
+                            !path.Contains("focusPresentation", StringComparison.OrdinalIgnoreCase))
+                            hasDialogGallerySession = true;
+                        if (member.PublicThumbnail is null || node.MediaPlayer.Presentation != MediaPlayerPresentation.Interactive ||
+                            snapshot.EmbeddedMediaSession is { PendingCommand: not null } or { SupportedPresentations.Count: > 0 })
+                            Add(path, "invalid_embedded_gallery", "The thumbnail gallery owns this embedded player's source, commands and placement.");
+                    }
+                }
+                else if (node.MediaPlayer?.Source.Kind == MediaPlayerSourceKind.EmbeddedSession)
+                    Add(path, "invalid_embedded_gallery", "An embedded session source requires a gallery.");
                 if (node.MediaPlayer?.IsWellFormed() != true || string.IsNullOrWhiteSpace(node.AccessibilityLabel) ||
                     node.Children.Count != 0 || node.ActionId is not null || node.ValueChangedActionId is not null ||
                     node.Intent is not null || node.InputScopeId is not null || node.Shortcuts.Count != 0 || node.ContextActions.Count != 0)
@@ -981,7 +1023,7 @@ public static class ViewSnapshotValidator
                     node.Minimum is not null || node.Maximum is not null || node.Step is not null ||
                     node.ValueChangedActionId is not null || node.Focus is not null ||
                     node.ImageSource is not null || node.ArtworkHandle is not null ||
-                    node.FocusBackgroundArtworkHandle is not null ||
+                    node.FocusBackgroundArtworkHandle is not null || node.ForegroundBackgroundProcessKey is not null ||
                     node.ImageFit is not null || node.Glyph is not null ||
                     node.IndicatorSize is not null || node.InputScopeId is not null ||
                     node.ScrollAxis is not null || node.ShowScrollbar is not null || node.GridMinimumColumnWidth is not null ||
@@ -1296,6 +1338,10 @@ public static class ViewSnapshotValidator
                 Add(path, "grid_property_not_allowed",
                     "Grid column properties apply only to responsive Grid nodes.");
             }
+            if (node.IsReadingGroup && (!isActionSurface || node.ActionId is not null || node.Intent is not null ||
+                node.ActionSurfacePresentation == ActionSurfacePresentation.Poster || node.FocusPresentation is not null ||
+                (node.Shortcuts ?? []).Any(shortcut => shortcut.Button == ControllerButton.A)))
+                Add(path, "invalid_reading_group", "Reading groups have no primary action, intent, poster, focus preview or A shortcut.");
             if (isActionSurface)
             {
                 if (node.ActionSurfaceOrientation is null)
@@ -1501,7 +1547,11 @@ public static class ViewSnapshotValidator
             else if (contextActions.Count > ProtocolConstants.MaximumContextActionCount)
                 Add($"{path}.contextActions", "too_many_context_actions",
                     $"An action surface may expose at most {ProtocolConstants.MaximumContextActionCount} context actions.");
+            if (node.NativeContextMenuOnly.HasValue && (node.NativeContextMenuOnly != true ||
+                node.Kind != ViewNodeKind.ActionSurface || contextActions.Count == 0 || node.ContextMenuButton.HasValue))
+                Add(path, "invalid_native_context_menu", "Native-only context menus require a contextual action surface without a controller shortcut.");
             if (node.ContextMenuButton is { } menuButton &&
+                !(node.Kind == ViewNodeKind.Select && node.IsCommandMenu == true && menuButton == ControllerButton.Menu) &&
                 (menuButton is not (ControllerButton.Menu or ControllerButton.X or ControllerButton.Y) ||
                  contextActions.Count == 0 ||
                  node.Kind is not (ViewNodeKind.ActionSurface or ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or ViewNodeKind.Scroll or ViewNodeKind.IndexedCollection)))
@@ -1612,9 +1662,9 @@ public static class ViewSnapshotValidator
             }
             var supportsImageSource = node.Kind is ViewNodeKind.Image or ViewNodeKind.Button or
                 ViewNodeKind.BackgroundSurface or ViewNodeKind.MediaPlayer;
-            if (node.Kind == ViewNodeKind.MediaPlayer && (node.ImageSource is not null ||
-                node.ImageFit is not null && (node.ArtworkHandle is null || node.ImageFit != ImageFit.Contain)))
-                Add(path, "invalid_media_poster", "A media poster requires scoped artwork with Contain fit.");
+            if (node.Kind == ViewNodeKind.MediaPlayer &&
+                node.ImageFit is not null && (node.ArtworkHandle is null && node.ImageSource is null || node.ImageFit != ImageFit.Contain))
+                Add(path, "invalid_media_poster", "A media poster requires an artwork source with Contain fit.");
             if (node.ArtworkHandle is not null)
             {
                 if (!supportsImageSource)
@@ -1631,6 +1681,9 @@ public static class ViewSnapshotValidator
                 if (node.Kind is ViewNodeKind.Image && string.IsNullOrWhiteSpace(node.AccessibilityLabel))
                     Add($"{path}.accessibilityLabel", "required", "An image requires an accessibility label.");
             }
+            if (node.ImageIsPublicMedia && (!supportsImageSource || node.ArtworkHandle is not null ||
+                !MediaPlayerSource.IsPublicMediaLocation(node.ImageSource)))
+                Add($"{path}.imageIsPublicMedia", "invalid_public_media", "Public artwork requires one credential-free, default-port HTTPS source.");
             if (node.ImageSource is not null && supportsImageSource)
             {
                 var imageSource = ValidateImageSource(node.ImageSource);
@@ -1757,7 +1810,13 @@ public static class ViewSnapshotValidator
                 var contentBudget = new ActionSurfaceContentBudget();
                 for (var index = 0; index < children.Count; index++)
                     ValidateActionSurfaceContent(
-                        children[index], $"{path}.children[{index}]", 1, null, ref contentBudget);
+                        children[index], $"{path}.children[{index}]", 1, null, ref contentBudget, node.IsReadingGroup, node.IsReadingGroup);
+                if (node.IsReadingGroup && contentBudget.InlineActions > ProtocolConstants.MaximumReadingGroupActions)
+                    Add(path, "too_many_reading_group_actions", "Reading groups contain at most 32 inline actions.");
+                if (node.IsReadingGroup && contentBudget.SavedPreviews > 1)
+                    Add(path, "too_many_saved_previews", "A reading group may expand one saved capture at a time.");
+                if (node.IsReadingGroup && contentBudget.SavedPreviews > 0 && snapshot.ProtocolVersion < ProtocolConstants.ReadingGroupViewportVersion)
+                    Add(path, "saved_preview_version", "A saved capture in a reading group requires protocol 139.");
             }
 
             if (node.FocusPreviewSource is { } source)
@@ -1798,6 +1857,11 @@ public static class ViewSnapshotValidator
                         shortcut.Phase == ControllerEventPhase.Pressed && shortcut.ActionId == dismissal.ActionId) != true)
                     Add(path + ".modalDismissal", "modal_dismissal_action_mismatch", "Modal dismissal must match the dialog's B-pressed cancellation action.");
             }
+            if (node.OverlayModal is { } overlay && (node.Kind != ViewNodeKind.ModalLayer ||
+                node.AnchoredPresentation is not null || !double.IsFinite(overlay.MaximumWidth) ||
+                overlay.MaximumWidth is < 320 or > 1920 || !double.IsFinite(overlay.AspectRatio) ||
+                overlay.AspectRatio is < .5 or > 3))
+                Add(path + ".overlayModal", "invalid_overlay_modal", "Overlay modals require bounded dimensions and cannot also be anchored.");
             if (node.Kind is ViewNodeKind.ModalLayer)
             {
                 if (path != "$.root" || children.Count != 2 ||
@@ -1808,9 +1872,6 @@ public static class ViewSnapshotValidator
                     node.InputScopeId is not null || node.VisibleWhen is not (null or ResponsiveVisibility.Always))
                     Add(path, "invalid_modal_layer",
                         "A modal layer must be the main root with two always-visible, independently scoped children; the dialog scope must be active.");
-                if (snapshot.EmbeddedMediaSession is not null)
-                    Add(path, "unsupported_modal_surface",
-                        "Modal layers cannot be combined with embedded media.");
             }
             if (node.Kind is ViewNodeKind.BackgroundSurface && children.Count != 1)
                 Add($"{path}.children", "background_surface_child_count",
@@ -1829,7 +1890,7 @@ public static class ViewSnapshotValidator
                     (node.SelectOptions?.Count ?? 0) != 0 || node.Value is not null ||
                     node.Minimum is not null || node.Maximum is not null || node.Step is not null ||
                     node.ValueChangedActionId is not null || node.ImageSource is not null ||
-                    node.ArtworkHandle is not null || node.FocusBackgroundArtworkHandle is not null ||
+                    node.ArtworkHandle is not null || node.FocusBackgroundArtworkHandle is not null || node.ForegroundBackgroundProcessKey is not null ||
                     node.MediaSessionId is not null || node.ImageFit is not null || node.Glyph is not null ||
                     node.IndicatorSize is not null || node.ActionSurfaceOrientation is not null ||
                     node.ActionSurfacePresentation is not null || node.GridMinimumColumnWidth is not null ||
@@ -1930,34 +1991,41 @@ public static class ViewSnapshotValidator
             string path,
             int relativeDepth,
             ViewNodeKind? parentKind,
-            ref ActionSurfaceContentBudget contentBudget)
+            ref ActionSurfaceContentBudget contentBudget, bool inlineActions = false, bool readingContent = false)
         {
             if (child is null) return;
             contentBudget.Add(child, parentKind);
-            if (contentBudget.LayoutNodes == ProtocolConstants.MaximumActionSurfaceDescendants + 1)
+            if (readingContent && !ReadingGroupContentContract.IsContent(child))
+                Add(path,"invalid_reading_group_content","Reading-group content cannot contain nested scopes, services, previews, menus or interactive media.");
+            var maximumNodes = readingContent ? ProtocolConstants.MaximumReadingGroupDescendants : ProtocolConstants.MaximumActionSurfaceDescendants;
+            if (contentBudget.LayoutNodes == maximumNodes + 1)
                 Add(path, "action_surface_too_large",
-                    $"An action surface may contain at most {ProtocolConstants.MaximumActionSurfaceDescendants} layout descendants.");
+                    $"This surface may contain at most {maximumNodes} layout descendants.");
             if (contentBudget.RichTextSpans == ProtocolConstants.MaximumActionSurfaceRichTextSpans + 1)
                 Add(path, "action_surface_too_many_rich_text_spans",
                     $"An action surface may contain at most {ProtocolConstants.MaximumActionSurfaceRichTextSpans} rich-text spans.");
             if (relativeDepth > ProtocolConstants.MaximumActionSurfaceRelativeDepth)
                 Add(path, "action_surface_too_deep",
                     $"Action-surface content may be at most {ProtocolConstants.MaximumActionSurfaceRelativeDepth} levels deep relative to its surface.");
-            if (child.Kind is ViewNodeKind.Button or ViewNodeKind.Slider or
-                ViewNodeKind.ActionSurface or ViewNodeKind.Scroll or ViewNodeKind.IndexedCollection ||
+            var inlineAction = inlineActions && ReadingGroupContentContract.IsInlineControl(child);
+            if (!inlineAction && (child.Kind is ViewNodeKind.Button or ViewNodeKind.Slider or
+                ViewNodeKind.ActionSurface or ViewNodeKind.IndexedCollection ||
+                child.Kind == ViewNodeKind.Scroll && !(inlineActions && relativeDepth == 1 && ReadingGroupContentContract.IsHorizontalViewport(child)) ||
+                child.Kind == ViewNodeKind.MediaPlayer && (child.MediaPlayer?.Presentation == MediaPlayerPresentation.Inline ||
+                    readingContent && ReadingGroupContentContract.IsSavedPreview(child.MediaPlayer)) ||
                 child.ActionId is not null || child.ValueChangedActionId is not null ||
                 child.FocusPersistenceId is not null || child.Focus is not null ||
                 child.InputScopeId is not null ||
                 (child.Shortcuts?.Count ?? 0) != 0 ||
-                child.IsDisabled is not null || child.IsSelected is not null || child.IsBusy is not null)
+                child.IsDisabled is not null || child.IsSelected is not null || child.IsBusy is not null || child.IsReadingGroup))
             {
                 Add(path, "interactive_action_surface_descendant",
                     "Action-surface descendants must be presentational; nested focus, actions, scopes, scrolling, shortcuts, or interaction state are not allowed.");
             }
             foreach (var (descendant, index) in (child.Children ?? []).Select((item, index) => (item, index)))
                 ValidateActionSurfaceContent(
-                    descendant, $"{path}.children[{index}]", relativeDepth + (descendant is not null && ActionSurfaceContentBudget.IsInlineSpan(descendant, child.Kind) ? 0 : 1),
-                    child.Kind, ref contentBudget);
+                    descendant, $"{path}.children[{index}]", descendant is null ? relativeDepth + 1 : ActionSurfaceContentBudget.ChildDepth(descendant, child, relativeDepth, inlineAction),
+                    child.Kind, ref contentBudget, inlineActions && !inlineAction, readingContent);
         }
 
         void ValidateFocusPresentationContent(ViewNode root, string path, bool interactive = false, bool allowMedia = false)
@@ -2008,7 +2076,7 @@ public static class ViewSnapshotValidator
                     node.TextEntryMaximumLength is not null || node.TextEntryInputKind is not null ||
                     node.Minimum is not null || node.Step is not null ||
                     node.ValueChangedActionId is not null || node.SliderInteractionMode is not null ||
-                    node.FocusBackgroundArtworkHandle is not null || node.MediaSessionId is not null ||
+                    node.FocusBackgroundArtworkHandle is not null || node.ForegroundBackgroundProcessKey is not null || node.MediaSessionId is not null ||
                     node.ActionSurfaceOrientation is not null || node.ActionSurfacePresentation is not null ||
                     node.IsDisabled is not null || node.IsSelected is not null || node.IsBusy is not null ||
                     node.FocusPersistenceId is not null || node.Focus is not null ||
@@ -2065,7 +2133,7 @@ public static class ViewSnapshotValidator
                     StringLength(node.ActionId) + StringLength(node.TextEntryValue) +
                     StringLength(node.TextEntryPlaceholder) + StringLength(node.TextEntrySuggestions?.Key) + StringLength(node.ValueChangedActionId) +
                     StringLength(node.ImageSource) + StringLength(node.ArtworkHandle) +
-                    StringLength(node.FocusBackgroundArtworkHandle) +
+                    StringLength(node.FocusBackgroundArtworkHandle) + StringLength(node.ForegroundBackgroundProcessKey) +
                     StringLength(node.MediaSessionId) +
                     StringLength(node.PackageIcon?.AssetId) + WidgetCatalogIconValidation.TextLength(node.PackageIcon) +
                     StringLength(node.FocusPersistenceId) + StringLength(node.InputScopeId) +
@@ -2086,7 +2154,7 @@ public static class ViewSnapshotValidator
                             StringLength(option.Label) + StringLength(option.AccessibilityLabel) +
                             StringLength(option.PackageIcon?.AssetId) + WidgetCatalogIconValidation.TextLength(option.PackageIcon)) ?? 0);
                 if (node.ImageSource is not null || node.ArtworkHandle is not null ||
-                    node.FocusBackgroundArtworkHandle is not null || node.PackageIcon is not null)
+                    node.FocusBackgroundArtworkHandle is not null || node.ForegroundBackgroundProcessKey is not null || node.PackageIcon is not null)
                     aggregateResources++;
                 if (node.Children is not null)
                     foreach (var child in node.Children)

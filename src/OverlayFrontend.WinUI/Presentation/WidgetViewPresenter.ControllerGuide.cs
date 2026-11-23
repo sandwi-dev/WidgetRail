@@ -69,26 +69,46 @@ internal sealed partial class WidgetViewPresenter
         if (disposed || applying || presentationOnly || !presentationActive || presentation is null) return [];
         if (previewEntered && previewSurface?.Fragment is { } preview) return preview.CaptureControllerGuide();
         if (ControllerTextEntry is { } keyboard) return CaptureKeyboardGuide(keyboard);
+        if (FocusedBinding() is { Element: WidgetIndexedCollectionView reading } && reading.ReadingMediaGuide is { } mediaGuide)
+            return (ControllerGuideHint[])[..mediaGuide, ..(mediaGuide.Any(hint=>hint.Button==ControllerButton.B)
+                ? Array.Empty<ControllerGuideHint>() : new[]{new ControllerGuideHint(ControllerPrompt.B,"Back to message",ControllerButton.B)})];
         if (FocusedMediaPlayer is { HasOptionsMenu: true })
             return (ControllerGuideHint[])[new(ControllerPrompt.A, "Choose", ControllerButton.A),
                 new(ControllerPrompt.B, "Back", ControllerButton.B), new(ControllerPrompt.LeftStickMove, "Navigate")];
         if (HasTransientControl) return (ControllerGuideHint[])[new(ControllerPrompt.A, "Select", ControllerButton.A)];
+        if (FocusedMediaPlayer is { UsesInlineThumbnailNavigation: true } strip)
+        {
+            var sections = ControllerGuideModel.Resolve(ControllerFocusPath(), new HashSet<ControllerButton>(), false)
+                .Where(hint => hint.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper);
+            return (ControllerGuideHint[])[.. (strip.CanControl ? (ControllerGuideHint[])[new(ControllerPrompt.A, strip.PrimaryActionLabel, ControllerButton.A)] : []),
+                .. (strip.HasGallery ? (ControllerGuideHint[])[new(ControllerPrompt.LeftStickMove, "Browse media")] : []),
+                .. (strip.CanControl && strip.CanExpand ? (ControllerGuideHint[])[new(ControllerPrompt.RightStickPress, "Expand", ControllerButton.RightStick)] : []),
+                .. sections];
+        }
+        if (FocusedMediaPlayer is { HasGallery: true, CanControl: false } loadingGallery)
+            return (ControllerGuideHint[])[.. (loadingGallery.HasFocusedGalleryAction ? (ControllerGuideHint[])[new(ControllerPrompt.A, loadingGallery.PrimaryActionLabel, ControllerButton.A)] : []),
+                new(ControllerPrompt.LeftBumper, "Previous attachment", ControllerButton.LeftBumper),
+                new(ControllerPrompt.RightBumper, "Next attachment", ControllerButton.RightBumper),
+                .. (loadingGallery.IsExpanded ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Back", ControllerButton.B)] : [])];
         if (FocusedMediaPlayer is { IsExpanded: true, CanControl: false })
             return (ControllerGuideHint[])[new(ControllerPrompt.B, "Back", ControllerButton.B)];
         if (FocusedMediaPlayer is { IsImage: true, CanControl: true } picture)
             return (ControllerGuideHint[])[new(ControllerPrompt.A, picture.PrimaryActionLabel, ControllerButton.A),
+                .. (picture.HasImageAnimation ? (ControllerGuideHint[])[new(ControllerPrompt.X, "Play / pause", ControllerButton.X)] : []),
                 new(ControllerPrompt.LeftTrigger, "Zoom out", ControllerButton.LeftTrigger), new(ControllerPrompt.RightTrigger, "Zoom in", ControllerButton.RightTrigger),
                 new(ControllerPrompt.LeftStickMove, "Navigate"), new(ControllerPrompt.RightStickMove, "Pan"),
-                new(ControllerPrompt.LeftBumper, "Fit image", ControllerButton.LeftBumper),
-                new(ControllerPrompt.RightBumper, "Image / controls", ControllerButton.RightBumper),
+                new(ControllerPrompt.LeftBumper, picture.HasGallery ? "Previous attachment" : "Fit image", ControllerButton.LeftBumper),
+                new(ControllerPrompt.RightBumper, picture.HasGallery ? "Next attachment" : "Image / controls", ControllerButton.RightBumper),
                 .. (picture.CanExpand ? (ControllerGuideHint[])[new(ControllerPrompt.RightStickPress, picture.IsExpanded ? "Collapse" : "Expand", ControllerButton.RightStick)] : []),
                 .. (picture.IsExpanded ? (ControllerGuideHint[])[new(ControllerPrompt.B, "Back", ControllerButton.B)] : [])];
+        if (FocusedMediaPlayer is { IsInlinePoster: true })
+            return (ControllerGuideHint[])[new(ControllerPrompt.A, "Play video", ControllerButton.A)];
         if (FocusedMediaPlayer is { IsVideo: true, CanControl: true } media)
             return (ControllerGuideHint[])[new(ControllerPrompt.A, media.PrimaryActionLabel, ControllerButton.A),
                 new(ControllerPrompt.X, "Play / pause", ControllerButton.X),
                 new(ControllerPrompt.LeftTrigger, "Seek back", ControllerButton.LeftTrigger), new(ControllerPrompt.RightTrigger, "Seek forward", ControllerButton.RightTrigger),
-                new(ControllerPrompt.LeftBumper, "Replay", ControllerButton.LeftBumper),
-                new(ControllerPrompt.RightBumper, "Loop", ControllerButton.RightBumper),
+                new(ControllerPrompt.LeftBumper, media.HasGallery ? "Previous attachment" : "Replay", ControllerButton.LeftBumper),
+                new(ControllerPrompt.RightBumper, media.HasGallery ? "Next attachment" : "Loop", ControllerButton.RightBumper),
                 .. (media.CanExpand ? (ControllerGuideHint[])[new(ControllerPrompt.RightStickPress, media.IsExpanded ? "Collapse" : "Expand", ControllerButton.RightStick)] : []),
                 .. (media.IsExpanded || media.IsAdjustingVolume ? (ControllerGuideHint[])[new(ControllerPrompt.B, media.IsAdjustingVolume ? "Done" : "Back", ControllerButton.B)] : [])];
         if (FocusedBrowser is { } browser)
@@ -118,6 +138,14 @@ internal sealed partial class WidgetViewPresenter
                 else unavailableContext.Add(button);
             }
         var hints = ControllerGuideModel.Resolve(path, context, activation, unavailableContext);
+        if(CanEnterStaticReadingGroup || focused?.Element is WidgetIndexedCollectionView {CanEnterReadingActions:true})
+            hints=(ControllerGuideHint[])[..hints.Where(hint=>hint.Button!=ControllerButton.A),new(ControllerPrompt.A,"Interact",ControllerButton.A)];
+        else if(focused?.Element is WidgetIndexedCollectionView {FocusedReadingAction:not null})
+            hints=(ControllerGuideHint[])[..hints.Where(hint=>hint.Button!=ControllerButton.B),new(ControllerPrompt.B,"Back",ControllerButton.B)];
+        if(focused?.Element is WidgetIndexedCollectionView {CanStartHeldSelection:true} heldCollection &&
+            (heldCollection.SelectionActive || ControllerShortcutResolver.ResolvePath(path,ControllerButton.LeftTrigger,ControllerEventPhase.Pressed).Status==ControllerShortcutResolutionStatus.NoMatch))
+            hints=(ControllerGuideHint[])[..hints.Where(hint=>hint.Button!=ControllerButton.LeftTrigger),
+                new(ControllerPrompt.LeftTrigger,"Hold to select",ControllerButton.LeftTrigger)];
         if (focused?.Element is WidgetIndexedCollectionView { SelectionActive: true } selectable)
             hints = hints.Where(hint => hint.Button != ControllerButton.A)
                 .Prepend(new ControllerGuideHint(ControllerPrompt.A, selectable.SelectionActionLabel, ControllerButton.A)).ToArray();
@@ -154,6 +182,7 @@ internal sealed partial class WidgetViewPresenter
 
     internal static IReadOnlyList<ControllerGuideHint> CaptureBrowserGuide(Browser.BrowserSlot browser)
     {
+        if (browser.CanExpandVideo) return (ControllerGuideHint[])[new(ControllerPrompt.A, "Fullscreen", ControllerButton.A), new(ControllerPrompt.B, "Back", ControllerButton.B)];
         var page = browser.Surface?.ActiveSurface;
         return browser.PresentedInPin
                 ? (ControllerGuideHint[])[new(ControllerPrompt.View, "Interact with pin", ControllerButton.View)]

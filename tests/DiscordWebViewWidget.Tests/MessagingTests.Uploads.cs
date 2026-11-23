@@ -2,6 +2,8 @@ using WidgetRail.WidgetSdk;
 
 internal static partial class MessagingTests
 {
+    internal static async Task UploadChecksAsync(Action<bool,string> check)
+    {await UploadCancellationAsync(check);await SubmittedCancellationAsync(check);await ShareWhileSendingAsync(check);}
     private static async Task UploadCancellationAsync(Action<bool,string> check)
     {
         foreach(var ignoreCancellation in new[]{false,true})
@@ -11,7 +13,10 @@ internal static partial class MessagingTests
             await scenario.Act("discord.message.attach");await Wait(()=>scenario.Find("discord.message.file.0") is not null);
             await scenario.Act("discord.message.draft","Keep this upload draft");
             scenario.UploadGate=new(TaskCreationOptions.RunContinuationsAsynchronously);scenario.IgnoreUploadCancellation=ignoreCancellation;
-            await scenario.Act("discord.message.send");await Wait(()=>scenario.Find("discord.message.status")?.Text=="Uploading files… 33%");
+            await scenario.Act("discord.message.send");
+            try {await Wait(()=>scenario.Find("discord.message.status")?.Text=="Uploading files… 33%");}
+            catch(OperationCanceledException error)
+            {throw new InvalidOperationException($"Upload did not reach progress: uploads={scenario.Uploads}, sends={scenario.Session.Sends}, status={scenario.Find("discord.message.status")?.Text}, inbox={scenario.Find("discord.messages.notice")?.Text}",error);}
             var staleCancel=scenario.Find("discord.message.cancel")!.ActionId!;
             check(scenario.Find("discord.message.cancel")?.Text=="Cancel upload" && scenario.Session.Sends==0,
                 "Upload reports admitted byte progress and exposes Cancel before posting a message");
@@ -22,15 +27,18 @@ internal static partial class MessagingTests
                 check(scenario.Find("discord.message.cancel")?.IsDisabled==true,"Cancellation stays visible while an uncooperative upload unwinds");
                 scenario.UploadGate.TrySetResult();
             }
-            await Wait(()=>scenario.Find("discord.message.status")?.Text?.StartsWith("Upload cancelled.",StringComparison.Ordinal)==true && scenario.Find("discord.message.attach") is not null);
+            await scenario.Widget.WaitForMessageSendAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await Wait(()=>scenario.Notifications.Any(n=>n.Notification?.Body=="Upload cancelled. Your draft and files are kept."));
             check(scenario.Session.Sends==0 && scenario.Find("discord.message.draft")?.TextEntryValue=="Keep this upload draft" &&
                 scenario.Find("discord.message.file.0") is not null && scenario.Released.IsEmpty,
                 "Cancelled upload retains draft/file authority and never posts, including late completion ignoring cancellation");
+            check(scenario.Find("discord.message.status") is null && scenario.Notifications.All(n=>n.Notification?.Retention==WidgetRail.WidgetProtocol.WidgetNotificationRetention.BannerOnly),
+                "Upload cancellation uses expiring feedback while leaving the composer free of permanent outcome text");
             scenario.IgnoreUploadCancellation=false;scenario.UploadGate=new(TaskCreationOptions.RunContinuationsAsynchronously);
             await scenario.Act("discord.message.send");await Wait(()=>scenario.Find("discord.message.status")?.Text=="Uploading files… 33%");
             await scenario.Widget.OnActionAsync(new(staleCancel,"discord.message.cancel",InputScopeId:scenario.Snapshot().ActiveInputScopeId));
             check(scenario.Find("discord.message.cancel")?.IsDisabled!=true,"An old Cancel action cannot cancel a newer upload nonce");
-            scenario.UploadGate.TrySetResult();await Wait(()=>scenario.Find("discord.message.status")?.Text=="Sent");
+            scenario.UploadGate.TrySetResult();await scenario.Widget.WaitForMessageSendAsync().WaitAsync(TimeSpan.FromSeconds(5));
             check(scenario.Session.Sends==1,"A fresh explicit retry posts exactly once after the cancelled upload");
         }
 
@@ -60,7 +68,7 @@ internal static partial class MessagingTests
             if(lateAcknowledgement)
             {
                 await scenario.Act("discord.message.draft","A newer draft");scenario.Session.SendGate.TrySetResult();
-                await Wait(()=>scenario.Find("discord.message.status")?.Text=="Sent");
+                await scenario.Widget.WaitForMessageSendAsync().WaitAsync(TimeSpan.FromSeconds(5));
                 check(scenario.Session.Sends==1 && scenario.Find("discord.message.draft")?.TextEntryValue=="A newer draft",
                     "A late confirmed send is reconciled after Stop waiting without discarding newer text");
             }
@@ -68,7 +76,7 @@ internal static partial class MessagingTests
             {
                 await Wait(()=>scenario.Find("discord.message.status")?.Text?.StartsWith("Stopped waiting.",StringComparison.Ordinal)==true && scenario.Find("discord.message.cancel") is null);
                 check(scenario.Find("discord.message.send")?.Text=="Check delivery","Cancellation after submission preserves an ambiguous nonce for reconciliation");
-                scenario.Session.SendGate=null;await scenario.Act("discord.message.send");await Wait(()=>scenario.Find("discord.message.status")?.Text=="Sent");
+                scenario.Session.SendGate=null;await scenario.Act("discord.message.send");await scenario.Widget.WaitForMessageSendAsync().WaitAsync(TimeSpan.FromSeconds(5));
                 check(scenario.Session.Sends==1 && scenario.Session.Reconciles==1,"Check delivery after cancellation never repeats the external POST");
             }
         }

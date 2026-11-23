@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("WidgetApplicationRuntime")]
 [assembly: InternalsVisibleTo("CaptureLibrary.Tests")]
+[assembly: InternalsVisibleTo("CaptureReplay.Tests")]
 
 [assembly: InternalsVisibleTo("WidgetCatalog")]
 [assembly: InternalsVisibleTo("WindowsCommunityProvider.Tests")]

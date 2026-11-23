@@ -42,7 +42,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     private WidgetPresentationBinding? presentation;
     private ViewSnapshot? effectiveView => presentation?.View;
     private string activeScope => presentation?.Scope ?? string.Empty;
-    private bool CanDispatchAction => presentationInputEnabled && (presentation?.Selection is not null ? Session is not null : DispatchActionAsync is not null);
+    private bool CanDispatchAction => presentationInputEnabled && (IndexedActionDispatch is not null || (presentation?.Selection is not null ? Session is not null : DispatchActionAsync is not null));
     private bool applying;
     internal bool IsApplyingPresentation => applying;
     private bool needsEntry;
@@ -181,7 +181,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         applying = true;
         try
         {
-            CaptureReturnViewport(plan, sameOwner, focused);
+            CaptureReturnViewport(plan, sameOwner, focused, oldScope != nextPresentation.Scope);
             PreparePageMemory(plan, sameOwner);
             restoredPage = PreparePageCache(plan, sameOwner && frame!.Authority.WorkerRun == next.Authority.WorkerRun &&
                 frame.Descriptor.PackageContentDigest == next.Descriptor.PackageContentDigest);
@@ -207,12 +207,21 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     ? retained : Create(declaration, IsModalDialog(declaration, plan), IsInlineLink(declaration, plan))));
             }
             var currentRoot = nextBindings[root.Kind == ViewNodeKind.ModalLayer ? root.Children[0].Id : root.Id].LayoutElement;
+            if (sameOwner && oldScope != nextPresentation.Scope)
+                foreach (var (id, replacement) in nextBindings)
+                    if (replacement.Element is WidgetIndexedCollectionView incomingCollection &&
+                        bindings.TryGetValue(id, out var previousCollection) && !ReferenceEquals(replacement, previousCollection) &&
+                        previousCollection.Element is WidgetIndexedCollectionView outgoingCollection)
+                        incomingCollection.SeedSameQueryPaint(outgoingCollection, nextPresentation, plan[id].Node);
             if (sameOwner) RetainBackgroundPaint(nextBindings, plan);
             // Keep package paint separate from input identity. Recreated buttons
             // retain only matching admitted images, never old controls/actions.
             // Duplicate resources so outgoing animations can still use theirs.
             if (sameOwner && frame!.Descriptor.PackageContentDigest == next.Descriptor.PackageContentDigest)
+            {
                 RetainPackageIconPaint(nextBindings, plan);
+                if (frame.Authority.WorkerRun == next.Authority.WorkerRun) RetainStaticArtworkPaint(nextBindings, plan);
+            }
             var currentModal = root.Kind == ViewNodeKind.ModalLayer ? nextBindings[root.Id].LayoutElement : null;
             // Detach only changed parentage before any insert. In-place property
             // updates and adjacent insertions never clear surviving child controls.
@@ -233,10 +242,17 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 if (transition.Retained.Contains(binding) || modalExit?.Retained.Contains(binding) == true) continue;
                 if (!nextBindings.TryGetValue(id, out var replacement) || !ReferenceEquals(binding, replacement)) Retire(binding);
                 if (binding.Children is null) continue;
+                if (binding.Children is WidgetMotionStage scoped)
+                {
+                    if (!ReferenceEquals(binding, replacement) ||
+                        !ReferenceEquals(scoped.Current, nextBindings[plan[id].Node.Children[0].Id].LayoutElement))
+                        scoped.SetCurrent(null);
+                    continue;
+                }
                 for (var index = binding.Children.Children.Count - 1; index >= 0; --index)
                 {
                     var child = binding.Children.Children[index];
-                    if (binding.Element is WidgetModalLayer layer && ReferenceEquals(child, layer.Chrome)) continue;
+                    if (binding.Element is WidgetModalLayer layer && ReferenceEquals(child, layer.BackdropLayer)) continue;
                     var childId = ((FrameworkElement)child).Tag is WidgetElementIdentity identity ? identity.Id : string.Empty;
                     if (!plan.TryGetValue(childId, out var nextChild) || nextChild.ParentId != id
                         || !nextBindings.TryGetValue(id, out var nextParent) || !ReferenceEquals(nextParent, binding)
@@ -252,6 +268,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 ClearSurfaceState();
             }
             declarations = plan;
+            hasReadingPane = false;
             bindings = nextBindings;
             hasExpandedDisclosures = nextHasExpandedDisclosures;
             frame = next;
@@ -265,7 +282,9 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             {
                 var binding = bindings[declaration.Node.Id];
                 Update(binding, declaration.Node);
-                if (binding.Children is { } panel)
+                if (binding.Children is WidgetMotionStage scoped)
+                    scoped.SetCurrent(bindings[declaration.Node.Children[0].Id].LayoutElement);
+                else if (binding.Children is { } panel)
                     for (var index = 0; index < declaration.Node.Children.Count; ++index)
                     {
                         // The authoritative parent remains in the stable stage;
@@ -286,12 +305,17 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
             ResumeCachedPage(restoredPage);
             RefreshReadingFocus();
             needsEntry = needsEntry || !sameOwner || oldScope != nextPresentation.Scope
-                || focused?.Element is WidgetIndexedCollectionView { IsFocusParked: true, IsEntryPending: false }
+                || focused?.Element is WidgetIndexedCollectionView parked && NeedsCollectionEntry(parked)
                 || (reconciliationFocus is not null && (!bindings.TryGetValue(reconciliationFocus.Identity.Id, out var current)
                     || !ReferenceEquals(current, reconciliationFocus) || !Navigable(current)));
             if (!presentationOnly && fragmentRootId is null) UpdateFocusPolicy(nextPresentation.View);
             else needsEntry = false;
             CaptureEntryOwnership(beforePublication: entryFocusBeforePublication, ownedBeforePublication: entryOwnedBeforePublication);
+            if (pendingEntryRestore is { } entry && sameOwner && oldScope == nextPresentation.Scope && focused is not null &&
+                focused.Identity.Id == nextPresentation.View.InitialFocusId &&
+                bindings.TryGetValue(focused.Identity.Id, out var successor) && !ReferenceEquals(successor, focused) &&
+                successor.Identity.ItemPath == focused.Identity.ItemPath && successor.Identity.Scope == focused.Identity.Scope)
+                pendingEntryRestore = entry with { Replacement = successor.Identity };
             // New group/navigation intent can cancel restoration during policy
             // reconciliation. Never resurrect that cancelled target.
             var restoreTarget = focused ?? (restoreIntent == entryIntentVersion ? pendingFocus : null);
@@ -436,6 +460,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (FocusedBrowser is { } browser) { browser.Enter(); return; }
         if (FocusedMediaPlayer is { } captured) { captured.ActivateFocusedControl(); return; }
         if (FindIndexedCollection()?.ActivateFocused() == true) return;
+        if (EnterStaticReadingGroup()) return;
         if (!applying && FocusedBinding() is { Element: ButtonBase { Command: { } command } button } binding
             && Eligible(binding) && command.CanExecute(button.CommandParameter)) command.Execute(button.CommandParameter);
     }
@@ -468,6 +493,11 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
     {
         if (!applying && automaticFocusEnabled && presentationInputEnabled && (nativeTarget ?? FocusedBinding()) is { } binding && Navigable(binding))
         {
+            // GotFocus for the synchronous native removal fallback can arrive after
+            // Apply. Its delayed notification is still part of that replacement.
+            if (pendingEntryRestore is { Replacement: { } replacement, NativeFallback: { } fallback } &&
+                binding.Identity != replacement && XamlRoot is not null &&
+                ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), fallback)) return;
             // A new native/pointer/automation focus choice after structural
             // reconciliation supersedes the pending low-priority restoration.
             pendingRestore = null;
@@ -523,7 +553,13 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 element = children = new WidgetModalLayer();
                 break;
             case ViewNodeKind.Grid:
-                element = children = node.GridLayout is null ? new WidgetResponsiveGrid() : new WidgetExplicitGrid();
+                if (node.GridLayout?.RevealBodyOnFocus == true)
+                {
+                    var reveal = new WidgetFocusRevealGrid();
+                    element = reveal;
+                    children = reveal.Tracks;
+                }
+                else element = children = node.GridLayout is null ? new WidgetResponsiveGrid() : new WidgetExplicitGrid();
                 break;
             case ViewNodeKind.Icon:
                 element = new WidgetPackageIconView();
@@ -538,7 +574,8 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                     {
                         if (!applying && automaticFocusEnabled && presentationActive && presentationInputEnabled)
                             RememberCollectionFocus(declaration.Identity, item);
-                    }, PresentationChanged = QueueSurfaceUpdate, ScrollOwnerRetiring = () => RetireCollectionScrolling(declaration.Identity.Id),
+                    }, PresentationChanged = QueueSurfaceUpdate, ScrollOwnerChanging = retainedViewport => ChangeCollectionScrolling(declaration.Identity.Id, retainedViewport),
+                    DeferredQueryCommitted = DeferredIndexedQueryCommitted,
                     ContextChanged = IndexedContextChanged, PrimaryPreviewRequested = TryActivatePrimaryPreview,
                     HasPendingViewportScroll = CollectionScrollPending,
                     BoundaryObservationReady = CollectionBoundaryReady,
@@ -550,6 +587,12 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 var surface = new WidgetPresentationSurface(node.Kind, node.FocusPreview?.EnterButton is not null);
                 element = surface;
                 children = surface.ContentPanel;
+                if (node.Kind == ViewNodeKind.BackgroundSurface && node.Children is [{ InputScopeId: not null }])
+                {
+                    var scopedStage = new WidgetMotionStage();
+                    surface.ContentPanel.Children.Add(scopedStage);
+                    children = scopedStage;
+                }
                 break;
             case ViewNodeKind.Scroll:
                 children = new StackPanel { Spacing = 12 };
@@ -559,10 +602,10 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 break;
             case ViewNodeKind.ActionSurface:
                 children = node.ActionSurfacePresentation == ActionSurfacePresentation.Poster
-                    ? new WidgetPosterPanel() : new Grid();
+                    ? new WidgetPosterPanel() : new WidgetActionPanel();
                 // Worker admission owns action sequencing. A pending IPC response
                 // must not suppress another deliberate press on an enabled control.
-                element = presentationOnly ? children : node.ActionId is null
+                element = presentationOnly || indexedRootStyleOnContainer && node.Id == fragmentRootId && node.IsReadingGroup ? children : node.ActionId is null
                     ? new WidgetReadingSurface { Content = children, IsTabStop = true, HorizontalContentAlignment = HorizontalAlignment.Stretch, UseSystemFocusVisuals = true }
                     : new Button { Content = children, HorizontalContentAlignment = HorizontalAlignment.Stretch,
                     Command = new AsyncRelayCommand(() => InvokeAsync(declaration.Identity, token), AsyncRelayCommandOptions.AllowConcurrentExecutions) };
@@ -625,6 +668,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         var element = binding.Element;
         if (element is WidgetIndexedCollectionView indexed)
         {
+            indexed.SetRowAppearance(appearance, systemAnimationsEnabled);
             if (!presentationActive) _ = indexed.SetPresentationActiveAsync(false);
             if (node.IndexedCollection is { } nextQuery)
             {
@@ -633,7 +677,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
                 if (rememberedItem is not null && indexed.RebaseRememberedFocus(rememberedItem, node) is { } rebased)
                     RememberCollectionFocus(binding.Identity, rebased);
             }
-            indexed.Apply(presentation!, node, binding.Identity.Scope);
+            indexed.Apply(presentation!, node, binding.Identity.Scope,HasNewIndexedReveal(binding,node));
         }
         if (element is WidgetReadingSurface readingSurface) readingSurface.SetPrimaryPresentation(DeclaresPrimaryPreview(binding.Identity.Id));
         if (element is WidgetArtworkView image) UpdateImage(binding, image, node);
@@ -649,6 +693,7 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (element is WidgetValueButton valueButton)
         {
             valueButton.IsCommandMenu = node.IsCommandMenu == true;
+            valueButton.SetMenuHint(valueButton.IsCommandMenu && node.ContextMenuButton == ControllerButton.Menu, playStationPrompts);
             valueButton.SetAccessibleValue(node.AccessibilityValue ?? (node.Kind == ViewNodeKind.Select
                 ? node.SelectOptions.FirstOrDefault(option => option.IsSelected)?.Label : node.TextEntryValue),
                 node.Kind == ViewNodeKind.TextEntry && node.TextEntryInputKind == TextEntryInputKind.Sensitive);

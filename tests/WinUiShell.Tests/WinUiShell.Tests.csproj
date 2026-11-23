@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\WindowsWindowActivation\WindowsWindowActivation.csproj" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\ApplicationRestart.cs" Link="ApplicationRestart.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\ArtworkFileStream.cs" Link="ArtworkFileStream.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\NativeGifBounds.cs" Link="NativeGifBounds.cs" />
     <EmbeddedResource Include="..\..\src\OverlayFrontend.WinUI\Assets\Words\english.txt" LogicalName="WidgetRail.EnglishWords" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\WordCompletion.cs" Link="WordCompletion.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Presentation\FocusPreviewDelayState.cs" Link="FocusPreviewDelayState.cs" />
@@ -72,6 +73,7 @@
     <ProjectReference Include="..\..\src\PlatformSettings\PlatformSettings.csproj" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\InteractionAdmission.cs" Link="InteractionAdmission.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\ShellPreferences.cs" Link="ShellPreferences.cs" />
+    <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\FileBrowserDirectory.cs" Link="FileBrowserDirectory.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\TrayHoldGesture.cs" Link="TrayHoldGesture.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\PinnedPlacement.cs" Link="PinnedPlacement.cs" />
     <Compile Include="..\..\src\OverlayFrontend.WinUI\Shell\PinnedPlacementAdjustment.cs" Link="PinnedPlacementAdjustment.cs" />

@@ -51,19 +51,34 @@ internal sealed partial class WidgetViewPresenter
         });
     }
 
+    private bool CompletesDeferredReveal(ScrollRevealRequest request, Binding binding, IndexedCollectionDescriptor? source)
+    {
+        return request.IndexedItem is not null &&
+            pendingIndexedScrollReveal is {Request.DeferredSource:{} deferred} admitted &&
+            admitted.Request.RequestId==request.RequestId && ReferenceEquals(admitted.Collection,binding) &&
+            IndexedCollectionContract.SameViewportDomain(source,deferred) &&
+            NativeRestoreStillOwnsFocus(admitted.FocusTarget,admitted.NativeFallback);
+    }
+
+    private bool HasNewIndexedReveal(Binding binding, ViewNode declaration)
+    {
+        return fragmentRootId is null && !presentationOnly && presentationActive && !HasTransientControl && binding.Identity.Scope==activeScope &&
+            effectiveView?.ScrollRevealRequest is {IndexedItem:not null} request && request.ScrollId==declaration.Id &&
+            (request.RequestId>lastScrollRevealRequest || CompletesDeferredReveal(request,binding,declaration.IndexedCollection));
+    }
+
     private void UpdateIndexedScrollReveal(ScrollRevealRequest request)
     {
         if (presentationOnly || !presentationActive || HasTransientControl ||
             !bindings.TryGetValue(request.ScrollId, out var binding) || binding.Element is not WidgetIndexedCollectionView ||
             binding.Identity.Scope != activeScope)
         { CancelScrollReveal(); return; }
-        var completing=false;
+        var completing=CompletesDeferredReveal(request,binding,declarations[binding.Identity.Id].Node.IndexedCollection);
         if(pendingIndexedScrollReveal is {Request.DeferredSource:{} deferred} admitted && admitted.Request.RequestId==request.RequestId &&
             ReferenceEquals(admitted.Collection,binding) && IndexedCollectionContract.SameViewportDomain(declarations[binding.Identity.Id].Node.IndexedCollection,deferred))
         {
             if(request.DeferredSource is {} refreshed && IndexedCollectionContract.SameViewportDomain(refreshed,deferred) &&
                 IndexedCollectionContract.SameViewportDomain(declarations[binding.Identity.Id].Node.IndexedCollection,refreshed))return;
-            completing=request.IndexedItem is not null && NativeRestoreStillOwnsFocus(admitted.FocusTarget,admitted.NativeFallback);
         }
         if (pendingIndexedScrollReveal is { } old && (old.Request != request || !ReferenceEquals(old.Collection, binding)))
             CancelScrollReveal();

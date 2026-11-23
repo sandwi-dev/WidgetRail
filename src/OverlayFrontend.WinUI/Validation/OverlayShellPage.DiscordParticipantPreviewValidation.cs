@@ -16,7 +16,7 @@ internal sealed partial class OverlayShellPage
         Loaded+=async (_,_)=>
         {
             if(started)return;started=true;
-            var checks=new List<string>();var trace=new List<object>();Exception? failed=null;
+            var checks=new List<string>();var trace=new List<object>();var geometry=new List<object>();Exception? failed=null;
             EventHandler<WidgetRail.WidgetPresentationSession.WidgetPresentationChangedEventArgs>? publication=null;var gaps=0;var gapLost=false;
             try
             {
@@ -39,6 +39,24 @@ internal sealed partial class OverlayShellPage
                 {
                     await Until(()=>surface.IsFocusPreviewOpen);
                     var chrome=surface.FocusPreviewChrome!;
+                    if(Environment.GetCommandLineArgs().Contains("--discord-participant-speaking"))
+                    {
+                        var avatar=Walk(row).OfType<FrameworkElement>().Single(element=>AutomationProperties.GetAutomationId(element).EndsWith(".avatar",StringComparison.Ordinal));
+                        var ring=Walk(row).OfType<FrameworkElement>().Single(element=>AutomationProperties.GetAutomationId(element).EndsWith(".avatar-frame",StringComparison.Ordinal));
+                        var bounds=avatar.TransformToVisual(ring).TransformBounds(new(0,0,avatar.ActualWidth,avatar.ActualHeight));
+                        geometry.Add(new{ringWidth=ring.ActualWidth,ringHeight=ring.ActualHeight,avatar=bounds,
+                            centerX=bounds.X+bounds.Width/2-ring.ActualWidth/2,centerY=bounds.Y+bounds.Height/2-ring.ActualHeight/2});
+                        var revision=surface.FocusPreviewLeaseForValidation!.Range.Source.ContentRevision;
+                        var frames=0;var lost=false;
+                        EventHandler<object> observe=(_,_)=>{frames++;if(!surface.IsFocusPreviewOpen||!ReferenceEquals(surface.FocusPreviewChrome,chrome))lost=true;};
+                        CompositionTarget.Rendering+=observe;
+                        try {await Until(()=>surface.FocusPreviewLeaseForValidation?.Range.Source.ContentRevision>=revision+3);}
+                        finally {CompositionTarget.Rendering-=observe;}
+                        trace.Add(new{kind="speaking-hover",frames,lost});
+                        Check(!lost&&frames>0,"Speaking-only publications retain passive hover preview on every sampled native frame");
+                        Check(Math.Abs(bounds.X+bounds.Width/2-ring.ActualWidth/2)<.6&&Math.Abs(bounds.Y+bounds.Height/2-ring.ActualHeight/2)<.6,
+                            "Participant avatar is centered inside its speaking ring");
+                    }
                     var mute=Walk(chrome).OfType<Button>().Single();
                     await Until(()=>mute.IsLoaded&&mute.ActualWidth>0&&mute.ActualHeight>0);
                     // Enter through the supported route before using UIA screen
@@ -72,7 +90,7 @@ internal sealed partial class OverlayShellPage
             catch(Exception error){failed=error;}
             finally{if(publication is not null && owner is not null)owner.Session.PresentationChanged-=publication;if(surface is not null)surface.FocusTrace=null;}
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            await File.WriteAllTextAsync(path,JsonSerializer.Serialize(new{passed=failed is null,checks,error=failed?.ToString(),preview=surface?.FocusPreviewDiagnostics(),trace}));
+            await File.WriteAllTextAsync(path,JsonSerializer.Serialize(new{passed=failed is null,checks,geometry,error=failed?.ToString(),preview=surface?.FocusPreviewDiagnostics(),trace}));
             void Check(bool condition,string label){if(!condition)throw new InvalidOperationException(label);checks.Add(label);}
             T? Find<T>(string id)where T:FrameworkElement=>surface is null?null:Walk(surface).OfType<T>().FirstOrDefault(item=>AutomationProperties.GetAutomationId(item)=="Widget."+id);
             async Task Until(Func<bool> ready){var until=Environment.TickCount64+15000;while(!ready()){if(Environment.TickCount64>until)throw new TimeoutException("Participant preview did not settle");await Task.Delay(25);}}

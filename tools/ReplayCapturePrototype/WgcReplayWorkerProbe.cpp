@@ -33,11 +33,28 @@ void Measure(Worker& worker,const std::wstring& output,bool diagnose=false) {
     puts("PASS WGC+application-audio fixture measurement; real game rendering impact is not measured");
 }
 int wmain(int argc,wchar_t** argv){
-    if(argc!=4&&!(argc==5&&(std::wstring(argv[4])==L"--measure"||std::wstring(argv[4])==L"--pulse"||std::wstring(argv[4])==L"--diagnose"||std::wstring(argv[4])==L"--coexist")))return 2;
+    if(argc!=4&&!(argc==5&&(std::wstring(argv[4])==L"--measure"||std::wstring(argv[4])==L"--pulse"||std::wstring(argv[4])==L"--diagnose"||std::wstring(argv[4])==L"--coexist"||std::wstring(argv[4])==L"--audio-loss"||std::wstring(argv[4])==L"--audio-recovery")))return 2;
     try{
         const bool measure=argc==5&&std::wstring(argv[4])==L"--measure";
         FixtureProcess source(argv[2],argc==5&&std::wstring(argv[4])==L"--pulse");
+        const bool testAudioLoss=argc==5&&std::wstring(argv[4])==L"--audio-loss";
+        const bool testAudioReturn=argc==5&&std::wstring(argv[4])==L"--audio-recovery";
+        if(testAudioLoss||testAudioReturn)winrt::check_bool(SetEnvironmentVariableW(L"WRAIL_TEST_REPLAY_AUDIO_LOSS",testAudioReturn?L"recover":L"1"));
         Worker worker(argv[1],source,measure?60u:15u);std::wstring output=argv[3];
+        if(testAudioLoss||testAudioReturn){
+            auto lost=worker.Wait([](const State& s){return s.phase==Phase::Recording&&(s.flags&AudioLost);});
+            worker.Wait([&](const State& s){return s.bufferedTicks>=lost.bufferedTicks+20000000;});
+            if(testAudioReturn){
+                auto restored=worker.Wait([](const State& s){return s.phase==Phase::Recording && !(s.flags&AudioLost);},20000);
+                worker.Wait([&](const State& s){return s.bufferedTicks>=restored.bufferedTicks+15000000;});
+            }
+            auto saved=worker.Save(output+(testAudioReturn?L".audio-recovery.mp4":L".audio-loss.mp4"),testAudioReturn?15u:3u);
+            Check(((saved.flags&AudioLost)==0)==testAudioReturn && saved.savedFrames>0 && saved.savedAudio==1,
+                "Replay saves the same session with the expected audio availability");
+            Hr(WrailReplayWorkerRequestStop(worker.value,worker.epoch));
+            worker.Wait([](const State& s){return (s.flags&Ended)!=0;},10000,true);
+            return 0;
+        }
         if(argc==5&&std::wstring(argv[4])==L"--coexist"){Coexist(worker,source,argv[1],output);return 0;}
         if(measure||argc==5&&std::wstring(argv[4])==L"--diagnose"){Measure(worker,output,!measure);return 0;}
         auto state=worker.Wait([](const State& s){return s.phase==Phase::Recording&&s.bufferedTicks>=30000000;});

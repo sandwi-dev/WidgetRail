@@ -34,11 +34,56 @@ public sealed class NotificationInboxTests
     {
         using var inbox = new NotificationInbox(); var first = new Source(); var second = new Source(); var banner = new NotificationBannerState();
         var a = Add(inbox, first); Assert.IsTrue(banner.Offer(a, 100)); inbox.MarkShown(a.Id);
+        banner.Advance(100, _ => true, _ => true);
         var b = Add(inbox, second); Assert.IsTrue(banner.Offer(b, 3000)); inbox.MarkShown(b.Id);
-        Assert.AreEqual(4100, banner.ExpiresAt); banner.Expire(4100);
-        Assert.IsNull(banner.EntryId); Assert.HasCount(2, inbox.Entries);
+        banner.Advance(3000, _ => true, _ => true);
+        Assert.AreEqual(7000, banner.ExpiresAt);
+        banner.Expire(4100);
+        Assert.AreEqual(b.Id, banner.EntryId); Assert.HasCount(2, inbox.Entries);
         Assert.AreEqual(0, first.Closed + second.Closed);
-        Assert.IsFalse(banner.Offer(a, 4500));
+        Assert.IsTrue(banner.Offer(Add(inbox, new()), 4500));
+    }
+    [TestMethod]
+    public void BannerQueueAdmitsEightWaitingAndExpiresUndisplayedItems()
+    {
+        using var inbox = new NotificationInbox();
+        var released = new List<long>();
+        var state = new NotificationBannerState(released.Add);
+        for (var i = 0; i < 11; i++)
+        {
+            Assert.IsTrue(state.Offer(Add(inbox, new(), widget: "widget" + i), 100));
+            state.Advance(100, _ => true, _ => true);
+        }
+        Assert.HasCount(3, state.Visible);
+        Assert.HasCount(8, state.Waiting);
+        Assert.IsFalse(state.Offer(Add(inbox, new(), widget: "new-widget"), 101));
+        var next = state.Waiting[0];
+        Assert.IsFalse(state.Offer(Add(inbox, new(), widget: next.Entry.Widget), 102));
+        Assert.AreEqual(1, next.Additional);
+        state.Advance(4100, _ => true, _ => true);
+        Assert.IsTrue(state.Visible.Contains(next));
+        Assert.AreEqual(8100, next.ExpiresAt);
+        state.Advance(15_100, _ => true, _ => true);
+        Assert.IsEmpty(state.Waiting);
+        Assert.IsEmpty(state.Visible);
+        Assert.HasCount(11, released);
+    }
+    [TestMethod]
+    public void TwoCapturesKeepTheirOwnLifetimesWhileAnotherWidgetCanEnter()
+    {
+        using var inbox = new NotificationInbox();
+        var state = new NotificationBannerState();
+        var first = Add(inbox, new(), "capture.1");
+        var second = Add(inbox, new(), "capture.2");
+        state.Offer(first, 100); state.Advance(100, _ => true, _ => true);
+        state.Offer(second, 200); state.Advance(200, _ => true, _ => true);
+        state.Offer(Add(inbox, new(), "capture.3"), 300);
+        state.Advance(300, _ => true, _ => true);
+        var discord = Add(inbox, new(), "message", widget: "discord");
+        state.Offer(discord, 400); state.Advance(400, _ => true, _ => true);
+        CollectionAssert.AreEqual(new[] { discord.Id, second.Id, first.Id }, state.Visible.Select(slot => slot.Entry.Id).ToArray());
+        Assert.AreEqual(4100, state.Visible[2].ExpiresAt);
+        Assert.AreEqual(4200, state.Visible[1].ExpiresAt);
     }
     [TestMethod]
     public void TagsAreScopedByWidgetProfileAndOrigin()
@@ -50,13 +95,20 @@ public sealed class NotificationInboxTests
         Assert.AreEqual(1, original.Closed); Assert.AreEqual(1, original.Detached); Assert.AreEqual(0, replacement.Shown);
     }
     [TestMethod]
-    public void WithdrawalDoesNotEchoCloseAndOverflowDoesNotEvictPendingItems()
+    public void DefaultCapacityEvictsOldestAcrossWidgetsAndWithdrawalDoesNotEchoClose()
     {
-        using var inbox = new NotificationInbox(1); var a = new Source(); var b = new Source();
-        var item = Add(inbox, a); inbox.MarkShown(item.Id);
-        Assert.IsNull(Add(inbox, b)); Assert.AreEqual(1, inbox.OverflowCount); Assert.AreEqual(1, b.Detached);
-        Assert.AreSame(item, inbox.Find(item.Id)); inbox.Withdraw(item.Id);
-        Assert.AreEqual(0, a.Closed); Assert.AreEqual(1, a.Detached);
+        using var inbox = new NotificationInbox(); var oldest = new Source(); var newest = new Source();
+        var first = Add(inbox, oldest); inbox.MarkShown(first.Id);
+        for (var index = 1; index < 128; index++) Add(inbox, new Source());
+        var second = inbox.Entries[1];
+        var last = Add(inbox, newest, widget: "another-widget");
+        Assert.HasCount(128, inbox.Entries);
+        Assert.IsNull(inbox.Find(first.Id));
+        Assert.AreSame(second, inbox.Entries[0]);
+        Assert.AreSame(last, inbox.Entries[^1]);
+        Assert.AreEqual(1, oldest.Closed); Assert.AreEqual(1, oldest.Detached);
+        inbox.MarkShown(last.Id); inbox.Withdraw(last.Id);
+        Assert.AreEqual(0, newest.Closed); Assert.AreEqual(1, newest.Detached);
     }
     [TestMethod]
     public async Task FailedOrStaleActivationPreservesThePendingEntryWithoutCallingReplacementPage()

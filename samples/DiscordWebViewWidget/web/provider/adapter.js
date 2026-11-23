@@ -13,8 +13,8 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
         const props = (...names) => wp()?.findByProps(...names);
         const code = pattern => wp()?.findByCode(pattern);
         const dispatcher = () => wp()?.Common?.FluxDispatcher;
-        const messageCommands = new Map([['messagingState','state'],['messageObserve','observe'],['messageConversations','conversations'],
-            ['messageHistory','history'],['messageChanges','readChanges'],['messageRecover','recoverMessages'],['messageOpenDm','openDm'],['messagePrepareAttachments','prepareAttachments'],
+        const messageCommands = new Map([['messagingState','state'],['messageObserve','observe'],['messageConversations','conversations'],['messageLocateConversation','locateConversation'],
+            ['messageHistory','history'],['messageMarkRead','markRead'],['messageChanges','readChanges'],['messageRecover','recoverMessages'],['messageOpenDm','openDm'],['messagePrepareAttachments','prepareAttachments'],
             ['messageSend','sendMessage'],['messageReconcile','reconcileSend'],['messageNotificationTarget','notificationTarget']]);
         const fail = code => { throw Object.assign(new Error(code), { adapterCode: code }); };
         const text = value => {
@@ -28,6 +28,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
         const me = () => store('UserStore')?.getCurrentUser?.();
         const messaging = globalThis.createWidgetRailDiscordMessaging?.({store,props,me,dispatcher,invalidate:()=>videoHost?.invalidate?.()});
         const channelId = () => store('SelectedChannelStore')?.getVoiceChannelId?.() ?? null;
+        const calls = globalThis.createWidgetRailDiscordCalls?.({store,props,me,currentChannel:channelId,invalidate:()=>videoHost?.invalidate?.()});
         const currentShare = () => store('ApplicationStreamingStore')?.getCurrentUserActiveStream?.();
         const streamKey = s => s.guildId ? `guild:${s.guildId}:${s.channelId}:${s.ownerId || s.userId}` : `call:${s.channelId}:${s.ownerId || s.userId}`;
         const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -49,6 +50,24 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
         let diagnosticsPending = null;
         let incomingDiagnosticsPending = null;
         let shareQualityBinding = null;
+        let connectionStarted = Date.now(), connectionWasReady = false;
+
+        function connectionState(user) {
+            // Missing UserStore data is normal during hydration. Only the
+            // client's explicit unauthenticated state on its login route is a
+            // sign-in requirement; never read tokens or inspect visible text.
+            if (user && wp()) { connectionWasReady = true; connectionStarted = Date.now(); return 'ready'; }
+            try {
+                const auth = store('AuthenticationStore');
+                const path = globalThis.location?.pathname;
+                if (typeof auth?.isAuthenticated === 'function' && auth.isAuthenticated() === false &&
+                    typeof path === 'string' && /^\/(login|register)(?:\/|$)/.test(path)) {
+                    connectionWasReady = false; connectionStarted = Date.now(); return 'signed-out';
+                }
+            } catch { /* A changed optional auth probe is not proof of logout. */ }
+            if (Date.now() - connectionStarted >= 30000) return 'unavailable';
+            return connectionWasReady ? 'reconnecting' : 'initializing';
+        }
 
         function capabilities() {
             const actions = props('toggleSelfMute', 'toggleSelfDeaf');
@@ -154,8 +173,10 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                         audio:v.userId!==user?.id?voiceAudio(v.userId)?.state??{available:false,muted:false,volume:null}:{available:false,muted:false,volume:null},
                         avatarUrl:activities?.avatarUrl(v.userId,participant?.avatar,participant?.discriminator)??null};
                 });
-            return { revision, ready: !!user && !!wp(), account: user?.id ?? '', capabilities: capabilities(), messaging:messaging?.state()??null,
-                channels: user ? channels() : [], channelId: id, channelName: text(store('ChannelStore')?.getChannel?.(id)?.name),
+            const privateCalls=calls?.snapshot()??null;
+            return { revision, ready: !!user && !!wp(), connectionState:connectionState(user), account: user?.id ?? '', capabilities: capabilities(), messaging:messaging?.state()??null,
+                calls:privateCalls,
+                channels: user ? channels() : [], channelId: id, channelName: text(store('ChannelStore')?.getChannel?.(id)?.name||privateCalls?.current?.name),
                 muted: !!media?.isSelfMute?.(), deafened: !!media?.isSelfDeaf?.(), participants,
                 streams: id ? streams(id).map(({ descriptor, ...value }) => ({...value,watching:watchOwnership(value.key)?.alreadyWatching===true,audio:streamAudio(value.userId)?.state??
                     {available:false,muted:false,volume:null}})) : [], sharing: !!own && own.state !== 'ENDED',
@@ -1047,6 +1068,10 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 }
                 if (method === 'diagnostics') return { ok: true, value: lastFailure ?? {} };
                 authorize(args);
+                if(['callStart','callAnswer','callDecline'].includes(method)) {
+                    if(!calls)fail('call_action_unavailable');
+                    return {ok:true,value:await calls.invoke(method,{...args,owner})};
+                }
                 if(messageCommands.has(method)) {
                     if(!messaging)fail('messaging_unavailable');
                     return {ok:true,value:await messaging[messageCommands.get(method)](args)};
@@ -1180,7 +1205,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 return { ok: false, code: error.adapterCode ?? 'adapter_incompatible' };
             }
         }
-        return Object.freeze({ revision, build, invoke, dispose() { messaging?.dispose(); ++shareEpoch; sharePending = false;shareQualityBinding?.dispose();shareQualityWarning=null;shareError=null;shareErrorOwner=null; stopAllRelays(); } });
+        return Object.freeze({ revision, build, invoke, dispose() { messaging?.dispose(); calls?.dispose(); ++shareEpoch; sharePending = false;shareQualityBinding?.dispose();shareQualityWarning=null;shareError=null;shareErrorOwner=null; stopAllRelays(); } });
     })();
 }
 

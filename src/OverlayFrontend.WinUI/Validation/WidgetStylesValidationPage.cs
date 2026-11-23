@@ -50,13 +50,75 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--native-chat-scroll-output") is { } nativeChatOutput)
+        { await NativeChatScrollAsync(nativeChatOutput); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--gif-resource-output") is { } gifResourceOutput)
+        {
+            var terminalText = Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--gif-resource-terminal-ms");
+            var terminalMilliseconds = terminalText is null ? 0 : int.Parse(terminalText, System.Globalization.CultureInfo.InvariantCulture);
+            if (terminalMilliseconds is < 0 or > 180_000) throw new ArgumentOutOfRangeException(nameof(terminalMilliseconds));
+            await GifResourcesAsync(gifResourceOutput, Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--gif-resource-input")
+                ?? throw new ArgumentException("Generated GIF resource fixture required."), terminalMilliseconds);
+            return;
+        }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--media-retirement-output") is { } retirementOutput)
+        { await MediaRetirementAsync(retirementOutput,Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--capture-mp4")??throw new ArgumentException("Synthetic MP4 required."));return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--inline-video-output") is { } inlineOutput)
+        {
+            var clip = Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--capture-mp4") ?? throw new ArgumentException("Synthetic MP4 required.");
+            if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--inline-video-pipe") is { } pipe)
+                await IndexedInlineVideoAsync(inlineOutput,pipe,clip);
+            else await InlineVideoAsync(inlineOutput,clip);
+            return;
+        }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--text-provider-lifetime-output") is { } textLifetimeOutput)
+        { await TextProviderLifetimeAsync(textLifetimeOutput); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--opacity-interop-output") is { } opacityOutput)
+        { await OpacityInteropAsync(opacityOutput); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--image-format-output") is { } imageFormatOutput)
+        { await ImageFormatsAsync(imageFormatOutput); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--public-media-stream-output") is { } publicMediaOutput)
+        { await PublicMediaStreamAsync(publicMediaOutput); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--public-inline-timing") is { } timingOutput)
+        { await PublicInlineTimingAsync(timingOutput); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--rich-text-layout-output") is { } richTextOutput)
+        { await RichTextLayoutAsync(richTextOutput); return; }
+        if(Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--reading-groups-output") is {} readingOutput)
+        {await ReadingGroupsAsync(readingOutput,Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--reading-groups-pipe")??throw new ArgumentException("Reading fixture pipe required."));return;}
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--playnite-header-fixture") is { } headerFixture)
+        { await PlayniteHeaderAsync(headerFixture); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--playnite-award-fixture") is { } awardFixture)
+        { await PlayniteAwardAsync(awardFixture); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--capture-selection-fixtures") is { } selectionFixtures)
+        { await CaptureSelectionAsync(selectionFixtures); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--remote-image-output") is { } remoteImageOutput)
+        { await RemoteImageAsync(remoteImageOutput); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--media-gallery-output") is { } galleryOutput)
+        { await MediaGalleryAsync(galleryOutput, Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--capture-mp4")
+            ?? throw new ArgumentException("A synthetic clip is required.")); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--anchored-shelf-output") is { } shelfOutput)
+        { await AnchoredShelfAsync(shelfOutput); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--media-audio-output") is { } audioOutput)
+        { await MediaAudioAsync(audioOutput, Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--capture-mp4")
+            ?? throw new ArgumentException("A synthetic clip is required.")); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--gallery-preview-output") is { } galleryPreviewOutput)
+        { await GalleryPreviewAsync(galleryPreviewOutput); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--short-preview-output") is { } shortPreviewOutput)
+        { await ShortPreviewsAsync(shortPreviewOutput); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--video-animation-output") is { } animationOutput)
+        { await VideoAnimationAsync(animationOutput, Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--capture-mp4")
+            ?? throw new ArgumentException("Synthetic MP4 required.")); return; }
+        if(Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--static-artwork-paint-output") is {} staticPaintOutput)
+        { await StaticArtworkPaintAsync(staticPaintOutput); return; }
+        if(Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--animated-artwork-output") is {} animatedOutput)
+        {await AnimatedArtworkProbeAsync(animatedOutput);return;}
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--preview-parts-output") is { } previewParts)
         { await PreviewPartsAsync(previewParts, Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--capture-mp4")
             ?? throw new ArgumentException("An owned16:9 clip is required.")); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--page-cache-output") is { } pageCacheOutput)
         {
             Exception? failure = null;
-            try { await NativePageCacheAsync(); await NativeSectionCacheAsync(); await NativePageCacheBudgetAsync(); await NativeCachedDragAsync(); await NativePresentationMemoryAsync(); await NativeSectionTransitionsAsync(); }
+            try { await NativePageCacheAsync(); await NativeSectionCacheAsync(); await NativeScopedSectionCacheAsync(); await NativeNestedSectionReturnAsync(); await NativePageCacheBudgetAsync(); await NativeCachedDragAsync(); await NativePresentationMemoryAsync(); await NativeSectionTransitionsAsync(); }
             catch (Exception error) { failure = error; }
             Directory.CreateDirectory(pageCacheOutput);
             await File.WriteAllTextAsync(Path.Combine(pageCacheOutput, "result.json"), System.Text.Json.JsonSerializer.Serialize(new { passed = failure is null, checks, error = failure?.ToString() }));
@@ -138,6 +200,10 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         { await WidgetStatusAsync(statusFixtures); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--marketplace-fixtures") is { } marketplaceFixtures)
         { await MarketplaceAsync(marketplaceFixtures); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--catalogue-theme-preview") is { } previewDirectory)
+        { await CatalogueThemePreviewAsync(previewDirectory); return; }
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--render-catalogue-theme") is { } renderDirectory)
+        { await RenderCatalogueThemeAsync(renderDirectory); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--presentation-layer-fixtures") is { } layerFixtures)
         { await PresentationLayersAsync(layerFixtures); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--page-navigation-fixtures") is { } pageFixtures)
@@ -180,7 +246,7 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         if(Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(),"--focus-decoration-result") is {} focusDecorationResult)
         {
             Exception? failure=null;
-            try{await NativeFocusDecorationAsync();}
+            try{await NativeFocusDecorationAsync(); await PosterSheenAsync();}
             catch(Exception error){failure=error;}
             await File.WriteAllTextAsync(focusDecorationResult,System.Text.Json.JsonSerializer.Serialize(new{passed=failure is null,checks,error=failure?.ToString()}));
             if(failure is not null)throw failure;
@@ -294,6 +360,7 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
         await NativeScrollThemeAsync();
         await NativeGridMeasureAsync();
         await NativeScaleAsync();
+        await PosterSheenAsync();
         await LoadingIndicatorGeometryAsync();
         await AccessibilityPreferencesAsync();
         await HighContrastPaletteAsync();
@@ -361,6 +428,21 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
             await Wait(() => ColorOf(container.Foreground) == Color.FromArgb(255, 255, 238, 0));
             Check(ColorOf(((TextBlock)fragment.Content).Foreground) == ColorOf(container.Foreground),
                 "indexed focused typography receives the native container state");
+            var label = new ViewNode { Id = "hint", Kind = ViewNodeKind.Text, Text = "Link" };
+            var content = new ViewNode { Id = "game", Kind = ViewNodeKind.Row, Children = new[] { label } };
+            var css = "#hint { interaction-state-source: indexed-item; opacity: 0; } #hint:focused { opacity: 1; }";
+            var hintStyles = new Dictionary<string, BridgeNodeRenderStyles> { ["hint"] = Compute(css, "hint", "text") };
+            fragment.ApplyFragment(CreateFrame(content, hintStyles), content, content.Id);
+            fragment.SetIndexedRootInteraction(false, false);
+            await Wait(() => Descendants(fragment).OfType<TextBlock>().Any(text => AutomationProperties.GetAutomationId(text) == "Widget.hint"));
+            var hint = Descendants(fragment).OfType<TextBlock>().Single(text => AutomationProperties.GetAutomationId(text) == "Widget.hint");
+            Check(hint.Opacity == 0, "an unfocused indexed row hides its optional link hint");
+            fragment.SetIndexedRootInteraction(true, false);
+            Check(hint.Opacity == 1, "a focused indexed row shows its optional link hint");
+            hintStyles["hint"] = Compute("#hint { opacity: .5; }", "hint", "text");
+            fragment.ApplyFragment(CreateFrame(content, hintStyles), content, content.Id);
+            fragment.SetIndexedRootInteraction(false, false);
+            Check(Near(hint.Opacity, .5), "a retained descendant returns to its own style when the opt-in is removed");
         }
         finally { adapter.Dispose(); host.Children.Remove(container); await fragment.DisposeAsync(); }
     }

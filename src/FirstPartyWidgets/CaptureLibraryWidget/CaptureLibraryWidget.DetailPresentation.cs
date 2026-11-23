@@ -10,21 +10,19 @@ public sealed partial class CaptureLibraryWidget
 
     // One existing SDK action surface owns icon, label and trailing hint.
     // No nested button or extra focus target; page shortcuts retain input ownership.
-    private static ActionSurfaceElement HintedAction(string label, string action, ControllerButton button,
-        bool busy, WidgetGlyph? icon = null, bool selected = false)
+    private static ActionSurfaceElement HintedAction(string label, string action, ControllerButton? button,
+        bool busy, WidgetGlyph? icon = null, bool selected = false, string? id = null)
     {
         var content = new List<WidgetElement>();
-        var hint = UI.ControllerGlyph(button, action + ".hint").Classes("capture-action-badge");
-        if (icon is { } glyph) content.Add(UI.Icon(glyph, action + ".icon", label).Classes("capture-action-icon"));
-        content.Add(UI.Text(label, action + ".label").Classes("capture-action-label"));
-        content.Add(hint);
-        return UI.ActionSurface(action, action, label, ActionSurfaceOrientation.Horizontal, content.ToArray())
+        id ??= action;
+        if (icon is { } glyph) content.Add(UI.Icon(glyph, id + ".icon", label).Classes("capture-action-icon"));
+        content.Add(UI.Text(label, id + ".label").Classes("capture-action-label"));
+        if (button is { } shortcut) content.Add(UI.ControllerGlyph(shortcut, id + ".hint").Classes("capture-action-badge"));
+        return UI.ActionSurface(action, id, label, ActionSurfaceOrientation.Horizontal, content.ToArray())
             .Busy(busy).Selected(selected).Classes("capture-hint-button");
     }
 
-    private string DetailName(State state) => state.SelectedId is null
-        ? state.Preview?.SourceApplication?.ApplicationName ?? "Review capture"
-        : selectedCapture?.Title ?? state.Preview?.SourceApplication?.ApplicationName ??
+    private string DetailName(State state) => selectedCapture?.Title ?? state.Preview?.SourceApplication?.ApplicationName ??
             selectedCapture?.Media.SourceApplication?.ApplicationName ?? selectedCapture?.FileName ?? "Capture details";
 
     private WidgetElement DetailBody(State state)
@@ -68,9 +66,6 @@ public sealed partial class CaptureLibraryWidget
         }
 
         var actions = new List<WidgetElement>();
-        if (state.SelectedId is null)
-            actions.Add(UI.Button("Save to library", "capture-library.save", "capture-library.save")
-                .Icon(WidgetGlyph.Save).Busy(state.Busy).Classes("capture-primary", "capture-detail-command"));
         if (state.Preview is not null)
             actions.Add(ShareCaptureButton(state).AddClasses("capture-detail-command", "capture-share-action"));
         if (state.SelectedId is not null && selectedCapture is { } favorite)
@@ -82,11 +77,14 @@ public sealed partial class CaptureLibraryWidget
                 .Icon(WidgetGlyph.Edit).Busy(state.Busy).Classes("capture-detail-command"));
         if (state.SelectedId is not null && selectedCapture is { } item)
         {
+            if (item.Available) actions.Add(UI.Button("Link to game…", "capture-library.detail.link", "capture-library.detail.link")
+                .OpenIntent(WidgetIntentContracts.CaptureAssociation, AssociationPayload([item]), WidgetIntentPresentation.OpenWidget)
+                .Busy(state.Busy).WithIntentFeedback().Classes("capture-detail-command"));
             actions.Add(UI.Button("Show in folder", "capture-library.reveal", "capture-library.reveal")
                 .Icon(WidgetGlyph.Folder).Disabled(!item.Available).Busy(state.Busy).Classes("capture-detail-command"));
             actions.Add(UI.Button("Save a copy", "capture-library.copy", "capture-library.copy")
                 .Icon(WidgetGlyph.Save).Disabled(!item.Available).Busy(state.Busy).Classes("capture-detail-command"));
-            if (item.ContextCount > 0)
+            if (item.ContextCount > 0 || undoDestination is { } undo && undo.CaptureId == item.Id && undo.ContentRevision == item.Revision)
                 actions.Add(UI.Button("Related details", "capture-library.context.open", "capture-library.context.open")
                     .Busy(state.Busy).Classes("capture-detail-command"));
             if (item.SourceId is not null)
@@ -116,6 +114,5 @@ public sealed partial class CaptureLibraryWidget
             .Spacing(0, 16).Classes("capture-detail-layout");
     }
 
-    private static string DetailActionEntry(State state) => state.SelectedId is null ? "capture-library.save" :
-        state.Preview is not null ? "capture-library.share" : "capture-library.favorite";
+    private static string DetailActionEntry(State state) => state.Preview is not null ? "capture-library.share" : "capture-library.favorite";
 }

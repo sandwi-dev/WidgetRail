@@ -19,6 +19,9 @@ public sealed record BridgePackageIconAssetDescriptor(
     int SourceBytes,
     int NormalizedBytes);
 
+public sealed record BridgeCatalogRequest(bool IncludeIntentHandlers);
+public sealed record BridgeIntentSignature(string Id, int Version, string Digest);
+
 public sealed record BridgeWidgetDescriptor
 {
     public required string Id { get; init; }
@@ -31,6 +34,10 @@ public sealed record BridgeWidgetDescriptor
     public required string PresentationGeneration { get; init; }
     public required WidgetGlyph Icon { get; init; }
     public IReadOnlyList<WidgetNotificationCategory> NotificationCategories { get; init; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<TrayActionDefinition>? TrayActions { get; init; }
+    [JsonIgnore]
+    public IReadOnlyList<TrayActionDefinition> AvailableTrayActions => TrayActions ?? [];
     public bool CanManage { get; init; }
     /// <summary>Host-created local website entry; never declared by a widget package.</summary>
     public bool IsUserWebApp { get; init; }

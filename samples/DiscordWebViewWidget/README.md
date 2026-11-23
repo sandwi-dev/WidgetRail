@@ -4,7 +4,7 @@ This is the maintained Discord SDK-widget integration. It owns no external
 client or debugging port. WidgetRail owns the persistent Discord WebView2
 session, its permissions, the direct video view and pinned window.
 
-Package: `widgetrail.samples.discord-controls` `0.1.0` (x64, full access).
+Package: `widgetrail.samples.discord-controls` (x64, full access).
 Read the [user setup guide](../../docs/users/discord.md). This replaces the
 Catalogue listing for the older sandboxed Discord webapp; it has a separate
 identity because reviewed updates cannot change a package's execution trust.
@@ -18,10 +18,13 @@ download remains unavailable until this package is published.
 > restrictions or termination. Use at your own risk. WidgetRail is not affiliated
 > with or endorsed by Discord. It does not patch the installed desktop client.
 
-The native view combines the current call, participants, incoming screens,
-sharing and friend activity. Without a call, it shows the server/channel picker.
+The native view has persistent **Servers / Messages** destinations. Servers combines
+participants, incoming screens, sharing and friend activity. Without a call, it
+shows the server/channel picker. LB/RB switches destinations; open child controls
+retain their own shortcuts. Messages keeps a compact call-control bar visible.
 X toggles your microphone, Y starts sharing when available, and L3 opens the
-server picker while in a call. B restores the invoking control or indexed row.
+server picker while in a call on Servers. In Messages, contextual L3 focuses the
+chat header's Call/Join/Answer action without activating it. B restores the invoking control or indexed row.
 Search and keyboard suggestions include both servers and voice channels, ordered
 by prefix then substring matches against their full names. Server selection opens
 its channels; choosing a channel joins voice. Indexed lists remain bounded at
@@ -38,24 +41,77 @@ session at a size that permits QR sign-in; authentication stays in that page.
 
 ## Native messages and capture sharing
 
+Messages shows a conversation sidebar beside history at expanded width and a
+list-to-conversation flow at compact width. Switching destinations retains the
+current conversation, unsent draft and reading position. Right from the conversation
+list enters the composer; Left from the composer or history returns to the selected
+conversation. Search uses the short label; the top-level Refresh also refreshes
+the conversation list. Back leaves the conversation for its inbox;
+Back from either root destination returns to the host chooser.
+
 Messages uses bounded native conversation/history lists. Gateway changes update
 retained text locally; opening history, paging and exceptional event-gap recovery
 can request history. Ordinary incoming messages do not cause one HTTP read each.
 Account/session changes retire the previous account's data and file grants.
+Conversation snippets reuse the exact latest message when it is already available
+in Discord's resident store or the current conversation's bounded history cache.
+Listing conversations does not fetch each chat's history; unavailable snippets
+keep their generic description.
 
-Incoming messages appear on the left and your messages on the right. The native
+Incoming and outgoing messages are left aligned. The native
 timeline renders bounded Markdown emphasis/code/quotes, Unicode and custom emoji,
-mentions, replies, safe embed images and attachment metadata. Spoilers require an
-explicit reveal. Ordinary text stays inline; images, media and links can expose
-an interactive preview. Reactions and polls are read-only summaries; voting,
+mentions, replies and attachment metadata. Spoilers require an
+explicit reveal before requesting their media. Ordinary text stays inline;
+attachments use a single action containing up to two static thumbnail tiles, with
+`+N` for additional media, to open a native modal gallery. Filenames remain in
+accessible labels rather than a redundant visible card. URLs use inline
+links or compact text cards, with one action per destination. Rich previews do
+not open automatically on focus or hover. Reactions and polls are read-only summaries; voting,
 reaction changes and unsupported animated stickers remain in Discord. This is
 not a complete renderer for every Discord message type.
+Article/link embed artwork is treated as decoration rather than a second
+attachment when the provider identifies it as an ordinary page link.
+
+GIF-like video embeds, uploaded GIFs and Discord's image animation flags carry
+animation intent into the host's passive inline artwork and explicit gallery.
+The selected image's own flag is used; an animated thumbnail does not make an
+ordinary video autoplay. The host owns visibility, reduced-motion handling,
+resource limits and decoding. Recognition of a flag does not guarantee Windows
+can animate every image format. Native pixel tests on the current Windows build
+verify GIF animation; animated PNG and WebP currently display a static frame.
+GIF-like video embeds use the native video player instead. Embed media uses exact admitted Discord CDN/proxy
+and Tenor origins through the host's checked anonymous transport; a provider page
+link alone never authorizes scraping or loading an arbitrary media origin.
+
+An ordinary message containing exactly one video attachment uses protocol134's
+shared `UI.InlineVideo` player. Poster artwork remains separate; video acquisition
+waits for explicit Play. The host owns controller transport, fullscreen, per-widget
+audio preferences and visible-only playback lifetime. Mixed attachments retain
+the explicit gallery. Discord does not implement a second decoder or playback
+timer for message videos.
+
+Inline video uses the existing explicit-grid aspect-ratio contract and a480-DIP
+width cap. It is larger in expanded chat without filling that column; compact
+layout shrinks through native stretch measurement. Gallery dialogs opt out of
+the SDK's standard header with `ShowHeader=false`, retaining an accessible title
+and ordinary modal dismissal/return semantics. The host owns the compact gallery
+counter/arrows and fitted-image control footer.
 
 Live arrivals follow the end only while the host considers the current viewport
 to be reading the end. Reading older content preserves position and offers
 **New messages**. Initial and paged history remains bounded to a 40-message window.
-Opening history does not mark messages read in Discord; automatic read receipts
-are intentionally not sent without proof of which messages were actually viewed.
+When the current client exposes its read-state API, opening a conversation marks
+its captured opening watermark read after native history is visibly presented.
+New arrivals advance only at an observed newest end. Historical notification/reply
+jumps do not acknowledge newer unseen history. Hidden pages, inbox loading and
+pins do not mark conversations read. This changes the user's own unread position,
+not a recipient-facing read receipt. Discord owns network batching; local read
+state is not proof of server confirmation. Open Discord if its private API is
+unavailable. The primary unread dot uses a bounded provider summary without
+loading message history; unavailable/truncated summaries remain unknown.
+
+Completed action feedback uses host toasts. Sending/upload progress, field
+validation and unconfirmed delivery remain beside the relevant controls.
 
 Every external file share opens recipient selection. Incoming files remain separate
 until that choice; Cancel or Back releases only the incoming batch. Choosing the
@@ -88,16 +144,21 @@ explicitly unavailable on the current Discord browser engine because its setter
 does not process the microphone signal. Connection text uses the actual RTC
 phase, distinguishing connecting and reconnecting from a completed connection.
 
-Watch opens the widget's incoming-stream pin directly. The receiver is acquired
-only while its layout is selected and is retired on account/call/selection changes.
-The incoming receiver is video-only; Discord's backend session remains the
-voice/stream audio owner. Hiding the overlay does not leave the call or stop an
-admitted capture.
+On the call screen, **Watch** opens the stream in the widget. Focus the picture
+and press A to enter fullscreen. B or Escape returns to the viewer. **Watch &
+pin** opens a floating pin directly, including when chosen from a friend's
+activity. The viewer and a pin for the same stream share one receiver, even
+when the pin is still connecting. Closing the viewer returns the picture to the
+pin. A viewer-only receiver is released on Back and while the main panel is
+hidden. Returning to the same viewer restores its subscription. A separate
+visible participant or stream pin can keep the worker active during that time.
+Account and call changes also
+retire the old receiver.
 
-The stream pin displays the original decoded Discord video track in a muted
-host-owned video view. Watch and Watch from friend activity use the same path.
-Changing the selected track updates the existing view. The source session
-retains Discord audio and the user’s original stream subscription.
+The receiver displays Discord's decoded video track. Discord's source session
+owns voice and stream audio, including while the picture moves between the pin,
+viewer and fullscreen. Hiding the overlay keeps the call and admitted capture
+running.
 
 The separate voice-controls pin keeps its channel header at the top, shows up to
 four passive participant rows with speaking rings and an overflow count, and

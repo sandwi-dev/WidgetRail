@@ -26,6 +26,8 @@ var tests = new (string Name, Action Run)[]
     ("Typed values clamp bounded renderer inputs", Clamping),
     ("Preview materials use closed choices and bounded tint strength", PreviewMaterials),
     ("Surface shading is typed bounded and theme-owned", SurfaceShading),
+    ("Poster sheen is opt-in and has a bounded grammar", PosterSheen),
+    ("Wallpaper motion has independently bounded timing, travel and origin", WallpaperMotion),
     ("Scrollbar parts have independent colors and bounded widths", ScrollbarStyles),
     ("Original built-in themes supply scrollbar colors, depth and two-DIP focus edges", BuiltinScrollbarPalettes),
     ("Pressed scale overrides focus enlargement under every built-in theme", PressedScalePalettes),
@@ -827,6 +829,58 @@ static void TranslationValues()
         "translate-y is missing from the public allowlist.");
 }
 
+static void PosterSheen()
+{
+    var tinted = Compile(":root { --ice: #c9e4ff; --focus-highlight: var(--ice); } card { focus-outline-effect: breathe; } poster { focus-outline-effect: edge-glint; focus-outline-highlight: #ffeebb; }").Theme!;
+    Assert.Equal("#c9e4ff", tinted.Resolve(Element("card")).Get("focus-outline-highlight")!.Text);
+    Assert.Equal("#ffeebb", tinted.Resolve(Element("poster")).Get("focus-outline-highlight")!.Text);
+    Assert.True(tinted.Resolve(Element("text")).Get("focus-outline-highlight") is null, "Static content must not acquire a focus highlight.");
+    Assert.True(Compile(":root { --focus-highlight: auto; } card { focus-outline-effect: breathe; }").Theme!
+        .Resolve(Element("card")).Get("focus-outline-highlight") is null, "Automatic color belongs to the renderer.");
+    Assert.True(!CompileExpectingErrors(":root { --focus-highlight: redwood; }").IsValid, "An invalid theme color must be diagnosed.");
+    foreach (var name in new[] { "none", "edge-glint", "breathe" })
+    {
+        var border = Compile($"card {{ focus-outline-effect: {name}; focus-outline-duration: 9s; focus-outline-intensity: 2; focus-outline-repeat-delay: 61s; }}").Theme!.Resolve(Element("card"));
+        Assert.Equal(name, border.Get("focus-outline-effect")!.Text);
+        Assert.Equal(5000d, border.Get("focus-outline-duration")!.Number!.Value);
+        Assert.Equal(1d, border.Get("focus-outline-intensity")!.Number!.Value);
+        Assert.Equal(60000d, border.Get("focus-outline-repeat-delay")!.Number!.Value);
+    }
+    Assert.Equal(1, CompileExpectingErrors("card { focus-outline-effect: trace; }").Diagnostics.Count(x => x.Code == "invalid_value"));
+    var result = Compile("card:focused { focus-sheen: sweep; }");
+    Assert.True(result.IsValid, Describe(result.Diagnostics));
+    Assert.True(result.Theme!.Resolve(Element("card")).Get("focus-sheen") is null, "Unfocused card acquired sheen");
+    var focused = result.Theme.Resolve(new WrssElement("card", null, null, new HashSet<WrssPseudoState> { WrssPseudoState.Focused }));
+    Assert.Equal("sweep", focused.Get("focus-sheen")!.Text);
+    var reflection = Compile("card { focus-sheen: reflection; focus-sheen-duration: 1.6s; focus-sheen-opacity: .42; focus-sheen-delay: 180ms; }")
+        .Theme!.Resolve(Element("card"));
+    Assert.Equal("reflection", reflection.Get("focus-sheen")!.Text);
+    Assert.Equal(1600d, reflection.Get("focus-sheen-duration")!.Number!.Value);
+    Assert.Equal(180d, reflection.Get("focus-sheen-delay")!.Number!.Value);
+    Assert.Equal(.42, reflection.Get("focus-sheen-opacity")!.Number!.Value);
+    var bounded = Compile("card { focus-sheen-duration: 20s; focus-sheen-delay: 5s; focus-sheen-opacity: 2; focus-sheen-repeat-delay: 2s; }").Theme!.Resolve(Element("card"));
+    Assert.Equal(2000d, bounded.Get("focus-sheen-repeat-delay")!.Number!.Value);
+    Assert.Equal(5000d, bounded.Get("focus-sheen-duration")!.Number!.Value);
+    Assert.Equal(1500d, bounded.Get("focus-sheen-delay")!.Number!.Value);
+    Assert.Equal(1d, bounded.Get("focus-sheen-opacity")!.Number!.Value);
+    Assert.Equal(1, CompileExpectingErrors("card { focus-sheen: loop; }").Diagnostics.Count(item => item.Code == "invalid_value"));
+}
+
+static void WallpaperMotion()
+{
+    var result = Compile("card { artwork-transition: directional-fade; artwork-transition-duration: .3s; artwork-transition-travel-x: 0.5%; artwork-motion: pan-zoom; artwork-motion-duration: 9s; artwork-motion-origin: 75% 50%; artwork-motion-scale-from: 1.03; }");
+    var style = result.Theme!.Resolve(Element("card"));
+    Assert.Equal(9000d, style.Get("artwork-motion-duration")!.Number!.Value);
+    Assert.Equal(300d, style.Get("artwork-transition-duration")!.Number!.Value);
+    Assert.Equal("75% 50%", style.Get("artwork-motion-origin")!.Text);
+    Assert.Equal(.5, style.Get("artwork-transition-travel-x")!.Number!.Value);
+    var bounded = Compile("card { artwork-transition-travel-y: 100%; artwork-motion-scale-from: .5; artwork-motion-duration: 3s; }").Theme!.Resolve(Element("card"));
+    Assert.Equal("5%", bounded.Get("artwork-transition-travel-y")!.Text);
+    Assert.Equal(1d, bounded.Get("artwork-motion-scale-from")!.Number!.Value);
+    var invalid = CompileExpectingErrors("card { artwork-motion-origin: left bottom; artwork-transition-travel-x: 3px; artwork-motion: repeat; }");
+    Assert.Equal(3, invalid.Diagnostics.Count(item => item.Code == "invalid_value"));
+}
+
 static void SurfaceShading()
 {
     var compile = Compile(":root { --light: 0.06; } button { surface-shading: var(--light); } button:pressed { surface-shading: -0.04; }");
@@ -913,7 +967,7 @@ static void MediaSafety()
 {
     foreach (var property in new[]
     {
-        "aspect-ratio", "object-fit", "object-position", "shape", "line-height", "max-lines",
+        "aspect-ratio", "object-fit", "object-position", "image-fallback", "shape", "line-height", "max-lines",
         "text-overflow", "overflow-wrap", "text-transform", "image-tint", "scrim-color", "outline-offset", "transition-easing",
         "flex-grow", "flex-shrink", "flex-basis", "flex-wrap",
     })
@@ -922,8 +976,8 @@ static void MediaSafety()
     var parsed = WrssParser.Parse("image { object-fit: url(file:///cover); image-tint: shader(evil); }", "media.wrss");
     Assert.Equal(2, parsed.Diagnostics.Count(item => item.Code == "unsafe_value"));
 
-    var invalid = CompileExpectingErrors("image { object-fit: stretch-crop; shape: star; aspect-ratio: 0/1; max-lines: 2.5; }");
-    Assert.Equal(4, invalid.Diagnostics.Count(item => item.Code == "invalid_value"));
+    var invalid = CompileExpectingErrors("image { object-fit: stretch-crop; shape: star; aspect-ratio: 0/1; max-lines: 2.5; image-fallback: retry; }");
+    Assert.Equal(5, invalid.Diagnostics.Count(item => item.Code == "invalid_value"));
 }
 
 static void VisualSystemTokens()

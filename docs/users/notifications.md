@@ -48,8 +48,9 @@ old page callback.
 
 ## Why a banner may be missing
 
-A banner can be suppressed by preferences, quiet intervals, lack of screen space,
-fullscreen/system-picker presentation, or the widget's visibility rules. A list
+A banner can be suppressed by delivery preferences, queue limits or the widget's
+visibility rules. Eligible banners appear over fullscreen widgets, and closing the
+overlay lets an active banner finish its normal display time. A list
 entry without a banner is not necessarily a failure. Game Help avoids announcing
 an answer already visible; music banners depend on the player being observed.
 Stopping/disabling a widget ends its ability to publish new notices.

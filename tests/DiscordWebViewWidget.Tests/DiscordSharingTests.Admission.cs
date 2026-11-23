@@ -1,5 +1,6 @@
 using System.Text.Json;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 internal static partial class DiscordSharingTests
 {
@@ -9,10 +10,12 @@ internal static partial class DiscordSharingTests
         {
             await fixture.Start();await fixture.Widget.OnIntentAsync(fixture.Request);
             await fixture.Until(()=>fixture.Find("discord.conversation.10") is not null);
-            var old=fixture.Find("discord.conversation.10")!;var scope=fixture.Snapshot().ActiveInputScopeId;
+            using var rows=WidgetTestHost.CreateIndexedCollectionHost(fixture.Widget,"recipient-admission");rows.PublishSnapshot();
+            using var old=await rows.AcquireAsync("discord.messages.list",0,1);
             fixture.Request=WidgetIntentRequest.Create(WidgetIntentContracts.Files,JsonSerializer.SerializeToElement(new{offerId=new string('d',32)}));
             check(await fixture.Widget.OnIntentAsync(fixture.Request)==WidgetIntentResult.Accepted,"A new offer is accepted while the prior recipient action is queued");
-            await fixture.Widget.OnActionAsync(new(old.ActionId!,old.Id,InputScopeId:scope));
+            rows.PublishSnapshot();
+            check(old.RouteAction("10",ControllerButton.A) is null,"An earlier offer's recipient lease loses action authority");
             check(fixture.Find("discord.messages.cancel-share") is not null && fixture.Find("discord.message.draft") is null &&
                 fixture.Find("discord.incoming.file.1") is not null && fixture.Released.IsEmpty,
                 "Queued recipient action from an older offer cannot consume a new share even when its granted files are identical");

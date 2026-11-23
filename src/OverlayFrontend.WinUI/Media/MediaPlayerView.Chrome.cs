@@ -8,51 +8,32 @@ internal sealed partial class MediaPlayerView
 {
     private readonly Grid inlineChrome = new();
     private readonly Grid videoControls = new() { VerticalAlignment = VerticalAlignment.Bottom, Margin = new(8), Padding = new(0, 12, 0, 0) };
-    private PresentationPortal? inlineChromePortal;
-
-    private void EnsureInlineChrome()
-    {
-        if (disposed || !active || !IsVideo || IsExpanded || changingPlacement ||
-            !IsLoaded || !card.IsLoaded || inlineChromePortal is not null ||
-            PresentationLayers.Find(this) is not { } layers) return;
-        // Video retains its full-size native plane. The same toolbar uses the
-        // existing logical-owner portal so text and hit targets stay UI-sized.
-        body.Children.Remove(inlineChrome);
-        Grid.SetRow(inlineChrome, 0); Grid.SetRowSpan(inlineChrome, 1);
-        toolbar.VerticalAlignment = VerticalAlignment.Bottom;
-        videoControls.Margin = new(8);
-        inlineChromePortal = new(layers, stage, inlineChrome, PresentationLayers.MediaChromeLayer(stage));
-    }
-
-    private void RestoreInlineChrome()
-    {
-        if (inlineChromePortal is null) return;
-        Input.PointerCaptureLifetime.ReleaseWithin(inlineChrome);
-        inlineChromePortal.Dispose(); inlineChromePortal = null;
-        Grid.SetRow(inlineChrome, 0); Grid.SetRowSpan(inlineChrome, 2);
-        toolbar.VerticalAlignment = VerticalAlignment.Bottom;
-        videoControls.Margin = new(8);
-        body.Children.Add(inlineChrome);
-    }
-
     private bool HasImagePresentation => image.Source is not null && imageViewport.Visibility == Visibility.Visible;
+    private bool IsCarouselImagePreview => !IsExpanded && HasThumbnails && galleryDeclaration?.InlineCarousel == true;
 
     private void LayoutImageChrome()
     {
-        // Chrome overlays the canvas; revealing it never changes image fit/zoom.
+        // Fitted galleries use a stable footer outside the image. Ordinary and
+        // fullscreen viewers keep their transient overlay controls.
+        var footer = galleryDeclaration is not null && !HasThumbnails && !IsExpanded;
         Grid.SetRowSpan(stage, 2);
-        Grid.SetRow(imageTools, 0);
-        Grid.SetRowSpan(imageTools, 2);
+        Grid.SetRow(imageTools, footer ? 2 : 1);
+        Grid.SetRowSpan(imageTools, 1);
         imageTools.VerticalAlignment = VerticalAlignment.Bottom;
         imageTools.HorizontalAlignment = HorizontalAlignment.Center;
-        imageTools.Margin = IsExpanded ? new(24) : new(8);
+        imageTools.Margin = footer ? new(0, 4, 0, 0) : IsExpanded ? new(24) : new(8);
+        imageTools.Padding = footer ? new(0) : new(8);
+        imageTools.Background = footer && !highContrastChrome ? null : galleryChromeBackground;
+        imageTools.CornerRadius = footer ? new(0) : inlineRadius;
     }
 
     private bool imageChromeAllowed;
     private void RefreshImageChrome()
     {
         LayoutImageChrome();
-        var allowed = HasImagePresentation && active && input;
+        imageViewport.IsTabStop = imageViewport.AllowFocusOnInteraction = !IsExpanded && !IsCarouselImagePreview;
+        imageViewport.IsHitTestVisible = input && IsImage && !IsCarouselImagePreview;
+        var allowed = HasImagePresentation && active && input && !IsCarouselImagePreview;
         if (!allowed)
         {
             imageChrome.Stop();
@@ -73,13 +54,36 @@ internal sealed partial class MediaPlayerView
 
     private void StopMediaChrome()
     {
-        videoChrome.Stop(); imageChrome.Stop(); imageChromeAllowed = false;
+        videoChrome.Stop(); idleVideoControl = null; embeddedChrome?.Stop(); imageChrome.Stop(); imageChromeAllowed = false;
+    }
+
+    private void ResetMediaEntry()
+    {
+        videoChrome.ResetEntry();
+        imageChrome.ResetEntry();
+        embeddedChrome?.ResetEntry();
+        idleVideoControl = null;
+    }
+
+    private void EnterCurrentChrome()
+    {
+        if (!input || !active) return;
+        if (embeddedReady) RevealEmbeddedControls(enter: true);
+        else if (IsVideo) videoChrome.Enter();
+        else if (HasImagePresentation && !IsCarouselImagePreview)
+        {
+            imageChrome.Enter();
+            RefreshImageChrome();
+        }
     }
 
     private void RevealCurrentChrome()
     {
         if (!input || !active) return;
-        if (IsVideo) videoChrome.Reveal();
-        else if (HasImagePresentation) { RefreshImageChrome(); imageChrome.Reveal(); }
+        if (embeddedReady) RevealEmbeddedControls();
+        else if (IsVideo) videoChrome.Reveal();
+        else if (HasImagePresentation) { RefreshImageChrome(); RevealImageControls(); }
     }
+
+    private void RevealImageControls() { if (imageChromeAllowed) imageChrome.Reveal(); }
 }

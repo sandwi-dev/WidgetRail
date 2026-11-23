@@ -27,7 +27,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
         internal bool IsResolving;
         internal long AttemptSequence;
     }
-    private sealed record Viewport(WidgetPresentationAuthority Authority, string ElementId, string SessionId, WidgetMediaViewport Element);
+    private sealed record Viewport(WidgetPresentationAuthority Authority, string ElementId, string SessionId, WidgetMediaViewport Element, MediaPlayerDefinition? GalleryItem);
     private readonly PresentationSession session;
     private readonly DispatcherQueue dispatcher;
     private readonly Grid parking;
@@ -94,13 +94,13 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
         Reconcile();
     }
 
-    internal void Bind(WidgetPresentationAuthority authority, string elementId, string sessionId, WidgetMediaViewport viewport)
+    internal void Bind(WidgetPresentationAuthority authority, string elementId, string sessionId, WidgetMediaViewport viewport, MediaPlayerDefinition? galleryItem = null)
     {
         DemandDispatcher();
         if (retired || viewport.Retired) return;
         if (viewports.TryGetValue(authority.WidgetId, out var old) && !ReferenceEquals(old.Element, viewport))
             old.Element.PlacementChanged = null;
-        viewports[authority.WidgetId] = new(authority, elementId, sessionId, viewport);
+        viewports[authority.WidgetId] = new(authority, elementId, sessionId, viewport, galleryItem);
         viewport.PlacementChanged = Reconcile;
         Reconcile();
     }
@@ -109,7 +109,11 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
     {
         DemandDispatcher();
         foreach (var (id, bound) in viewports.ToArray())
-            if (ReferenceEquals(bound.Element, viewport)) viewports.Remove(id);
+            if (ReferenceEquals(bound.Element, viewport))
+            {
+                viewports.Remove(id);
+                if (bound.GalleryItem is not null && entries.TryGetValue(id, out var entry)) Retire(entry);
+            }
         viewport.PlacementChanged = null;
         // The owner releases placement, not the presenter's native control.
         // A retained presenter can bind this same viewport after suspension.
@@ -203,8 +207,14 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
         a.WidgetId == b.WidgetId && a.WidgetInstanceId == b.WidgetInstanceId && a.RuntimeGeneration == b.RuntimeGeneration &&
         a.PresentationGeneration == b.PresentationGeneration && a.SessionGeneration == b.SessionGeneration;
     private static bool ContainsViewport(ViewNode node, Viewport target) =>
-        node.Kind == ViewNodeKind.MediaViewport && node.Id == target.ElementId && node.MediaSessionId == target.SessionId ||
+        node.Id == target.ElementId && (target.GalleryItem is { } selected
+            ? node.MediaPlayer?.Gallery?.Any(member => member.Source == selected.Source && (member.Options ?? node.MediaPlayer.Options) == selected.Options) == true
+            : node.Kind == ViewNodeKind.MediaViewport && node.MediaSessionId == target.SessionId) ||
         node.Children.Any(child => ContainsViewport(child, target));
+
+    internal EmbeddedMediaSurface? GallerySurface(string widgetId, WidgetMediaViewport viewport) =>
+        viewports.TryGetValue(widgetId, out var target) && target.GalleryItem is not null && ReferenceEquals(target.Element, viewport) &&
+        entries.TryGetValue(widgetId, out var entry) && entry.Document?.SessionId == target.SessionId ? entry.Surface : null;
     private bool CanAcceptInput(string widgetId) => IsCompact(widgetId) && compactInputWidget==widgetId || inputEnabled && (IsFullscreen(widgetId) ||
         MatchingViewport(widgetId) is { } target && target.Element.AcceptsInput &&
         session.GetState(widgetId)?.LastGood?.Authority.ActiveInputScopeId == target.Authority.ActiveInputScopeId);
@@ -234,6 +244,8 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
             entry.Stage = CreateStage?.Invoke(session.GetEmbeddedMediaState(document)!.Declaration.AspectRatio);
             SetFailure(entry.WidgetId, null);
             entry.Surface = new(session, document, runtime, startupTrace);
+            if (MatchingViewport(entry.WidgetId)?.GalleryItem is not null)
+                entry.Surface.SelectedGalleryMedia = () => MatchingViewport(entry.WidgetId)?.GalleryItem;
             entry.Surface.InputAuthority = () => CanAcceptInput(entry.WidgetId);
             entry.Surface.PlaybackActivationAuthority = () => CanActivateDashboardPlayback(entry.WidgetId);
             ++BrowserCreationCount;

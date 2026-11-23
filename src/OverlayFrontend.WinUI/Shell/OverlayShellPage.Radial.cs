@@ -31,6 +31,8 @@ internal sealed partial class OverlayShellPage
                 args.TrySetNewFocusedElement(radialView.ContextAnchor(selected));
         };
         radialView.StatusFor = StatusFor;
+        radialView.FavoriteInvoked = direction => _ = InvokeFavoriteAsync(direction, displayedFavorites[(int)direction],
+            WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation);
         radialView.Selected = PreviewRadial;
         radialView.Activated = item => { if (reordering) { FinishTrayReorder(); return; } radialSelection = item.Id; _ = SelectAsync(item.Id); };
         radialView.ContextRequestedFor = item => { radialSelection = item.Id; RefreshRadialChooser(); _ = ShowTrayMenuAsync(item); };
@@ -79,10 +81,18 @@ internal sealed partial class OverlayShellPage
                 catalogItems.FirstOrDefault(item => item.Id == activeWidget)?.Id ?? catalogItems[0].Id;
             radialPage = Math.Clamp(radialPage, 0, RadialChooserPolicy.PageCount(catalogItems.Count) - 1);
             radialView.HorizontalAlignment = WidgetSurface.HorizontalAlignment;
-            radialView.Width = radialView.Height = Math.Max(1, Math.Min(400, Math.Min(Math.Max(1, shellViewport.Width - 48 / Appearance.InterfaceScale), Math.Max(1, shellViewport.Height - ProductionShellGeometry.ReservedHeight - 38 / Appearance.InterfaceScale)) - 24));
+            // Reserve the assigned hints' space even while reorder mode hides them.
+            radialView.FitStage((preferences.TrayActions.Left ?? preferences.TrayActions.Right) is not null,
+                (preferences.TrayActions.Up ?? preferences.TrayActions.Down) is not null, Math.Max(1, shellViewport.Width - 48 / Appearance.InterfaceScale - 24),
+                Math.Max(1, shellViewport.Height - ProductionShellGeometry.ReservedHeight - 38 / Appearance.InterfaceScale - 24), reordering);
             radialView.Update(catalogItems, radialSelection, radialPage, ShellPalette, Appearance, systemUi.AnimationsEnabled);
+            RefreshFavoriteHints();
         }
-        if (!showing) radialView.Close();
+        if (!showing)
+        {
+            if (radialShowing) Array.Clear(displayedFavorites);
+            radialView.Close();
+        }
         radialView.Visibility = showing ? Visibility.Visible : Visibility.Collapsed;
         radialView.IsHitTestVisible = !PinnedAdjustmentActive;
         RailControls.Opacity = showing ? 0 : 1;
@@ -95,6 +105,8 @@ internal sealed partial class OverlayShellPage
         if (showing && !radialShowing)
             DispatcherQueue.TryEnqueue(() => { if (RadialOpen) { radialView.Open(WidgetMotionOptions.From(Appearance, systemUi.AnimationsEnabled)); if (!PinnedAdjustmentActive) radialView.FocusSelected(); } });
         radialShowing = showing;
+        RefreshPinManagementCommands();
+        RefreshFavoriteProgress();
         PositionOpeningIndicator();
     }
     private BridgeWidgetDescriptor? RadialSelectedWidget() => RadialOpen ? catalogItems.FirstOrDefault(item => item.Id == radialSelection) : null;

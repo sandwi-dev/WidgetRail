@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
@@ -8,22 +9,33 @@ internal sealed partial class WidgetViewPresenter
     // The same policy applies to the ordinary tree and root-level overlay portals.
     internal IDisposable AttachPresentationInput(UIElement root)
     {
-        RoutedEventHandler focused = (_, _) => { RememberFocus(); RefreshScrollFocusOutline(); NotifyControllerGuideChanged(); };
+        RoutedEventHandler focused = (_, _) =>
+        {
+            if (scrollGesture is { NativeWheel: true } wheelGesture && !ReferenceEquals(FocusedBinding()?.Element, wheelGesture.Owner.Element))
+                scrollGesture = null;
+            RememberFocus(); RefreshScrollFocusOutline(); NotifyControllerGuideChanged();
+        };
         Windows.Foundation.TypedEventHandler<UIElement,LosingFocusEventArgs> departing=(_,args)=>ObserveDeferredRevealFocus(args.NewFocusedElement);
         PointerEventHandler pressed = (_, _) => { CancelPassiveScrollFocus(); CancelGroupEntry(); CancelScrollReveal(); scrollGesture=null;directionalScroll=null;RefreshScrollFocusOutline(); };
-        PointerEventHandler wheel = (_, _) =>
+        PointerEventHandler wheel = (_, args) =>
         {
             CancelPassiveScrollFocus();
             CancelGroupEntry();
             CancelScrollReveal();
-            // Wheel input now owns the viewport. Retire controller settlement
-            // without cancelling the native wheel motion already admitted.
+            // Retire controller motion without cancelling the wheel already
+            // admitted by WinUI. Retain the same generic scroll ownership so a
+            // page publication cannot replay parked offscreen item focus.
             if (scrollGesture is { } gesture) gesture.Animated = false;
             scrollGesture = null;
+            if (args.OriginalSource is DependencyObject origin &&
+                (origin as ScrollViewer ?? NearestScroll(origin)) is { } viewport &&
+                FindBinding(viewport) is { Element: WidgetIndexedCollectionView } owner && owner.Identity.Scope == activeScope)
+                scrollGesture = new(viewport, owner, activeScope) { NativeWheel = true };
         };
         KeyEventHandler key = (_, args) =>
         {
             if (Input.GamepadKeyBoundary.Owns(this, args)) return;
+            if (args.Key == Windows.System.VirtualKey.Tab && scrollGesture is { NativeWheel: true }) scrollGesture = null;
             if (args.Key is Windows.System.VirtualKey.Up or Windows.System.VirtualKey.Down or
                 Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right &&
                 AwaitingDirectionalEntry()) return;

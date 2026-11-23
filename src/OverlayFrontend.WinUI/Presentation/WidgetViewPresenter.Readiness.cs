@@ -5,6 +5,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     private bool presentationInputEnabled = true;
+    internal bool FocusEffectsActive => !disposed && presentationInputEnabled && presentationActive;
 
     // Drawable content and input ownership have different lifetimes during a
     // switch. Disabling input must not tear down media or retained item pixels.
@@ -12,12 +13,16 @@ internal sealed partial class WidgetViewPresenter
     {
         if (presentationInputEnabled && !enabled) RememberFocus();
         presentationInputEnabled = enabled;
+        foreach (var adapter in nativeStyles.Values) adapter.FocusDecoration?.RefreshSettledVisibility();
         RefreshBrowsers();
         RefreshMediaPlayers();
         RefreshContextIndicators();
         IsHitTestVisible = enabled && presentationActive;
         if (!enabled)
         {
+            foreach (var binding in bindings.Values)
+                if (binding.Children is WidgetActionPanel face) face.EndLighting();
+            CancelHeldCollectionSelection();
             ClearFocusPreview(); ClearDeferredPreviews();
             CancelPassiveScrollFocus();
             scrollGesture = null;

@@ -10,6 +10,10 @@ public sealed record WidgetTaskWindow(
 
 public sealed record WidgetTaskWindowRequest([property: JsonRequired] string WindowId);
 
+public sealed record WidgetLaunchHandoffTicket(string Ticket);
+public sealed record WidgetLaunchHandoffTarget(string Ticket, uint ProcessId, long CreatedFileTime, long WindowHandle);
+public sealed record WidgetLaunchHandoffResult(string? WindowId);
+
 public static class WidgetTaskSwitcherCapabilities
 {
     /// <summary>Manifest consent for host-only live rendering; grants no pixel-reading operation.</summary>
@@ -18,6 +22,10 @@ public static class WidgetTaskSwitcherCapabilities
         new("system.apps.windows.read.v1", "apps.windows.list");
     public static WidgetCapabilityOperation<WidgetTaskWindowRequest, WidgetCapabilityAcknowledgement> Switch { get; } =
         new("system.apps.windows.switch.v1", "apps.windows.switch");
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery, WidgetLaunchHandoffTicket> BeginLaunch { get; } =
+        new("system.apps.windows.switch.v1", "apps.windows.launch.begin");
+    public static WidgetCapabilityOperation<WidgetLaunchHandoffTarget, WidgetLaunchHandoffResult> CompleteLaunch { get; } =
+        new("system.apps.windows.switch.v1", "apps.windows.launch.ready");
     public static WidgetCapabilityOperation<WidgetTaskWindowRequest, WidgetCapabilityAcknowledgement> Close { get; } =
         new("system.apps.windows.close.v1", "apps.windows.close");
 }
@@ -27,6 +35,22 @@ public sealed class WidgetTaskSwitcherService
 {
     private readonly IWidgetCapabilityClient _client;
     internal WidgetTaskSwitcherService(IWidgetCapabilityClient client) => _client = client;
+
+    /// <summary>Start a bounded handoff during the interactive Play action, before dispatching the launch.</summary>
+    public async ValueTask<WidgetLaunchHandoffTicket> BeginLaunchAsync(CancellationToken cancellationToken = default)
+    {
+        var receipt = await _client.InvokeAsync(WidgetTaskSwitcherCapabilities.BeginLaunch, new(), cancellationToken).ConfigureAwait(false);
+        if (!Guid.TryParseExact(receipt?.Ticket, "N", out _)) throw new WidgetCapabilityException("malformed_response", "Invalid launch receipt.");
+        return receipt!;
+    }
+
+    /// <summary>Offer the observed process instance and window for native activation. False means the window is not eligible yet.</summary>
+    public async ValueTask<bool> TryCompleteLaunchAsync(WidgetLaunchHandoffTarget target, CancellationToken cancellationToken = default)
+    {
+        var result = await _client.InvokeAsync(WidgetTaskSwitcherCapabilities.CompleteLaunch, target, cancellationToken).ConfigureAwait(false);
+        if (result is null) throw new WidgetCapabilityException("malformed_response", "Missing launch result.");
+        return result.WindowId is not null;
+    }
 
     public async ValueTask<IReadOnlyList<WidgetTaskWindow>> GetWindowsAsync(CancellationToken cancellationToken = default)
     {

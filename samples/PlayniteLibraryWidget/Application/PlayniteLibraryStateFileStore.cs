@@ -11,6 +11,7 @@ internal sealed class PlayniteLibraryStateFileStore
     private const int MaximumEnvelopeBytes = 72 * 1024;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly string _path;
+    internal string NewsCacheDirectory => Path.Combine(Path.GetDirectoryName(_path)!, "steam-announcements");
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
     internal PlayniteLibraryStateFileStore(string path)

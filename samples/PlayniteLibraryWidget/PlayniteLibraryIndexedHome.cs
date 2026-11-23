@@ -62,16 +62,23 @@ internal static class PlayniteLibraryIndexedHome
             FocusSummaryContext: true, BrowseLayout: false));
 
     internal static WidgetElement Rail(
-        WidgetIndexedCollection<PlayniteLibraryHomeContent, PlayniteLibraryHomeItem> source) =>
+        WidgetIndexedCollection<PlayniteLibraryHomeContent, PlayniteLibraryHomeItem> source, string? below = null, string? above = null) =>
         // The fixed poster silhouette reserves the row before its lazy range
         // arrives. It shares the live tile's responsive geometry and the rail's
         // padding; no loading state, extra item requests or measured-size cache.
         UI.Grid(PlayniteLibraryPresentation.HomeRailId + ".stage", [], [],
             UI.Stack(PlayniteLibraryPresentation.HomeRailId + ".reservation",
                     UI.Spacer(PlayniteLibraryPresentation.HomeRailId + ".poster-size")
-                        .Classes("wrail-poster-tile", "playnite-library-tile", "playnite-library-fixed-tile"))
+                        .Classes("wrail-poster-tile", "playnite-library-tile", "playnite-library-fixed-tile", "playnite-home-poster"))
                 .Classes("playnite-library-rail", "playnite-library-rail-reservation"),
-            UI.CollectionList(PlayniteLibraryPresentation.HomeRailId, source, 162, "Games", ScrollAxis.Horizontal)
-                .Classes("playnite-library-rail"))
+            RailList(source, below, above))
             .Classes("playnite-library-rail-stage");
+
+    private static WidgetElement RailList(WidgetIndexedCollection<PlayniteLibraryHomeContent, PlayniteLibraryHomeItem> source, string? below, string? above)
+    {
+        var rail = UI.CollectionList(PlayniteLibraryPresentation.HomeRailId, source, 204, "Games", ScrollAxis.Horizontal)
+            .WithDirectionalAnchor(FocusAnchorPoint.Center, 50);
+        if (above is not null) rail = rail.FocusUp(above);
+        return (below is null ? rail : rail.FocusDown(below)).Classes("playnite-library-rail");
+    }
 }

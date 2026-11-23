@@ -10,6 +10,58 @@ namespace WidgetRail.GameHelpWidget.Tests;
 public sealed class GameHelpTests
 {
     [TestMethod]
+    public async Task EmptyComposerCanReviewEditCancelAndSendOnlyOnce()
+    {
+        var service = new FakeService();
+        var widget = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service), new WidgetTestHostServicesBuilder().Build());
+        try
+        {
+            await WidgetTestHost.InitializeAsync(widget);
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.send" && n.IsDisabled != true));
+            await widget.OnActionAsync(new("ask", "help.send"));
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(Snapshot(widget)).Count);
+            Assert.IsTrue(Walk(Snapshot(widget).Root).Any(n => n.Id == "help.preview-send" && n.IsDisabled == true));
+            await widget.OnActionAsync(new("review.send", "help.preview-send"));
+            await widget.OnActionAsync(new("review.question", "help.preview-question") { CommittedText="A synthetic question" });
+            await widget.OnActionAsync(new("preview.close", "help.preview-close"));
+            Assert.IsEmpty(service.Requests);
+            Assert.AreEqual("A synthetic question", Walk(Snapshot(widget).Root).Single(n=>n.Id=="help.composer").TextEntryValue);
+            await widget.OnActionAsync(new("ask", "help.send"));
+            await widget.OnActionAsync(new("review.send", "help.preview-send"));
+            await widget.OnActionAsync(new("review.send", "help.preview-send"));
+            await Until(() => service.Requests.Count == 1);
+            Assert.IsNull(service.Requests.Single().Attachment);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+
+    [TestMethod]
+    public async Task OpeningForAGameKeepsTheDraftAndWaitsForSend()
+    {
+        var service = new FakeService();
+        var widget = WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service), new WidgetTestHostServicesBuilder().Build());
+        try
+        {
+            await WidgetTestHost.InitializeAsync(widget);
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.composer"));
+            await widget.OnActionAsync(new("draft", "help.composer") { CommittedText = "Where should I go?" });
+            var request = WidgetIntentRequest.Create(WidgetIntentContracts.GameHelp,
+                JsonSerializer.SerializeToElement(new { gameName = "Hollow Knight: Silksong" }), WidgetIntentPresentation.OpenWidget);
+            Assert.AreEqual(WidgetIntentResult.Accepted, await widget.OnIntentAsync(request));
+            Assert.IsEmpty(service.Requests);
+            var entry = Walk(Snapshot(widget).Root).Single(n => n.Id == "help.composer");
+            Assert.AreEqual("Where should I go?", entry.TextEntryValue);
+            StringAssert.Contains(entry.TextEntryPlaceholder, "Silksong");
+            await widget.OnActionAsync(new("ask", "help.send"));
+            await widget.OnActionAsync(new("review.send", "help.preview-send"));
+            await Until(() => service.Requests.Count == 1);
+            Assert.AreEqual("Hollow Knight: Silksong", service.Requests[0].ApplicationName);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+    [TestMethod]
     public async Task SavedCapturePagingCanPassTheFormerTwoHundredItemLimit()
     {
         var offsets=new List<int>();
@@ -310,6 +362,17 @@ public sealed class GameHelpTests
             Assert.AreEqual("help.message.3", snapshot.ScrollRevealRequest!.TargetId);
             Assert.IsTrue(snapshot.ScrollRevealRequest.RequestId > before);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.message.4"));
+            var answered = Snapshot(widget);
+            Assert.AreEqual(snapshot.ScrollRevealRequest.RequestId, answered.ScrollRevealRequest!.RequestId,
+                "An asynchronous answer must not issue a new scroll while earlier text is being read.");
+            var shortcut = answered.Root.Shortcuts.Single(s => s.Button == ControllerButton.RightBumper);
+            await widget.OnActionAsync(new(shortcut.ActionId, "help.root"));
+            var latest = Snapshot(widget);
+            Assert.AreEqual("help.message.4", latest.ScrollRevealRequest!.TargetId);
+            Assert.IsTrue(latest.ScrollRevealRequest.RequestId > answered.ScrollRevealRequest.RequestId);
+            Assert.AreEqual(answered.FocusGroupEntryRequest, latest.FocusGroupEntryRequest);
+            Assert.AreEqual(2, service.Requests.Count);
         }
         finally { await WidgetTestHost.DestroyAsync(widget); }
     }
@@ -587,6 +650,7 @@ public sealed class GameHelpTests
             Assert.IsTrue(Walk(chat.Root).Any(node => node.Id == "help.header-new"));
             Assert.IsTrue(chat.Root.Shortcuts.Any(shortcut => shortcut.Button == ControllerButton.Y && shortcut.ActionId == "settings"));
             Assert.IsTrue(chat.Root.Shortcuts.Any(shortcut => shortcut.Button == ControllerButton.RightStick && shortcut.ActionId == "compose.focus"));
+            Assert.IsFalse(chat.Root.Shortcuts.Any(shortcut => shortcut.Button == ControllerButton.RightBumper));
             await widget.OnActionAsync(new("compose.focus", "help.root"));
             Assert.AreEqual("help.compose-focus", Snapshot(widget).FocusGroupEntryRequest?.GroupId);
             AssertValid(Snapshot(widget));
@@ -630,6 +694,7 @@ public sealed class GameHelpTests
             await Until(() => Walk(Snapshot(widget).Root).Any(node => node.Id == "help.composer"));
             await widget.OnActionAsync(new("draft", "help.composer") { CommittedText = "Synthetic question" });
             await widget.OnActionAsync(new("ask", "help.send"));
+            await widget.OnActionAsync(new("review.send", "help.preview-send"));
             await Until(() => service.Requests.Count == 1);
             await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
             completion.SetResult(new("Synthetic answer", [], "", [], [], []));
@@ -653,6 +718,41 @@ public sealed class GameHelpTests
 
     private static WidgetRail.Samples.GameHelp.GameHelpWidget Attach(FakeService service,IReadOnlyList<WidgetTaskWindow> windows)=>
         WidgetTestHost.Attach(new WidgetRail.Samples.GameHelp.GameHelpWidget(service),new WidgetTestHostServicesBuilder().WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted)).WithResponse(WidgetTaskSwitcherCapabilities.List,windows).Build());
+    [TestMethod]
+    public async Task DelayedAnswerRetiresAnEvictedNotificationReveal()
+    {
+        var service = new FakeService();
+        var widget = Attach(service, []);
+        var delayed = new TaskCompletionSource<GameHelpAnswer>(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            await WidgetTestHost.InitializeAsync(widget);
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.composer"));
+            for (var turn = 1; turn <= 11; turn++)
+            {
+                if (turn == 11) service.Reply = _ => delayed.Task;
+                await widget.OnActionAsync(new("draft", "help.composer") { CommittedText = $"Question {turn}" });
+                await widget.OnActionAsync(new("ask", "help.send"));
+                await widget.OnActionAsync(new("review.send", "help.preview-send"));
+                if (turn < 11)
+                    await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == $"help.message.{turn * 2}"));
+            }
+            await Until(() => service.Requests.Count == 11);
+            var notification = WidgetIntentRequest.Create(WidgetRail.Samples.GameHelp.GameHelpWidget.OpenResultContract,
+                System.Text.Json.JsonSerializer.SerializeToElement(new { resultId = "2" }), WidgetIntentPresentation.OpenWidget);
+            Assert.AreEqual(WidgetIntentResult.Accepted, await widget.OnIntentAsync(notification));
+            Assert.AreEqual("help.message.2", Snapshot(widget).ScrollRevealRequest?.TargetId);
+            delayed.SetResult(new("Newest answer.", [], "", [], [], []));
+            await Until(() => Walk(Snapshot(widget).Root).Any(n => n.Id == "help.message.22"));
+            var snapshot = Snapshot(widget);
+            Assert.IsFalse(Walk(snapshot.Root).Any(n => n.Id == "help.message.2"));
+            Assert.IsNull(snapshot.ScrollRevealRequest);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+        }
+        finally { delayed.TrySetCanceled(); await WidgetTestHost.DestroyAsync(widget); }
+    }
+
     private static ViewSnapshot Snapshot(Widget widget)=>widget.RenderSnapshot("fixture.game-help",1);
     private static IEnumerable<ViewNode> Walk(ViewNode node)=>new[]{node}.Concat(node.Children.SelectMany(Walk));
     private static async Task Until(Func<bool> predicate){var end=Environment.TickCount64+5000;while(!predicate()){if(Environment.TickCount64>=end)throw new TimeoutException();await Task.Delay(20);}}

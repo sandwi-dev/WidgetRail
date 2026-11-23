@@ -35,6 +35,7 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
     private bool commandFocused;
     internal bool HasPendingFocus => pendingFocus is not null;
     internal event Action<string>? Activated;
+    internal event Action<string>? RightClicked;
     internal event Action? Command;
     internal event Action? Back;
     internal event Action? FocusChanged;
@@ -71,7 +72,12 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
             list.Resources["ListViewItemBackground" + state] = state == "Pressed" ? pressed : state == "PointerOver" ? hover : clear;
         }
         command.Click += (_, _) => { if (!Busy) Command?.Invoke(); };
-        list.ItemClick += (_, e) => { if (!Busy && e.ClickedItem is ListViewItem { Tag: string id } && rows[id].Entry.Actionable) Activated?.Invoke(id); };
+        list.ItemClick += (_, args) =>
+        {
+            if (!disposed && !Busy && DialogChoiceNavigation.ClickedItem(list, args.ClickedItem) is { Tag: string id } row &&
+                rows.TryGetValue(id, out var current) && ReferenceEquals(current.Row, row) && current.Entry.Actionable)
+                Activated?.Invoke(id);
+        };
         GotFocus += (_, _) =>
         {
             lastFocusedId = FocusedId;
@@ -144,6 +150,15 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
         var focused = FocusedId;
         var oldIndex = focused is not null && rows.TryGetValue(focused, out var old) ? list.Items.IndexOf(old.Row) : 0;
         var ids = entries.Select(x => x.Id).ToHashSet(StringComparer.Ordinal);
+        if (focused is not null && !ids.Contains(focused))
+        {
+            // Removing the focused container lets WinUI choose a target outside
+            // this panel. Move first, while its surviving neighbor is still live.
+            var remaining = list.Items.Cast<ListViewItem>().Where(row => row.Tag is string id && ids.Contains(id)).ToArray();
+            if (remaining.Length > 0)
+                FocusIndex(list.Items.IndexOf(remaining[Math.Clamp(oldIndex, 0, remaining.Length - 1)]));
+            else if (entries.Count == 0) Back?.Invoke();
+        }
         foreach (var id in rows.Keys.Where(id => !ids.Contains(id)).ToArray())
         { list.Items.Remove(rows[id].Row); rows.Remove(id); }
         // Preserve existing order while the panel is open, including the focused row.
@@ -168,6 +183,8 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
                     HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new(10, 8, 10, 8), Margin = new(0, 2, 0, 2) };
                 AutomationProperties.SetName(row, entry.Label);
                 AutomationProperties.SetAutomationId(row, "Overlay.Utility.Item." + entry.Id);
+                if (RightClicked is not null)
+                    row.AddHandler(RightTappedEvent, new RightTappedEventHandler(OnRowRightTapped), true);
                 row.Loaded += (_, _) => EntryShown?.Invoke(entry.Id);
                 row.GotFocus += (_, _) => row.Background = hover;
                 row.LostFocus += (_, _) => row.Background = clear;
@@ -177,10 +194,19 @@ internal sealed partial class ShellUtilityPanel : UserControl, IDisposable
             }
             if (appearance is { } style) ((ShellUtilityRowContent)rows[entry.Id].Row.Content).Apply(style.Palette, style.Scale);
         }
-        if (focused is not null && !rows.ContainsKey(focused)) FocusIndex(Math.Clamp(oldIndex, 0, Math.Max(0, list.Items.Count - 1)));
+        if (focused is not null && !rows.ContainsKey(focused) && entries.Count > 0 && FocusedId is null)
+            FocusIndex(Math.Clamp(oldIndex, 0, list.Items.Count - 1));
         RefreshRowHints();
     }
     internal void Enter() => FocusIndex(0);
+    private void OnRowRightTapped(object sender, RightTappedRoutedEventArgs args)
+    {
+        if (disposed || Busy || args.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse ||
+            sender is not ListViewItem { Tag: string id } row ||
+            !rows.TryGetValue(id, out var current) || !ReferenceEquals(current.Row, row)) return;
+        args.Handled = true;
+        RightClicked?.Invoke(id);
+    }
     internal void RestoreEntryFocus()
     {
         if (commandFocused && command.IsEnabled) command.Focus(FocusState.Keyboard);

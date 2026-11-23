@@ -10,7 +10,7 @@ public sealed partial class CaptureLibraryWidget
     private WidgetElement DetailHeader(State state)
     {
         var header=new List<WidgetElement>();
-        header.Add(HintedAction(state.SelectedId is null ? "Discard capture" : "Back to library","capture-library.back",ControllerButton.B,state.Busy));
+        header.Add(HintedAction("Back to library","capture-library.back",ControllerButton.B,state.Busy));
         header.Add(UI.Text("/  " + DetailName(state),"capture-library.title").Classes("capture-breadcrumb","capture-detail-header-title"));
         if(state.SelectedId is not null)
             header.Add(UI.Row("capture-library.viewer.navigation",
@@ -57,10 +57,13 @@ public sealed partial class CaptureLibraryWidget
         };
         if (gallery.Selection is { IsActive: true } selected)
         {
-            commands.Add(new("select-all", "Select all matches", "capture-library.selection.all", IsDisabled: gallery.Descriptor.Count > 256));
+            var limit = IndexedCollectionSelection.MaximumItems;
+            commands.Add(gallery.Descriptor.Count > limit
+                ? new("select-first", $"Select first {limit} matches", "capture-library.selection.first")
+                : new("select-all", "Select all matches", "capture-library.selection.all", IsDisabled: gallery.Descriptor.Count == 0));
             commands.Add(new("clear-selection", "Clear selection", "capture-library.selection.clear", IsDisabled: selected.Count == 0));
             commands.Add(new("unfavorite", "Remove favorite", "capture-library.batch.unfavorite", IsDisabled: selected.Count == 0));
         }
-        return UI.CommandMenu("More", commands, "capture-library.more", "More capture commands").Busy(busy);
+        return UI.CommandMenu("Menu", commands, "capture-library.more", "Capture commands").Busy(busy) with { UseMenuShortcut = true };
     }
 }

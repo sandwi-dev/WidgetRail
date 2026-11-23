@@ -3,13 +3,16 @@ param(
     [Parameter(Mandatory)][string]$PublishedPayload,
     [Parameter(Mandatory)][string]$CliPath,
     [Parameter(Mandatory)][string]$InstallationRoot,
-    [Parameter(Mandatory)][string]$OutputDirectory
+    [Parameter(Mandatory)][string]$OutputDirectory,
+    [string]$ThemeId='widgetrail.builtin.mono-ink',
+    [ValidateSet('Standard','High')][string]$Contrast='Standard',
+    [ValidateRange(1,2)][double]$TextScale=1
 )
 $ErrorActionPreference='Stop'
 $output=[IO.Path]::GetFullPath($OutputDirectory)
 $exe=Join-Path ([IO.Path]::GetFullPath($CandidateDirectory)) 'OverlayFrontend.WinUI.exe'
 if(!(Test-Path -LiteralPath $exe)){throw "Missing candidate: $exe"}
-& "$PSScriptRoot/Stage.ps1" -PublishedPayload $PublishedPayload -CliPath $CliPath -InstallationRoot $InstallationRoot -OutputDirectory $output -VoicePin
+& "$PSScriptRoot/Stage.ps1" -PublishedPayload $PublishedPayload -CliPath $CliPath -InstallationRoot $InstallationRoot -OutputDirectory $output -VoicePin -ThemeId $ThemeId -Contrast $Contrast -TextScale $TextScale
 $result=Join-Path $output 'result.json'
 $process=Start-Process -FilePath $exe -ArgumentList @(('"--shell-config='+$output+'/shell.json"'),'--shell-no-controller','--validation-platform-activation',
     ('"--validate-discord-voice-pin='+$result+'"')) -WindowStyle Hidden -PassThru

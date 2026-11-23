@@ -136,9 +136,10 @@ internal static partial class DiscordSharingTests
             await Widget.WaitForStateReadAsync().WaitAsync(TimeSpan.FromSeconds(5));
         }
         internal ViewSnapshot Snapshot() => Widget.Render().CreateSnapshot("sharing.test", 1);
-        internal ViewNode? Find(string id) => Nodes(Snapshot().Root).FirstOrDefault(node => node.Id == id);
+        internal ViewNode? Find(string id) => Nodes(Snapshot().Root).FirstOrDefault(node => node.Id == id)??ConversationRowsHarness.Find(Widget,Snapshot(),id);
         internal async Task Act(string id,string? text=null)
         {
+            if(ConversationRowsHarness.IsRow(id)){await ConversationRowsHarness.ActAsync(Widget,id);return;}
             var snapshot = Snapshot();
             var node = Nodes(snapshot.Root).Single(item => item.Id == id);
             await Widget.OnActionAsync(new(node.ActionId!, id, InputScopeId: snapshot.ActiveInputScopeId) { FocusedElementId = id,CommittedText=text });

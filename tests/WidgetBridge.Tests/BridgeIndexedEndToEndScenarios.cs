@@ -191,6 +191,9 @@ internal static class BridgeIndexedEndToEndScenarios
 internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
 {
     private readonly WidgetIndexedCollection<int, int> source;
+    private bool selectionTriggerConflict;
+    private bool selectionRefreshOnMode,selectionPresentationActive;
+    private TaskCompletionSource? selectionReadGate;
     private readonly WidgetLoadedCollection<string, int> endFollowingSource;
     private bool endFollowingMode;
     private string endFollowingIdentity = "first";
@@ -312,6 +315,7 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
             FindIndex = selectionFixture ? FindProbeIndexAsync : null,
             ReadRange = async (query, start, count, token) =>
             {
+                if(selectionReadGate is {} selectionDelay)await selectionDelay.Task.WaitAsync(token);
                 if(query==813&&Volatile.Read(ref activationReadGate) is {} refreshGate)
                 {Volatile.Write(ref backgroundState,"refresh-reading");Invalidate();await refreshGate.Task;}
                 if (query == 605 && Volatile.Read(ref activationReadGate) is { } continuityGate) await continuityGate.Task.WaitAsync(token);
@@ -375,11 +379,21 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
                 return new(WidgetArtworkContentType.Png, Convert.FromBase64String(png));
             },
         });
+        if(selectionFixture)source.SelectionChanged+=(_,_)=>
+        {
+            var active=source.Selection!.IsActive;
+            if(active==selectionPresentationActive)return;
+            selectionPresentationActive=active;
+            // Selection scenarios use query 0. Exercise the same lease refresh
+            // boundary as Capture Library's mode-dependent preview policy.
+            if(selectionRefreshOnMode)source.UpdateContent(0);
+        };
         if (returnFixture) HandleReturnProbe("return-mode");
     }
     private async ValueTask<int?> FindProbeIndexAsync(int query, WidgetCollectionItemKey key, CancellationToken token)
     {
-        if (query == 803 && Volatile.Read(ref activationReadGate) is { } gate) await gate.Task;
+        if (query == 803 && Volatile.Read(ref activationReadGate) is { } gate)
+        {if(preferredProbeKey is not null){backgroundState="preferred-lookup-waiting";Invalidate();}await gate.Task;}
         if (!int.TryParse(key.Value.AsSpan("item.".Length), out var item) || item < 0) return null;
         return query switch { 811 or 813 when item==7500=>null,811 or 813 when item<10000=>item>7500?item-1:item,814=>null,
             801 when item == 10000 => 0, 801 when item < 10000 => item+1,
@@ -394,19 +408,25 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
         606 => Enumerable.Range(0, 100).Where(item => item != 75).ToArray(),
         _ => Enumerable.Range(0, 100).ToArray(),
     };
-    private WidgetView RenderParent() => new(UI.Stack("root", UI.Text(Volatile.Read(ref status), "status"),
+    private WidgetView RenderParent()
+    {
+        var root=UI.Stack("root", UI.Text(Volatile.Read(ref status), "status"),
         UI.Text($"Calls: {Interlocked.Read(ref calls)}", "calls"), UI.Text(endFollowingMode ? $"{Volatile.Read(ref viewportRecoveries)}:{Volatile.Read(ref viewportRecoveryCommits)}:{Volatile.Read(ref viewportRecoveryFinished)}" : Interlocked.Read(ref previewReads).ToString(),"preview.reads"), UI.Text(Volatile.Read(ref backgroundState), "background-state"),
         UI.Row("toolbar", UI.Button("Parent", "parent", "parent").FocusDown("items"), UI.Button("Refresh content", "content", "content"), UI.Button("Toggle grid", "grid", "grid"), UI.Button("Toggle groups", "groups", "groups"), UI.Button("Surfaces", "surfaces", "surfaces"), UI.Button("Loaded source", "loaded", "loaded")),
         Collection())
         .Shortcut(ControllerButton.LeftBumper, actionId: "focus-exact")
         .Shortcut(ControllerButton.RightBumper, actionId: "focus-default")
-        .Shortcut(ControllerButton.LeftTrigger, actionId: "focus-wrong")
         .Shortcut(ControllerButton.RightTrigger, actionId: "focus-stale")
         .Shortcut(ControllerButton.Menu, actionId: "focus-delayed")
         .Shortcut(ControllerButton.RightStick, actionId: "focus-disabled")
         .Shortcut(ControllerButton.LeftStick, actionId: "group-label")
         .Shortcut(ControllerButton.X, actionId: "group-partition")
-        .Shortcut(ControllerButton.B, actionId: "focus-clear"), deferredMode?"parent":"items") { FocusGroupEntryRequest = entry, ScrollRevealRequest = reveal };
+        .Shortcut(ControllerButton.B, actionId: "focus-clear");
+        // The navigation fixture deliberately owns LT. The selection fixture
+        // leaves it available to the shared collection modifier instead.
+        if(source.Selection is null||selectionTriggerConflict)root=root.Shortcut(ControllerButton.LeftTrigger,actionId:"focus-wrong");
+        return new(root,deferredMode?"parent":"items") { FocusGroupEntryRequest=entry,ScrollRevealRequest=reveal };
+    }
     private WidgetView RenderInlinePreview() => new(UI.Stack("root",
         UI.Text(inlineChoice, "inline.choice"), UI.Text(inlineApplied.ToString(), "inline.applied"),
         UI.Text(inlineVolume.ToString(System.Globalization.CultureInfo.InvariantCulture), "inline.volume.status"),
@@ -441,6 +461,7 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
     }
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
+        if(HandlePreferredProbe(action.ActionId))return ValueTask.CompletedTask;
         if(action.ActionId.StartsWith("refresh-probe-",StringComparison.Ordinal))
         {
             refreshProbeMode=true;entryRebaseMode=endFollowingMode=deferredActivationMode=deferredMode=modalMode=surfaces=focusPreviews=grouped=false;grid=true;modalItem=null;entry=null;reveal=null;
@@ -469,6 +490,7 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
         }
         if (action.ActionId.StartsWith("locator-", StringComparison.Ordinal))
         {
+            selectionRefreshOnMode=false;
             if (action.ActionId == "locator-release") activationReadGate?.TrySetResult();
             else
             {
@@ -481,11 +503,19 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
         }
         if (action.ActionId.StartsWith("selection-", StringComparison.Ordinal))
         {
-            surfaces = focusPreviews = modalMode = deferredMode = false; modalItem = null; entry = null;
-            if (action.ActionId == "selection-end") source.EndSelection();
+            selectionRefreshOnMode=true;
+            surfaces = focusPreviews = modalMode = deferredMode = false; modalItem = null;
+            if(action.ActionId is not ("selection-delay" or "selection-release"))entry=null;
+            if(action.ActionId=="selection-trigger-conflict")selectionTriggerConflict=true;
+            else if(action.ActionId=="selection-delay")
+            {selectionReadGate=new(TaskCreationOptions.RunContinuationsAsynchronously);source.UpdateContent(0);}
+            else if(action.ActionId=="selection-release")
+            {selectionReadGate?.TrySetResult();selectionReadGate=null;}
+            else if (action.ActionId == "selection-end") source.EndSelection();
             else if (action.ActionId == "selection-clear") source.ClearSelection();
             else
             {
+                selectionTriggerConflict=false;
                 grid = action.ActionId is "selection-grid" or "selection-grouped";
                 grouped = action.ActionId == "selection-grouped"; repartitioned = false;
                 source.PublishQuery(0, action.ActionId == "selection-large" ? 100_000 : 100);
@@ -606,6 +636,7 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
             entry = returnNavigation.Value.CollectionReturnFocus!.Resolve("items", source.Descriptor);
         }
         if (action.ActionId == "focus-default") entry = source.Enter("items", CreateFocusRequest().Id);
+        if (action.ActionId == "focus-exact-85") entry = source.Enter("items", CreateFocusRequest().Id, source.FocusTarget("items", new("item.85"), 85));
         if (action.ActionId == "focus-wrong") entry = source.Enter("items", CreateFocusRequest().Id, source.FocusTarget("items", new("wrong-key"), 80));
         if (action.ActionId == "focus-stale")
         {
@@ -708,6 +739,7 @@ internal sealed partial class IndexedOwnedBridgeProbeWidget : Widget
     }
     private WidgetElement Collection()
     {
+        if(preferredProbeKey is {} preferred)return UI.CollectionList("items",source,64,"Preferred items").PreferredEntry(new(preferred));
         if(entryRebaseMode)return UI.CollectionList("items",entryRebaseSource,64,"Items",entryRebaseHorizontal?ScrollAxis.Horizontal:ScrollAxis.Vertical);
         if(refreshProbeMode)return UI.CollectionGrid("items",source,160,80,"Refresh items",4);
         if (endFollowingMode) return UI.FocusPresentationSurface(UI.CollectionList("items", deferredActivationMode?deferredActivationSource:endFollowingSource, 64, "Items"),

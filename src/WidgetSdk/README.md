@@ -982,7 +982,11 @@ a promise that the HTML viewport equals its layout size. The host follows slot
 movement, scrolling, clipping and opacity. Pinning still transfers the retained
 renderer into a separate native window. No additional SDK option is required.
 
-Offer entry with the reserved `host.embeddedMediaSession.enterFullscreen` action; the
+Use the reserved `host.embeddedMediaSession.pin` action to pin an admitted compact-capable
+session from its viewport or while its player is parked. Activating it again opens
+adjustment for that pin.
+
+Offer fullscreen entry with the reserved `host.embeddedMediaSession.enterFullscreen` action; the
 host leaves the mode on B without routing it to the widget, and View remains
 host-owned. Webpages can neither request nor exit fullscreen. A widget holds no
 fullscreen state and needs no exit shortcut, so it cannot leave the user inside
@@ -1107,6 +1111,13 @@ support Menu, X and Y and require protocol v51. A focused action surface takes
 precedence over a container menu for the same button. Disabled/busy owners and
 other input scopes cannot capture the trigger. These declarations use the
 existing full-widget context menu and action-validation path.
+
+With protocol v137, a `UI.CommandMenu` can set `UseMenuShortcut = true` to open
+from anywhere in its active input scope. The native button shows the current
+controller's Menu/Options glyph before its label. Set `NativeContextMenuOnly = true`
+on an action surface to keep right-click and keyboard context actions available
+while reserving the controller shortcut for the toolbar. Capture Library uses
+this combination to keep Favorite on individual cards.
 
 The host guide automatically advertises **Options** with the actual Menu, X or Y
 binding when the resolved menu has an available action. These hints take priority

@@ -25,33 +25,24 @@ public sealed partial class MainWindow
             return;
         }
         ShellRoot.Loaded += OverlayMotionLoaded;
-        ShellRoot.SizeChanged += OverlayMotionSizeChanged;
         ShellRoot.PreviewKeyDown += OverlayExitKey;
         ShellRoot.PreviewKeyUp += OverlayExitKey;
-        UpdateOverlayMotionAnchor();
     }
 
     private void OverlayMotionLoaded(object sender, RoutedEventArgs args) => QueueOverlayOpen();
     private void OverlayExitKey(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs args)
     { if (!overlayRequestedVisible) args.Handled = true; }
-    private void OverlayMotionSizeChanged(object sender, SizeChangedEventArgs args) => UpdateOverlayMotionAnchor();
-    private void UpdateOverlayMotionAnchor()
-    {
-        if (RootFrame.Content is OverlayShellPage page)
-            overlayMotion?.SetAnchor(ShellRoot.ActualWidth, ShellRoot.ActualHeight, page.Appearance.OverlayPosition);
-    }
 
     private void QueueOverlayOpen()
     {
         if (!overlayOpenPending || !ShellRoot.IsLoaded || cleanupStarted) return;
         var version = overlayVisibilityVersion;
-        // Loaded/native layout owns readiness. No worker wait or managed frame
-        // loop; even a cold widget can show its existing loading presentation.
-        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        // A loaded shell can animate its retained pixels while the widget resumes.
+        // Low priority makes entrance wait behind the entire resume/layout backlog.
+        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Normal, () =>
         {
             if (!overlayOpenPending || !overlayRequestedVisible || version != overlayVisibilityVersion || cleanupStarted) return;
             overlayOpenPending = false;
-            UpdateOverlayMotionAnchor();
             _ = PlayOverlayVisibilityAsync(version, opening: true);
         });
     }
@@ -65,6 +56,11 @@ public sealed partial class MainWindow
         {
             if (overlayMotion is not null && RootFrame.Content is OverlayShellPage page)
             {
+                if (opening)
+                {
+                    await page.EnsureInitialAppearanceAsync();
+                    if (cleanupStarted || version != overlayVisibilityVersion || !overlayRequestedVisible) return;
+                }
                 overlayMotionRecipe = WidgetMotionPolicy.OverlayVisibility(page.Appearance, page.SystemAnimationsEnabled, opening);
                 var outcome = await overlayMotion.Play(opening, page.Appearance, page.SystemAnimationsEnabled);
                 if (outcome == WidgetMotionOutcome.Superseded) return;
@@ -85,7 +81,6 @@ public sealed partial class MainWindow
 
     private void RefreshOverlayMotionPolicy()
     {
-        UpdateOverlayMotionAnchor();
         if (taskHandoff is { MotionStarted: false }) return;
         // In particular, Reduced/System-off settles an in-flight exit and
         // executes its physical hide. Old completions cannot win after reopen.
@@ -119,6 +114,7 @@ public sealed partial class MainWindow
         if (restoreForeground) ReturnForegroundBeforeHide();
         else foregroundReturnTarget = null;
         AppWindow.Hide();
+        EndForegroundBackground();
         (RootFrame.Content as OverlayShellPage)?.CompleteExitPresentation();
     }
 
@@ -126,7 +122,6 @@ public sealed partial class MainWindow
     {
         ++overlayVisibilityVersion;
         ShellRoot.Loaded -= OverlayMotionLoaded;
-        ShellRoot.SizeChanged -= OverlayMotionSizeChanged;
         ShellRoot.PreviewKeyDown -= OverlayExitKey;
         ShellRoot.PreviewKeyUp -= OverlayExitKey;
         overlayMotion?.Dispose(); overlayMotion = null;

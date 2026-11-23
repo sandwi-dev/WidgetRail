@@ -42,15 +42,15 @@ internal static class WidgetMotionPolicy
         width > 0 && height > 0 && width <= float.MaxValue && height <= float.MaxValue;
 
     // Whole-overlay entrance is independent of section and widget-switch presets.
-    // Preserve the original brief bottom-anchored zoom and directional easing.
     internal static WidgetMotionRecipe OverlayVisibility(AppearanceSettings appearance, bool systemAnimationsEnabled,
-        bool opening, bool backdrop = false)
+        bool opening)
     {
         var options = WidgetMotionOptions.From(appearance, systemAnimationsEnabled);
-        var hidden = WidgetMotionPose.Identity with { Opacity = 0,
-            Scale = backdrop || options.Reduced ? Vector3.One : new(.88f, .88f, 1) };
+        var animate = appearance.AnimateOverlayVisibility && !options.Reduced;
+        var hidden = WidgetMotionPose.Identity with { Opacity = 0 };
         return new(opening ? hidden : WidgetMotionPose.Identity, opening ? WidgetMotionPose.Identity : hidden,
-            options.Duration(opening ? 140 : 100), opening ? WidgetMotionEasing.EaseOut : WidgetMotionEasing.EaseIn);
+            animate ? options.Duration(opening ? 140 : 100) : TimeSpan.Zero,
+            opening ? WidgetMotionEasing.EaseOut : WidgetMotionEasing.EaseIn);
     }
 
     // The shell resizes from the previously presented extent, anchored above the
@@ -73,14 +73,20 @@ internal static class WidgetMotionPolicy
         return new(new(shown with { Opacity = 0 }, shown, duration), new(shown, shown, duration));
     }
 
-    internal static WidgetSectionMotion GuideCrossfade(AppearanceSettings appearance, bool systemAnimationsEnabled, bool highContrast)
+    internal static WidgetSectionMotion GuideFadeThrough(AppearanceSettings appearance, bool systemAnimationsEnabled, bool highContrast)
     {
         var options = WidgetMotionOptions.From(appearance, systemAnimationsEnabled);
-        var duration = options.Duration(options.Section == WidgetSectionAnimation.None || highContrast ||
-            appearance.Transparency == TransparencyPreference.Reduced ? 0 : 140);
+        var animate = options.Section != WidgetSectionAnimation.None && !highContrast &&
+            appearance.Transparency != TransparencyPreference.Reduced;
+        var dismiss = options.Duration(animate ? 80 : 0);
+        var reveal = options.Duration(animate ? 160 : 0);
         var shown = WidgetMotionPose.Identity;
         var hidden = shown with { Opacity = 0 };
-        return new(new(hidden, shown, duration), new(shown, hidden, duration));
+        // Text cannot crossfade legibly at the same coordinates. Keep the
+        // old labels until their fade finishes. Give the new labels enough
+        // time to appear gradually even when a widget is laying out a new view.
+        return new(new(hidden, shown, reveal, WidgetMotionEasing.EaseOut, Delay: dismiss),
+            new(shown, hidden, dismiss, WidgetMotionEasing.EaseIn));
     }
 
     internal static WidgetSectionMotion Page(WidgetMotionOptions options, Vector2 viewport, int direction)

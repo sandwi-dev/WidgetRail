@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using WidgetRail.WidgetProtocol;
 using WidgetRail.Samples.Shared;
 using System.Text.Json;
 
@@ -25,6 +26,7 @@ public sealed partial class MusicService : IMusicService
     private CancellationTokenSource? _selection;
     private long _generation;
     private long _playerGeneration;
+    private long _queueRevision;
     private long? _queueResumeGeneration;
     public MusicState State { get { lock (_gate) return _state; } }
     public event Action? Changed;
@@ -175,6 +177,7 @@ public sealed partial class MusicService : IMusicService
             _originalQueue = tracks.Select(track => track with { }).ToArray();
             var queue = _state.Shuffle ? MusicQueue.Shuffled(_originalQueue, index, Random.Shared) : _originalQueue;
             _state = _state with { Queue = queue, Index = index };
+            ++_queueRevision;
         }
         await SelectAsync(token).ConfigureAwait(false);
     }
@@ -192,6 +195,7 @@ public sealed partial class MusicService : IMusicService
             resume = removedCurrent && (_state.Player.Playing || _state.Player.Buffering) && removal.State.Current is not null;
             _originalQueue = removal.OriginalQueue;
             _state = removal.State;
+            ++_queueRevision;
             if (removedCurrent)
             {
                 _selection?.Cancel();
@@ -238,6 +242,7 @@ public sealed partial class MusicService : IMusicService
             addition = MusicQueue.AddNext(_state, _originalQueue, tracks);
             _originalQueue = addition.OriginalQueue;
             _state = addition.State;
+            ++_queueRevision;
             nextId = _state.Queue[startPlayback ? 0 : _state.Index + 1].Id;
         }
         if (startPlayback) await SelectAsync(token).ConfigureAwait(false);
@@ -284,7 +289,7 @@ public sealed partial class MusicService : IMusicService
         finally { _initialization.Release(); }
     }
 
-    private async Task SelectAsync(CancellationToken token, long? expectedGeneration = null, bool refresh = false)
+    private async Task<bool> SelectAsync(CancellationToken token, long? expectedGeneration = null, bool refresh = false, TrayActionOffer? step = null)
     {
         MusicItem current;
         long generation;
@@ -292,8 +297,14 @@ public sealed partial class MusicService : IMusicService
         CancellationToken selectionToken;
         lock (_gate)
         {
-            if (expectedGeneration is { } expected && expected != _generation) return;
-            if (_state.Current is not { } item) return;
+            if (expectedGeneration is { } expected && expected != _generation) return false;
+            if (step is not null)
+            {
+                token.ThrowIfCancellationRequested();
+                if (OfferLocked(step.Id) != step) return false;
+                _state = _state with { Index = Destination(step.Id) };
+            }
+            if (_state.Current is not { } item) return false;
             if (expectedGeneration is null)
             {
                 _consecutiveSkips = 0;
@@ -323,7 +334,7 @@ public sealed partial class MusicService : IMusicService
             selectionToken.ThrowIfCancellationRequested();
             lock (_gate)
             {
-                if (generation != _generation) return;
+                if (generation != _generation) return false;
                 _playerGeneration = generation;
             }
             // Generation travels to the player; stale audio events cannot replace the selected song.
@@ -336,10 +347,11 @@ public sealed partial class MusicService : IMusicService
             if (next.Index + 1 < next.Queue.Count)
                 _ = PrefetchAsync(next.Queue[next.Index + 1].Id, selectionToken);
         }
-        catch (OperationCanceledException) when (selection.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (selection.IsCancellationRequested) { return false; }
         catch (MusicStreamUnavailableException)
         {
             await RecoverPlaybackAsync(generation, "unsupported").ConfigureAwait(false);
+            return false;
         }
         catch
         {
@@ -353,6 +365,7 @@ public sealed partial class MusicService : IMusicService
             Changed?.Invoke();
             throw;
         }
+        return true;
     }
 
     private async Task PrefetchAsync(string id, CancellationToken token)
@@ -506,6 +519,7 @@ public sealed partial class MusicService : IMusicService
                     var enabled = !_state.Shuffle;
                     var queue = enabled ? MusicQueue.Shuffled(_state.Queue, _state.Index, Random.Shared) : _originalQueue;
                     var current = _state.Current;
+                    ++_queueRevision;
                     _state = _state with { Shuffle = enabled, Queue = queue,
                         Index = enabled ? _state.Index : Array.FindIndex(queue, item => ReferenceEquals(item, current)) };
                 }

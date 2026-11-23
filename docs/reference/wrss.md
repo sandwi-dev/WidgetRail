@@ -134,6 +134,13 @@ card around preview content. Internal sections, spacing and typography remain
 widget-owned. The existing preview width, height, content-fitting and input
 options are unchanged.
 
+## Dialog size
+
+For a centered dialog containing a short prompt or status, use `height: auto`
+with an optional `max-height`. The native panel measures its current content
+and respects the widget viewport. Long indexed pickers can retain an explicit
+height to reserve space for their list.
+
 ## Panel materials
 
 Stack, Row, Grid, Scroll and focus-presentation containers, including modal
@@ -144,6 +151,12 @@ sharp. Containers retain solid/alpha backgrounds unless they explicitly choose
 `acrylic`. Keep inner rows, buttons and artwork on ordinary fills. The theme tokens
 `--acrylic-tint-opacity` and `--acrylic-luminosity-opacity` provide consistent defaults
 with stronger tinting in Mineral Light.
+
+For a widget modal using acrylic, WinUI draws its shadow outside the panel and
+reduces the painted backdrop veil to 40% of its authored strength. This lets
+the material sample color from the underlying widget. The veil still blocks
+input across the full modal layer. A standard or accessibility fallback fill
+uses the full authored veil.
 
 
 ## Scrollbars
@@ -173,6 +186,13 @@ It cannot be focused, clicked or dragged. Host accessibility policy still
 applies to its colors and transparency.
 
 ## Selectors and cascade
+
+Within a virtualized collection row, a nonfocusable decoration can use
+`interaction-state-source: indexed-item` to apply its `:focused` and
+`:pressed` rules with the native item container. The default is `self`.
+For example, a controller hint can reserve its width with `opacity: 0` and
+use `opacity: 1` on focus. Moving focus then keeps the game title in place.
+The widget still declares the activation separately.
 
 A selector is a single semantic compound: optional role, `#stable-id`, zero or more `.style-classes`, and the pseudo-states `:focused`, `:pressed`, `:selected`, `:disabled`, or `:busy`. Comma-separated selector lists are supported. Descendant/sibling combinators and attribute selectors are not. Disabled and Busy remain controller-focusable; these selectors style unavailable or pending activation without changing navigation membership.
 
@@ -268,6 +288,10 @@ The canonical runtime list is `WrssPropertyCatalog.AllowedProperties`. It curren
   available height. Use a star row and column for media that must fit that viewport;
   an auto track still measures its content intrinsically. An explicit height takes
   precedence. Grids without a ratio retain ordinary native track sizing.
+  `image-fallback: label` paints an image's accessibility label inside its slot
+  when its source is unavailable and it has no retained pixels. It defaults to
+  `none`. A successful replacement removes the label. Loading and cancellation
+  do not indicate a missing image.
 - Scroll indicators: `scrollbar-width`, `scrollbar-track-color`, and
   `scrollbar-thumb-color`.
 - Effects: `scale`, `surface-shading`, `background-blur`, shadow color/blur/offset,
@@ -306,6 +330,95 @@ general CSS transition engine: do not assume that changing opacity, colors,
 layout, borders, shadows or blur starts a WRSS animation. Focus decorations,
 section changes, modal motion and surface resizing have separate host owners.
 Reduced motion settles supported transitions immediately.
+
+Poster tiles and composed action surfaces support two focus lighting effects
+in their focused style. `focus-sheen: reflection` carries a broad, cool light
+from the upper-left to the lower-right, with enough spread to illuminate most
+of the face at once. `focus-sheen: sweep` draws a narrow, warm highlight.
+Use `none` to disable either. Leaving focus cancels the delay and the animation.
+The host respects reduced motion and high contrast. Settings → Focus animation
+controls the focus border independently.
+
+| Focused WRSS property | Range | Reflection default | Sweep default |
+| --- | --- | --- | --- |
+| `focus-sheen-duration` | 0–5 seconds | 1.9 s | 570 ms |
+| `focus-sheen-delay` | 0–1.5 seconds | 180 ms | 0 ms |
+| `focus-sheen-opacity` | 0–1 peak opacity | 0.30 | 0.173 |
+| `focus-sheen-repeat-delay` | 0 disables repeating. Positive values use a 1–60 second rest. | 0 | 0 |
+
+Durations and delays follow the user's animation speed. A zero duration or
+opacity suppresses the effect.
+
+The repeat delay measures real time from the end of one pass to the start of
+the next. The entry delay applies to the first pass. During the rest the host
+releases the highlight and owns a single cancellable timer on the focused
+face. Playnite uses a six-second rest, 0.30 peak opacity on poster art and
+0.24 on cards with text.
+
+#### Settled focus outlines
+
+Apply the following properties to a focused control with an authored
+`outline-color` and a positive `outline-width`. The host completes the
+focus transition chosen in Settings before animating a second stroke along
+the same rounded outline. The original stroke stays visible throughout.
+
+| Property | Values | Default |
+| --- | --- | --- |
+| `focus-outline-effect` | `none`, `edge-glint`, `breathe` | `none` |
+| `focus-outline-highlight` | Color of the moving crest or breathing stroke | Theme token `--focus-highlight` |
+| `focus-outline-duration` | 0–5 seconds per pass, scaled by animation speed | 2.2 s |
+| `focus-outline-intensity` | 0–1 peak highlight opacity | 0.5 |
+| `focus-outline-repeat-delay` | 0 plays once, positive values up to 60 s set the rest between passes | 0 |
+
+Edge glint moves a broader crest with a shaded edge across the stroke. Its
+shading derives from the authored outline color. Breathe raises and lowers
+the stroke highlight evenly. Both pick up the theme's `:root` token
+`--focus-highlight` automatically. An explicit control style overrides the token.
+An omitted token or a token value of `auto` uses white, or dark gray for near-white
+outlines. Highlight opacity multiplies the chosen color's alpha. Reduced motion, high contrast and
+zero duration or intensity suppress the effect. The compositor runs the pass
+and rest. Focus loss, unloading and hiding the presentation retire the
+highlight without a frame callback or focus polling.
+
+An author can set `foreground-chrome: auto-hide` on a navigation row inside a
+foreground-revealing background surface. It fades with the surface while
+reserving its normal layout slot. Pointer hover or focus on the row or a
+descendant reveals it. The default is `always`. In-app acrylic panels within
+that surface use their translucent tint while the external window is exposed
+and resume sampling artwork when it returns. High contrast and reduced
+transparency continue to use the ordinary accessibility policy.
+
+Background surfaces can customize the blend between decoded images and a
+separate one-shot zoom. Both run on the artwork layers, underneath the tint
+and the widget content. Playnite Home uses the following settings.
+
+```css
+.home-wallpaper {
+  artwork-transition: directional-fade;
+  artwork-transition-duration: 300ms;
+  artwork-transition-travel-x: 0.5%;
+  artwork-transition-travel-y: 0.25%;
+  artwork-motion: pan-zoom;
+  artwork-motion-scale-from: 1.03;
+  artwork-motion-scale-to: 1.01;
+  artwork-motion-duration: 9s;
+  artwork-motion-origin: 75% 50%;
+}
+```
+
+| Property | Values and behavior |
+| --- | --- |
+| `artwork-transition` | `none`, `fade` (default), or `directional-fade`. Direction comes from the navigation that focused the source. Plain focus changes blend in place. |
+| `artwork-transition-duration` | 0–1000 ms. Default 400 ms. |
+| `artwork-transition-travel-x`, `artwork-transition-travel-y` | 0–5% of the corresponding surface dimension. Defaults are 0.5% and 0.25%. |
+| `artwork-motion` | `none` (default) or `pan-zoom`. Each new artwork begins a single zoom. An off-center origin also produces lateral drift. |
+| `artwork-motion-scale-from`, `artwork-motion-scale-to` | 1–1.25. Defaults are 1.03 and 1.01. Reverse the values for a push-in. |
+| `artwork-motion-duration` | 0–30 s. Default 9 s. |
+| `artwork-motion-origin` | Horizontal and vertical percentages, each 0–100%. Default 75% 50%. |
+
+Motion speed applies to both effects. Reduced motion, high contrast and
+reduced transparency settle directly on the image. Existing background
+surfaces inherit the plain fade with stationary artwork.
 
 For buttons and action surfaces, `scale` with linear, ease-out, ease-in-out or spring
 easing uses one compositor transform for the whole control, including text and

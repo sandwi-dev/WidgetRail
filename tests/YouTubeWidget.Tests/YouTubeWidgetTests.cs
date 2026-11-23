@@ -180,13 +180,13 @@ public sealed partial class YouTubeWidgetTests
         var expectedQuickActions = new[]
         {
             new WidgetQuickAction(ControllerButton.X,
-                YouTubeVideoWidget.ToggleActionId, "Play or pause"),
+                YouTubeVideoWidget.ToggleActionId, "Play or pause") { TrayOffer = new("play-pause", VideoId + ".play") { EmbeddedSessionId = YouTubeVideoWidget.SessionId } },
             new WidgetQuickAction(ControllerButton.LeftTrigger,
                 YouTubeVideoWidget.SeekBackwardActionId, "Seek backward 10 seconds",
-                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
+                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld) { TrayOffer = new("seek-back", VideoId) { EmbeddedSessionId = YouTubeVideoWidget.SessionId } },
             new WidgetQuickAction(ControllerButton.RightTrigger,
                 YouTubeVideoWidget.SeekForwardActionId, "Seek forward 10 seconds",
-                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
+                RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld) { TrayOffer = new("seek-forward", VideoId) { EmbeddedSessionId = YouTubeVideoWidget.SessionId } },
         };
         Assert.AreEqual("youtube.playback.toggle", ready.InitialFocusId);
         CollectionAssert.AreEqual(expectedQuickActions, ready.QuickActions.ToArray());
@@ -393,7 +393,9 @@ public sealed partial class YouTubeWidgetTests
         var widget = await CreateConfiguredLinkWidgetAsync();
         var empty = widget.RenderSnapshot("youtube-test", 1);
         var emptyLink = Find(empty.Root, "youtube.link");
-        Assert.AreEqual("Enter youtube.com or youtu.be link here", emptyLink.Text);
+        Assert.AreEqual("Paste a YouTube link", emptyLink.Text);
+        Assert.IsNull(empty.EmbeddedMediaSession);
+        Assert.IsNull(TryFind(empty.Root, "youtube.control-deck"));
         Assert.AreEqual(string.Empty, emptyLink.TextEntryValue);
         Assert.Contains("youtube-link", emptyLink.StyleClasses);
         Assert.Contains("is-empty", emptyLink.StyleClasses);
@@ -417,13 +419,14 @@ public sealed partial class YouTubeWidgetTests
         Assert.IsNotNull(Find(ready.Root, "youtube.status").Text);
         var header = Find(ready.Root, "youtube.section.header");
         CollectionAssert.AreEqual(
-            new[] { "youtube.sections.compact", "youtube.section.settings.hint" },
+            new[] { "youtube.sections.compact", "youtube.setup.open" },
             header.Children.Select(child => child.Id).ToArray());
         var compactNavigation = Find(ready.Root, "youtube.sections.compact");
         Assert.AreEqual(ResponsiveVisibility.CompactOnly, compactNavigation.VisibleWhen);
         Assert.AreEqual("youtube.section.previous.hint", compactNavigation.Children[0].Id);
         Assert.AreEqual("youtube.section.next.hint", compactNavigation.Children[^1].Id);
         Assert.IsFalse(Find(ready.Root, "youtube.section.settings.hint").IsFocusable);
+        Assert.AreEqual("youtube.setup.open", Find(ready.Root, "youtube.setup.open").ActionId);
         Assert.AreEqual("youtube.sections.body", ready.Root.Children[1].Id);
         Assert.AreEqual(1, Descendants(ready.Root).Count(node =>
             node.Id == "youtube.player.page"));
@@ -627,6 +630,7 @@ public sealed partial class YouTubeWidgetTests
         var home = widget.RenderSnapshot("youtube-test", 1);
         Assert.IsNull(home.EmbeddedMediaSession);
         Assert.IsNotNull(TryFind(home.Root, "youtube.search.page"));
+        Assert.IsNull(TryFind(home.Root, "youtube.video.pin"));
 
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.link.open", "youtube.link.open"));
@@ -639,13 +643,10 @@ public sealed partial class YouTubeWidgetTests
         await widget.OnActionAsync(new WidgetActionEvent(
             "youtube.search.open-route", "youtube.root"));
         var hidden = widget.RenderSnapshot("youtube-test", 3);
-        var requiredProtocolVersion = Math.Max(
-            Math.Max(ProtocolConstants.WidgetTransitionVersion, ProtocolConstants.DesktopAcrylicVersion),
-            Math.Max(
-                ProtocolConstants.EmbeddedMediaSessionVersion,
-                ProtocolConstants.RememberedChildFocusGroupVersion));
-        Assert.AreEqual(requiredProtocolVersion,
-            hidden.ProtocolVersion);
+        Assert.AreEqual("host.embeddedMediaSession.pin", Find(hidden.Root, "youtube.video.pin").ActionId);
+        Assert.IsTrue(hidden.EmbeddedMediaSession!.SupportedPresentations.Contains(MediaPresentationKind.CompactPinned));
+        Assert.AreEqual("Return to the YouTube player to use this control.", hidden.UnavailableTrayActions!["play-pause"]);
+        Assert.AreEqual(ProtocolConstants.TrayActionOfferVersion, hidden.ProtocolVersion);
         Assert.AreEqual("youtube.search.query",
             Find(hidden.Root, "youtube.search.controls").InitialChildFocusId);
         Assert.IsNotNull(hidden.EmbeddedMediaSession);
@@ -660,6 +661,8 @@ public sealed partial class YouTubeWidgetTests
         Assert.IsNotNull(returned.EmbeddedMediaSession);
         Assert.IsNull(returned.EmbeddedMediaSession.PendingCommand);
         Assert.IsNotNull(TryFind(returned.Root, "youtube.viewport"));
+        Assert.AreEqual("host.embeddedMediaSession.pin", Find(returned.Root, "youtube.video.pin").ActionId);
+        Assert.IsFalse(returned.Root.Shortcuts.Any(shortcut => shortcut.Button == ControllerButton.B));
         Assert.AreEqual(hidden.EmbeddedMediaSession.EntryAsset, returned.EmbeddedMediaSession.EntryAsset);
         CollectionAssert.AreEqual(
             hidden.EmbeddedMediaSession.Resources.ToArray(),
@@ -953,6 +956,12 @@ public sealed partial class YouTubeWidgetTests
             inactive.Widget,
             inactive.Widget.RenderSnapshot("youtube-test", 21),
             "Deactivated player");
+        var parked = inactive.Widget.RenderSnapshot("youtube-test", 22);
+        var pause = parked.QuickActions.Single(action => action.TrayOffer?.Id == "play-pause");
+        Assert.IsTrue(pause.TrayOffer!.TrayOnly);
+        Assert.IsTrue((await WidgetTestHost.InvokeTrayActionAsync(inactive.Widget, parked, pause)).Handled);
+        Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Pause,
+            inactive.Widget.RenderSnapshot("youtube-test", 23).EmbeddedMediaSession!.PendingCommand!.Kind);
         await WidgetTestHost.DestroyAsync(inactive.Widget);
 
         var stale = await CreateTransportWidgetAsync(
@@ -1621,7 +1630,7 @@ public sealed partial class YouTubeWidgetTests
         bool expectDeclarationsAbsent = true)
     {
         if (expectDeclarationsAbsent)
-            Assert.IsEmpty(snapshot.QuickActions, $"{state} exposed dashboard QuickActions.");
+            Assert.IsEmpty(snapshot.QuickActions.Where(action => action.OnDashboard), $"{state} exposed dashboard QuickActions.");
         foreach (var button in new[]
                  {
                      ControllerButton.X,

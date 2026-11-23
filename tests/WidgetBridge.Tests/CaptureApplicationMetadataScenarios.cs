@@ -12,6 +12,17 @@ internal static class CaptureApplicationMetadataScenarios
         var info = BridgeJsonContext.Default.GetTypeInfo(typeof(BridgeCaptureFolderResult))
             ?? throw new Exception("Folder completion is missing generated JSON metadata.");
         var id = Guid.NewGuid().ToString("N");
+        foreach (var approved in new[] { false, true })
+        {
+            var decision = new BridgeCaptureDestinationDecision(id, approved);
+            var decisionInfo = BridgeJsonContext.Default.BridgeCaptureDestinationDecision;
+            var wire = System.Text.Json.JsonSerializer.Serialize(decision, decisionInfo);
+            RegistryAssert.Equal(decision, System.Text.Json.JsonSerializer.Deserialize(wire, decisionInfo)!);
+        }
+        var cancelledPicker = new BridgeReplayApprovalChoice(id, null);
+        var pickerInfo = BridgeJsonContext.Default.BridgeReplayApprovalChoice;
+        RegistryAssert.Equal(cancelledPicker, System.Text.Json.JsonSerializer.Deserialize(
+            System.Text.Json.JsonSerializer.Serialize(cancelledPicker, pickerInfo), pickerInfo)!);
         var folder = new HostCaptureFolderRequest(id, new("example.capture", "example.publisher", "instance"),
             Path.Combine(Path.GetTempPath(), "capture-folder-test"));
         var take = new BridgeCaptureTake(null, null) { OpenFolder = folder, FolderWidgetId = "example.capture" };
@@ -127,6 +138,9 @@ internal static class CaptureApplicationMetadataScenarios
                 if (!accepted || ready.Phase != WindowCapturePhase.Ready) throw new Exception("Capture did not complete.");
                 var expected = kind == WindowCaptureKind.Screenshot ? new CaptureApplicationContext("007 First Light", "007FirstLight") : null;
                 if (ready.Attachment!.SourceApplication != expected) throw new Exception("Capture metadata did not match the exact provider target.");
+                if (ready.Attachment.SourceProcess is not { } observation || !observation.IsWellFormed() ||
+                    observation.Instance != CaptureProcessInterval.InstanceId(42,Convert.ToUInt64(sourceTarget.ProcessCreated,16)))
+                    throw new Exception("Source process must follow the captured target even without a task-switcher name.");
                 captures.Discard(owner, ready.Attachment.Id);
             }
         }

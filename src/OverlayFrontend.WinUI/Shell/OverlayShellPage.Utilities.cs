@@ -16,7 +16,11 @@ using WidgetRail.OverlayFrontend.WinUI.Input;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
-internal sealed record HostTaskActivationRequest(TaskWindowTarget Target, long InitiatedAt, long VisibleSince, Func<bool> IsCurrent);
+internal sealed record HostTaskActivationRequest(TaskWindowTarget Target, long InitiatedAt, long VisibleSince, Func<bool> IsCurrent)
+{
+    // Widget activation must redeem the broker-issued effect with its original authority.
+    internal WidgetRail.WidgetPresentationSession.WidgetPresentationHostEffect? WidgetEffect { get; init; }
+}
 
 internal sealed partial class OverlayShellPage
 {
@@ -50,6 +54,7 @@ internal sealed partial class OverlayShellPage
     internal Task<WidgetRail.WidgetPresentationSession.WidgetTaskActivationResult> CompleteHostTaskActivationAsync(HostTaskActivationRequest request, CancellationToken token)
     {
         if (owner is null || !request.IsCurrent()) throw new OperationCanceledException(token);
+        if (request.WidgetEffect is { } effect) return owner.Session.CompleteTaskActivationAsync(effect, token);
         var target = request.Target;
         return owner.Session.ActivateHostTaskWindowAsync(new("host-task", target.Handle, target.ProcessId, target.ProcessCreated, target.ClassName), request.InitiatedAt, token);
     }
@@ -124,6 +129,8 @@ internal sealed partial class OverlayShellPage
         };
         panel.EntryShown += id => { if (kind == ShellUtility.Notifications && long.TryParse(id, out var notification)) browserOwner?.Notifications.MarkShown(notification); };
         panel.Activated += id => _ = ActivateUtilityItemAsync(panel, kind, id);
+        if (kind == ShellUtility.Notifications)
+            panel.RightClicked += id => _ = DismissUtilityItemAsync(panel, kind, id);
         panel.Command += () =>
         {
             if (kind == ShellUtility.Notifications) { browserOwner?.Notifications.Clear(); HideNotificationBanner(); RefreshUtilityNotifications(); }
@@ -218,9 +225,8 @@ internal sealed partial class OverlayShellPage
                 card.ApplyBannerPalette(ShellChromePalette.Resolve(ShellPalette, Appearance));
                 return card;
             }, entry.Interactive, DismissLabel: "Dismiss")).ToArray());
-        panel.SetStatus(inbox.Entries.Count == 0 ? "You're all caught up" : inbox.OverflowCount > 0 ?
-            $"{inbox.OverflowCount} additional notifications. Open the webapp for its full history." : "");
-        panel.SetCommandEnabled(inbox.Entries.Count > 0 || inbox.OverflowCount > 0);
+        panel.SetStatus(inbox.Entries.Count == 0 ? "You're all caught up" : "");
+        panel.SetCommandEnabled(inbox.Entries.Count > 0);
         PublishControllerGuide();
     }
     private async Task RunUtilityTasksAsync(ShellUtilityPanel panel, CancellationToken token)

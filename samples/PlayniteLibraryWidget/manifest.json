@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.playnite-library",
   "publisher": "widgetrail.samples",
   "name": "Playnite Library",
-  "version": "0.4.6",
+  "version": "0.4.94",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -42,6 +42,9 @@
     "playnite.activity": {
       "path": "assets/icons/history.svg"
     },
+    "playnite.game-help": {
+      "path": "assets/icons/game-help.svg"
+    },
     "playnite.game": {
       "path": "assets/icons/gamepad-2.svg"
     },
@@ -69,11 +72,13 @@
   },
   "permissions": [],
   "optionalPermissions": [
+    "system.apps.windows.switch.v1",
     "media.capture-library.read.v1",
     "media.capture-library.manage.v1"
   ],
   "intents": {
     "requests": [
+      {"id": "widgetrail.game.help", "version": 1, "payloadSchema": {"type": "object", "additionalProperties": false, "properties": {"gameName": {"type": "string", "minLength": 1, "maxLength": 256}}, "required": ["gameName"]}},
       {
         "id": "widgetrail.web.open",
         "version": 1,
@@ -130,6 +135,45 @@
       }
     ],
     "handles": [
+      {
+        "id": "widgetrail.captures.associate",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "captures": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 32,
+                    "maxLength": 32
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9223372036854775807
+                  }
+                },
+                "required": [
+                  "id",
+                  "revision"
+                ]
+              }
+            }
+          },
+          "required": [
+            "captures"
+          ]
+        },
+        "hasDynamicAvailability": true
+      },
       {
         "id": "widgetrail.related-item.open",
         "payloadSchema": {

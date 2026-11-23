@@ -19,10 +19,19 @@ file sealed class JournalClient : IPlayniteLibraryBridgeClient, IPlayniteBridgeC
 {
     private readonly string root;
     private readonly PerformanceOptions? performance;
+    private readonly ActivityLibrary? activityLibrary;
     private readonly PlayniteBridgeGame[] games;
     public JournalClient(string root)
     {
         this.root=root;
+        var activityPath = Path.Combine(root, "activity-library.json");
+        if (File.Exists(activityPath))
+        {
+            activityLibrary = JsonSerializer.Deserialize<ActivityLibrary>(File.ReadAllText(activityPath))
+                ?? throw new InvalidDataException("Missing activity library.");
+            games = activityLibrary.Games;
+            return;
+        }
         var path=Path.Combine(root,"performance.json");
         if(File.Exists(path))
         {
@@ -47,16 +56,54 @@ file sealed class JournalClient : IPlayniteLibraryBridgeClient, IPlayniteBridgeC
     public ValueTask<PlayniteBridgeGame?> ResolveGameAsync(string id, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(games.SingleOrDefault(game => game.Id == id));
+        var game = games.SingleOrDefault(game => game.Id == id);
+        if (game is not null && activityLibrary?.TrailerLinks?.TryGetValue(id, out var trailer) == true)
+            game = game with { Links = [new("Official trailer", trailer)] };
+        if (game is not null && activityLibrary?.OfficialWebsites?.TryGetValue(id, out var website) == true)
+            game = game with { Links = [.. game.Links, new("Official Website", website)] };
+        if (game is not null && activityLibrary?.SteamAppIds?.TryGetValue(id, out var appId) == true)
+        {
+            game = game with { SteamAppId = appId };
+            if (activityLibrary.DetailDelayMilliseconds is > 0 and <= 8000)
+                return AfterDelay(game, activityLibrary.DetailDelayMilliseconds, token);
+        }
+        return ValueTask.FromResult(game);
+
+        static async ValueTask<PlayniteBridgeGame?> AfterDelay(PlayniteBridgeGame game, int milliseconds, CancellationToken token)
+        {
+            await Task.Delay(milliseconds, token);
+            return game;
+        }
     }
     public async ValueTask<PlayniteBridgeArtworkResult> ResolveArtworkAsync(string id, PlayniteBridgeArtworkKind kind, CancellationToken token)
     {
+        if (activityLibrary is not null && Guid.TryParseExact(id, "D", out var game))
+        {
+            var file = Path.Combine(root, "artwork", $"{game:D}-{kind}.jpg");
+            if (!File.Exists(file)) return new(null, "not-found", "none");
+            return new(new WidgetEncodedArtwork(WidgetArtworkContentType.Jpeg, await File.ReadAllBytesAsync(file, token)), "fixture", "large");
+        }
         if(performance is null||!performance.Artwork)return new(null,"not-found","none");
         if(!Guid.TryParse(id,out _)||!int.TryParse(id.AsSpan(id.Length-12),out var index)||index<1||index>games.Length)
             throw new InvalidDataException("Unknown fixture artwork.");
         if(performance.DelayMilliseconds>0)await Task.Delay(performance.DelayMilliseconds,token);
         var bytes=await File.ReadAllBytesAsync(Path.Combine(root,"artwork",$"{(kind==PlayniteBridgeArtworkKind.Background?"background":"cover")}-{index%8}.jpg"),token);
         return new(new WidgetEncodedArtwork(WidgetArtworkContentType.Jpeg,bytes),"fixture","large");
+    }
+    public ValueTask<PlayniteRecentActivity> GetRecentActivityAsync(IReadOnlyList<string> gameIds, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(activityLibrary is null ? PlayniteRecentActivity.Empty :
+            new PlayniteRecentActivity(activityLibrary.Sessions.Where(row => gameIds.Contains(row.GameId)).ToArray(),
+                activityLibrary.Unlocks.Where(row => gameIds.Contains(row.GameId)).ToArray()));
+    }
+    public ValueTask<PlayniteActivity> GetActivityAsync(string gameId, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (activityLibrary is null) return ValueTask.FromResult(PlayniteActivity.Unavailable);
+        var sessions = activityLibrary.Sessions.Where(row => row.GameId == gameId)
+            .Select(row => new PlayniteSession(row.StartedAt, row.Seconds, null)).ToArray();
+        return ValueTask.FromResult(new PlayniteActivity(true, sessions.Sum(row => row.Seconds), sessions));
     }
     public async ValueTask<PlayniteAchievementOverview> GetAchievementOverviewAsync(CancellationToken token)
     {
@@ -75,6 +122,14 @@ file sealed class JournalClient : IPlayniteLibraryBridgeClient, IPlayniteBridgeC
     public ValueTask<PlayniteAchievements> GetAchievementsAsync(string gameId, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        if (activityLibrary is not null)
+        {
+            var unlocked = activityLibrary.Unlocks.Where(row => row.GameId == gameId).Select(row =>
+                new PlayniteAchievement(row.Name, row.Description ?? "", true, row.UnlockedAt, row.Percent, null, false)
+                    { Id = row.AchievementId, Icon = row.Icon }).ToArray();
+            return ValueTask.FromResult(new PlayniteAchievements(true, unlocked.Length, unlocked.Length, unlocked)
+                { Provider = PlayniteAchievementProvider.PlayniteAchievements, ConnectionId = "fixture-profile" });
+        }
         if (!File.Exists(Path.Combine(root, "achievement-overview.json"))) return ValueTask.FromResult(PlayniteAchievements.Unavailable);
         return ValueTask.FromResult(new PlayniteAchievements(true, 2, 1,
         [new("A new milestone", "Complete your first chapter", true, DateTimeOffset.UtcNow.AddDays(-1), 24.5, null, false)
@@ -88,6 +143,12 @@ file sealed class JournalClient : IPlayniteLibraryBridgeClient, IPlayniteBridgeC
         if (!games.Any(game => game.Id == id)) throw new InvalidOperationException("Unknown fixture game.");
         await File.AppendAllTextAsync(Path.Combine(root, "launches.txt"), id + Environment.NewLine, token);
         return true;
+    }
+    public ValueTask<PlayniteCaptureIntegration?> GetCaptureIntegrationAsync(CancellationToken token, string? gameId = null)
+    {
+        token.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(activityLibrary?.CaptureProfile is { } profile
+            ? new PlayniteCaptureIntegration(profile, [], [], "fixture-profile") : null);
     }
     // Unused mutations fail loudly so adding workflow coverage cannot silently
     // bypass either the fake's contract or real system-action restrictions.
@@ -109,3 +170,6 @@ file sealed class JournalClient : IPlayniteLibraryBridgeClient, IPlayniteBridgeC
 file sealed record PerformanceOptions(int GameCount=2000,bool Artwork=true,int DelayMilliseconds=15);
 
 file sealed record AchievementOptions(string Availability = "ready");
+file sealed record ActivityLibrary(PlayniteBridgeGame[] Games, PlayniteRecentSession[] Sessions, PlayniteRecentAchievement[] Unlocks,
+    string? CaptureProfile = null, Dictionary<string, uint>? SteamAppIds = null, int DetailDelayMilliseconds = 0,
+    Dictionary<string, string>? TrailerLinks = null, Dictionary<string, string>? OfficialWebsites = null);

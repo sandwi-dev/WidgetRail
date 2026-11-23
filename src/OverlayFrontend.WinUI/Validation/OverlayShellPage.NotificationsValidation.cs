@@ -115,7 +115,8 @@ internal sealed partial class OverlayShellPage
         check(inbox.Entries.Count == 1, "Banner expiry leaves the notification pending until the user acts");
         await page.EvaluateFixtureAsync("window.n=new Notification('Quiet interval');");
         await WebAppUntil(() => inbox.Entries.Count == 2);
-        check(!bannerWindow.IsVisible, "The quiet interval prevents a new notification from immediately showing another banner");
+        await WebAppUntil(() => bannerWindow.IsVisible);
+        check(bannerWindow.IsVisible, "A new event after expiry can immediately show a banner");
         inbox.Clear();
         SetVisible(true); await SelectAsync("webapp-a", enterWidget: true);
         await WebAppUntil(() => foreground && page.IsBrowsing);

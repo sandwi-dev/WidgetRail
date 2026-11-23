@@ -186,7 +186,7 @@ internal sealed partial class WidgetPackageIconView : ContentControl, IDisposabl
 /// Owns one admitted icon demand. It never reads widget files or constructs URIs.
 /// Select and inline icons share the same native source and fallback lifetime.
 /// </summary>
-internal sealed class WidgetNativePackageIcon : IDisposable
+internal sealed partial class WidgetNativePackageIcon : IDisposable
 {
     private readonly Action<IconElement> publish;
     private readonly Func<XamlRoot?> rasterRoot;

@@ -36,7 +36,10 @@ internal sealed partial class WidgetIndexedCollectionView
     private bool nativeViewportChanging;
     private bool IsViewportScrollPending => nativeViewportChanging || HasPendingViewportScroll?.Invoke(this) == true;
 
-    private bool HasReadingOwner => FocusedIndex() is not null || HasReadingPreview?.Invoke(this) == true;
+    // Parking retains the reader's focus ownership while an old row retires.
+    // It is not a transition to passive end-following: doing that at a page
+    // boundary can pull the viewport toward the tail during continued input.
+    private bool HasReadingOwner => FocusedIndex() is not null || IsFocusParked || HasReadingPreview?.Invoke(this) == true;
     internal void RefreshReaderOwnership()
     {
         if (HasReadingOwner && pendingContinuity?.FollowEnd == true) CancelContinuity();
@@ -273,10 +276,25 @@ internal sealed partial class WidgetIndexedCollectionView
     }
     private void CancelInputContinuity(bool preserveReader = false)
     {
+        lastDirectionalAnchor = null;
+        cancelKeyboardEnd?.Invoke();
         // Leaving the list changes focus ownership, not the need to repair its
         // still-visible reader. Presentation/domain retirement cancels the read.
         if (!preserveReader && heldViewport is { } recovery) recovery.Focus = null;
-        CancelContinuity();
+        if (continuityPanel is not null && pendingContinuity is { } pending)
+        {
+            // Input cancels the old reading/focus intent, but native insertion
+            // anchoring belongs to the layout transaction. Changing its mode
+            // between collection notifications and arrange changes which edge
+            // WinUI uses to interpret the anchor it already captured.
+            pending.Viewport = null; pending.Focus = null; pending.FollowEnd = false;
+            pending.AwaitingFocusLayout = false;
+            pending.ViewportKeyPending = pending.FocusKeyPending = false;
+            pending.ViewportRetention?.Dispose(); pending.ViewportRetention = null;
+            pending.FocusRetention?.Dispose(); pending.FocusRetention = null;
+            QueueContinuity(); // Existing demand/layout completion retires the mode.
+        }
+        else CancelContinuity();
         QueueViewportObservation();
     }
 }

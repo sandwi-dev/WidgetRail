@@ -56,8 +56,11 @@ internal sealed partial class WidgetViewPresenter
         // A native/UIA programmatic focus choice is input ownership too. Do not
         // confuse asynchronous recovery from a removed/disabled control with a
         // deliberate departure from a still-valid control.
+        // While a returned row loads, Windows may have parked focus on host
+        // chrome. Choosing an authored control from that valid owner is still a
+        // departure; do not resurrect the return on immediate hide/recreation.
         if (args.OldFocusedElement is Microsoft.UI.Xaml.Controls.Control { IsLoaded: true, IsEnabled: true } &&
-            FindBinding(args.OldFocusedElement) is not null)
+            (FindBinding(args.OldFocusedElement) is not null || FindBinding(args.NewFocusedElement) is not null))
         {
             TraceFocus("return-focus-departure");
             CancelGroupEntry();
@@ -65,11 +68,11 @@ internal sealed partial class WidgetViewPresenter
         else TraceFocus("return-native-focus-recovery");
     }
 
-    private void CaptureReturnViewport(Dictionary<string, Declaration> plan, bool sameOwner, Binding? focused)
+    private void CaptureReturnViewport(Dictionary<string, Declaration> plan, bool sameOwner, Binding? focused, bool scopeChanged)
     {
         if (!sameOwner) { returnViewports.Clear(); return; }
         if (!presentationActive || presentationOnly || focused?.Element is not WidgetIndexedCollectionView collection) return;
-        if (plan.TryGetValue(focused.Identity.Id, out var next) && next.Identity == focused.Identity &&
+        if (!scopeChanged && plan.TryGetValue(focused.Identity.Id, out var next) && next.Identity == focused.Identity &&
             next.Node.IndexedCollection is { } query && declarations.TryGetValue(focused.Identity.Id, out var previous) &&
             previous.Node.IndexedCollection is { } prior && query.SourceId == prior.SourceId && query.QueryGeneration == prior.QueryGeneration)
             return; // Content refresh retains its native viewport; no per-refresh scan.
@@ -98,4 +101,10 @@ internal sealed partial class WidgetViewPresenter
         LayoutUpdated += MemoryLayoutUpdated;
         QueueMemoryRestoration();
     }
+
+    private bool HasReturnViewport(WidgetElementIdentity identity, IndexedCollectionFocusTarget item) =>
+        returnViewports.TryGetValue(new(identity, item.SourceId, item.QueryGeneration), out var memory) &&
+        memory.Key == item.ItemKey && memory.Index == item.Index &&
+        declarations.TryGetValue(identity.Id, out var declaration) && declaration.Node.CollectionLayout?.Kind == memory.Layout &&
+        declaration.Node.ScrollAxis == memory.Axis;
 }

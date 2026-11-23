@@ -1144,6 +1144,7 @@ public sealed partial class PackageRuntimeTests
         internal Func<string, CancellationToken, ValueTask<PlayniteBridgeGame?>>? GameResolveHandler { get; set; }
         internal string? CreatedCategoryResponseName { get; set; }
         internal IReadOnlyList<string>? CategoryMutationResponseCategories { get; set; }
+        internal string? ProviderRevision { get; set; }
         internal bool MalformedSecondPage { get; set; }
         internal string? Artwork { get; set; } = TinyPng;
         internal string? BackgroundArtwork { get; set; } = TinyPng;
@@ -1170,7 +1171,7 @@ public sealed partial class PackageRuntimeTests
             var offset = MalformedSecondPage && query.Offset == 64 ? 63 : query.Offset;
             return ValueTask.FromResult(new PlayniteBridgeGamePage(
                 Games.Count, offset, query.Limit,
-                Games.Skip(query.Offset).Take(query.Limit).ToArray()));
+                Games.Skip(query.Offset).Take(query.Limit).ToArray()) { Revision = ProviderRevision });
         }
 
         public ValueTask<PlayniteBridgeGame?> ResolveGameAsync(

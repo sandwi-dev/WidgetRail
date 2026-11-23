@@ -28,14 +28,24 @@ public sealed partial class CaptureLibraryWidget
         .OpenIntent(WidgetIntentContracts.Files,JsonSerializer.SerializeToElement(new{offerId=new string('0',32)}),WidgetIntentPresentation.OpenWidget)
         .PrepareIntent(CaptureShareKey(state.Preview!)).WithIntentFeedback().Busy(state.Busy).Classes("capture-primary");
 
-    private string SelectionShareKey()
+    private string SelectionKey(string operation)
     {
         var selection = gallery.Selection!;
         var descriptor = gallery.Descriptor;
         var positions = string.Join(",", selection.Indices);
         var digest = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(positions)))[..24];
-        return $"share.selection.{descriptor.QueryGeneration}.{descriptor.ContentRevision}.{selection.Epoch}.{digest}";
+        return $"{operation}.selection.{descriptor.QueryGeneration}.{descriptor.ContentRevision}.{selection.Epoch}.{digest}";
     }
+
+    private string SelectionShareKey() => SelectionKey("share");
+
+    private static System.Text.Json.JsonElement AssociationPayload(IEnumerable<CaptureLibraryItem> captures) =>
+        JsonSerializer.SerializeToElement(new { captures = captures.Select(item => new { id = item.Id, revision = item.Revision }) });
+
+    private ButtonElement AssociateSelectedButton(State state) => UI.Button("Link to game…", "capture-library.batch.link", "capture-library.batch.link")
+        .OpenIntent(WidgetIntentContracts.CaptureAssociation, JsonSerializer.SerializeToElement(new {
+            captures = new[] { new { id = new string('0', 32), revision = 0L } } }), WidgetIntentPresentation.OpenWidget)
+        .PrepareIntent(SelectionKey("associate")).WithIntentFeedback().Busy(state.Busy).Disabled(gallery.Selection!.Count is < 1 or > 64);
 
     private ButtonElement ShareSelectionButton(State state) => UI.IconButton(WidgetGlyph.Share, "capture-library.batch.share", "capture-library.batch.share", "Share selected captures")
         .OpenIntent(WidgetIntentContracts.Files, JsonSerializer.SerializeToElement(new { offerId = new string('0', 32) }), WidgetIntentPresentation.OpenWidget)
@@ -45,6 +55,21 @@ public sealed partial class CaptureLibraryWidget
     public override async ValueTask<JsonElement?> OnPrepareIntentAsync(string key,WidgetIntentRequest request,CancellationToken cancellationToken=default)
     {
         var selected=model.Value;
+        if (request.ContractId == WidgetIntentContracts.AssociateCaptures)
+        {
+            var scope = galleryNavigation.Value.Revision;
+            bool SelectionCurrent() => !model.Value.Busy && !model.Value.Detail && galleryNavigation.Value.Revision == scope &&
+                gallery.Selection is { IsActive: true, Count: > 0 and <= 64 } && key == SelectionKey("associate");
+            if (!SelectionCurrent()) return null;
+            try
+            {
+                var items = await gallery.ReadSelectedAsync(cancellationToken);
+                if (SelectionCurrent() && items.All(item => item.Available)) return AssociationPayload(items);
+            }
+            catch (Exception error) when (error is WidgetIndexedSelectionException or WidgetCapabilityException or TimeoutException) { }
+            if (SelectionCurrent()) UpdateFeedback(value => value with { Message = "The selection changed. Review the captures and try again." });
+            return null;
+        }
         var media = selected.Preview;
         var navigation = galleryNavigation.Value.Revision;
         var preview = PreviewShareReference(key);
@@ -123,6 +148,12 @@ public sealed partial class CaptureLibraryWidget
 
     public override async ValueTask<bool> OnIntentCompletedAsync(WidgetIntentFeedback feedback,CancellationToken cancellationToken=default)
     {
+        if (feedback.Request.ContractId == WidgetIntentContracts.AssociateCaptures)
+        {
+            if (feedback.Status is WidgetIntentStatus.Unavailable or WidgetIntentStatus.Rejected)
+                UpdateFeedback(value => value with { Message = "Game picker unavailable. Check capture permissions." });
+            return false;
+        }
         if(feedback.Request.ContractId!=WidgetIntentContracts.FileShare)return false;
         if(captureShare is not {} pending || !feedback.Request.Payload.TryGetProperty("offerId",out var offer) || offer.GetString()!=pending.Offer.Id)return false;
         await ReleaseCaptureShareAsync(pending,cancellationToken);

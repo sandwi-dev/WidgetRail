@@ -14,8 +14,22 @@ public sealed partial class PlayniteLibraryWidget
     private readonly WidgetResource<PlayniteAchievementOverview> achievementHub;
     private WidgetLoadedCollection<PlayniteAchievementGameQuery, PlayniteAchievementGame>? achievementGames;
     private WidgetLoadedCollection<PlayniteAchievementOverview, PlayniteRecentAchievement>? recentAchievements;
-    private PlayniteAchievementOverview? publishedAchievementOverview;
+    private sealed record PublishedHubGames(PlayniteAchievementOverview Overview, string SourceKey, TextSuggestionCatalog Suggestions);
+    private PublishedHubGames? publishedAchievementOverview;
     private PlayniteAchievementHubState? publishedAchievementFilter;
+
+    private ValueTask<TextSuggestionResult> SuggestHubGames(TextSuggestionQuery query, CancellationToken token)
+    {
+        lock (_gate)
+        {
+            if (LifecycleState != WidgetLifecycleState.Interactive || _navigation.Value.Route != PlayniteLibraryRoute.Achievements ||
+                _model.Value.DetailsItem is not null || _model.Value.CaptureSettings.Open ||
+                publishedAchievementOverview is not { } games || !ReferenceEquals(achievementHub.Snapshot.Value, games.Overview) ||
+                query.SourceKey != games.SourceKey)
+                return ValueTask.FromResult(TextSuggestionResult.NotAvailable);
+            return ValueTask.FromResult(games.Suggestions.Search(query, token));
+        }
+    }
 
     private WidgetResource<PlayniteAchievementOverview> CreateAchievementHubResource() => CreateResource<PlayniteAchievementOverview>(Hub, new()
     {
@@ -51,7 +65,17 @@ public sealed partial class PlayniteLibraryWidget
 
     private void PublishAchievementHub(PlayniteAchievementOverview data, PlayniteAchievementHubState controls)
     {
-        if (ReferenceEquals(data, publishedAchievementOverview) && publishedAchievementFilter is { } previous && controls.Search == previous.Search && controls.Filter == previous.Filter && controls.Sort == previous.Sort) return;
+        if (ReferenceEquals(data, publishedAchievementOverview?.Overview) && publishedAchievementFilter is { } previous && controls.Search == previous.Search && controls.Filter == previous.Filter && controls.Sort == previous.Sort) return;
+        if (!ReferenceEquals(data, publishedAchievementOverview?.Overview))
+        {
+            var titles = data.Games.Where(game => !string.IsNullOrWhiteSpace(game.Name) && game.Name.Length <= 160)
+                .DistinctBy(game => game.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(game => new TextSuggestion(PlayniteLibraryIdentity.Key(game.Id).Value,
+                    game.Name.Length <= TextSuggestionContract.MaximumLabelLength ? game.Name : game.Name[..(TextSuggestionContract.MaximumLabelLength-1)]+"…", game.Name))
+                .Where(item => TextSuggestionContract.IsValid(new([item]), 1, 160))
+                .Take(TextSuggestionCatalog.MaximumEntries);
+            publishedAchievementOverview = new(data, "playnite.hub.games." + Guid.NewGuid().ToString("N"), new(titles, TextSuggestionMatchField.Value));
+        }
         var identity = data.ConnectionId + ":" + controls.Search + ":" + controls.Filter + ":" + controls.Sort;
         IEnumerable<PlayniteAchievementGame> rows = data.Games.Where(game => game.Name.Contains(controls.Search, StringComparison.OrdinalIgnoreCase));
         rows = controls.Filter switch
@@ -101,7 +125,7 @@ public sealed partial class PlayniteLibraryWidget
                     },
                 });
         else recentAchievements.Publish(data.ConnectionId ?? "unavailable", data, data.Recent);
-        publishedAchievementOverview = data; publishedAchievementFilter = controls;
+        publishedAchievementFilter = controls;
     }
 
     private static string RecentKey(PlayniteRecentAchievement row) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
@@ -123,10 +147,9 @@ public sealed partial class PlayniteLibraryWidget
             var target = recent is null ? achievementGames!.FocusTarget(collection, key, index) : recentAchievements!.FocusTarget(collection, key, index);
             _model.Update(state => state with { AchievementHub = state.AchievementHub with { ReturnTarget = target, ReturnCollection = collection, ReturnConnection = owner.ConnectionId } });
             var item = PlayniteLibraryItem.From(details.Item);
-            OpenDetails(item, capturedTarget: new(item, () => _navigation.Value.Route == PlayniteLibraryRoute.Achievements &&
-                achievementHub.Snapshot.Value is { } current && current.ConnectionId == owner.ConnectionId && current.Games.Any(game => game.Id == id)));
-            _model.Update(state => state with { DetailsExtras = state.DetailsExtras with { Tab = PlayniteDetailsTab.Achievements } });
-            LoadDetailsSection(PlayniteDetailsTab.Achievements);
+            OpenDetails(item, capturedTarget: new(item, () => _navigation.Value.RootRoute == PlayniteLibraryRoute.Achievements &&
+                achievementHub.Snapshot.Value is { } current && current.ConnectionId == owner.ConnectionId && current.Games.Any(game => game.Id == id)),
+                initialDetails: new() { Tab = PlayniteDetailsTab.Achievements, Full = details });
         }, WidgetOperationLifetime.Active);
         await operation.Completion.WaitAsync(token).ConfigureAwait(false);
     }

@@ -138,11 +138,11 @@ internal sealed partial class OverlayShellPage
         }
     }
 
-    private static async Task CapturePopupDecisionAsync(FrameworkElement dialog, string name)
+    private static async Task CapturePopupDecisionAsync(FrameworkElement dialog, string name, string? resultPath = null)
     {
         // Visual review only: let the native dialog's entrance animation settle.
         await Task.Delay(300);
-        var result = FrontendArguments.Value(Environment.GetCommandLineArgs(), "--validate-webapp-shell")!;
+        var result = resultPath ?? FrontendArguments.Value(Environment.GetCommandLineArgs(), "--validate-webapp-shell")!;
         var bitmap = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
         await bitmap.RenderAsync(dialog);
         using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();

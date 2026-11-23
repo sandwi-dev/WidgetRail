@@ -2,12 +2,17 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal sealed class PlayniteSetupException(string message) : Exception(message);
 
+[Flags]
+internal enum PlayniteOptionalAddon { None = 0, GameActivity = 1, Achievements = 2 }
+
 internal sealed record PlayniteSetupInstallation(string Id, string ProgramDirectory, string DataDirectory,
     string DisplayName, bool Running, bool Fullscreen);
 internal enum PlayniteSetupAction { Connect, Start, Restart, Install, Repair, Enable, Manual }
 internal sealed record PlayniteSetupPlan(PlayniteSetupInstallation Installation, PlayniteSetupAction Action,
     string Title, string Message, string? InstalledVersion, string? InstalledDigest, string? ExtensionDirectory)
 {
+    internal PlayniteOptionalAddon MissingAddons { get; init; }
+    internal PlayniteOptionalAddon UncheckedAddons { get; init; }
     internal bool CanApply => Action != PlayniteSetupAction.Manual;
     internal string ActionLabel => Action switch
     {
@@ -24,6 +29,8 @@ internal sealed record PlayniteSetupOffer(PlayniteSetupDiscovery Discovery, Play
 internal sealed record PlayniteSetupResult(bool Connected, string Title, string Message);
 internal sealed record PlayniteSetupView
 {
+    internal string? AddonMessage { get; init; }
+    internal PlayniteOptionalAddon MessageAddon { get; init; }
     internal IReadOnlyList<PlayniteSetupInstallation> Installations { get; init; } = [];
     internal PlayniteSetupPlan? Plan { get; init; }
     internal string? Message { get; init; }
@@ -36,6 +43,7 @@ internal sealed record PlayniteSetupView
 }
 internal interface IPlayniteSetupService
 {
+    ValueTask OpenAddonInstallerAsync(PlayniteSetupInstallation installation, PlayniteOptionalAddon addon, CancellationToken token);
     ValueTask<PlayniteSetupOffer> CheckSetupAsync(CancellationToken token);
     ValueTask<PlayniteSetupResult> StartAsync(PlayniteSetupInstallation installation, Action<string> progress, CancellationToken token);
     ValueTask<PlayniteSetupDiscovery> DiscoverAsync(string? programPath, string? dataPath, CancellationToken token);

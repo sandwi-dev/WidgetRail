@@ -130,6 +130,12 @@ public sealed partial class CaptureLibraryWidget
         else return true;
         var next=recording with{Selection=selection,Encoding=null,Encoder=CaptureEncoderMode.Hardware};
         if(!next.IsWellFormed())return true;
+        if (selection == SelectionOf(current))
+        {
+            ClearRecordingDraft(replay);
+            check.Reset();
+            return true;
+        }
         var selected=new RecordingDraft(revision,next);
         recordingChoices.Update(value=>replay?value with{Replay=selected}:value with{Manual=selected});
         check.EnsureLoaded(selected);

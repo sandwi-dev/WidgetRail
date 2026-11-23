@@ -34,6 +34,8 @@ extern "C" PREVIEW_API int32_t __stdcall WrailProbeCaptureEncoding(const WrailCa
     WrailCaptureEncodingProbe* result) noexcept;
 extern "C" PREVIEW_API int32_t __stdcall WrailProbeCaptureAudio(WrailCaptureEncodingProbe* result) noexcept;
 // Authority callback: 0 = cancelled/discard, 1 = continue, 2 = stop/finalize video.
+extern "C" PREVIEW_API int32_t __stdcall WrailCaptureOverlayScreenshot(const WrailPreviewTarget* target, void* overlay, const wchar_t* path,
+    const WrailCaptureOptions* options, WrailPreviewAuthority authority, void* context, WrailCaptureResult* result) noexcept;
 extern "C" PREVIEW_API int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarget* target,
     const wchar_t* outputPath, const WrailCaptureOptions* options, WrailPreviewAuthority authority, void* context,
     WrailCaptureResult* result) noexcept;

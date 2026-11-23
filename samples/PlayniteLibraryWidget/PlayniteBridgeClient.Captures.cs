@@ -1,4 +1,5 @@
 using System.Text.Json;
+using WidgetRail.WidgetProtocol;
 namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal sealed record PlayniteCaptureSettings(string Availability,string? Revision,bool Editing,
@@ -6,7 +7,10 @@ internal sealed record PlayniteCaptureSettings(string Availability,string? Revis
 {
     internal static PlayniteCaptureSettings Unavailable { get; } = new("unsupported",null,false,new Dictionary<string,JsonElement>(),new Dictionary<string,string[]>(),null);
 }
-internal sealed record PlayniteCaptureIntegration(string ProfileId,IReadOnlyList<string> Roots,IReadOnlyList<string> ProviderRoots,string ConnectionId);
+internal sealed record PlayniteCaptureIntegration(string ProfileId,IReadOnlyList<string> Roots,IReadOnlyList<string> ProviderRoots,string ConnectionId)
+{
+    internal IReadOnlyList<CaptureProcessInterval> Sessions { get; init; } = [];
+}
 internal sealed class PlayniteCaptureSettingsRejectedException(string code) : Exception(code)
 { internal string Code { get; } = code; }
 
@@ -39,12 +43,12 @@ internal sealed partial class PlayniteBridgeClient
         if(response.ConnectionId!=connectionId)throw new PlayniteBridgeDataException("capture_connection_changed");
         EnsureSuccess(response);return ParseCaptureSettings(response);
     }
-    public async ValueTask<PlayniteCaptureIntegration?> GetCaptureIntegrationAsync(CancellationToken token)
+    public async ValueTask<PlayniteCaptureIntegration?> GetCaptureIntegrationAsync(CancellationToken token, string? gameId = null)
     {
         if(!UsesLocalConnection)return null;
-        var response=await SendRequiredAsync(new(PlayniteBridgeCommandKind.CaptureIntegration),token).ConfigureAwait(false);
+        var response=await SendRequiredAsync(new(PlayniteBridgeCommandKind.CaptureIntegration, gameId),token).ConfigureAwait(false);
         if(response.StatusCode==404)return null;
-        EnsureSuccess(response);return ParseCaptureIntegration(response);
+        EnsureSuccess(response);return ParseCaptureIntegration(response, gameId);
     }
     public async ValueTask<PlayniteCaptureIntegration> ConfigureCaptureIntegrationAsync(PlayniteCaptureIntegration current,string path,bool enabled,CancellationToken token)
     {
@@ -78,7 +82,7 @@ internal sealed partial class PlayniteBridgeClient
         }
         return new(availability,revision,editing,values,choices,response.ConnectionId);
     }
-    private static PlayniteCaptureIntegration ParseCaptureIntegration(PlayniteBridgeResponse response)
+    private static PlayniteCaptureIntegration ParseCaptureIntegration(PlayniteBridgeResponse response, string? gameId = null)
     {
         using var json=JsonDocument.Parse(response.Body,new(){MaxDepth=4});var root=json.RootElement;
         if(response.ConnectionId==null||OptionalString(root,"profileId",36) is not { } profile||!Guid.TryParseExact(profile,"D",out _))throw new PlayniteBridgeDataException("invalid_capture_integration");
@@ -87,6 +91,13 @@ internal sealed partial class PlayniteBridgeClient
             if(!root.TryGetProperty(key,out var list)||list.ValueKind!=JsonValueKind.Array||list.GetArrayLength()>maximum||list.EnumerateArray().Any(item=>item.ValueKind!=JsonValueKind.String||item.GetString()!.Length>1024))throw new PlayniteBridgeDataException("invalid_capture_integration");
             return list.EnumerateArray().Select(item=>item.GetString()!).ToArray();
         }
-        return new(profile,Paths("roots",8),Paths("providerRoots",10000),response.ConnectionId);
+        var result = new PlayniteCaptureIntegration(profile,Paths("roots",8),Paths("providerRoots",10000),response.ConnectionId);
+        if (gameId is null || !root.TryGetProperty("sessions", out var sessions)) return result;
+        if (OptionalString(root,"sessionGameId",36) != gameId || sessions.ValueKind != JsonValueKind.Array || sessions.GetArrayLength() > 64)
+            throw new PlayniteBridgeDataException("invalid_capture_sessions");
+        var intervals = sessions.Deserialize<CaptureProcessInterval[]>();
+        if (intervals is null || intervals.Any(interval => interval?.IsWellFormed() != true))
+            throw new PlayniteBridgeDataException("invalid_capture_sessions");
+        return result with { Sessions = intervals };
     }
 }

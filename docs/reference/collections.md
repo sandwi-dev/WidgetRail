@@ -7,6 +7,15 @@ for native control mappings.
 
 ## Choose a presentation model
 
+Cursor resources can opt into `PrepareAdjacentPages` to fetch one unpublished
+page per available edge after each successful load. This adds at most two pages
+to the resource's data-memory bound; it does not enlarge the visible collection,
+decode media or authorize eviction. A later boundary demand joins the pending
+fetch or consumes its ready page, using the usual protected-key merge. Query reset,
+live revisions and lifecycle changes reject stale preparation. Speculative failures
+leave the current view readable; actual demand retains the ordinary retry path.
+The option is off by default. Discord history enables it for continuous scrolling.
+
 | Data | Presentation |
 | --- | --- |
 | Small, static or heterogeneous content | `UI.VerticalScroll`, `UI.HorizontalScroll` or `UI.ResponsiveGrid` |
@@ -102,6 +111,24 @@ and variable-height layout reconciliation. `ViewportState` and
 `OnViewportChanged` report conservative aggregate state over active views; they
 are advisory, not atomic eviction authority or proof that messages were read.
 
+For adjacent history pages, supply `OnBoundaryDemand` and declare available
+edges with `AdjacentPages(before, after)`. Keep provider reads and account/query
+checks in the widget's resource callback. The host protects visible occurrences;
+an offscreen focused item must not pin an unrelated page against bounded eviction.
+
+For a bounded ordered window with boundary observation, the WinUI host prepares
+the successor's row declarations through existing range leases before inserting
+them. The current readable window remains visible during preparation, and commit
+uses the reader's current position. Retained paint never grants old action
+authority. Newer queries, hidden/retired surfaces and worker replacement cancel
+obsolete preparation; one pending successor is coalesced and owned ranges drain
+on cancellation or teardown. Artwork still resolves independently.
+
+This preparation applies to incremental paging, not new explicit focus/reveal
+requests, busy/disabled publications, arbitrary reorders or ordinary large lazy
+collections. Those retain their established query/entry paths. Widgets should
+not add reveal counters, scroll offsets or timers to compensate for pagination.
+
 If automatic tail eviction is enabled, implement `OnRecoverViewport` for the
 race where the user starts reading just before a publication arrives. Perform
 the bounded provider read outside the commit, then use
@@ -175,3 +202,25 @@ Validate the parent declaration and separately validate acquired row roots.
 Parent preflight does not eagerly request rows. Use fake providers for stateful
 workflows, then check actual WinUI geometry, controller focus and visible loading
 behavior. Passing protocol checks alone does not establish smooth scrolling.
+
+## Paint across an input-scope transition
+
+The WinUI host may seed a recreated collection with already-resident row
+presentation when the same ordered query appears in a new input scope. Collection
+and source IDs, query generation, count, layout kind/axis, widget/session/worker
+and package ownership must match; content revision cannot go backward. Grouped
+and forward-discovery sources keep their existing path.
+
+This is presentation reuse, not permission or lease reuse. The new native source
+acquires its own ranges through ordinary bounded demand. Old rows keep their old
+owner and cannot claim input in the new scope. No focus, scroll restoration,
+pending activation, requests or retention tokens are copied. Account/query/order
+changes remain the widget's source-publication responsibility. No new widget API
+or author-managed cache is required.
+
+Already-decoded static URI/inline images in realized rows can accompany that
+paint. The host matches the exact image element/source and public-media mode,
+and verifies the bitmap's actual decoded provenance. Animated bitmaps and opaque
+resource handles are excluded. It transfers immutable bitmap references only,
+not controls, network resolvers or animation ownership. Fresh resource access
+still uses the new view's authority, and binding retirement drops the references.

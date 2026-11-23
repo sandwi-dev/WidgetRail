@@ -28,6 +28,11 @@
   "optionalPermissions": [
     "system.media.sessions.control.v1"
   ],
+  "trayActions": [
+    { "id": "play-pause", "label": "Play or pause" },
+    { "id": "previous", "label": "Previous track" },
+    { "id": "next", "label": "Next track" }
+  ],
   "residencyPolicy": {
     "schemaVersion": 1,
     "mode": "suspend-when-hidden"

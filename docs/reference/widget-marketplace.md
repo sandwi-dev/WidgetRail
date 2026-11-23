@@ -3,8 +3,8 @@
 Open **WidgetRail Catalogue** from the widget tray, or use **Settings → Widgets → Browse catalogue**.
 Discover widgets, inspect their setup requirements and screenshots, then download
 and review their permissions before installing. The catalogue also brings updates
-for installed listings together in one place. Availability depends on published
-packages; a listing alone does not mean a downloadable version exists.
+for installed listings together in one place. The **Themes** tab offers free
+WidgetRail themes. Widget availability depends on published packages.
 
 ## Browse, review, install
 
@@ -41,9 +41,10 @@ Video search needs a YouTube Data API key. Conditional account requirements are
 labelled for the features that need them. Credentials are entered in each widget's
 setup flow, never in Catalogue.
 
-**LB/RB** switches Browse, Installed and Updates. **L3** returns focus to search.
+**LB/RB** switches Browse, Installed, Updates and Themes. **L3** returns focus to search.
 Search applies when its text is committed; **Clear** resets it. **Check for updates**
-is beside the search field. **Y** checks for updates; **X** opens Updates. The three tabs remain available while a job runs.
+is beside the widget search field. On the widget tabs, **Y** checks for updates
+and **X** opens Updates. Tab navigation remains available while a job runs.
 **B** returns from details to the previously selected card. From the catalog, B
 keeps its ordinary tray behavior. Navigation remains available while a download
 runs, and its progress/cancel action remains visible even when viewing another listing.
@@ -72,6 +73,21 @@ listings offer **Manage in Settings**.
 
 Curated placement and checksums do not constitute a publisher signature. There
 are no accounts, payments, ratings or public submissions in this version.
+
+## Browse and try themes
+
+Open **Themes** to see the featured theme and new releases. Search by theme,
+creator, or game tag. A listing shows the selected theme on the radial tray,
+a poster rail and a notification. **Try theme** opens a controller-ready sample
+with a comparison to your current theme. Back returns to the listing.
+Next and Previous bring the first card on the new page into view and focus it.
+
+Previewing leaves your appearance setting and installed themes as they were.
+**Install** saves the listed version. Choose **Install and apply** to use it
+immediately, or **Apply** after installation. At the 128-version limit,
+**Manage installed themes** opens Settings Appearance. Preview remains available.
+Cached listings remain available when the catalogue is offline. The initial
+catalogue uses curated placement and release dates.
 
 ## Jobs and recovery
 
@@ -113,6 +129,18 @@ digest. Failure to save optional CLI source metadata does not undo installation.
 - Publish immutable `<package-id>-<version>.wrwidget` assets with GitHub asset
   digests or a supported checksum manifest. ID, publisher and version inside the
   archive must match the curated listing and advertised asset.
+- Theme sources and curation live under `themes/`. `scripts/Publish-ThemeCatalogue.ps1`
+  stages data-only `.wrtheme` archives, native preview PNGs and the versioned
+  index using the CLI and a validation-enabled WinUI renderer. Publish the
+  referenced immutable assets to `gh-pages` under `themes/v1/` before replacing
+  the index, and retain assets referenced by earlier indexes. Increase the
+  version when package bytes change. The publisher checks the current index
+  for an existing version with different bytes. The bridge checks
+  the exact archive digest and theme metadata before preview or installation.
+  Routine updates can pass `-ReuseVerifiedPackages` with the previous index and
+  its staged archives in the output directory. The publisher reuses an archive
+  after checking its digest and comparing every source path and file. Run
+  without the switch when changing the packer or revalidating all package sources.
 - Discord, Twitch, Game Help and Display Controls provide `Build-CommunityPackage.ps1` in `samples/DiscordWebViewWidget`, `samples/TwitchWidget`, `samples/GameHelpWidget` and `samples/DisplayProfilesWidget`, respectively, backed by `scripts/Build-MarketplacePackage.ps1`. Discord first composes its sealed backend. Build their archives and SHA-256 sidecars, then attach them to the release when publishing. Adding a listing alone does not make an unpublished package downloadable; local testing uses the archive through Settings. These builders do not install, enable, grant access or publish. The current Discord package is `widgetrail.samples.discord-controls`; the old `samples/DiscordWidget` webapp remains a source-only example with a distinct trust model.
 - `PackageDistribution` owns shared remote download, release and source-record
   code. CLI command parsing and exit-code mapping remain in the CLI.

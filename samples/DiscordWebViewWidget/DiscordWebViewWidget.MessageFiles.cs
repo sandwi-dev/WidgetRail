@@ -22,7 +22,7 @@ public sealed partial class DiscordWebViewWidget
                 IReadOnlyList<WidgetFileReference>? chosen=null;
                 try
                 {
-                    chosen=await HostServices.Files.ChooseAsync(new(){Title="Attach files to Discord",Multiple=true},operation.CancellationToken);
+                    chosen=await HostServices.Files.ChooseAsync(new(){Title="Attach files to Discord",CommitLabel="Attach",Multiple=true},operation.CancellationToken);
                     if(!MessageSelectionCurrent(selected) || messages.Value.PendingNonce is not null)return;
                     var combined=CombineMessageFiles(messages.Value.Files??[],chosen);
                     if(combined.Length>10){messages.Update(value=>value with{Notice="Discord accepts up to 10 attachments per message."});return;}
@@ -127,6 +127,7 @@ public sealed partial class DiscordWebViewWidget
         request.Version==filesIntent.Version && request.SchemaDigest==filesIntent.SchemaDigest && filesIntent.Accepts(request.Payload);
     public override ValueTask<bool> IsIntentAvailableAsync(WidgetIntentRequest request,CancellationToken cancellationToken=default)
     {
+        if(IsCallNotification(request))return ValueTask.FromResult(CallNotificationOwnerCurrent(request));
         if(IsMessageNotification(request))return ValueTask.FromResult(CanOpenMessageNotification(request));
         var available=IsFilesIntent(request) && (CurrentState() is {Ready:true,Messaging.CanSend:true} ||
             !hasObservedDiscordAccount && state.Snapshot.Status!=WidgetResourceStatus.Error &&
@@ -135,6 +136,7 @@ public sealed partial class DiscordWebViewWidget
     }
     public override async ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request,CancellationToken cancellationToken=default)
     {
+        if(IsCallNotification(request))return await OpenCallNotificationAsync(request,cancellationToken);
         if(IsMessageNotification(request))return await OpenMessageNotificationAsync(request,cancellationToken);
         if(!IsActive || !await IsIntentAvailableAsync(request,cancellationToken))return WidgetIntentResult.Rejected;
         var beforeVisit=navigation.Value;

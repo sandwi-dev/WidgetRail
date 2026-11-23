@@ -51,6 +51,7 @@ internal sealed partial class PlaynitePerformanceValidationPage
                 await Until(() => File.Exists(Path.Combine(output, "capture-started")));
             var timer = Stopwatch.StartNew();
             var sampler = new Shell.RightStickScroll();
+            var inputMilliseconds = new List<double>();
             var fractionalWheel = 0d;
             frames.Clear(); ticks.Clear(); lastFrame = 0; scrolling = true;
             CompositionTarget.Rendering += Rendering;
@@ -62,7 +63,12 @@ internal sealed partial class PlaynitePerformanceValidationPage
                 while (timer.Elapsed.TotalSeconds < 8)
                 {
                     var delta = sampler.Sample(0, short.MinValue, Environment.TickCount64).Y;
-                    if (mode == "stick") presenter.ScrollBy(0, delta);
+                    if (mode == "stick")
+                    {
+                        var began=Stopwatch.GetTimestamp();
+                        presenter.ScrollBy(0, delta);
+                        inputMilliseconds.Add(Stopwatch.GetElapsedTime(began).TotalMilliseconds);
+                    }
                     else
                     {
                         fractionalWheel += -delta * 120 / pixelsPerNotch;
@@ -85,7 +91,7 @@ internal sealed partial class PlaynitePerformanceValidationPage
                 scroll.ViewChanged -= Changed;
             }
             await File.WriteAllTextAsync(Path.Combine(output, "wheel-comparison.json"),
-                JsonSerializer.Serialize(new { mode, pixelsPerNotch, wheelEvents, wheelDelta, frames, positions }), lifetime.Token);
+                JsonSerializer.Serialize(new { mode, pixelsPerNotch, wheelEvents, wheelDelta, frames, positions, inputMilliseconds }), lifetime.Token);
             if (mode == "wheel-input")
             {
                 // Outside the timed comparison: wheel ownership must retire

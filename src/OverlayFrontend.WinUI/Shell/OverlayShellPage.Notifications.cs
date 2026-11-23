@@ -105,8 +105,8 @@ internal sealed partial class OverlayShellPage
     }
     private void HideChangedNotificationBanner(string widget)
     {
-        // Re-rendering a live card would restart motion; apply new appearance on the next notice.
-        if (notificationBannerState.Widget == widget) HideNotificationBanner();
+        notificationBannerState.RemoveWidget(widget);
+        PumpNotificationBanners();
     }
     private static string NotificationModeLabel(NotificationPresentation mode, bool bannerOnly = false) => bannerOnly
         ? mode == NotificationPresentation.BannerAndList ? "On" : "Off"

@@ -72,6 +72,16 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     /// <summary>Signals a newer appearance revision; does not contain theme/settings values.</summary>
     public event EventHandler<WidgetRevisionChangedEventArgs>? AppearanceChanged;
 
+    private bool legacyCatalogRequest;
+    private long intentHandlerRevision;
+    public long IntentHandlerRevision { get { using (_gate.Enter()) return intentHandlerRevision; } }
+    private HashSet<BridgeIntentSignature> registeredIntentHandlers = [];
+    public bool HasRegisteredIntentHandler(WidgetIntentRequest request)
+    {
+        using (_gate.Enter()) return !_disposed && _terminalFailure is null &&
+            registeredIntentHandlers.Contains(new(request.ContractId, request.Version, request.SchemaDigest));
+    }
+
     public long LatestCatalogNotificationRevision { get { using (_gate.Enter()) return _notifiedCatalogRevision; } }
     public long LatestAppearanceNotificationRevision { get { using (_gate.Enter()) return _notifiedAppearanceRevision; } }
 
@@ -135,12 +145,26 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     public async Task<WidgetPresentationCatalog> ListWidgetsAsync(
         CancellationToken cancellationToken = default)
     {
-        var response = await RequestAsync(
-            BridgeMessageTypes.ListWidgets,
-            new BridgeEmptyPayload(),
-            BridgeMessageTypes.Widgets,
-            cancellationToken).ConfigureAwait(false);
-        RequireObjectProperties(response.Payload, "revision", "isComplete", "widgets");
+        BridgeEnvelope response;
+        if (Volatile.Read(ref legacyCatalogRequest)) response = await ReadLegacyAsync().ConfigureAwait(false);
+        else
+        {
+            try
+            {
+                response = await RequestAsync(BridgeMessageTypes.ListWidgets, new BridgeCatalogRequest(true),
+                    BridgeMessageTypes.Widgets, cancellationToken).ConfigureAwait(false);
+            }
+            catch (WidgetPresentationSessionException error) when (error.Code == "request_failed")
+            {
+                response = await ReadLegacyAsync().ConfigureAwait(false);
+                Volatile.Write(ref legacyCatalogRequest, true);
+            }
+        }
+        Task<BridgeEnvelope> ReadLegacyAsync() => RequestAsync(BridgeMessageTypes.ListWidgets, new BridgeEmptyPayload(),
+            BridgeMessageTypes.Widgets, cancellationToken);
+        if (response.Payload.ValueKind == JsonValueKind.Object && response.Payload.TryGetProperty("intentHandlers", out _))
+            RequireObjectProperties(response.Payload, "revision", "isComplete", "widgets", "intentHandlers");
+        else RequireObjectProperties(response.Payload, "revision", "isComplete", "widgets");
         var completeness = response.Payload.GetProperty("isComplete");
         if (completeness.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
             throw new BridgeProtocolException("WidgetBridge returned invalid catalog completeness.");
@@ -151,6 +175,8 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         var widgets = BridgeJson.FromElement<BridgeWidgetDescriptor[]>(rawWidgets);
         if (widgets.Length > 256 || widgets.Any(widget => widget is null))
             throw new BridgeProtocolException("WidgetBridge returned an invalid widget catalog.");
+        var handlers = response.Payload.TryGetProperty("intentHandlers", out var rawHandlers)
+            ? BridgeJson.FromElement<BridgeIntentSignature[]>(rawHandlers).ToHashSet() : [];
         var byId = new Dictionary<string, BridgeWidgetDescriptor>(StringComparer.Ordinal);
         foreach (var widget in widgets)
         {
@@ -173,13 +199,15 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
                 if (_descriptors.TryGetValue(incoming.Id, out var admitted) &&
                     incoming.IconAssets.SequenceEqual(admitted.IconAssets) &&
                     incoming.QuickActions.SequenceEqual(admitted.QuickActions) &&
+                    incoming.AvailableTrayActions.SequenceEqual(admitted.AvailableTrayActions) &&
                     incoming.NotificationCategories.SequenceEqual(admitted.NotificationCategories) &&
-                    (incoming with { IconAssets = admitted.IconAssets, QuickActions = admitted.QuickActions, NotificationCategories = admitted.NotificationCategories }) == admitted)
+                    (incoming with { IconAssets = admitted.IconAssets, QuickActions = admitted.QuickActions, TrayActions = admitted.TrayActions, NotificationCategories = admitted.NotificationCategories }) == admitted)
                 {
                     widgets[index] = admitted;
                     byId[incoming.Id] = admitted;
                 }
             }
+            if (!registeredIntentHandlers.SetEquals(handlers)) { registeredIntentHandlers = handlers; intentHandlerRevision++; }
             _catalogRevision = revision;
             foreach (var pair in byId)
             {
@@ -491,6 +519,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         Task[] indexed;
         using (_gate.Enter())
         {
+            foreach (var work in trayCompletions.Values) work.TrySetCanceled();
             _packageIcons.Clear(); _packageIconBytes = 0;
             RetireIndexedRangesLocked();
             RetireMediaDocumentLocked();
@@ -552,6 +581,11 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         {
         case BridgeMessageTypes.LocalWidgetPackageInstallCompleted:
             HandleLocalInstallEvent(envelope.Payload);
+            break;
+        case BridgeMessageTypes.TrayActionFinished:
+            var finished = BridgeJson.FromElement<BridgeTrayActionFinished>(envelope.Payload);
+            if (!finished.Result.IsWellFormed()) throw new BridgeProtocolException("Invalid tray completion reason.");
+            using (_gate.Enter()) trayCompletions.GetValueOrDefault((finished.WidgetId, finished.Sequence, finished.WorkerRun))?.TrySetResult(finished.Result);
             break;
         case BridgeMessageTypes.Invalidation:
             RequireObjectProperties(envelope.Payload, "widgetId", "revision");
@@ -631,13 +665,17 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     {
         RequireAllowedProperties(payload, new HashSet<string>(StringComparer.Ordinal)
         {
-            "widgetId", "runtimeGeneration", "effect", "sequence", "initiatedAtMilliseconds", "windowPreviews", "pinnedLayoutId", "pinnedSelectionId",
+            "widgetId", "runtimeGeneration", "effect", "sequence", "initiatedAtMilliseconds", "windowPreviews", "pinnedLayoutId", "pinnedSelectionId", "launchStartedAtMilliseconds",
         }, "widgetId", "runtimeGeneration", "effect", "sequence", "initiatedAtMilliseconds");
         var widgetId = ReadHostIdentifier(payload, "widgetId");
         var runtime = ReadHostIdentifier(payload, "runtimeGeneration");
         var name = ReadHostIdentifier(payload, "effect");
         var sequence = ReadInt64(payload, "sequence", 1);
         var initiatedAt = ReadInt64(payload, "initiatedAtMilliseconds", 0);
+        long? launchStartedAt = payload.TryGetProperty("launchStartedAtMilliseconds", out _)
+            ? ReadInt64(payload, "launchStartedAtMilliseconds", 0) : null;
+        if (launchStartedAt is { } start && (name != "activateTaskWindow" || start > initiatedAt || initiatedAt - start > 30000))
+            throw new BridgeProtocolException("Invalid launch activation lifetime.");
         var kind = name switch
         {
             "closeOverlayAfterAppLaunch" => WidgetHostEffectKind.CloseOverlayAfterAppLaunch,
@@ -684,7 +722,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
                 _hostEffectSequence = sequence;
                 if (_descriptors.TryGetValue(widgetId, out var descriptor) &&
                     descriptor.RuntimeGeneration == runtime &&
-                    (!_hostEffectAdmissionBoundaries.TryGetValue(widgetId, out var boundary) || initiatedAt > boundary))
+                    (!_hostEffectAdmissionBoundaries.TryGetValue(widgetId, out var boundary) || (launchStartedAt ?? initiatedAt) > boundary))
                     authority = new(widgetId, descriptor.InstanceId, runtime,
                         _sessionGenerations.GetValueOrDefault(widgetId));
             }
@@ -694,7 +732,8 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             RecordDiagnostic("stale_host_effect", "A stale or replayed host effect was rejected.", widgetId);
             return;
         }
-        HostEffectReceived?.Invoke(this, new(new(authority, kind, name, sequence, initiatedAt, target, pinnedLayout){PinnedSelectionId=selectionId}));
+        HostEffectReceived?.Invoke(this, new(new(authority, kind, name, sequence, initiatedAt, target, pinnedLayout)
+            { PinnedSelectionId = selectionId, LaunchStartedAtMilliseconds = launchStartedAt }));
     }
 
     private static string ReadHostIdentifier(JsonElement payload, string name)
@@ -1404,6 +1443,7 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
         {
             if (_terminalFailure is not null) return;
             _terminalFailure = exception;
+            foreach (var work in trayCompletions.Values) work.TrySetCanceled();
             localInstallEvents?.Writer.TryComplete(exception);
             RetireIndexedRangesLocked();
             RetireMediaDocumentLocked();
@@ -1452,7 +1492,8 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
             string.IsNullOrWhiteSpace(descriptor.InstanceId) || descriptor.InstanceId.Length > 128 ||
             descriptor.RuntimeGeneration.Length != 32 ||
             descriptor.PresentationGeneration.Length != 32 ||
-            descriptor.QuickActions.Count > 16 || !WidgetNotificationContract.ValidCategories(descriptor.NotificationCategories))
+            descriptor.QuickActions.Count > 16 || !TrayActionContract.ValidDefinitions(descriptor.AvailableTrayActions) ||
+            !WidgetNotificationContract.ValidCategories(descriptor.NotificationCategories))
             throw new BridgeProtocolException("WidgetBridge returned an invalid widget descriptor.");
     }
 

@@ -65,6 +65,9 @@ public sealed partial class CaptureLibraryStore
                     CREATE INDEX IF NOT EXISTS capture_order ON captures(saved_at DESC,id);
                     CREATE INDEX IF NOT EXISTS capture_hash ON captures(hash);
                     CREATE INDEX IF NOT EXISTS capture_name ON captures(name);
+                    CREATE INDEX IF NOT EXISTS capture_process ON captures(json_extract(data,'$.Item.Media.SourceProcess.Instance'),
+                      json_extract(data,'$.Item.Media.SourceProcess.From'),json_extract(data,'$.Item.Media.SourceProcess.Through'),id)
+                      WHERE json_extract(data,'$.Item.Media.SourceProcess.Instance') IS NOT NULL;
                     CREATE TABLE IF NOT EXISTS recycled(id TEXT PRIMARY KEY, name TEXT NOT NULL);
                     CREATE INDEX IF NOT EXISTS recycled_name ON recycled(name);
                     CREATE TABLE IF NOT EXISTS library_revision(id INTEGER PRIMARY KEY CHECK(id=1), epoch TEXT NOT NULL, sequence INTEGER NOT NULL);
@@ -91,6 +94,10 @@ public sealed partial class CaptureLibraryStore
                       origin_package TEXT NOT NULL,origin_publisher TEXT NOT NULL,origin_instance TEXT NOT NULL,recorded_at INTEGER NOT NULL,data TEXT NOT NULL);
                     CREATE INDEX IF NOT EXISTS association_capture ON capture_associations(capture_id,recorded_at DESC,association_id);
                     CREATE INDEX IF NOT EXISTS association_origin ON capture_associations(origin_package,capture_id);
+                    CREATE VIEW IF NOT EXISTS active_capture_associations AS SELECT * FROM capture_associations
+                      WHERE json_extract(data,'$.Detached') IS NOT 1;
+                    CREATE INDEX IF NOT EXISTS association_active_capture ON capture_associations(capture_id,recorded_at DESC,association_id)
+                      WHERE json_extract(data,'$.Detached') IS NOT 1;
                     CREATE TABLE IF NOT EXISTS capture_association_refs(key_hash TEXT NOT NULL,position INTEGER NOT NULL,role INTEGER NOT NULL,
                       kind TEXT NOT NULL,reference_id TEXT NOT NULL,label TEXT,PRIMARY KEY(key_hash,position));
                     CREATE INDEX IF NOT EXISTS association_reference ON capture_association_refs(kind,reference_id,role,key_hash);
@@ -98,6 +105,11 @@ public sealed partial class CaptureLibraryStore
                     CREATE TRIGGER IF NOT EXISTS association_order_added AFTER INSERT ON capture_associations BEGIN UPDATE library_ordering SET sequence=sequence+1 WHERE id=1; END;
                     CREATE TRIGGER IF NOT EXISTS association_order_changed AFTER UPDATE ON capture_associations BEGIN UPDATE library_ordering SET sequence=sequence+1 WHERE id=1; END;
                     CREATE TRIGGER IF NOT EXISTS association_order_removed AFTER DELETE ON capture_associations BEGIN UPDATE library_ordering SET sequence=sequence+1 WHERE id=1; END;
+                    CREATE TABLE IF NOT EXISTS association_ordering(id INTEGER PRIMARY KEY CHECK(id=1),sequence INTEGER NOT NULL);
+                    INSERT OR IGNORE INTO association_ordering VALUES(1,0);
+                    CREATE TRIGGER IF NOT EXISTS association_sequence_added AFTER INSERT ON capture_associations BEGIN UPDATE association_ordering SET sequence=sequence+1 WHERE id=1; END;
+                    CREATE TRIGGER IF NOT EXISTS association_sequence_changed AFTER UPDATE ON capture_associations BEGIN UPDATE association_ordering SET sequence=sequence+1 WHERE id=1; END;
+                    CREATE TRIGGER IF NOT EXISTS association_sequence_removed AFTER DELETE ON capture_associations BEGIN UPDATE association_ordering SET sequence=sequence+1 WHERE id=1; END;
                     CREATE TRIGGER IF NOT EXISTS association_changed AFTER UPDATE ON capture_associations BEGIN UPDATE library_revision SET sequence=sequence+1 WHERE id=1; END;
                     CREATE TRIGGER IF NOT EXISTS association_removed AFTER DELETE ON capture_associations BEGIN UPDATE library_revision SET sequence=sequence+1 WHERE id=1; END;
                     CREATE INDEX IF NOT EXISTS capture_application ON captures(json_extract(data,'$.Item.Media.SourceApplication.ApplicationName'));

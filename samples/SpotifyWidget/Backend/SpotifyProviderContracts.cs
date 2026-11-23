@@ -88,7 +88,11 @@ public sealed record SpotifyProviderPlaybackCommand(
     long? PositionMilliseconds = null,
     string? RepeatState = null,
     bool? Enabled = null,
-    int? VolumePercent = null);
+    int? VolumePercent = null)
+{
+    public string? DeviceId { get; init; }
+    public string? ExpectedAccount { get; init; }
+}
 
 public sealed class SpotifyProviderException : Exception
 {

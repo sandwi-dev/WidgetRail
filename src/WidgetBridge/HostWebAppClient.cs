@@ -59,8 +59,8 @@ internal sealed class HostWebAppClient(ConfiguredWidget configured):IBridgeWidge
     {token.ThrowIfCancellationRequested();lock(gate)return Task.FromResult(!disposed&&running&&starts==expectedStartOrdinal);}
     public Task<WidgetOperationAdmission> AdmitActionAsync(WidgetActionEvent action,CancellationToken token,int? expectedStartOrdinal=null)
     {token.ThrowIfCancellationRequested();return Task.FromResult(WidgetOperationAdmission.RejectedInactive);}
-    public Task<bool> SendControllerInputAsync(ControllerInputEvent input,WidgetDashboardGestureAuthority? authority,CancellationToken token,int? expectedStartOrdinal=null)
-    {token.ThrowIfCancellationRequested();return Task.FromResult(false);}
+    public Task<WidgetProcessClient.InputDispatch> SendControllerInputAsync(ControllerInputEvent input,WidgetDashboardGestureAuthority? authority,CancellationToken token,int? expectedStartOrdinal=null)
+    {token.ThrowIfCancellationRequested();return Task.FromResult(new WidgetProcessClient.InputDispatch(false));}
     public Task SendEmbeddedMediaPlaybackEventAsync(EmbeddedMediaPlaybackEvent playbackEvent,CancellationToken token,int expectedStartOrdinal)
     {token.ThrowIfCancellationRequested();return Task.CompletedTask;}
     public Task UnloadAsync(CancellationToken token)

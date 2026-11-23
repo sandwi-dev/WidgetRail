@@ -7,6 +7,18 @@ internal sealed partial class WebSessionPageAdapterHost
     private DispatcherQueueTimer? invalidationTimer;
     private bool invalidationPending, invalidationOutstanding;
     private long invalidationEpoch;
+    private bool mainViewVisible, observesMainView;
+
+    internal void SetMainViewVisible(bool value)
+    {
+        if(mainViewVisible==value)return;
+        mainViewVisible=value;
+        if(observesMainView && Current(epoch))PublishMainViewVisibility();
+    }
+
+    private void PublishMainViewVisibility() => publish(mainViewVisible
+        ? "{\"kind\":\"main-view-visibility\",\"visible\":true}"
+        : "{\"kind\":\"main-view-visibility\",\"visible\":false}");
 
     // Level-triggered, payload-free change notification. At most one event can
     // await a consumer read, regardless of how many provider stores change.
@@ -37,6 +49,7 @@ internal sealed partial class WebSessionPageAdapterHost
 
     private void RetireInvalidations()
     {
+        observesMainView=false;
         invalidationTimer?.Stop();
         invalidationPending = invalidationOutstanding = false;
     }

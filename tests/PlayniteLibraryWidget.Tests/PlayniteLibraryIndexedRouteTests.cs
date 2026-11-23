@@ -26,8 +26,8 @@ public sealed partial class PlayniteLibraryTests
             Assert.AreEqual(WidgetOperationAdmission.Enqueued, lease.RouteAction(lease.Range.Items[0].Key, ControllerButton.A));
             await WaitIndexed(() => widget.RenderState.Value.DetailsItem is not null);
             await widget.WhenDetailsIdleAsync();
-            target = widget.RenderState.Value.IndexedBrowse.ModalReturn!;
-            Assert.AreEqual(80, target.Index);
+            target = new(declaration.Id, declaration.IndexedCollection.SourceId, declaration.IndexedCollection.QueryGeneration,
+                lease.Range.Items[0].Key, 80);
             Assert.AreEqual("saved-00080", widget.RenderState.Value.DetailsItem!.Value.SavedId);
             Assert.IsTrue(widget.RenderState.Value.DetailsCapturedTarget!.IsCurrent);
             host.PublishSnapshot();

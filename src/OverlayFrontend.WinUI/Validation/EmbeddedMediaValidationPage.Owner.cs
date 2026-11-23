@@ -18,7 +18,7 @@ internal sealed partial class EmbeddedMediaValidationPage
     private bool coverActivation;
     private int nativePlayActions;
     private Grid? parkingLayer;
-    private static BridgeWidgetDescriptor[] FixtureDescriptors() => Enumerable.Range(0, 5)
+    private static BridgeWidgetDescriptor[] FixtureDescriptors() => Enumerable.Range(0, EmbeddedMediaOwner.MaximumResidentSessions + 1)
         .Select(index => index == 0 ? Descriptor : Descriptor with { Id = "media-extra-" + index, InstanceId = "media-extra-" + index + ".instance" }).ToArray();
 
     private ViewNode OwnerRoot() => new()
@@ -182,17 +182,20 @@ internal sealed partial class EmbeddedMediaValidationPage
             creations = mediaOwner.BrowserCreationCount;
         }
 
-        // Four actual native controllers may remain parked; a fifth never evicts audio.
+        const int capacity = EmbeddedMediaOwner.MaximumResidentSessions;
+        var descriptors = FixtureDescriptors();
+        var waitingId = descriptors[^1].Id;
         declaration = definition with { Id = "owner-player", PendingCommand = null };
-        foreach (var descriptor in FixtureDescriptors().Skip(1))
+        foreach (var descriptor in descriptors.Skip(1))
         {
             mediaOwner.SetHostState(descriptor.Id, true, true);
             ownerPresenter.Apply(await SnapshotAsync(descriptor.Id));
-            if (descriptor.Id != "media-extra-4") await Until(() => mediaOwner.IsReady(descriptor.Id));
+            if (descriptor.Id != waitingId) await Until(() => mediaOwner.IsReady(descriptor.Id));
         }
-        await Task.Delay(150);
-        Check(mediaOwner.ResidentCount == 4 && mediaOwner.BrowserCreationCount == creations + 3 && diagnostics.Contains("media-session-capacity"),
-            "resident capacity counts real parked controllers and rejects a fifth without eviction");
+        await Until(() => diagnostics.Contains("media-session-capacity"));
+        Check(mediaOwner.ResidentCount == capacity && mediaOwner.BrowserCreationCount == creations + capacity - 1 &&
+            !mediaOwner.IsReady(waitingId) && descriptors.Take(capacity).All(owner => mediaOwner.IsReady(owner.Id)),
+            "resident capacity counts parked controllers and rejects the next session without eviction");
         var liveDocument = await session!.ResolveEmbeddedMediaAsync(session.GetState(Descriptor.Id)!.LastGood!.Authority);
         for (var pass = 0; pass < 8; ++pass)
         {
@@ -208,12 +211,11 @@ internal sealed partial class EmbeddedMediaValidationPage
         }
         declaration = null;
         await SnapshotAsync(Descriptor.Id); // Current presenter belongs to a different widget.
-        await Until(() => mediaOwner.ResidentCount < 4 || mediaOwner.IsReady("media-extra-4"));
-        await Until(() => mediaOwner.IsReady("media-extra-4"));
-        Check(mediaOwner.ResidentCount == 4 && mediaOwner.BrowserCreationCount == creations + 4,
+        await Until(() => mediaOwner.IsReady(waitingId));
+        Check(mediaOwner.ResidentCount == capacity && mediaOwner.BrowserCreationCount == creations + capacity,
             "inactive declaration removal retires its controller and admits the waiting visible widget");
         await ownerPresenter.DisposeAsync(); ownerPresenter = null;
-        Check(parkingLayer.Children.Count == 4, "presenter disposal parks all media without ending shell-owned sessions");
+        Check(parkingLayer.Children.Count == capacity, "presenter disposal parks all media without ending shell-owned sessions");
         await mediaOwner.DisposeAsync();
         Check(parkingLayer.Children.Count == 0 && mediaOwner.ResidentCount == 0, "shell owner teardown awaits all browser admissions, observations and native controller closures");
         mediaOwner = null;

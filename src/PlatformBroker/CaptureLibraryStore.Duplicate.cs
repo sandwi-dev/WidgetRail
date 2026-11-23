@@ -76,15 +76,16 @@ public sealed partial class CaptureLibraryStore
                 var stamp = File.GetLastWriteTimeUtc(temporary).Ticks;
                 item = item with { Revision = stamp };
                 saved = new(2, item, digest, PublicName(item), stamp);
-                using (var query = Command("SELECT key_hash FROM capture_associations WHERE capture_id=$id LIMIT $limit",
+                using (var query = Command("SELECT key_hash FROM active_capture_associations WHERE capture_id=$id LIMIT $limit",
                     ("$id", reference.Id), ("$limit", CaptureEditLimits.MaximumAssociations + 1)))
                 using (var reader = query.ExecuteReader())
                     while (reader.Read())
                     {
                         if (associations.Count == CaptureEditLimits.MaximumAssociations) throw Error("capture_library_edit_context_limit");
-                        var previous = ReadAssociation(AssociationPath(reader.GetString(0)), reader.GetString(0));
+                        var previous = EffectiveAssociation(ReadAssociation(AssociationPath(reader.GetString(0)), reader.GetString(0)));
+                        if (previous.Detached) continue;
                         associations.Add(previous with { KeyHash = HashText("copy\0" + id + "\0" + previous.KeyHash),
-                            Association = previous.Association with { Id = Guid.NewGuid().ToString("N"), CaptureId = id, RecordedAtUnixMilliseconds = now } });
+                            Association = previous.Association with { Id = Guid.NewGuid().ToString("N"), CaptureId = id, LinkRevision = 0, RecordedAtUnixMilliseconds = now } });
                     }
                 foreach (var association in associations) File.WriteAllText(AssociationPath(association.KeyHash) + ".pending", JsonSerializer.Serialize(association));
                 File.WriteAllText(MetadataPath(id) + ".pending", JsonSerializer.Serialize(saved));

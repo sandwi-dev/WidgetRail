@@ -6,6 +6,8 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 internal sealed partial class BrowserSurface
 {
     internal bool IsBackendVideo => hostedDefinition?.Source.Kind == WebSessionSourceKind.BackendVideo;
+    internal bool CanPresentBackendVideo => IsBackendVideo && videoBound && videoDocument?.IsCurrent == true &&
+        visible && !retired && !faulted && !profileChanging;
     internal WebBrowserOptions VideoViewOptions => document.Options with { Chrome = BrowserChrome.OnDemand };
     private readonly Dictionary<string, (BrowserSurface View, BrowserDocumentLease Document)> pendingVideoViews = [];
     private BrowserDocumentLease? videoDocument;

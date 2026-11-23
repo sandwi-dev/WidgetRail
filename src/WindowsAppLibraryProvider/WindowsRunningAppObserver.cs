@@ -19,11 +19,13 @@ internal sealed record WindowsRunningAppObservation(
 internal interface IWindowsRunningAppObserver
 {
     IReadOnlyList<WindowsRunningAppObservation> Observe(CancellationToken cancellationToken);
+    IReadOnlyList<WindowsRunningAppObservation> ObserveComplete(CancellationToken cancellationToken) => Observe(cancellationToken);
 }
 
 internal interface IWindowsRunningWindowReader
 {
     void Enumerate(Func<IntPtr, bool> visitor);
+    bool IsVisible(IntPtr window) => true;
     WindowsRunningAppObservation? Inspect(IntPtr window);
 }
 
@@ -48,19 +50,25 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     internal WindowsRunningAppObserver(IWindowsRunningWindowReader windows) =>
         _windows = windows ?? throw new ArgumentNullException(nameof(windows));
 
-    public IReadOnlyList<WindowsRunningAppObservation> Observe(
-        CancellationToken cancellationToken)
+    public IReadOnlyList<WindowsRunningAppObservation> Observe(CancellationToken cancellationToken) => Observe(cancellationToken, false);
+    public IReadOnlyList<WindowsRunningAppObservation> ObserveComplete(CancellationToken cancellationToken) => Observe(cancellationToken, true);
+
+    private IReadOnlyList<WindowsRunningAppObservation> Observe(CancellationToken cancellationToken, bool requireComplete)
     {
         if (!OperatingSystem.IsWindows()) return [];
         var observations = new List<WindowsRunningAppObservation>();
         var visits = 0;
+        var truncated = false;
         _windows.Enumerate(window =>
         {
-            visits++;
             if (cancellationToken.IsCancellationRequested)
             {
                 return false;
             }
+            // Hidden top-level HWNDs cannot be recorded and can number in the hundreds.
+            // Bound expensive inspections, while still proving a complete visible-window scan.
+            if (requireComplete && !_windows.IsVisible(window)) return true;
+            if (++visits > MaximumTopLevelWindowVisits) { truncated = true; return false; }
             try
             {
                 if (_windows.Inspect(window) is { } observation)
@@ -70,10 +78,10 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
             {
                 // A disappearing/inaccessible window must not fail the entire list.
             }
-            return visits < MaximumTopLevelWindowVisits;
+            return requireComplete || visits < MaximumTopLevelWindowVisits;
         });
         cancellationToken.ThrowIfCancellationRequested();
-        return observations;
+        return truncated ? [] : observations;
     }
 
     internal static WindowsRunningAppObservation? InspectWindow(IntPtr window) =>
@@ -298,6 +306,8 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
             }, IntPtr.Zero);
             failure?.Throw();
         }
+
+        public bool IsVisible(IntPtr window) => IsWindowVisible(window);
 
         public WindowsRunningAppObservation? Inspect(IntPtr window) =>
             InspectWindow(window);

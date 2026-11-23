@@ -15,6 +15,13 @@ internal static class ContentSizedPresentationMeasure
             // viewport resize grow the panel according to its distance from the origin.
             element.Margin = new();
             element.Measure(new(width, maximum));
+            var prepared = WidgetScrollEdgeCues.PrepareMeasuredSubtree(element);
+            prepared |= NativeComputedStyleAdapter.PrepareMeasuredTypography(element);
+            if (prepared)
+            {
+                element.InvalidateMeasure();
+                element.Measure(new(width, maximum));
+            }
             return element.DesiredSize.Height;
         }
         finally

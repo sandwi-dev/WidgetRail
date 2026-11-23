@@ -52,6 +52,8 @@ internal static class ControllerSettingsPresentation
                     (state.Settings.Controllers.EffectiveReplaySaveShortcut.Enabled ? "" : "Off · ")+state.Settings.Controllers.EffectiveReplaySaveShortcut.DisplayName+"  ›",
                     "controllers.replay-shortcut.edit","controllers.replay-shortcut").Busy(state.Busy).Classes("setting-row"),
                     "Save the current replay buffer without opening the overlay. Start replay recording in Capture Library first."),
+                SettingsPresentation.Field("Tray quick actions", UI.Button("Configure…", "controllers.tray-actions.edit", "controllers.tray-actions")
+                    .Classes("setting-row"), "Assign a quick action to each D-pad direction on the tray."),
             };
             if (features.HeldDpadScroll) navigation.AddRange([
                 UI.Text("Input behavior", "controllers.input-heading").Classes("section-heading"),

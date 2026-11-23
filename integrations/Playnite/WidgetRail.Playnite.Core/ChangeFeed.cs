@@ -63,17 +63,17 @@ public sealed class ChangeFeed : IDisposable
     public async Task<EventBatch> PollAsync(long after, int waitMilliseconds, CancellationToken token)
     {
         if (waitMilliseconds < 0 || waitMilliseconds > 25000) throw new ArgumentOutOfRangeException(nameof(waitMilliseconds));
-        if (!waiters.Wait(0)) throw new EventWaitCapacityException();
+        Task changed;
+        lock (gate)
+        {
+            if (disposed) throw new ObjectDisposedException(nameof(ChangeFeed));
+            var ready = Read(after);
+            if (ready.ResetRequired || ready.Events.Count != 0 || waitMilliseconds == 0) return ready;
+            if (!waiters.Wait(0)) throw new EventWaitCapacityException();
+            changed = signal.Task;
+        }
         try
         {
-            Task changed;
-            lock (gate)
-            {
-                if (disposed) throw new ObjectDisposedException(nameof(ChangeFeed));
-                var ready = Read(after);
-                if (ready.ResetRequired || ready.Events.Count != 0 || waitMilliseconds == 0) return ready;
-                changed = signal.Task;
-            }
             using (var linked = CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token))
             {
                 await Task.WhenAny(changed, Task.Delay(waitMilliseconds, linked.Token)).ConfigureAwait(false);

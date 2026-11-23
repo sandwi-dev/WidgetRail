@@ -5,24 +5,21 @@ using Microsoft.UI.Xaml.Media;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Motion;
 
-/// <summary>One XAML presentation clock for pages and their independently resident media.
-/// Placement and clipping are applied before the media owners reconcile the same frame.</summary>
+/// <summary>One XAML presentation clock for page placement, clipping and opacity.</summary>
 internal sealed class WidgetPageMotion : IDisposable
 {
     private sealed record Target(WidgetMotionHost Host, WidgetMotionRecipe Recipe,
         object Transform, double Opacity, RectangleGeometry? Clip, CompositeTransform Motion, RectangleGeometry MotionClip);
     private readonly List<Target> targets = [];
     private readonly Stopwatch clock = new();
-    private readonly Action<WidgetMotionHost, WidgetMotionPose> synchronize;
     private readonly TaskCompletionSource<WidgetMotionOutcome> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool disposed;
     private static int remainingTraces = 256;
     private int frames;
     private double lastFrame, maxGap, maxWork;
 
-    internal WidgetPageMotion(IEnumerable<(WidgetMotionHost Host, WidgetMotionRecipe Recipe)> items, Action<WidgetMotionHost, WidgetMotionPose> synchronize)
+    internal WidgetPageMotion(IEnumerable<(WidgetMotionHost Host, WidgetMotionRecipe Recipe)> items)
     {
-        this.synchronize = synchronize;
         foreach (var (host, recipe) in items)
         {
             var transform = new CompositeTransform { CenterX = host.ActualWidth / 2, CenterY = host.ActualHeight / 2 };
@@ -71,7 +68,6 @@ internal sealed class WidgetPageMotion : IDisposable
             var clip = new Windows.Foundation.Rect(inset.X, inset.Y,
                 Math.Max(0, target.Host.ActualWidth - inset.X - inset.Z), Math.Max(0, target.Host.ActualHeight - inset.Y - inset.W));
             if (target.MotionClip.Rect != clip) target.MotionClip.Rect = clip;
-            synchronize(target.Host, new(translation, scale, recipe.From.Opacity + (recipe.To.Opacity - recipe.From.Opacity) * progress, inset));
         }
     }
     public void Dispose()

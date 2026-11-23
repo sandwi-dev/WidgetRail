@@ -271,6 +271,8 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.ActiveInputScopeId, previous.ActiveInputScopeId, current.ActiveInputScopeId);
         Add(PresentationProperty.InitialFocusId, previous.InitialFocusId, current.InitialFocusId);
         Add(PresentationProperty.QuickActions, previous.QuickActions, current.QuickActions);
+        if (previous.UnavailableTrayActions is not null || current.UnavailableTrayActions is not null)
+            Add(PresentationProperty.UnavailableTrayActions, previous.UnavailableTrayActions, current.UnavailableTrayActions);
         Add(PresentationProperty.Surface, previous.Surface, current.Surface);
         if (changes.Count != 0)
             operations.Add(new()
@@ -295,7 +297,8 @@ internal static class WidgetPresentationDiff
         List<PresentationUpdateOperation> operations)
     {
         if (previous.Kind != current.Kind || previous.IndexedCollection != current.IndexedCollection ||
-            previous.FocusVisualTargetId!=current.FocusVisualTargetId || previous.CollectionBoundaries!=current.CollectionBoundaries || previous.IndexedDirectionalEntry!=current.IndexedDirectionalEntry ||
+            previous.DirectionalAnchor != current.DirectionalAnchor ||
+            previous.FocusVisualTargetId!=current.FocusVisualTargetId || previous.IsReadingGroup!=current.IsReadingGroup || previous.CollectionBoundaries!=current.CollectionBoundaries || previous.IndexedDirectionalEntry!=current.IndexedDirectionalEntry || previous.IndexedPreferredEntryKey!=current.IndexedPreferredEntryKey ||
             !SameJson(previous.IndexedGroups, current.IndexedGroups) ||
             !SameJson(previous.IndexedOccurrenceKeys, current.IndexedOccurrenceKeys))
         {
@@ -380,6 +383,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.Graph, before.Graph, after.Graph);
         Add(PresentationProperty.ContextActions, before.ContextActions, after.ContextActions);
         Add(PresentationProperty.ContextMenuButton, before.ContextMenuButton, after.ContextMenuButton);
+        Add(PresentationProperty.NativeContextMenuOnly, before.NativeContextMenuOnly, after.NativeContextMenuOnly);
         Add(PresentationProperty.SelectOptions, before.SelectOptions, after.SelectOptions);
         Add(PresentationProperty.IsCommandMenu, before.IsCommandMenu, after.IsCommandMenu);
         Add(PresentationProperty.TextEntryValue, before.TextEntryValue, after.TextEntryValue);
@@ -394,8 +398,10 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.ValueChangedActionId, before.ValueChangedActionId, after.ValueChangedActionId);
         Add(PresentationProperty.SliderInteractionMode, before.SliderInteractionMode, after.SliderInteractionMode);
         Add(PresentationProperty.ImageSource, before.ImageSource, after.ImageSource);
+        Add(PresentationProperty.ImageIsPublicMedia, before.ImageIsPublicMedia, after.ImageIsPublicMedia);
         Add(PresentationProperty.ArtworkHandle, before.ArtworkHandle, after.ArtworkHandle);
         Add(PresentationProperty.FocusBackgroundArtworkHandle, before.FocusBackgroundArtworkHandle, after.FocusBackgroundArtworkHandle);
+        Add(PresentationProperty.ForegroundBackgroundProcessKey, before.ForegroundBackgroundProcessKey, after.ForegroundBackgroundProcessKey);
         Add(PresentationProperty.MediaSessionId, before.MediaSessionId, after.MediaSessionId);
         Add(PresentationProperty.WindowId, before.WindowId, after.WindowId);
         Add(PresentationProperty.PreviewAspectRatio, before.PreviewAspectRatio, after.PreviewAspectRatio);
@@ -411,6 +417,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.GridCell, before.GridCell, after.GridCell);
         Add(PresentationProperty.AnchoredPresentation, before.AnchoredPresentation, after.AnchoredPresentation);
         Add(PresentationProperty.ModalDismissal, before.ModalDismissal, after.ModalDismissal);
+        Add(PresentationProperty.OverlayModal, before.OverlayModal, after.OverlayModal);
         Add(PresentationProperty.FocusPreview, before.FocusPreview, after.FocusPreview);
         Add(PresentationProperty.FocusPreviewSource, before.FocusPreviewSource, after.FocusPreviewSource);
         Add(PresentationProperty.FocusPreviewKey, before.FocusPreviewKey, after.FocusPreviewKey);

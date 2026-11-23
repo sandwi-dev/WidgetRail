@@ -8,6 +8,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="../../src/FirstPartyWidgets/CaptureLibraryWidget/manifest.json" Link="fixture/capture/manifest.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../src/FirstPartyWidgets/CaptureLibraryWidget/assets/icons/*.svg" Link="fixture/capture/assets/icons/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../src/FirstPartyWidgets/CaptureLibraryWidget/styles/default.wrss" Link="fixture/capture-replay.wrss" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/FirstPartyWidgets/CaptureLibraryWidget/CaptureLibraryWidget.csproj" />
     <ProjectReference Include="../../src/FirstPartyWidgets/MarketplaceWidget/MarketplaceWidget.csproj" />

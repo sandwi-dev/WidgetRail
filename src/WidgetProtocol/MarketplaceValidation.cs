@@ -5,6 +5,15 @@ public static class MarketplaceValidation
 {
     public static string? CommandError(MarketplaceCommand command)
     {
+        if (command?.Action == "themes")
+            return command.ThemeQuery is { Page: >= 0 and < 125, Search: { Length: <= 128 } search } &&
+                !search.Any(char.IsControl) && command == new MarketplaceCommand("themes", ForceRefresh: command.ForceRefresh, ThemeQuery: command.ThemeQuery)
+                ? null : "invalid_marketplace_command";
+        if (command?.Action is "theme-status" or "theme-install" or "theme-install-apply" or "theme-apply")
+            return command.Theme is { } chosen && Token(chosen.Id,128) && Text(chosen.Version,64) &&
+                Version.TryParse(chosen.Version, out var version) && version.ToString() == chosen.Version && Hex(chosen.Sha256,64) &&
+                command == new MarketplaceCommand(command.Action, Theme: chosen) ? null : "invalid_marketplace_command";
+        if (command?.ThemeQuery is not null || command?.Theme is not null) return "invalid_marketplace_command";
         if (command is null || command.Action is not ("status" or "refresh" or "inventory" or "download" or "install" or "cancel" or "download-updates" or "install-updates") ||
             command.PackageId is not null && !Token(command.PackageId,128) || command.OperationId is not null && !Hex(command.OperationId,32) ||
             command.ReviewToken is not null && !Hex(command.ReviewToken,64) || command.Action == "download" && command.PackageId is null ||
@@ -22,6 +31,11 @@ public static class MarketplaceValidation
     }
     public static string? SnapshotError(MarketplaceSnapshot snapshot)
     {
+        if (snapshot?.Themes is { } page && (page.Total is < 0 or > 1000 || page.Page < 0 || page.Page > Math.Max(0, (page.Total - 1) / 8) ||
+            page.Items is null || page.Items.Length != Math.Min(8, page.Total - page.Page * 8) || page.Items.Any(item => !ValidTheme(item)) ||
+            page.Featured is not null && !ValidTheme(page.Featured) || page.Collections is not { Length: <= 2 } ||
+            page.Collections.Any(shelf => shelf is null || !Text(shelf.Name, 64) || shelf.Items is not { Length: > 0 and <= 4 } ||
+                shelf.Items.Any(item => !ValidTheme(item))))) return "invalid_theme_page";
         if (snapshot is null || snapshot.Revision < 0 || snapshot.Items is null || snapshot.Items.Count > 32 ||
             snapshot.Items.Any(item => item is null || !Token(item.Id,128) || !Text(item.Name,120) || !Text(item.Description,1024) ||
                 item.Screenshots is null || item.Screenshots.Count > 4 || item.Screenshots.Any(url => !Uri.TryCreate(url,UriKind.Absolute,out var uri) ||
@@ -46,7 +60,7 @@ public static class MarketplaceValidation
                 snapshot.Operation is not { Kind: "download-updates", State: "review" })) return "invalid_marketplace_update_batch";
         }
         if (snapshot.Operation is not { } operation) return snapshot.UpdateBatch is null ? null : "invalid_marketplace_update_batch";
-        if (!Hex(operation.Id,32) || operation.Kind is not ("refresh" or "inventory" or "download" or "install" or "download-updates" or "install-updates") ||
+        if (!Hex(operation.Id,32) || operation.Kind is not ("refresh" or "inventory" or "download" or "install" or "download-updates" or "install-updates" or "theme-install" or "theme-install-apply" or "theme-apply") ||
             operation.State is not ("running" or "review" or "completed" or "cancelled" or "failed") ||
             operation.PackageId is not null && !Token(operation.PackageId,128) || operation.DownloadedBytes < 0 || operation.TotalBytes < 0 ||
             operation.Message is not null && !Text(operation.Message,512)) return "invalid_marketplace_operation";
@@ -68,6 +82,13 @@ public static class MarketplaceValidation
             !Permissions(review.AddedPermissions) || !Hex(review.Sha256,64)) return "invalid_marketplace_review";
         return null;
     }
+    public static bool ValidTheme(CatalogueTheme? item) => item is not null && Token(item.Id,128) && Token(item.Publisher,128) &&
+        Text(item.Version,64) && Version.TryParse(item.Version, out var version) && version.ToString() == item.Version &&
+        Text(item.Name,80) && Text(item.Creator,80) && Text(item.Description,240) && item.Tags is { Length: <= 8 } &&
+        item.Tags.All(tag => Text(tag,40)) && item.Released != default && Hex(item.Sha256,64) && Hex(item.PreviewKey,64) &&
+        item.Bytes is > 0 and <= 4194304 && (item.PreviewHashes is null ||
+            item.PreviewHashes.Count == ThemeCataloguePublication.PreviewFiles.Count &&
+            ThemeCataloguePublication.PreviewFiles.All(file => item.PreviewHashes.TryGetValue(file, out var hash) && Hex(hash,64)));
     private static bool Token(string? value,int max) => Text(value,max) && value!.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_');
     private static bool Text(string? value,int max) => !string.IsNullOrWhiteSpace(value) && value.Length <= max && !value.Any(char.IsControl);
     private static bool Hex(string? value,int length) => value is not null && value.Length == length && value.All(char.IsAsciiHexDigit);

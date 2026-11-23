@@ -20,6 +20,9 @@ if (args is ["--query-resource-probe", var queryProbePath])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Tracked tray work survives opening and leaving its widget", TrayActionTests.TrackedWorkSurvivesForegroundRoundTrip),
+    ("Tray commands are exact one-shot resident operations without widget activation", TrayActionTests.ResidentDispatch),
+    ("Reading groups bound explicit child actions to exact indexed lease authority", ReadingGroupTests.Run),
     ("Indexed directional entry is opt-in lazy versioned and transport safe", IndexedDirectionalEntryTests.Run),
     ("Indexed query refresh provenance is explicit bounded and reset scoped", IndexedQueryRefreshTests.Run),
     ("Library recording purpose preserves attachment budgets and draft lifecycle", LibraryRecordingServiceTests.Run),
@@ -52,6 +55,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Activity sources coalesce preserve ownership and stay bounded", ActivityServiceTests.Contract),
     ("Permission requests wait for consent and clean up abandoned prompts", PermissionServiceTests.Contract),
     ("Media player sources are versioned bounded and source-specific", MediaPlayerPresentationTests.Contract),
+    ("Public media policies survive snapshots galleries and resource updates", MediaPlayerPresentationTests.PublicMediaContract),
+    ("Inline videos are explicit bounded reading controls and versioned", MediaPlayerPresentationTests.InlineVideoContract),
+    ("Media animations are silent passive exact and versioned", MediaPlayerPresentationTests.AnimationContract),
+    ("Media gallery is bounded immutable and keeps one native player", MediaPlayerPresentationTests.GalleryContract),
     ("Media preview saved references are versioned bounded and opt-in", MediaPlayerPresentationTests.PreviewContract),
     ("Line graphs preserve immutable samples and incremental protocol updates", LineGraphPresentationTests.Contract),
     ("Configured capture separates options lifecycle and bounded streaming", ConfiguredCaptureTests.Contract),
@@ -97,6 +104,8 @@ var tests = new (string Name, Func<Task> Run)[]
         ProtocolValidationDiagnosticTests.Run),
     ("SDK snapshots use the shared maximum protocol requirement",
         ProtocolVersionRequirementsTests.SdkSnapshotsUseSharedMaximum),
+    ("Unavailable tray reasons update without granting command authority", TrayActionTests.UnavailableReasons),
+    ("Replay tray hints follow recorder state", ProtocolVersionRequirementsTests.ReplayTrayHintsFollowRecorderState),
     ("Extended saved media negotiates semantic compatibility without widening native captures", ExtendedSavedMediaTests.Contract),
     ("Capture save prefers modern metadata and falls back only before unsupported operations", CaptureSaveCompatibilityTests.Contract),
     ("Raw snapshots enforce the complete shared protocol requirement matrix",
@@ -204,6 +213,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Navigation shell unavailable entries omit only missing content edges", NavigationShellTests.UnavailableEntryOmitsOnlyMissingContentEdges),
     ("Navigation shell content entries validate available identifiers", NavigationShellTests.ContentEntryValueValidatesAvailableIdentifiers),
     ("Navigation shells wire compact and expanded focus graphs", NavigationShellTests.PreservesControllerTraversal),
+    ("Navigation shells honor authored exits without changing other neighbors", NavigationShellTests.AuthoredExitsPreserveOtherShellNeighbors),
     ("Navigation shell compact adornments are input inert and additive", NavigationShellTests.CompactAdornmentsAreInputInertAndAdditive),
     ("Navigation shells reject ambiguous or unbounded destinations", NavigationShellTests.ValidatesAuthoringBounds),
     ("Focus persistence negotiates v13 without changing legacy snapshots", NavigationShellTests.FocusPersistenceIsOptionalAndVersioned),
@@ -2282,6 +2292,17 @@ static Task ModernControllerComponentsAreSemantic()
     Assert.Equal("Output devices, Not selected", output.AccessibilityLabel);
     Assert.Equal("modern.tabs.voice", output.Focus!.Left);
     Assert.Equal("modern.tabs.audio", output.Focus.Right);
+    var exits=UI.SegmentedTabs("exits","first",
+        new SegmentedTab("first","First","first"){Focus=new(Up:"above",Left:"outside")},
+        new SegmentedTab("last","Last","last"){Focus=new(Down:"below",Right:"outside")});
+    var exitSnapshot=new WidgetView(UI.Stack("exit-root",exits,UI.Button("Outside","outside","outside"),
+        UI.Button("Above","above","above"),UI.Button("Below","below","below"))).CreateSnapshot("tab-exits",1);
+    Assert.Equal(0,ViewSnapshotValidator.Validate(exitSnapshot).Count);
+    Assert.Equal("outside",Find(exitSnapshot.Root,"first").Focus!.Left);
+    Assert.Equal("last",Find(exitSnapshot.Root,"first").Focus!.Right);
+    Assert.Equal("above",Find(exitSnapshot.Root,"first").Focus!.Up);
+    Assert.Equal("outside",Find(exitSnapshot.Root,"last").Focus!.Right);
+    Assert.Equal("below",Find(exitSnapshot.Root,"last").Focus!.Down);
     Assert.Equal(true, Find(snapshot.Root, "modern.motion").IsSelected);
     Assert.Equal(null, Find(snapshot.Root, "modern.motion").Glyph);
     Assert.Equal(true, Find(snapshot.Root, "modern.hdr").IsDisabled);

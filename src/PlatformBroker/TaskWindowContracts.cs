@@ -14,3 +14,7 @@ public sealed record TaskWindowSummary(
 }
 
 public sealed record TaskWindowRequest([property: JsonRequired] string WindowId);
+
+public sealed record LaunchHandoffTicket([property: JsonRequired] string Ticket);
+public sealed record LaunchHandoffTarget(string Ticket, uint ProcessId, long CreatedFileTime, long WindowHandle);
+public sealed record LaunchHandoffResult(string? WindowId);

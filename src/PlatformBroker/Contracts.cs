@@ -938,6 +938,8 @@ public interface IAppLibraryPlatformBrokerBackend
     Task<IReadOnlyList<TaskWindowSummary>> GetTaskWindowsAsync(CancellationToken cancellationToken) =>
         Task.FromException<IReadOnlyList<TaskWindowSummary>>(
             new BrokerException("platform_unavailable", "Window control is unavailable."));
+    Task<NativeWindowPreviewTarget?> InspectLaunchWindowAsync(long handle, CancellationToken cancellationToken) =>
+        Task.FromResult<NativeWindowPreviewTarget?>(null);
     Task SwitchTaskWindowAsync(string windowId, CancellationToken cancellationToken) =>
         Task.FromException(new BrokerException("platform_unavailable", "Window control is unavailable."));
     Task CloseTaskWindowAsync(string windowId, CancellationToken cancellationToken) =>

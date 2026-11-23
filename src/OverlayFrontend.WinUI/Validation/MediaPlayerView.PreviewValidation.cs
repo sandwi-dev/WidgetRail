@@ -17,7 +17,7 @@ internal sealed partial class MediaPlayerView
     internal bool PreviewSystemControlsDisabledForValidation => player is not null && !player.CommandManager.IsEnabled && !player.SystemMediaTransportControls.IsEnabled;
     internal bool HasPosterForValidation => video.PosterSource is not null;
     internal bool HasPlaybackLeaseForValidation => playbackLeaseId is not null;
-    internal MediaPresentationStage? PreviewStageForValidation => videoStage;
+    internal Microsoft.UI.Xaml.FrameworkElement PreviewVideoForValidation => video;
     internal object? PlaybackPlayerForValidation => player;
     internal bool PosterLoadingForValidation => video.PosterSource is not null && video.Visibility == Microsoft.UI.Xaml.Visibility.Visible &&
         status.Visibility == Microsoft.UI.Xaml.Visibility.Collapsed && player is null;
@@ -29,8 +29,8 @@ internal sealed partial class MediaPlayerView
     internal Microsoft.UI.Xaml.Controls.Slider PreviewVolumeForValidation => volume;
     internal bool PreviewChromeVisibleForValidation => videoChrome.Visible;
     internal void HidePreviewChromeForValidation() => videoChrome.Hide();
-    internal Windows.Foundation.Rect PreviewVideoBoundsForValidation => video.TransformToVisual(XamlRoot.Content)
-        .TransformBounds(new(0, 0, video.ActualWidth, video.ActualHeight));
+    internal Windows.Foundation.Rect PreviewVideoBoundsForValidation => MediaTransitionGeometry.Fit(video.TransformToVisual(XamlRoot.Content)
+        .TransformBounds(new(0, 0, video.ActualWidth, video.ActualHeight)), VideoAspectRatio);
     internal Windows.Foundation.Rect ExpectedPreviewVideoBoundsForValidation => MediaTransitionGeometry.Fit(
         stage.TransformToVisual(XamlRoot.Content).TransformBounds(new(0, 0, stage.ActualWidth, stage.ActualHeight)), VideoAspectRatio);
     internal Windows.Foundation.Rect UnobscuredPreviewVideoBoundsForValidation

@@ -13,8 +13,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\WidgetApplicationRuntime\WidgetApplicationRuntime.csproj" />
     <ProjectReference Include="..\PlayniteLibraryWidget.csproj" />
+    <ProjectReference Include="..\..\..\src\RemoteMediaTransport\RemoteMediaTransport.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="HtmlAgilityPack" Version="1.13.1" />
+    <None Update="HtmlAgilityPack-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

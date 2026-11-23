@@ -41,13 +41,14 @@ internal sealed partial class MediaFullscreenLayer : Grid
         Rect? Origin = null, Action? Prepare = null, FrameworkElement[]? Chrome = null,
         bool UseXamlTransform = false, Func<Rect?>? MediaBounds = null, FrameworkElement? MotionContent = null,
         Func<short, short, bool>? PointerMove = null, Func<Task>? BeforeDetach = null, Action? Detach = null,
-        Action<FocusNavigationDirection, bool>? RepeatedNavigate = null)
+        Action<FocusNavigationDirection, bool>? RepeatedNavigate = null, Func<Rect?>? ReturnOrigin = null)
     {
         internal TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     internal MediaFullscreenLayer()
     {
+        NativeMotionVisibility.Prepare(this);
         IsHitTestVisible = false;
         Children.Add(parking);
         HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -130,6 +131,15 @@ internal sealed partial class MediaFullscreenLayer : Grid
         }
     }
 
+    /// <summary>Retarget settled media paint while preserving the fullscreen owner and input boundary.</summary>
+    internal void UpdateMedia(object owner, bool useXamlTransform, Func<Rect?>? bounds, FrameworkElement? motionContent, FrameworkElement[]? chrome = null)
+    {
+        if (current is not { } presentation || !ReferenceEquals(presentation.Owner, owner) || IsTransitioning) return;
+        ResetTransition();
+        current = presentation with { UseXamlTransform = useXamlTransform, MediaBounds = bounds, MotionContent = motionContent, Chrome = chrome ?? presentation.Chrome };
+        foreach (var stage in stages) stage.SetCovered(!ReferenceEquals(stage, motionContent));
+    }
+
     internal void Close(bool restoreFocus = true)
     {
 #if ENABLE_WIDGET_VALIDATION
@@ -141,8 +151,11 @@ internal sealed partial class MediaFullscreenLayer : Grid
         closing = true;
         IsTransitioning = true;
         previous.Content.IsHitTestVisible = false;
-        if (previous.MotionContent is { } media) media.IsHitTestVisible = false;
+        // In-tree gallery media inherits input gating from Content. Only a
+        // separately hosted embedded stage needs its own pointer boundary.
+        if (previous.MotionContent is MediaPresentationStage media) media.IsHitTestVisible = false;
         Changed?.Invoke();
+        if (previous.ReturnOrigin is not null && restoreFocus) UpdateLayout();
         if (restoreFocus && !entranceQueued && IsLoaded && CanRestoreFocus?.Invoke() != false)
             _ = CloseTransitionAsync(previous, version);
         else _ = ReleaseAndCloseAsync(previous, version, restoreFocus);

@@ -12,13 +12,20 @@ internal sealed partial class OverlayShellPage
         var pin = pinned is { } current && ReferenceEquals(root, current.Window.AutomationRoot.XamlRoot) ? current : null;
         if (pin is null && !ReferenceEquals(root, XamlRoot)) return [];
         return await WithNativeFilePickerAsync(root, pin,
-            cancellation => BrowserFilePicker.PickAsync(root.ContentIslandEnvironment.AppWindowId, request, cancellation), token);
+            cancellation => ChooseBrowserPathsAsync(root, pin, request, null, request.Multiple ? BrowserSurface.MaximumUploadFiles : 1, cancellation), token);
     }
 
     private bool ReceiveSystemFilePicker(ControllerFrame frame)
     {
         if (!SystemFilePickerOpen) return false;
         heldAction.Reset(); rightStick.Reset();
+        if (fileBrowser is { } picker)
+        {
+            shellGestures.ReleaseDigitalButtons(frame);
+            foreach (var (mask,button) in Buttons) if ((frame.PressedButtons & mask)!=0) shellGestures.Claim(button);
+            picker.Receive(frame,visible && (fileBrowserPin?.HasForeground ?? foreground));
+            return true;
+        }
         if (frame.Connected == 0 || frame.Primed != 0) { shellGestures.Reset(); return true; }
         shellGestures.CaptureFrame(frame);
         shellGestures.ReconcileReleasedState(frame);

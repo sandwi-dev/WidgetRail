@@ -1,3 +1,4 @@
+using WidgetRail.WidgetProtocol;
 using System.Diagnostics;
 using System.IO.Pipes;
 
@@ -15,6 +16,32 @@ internal sealed class WidgetProcessSession(
     private int _handshakeCompleted;
     private int? _exitCode;
     private TaskCompletionSource? _publicationsDrained;
+
+    private readonly Dictionary<long, TaskCompletionSource<TrayActionResult>> _trayWork = [];
+    private TaskCompletionSource? _trayDrained;
+    internal Task TrayWorkDrained { get { lock (_terminalGate) return _trayDrained?.Task ?? Task.CompletedTask; } }
+
+    internal Task<TrayActionResult> BeginTrayWork(long sequence)
+    {
+        lock (_terminalGate)
+        {
+            var work = new TaskCompletionSource<TrayActionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (_terminalTask is not null || _trayWork.Count >= 16 || !_trayWork.TryAdd(sequence, work))
+                throw new WidgetProcessException("Tray work could not be admitted.");
+            if (_trayWork.Count == 1) _trayDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            return work.Task;
+        }
+    }
+
+    internal void FinishTrayWork(long sequence, TrayActionResult result)
+    {
+        lock (_terminalGate)
+        {
+            if (!_trayWork.Remove(sequence, out var work)) return;
+            work.TrySetResult(result);
+            if (_trayWork.Count == 0) _trayDrained?.TrySetResult();
+        }
+    }
 
     internal WidgetPendingRequests PendingRequests { get; } = new();
     internal WidgetDashboardGestureReservations GestureReservations { get; } =
@@ -283,6 +310,12 @@ internal sealed class WidgetProcessSession(
     private async Task DisposeOwnedResourcesAsync(CancellationToken cancellationToken)
     {
         GestureReservations.Clear();
+        lock (_terminalGate)
+        {
+            foreach (var pending in _trayWork.Values) pending.TrySetResult(TrayActionResult.Unavailable("The widget stopped before the action finished."));
+            _trayWork.Clear();
+            _trayDrained?.TrySetResult();
+        }
         PendingRequests.FailAll(new WidgetProcessException("Widget session ended."));
         Cancel();
         Pipe?.Dispose();

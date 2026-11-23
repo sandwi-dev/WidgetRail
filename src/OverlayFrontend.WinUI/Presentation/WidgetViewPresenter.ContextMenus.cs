@@ -65,7 +65,7 @@ internal sealed partial class WidgetViewPresenter
         if (target is null && keyboard && FindBinding(source) is { Identity.Kind: not ViewNodeKind.ActionSurface,
             Element: not WidgetIndexedCollectionView } fallback && ContextOwnerAvailable(fallback))
             target = FindContextTarget(ControllerButton.Menu);
-        if (target is null) return false;
+        if (target is null || target.Node.IsCommandMenu == true) return false;
         if (!HasAvailableActions(target.Node)) return true;
         IDisposable? retention = null;
         if (target.Row is { } row)
@@ -113,6 +113,11 @@ internal sealed partial class WidgetViewPresenter
     {
         if (!presentationInputEnabled) return false;
         if (FindContextTarget(trigger) is not { } target) return false;
+        if (target.Node.IsCommandMenu == true)
+        {
+            OpenSelect(target.Owner.Identity, target.Owner.Token, fromShortcut: true);
+            return true;
+        }
         // Declared context ownership consumes the button even when every option
         // is unavailable; it must not fall through to an unrelated shortcut.
         if (!HasAvailableActions(target.Node)) return true;
@@ -128,19 +133,21 @@ internal sealed partial class WidgetViewPresenter
             trigger is not (ControllerButton.Menu or ControllerButton.X or ControllerButton.Y)) return null;
         var focused = FocusedBinding();
         if (focused is { Element: WidgetIndexedCollectionView indexed } && Eligible(focused) &&
-            indexed.CaptureContextRow() is { } rowTarget && Matches(rowTarget.Row.Item.Root, trigger))
+            indexed.CaptureContextRow() is { } rowTarget && rowTarget.Row.Item.Root.NativeContextMenuOnly != true && Matches(rowTarget.Row.Item.Root, trigger))
             return new(focused, rowTarget.Row.Item.Root, rowTarget.Anchor, rowTarget.Row, indexed);
         if (focused is not null && ContextOwnerAvailable(focused) &&
-            declarations[focused.Identity.Id].Node is { Kind: ViewNodeKind.ActionSurface } surface && Matches(surface, trigger))
+            declarations[focused.Identity.Id].Node is { Kind: ViewNodeKind.ActionSurface, NativeContextMenuOnly: not true } surface && Matches(surface, trigger))
             return new(focused, surface, focused.Element);
         var candidates = bindings.Values.Where(binding => ContextOwnerAvailable(binding) &&
             declarations[binding.Identity.Id].Node is { Kind: not ViewNodeKind.ActionSurface } node &&
-            node.ContextMenuButton == trigger && node.ContextActions.Count > 0).Take(2).ToArray();
+            node.ContextMenuButton == trigger && (node.ContextActions.Count > 0 || node.IsCommandMenu == true)).Take(2).ToArray();
         return candidates.Length == 1 ? new(candidates[0], declarations[candidates[0].Identity.Id].Node,
             candidates[0].Element) : null;
     }
 
-    private static bool HasAvailableActions(ViewNode node) => node.ContextActions.Any(action => !action.IsDisabled && !action.IsBusy);
+    private static bool HasAvailableActions(ViewNode node) => node.IsCommandMenu == true
+        ? node.SelectOptions.Any(option => !option.IsDisabled && !option.IsBusy)
+        : node.ContextActions.Any(action => !action.IsDisabled && !action.IsBusy);
     private static bool Matches(ViewNode node, ControllerButton trigger) => node.Kind == ViewNodeKind.ActionSurface &&
         (node.ContextMenuButton ?? ControllerButton.Menu) == trigger && node.IsDisabled != true && node.IsBusy != true && node.ContextActions.Count > 0;
 

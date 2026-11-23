@@ -776,12 +776,19 @@ static async Task AnimationPreferences()
     }
     await Action(widget, "widget-modal-animation.toggle");
     Assert.Equal(false, (await Store(temp.Path).LoadAsync()).Appearance.AnimateWidgetModals);
+    Assert.Equal(true, (await Store(temp.Path).LoadAsync()).Appearance.AnimateOverlayVisibility);
+    await Action(widget, "overlay-visibility-animation.toggle");
+    Assert.Equal(false, (await Store(temp.Path).LoadAsync()).Appearance.AnimateOverlayVisibility);
     await Action(widget, "open.accessibility");
     await Action(widget, "motion.reduced");
     var persisted = (await Store(temp.Path).LoadAsync()).Appearance;
     Assert.Equal(MotionPreference.Reduced, persisted.Motion);
     Assert.Equal(WidgetSectionAnimation.Paging, persisted.SectionAnimation);
     Assert.Equal(false, persisted.AnimateWidgetModals);
+    Assert.Equal(false, persisted.AnimateOverlayVisibility);
+    await Action(widget, "open.appearance");
+    await Action(widget, "overlay-visibility-animation.toggle");
+    Assert.Equal(true, (await Store(temp.Path).LoadAsync()).Appearance.AnimateOverlayVisibility);
 }
 
 static async Task CompositeControls()

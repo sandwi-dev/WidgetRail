@@ -98,6 +98,13 @@ internal sealed partial class IndexedWidgetValidationPage
                 await File.WriteAllTextAsync(startFile + ".ready", "ready");
                 await Until(() => File.Exists(startFile), "external foreground admission");
             }
+            await Send("return-mode");
+            await Send("return-back");
+            await Until(() => FocusId() == "Widget.items.Item.75", "return without a viewport checkpoint enters its exact row");
+            await Settle();
+            Check(Y() >= -1 && Y() < Scroll().ViewportHeight && !presenter.HasPendingMemoryRestore,
+                "return without a matching checkpoint retains ordinary native reveal");
+
             await Open(); await Pending();
             Check(presenter.FocusHostTarget("return-other"), "programmatic departure focuses another control");
             Check(!presenter.HasPendingMemoryRestore, "programmatic departure cancels pending return geometry");

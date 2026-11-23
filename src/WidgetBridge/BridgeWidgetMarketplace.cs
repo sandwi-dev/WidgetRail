@@ -1,9 +1,11 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using WidgetRail.PackageDistribution;
 using WidgetRail.PlatformBroker;
 using WidgetRail.PlatformDiagnostics;
+using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetCatalog;
 using WidgetRail.WidgetProtocol;
 using CatalogService = WidgetRail.WidgetCatalog.WidgetCatalog;
@@ -34,6 +36,9 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
     private readonly HttpMessageHandler? _http;
     private readonly TimeProvider _clock;
     private readonly MarketplaceReleaseCache _releaseCache;
+    private readonly MarketplaceThemeFeed _themeFeed;
+    private readonly Lazy<ThemeCatalog> _themeCatalog;
+    private readonly PlatformSettingsPaths _themePaths;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Dictionary<string, ReleaseAsset> _assets = new(StringComparer.Ordinal);
     private MarketplaceSnapshot _snapshot;
@@ -55,6 +60,9 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
             definitions = JsonSerializer.Deserialize<CuratedWidget[]>(stream, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         }
         _releaseCache = new(_http, _clock);
+        _themePaths = new(Path.GetDirectoryName(_stateRoot)!);
+        _themeCatalog = new(() => new ThemeCatalog(_themePaths));
+        _themeFeed = new(Path.Combine(_themePaths.RootDirectory, "theme-catalogue"), _http, _clock);
         _definitions = definitions.Select(d => d with
         {
             Screenshots = Array.AsReadOnly(d.Screenshots.ToArray()),
@@ -72,6 +80,8 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
     internal ValueTask<MarketplaceSnapshot> HandleAsync(MarketplaceCommand command, CancellationToken token)
     {
         MarketplaceContract.ValidateCommand(command); token.ThrowIfCancellationRequested();
+        if (command.Action == "themes") return BrowseThemesAsync(command, token);
+        if (command.Action == "theme-status") return ThemeStatusAsync(_themeFeed.Resolve(command.Theme!), token);
         MarketplaceSnapshot result;
         lock (_gate)
         {
@@ -82,7 +92,13 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
                 SetOperation(_snapshot.Operation! with { State = "failed", Review = null, Message = "The package review expired. Download it again to review current bytes." });
             }
             ExpireBatchReview();
-            if (command.Action is "refresh" or "inventory" or "download" or "download-updates")
+            if (command.Action is "theme-install" or "theme-install-apply" or "theme-apply")
+            {
+                if (_snapshot.Operation?.State is "running" or "review") throw new PlatformDiagnosticsException("marketplace_busy");
+                var theme = _themeFeed.Resolve(command.Theme!);
+                Start(command.Action, theme.Id, theme: theme);
+            }
+            else if (command.Action is "refresh" or "inventory" or "download" or "download-updates")
             {
                 if (_snapshot.Operation?.State != "running" && _pending is null && _pendingBatch is null)
                 {
@@ -133,7 +149,32 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         return ValueTask.FromResult(result);
     }
 
-    private void Start(string kind, string? id, PendingPackage? package = null, IReadOnlyList<string>? ids = null, PendingBatch? batch = null, bool forceRefresh = false)
+    private async ValueTask<MarketplaceSnapshot> BrowseThemesAsync(MarketplaceCommand command, CancellationToken token)
+    {
+        var page = await _themeFeed.BrowseAsync(command.ThemeQuery!, command.ForceRefresh, token).ConfigureAwait(false);
+        return MarketplaceSnapshot.Unavailable with { Themes = page };
+    }
+
+    internal async Task<Dictionary<string, BridgeNodeRenderStyles>> PreviewThemeAsync(string key, CancellationToken token)
+    {
+        var theme = _themeFeed.ResolvePreview(key);
+        var bytes = await _themeFeed.GetPackageAsync(theme, token).ConfigureAwait(false);
+        var styles = await MarketplaceThemePreview.ReadAsync(bytes, theme.Id, theme.Version, theme.Sha256,
+            _themeCatalog.Value, token, theme.Publisher, theme.Name).ConfigureAwait(false);
+        return new(styles, StringComparer.Ordinal);
+    }
+
+    private async ValueTask<MarketplaceSnapshot> ThemeStatusAsync(CatalogueTheme theme, CancellationToken token)
+    {
+        var catalog = await Task.Run(() => _themeCatalog.Value.Discover(), token).ConfigureAwait(false);
+        var installed = catalog.Themes.Any(entry => entry.CatalogId == theme.Id && entry.CatalogVersion == theme.Version && entry.IsValid);
+        var settings = await new PlatformSettingsStore(_themePaths).LoadAsync(token).ConfigureAwait(false);
+        var applied = installed && settings.Appearance.ThemeId == theme.Id && settings.Appearance.ThemeVersion == theme.Version;
+        return MarketplaceSnapshot.Unavailable with { ThemeStatus = new(installed, applied,
+            catalog.Themes.Count(entry => !entry.Descriptor.IsBuiltIn) >= ThemeCatalog.MaximumThemes) };
+    }
+
+    private void Start(string kind, string? id, PendingPackage? package = null, IReadOnlyList<string>? ids = null, PendingBatch? batch = null, bool forceRefresh = false, CatalogueTheme? theme = null)
     {
         ids = ids?.ToArray();
         var previous = _job?.Task ?? Task.CompletedTask;
@@ -142,20 +183,29 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         _job = job;
         PrepareBatch(kind, ids);
         SetOperation(new(job.Id, kind, "running", id, Message: kind switch
-        { "refresh" => "Checking available widgets…", "inventory" => "Refreshing installed versions…", "download" or "download-updates" => "Downloading for review…", _ => "Installing reviewed packages…" }));
+        {
+            "refresh" => "Checking available widgets…",
+            "inventory" => "Refreshing installed versions…",
+            "download" or "download-updates" => "Downloading for review…",
+            "theme-install" => "Installing theme…",
+            "theme-install-apply" => "Installing and applying theme…",
+            "theme-apply" => "Applying theme…",
+            _ => "Installing reviewed packages…",
+        }));
         // A new job cannot clean cache files still owned by the preceding job's
         // disposal or by an expired/cancelled review.
-        job.Task = Task.Run(() => RunAsync(job, package, ids, batch, previous, cleanup, forceRefresh));
+        job.Task = Task.Run(() => RunAsync(job, package, ids, batch, previous, cleanup, forceRefresh, theme));
     }
 
-    private async Task RunAsync(OwnedJob job, PendingPackage? package, IReadOnlyList<string>? ids, PendingBatch? batch, Task previous, Task cleanup, bool forceRefresh)
+    private async Task RunAsync(OwnedJob job, PendingPackage? package, IReadOnlyList<string>? ids, PendingBatch? batch, Task previous, Task cleanup, bool forceRefresh, CatalogueTheme? theme)
     {
         try
         {
             await previous.ConfigureAwait(false);
             await cleanup.ConfigureAwait(false);
             job.Cancellation.Token.ThrowIfCancellationRequested();
-            if (job.Kind == "refresh") await RefreshAsync(job, forceRefresh).ConfigureAwait(false);
+            if (theme is not null) await InstallThemeAsync(job, theme).ConfigureAwait(false);
+            else if (job.Kind == "refresh") await RefreshAsync(job, forceRefresh).ConfigureAwait(false);
             else if (job.Kind == "inventory")
             {
                 UpdateInstalled((await _catalog.InspectInventoryAsync(job.Cancellation.Token).ConfigureAwait(false)).Widgets);
@@ -172,7 +222,11 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
             }
         }
         catch (OperationCanceledException) when (job.Cancellation.IsCancellationRequested)
-        { FinishFailedJob(job, "cancelled", "Operation cancelled. Any version already saved remains available in Widgets."); }
+        {
+            FinishFailedJob(job, "cancelled", theme is null
+                ? "Operation cancelled. Any version already saved remains available in Widgets."
+                : "Theme operation cancelled. A saved version is available in Appearance.");
+        }
         catch (Exception error) when (error is not OutOfMemoryException)
         { FinishFailedJob(job, "failed", Friendly(error)); }
         finally
@@ -181,6 +235,31 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
             if (batch is not null) foreach (var item in batch.Packages) await item.Download.DisposeAsync().ConfigureAwait(false);
             job.Cancellation.Dispose();
         }
+    }
+
+    private async Task InstallThemeAsync(OwnedJob job, CatalogueTheme theme)
+    {
+        var token = job.Cancellation.Token;
+        var bytes = await _themeFeed.GetPackageAsync(theme, token).ConfigureAwait(false);
+        var inspection = await MarketplaceThemePreview.InspectAsync(bytes, theme.Id, theme.Version, theme.Sha256, token).ConfigureAwait(false);
+        if (inspection.Manifest.Publisher != theme.Publisher || inspection.Manifest.Name != theme.Name)
+            throw new InvalidDataException("The catalogue listing differs from the package.");
+        var directory = Path.Combine(_themePaths.ThemesDirectory, theme.Id, theme.Version);
+        if (job.Kind != "theme-apply")
+        {
+            try { await ThemePackage.InstallAsync(inspection, _themePaths.RootDirectory, token).ConfigureAwait(false); }
+            catch (ThemePackageException error) when (error.Code == "version_exists")
+            {
+                await ThemePackage.VerifyInstalledAsync(directory, inspection, token).ConfigureAwait(false);
+            }
+        }
+        if (job.Kind is "theme-apply" or "theme-install-apply")
+        {
+            var policy = new ThemeCatalogMutationPolicy(new PlatformSettingsStore(_themePaths), _themeCatalog.Value);
+            await policy.SelectVerifiedAsync(theme.Id, theme.Version,
+                ct => ThemePackage.VerifyInstalledAsync(directory, inspection, ct), token).ConfigureAwait(false);
+        }
+        Finish(job, "completed", job.Kind == "theme-install" ? $"{theme.Name} installed." : $"{theme.Name} applied.");
     }
 
     private async Task RefreshAsync(OwnedJob job, bool forceRefresh)
@@ -367,6 +446,12 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
 
     private static string Friendly(Exception error) => error switch
     {
+        ThemePackageException { Code: "too_many_themes" } => "All 128 theme slots are in use. Remove a version in Appearance to install another.",
+        ThemePackageException { Code: "version_conflict" } => "The installed version differs from this listing. Review it in Appearance.",
+        ThemePackageException or InvalidDataException => "The theme did not match its verified package.",
+        HttpRequestException { StatusCode: HttpStatusCode.NotFound or HttpStatusCode.Gone } =>
+            "This package is unavailable from the catalogue. Try again later.",
+        HttpRequestException or TaskCanceledException => "The catalogue download could not finish. Try again when connected.",
         DistributionOperationException e when e.Message.Contains("rate limit", StringComparison.OrdinalIgnoreCase) => "GitHub's request limit was reached. Try again later.",
         DistributionOperationException e when e.Message.Contains("SHA-256", StringComparison.Ordinal) => "The download failed its SHA-256 check. Refresh the catalogue before retrying.",
         DistributionOperationException e when e.Message.Contains("download limit", StringComparison.Ordinal) => "This package exceeds the catalogue download limit. Obtain a smaller compatible package from its author.",
@@ -417,6 +502,7 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         if (job is not null) await job.Task.ConfigureAwait(false);
         await cleanup.ConfigureAwait(false);
         _releaseCache.Dispose();
+        await _themeFeed.DisposeAsync().ConfigureAwait(false);
         _lifetime.Dispose();
     }
     private sealed record ReleaseAsset(GitHubRelease Release, GitHubAsset Asset, Version Version);

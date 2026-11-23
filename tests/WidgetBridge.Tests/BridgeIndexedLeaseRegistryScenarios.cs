@@ -270,6 +270,9 @@ internal static partial class BridgeIndexedLeaseRegistryScenarios
         internal string Caption = "caption";
         internal string ArtworkHandle = "artwork";
         internal MediaPlayerDefinition? PreviewMedia;
+        internal MediaPlayerDefinition? BodyAnimation;
+        internal bool BodyReadingGroup;
+        internal bool SelectionActive;
         internal string? PreviewPosterArtwork;
         internal bool ActiveOtherScope;
         internal Action? AfterAcquire;
@@ -296,6 +299,7 @@ internal static partial class BridgeIndexedLeaseRegistryScenarios
                         new()
                         {
                             Id = "items", Kind = ViewNodeKind.IndexedCollection, IndexedCollection = Source,
+                            IndexedSelection = SelectionActive ? new(true,1,[]) : null,
                             ScrollAxis = ScrollAxis.Vertical, AccessibilityLabel = "Items",
                             CollectionLayout = new() { Kind = CollectionLayoutKind.List, EstimatedItemExtent = 64 },
                         },
@@ -347,12 +351,15 @@ internal static partial class BridgeIndexedLeaseRegistryScenarios
             {
                 Id = "item.0", Kind = ViewNodeKind.ActionSurface,
                 ActionSurfaceOrientation = ActionSurfaceOrientation.Vertical,
-                ActionId = "item.action", AccessibilityLabel = "Item", CollectionItemKey = "item.0",
+                ActionId = BodyReadingGroup ? null : "item.action", IsReadingGroup = BodyReadingGroup,
+                AccessibilityLabel = "Item", CollectionItemKey = "item.0",
                 FocusPresentation = PreviewMedia is null ? null : new() { Id = "preview.player", Kind = ViewNodeKind.MediaPlayer,
                     MediaPlayer = PreviewMedia, AccessibilityLabel = "Clip preview", ArtworkHandle = PreviewPosterArtwork,
                     ImageFit = PreviewPosterArtwork is null ? null : ImageFit.Contain },
                 Children =
                 [
+                    .. BodyAnimation is null ? Array.Empty<ViewNode>() : [new ViewNode
+                    { Id = "body.animation", Kind = ViewNodeKind.MediaPlayer, MediaPlayer = BodyAnimation, AccessibilityLabel = "Animation" }],
                     new()
                     {
                         Id = "item.image", Kind = ViewNodeKind.Image, ArtworkHandle = ArtworkHandle,
@@ -374,7 +381,7 @@ internal static partial class BridgeIndexedLeaseRegistryScenarios
         }
         public Task<WidgetOperationAdmission> AdmitActionAsync(WidgetActionEvent action, CancellationToken token, int? expectedStartOrdinal = null) => Task.FromResult(WidgetOperationAdmission.Enqueued);
         public Task SendEmbeddedMediaPlaybackEventAsync(EmbeddedMediaPlaybackEvent playback, CancellationToken token, int expectedStartOrdinal) => Task.CompletedTask;
-        public Task<bool> SendControllerInputAsync(ControllerInputEvent input, WidgetDashboardGestureAuthority? authority, CancellationToken token, int? expectedStartOrdinal = null) => Task.FromResult(false);
+        public Task<WidgetProcessClient.InputDispatch> SendControllerInputAsync(ControllerInputEvent input, WidgetDashboardGestureAuthority? authority, CancellationToken token, int? expectedStartOrdinal = null) => Task.FromResult(new WidgetProcessClient.InputDispatch(false));
         public Task UnloadAsync(CancellationToken token)
         {
             IsRunning = false;

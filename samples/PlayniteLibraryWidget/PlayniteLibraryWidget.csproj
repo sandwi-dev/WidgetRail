@@ -11,8 +11,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Application\**\*.cs" />
+    <Compile Include="..\YouTubeWidget\YouTubeLinkParser.cs" Link="Providers\YouTubeLinkParser.cs" />
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="media\trailer.html" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\WidgetSdk\EmbeddedMediaAdapterRuntime.js" Link="media\adapter-runtime.js" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <Import Project="..\..\eng\CommunityPackage.props" />
 </Project>

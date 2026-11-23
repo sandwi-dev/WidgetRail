@@ -76,7 +76,10 @@ internal sealed partial class WidgetViewPresenter
             { SchedulePreviewPointerExit(); return; }
         }
         CancelPreviewPointerExit(); previewHoverRetained = false;
-        previewPointerTarget = target;
+        // A hovered label/image can be replaced while its logical row remains.
+        // Retain the already-resolved native anchor, not that transient child.
+        // Resolution still requires a current, visible occurrence here.
+        previewPointerTarget = PreviewSourceFromTarget(target)?.Anchor ?? target;
         previewPointerFocus = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot);
         QueueSurfaceUpdate();
     }

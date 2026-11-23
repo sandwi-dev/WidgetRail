@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory)][string]$CliPath,
     [Parameter(Mandatory)][string]$InstallationRoot,
     [Parameter(Mandatory)][string]$OutputDirectory,
-    [ValidateSet('Both','Minimum','Expanded')][string]$Surface='Both'
+    [ValidateSet('Both','Minimum','Expanded')][string]$Surface='Both',
+    [ValidateSet('Reduced','Full','System')][string]$Motion='Reduced'
 )
 $ErrorActionPreference='Stop'
 $output=[IO.Path]::GetFullPath($OutputDirectory)
@@ -14,10 +15,10 @@ if(Test-Path -LiteralPath $output){throw 'Use a fresh isolated voice-controls re
 foreach($scenario in @(@{Name='minimum';Viewport='468x548';Selection='Minimum'},@{Name='expanded';Viewport='1088x868';Selection='Expanded'})){
     if($Surface -ne 'Both' -and $scenario.Selection -ne $Surface){continue}
     $scenarioOutput=Join-Path $output $scenario.Name
-    & "$PSScriptRoot/Stage.ps1" -PublishedPayload $PublishedPayload -CliPath $CliPath -InstallationRoot $InstallationRoot -OutputDirectory $scenarioOutput -VoiceControls
+    & "$PSScriptRoot/Stage.ps1" -PublishedPayload $PublishedPayload -CliPath $CliPath -InstallationRoot $InstallationRoot -OutputDirectory $scenarioOutput -VoiceControls -Motion $Motion
     $result=Join-Path $scenarioOutput 'result.json'
     $process=Start-Process -FilePath $exe -ArgumentList @(('"--shell-config='+$scenarioOutput+'/shell.json"'),'--shell-no-controller',
-        ('--validation-viewport-dips='+$scenario.Viewport),('"--validate-discord-voice-controls='+$result+'"')) -WindowStyle Hidden -PassThru
+        '--validation-platform-activation',('--validation-viewport-dips='+$scenario.Viewport),('"--validate-discord-voice-controls='+$result+'"')) -WindowStyle Hidden -PassThru
     try {
         $deadline=[DateTime]::UtcNow.AddSeconds(150)
         while(!(Test-Path -LiteralPath $result)){
@@ -33,7 +34,10 @@ foreach($scenario in @(@{Name='minimum';Viewport='468x548';Selection='Minimum'},
         $data.checks|ForEach-Object{Write-Output "PASS [$($scenario.Name)] $_"}
         Write-Output "Evidence: $result"
     } finally {
-        if(!$process.HasExited){Stop-Process -Id $process.Id}
+        if(!$process.HasExited){
+            & "$PSScriptRoot/../../scripts/Close-WinUiTestShell.ps1" -AppPid $process.Id
+            if(!$process.WaitForExit(15000)){Stop-Process -Id $process.Id;throw 'Voice-controls fixture did not close normally.'}
+        }
         $process.Dispose()
     }
 }

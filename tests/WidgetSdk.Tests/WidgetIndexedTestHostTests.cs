@@ -23,6 +23,14 @@ internal static class WidgetIndexedTestHostTests
         widget.Block = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, first.RouteAction("item-0", ControllerButton.A));
         await widget.Entered.Task.WaitAsync(Limit);
+        using(var cancellation=new CancellationTokenSource())
+        {
+            var waiting=WidgetTestHost.WaitForActionsAsync(widget,cancellation.Token);
+            True(!waiting.IsCompleted);
+            cancellation.Cancel();
+            try{await waiting;throw new Exception("Blocked action wait ignored cancellation.");}
+            catch(OperationCanceledException){}
+        }
         Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, second.RouteAction("item-1", ControllerButton.A));
         // A page shortcut belongs to the same serial queue as both captured row actions.
         Equal<WidgetOperationAdmission?>(WidgetOperationAdmission.Enqueued, second.RouteAction("item-1", ControllerButton.RightTrigger));
@@ -30,6 +38,7 @@ internal static class WidgetIndexedTestHostTests
         widget.Source.PublishQuery("replacement", 3);
         host.PublishSnapshot();
         widget.Block.SetResult();
+        await WidgetTestHost.WaitForActionsAsync(widget).WaitAsync(Limit);
         Equal("initial:item-0:open", await widget.Next());
         Equal("initial:item-1:open", await widget.Next());
         Equal("parent:next", await widget.Next());

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.WidgetSdk;
@@ -7,6 +8,10 @@ namespace WidgetRail.WidgetSdk;
 internal sealed record InlinePreviewActionInput(long SnapshotSequence, WidgetActionEvent Action);
 internal sealed record InlinePreviewActionBinding(string Scope, string Ancestry, string SourceId,
     string OwnerId, string ActionId, object Detail);
+internal sealed record InlinePreviewAncestor(string Id, ViewNodeKind Kind, string? CollectionItemKey, ControllerButton? Entry);
+
+[JsonSerializable(typeof(InlinePreviewAncestor[]))]
+internal sealed partial class InlinePreviewJsonContext : JsonSerializerContext;
 
 internal static class InlinePreviewActionContract
 {
@@ -51,8 +56,9 @@ internal static class InlinePreviewActionContract
         else throw Retired();
         // Include all source/fragment ancestors and occurrence keys, not just the child ID.
         // Labels, current values and layout sizing may update without replacing authority.
-        var ancestry = JsonSerializer.Serialize(path.Select(node => (object)new
-            { node.Id, node.Kind, node.CollectionItemKey, Entry = node.Kind == ViewNodeKind.FocusPresentationSurface ? node.FocusPreview?.EnterButton : null }).ToArray());
+        var ancestry = JsonSerializer.Serialize(path.Select(node => new InlinePreviewAncestor(
+            node.Id, node.Kind, node.CollectionItemKey, node.Kind == ViewNodeKind.FocusPresentationSurface ? node.FocusPreview?.EnterButton : null)).ToArray(),
+            InlinePreviewJsonContext.Default.InlinePreviewAncestorArray);
         return new(snapshot.ActiveInputScopeId, ancestry, path[edge].Id, owner.Id, action.ActionId, detail);
     }
 

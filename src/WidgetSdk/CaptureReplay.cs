@@ -4,6 +4,9 @@ namespace WidgetRail.WidgetSdk;
 
 public static class WidgetCaptureReplayCapabilities
 {
+    public static WidgetCapabilityOperation<WidgetCapabilityQuery, ReplayApprovalList> Approvals { get; } = new(WidgetCaptureCapabilities.Permission, "capture.replay.approvals");
+    public static WidgetCapabilityOperation<ReplayApprovalRevision, CaptureReplayControlResult> ChooseApproval { get; } = new(WidgetCaptureCapabilities.Permission, "capture.replay.choose-approval");
+    public static WidgetCapabilityOperation<ReplayApprovalRemoval, CaptureReplayControlResult> RemoveApproval { get; } = new(WidgetCaptureCapabilities.Permission, "capture.replay.remove-approval");
     public static WidgetCapabilityOperation<WidgetCapabilityQuery,CaptureReplayStatus> Get { get; } = new(WidgetCaptureLibraryCapabilities.ReadPermission,"capture.replay.get");
     public static WidgetCapabilityOperation<CaptureReplaySettingsUpdate,CaptureReplayControlResult> Configure { get; } = new(WidgetCaptureCapabilities.Permission,"capture.replay.configure");
     public static WidgetCapabilityOperation<WidgetCapabilityQuery,CaptureReplayControlResult> Start { get; } = new(WidgetCaptureCapabilities.Permission,"capture.replay.start");
@@ -20,6 +23,23 @@ public sealed class WidgetCaptureReplayService
 {
     private readonly IWidgetCapabilityClient client;
     internal WidgetCaptureReplayService(IWidgetCapabilityClient client)=>this.client=client;
+    public async ValueTask<ReplayApprovalList> GetApprovedApplicationsAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await client.InvokeAsync(WidgetCaptureReplayCapabilities.Approvals, new(), cancellationToken).ConfigureAwait(false);
+        return result is { Revision: >= 0 } && result.Approvals?.IsWellFormed() == true ? result : throw Malformed();
+    }
+    public async ValueTask<CaptureReplayControlResult> ChooseApprovedApplicationAsync(long expectedRevision, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(expectedRevision);
+        return Control(await client.InvokeAsync(WidgetCaptureReplayCapabilities.ChooseApproval, new(expectedRevision), cancellationToken).ConfigureAwait(false));
+    }
+    public async ValueTask<CaptureReplayControlResult> RemoveApprovedApplicationAsync(string applicationId, long expectedRevision, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(expectedRevision);
+        if (applicationId is not { Length: 64 } || !applicationId.All(char.IsAsciiHexDigit))
+            throw new ArgumentException("Invalid approved application identifier.", nameof(applicationId));
+        return Control(await client.InvokeAsync(WidgetCaptureReplayCapabilities.RemoveApproval, new(expectedRevision, applicationId), cancellationToken).ConfigureAwait(false));
+    }
     /// <summary>Open before GetAsync, then consume host-coalesced updates without a widget polling timer.</summary>
     public ValueTask<IWidgetCapabilitySubscription<CaptureReplayStatus>> OpenChangesSubscriptionAsync(CancellationToken cancellationToken=default)=>
         client.OpenSubscriptionAsync(WidgetCaptureReplayCapabilities.EncodingChanged,cancellationToken);

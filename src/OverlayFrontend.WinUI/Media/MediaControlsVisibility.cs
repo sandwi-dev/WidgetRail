@@ -1,38 +1,73 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
+using Windows.Foundation;
 using WidgetRail.OverlayFrontend.WinUI.Motion;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Media;
 
 /// <summary>Shared non-layout-changing chrome visibility policy for media surfaces.</summary>
 internal sealed class MediaControlsVisibility(FrameworkElement[] controls, Func<bool> canHide, Action beforeHide,
-    Func<bool>? ownsInteraction = null, Func<TimeSpan>? fadeDuration = null)
+    Func<bool>? ownsInteraction = null, Func<TimeSpan>? fadeDuration = null, bool hideWhileHovered = false)
 {
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(3) };
     private bool pointerOverControls;
     private WidgetCompositionTarget[]? targets;
     private WidgetCompositionMotion? motion;
     private long visibilityVersion;
+    private Point? lastPointerPosition;
+    internal bool Entered { get; private set; }
+    internal bool PointerMoved(PointerRoutedEventArgs args)
+    {
+        // Hiding the hovered control can retarget a move at the same coordinates.
+        var position = args.GetCurrentPoint(null).Position;
+        if (lastPointerPosition == position) return false;
+        lastPointerPosition = position;
+        return true;
+    }
     internal bool Visible => controls[0].Visibility == Visibility.Visible &&
         (fadeDuration is null || controls[0].IsHitTestVisible);
     internal void Initialize()
     {
+        ResetEntry();
         timer.Tick += (_, _) => { if (!pointerOverControls && canHide()) Hide(); };
         foreach (var control in controls)
         {
             control.GettingFocus += (_, args) => { if (fadeDuration is not null && !Visible) args.TryCancel(); };
+            if (hideWhileHovered) continue;
             control.PointerEntered += (_, _) => { pointerOverControls = true; timer.Stop(); };
             control.PointerExited += (_, _) => { pointerOverControls = false; Reveal(); };
         }
     }
     internal void Reveal()
     {
+        if (!Entered) return;
         var wasVisible = Visible;
         foreach (var control in controls) control.IsHitTestVisible = true;
         if (fadeDuration is null) foreach (var control in controls) control.Visibility = Visibility.Visible;
         else if (!wasVisible) SetVisibility(true);
         timer.Stop();
         if (!pointerOverControls && canHide()) timer.Start();
+    }
+    internal void Enter()
+    {
+        Entered = true;
+        Reveal();
+    }
+
+    internal void ResetEntry()
+    {
+        Entered = false;
+        timer.Stop();
+        pointerOverControls = false;
+        lastPointerPosition = null;
+        ++visibilityVersion;
+        ReleaseMotion();
+        foreach (var control in controls)
+        {
+            control.Visibility = Visibility.Collapsed;
+            control.IsHitTestVisible = false;
+        }
     }
     internal void Hide()
     {
@@ -82,6 +117,7 @@ internal sealed class MediaControlsVisibility(FrameworkElement[] controls, Func<
     }
     internal void Stop()
     {
+        lastPointerPosition = null;
         timer.Stop(); pointerOverControls = false;
         if (fadeDuration is null) return;
         var visible = Visible;

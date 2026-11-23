@@ -30,22 +30,4 @@ internal static partial class GalleryTests
             "L3 must enter the current remembered/default action using one new SDK intent");
     }
 
-    internal static async Task DetailFocusSurvivesDraftSave()
-    {
-        var draft=new CaptureAttachment(new string('f',32),"video/mp4",1280,720,65536,5,long.MaxValue)
-            {Origin=CaptureAttachmentOrigin.LibraryRecordingDraft,Properties=new(1280,720,30,150,Encoder:CaptureEncoderMode.Hardware)};
-        await using var fixture=new GalleryFixture((builder,owner)=>builder
-            .WithResponse(WidgetCaptureCapabilities.Validate,new CaptureConfigurationValidation(true))
-            .WithResponse(WidgetCaptureCapabilities.Start,new WindowCaptureTicket(new string('e',32)))
-            .WithResponse(WidgetCaptureCapabilities.Status,new WindowCaptureStatus(new string('e',32),WindowCapturePhase.Ready,draft))
-            .WithHandler(WidgetCaptureLibraryCapabilities.SaveCurrent,(_,_)=>
-            {var saved=new CaptureLibraryItem(draft.Id,draft with{Origin=CaptureAttachmentOrigin.SavedLibrary},1000);owner.Items.Add(saved);return ValueTask.FromResult(saved);}));
-        await fixture.Start();await fixture.Action("capture-library.video");await fixture.Until(()=>Preview(fixture)?.Id==draft.Id&&!fixture.Busy);
-        await fixture.Action("capture-library.focus-actions");var request=fixture.View().FocusGroupEntryRequest!;
-        await fixture.Action("capture-library.save");await fixture.Until(()=>Preview(fixture)?.Origin==CaptureAttachmentOrigin.SavedLibrary&&!fixture.Busy);
-        var savedView=fixture.View();var errors=ViewSnapshotValidator.Validate(savedView);
-        Check(errors.Count==0,"Removing Save after publication retained an invalid focus target: "+string.Join(",",errors.Select(error=>error.Code+"@"+error.Path)));
-        Check(savedView.FocusGroupEntryRequest?.RequestId==request.RequestId&&fixture.Node("capture-library.save") is null,
-            "Save changed focus intent identity or kept the obsolete draft action");
-    }
 }

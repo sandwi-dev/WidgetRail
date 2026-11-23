@@ -22,6 +22,8 @@ internal static class YouTubeLinkParser
             "youtu.be" or "www.youtu.be" => SinglePathSegment(uri.AbsolutePath),
             "youtube.com" or "www.youtube.com" or "m.youtube.com" =>
                 ParseYouTubePath(uri),
+            "www.youtube-nocookie.com" when uri.AbsolutePath.StartsWith("/embed/", StringComparison.Ordinal) =>
+                ParseYouTubePath(uri),
             _ => null,
         };
         if (!IsVideoId(parsed)) return false;

@@ -339,7 +339,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        if (await _localPlayback.TryControlAsync(identity, command, cancellationToken)
+        if (command.ExpectedAccount is null && await _localPlayback.TryControlAsync(identity, command, cancellationToken)
                 .ConfigureAwait(false))
             return;
         await _playbackApi.ControlPlaybackAsync(identity, command, cancellationToken)
@@ -669,7 +669,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
             request.RequiredScope,
             cancellationToken,
             request.JsonBody,
-            request.AdditionalRequiredScope);
+            request.AdditionalRequiredScope, request.ExpectedAccount);
 
     private async Task<SpotifyHttpResponse> SendPlayerRequestAsync(
         SpotifyIntegrationIdentity identity,
@@ -678,7 +678,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         string requiredScope,
         CancellationToken cancellationToken,
         string? jsonBody = null,
-        string? additionalRequiredScope = null)
+        string? additionalRequiredScope = null, string? expectedAccount = null)
     {
         ThrowIfDisposed();
         var state = StateFor(identity);
@@ -687,6 +687,8 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         {
             var configuration = await RequireConfigurationAsync(identity, cancellationToken)
                 .ConfigureAwait(false);
+            if (expectedAccount is not null && (await _vault.ReadAsync(identity, cancellationToken).ConfigureAwait(false))?.CachePartitionId != expectedAccount)
+                throw new SpotifyProviderException("account_changed", "The Spotify account changed.");
             var token = await GetAccessTokenLockedAsync(
                 identity, configuration, state, requiredScope, forceRefresh: false,
                 cancellationToken).ConfigureAwait(false);
@@ -1073,7 +1075,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
                 !playback.Actions.CanSeek, !playback.Actions.CanSkipNext,
                 !playback.Actions.CanSkipPrevious, !playback.Actions.CanSetRepeatContext,
                 !playback.Actions.CanSetRepeatTrack, !playback.Actions.CanSetShuffle),
-            playback.Attribution);
+            playback.Attribution) { DeviceId = playback.DeviceId };
     }
 
     private static SpotifyProviderPlaybackCommand ToProviderCommand(SpotifyPlaybackCommand command) =>
@@ -1099,7 +1101,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
             _ => throw new SpotifyProviderException(
                 "invalid_request", "Spotify repeat state is invalid."),
         },
-        command.Enabled);
+        command.Enabled) { DeviceId = command.DeviceId, ExpectedAccount = command.ExpectedAccount };
 
     private static async Task<T> ApplicationCallAsync<T>(Func<Task<T>> action)
     {

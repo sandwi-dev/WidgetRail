@@ -22,6 +22,14 @@ The polynomial smoothstep from the existing native policy corresponds to the
 composition cubic Bezier `(1/3, 0), (2/3, 1)`. There is no managed animation tick,
 layout loop, pixel capture or fallback painter.
 
+## Overlay opening and closing
+
+`AnimateOverlayVisibility` controls the shell entrance, exit and associated
+backdrop fade. It defaults to true, including when a saved profile omits it.
+Both compositor layers animate opacity only, keeping the shell geometry fixed.
+The enabled transition uses 140 ms for entrance and 100 ms for exit before the
+shared speed multiplier. Reduced motion settles each target immediately.
+
 ## Ready widget switching
 
 `AnimateWidgetSwitching` controls resizing between the outgoing and incoming
@@ -278,6 +286,22 @@ on that exact control's native Loaded/LayoutUpdated notifications. It rechecks
 binding identity, active scope and eligibility before queuing entry; successful
 focus, retirement and disposal remove the subscriptions. No input action is
 replayed and no timer or forced layout loop is introduced.
+
+## Controller guide text transitions
+
+The shell controller guide fades the old labels out over 80 ms and reveals the
+new labels over 160 ms at normal animation speed. A second change during
+fade-out updates the hidden destination while the visible labels finish fading. Crossfading both banks simultaneously made different
+labels overlap at the same coordinates. The existing two-bank retention,
+immediate input-authority publication, stale-click rejection and latest-only
+interruption behavior remain in place. Reduced motion, disabled section motion,
+reduced transparency and high contrast continue to publish immediately. Both the
+overlay guide and pinned adjustment toolbar use this shared behavior.
+
+Native validation covers interruption, outgoing accessibility/input exclusion,
+stable height, pointer invocation and teardown. The Discord attachment-modal
+capture provides the reproduced overlapping-label case and post-change visual
+evidence; it is separate from the pure motion-recipe tests.
 
 ## Focus-selected background artwork
 

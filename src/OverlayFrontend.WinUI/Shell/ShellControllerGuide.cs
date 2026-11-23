@@ -173,10 +173,14 @@ internal sealed partial class ShellControllerGuide : ContentControl, IDisposable
         if (disposed) return;
         if (!DispatcherQueue.HasThreadAccess) { DispatcherQueue.TryEnqueue(Paint); return; }
         var next = stability.Displayed;
-        var animate = !current.SequenceEqual(next) && current.Count > 0 && next.Count > 0 &&
+        var changed = !current.SequenceEqual(next);
+        // A newer publication can arrive before the destination even reaches the
+        // screen. Repaint that hidden bank without retiring the still-visible one.
+        var reuseIncoming = changed && !hidden && next.Count > 0 && IncomingStillHidden;
+        var animate = changed && !reuseIncoming && current.Count > 0 && next.Count > 0 &&
             !hidden && IsLoaded && stage.ActualWidth > 0 && stage.ActualHeight > 0 && FadeRecipe.Incoming.Duration > TimeSpan.Zero;
         if (animate) PrepareFade();
-        else if (hidden || !current.SequenceEqual(next)) StopFade();
+        else if (hidden || (changed && !reuseIncoming)) StopFade();
         current = next;
         for (var i = 0; i < cells.Count; ++i)
         {

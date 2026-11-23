@@ -69,6 +69,7 @@ internal sealed class PresentationLayers
     {
         for (var item = slot; item is not null; item = VisualTreeHelper.GetParent(item))
         {
+            if (item is Media.MediaFullscreenLayer) return PresentationLayer.FullscreenMedia;
             if (item is PresentationPortal { Layer: PresentationLayer.ContentPreview }) return PresentationLayer.ContentPreviewMedia;
             if (item is PresentationPortal { Layer: PresentationLayer.WidgetDialogPreview }) return PresentationLayer.WidgetDialogPreviewMedia;
             if (item is WidgetModalLayer) return PresentationLayer.WidgetDialogMedia;
@@ -77,6 +78,7 @@ internal sealed class PresentationLayers
     }
     internal static PresentationLayer MediaChromeLayer(DependencyObject slot) => MediaLayer(slot) switch
     {
+        PresentationLayer.FullscreenMedia => PresentationLayer.FullscreenChrome,
         PresentationLayer.ContentPreviewMedia => PresentationLayer.ContentPreviewMediaChrome,
         PresentationLayer.WidgetDialogMedia => PresentationLayer.WidgetDialogMediaChrome,
         PresentationLayer.WidgetDialogPreviewMedia => PresentationLayer.WidgetDialogPreviewMediaChrome,

@@ -45,7 +45,7 @@ public sealed partial class CaptureLibraryStore
                 DemandEditAuthority();
                 if (reference is not null) { RefreshEntry(reference.Id, forceMetadata: true); DemandRevision(Read(reference.Id)); }
                 if (!recipe.IsValid(original.Media)) throw Error("capture_library_edit_invalid_recipe");
-                using (var count = Command("SELECT count(*) FROM capture_associations WHERE capture_id=$id", ("$id", reference?.Id ?? "")))
+                using (var count = Command("SELECT count(*) FROM active_capture_associations WHERE capture_id=$id", ("$id", reference?.Id ?? "")))
                     if ((long)count.ExecuteScalar()! > CaptureEditLimits.MaximumAssociations) throw Error("capture_library_edit_context_limit");
                 DemandFreeSpace(EstimatedBytes(original.Media, recipe));
                 temporary = EditTemporary(id, original.Media.ContentType);
@@ -91,15 +91,16 @@ public sealed partial class CaptureLibraryStore
                 item = item with { Revision = stamp };
                 result = new(2, item, hash, PublicName(item), stamp)
                 { Derivation = new(original.Id, reference?.ContentRevision ?? 0, reference?.MetadataRevision ?? 0, recipe, reference is null, SourceFingerprint(session)) };
-                using (var query = Command("SELECT key_hash FROM capture_associations WHERE capture_id=$id LIMIT $limit", ("$id", reference?.Id ?? ""), ("$limit", CaptureEditLimits.MaximumAssociations + 1)))
+                using (var query = Command("SELECT key_hash FROM active_capture_associations WHERE capture_id=$id LIMIT $limit", ("$id", reference?.Id ?? ""), ("$limit", CaptureEditLimits.MaximumAssociations + 1)))
                 using (var reader = query.ExecuteReader())
                 {
                     while (reader.Read())
                     {
                         if (associations.Count == CaptureEditLimits.MaximumAssociations) throw Error("capture_library_edit_context_limit");
-                        var previous = ReadAssociation(AssociationPath(reader.GetString(0)), reader.GetString(0));
+                        var previous = EffectiveAssociation(ReadAssociation(AssociationPath(reader.GetString(0)), reader.GetString(0)));
+                        if (previous.Detached) continue;
                         associations.Add(previous with { KeyHash = HashText("edit\0" + id + "\0" + previous.KeyHash),
-                            Association = previous.Association with { Id = Guid.NewGuid().ToString("N"), CaptureId = id, RecordedAtUnixMilliseconds = journal.SavedAt } });
+                            Association = previous.Association with { Id = Guid.NewGuid().ToString("N"), CaptureId = id, LinkRevision = 0, RecordedAtUnixMilliseconds = journal.SavedAt } });
                     }
                 }
                 foreach (var association in associations) File.WriteAllText(AssociationPath(association.KeyHash) + ".pending", JsonSerializer.Serialize(association));

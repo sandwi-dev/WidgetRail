@@ -8,6 +8,8 @@ public sealed record BridgeMediaPlayerRequest(string WidgetId, BridgeWorkerRun W
     public BridgeMediaPlayerIndexedOrigin? IndexedOrigin { get; init; }
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? PlaybackLeaseId { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? GalleryItemId { get; init; }
 }
 public sealed record BridgeMediaPlayerIndexedOrigin(string InstanceId, string RuntimeGeneration, string PresentationGeneration,
     IndexedCollectionItemReference Item);

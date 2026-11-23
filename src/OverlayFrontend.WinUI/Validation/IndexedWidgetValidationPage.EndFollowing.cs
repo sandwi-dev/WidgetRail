@@ -345,6 +345,8 @@ internal sealed partial class IndexedWidgetValidationPage
             if (View() is not { } view) return;
             var descriptor = session?.GetState("indexed-owned")?.LastGood?.Snapshot is { } snapshot ? FindNode(snapshot.Root, "items")?.IndexedCollection : null;
             trace.Add($"{phase}: count={view.Items.Count} y={Scroll().VerticalOffset} max={Scroll().ScrollableHeight} viewport={Scroll().ViewportHeight} lastCurrent={(view.Items.Count > 0 && Current(view.Items.Count - 1))} recoveries={RecoveryCounts()} source={descriptor} reveal={JsonSerializer.Serialize(presenter.ScrollRevealDiagnostics())} preview={JsonSerializer.Serialize(presenter.FocusPreviewDiagnostics())}");
+            if(phase is "timeout" or "failure" && Descendants(presenter).OfType<WidgetIndexedCollectionView>().FirstOrDefault() is {} collection)
+                trace.Add(JsonSerializer.Serialize(new{phase,navigation=collection.NavigationDiagnosticState(),continuity=collection.ContinuityStateForValidation()}));
         }
         void Write(bool passed, string? error)
         {

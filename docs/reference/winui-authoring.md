@@ -149,6 +149,11 @@ modal. `ShowScrollbar` controls only the default whole-content scroll wrapper;
 custom scroll regions use their own scrollbar setting. Modal scope, dismissal and
 focus return still belong to the same host modal layer.
 
+Modals are widget-local by default. `OverlayPresentation = new()` explicitly opts
+into an overlay-centered, bounded aspect-ratio panel (protocol 135), retaining the
+same modal input scope and widget lifetime. Use the `wrail-modal-overlay` style
+class to customize its frame; see [media galleries](widget-media-player.md#multiple-attachments).
+
 `WithModal` declares one cancellation action for B, Escape and a primary click on
 the backdrop. Set `WidgetModal.DismissOnBackdrop = false` when the workflow must
 keep outside clicks blocked; Escape and B still use `DismissActionId`. A drag is
@@ -259,6 +264,13 @@ Ordinary images and background surfaces honor `object-fit`, the nine
 `object-position` keywords, `image-tint` and `scrim-color`. Tint paints over artwork;
 the scrim covers its bottom 45 percent. Both remain below foreground content.
 
+A background surface can opt into `surface-entrance: fade` in its base WRSS
+style. Its artwork and foreground fade in together over the surface fill on
+first appearance. At normal widget animation speed the fade lasts 360 ms.
+Refreshing the same surface preserves its current appearance. Page animation
+preferences apply separately. Reduced motion, reduced transparency and high
+contrast show the surface immediately. The default is `none`.
+
 ## Verify a widget
 
 Use the SDK test host with fake provider responses for settings writes, launch,
@@ -279,3 +291,7 @@ native measurement, controller input or smooth rendering. Then validate actual W
 protocol validity alone does not establish native support or visual parity.
 Keep physical controller/provider acceptance separate from fixture passes, and
 avoid triggering system-changing actions in automated visual checks.
+
+Use `intent-visibility: when-handler-installed` on an intent button or action surface to show it when an enabled widget registers a matching contract ID, version and schema. Registration can be checked while the receiver is unloaded. Runtime availability is still checked when the user invokes the intent.
+
+Use `focus-presentation-layout: reading-pane` on an inline focus presentation surface for a two-pane reader. The authored content occupies the left third. The focused item's presentation occupies the right pane. Right-stick vertical input scrolls that pane while focus remains in the index. A new article starts at the top.

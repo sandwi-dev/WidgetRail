@@ -5,6 +5,25 @@ using WidgetRail.Samples.DiscordWebView;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
+if(args is ["--private-calls-only"])
+{
+    var checks=0;
+    await MessagingTests.PrivateCallsAsync((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS "+label);checks++;});
+    Console.WriteLine($"Discord private calls: {checks} checks passed.");return;
+}
+
+if(args is ["--message-read-only"])
+{
+    var checks=0;
+    await MessagingTests.ReadStateAsync((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS "+label);checks++;});
+    Console.WriteLine($"Discord message read state: {checks} checks passed.");return;
+}
+if(args is ["--message-upload-only"])
+{
+    var checks=0;
+    await MessagingTests.UploadChecksAsync((value,label)=>{if(!value)throw new Exception(label);Console.WriteLine("PASS "+label);checks++;});
+    Console.WriteLine($"Discord message uploads: {checks} checks passed.");return;
+}
 if(args is ["--message-focus-only"])
 {
     var focusChecks=0;
@@ -124,12 +143,14 @@ try
 }
 finally{fake.MicrophoneGate?.TrySetResult();fake.ReceiverGate?.TrySetResult();fake.CommandGate?.TrySetResult();await WidgetTestHost.DestroyAsync(widget);}
 
-foreach(var desktopState in new[]{"disabled","unavailable"})
+foreach(var desktopState in new[]{"disabled","unavailable","enabled"})
 {
     var notificationSession=new FakeSession{DesktopEnableState=desktopState};
-    notificationSession.State=notificationSession.State with{NotificationPermission="granted",DesktopNotifications=desktopState};
+    notificationSession.State=notificationSession.State with{NotificationPermission="granted",DesktopNotifications=desktopState=="enabled"?"disabled":desktopState};
+    var notificationFeedback=new ConcurrentQueue<WidgetNotificationCommand>();
     var notificationWidget=WidgetTestHost.Attach(new DiscordWebViewWidget(notificationSession,refreshInterval:TimeSpan.FromHours(1)),
-        new WidgetTestHostServicesBuilder().Build());
+        new WidgetTestHostServicesBuilder().WithHandler(WidgetNotificationCapabilities.Publish,(request,token)=>
+        {token.ThrowIfCancellationRequested();notificationFeedback.Enqueue(request);return ValueTask.FromResult(new WidgetNotificationReceipt(true));}).Build());
     try
     {
         await WidgetTestHost.InitializeAsync(notificationWidget);
@@ -138,14 +159,25 @@ foreach(var desktopState in new[]{"disabled","unavailable"})
         Check(notificationSession.Commands.IsEmpty,"Notification status rendering never changes Discord preferences");
         var enableAction=Nodes(Snapshot(notificationWidget).Root).Single(node=>node.Id=="discord.notifications.enable").ActionId!;
         await Act(notificationWidget,enableAction);
-        await Wait(()=>Nodes(Snapshot(notificationWidget).Root).Any(node=>node.Id=="discord.notice"&&node.Text?.Contains("Enable Desktop Notifications")==true));
-        Check(Nodes(Snapshot(notificationWidget).Root).Any(node=>node.Id=="discord.notifications.enable"),
-            "Permission without a confirmed desktop setting keeps setup available: "+desktopState);
+        if(desktopState=="enabled")
+        {
+            await Wait(()=>notificationFeedback.Any(command=>command.Notification?.Body=="Discord desktop notifications enabled."));
+            await Act(notificationWidget,"refresh");await notificationWidget.WaitForStateReadAsync();
+            Check(notificationFeedback.Count==1&&!Nodes(Snapshot(notificationWidget).Root).Any(node=>node.Id=="discord.notice"),
+                "Confirmed notification setup reports one toast and refresh cannot recreate permanent success text");
+        }
+        else
+        {
+            await Wait(()=>Nodes(Snapshot(notificationWidget).Root).Any(node=>node.Id=="discord.notice"&&node.Text?.Contains("Enable Desktop Notifications")==true));
+            Check(Nodes(Snapshot(notificationWidget).Root).Any(node=>node.Id=="discord.notifications.enable"),
+                "Permission without a confirmed desktop setting keeps setup available: "+desktopState);
+        }
     }
     finally{await WidgetTestHost.DestroyAsync(notificationWidget);}
 }
 Check(fake.Disposed,"Widget teardown disposes its backend session");
 await TransportChecks(Check);
+await ConnectionStateTests.RunAsync(Check);
 await SharingTests.RunAsync(Check);
 await ActivityUiTests.RunAsync(Check);
 await ReceiverHealthTests.RunAsync(Check);
@@ -164,6 +196,7 @@ await UnifiedLayoutTests.RunAsync(Check);
 await PickerTests.RunAsync(Check);
 await ChannelFavoritesTests.RunAsync(Check);
 await VoicePinTests.RunAsync(Check);
+DiscordReadDiagnosticsTests.Run(Check);
 await MultiStreamTests.RunAsync(Check);
 await VoiceControlTests.RunAsync(Check);
 await ProviderInvalidationTests.RunAsync(Check);
@@ -250,6 +283,13 @@ sealed class FakeSession:IDiscordSession
         "10","Lobby",true,false,[new("1","Self",true,false,false),new("30","Other",false,false,true)],
         [new("guild:1:10:30","30","Other")],false,false,null,"closed");
     public WebSessionReference Reference{get;set;}=new(new string('a',32));
+    public event Action<WebSessionReference>? MainViewVisibilityChanged;
+    public bool MainViewVisible {get;private set;}=true;
+    internal void SetMainViewVisible(bool visible)
+    {
+        MainViewVisible=visible;
+        MainViewVisibilityChanged?.Invoke(Reference);
+    }
     public async ValueTask<DiscordState> ReadAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();Interlocked.Increment(ref Reads);

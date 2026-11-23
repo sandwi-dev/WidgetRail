@@ -141,18 +141,26 @@ public sealed partial class PlayniteLibraryWidget
             if(original.ValueKind is JsonValueKind.True or JsonValueKind.False&&parts[1] is "on" or "off")value=JsonSerializer.SerializeToElement(parts[1]=="on");
             else if(current.Settings.Options.TryGetValue(parts[0],out var choices)&&int.TryParse(parts[1],out var index)&&index>=0&&index<choices.Length)value=JsonSerializer.SerializeToElement(choices[index]);
             else return true;
-            UpdateCaptureDraft(state=>state with{Changes=Change(state.Changes,parts[0],value),Message=null});return true;
+            UpdateCaptureDraft(state=>state with{Changes=Change(state.Changes,parts[0],value,original),Message=null});return true;
         }
         if(name.StartsWith("number.",StringComparison.Ordinal)&&action.RequestedValue is { } requested&&double.IsFinite(requested))
         {
             var field=name[7..];
             var number=field switch{"screenshotDelaySeconds"=>Math.Clamp(requested,0,10),"recordingSeconds"=>Math.Clamp(Math.Round(requested),5,60),"recordingFps"=>Math.Clamp(Math.Round(requested),10,60),_=>double.NaN};
-            if(double.IsFinite(number))UpdateCaptureDraft(state=>state with{Changes=Change(state.Changes,field,JsonSerializer.SerializeToElement(number)),Message=null});
+            if(double.IsFinite(number) && current.Settings.Values.TryGetValue(field, out var saved))
+                UpdateCaptureDraft(state=>state with{Changes=Change(state.Changes,field,JsonSerializer.SerializeToElement(number),saved),Message=null});
         }
         return true;
     }
-    private static IReadOnlyDictionary<string,JsonElement> Change(IReadOnlyDictionary<string,JsonElement> current,string key,JsonElement value)
-    {var next=current.ToDictionary(pair=>pair.Key,pair=>pair.Value);next[key]=value;return next;}
+    private static IReadOnlyDictionary<string,JsonElement> Change(IReadOnlyDictionary<string,JsonElement> current,string key,JsonElement value,JsonElement saved)
+    {
+        var next = new Dictionary<string, JsonElement>(current);
+        var restored = value.ValueKind == JsonValueKind.Number && saved.ValueKind == JsonValueKind.Number
+            ? value.GetDouble() == saved.GetDouble() : value.ToString() == saved.ToString();
+        if (restored) next.Remove(key);
+        else next[key] = value;
+        return next;
+    }
     private bool CaptureSetupCurrent(WidgetOperationContext context,CaptureSetup expected)
     {lock(_gate)return context.IsCurrent&&ReferenceEquals(captureSetup.Snapshot.Value,expected);}
     private bool CommitCaptureSetup(WidgetOperationContext context,CaptureSetup expected,CaptureSetup next,Action? update=null)
@@ -207,14 +215,25 @@ public sealed partial class PlayniteLibraryWidget
             {
                 var value=Value(key);var id=Captures+"."+key;
                 var values=settings.Options.GetValueOrDefault(key);
-                var options=values is not null?values.Select((text,index)=>new SelectOption(id+"."+index,text,Captures+".set."+key+"."+index,value.ValueKind==JsonValueKind.String&&value.GetString()==text)).ToArray():
-                    new[]{new SelectOption(id+".off","Off",Captures+".set."+key+".off",value.ValueKind==JsonValueKind.False),new SelectOption(id+".on","On",Captures+".set."+key+".on",value.ValueKind==JsonValueKind.True)};
-                return UI.Select(label,options,id,label).Disabled(!enabled).Classes("playnite-library-control","playnite-capture-choice");
+                if (values is null)
+                {
+                    var on = value.ValueKind == JsonValueKind.True;
+                    return UI.Switch(label, on, Captures + ".set." + key + (on ? ".off" : ".on"), id, !enabled)
+                        .Classes("playnite-capture-toggle");
+                }
+                var options = values.Select((text, index) => new SelectOption(id + "." + index, text,
+                    Captures + ".set." + key + "." + index, value.ValueKind == JsonValueKind.String && value.GetString() == text)).ToArray();
+                return UI.Select(label, options, id, label).Disabled(!enabled).Classes("playnite-capture-choice");
             }
-            WidgetElement Number(string key,string label,double minimum,double maximum,double step)
+            WidgetElement Number(string key,string label,string unit,double minimum,double maximum,double step)
             {
                 var value=Value(key);var number=value.ValueKind==JsonValueKind.Number?value.GetDouble():minimum;
-                return UI.Stack(Captures+"."+key+".group",UI.Text(label,Captures+"."+key+".label"),UI.Slider(number,minimum,maximum,step,Captures+".number."+key,Captures+"."+key,label).RequireControllerActivation().Disabled(!enabled)).Classes("playnite-capture-setting");
+                var display = $"{number:0.#} {unit}";
+                var id = Captures+"."+key;
+                return UI.Stack(id+".group",
+                    UI.Text($"{label} · {display}", id+".label"),
+                    UI.Slider(number,minimum,maximum,step,Captures+".number."+key,id,label,display)
+                        .RequireControllerActivation().Disabled(!enabled).Classes("playnite-capture-slider")).Classes("playnite-capture-setting");
             }
             WidgetElement Group(string key,string label,params WidgetElement[] content)=>
                 UI.Stack(Captures+"."+key+".options",
@@ -228,13 +247,13 @@ public sealed partial class PlayniteLibraryWidget
             }
             items.Add(UI.Stack(Captures+".screenshots",UI.Text("Screenshots",Captures+".screenshots.title").Classes("playnite-capture-title","playnite-capture-screenshots-title"),Choice("screenshotsEnabled","Save achievement screenshots"),
                 Group("screenshot.versions","Versions to save",UI.ResponsiveGrid(Captures+".screenshot.variants",200,3,Choice("screenshotClean","Clean"),Choice("screenshotWithToast","With notification"),Choice("screenshotFramed","Framed"))),
-                Group("screenshot.picture","Picture and timing",UI.ResponsiveGrid(Captures+".screenshot.quality",240,2,Choice("screenshotResolution","Resolution"),Number("screenshotDelaySeconds","Capture delay (seconds)",0,10,.5))),
+                Group("screenshot.picture","Picture and timing",UI.ResponsiveGrid(Captures+".screenshot.quality",240,2,Choice("screenshotResolution","Resolution"),Number("screenshotDelaySeconds","Capture delay","s",0,10,.5))),
                 Group("screenshot.location","Save location",Folder(false))).Classes("playnite-capture-section"));
             items.Add(UI.Stack(Captures+".recordings",UI.Text("Video clips",Captures+".recordings.title").Classes("playnite-capture-title","playnite-capture-recordings-title"),Choice("recordingsEnabled","Save achievement clips"),
                 Group("recording.versions","Versions to save",UI.ResponsiveGrid(Captures+".recording.variants",200,3,Choice("recordingClean","Clean"),Choice("recordingWithToast","With notification"),Choice("recordingFramed","Framed"))),
                 Group("recording.picture","Picture and timing",
                     UI.ResponsiveGrid(Captures+".recording.quality",240,2,Choice("recordingResolution","Resolution"),Choice("recordingQuality","Quality")),
-                    UI.ResponsiveGrid(Captures+".recording.timing",240,2,Number("recordingSeconds","Seconds before unlock",5,60,5),Number("recordingFps","Frames per second",10,60,10))),
+                    UI.ResponsiveGrid(Captures+".recording.timing",240,2,Number("recordingSeconds","Time before unlock","s",5,60,5),Number("recordingFps","Frame rate","fps",10,60,10))),
                 Group("recording.sound","Audio",UI.ResponsiveGrid(Captures+".recording.audio",220,3,Choice("recordingAudio","Record audio"),Choice("recordingMicrophone","Include microphone"),Choice("recordingAudioSource","Audio source"))),
                 Group("recording.location","Save location",Folder(true))).Classes("playnite-capture-section"));
             items.Add(UI.Button("Save changes",Captures+".save",Captures+".save").Disabled(!enabled||draft.Changes.Count==0).Classes("playnite-capture-save"));
@@ -249,7 +268,12 @@ public sealed partial class PlayniteLibraryWidget
         }
         if(draft.Message is { } message)items.Add(UI.Text(message,Captures+".message"));
         items.Add(UI.Button("Refresh",Captures+".refresh",Captures+".refresh").Disabled(busy));
-        return new(Captures+".modal","Achievement captures",UI.Stack(Captures+".content",items.ToArray()).Classes("playnite-capture-content"),Captures+".modal.close",Captures+".close");
+        var header = new List<WidgetElement>();
+        if (draft.Changes.Count > 0 && data?.Settings.Availability == "ready")
+            header.Add(UI.Text("Unsaved changes", Captures+".unsaved").Classes("playnite-capture-unsaved"));
+        header.Add(UI.Button("Close", Captures+".close", Captures+".modal.close"));
+        return new(Captures+".modal","Achievement captures",UI.Stack(Captures+".content",items.ToArray()).Classes("playnite-capture-content"),Captures+".modal.close",Captures+".close")
+        { StyleClass = "playnite-capture-settings-dialog", HeaderActions = UI.Row(Captures+".header-actions",header.ToArray()).Classes("playnite-capture-header-actions") };
     }
 }
 

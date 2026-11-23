@@ -120,7 +120,7 @@ public abstract partial class Widget
                 {
                     RequestedValue = input.PreviewAction?.RequestedValue,
                     CollectionSelection = input.Selection,
-                    FocusedElementId = input.PreviewAction?.OwnerId ?? item.Declaration.Root.Id,
+                    FocusedElementId = input.InlineAction?.OwnerId ?? input.PreviewAction?.OwnerId ?? item.Declaration.Root.Id,
                     FocusedCollectionItem = lease.Request.Kind == IndexedCollectionRequestKind.FocusPreview ? null : new(lease.Request.CollectionId, lease.Request.Source.SourceId,
                         lease.Request.Source.QueryGeneration, item.Declaration.Key,
                         lease.Request.StartIndex + lease.Read.Items.TakeWhile(candidate => candidate.Declaration.Key != item.Declaration.Key).Count()),

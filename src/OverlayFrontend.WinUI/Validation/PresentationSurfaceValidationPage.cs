@@ -55,6 +55,19 @@ internal sealed partial class PresentationSurfaceValidationPage : Page, IAsyncDi
             await Focus("a");
             await Until(() => Text() == "A" && BackgroundSurface()?.ArtworkSource is not null);
             ++checks;
+            var wallpaper = BackgroundSurface()!;
+            var decoded = wallpaper.ArtworkSource;
+            try
+            {
+                WidgetViewPresenter.SetHighContrastStyleOverride(true);
+                await Until(() => wallpaper.ContentPanel.Background is SolidColorBrush brush &&
+                    brush.Color == Shell.ShellChromePalette.WindowColors().Background);
+                WidgetViewPresenter.SetHighContrastStyleOverride(false);
+                await Until(() => wallpaper.ContentPanel.Background is null);
+                Check(ReferenceEquals(decoded, wallpaper.ArtworkSource) && Text() == "A",
+                    "changing contrast preserves the focused artwork and its presentation");
+            }
+            finally { WidgetViewPresenter.SetHighContrastStyleOverride(null); }
             await Focus("outside");
             Check(Text() == "A", "focus leaving surface lost retained fragment");
             Apply(label: "A updated");
@@ -114,6 +127,7 @@ internal sealed partial class PresentationSurfaceValidationPage : Page, IAsyncDi
             Check(failure is null, failure ?? "unknown presenter error");
             await BackgroundRetentionAsync();
             await ArtworkMotionAsync();
+            await NestedScopeArtworkMotionAsync();
             await FocusSurfaceLayoutAsync();
             status.Text = $"passed:{checks}";
         }
@@ -140,7 +154,7 @@ internal sealed partial class PresentationSurfaceValidationPage : Page, IAsyncDi
         };
         Present(snapshot);
     }
-    private void Present(ViewSnapshot snapshot, string runtime = "runtime")
+    private void Present(ViewSnapshot snapshot, string runtime = "runtime", IReadOnlyDictionary<string, BridgeNodeRenderStyles>? styles = null)
     {
         var descriptor = new BridgeWidgetDescriptor { Id = "surface", Name = "Surface", InstanceId = snapshot.WidgetInstanceId,
             RuntimeGeneration = runtime, PresentationGeneration = "presentation", Icon = WidgetGlyph.Connection, PackageContentDigest = "" };
@@ -148,7 +162,7 @@ internal sealed partial class PresentationSurfaceValidationPage : Page, IAsyncDi
         if (errors.Count != 0) throw new InvalidOperationException(string.Join("; ", errors.Select(error => error.Path + ":" + error.Message)));
         presenter.Apply(new(new(descriptor.Id, descriptor.RuntimeGeneration, descriptor.PresentationGeneration, 1,
             snapshot.WidgetInstanceId, sequence, snapshot.ActiveInputScopeId), descriptor,
-            SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot)), new Dictionary<string, BridgeNodeRenderStyles>()));
+            SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot)), styles ?? new Dictionary<string, BridgeNodeRenderStyles>()));
     }
     private async Task Focus(string id)
     {

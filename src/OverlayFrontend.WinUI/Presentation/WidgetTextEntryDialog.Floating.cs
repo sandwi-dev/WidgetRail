@@ -14,6 +14,7 @@ internal sealed partial class WidgetTextEntryDialog
     private bool arrangingKeyboard;
     private double floatingWidth;
     internal bool IsFloating => keyboardPopup is not null;
+    internal override bool PositionsOwnPopup => IsFloating;
     internal void RefreshKeyboardPlacement() => ArrangeKeyboard();
 
     // Presentation varies; keys, editing, focus, repeat and theme remain in the

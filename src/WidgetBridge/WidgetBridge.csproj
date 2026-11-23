@@ -32,5 +32,6 @@
     <ProjectReference Include="..\WindowsCommunityProvider\WindowsCommunityProvider.csproj" />
   </ItemGroup>
   <ItemGroup><EmbeddedResource Include="Marketplace/catalog.json" LogicalName="WidgetRail.Marketplace.catalog.json" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="Marketplace/themes/*" LogicalName="WidgetRail.ThemeCatalogue.%(Filename)%(Extension)" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../AppUpdateInstaller/*.ps1" LogicalName="WidgetRail.Update.%(Filename)%(Extension)" /></ItemGroup>
 </Project>

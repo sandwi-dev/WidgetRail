@@ -10,10 +10,13 @@ using WidgetRail.WidgetUi.State.Collections;
 namespace WidgetRail.OverlayFrontend.WinUI.Collections;
 
 internal sealed record WidgetIndexedRow(IndexedCollectionItem Item, WidgetPresentationIndexedLease Lease,
-    WidgetIndexedRows Owner);
+    WidgetIndexedRows Owner)
+{
+    internal IReadOnlyList<WidgetStaticArtworkPaint>? RetainedArtwork { get; init; }
+}
 
 /// <summary>Maps native range demand to explicitly owned sandboxed widget data.</summary>
-internal sealed class WidgetIndexedRows : IAsyncDisposable
+internal sealed partial class WidgetIndexedRows : IAsyncDisposable
 {
     private sealed record SourcePresentation(WidgetPresentationBinding Binding, ViewNode Collection)
     { internal WidgetPresentationFrame Frame => Binding.Frame; }
@@ -126,6 +129,28 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
             continuationPublication?.TrySetResult();
     }
 
+    internal bool CanRebaseWindow(WidgetPresentationBinding binding, ViewNode collection) =>
+        presentation.Binding.SameInput(binding) && Frame.Authority.WorkerRun == binding.Frame.Authority.WorkerRun &&
+        Declaration.Id == collection.Id && Declaration.IndexedGroups is null && collection.IndexedGroups is null &&
+        Declaration.IndexedCollection is { Discovery: null } previous &&
+        collection.IndexedCollection is { Discovery: null } next && next.SourceId == previous.SourceId &&
+        next.QueryGeneration > previous.QueryGeneration &&
+        Declaration.IndexedOccurrenceKeys is { } before && collection.IndexedOccurrenceKeys is { } after &&
+        IndexedItemsSource<WidgetIndexedRow>.CanRebaseWindow(before, after);
+
+    internal void RebaseWindow(WidgetPresentationBinding binding, ViewNode collection, PreparedIndexedWindow<WidgetIndexedRow>? prepared = null)
+    {
+        if (!CanRebaseWindow(binding, collection)) throw new InvalidOperationException("The indexed window cannot retain its rows.");
+        var before = Declaration.IndexedOccurrenceKeys!;
+        var next = collection.IndexedCollection!;
+        prepared?.Validate(Items.Query with { Generation = next.QueryGeneration },next.ContentRevision,collection.IndexedOccurrenceKeys!,Items.PageSize);
+        if (prepared is not null && prepared.Ranges.Any(range => range.Items.Any(item => !item.Value.Lease.IsCurrent)))
+            throw new OperationCanceledException("Prepared window authority retired before commit.");
+        Volatile.Write(ref presentation, new(binding, collection));
+        Items.RebaseWindow(Items.Query with { Generation = next.QueryGeneration }, next.ContentRevision,
+            before, collection.IndexedOccurrenceKeys!, prepared);
+    }
+
     internal Task ContinueAsync(bool retry = false, CancellationToken cancellationToken = default)
     {
         if (!IsPresentationActive) return Task.CompletedTask;
@@ -206,8 +231,14 @@ internal sealed class WidgetIndexedRows : IAsyncDisposable
     private async Task<IndexedRangeResult<WidgetIndexedRow>> ReadAsync(IndexedRangeRequest request, CancellationToken cancellation)
     {
         var current = Volatile.Read(ref presentation);
+        return await ReadAsync(current,request,cancellation).ConfigureAwait(false);
+    }
+
+    private async Task<IndexedRangeResult<WidgetIndexedRow>> ReadAsync(SourcePresentation current, IndexedRangeRequest request, CancellationToken cancellation)
+    {
         var source = current.Collection.IndexedCollection!;
-        if (source.ContentRevision != request.ContentRevision) throw new OperationCanceledException("Indexed content changed before admission.");
+        if (source.QueryGeneration != request.Query.Generation || source.ContentRevision != request.ContentRevision)
+            throw new OperationCanceledException("Indexed query or content changed before admission.");
         // The UI may not have applied an unrelated parent revision yet. Data is
         // query-owned; input still carries the exact frame actually displayed.
         var frame = session.GetState(current.Frame.Authority.WidgetId)?.LastGood ?? current.Frame;

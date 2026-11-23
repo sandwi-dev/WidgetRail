@@ -22,7 +22,7 @@ namespace WidgetRail.OverlayFrontend.WinUI
                     var pin = page.ForegroundValidationPin ?? throw new InvalidOperationException("Choose a widget with full-widget pinning in the isolated shell configuration.");
                     foreach (var motion in new[] { MotionPreference.Full, MotionPreference.Reduced })
                     {
-                        page.ApplyOverlayMotionValidationAppearance(page.Appearance with { Motion = motion });
+                        page.ApplyOverlayMotionValidationAppearance(page.Appearance with { AnimateOverlayVisibility = true, Motion = motion });
                         await OpenFrom(peer);
                         HideOverlay();
                         await ClosedOn(peer, "main close " + motion);

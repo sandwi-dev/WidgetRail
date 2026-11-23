@@ -28,7 +28,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsTrue(before.SameMembership(afterBrowse),
             "Caching a known game excluded by Home must not add an unavailable Home row.");
         Assert.AreEqual(1, afterBrowse.Count);
-        Assert.AreEqual(0, afterBrowse.FavoriteCount, "Home's favorites remain scoped to its query.");
+        Assert.AreEqual(0, afterBrowse.ReadRange(0, afterBrowse.Count).Count(item => item.Row.Favorite), "Home's favorites remain scoped to its query.");
         CollectionAssert.AreEqual(new[] { filtered.Id }, authority.FavoriteGameIds.ToArray(),
             "Filtering Home display never mutates the provider's favorite authority.");
         var afterHomeRefresh = Project(PlayniteLibraryOrganizationPolicy.ProjectDisplay(browseState, [first]));
@@ -38,7 +38,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             browseState with { FavoriteSavedIds = authority.FavoriteGameIds }, PlayniteLibraryFixedRows.Empty, false);
         Assert.IsFalse(afterBrowse.SameMembership(newlyInstalled));
         Assert.AreEqual(2, newlyInstalled.Count);
-        Assert.AreEqual(1, newlyInstalled.FavoriteCount, "A genuine provider membership change adds the favorite normally.");
+        Assert.AreEqual(1, newlyInstalled.ReadRange(0, newlyInstalled.Count).Count(item => item.Row.Favorite), "A genuine provider membership change adds the favorite normally.");
     }
 
     [TestMethod]
@@ -64,7 +64,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         CollectionAssert.AreEqual(new[] { live.SavedId, first.SavedId, second.SavedId },
             after.ReadRange(0, after.Count).Select(item => item.Row.Display.SavedId).ToArray());
         CollectionAssert.AreEqual(new[] { first.SavedId, second.SavedId },
-            after.ReadFavorites(0, after.FavoriteCount, default).Select(item => item.Row.Display.SavedId).ToArray());
+            after.ReadRange(0, after.Count).Where(item => item.Row.Favorite).Select(item => item.Row.Display.SavedId).ToArray());
         Assert.IsTrue(after.ReadRange(1, 2).All(item => item.Row.Current is null),
             "Stable display ordering must not grant unavailable games provider authority.");
 

@@ -9,6 +9,7 @@ internal sealed record BrowserFileRequest(bool Save, bool Multiple = false, stri
 internal sealed partial class BrowserSurface
 {
     internal Func<BrowserSurface, BrowserFileRequest, CancellationToken, Task<string[]>>? ChooseFiles { get; set; }
+    internal const int MaximumUploadFiles = 32;
     private CoreWebView2DevToolsProtocolEventReceiver? fileChooserReceiver;
     private readonly Dictionary<CoreWebView2DownloadOperation, DownloadWatch> downloads = [];
 #if ENABLE_WIDGET_VALIDATION
@@ -63,11 +64,11 @@ internal sealed partial class BrowserSurface
                 using var tree = JsonDocument.Parse(await current.CallDevToolsProtocolMethodAsync("Page.getFrameTree", "{}"));
                 var origin = FindFrameOrigin(tree.RootElement.GetProperty("frameTree"), frameId);
                 if (origin is null || !Current()) return;
-                if (await Choose!(this, "Choose files to upload?", $"{document.AccessibleName}\n{origin}\n\nThis website can read the files you select in the Windows picker.",
+                if (await Choose!(this, "Choose files to upload?", $"{document.AccessibleName}\n{origin}\n\nThis website can read the files you choose.",
                     (HostDialogChoice[])[new("choose", "Choose files")], token) != "choose" || !Current(requireInput: false)) return;
                 var paths = await ChooseFiles!(this, new(false, multiple), token);
                 if (paths.Length == 0 || !Current(requireInput: false)) return;
-                if (paths.Length > (multiple ? 32 : 1)) { ShowStatus(multiple ? "Choose no more than 32 files for one upload." : "Choose one file for this upload."); return; }
+                if (paths.Length > (multiple ? MaximumUploadFiles : 1)) { ShowStatus(multiple ? $"Choose no more than {MaximumUploadFiles} files for one upload." : "Choose one file for this upload."); return; }
                 // A native backend node identifies the exact file input, even if
                 // the page rerenders an element with the same HTML id meanwhile.
                 using var description = JsonDocument.Parse(await current.CallDevToolsProtocolMethodAsync("DOM.describeNode",
@@ -131,7 +132,7 @@ internal sealed partial class BrowserSurface
                 var name = Path.GetFileName(args.ResultFilePath);
                 if (string.IsNullOrWhiteSpace(name)) name = "download";
                 name = BoundWebsiteText(name, 200);
-                if (await Choose!(this, "Save this download?", $"{document.AccessibleName}\n{origin}\n\n{name}\nChoose a destination in the Windows picker. Downloaded files are never opened automatically.",
+                if (await Choose!(this, "Save this download?", $"{document.AccessibleName}\n{origin}\n\n{name}\nChoose where to save the download.",
                     (HostDialogChoice[])[new("save", "Choose where to save")], token) != "save") return;
                 var paths = await ChooseFiles!(this, new(true, SuggestedName: name), token);
                 token.ThrowIfCancellationRequested();

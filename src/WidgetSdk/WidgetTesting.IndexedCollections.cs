@@ -236,6 +236,11 @@ public sealed class WidgetIndexedCollectionTestLease : IDisposable
         IndexedCollectionInputContext? context = null) =>
         host.Route(this, new(new(LeaseId,itemKey), ControllerButton.A) { PreviewAction = new(ownerId,actionId) }, context);
 
+    /// <summary>Routes a button inside the exact retained reading group using production lease admission.</summary>
+    public WidgetOperationAdmission? RouteInlineAction(string itemKey, string ownerId, string actionId,
+        IndexedCollectionInputContext? context = null) =>
+        host.Route(this, new(new(LeaseId,itemKey), ControllerButton.A) { InlineAction = new(ownerId,actionId) }, context);
+
     /// <summary>Routes a numeric value from the exact leased preview slider.</summary>
     public WidgetOperationAdmission? RoutePreviewValueAction(string itemKey, string ownerId, string actionId, double value,
         IndexedCollectionInputContext? context = null) =>

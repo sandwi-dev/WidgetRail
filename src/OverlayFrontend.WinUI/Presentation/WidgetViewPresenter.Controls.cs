@@ -15,7 +15,13 @@ internal sealed partial class WidgetViewPresenter
     // command queue. WinUI owns popup placement, scrolling and pointer/keyboard UI.
     private sealed record SelectPopup(Binding Owner, WidgetPresentationBinding Presentation,
         IReadOnlyList<WidgetSelectOption> Options, bool IsCommandMenu, MenuFlyout Flyout, IReadOnlyList<MenuFlyoutItemBase> Items, IReadOnlyList<WidgetNativePackageIcon> Icons)
-    { internal IDisposable? Theme; }
+    {
+        internal IDisposable? Theme;
+        internal Control? ShortcutSource;
+        internal IDisposable? RowRetention;
+        internal Func<bool>? RowIsCurrent;
+        internal bool Invoked;
+    }
     private SelectPopup? selectPopup;
     private SelectPopup? returningSelectPopup;
     private int selectFocusIndex;
@@ -53,7 +59,7 @@ internal sealed partial class WidgetViewPresenter
         return button;
     }
 
-    private void OpenSelect(WidgetElementIdentity identity, object token)
+    private void OpenSelect(WidgetElementIdentity identity, object token, bool fromShortcut = false)
     {
         if (applying || disposed || presentationOnly || !presentationInputEnabled || frame is null ||
             !bindings.TryGetValue(identity.Id, out var binding) || binding.Identity != identity ||
@@ -79,6 +85,15 @@ internal sealed partial class WidgetViewPresenter
         }).ToArray();
         var icons = options.Select((option, index) => CreateSelectIcon(items[index], option)).OfType<WidgetNativePackageIcon>().ToArray();
         var popup = new SelectPopup(binding, presentation!, options, commandMenu, flyout, items, icons);
+        if (fromShortcut)
+        {
+            popup.ShortcutSource = FocusManager.GetFocusedElement(XamlRoot) as Control;
+            if (FocusedBinding()?.Element is WidgetIndexedCollectionView indexed && indexed.CaptureContextRow() is { } row)
+            {
+                popup.RowRetention = indexed.RetainContextRow(row.Row, row.Anchor);
+                popup.RowIsCurrent = () => indexed.IsContextRowCurrent(row.Row, row.Anchor);
+            }
+        }
         popup.Theme = NativePopupTheme.Menu(flyout, this);
         selectPopup = popup;
         ((WidgetValueButton)binding.Element).SetExpanded(true);
@@ -113,6 +128,7 @@ internal sealed partial class WidgetViewPresenter
         try { flyout.ShowAt(binding.Element); }
         catch (Exception error)
         {
+            popup.RowRetention?.Dispose();
             popup.Theme?.Dispose();
             if (ReferenceEquals(selectPopup, popup))
             { selectPopup = null; ((WidgetValueButton)popup.Owner.Element).SetExpanded(false); }
@@ -148,6 +164,15 @@ internal sealed partial class WidgetViewPresenter
 
     private void CompleteSelectFocusReturn(SelectPopup popup)
     {
+        try
+        {
+            if (!popup.Invoked && !HasTransientControl && SelectIsCurrent(popup) && popup.RowIsCurrent?.Invoke() != false &&
+                popup.ShortcutSource is { IsLoaded: true, IsEnabled: true } source &&
+                (FocusManager.GetFocusedElement(XamlRoot) is not Control focused || ReferenceEquals(focused, popup.Owner.Element) ||
+                    ReferenceEquals(focused, source) || !focused.IsLoaded))
+                source.Focus(FocusState.Keyboard);
+        }
+        finally { popup.RowRetention?.Dispose(); }
         if (ReferenceEquals(returningSelectPopup, popup))
         {
             TraceFocus($"select-focus-return owner={popup.Owner.Identity.Id} current={OwnsSelectFocusReturn}");
@@ -223,6 +248,7 @@ internal sealed partial class WidgetViewPresenter
         // Read current authority after validating the opening's semantic binding.
         // Harmless snapshots may advance the sequence while this menu stays open.
         var displayed = presentation!;
+        popup.Invoked = true;
         var action = new WidgetActionEvent(option.ActionId, popup.Owner.Identity.Id, ControllerButton.A,
             ControllerEventPhase.Pressed, ++actionSequence, Environment.TickCount64 * 1000,
             InputScopeId: displayed.Scope) { FocusedElementId = popup.Owner.Identity.Id };

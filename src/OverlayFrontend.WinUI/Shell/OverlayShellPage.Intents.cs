@@ -310,6 +310,7 @@ internal sealed partial class OverlayShellPage
 
     private void DismissPinnedHostChoice(PinnedSurface pin)
     {
+        if (ReferenceEquals(fileBrowserPin,pin)) fileBrowserLifetime?.Cancel();
         if (!ReferenceEquals(hostChoicePin, pin) || hostChoiceDialog is not { } dialog) return;
         hostChoiceDialog = null;
         hostChoicePin = null;
@@ -318,12 +319,12 @@ internal sealed partial class OverlayShellPage
         ResetInputPresentation(); PublishControllerGuide();
     }
 
-    private void HandleHostChoiceButton(HostChoiceDialog dialog, ControllerButton button, ControllerEventPhase phase)
+    private void HandleHostChoiceButton(HostChoiceDialog dialog, ControllerButton button, ControllerEventPhase phase, bool physicalController = false)
     {
         if (!visible || !HostChoiceHasForeground || !ReferenceEquals(hostChoiceDialog, dialog)) return;
         if (button == ControllerButton.View && phase == ControllerEventPhase.Pressed && hostChoicePin is not null)
             ExitPinnedInteraction(restoreMain: true);
-        else dialog.Handle(button, phase);
+        else dialog.Handle(button, phase, physicalController);
     }
 
     private bool ReceiveHostChoice(ControllerFrame frame)
@@ -349,7 +350,7 @@ internal sealed partial class OverlayShellPage
         if (direction.Phase != NavigationPhase.None && next != FocusNavigationDirection.None) dialog.MoveFocus(next, direction.Phase == NavigationPhase.Repeated);
         foreach (var (mask, button) in Buttons)
         {
-            if ((frame.PressedButtons & mask) != 0) { shellGestures.Claim(button); HandleHostChoiceButton(dialog, button, ControllerEventPhase.Pressed); }
+            if ((frame.PressedButtons & mask) != 0) { shellGestures.Claim(button); HandleHostChoiceButton(dialog, button, ControllerEventPhase.Pressed, physicalController: true); }
             if ((frame.ReleasedButtons & mask) != 0) HandleHostChoiceButton(dialog, button, ControllerEventPhase.Released);
         }
         return true;

@@ -36,6 +36,11 @@ internal sealed partial class MediaPlayerView
         // the leading edge even when content alignment is Center.
         imageCanvas.Children.Add(image);
         imageViewport.Content = imageCanvas;
+        imageViewport.GettingFocus += (_, args) =>
+        {
+            if (!ReferenceEquals(args.NewFocusedElement, imageViewport) || (!IsExpanded && !IsCarouselImagePreview)) return;
+            if (!IsExpanded || !args.TrySetNewFocusedElement(imageFit)) args.TryCancel();
+        };
         imageViewport.Loaded += CompletePendingImageViewportRestore;
         imageViewport.PreviewKeyDown += (_, _) => { if (input) ClearPendingImageViewportRestore(); };
         imageViewport.SizeChanged += (_, _) =>
@@ -45,7 +50,7 @@ internal sealed partial class MediaPlayerView
             UpdateImageZoomLabel();
             TraceImageViewportState("size-changed", null, null, null);
         };
-        imageControls = [zoomOut, zoomIn, imageFit, imageExpand];
+        imageControls = [zoomOut, zoomIn, imageFit, imageExpand, imagePlay];
         Label(zoomOut, "Zoom out", "MediaPlayer.Image.ZoomOut");
         Label(zoomIn, "Zoom in", "MediaPlayer.Image.ZoomIn");
         Label(imageFit, "Fit image", "MediaPlayer.Image.Fit", showToolTip: false);
@@ -71,11 +76,11 @@ internal sealed partial class MediaPlayerView
         };
         imageViewport.PointerPressed += (_, args) =>
         {
-            if (input) ClearPendingImageViewportRestore();
+            if (input) { ClearPendingImageViewportRestore(); EnterCurrentChrome(); }
             // Leave touch manipulation/pinch to ScrollViewer's native gesture path.
             if (!input || args.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse ||
                 !args.GetCurrentPoint(imageViewport).Properties.IsLeftButtonPressed) return;
-            imageViewport.Focus(FocusState.Pointer);
+            if (!IsExpanded) imageViewport.Focus(FocusState.Pointer);
             imageDrag = args.GetCurrentPoint(imageViewport).Position;
             imageDragOffset = new(imageViewport.HorizontalOffset, imageViewport.VerticalOffset);
             imageViewport.CapturePointer(args.Pointer); args.Handled = true;
@@ -97,17 +102,21 @@ internal sealed partial class MediaPlayerView
         zoomIn.Click += (_, _) => ZoomImage(1);
         imageFit.Click += (_, _) => FitImage();
         imageExpand.Click += async (_, _) => await ToggleExpandedAsync();
+        imagePlay.Click += (_, _) => ToggleImageAnimation();
     }
 
+    private int imageToolsLayoutCount;
     private void LayoutImageTools()
     {
+        var visible = imageTools.Children.OfType<FrameworkElement>().Where(child => child.Visibility == Visibility.Visible).ToArray();
         var availableWidth = Math.Max(0, body.ActualWidth - (IsExpanded ? 48 : 0) - 16);
-        var columns = Math.Clamp((int)(availableWidth / (80 * Math.Max(1, imageFit.FontSize / 14))), 2, imageTools.Children.Count);
-        if (imageTools.ColumnDefinitions.Count == columns) return;
+        var columns = Math.Clamp((int)(availableWidth / (80 * Math.Max(1, imageFit.FontSize / 14))), 2, Math.Max(2, visible.Length));
+        if (imageTools.ColumnDefinitions.Count == columns && imageToolsLayoutCount == visible.Length) return;
+        imageToolsLayoutCount = visible.Length;
         imageTools.ColumnDefinitions.Clear(); imageTools.RowDefinitions.Clear();
         for (var i = 0; i < columns; i++) imageTools.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-        for (var i = 0; i < (imageTools.Children.Count + columns - 1) / columns; i++) imageTools.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        for (var i = 0; i < imageTools.Children.Count; i++) { Grid.SetColumn((FrameworkElement)imageTools.Children[i], i % columns); Grid.SetRow((FrameworkElement)imageTools.Children[i], i / columns); }
+        for (var i = 0; i < (visible.Length + columns - 1) / columns; i++) imageTools.RowDefinitions.Add(new() { Height = GridLength.Auto });
+        for (var i = 0; i < visible.Length; i++) { Grid.SetColumn(visible[i], i % columns); Grid.SetRow(visible[i], i / columns); }
     }
 
     private Windows.Foundation.Point? imageDrag;
@@ -115,7 +124,7 @@ internal sealed partial class MediaPlayerView
     private long lastImagePan;
     internal bool PanImage(short x, short y)
     {
-        if (!input || !IsImage || XamlRoot is null || !ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), imageViewport))
+        if (!input || !IsImage || XamlRoot is null || (!IsExpanded && !ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), imageViewport)))
         { lastImagePan = 0; return false; }
         if (Math.Abs((int)x) > 5898 || Math.Abs((int)y) > 5898) ClearPendingImageViewportRestore();
         // Consume at Fit too: a pan gesture must not scroll the containing page.
@@ -209,16 +218,17 @@ internal sealed partial class MediaPlayerView
         if (ReferenceEquals(focused, zoomOut)) ZoomImage(-1);
         else if (ReferenceEquals(focused, zoomIn)) ZoomImage(1);
         else if (ReferenceEquals(focused, imageExpand)) _ = ToggleExpandedAsync();
+        else if (ReferenceEquals(focused, imagePlay)) ToggleImageAnimation();
         else FitImage();
     }
     private bool MoveImageFocus(FocusNavigationDirection direction)
     {
-        if (!input || XamlRoot is null) return false;
-        imageChrome.Reveal();
+        if (!input || XamlRoot is null || IsCarouselImagePreview) return false;
+        RevealImageControls();
         var focused = FocusManager.GetFocusedElement(XamlRoot);
         if (ReferenceEquals(focused, imageViewport) || ReferenceEquals(focused, this))
             return direction == FocusNavigationDirection.Down ? imageFit.Focus(FocusState.Keyboard) : IsExpanded;
-        if (direction == FocusNavigationDirection.Up) return imageViewport.Focus(FocusState.Keyboard);
+        if (direction == FocusNavigationDirection.Up) return IsExpanded || imageViewport.Focus(FocusState.Keyboard);
         var index = Array.IndexOf(imageControls, focused as Control);
         var next = index + (direction == FocusNavigationDirection.Left ? -1 : 1);
         if (direction is FocusNavigationDirection.Left or FocusNavigationDirection.Right && next >= 0 && next < imageControls.Length)
@@ -227,9 +237,17 @@ internal sealed partial class MediaPlayerView
     }
     private bool HandleImage(ControllerButton button, ControllerEventPhase phase)
     {
+        if (IsCarouselImagePreview)
+        {
+            if (button != ControllerButton.RightStick) return false;
+            if (phase == ControllerEventPhase.Pressed) _ = ToggleExpandedAsync();
+            return true;
+        }
+        if (HasImageAnimation && button == ControllerButton.X)
+        { if (phase == ControllerEventPhase.Pressed) ToggleImageAnimation(); return true; }
         if (button is not (ControllerButton.A or ControllerButton.LeftTrigger or ControllerButton.RightTrigger or ControllerButton.LeftBumper or ControllerButton.RightBumper or ControllerButton.RightStick)) return IsExpanded;
         if (phase == ControllerEventPhase.Released) return true;
-        imageChrome.Reveal();
+        RevealImageControls();
         if (button == ControllerButton.LeftTrigger) ZoomImage(-1);
         else if (button == ControllerButton.RightTrigger) ZoomImage(1);
         else if (phase == ControllerEventPhase.Pressed)
@@ -237,7 +255,7 @@ internal sealed partial class MediaPlayerView
             if (button == ControllerButton.A) ActivateImageControl();
             if (button == ControllerButton.LeftBumper) FitImage();
             if (button == ControllerButton.RightBumper)
-                (ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), imageViewport) ? (Control)imageFit : imageViewport).Focus(FocusState.Keyboard);
+                (IsExpanded || ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), imageViewport) ? (Control)imageFit : imageViewport).Focus(FocusState.Keyboard);
             if (button == ControllerButton.RightStick) _ = ToggleExpandedAsync();
         }
         return true;

@@ -60,7 +60,7 @@ internal sealed partial class OverlayDesktopBackdrop : IDisposable
     private void EnsureWindow()
     {
         if (window is not null) return;
-        window = new Window { Title = "WidgetRail backdrop", SystemBackdrop = new WinUIEx.TransparentTintBackdrop(), ExtendsContentIntoTitleBar = true };
+        window = new Window { Title = "WidgetRail backdrop", SystemBackdrop = new TransparentWindowBackdrop(), ExtendsContentIntoTitleBar = true };
         handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
         window.AppWindow.IsShownInSwitchers = false;
         var presenter = (OverlappedPresenter)window.AppWindow.Presenter;

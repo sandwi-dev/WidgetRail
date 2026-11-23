@@ -13,7 +13,7 @@ or pin the video beside your game with controller controls still available.
 
 - Search public videos in **Discover**, then switch to **Player** without losing your results.
 - Paste a video link and start playback when you're ready.
-- Pin the video or open fullscreen playback.
+- Choose **Pin video** in Player, beside the current video in Discover, or in the widget's tray menu to keep watching beside your game.
 - Seek, adjust volume, mute, loop, and change playback speed.
 
 ## Get started
@@ -45,7 +45,7 @@ release and its close animation before launching the browser.
 | A | Activate the focused control |
 | Y | Open search Settings |
 | LT / RT | Seek backward or forward by 10 seconds while playing |
-| B | Return from Settings or exit fullscreen |
+| B | Open the radial from Discover or Player. Inside Settings or fullscreen, go back one level. |
 
 In pinned-video focus and fullscreen, **X** toggles play/pause. Follow the on-screen
 guide for the actions available on the current page.

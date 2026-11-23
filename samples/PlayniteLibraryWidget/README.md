@@ -14,8 +14,10 @@ to play, and launch it with your controller without leaving the overlay.
 - Configure PlayniteAchievements screenshots and clips from **Achievements → Capture settings**, then browse related media in each game's **Captures** tab.
 - Filter by favorites, installed status, source, and collections.
 - Open game details over the current page, then launch installed games through Playnite.
+- Watch a muted trailer or browse Steam screenshots in Game Details. Down enters the thumbnail strip, Left and Right change the preview, and Back returns from fullscreen. Supported publisher YouTube trailers play signed out.
 - Read descriptions, metadata, achievements, and play-session history in game details.
 - Request installation or uninstallation through Playnite and the game's launcher.
+- Choose Play to launch a game. Allow **Switch to open windows** to bring the game's verified window forward automatically. Reopening the overlay cancels a pending switch. Declining the permission still launches the game through Playnite.
 - Organize favorites, hidden games, categories, and completion status.
 
 ## Connect your library
@@ -70,7 +72,7 @@ Playnite's extension discovery folders. Setup never force-terminates Playnite.
 
 | Control | Action |
 | --- | --- |
-| A | Open game details; choose Play inside details to launch |
+| A | Open Game Details from a poster, or switch directly to the running game from **Resume playing** |
 | LB / RB | Switch Home and Library, or details tabs while a game is open |
 | L3 / left-stick click | Jump to search in Library or Achievements |
 | Right stick movement | Scroll the focused list or panel |
@@ -116,9 +118,9 @@ in Playnite, with saved data for the selected game. Missing data is explained in
 relevant tab. Achievements scroll continuously, with local search, All/Locked/Unlocked
 filters, and sorting by recent unlocks, rarity, name or numerical progress when available.
 Each row shows its description, icon, status, rarity, unlock date and available progress
-directly. Unfinished, non-hidden achievements with measurable progress offer **Track in progress pin** in their right-click/X menu. Press **A** on a secret achievement to reveal its
+directly. Press **X** or right-click a visible unfinished achievement with a unique provider ID to track it, including achievements without a numerical counter. **Track achievement** remembers one choice per game in the connected Playnite profile. **Stop tracking** clears that game's choice. Achievements with measurable progress also offer **Pin progress**, which can follow a different achievement. Currently Playing features the tracked choice, the latest unlock, and up to five visible locked achievements with the highest known player unlock percentages. Selecting an achievement opens its full row in Game Details. Press **A** on a secret achievement to reveal its
 description and artwork. Search suggestions use all loaded, revealed achievement names;
-the active filter still controls results. Activity retains 20 entries per page. Data loads when you open the
+the active filter still controls results. Sessions groups virtualized history by date. Press **A** on a session with highlights to browse all its matched unlocks and captures, and **B** to collapse it. Data loads when you open the
 tab and updates when Playnite reports changes. **Refresh / Y** reloads details and,
 on the Achievements tab, asks PlayniteAchievements to sync when supported. Playnite
 owns provider accounts and prompts. Closing the view does not cancel an accepted sync.
@@ -202,8 +204,7 @@ Select a game to open its existing achievement details; closing details returns
 to the selected game when it is still available. LB/RB cycle the three destinations;
 L3 focuses search. Narrow layouts use a compact summary and one game column.
 
-Install or enable PlayniteAchievements in Playnite's Add-ons menu if the page
-reports it missing. The page also distinguishes an unsupported add-on API and an
+If the provider is missing, choose **Install Playnite Achievements** in Achievements or **Install GameActivity** in a game's Sessions tab. Playnite opens the matching catalogue installer and asks for approval. An already installed provider can be enabled in Playnite's Add-ons menu. The page also distinguishes an unsupported add-on API and an
 outdated WidgetRail integration. Home and Library remain available.
 
 The page's Refresh reloads cached information. In a game's Achievements tab,

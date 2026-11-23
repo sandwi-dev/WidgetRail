@@ -253,6 +253,8 @@ internal static partial class SettingsPresentation
                 "Disable background blur to reduce graphics work."),
             UI.Text("Animations", "appearance.animations.heading").Classes("section-heading"),
             UI.Text("Reduced motion in Accessibility overrides these effects.", "appearance.motion.help").Classes("page-help"),
+            Field("Animate overlay opening and closing", UI.Switch("Animate overlay opening and closing", appearance.AnimateOverlayVisibility,
+                "overlay-visibility-animation.toggle", "appearance.animate-overlay-visibility", isDisabled: false, showLabel: false).Busy(busy)),
             Field("Animate widget switching", UI.Switch("Animate widget switching", appearance.AnimateWidgetSwitching, "widget-switch-animation.toggle", "appearance.animate-widget-switching", isDisabled: false, showLabel: false).Busy(busy)),
                 Field("Focus animation", (UI.Select("Focus animation", new SelectOption[]
                 {
@@ -350,6 +352,9 @@ internal static partial class SettingsPresentation
         return View(header, PageScope("overlay.page", [
             UI.Text("General", "overlay.heading").Classes("page-heading"),
             UI.Text("Overlay", "overlay.layout.heading").Classes("section-heading"),
+            Field("Home widget", UI.Button(settings.HomeWidgetId == PlatformSettingsDocument.DefaultHomeWidgetId ? "Settings" : "Change widget…",
+                "overlay.home-widget.choose", "overlay.home-widget").Busy(busy),
+                "Choose which widget opens when WidgetRail starts. Reopening the overlay resumes your current widget."),
             Field("Position", (UI.Select("Position", [
                 new("center", "Center", "position.choose.center", IsSelected: appearance.OverlayPosition == OverlayPosition.Center),
                 new("left", "Bottom left", "position.choose.left", IsSelected: appearance.OverlayPosition == OverlayPosition.BottomLeft),

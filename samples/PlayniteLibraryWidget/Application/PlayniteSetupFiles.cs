@@ -61,7 +61,8 @@ internal static class PlayniteSetupFiles
     internal static Dictionary<string, string> ReadManifest(string path)
     {
         var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var line in Encoding.UTF8.GetString(Read(path, 64 * 1024)).Split('\n'))
+        var contents = Encoding.UTF8.GetString(Read(path, 64 * 1024)).TrimStart('\uFEFF');
+        foreach (var line in contents.Split('\n'))
         {
             var separator = line.IndexOf(':');
             if (separator <= 0 || char.IsWhiteSpace(line[0])) continue;

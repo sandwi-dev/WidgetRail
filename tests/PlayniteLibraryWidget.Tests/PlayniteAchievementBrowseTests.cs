@@ -115,9 +115,14 @@ public sealed partial class PlayniteLibraryTests
         Assert.AreEqual(WidgetOperationAdmission.Enqueued, lease.RouteAction(row.Key, ControllerButton.RightBumper));
         await WaitIndexed(() => widget.RenderState.Value.DetailsExtras.Tab == PlayniteDetailsTab.Captures);
         host.PublishSnapshot();
-        Assert.IsNull(host.CurrentSnapshot.FocusGroupEntryRequest);
+        var tabFocus = host.CurrentSnapshot.FocusGroupEntryRequest!;
+        Assert.IsTrue(tabFocus.RequestId > request);
+        var selectedTab = Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == tabFocus.TargetId);
+        Assert.AreEqual(DetailAction + "tab.captures", selectedTab.ActionId);
+        Assert.IsTrue(selectedTab.IsSelected);
         await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
         host.PublishSnapshot();
+        Assert.IsNull(host.CurrentSnapshot.FocusGroupEntryRequest);
         await widget.OnActionAsync(new(DetailAction + "achievement.filter.Locked", "filter"));
         host.PublishSnapshot();
         Assert.AreEqual(2000, Nodes(host.CurrentSnapshot.Root).Single(node => node.Id == declaration.Id).IndexedCollection!.Count);

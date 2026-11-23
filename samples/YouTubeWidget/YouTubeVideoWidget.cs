@@ -26,6 +26,7 @@ public sealed partial class YouTubeVideoWidget : Widget
     // presented that way and offers this reserved entry action; the host owns
     // the state and returns to this layout on B.
     internal const string EnterFullscreenActionId = "host.embeddedMediaSession.enterFullscreen";
+    private const string PinVideoActionId = "host.embeddedMediaSession.pin";
     private const string FullscreenFocusId = "youtube.player.fullscreen";
     private const string PendingFeedbackKey = "youtube.playback.feedback";
     private const double SeekStepSeconds = 10;
@@ -36,7 +37,14 @@ public sealed partial class YouTubeVideoWidget : Widget
     // One committed state is captured here and threaded through every render
     // helper. Rereading the model per helper would let a concurrent commit tear
     // one frame across the header, the transport, and the media session.
-    public override WidgetView Render() => RenderApplication(_model.Value);
+    public override WidgetView Render()
+    {
+        var state = _model.Value;
+        var reason = state.Playback.VideoId is null ? "Open a YouTube video to use playback controls."
+            : state.Playback.PendingCommand is not null ? "Wait for the current YouTube command to finish."
+            : "Return to the YouTube player to use this control.";
+        return RenderApplication(state).WithUnavailableTrayActions(reason, "play-pause", "seek-back", "seek-forward");
+    }
 
     public override async ValueTask<bool> IsIntentAvailableAsync(WidgetIntentRequest request, CancellationToken cancellationToken = default)
     {
@@ -91,17 +99,29 @@ public sealed partial class YouTubeVideoWidget : Widget
         var showFullscreenAction = state.RendersLiveTransport && videoId is not null;
         var fullscreenActionEnabled = showFullscreenAction && error is null && !mediaLoading;
         var captionsActionEnabled = showFullscreenAction && transportActionsAvailable;
-        var media = CreateMediaSession(
-            videoId, playback.PendingCommand, showFullscreenAction);
-
         var linkEntry = (UI.TextEntry(
                 playback.Link,
-                "Enter youtube.com or youtu.be link here",
+                "Paste a YouTube link",
                 LinkActionId,
                 "youtube.link",
                 ProtocolConstants.MaximumTextEntryLength) with { InputKind = TextEntryInputKind.Url })
-            .FocusDown("youtube.controls")
             .Classes("youtube-link", playback.Link.Length == 0 ? "is-empty" : "has-value");
+        if (videoId is null)
+        {
+            var fields = new List<WidgetElement> { UI.Text("Play a link", "youtube.title").Classes("youtube-title"), linkEntry };
+            if (error is not null) fields.Add(UI.Text(error, "youtube.status").Classes("youtube-copy", "is-error"));
+            var entry = UI.Stack(PlayerFocusGroupId, fields.ToArray()).RememberChildFocus("youtube.link")
+                .Classes("youtube-link-page");
+            return new WidgetView(RootSectionShell(state, entry, "youtube.link"), state.RootInitialFocusId ?? "youtube.link",
+                ActiveInputScopeId: RootScopeId, Surface: new WidgetSurfaceHints
+                {
+                    Mode = WidgetSurfaceMode.Standard, Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
+                    HeightMode = WidgetSurfaceAxisMode.Content, WidthMode = WidgetSurfaceAxisMode.Preferred,
+                    PreferredWidth = 760, PreferredHeight = 220, MinimumWidth = 420, MinimumHeight = 180,
+                }) { FocusGroupEntryRequest = state.RootFocusGroupEntryRequest };
+        }
+        linkEntry = linkEntry.FocusDown("youtube.controls");
+        var media = CreateMediaSession(videoId, playback.PendingCommand, showFullscreenAction);
         var playing = playback.PlaybackSemantic == EmbeddedMediaPlaybackState.Playing;
         var toggle = UI.Button("", ToggleActionId, "youtube.playback.toggle")
             .Icon(playing ? WidgetGlyph.Pause : WidgetGlyph.Play, playing ? "Pause" : "Play")
@@ -162,26 +182,31 @@ public sealed partial class YouTubeVideoWidget : Widget
         var statusClass = error is not null ? "is-error" :
             mediaLoading || seekBuffering ? "is-busy" :
             playback.State == EmbeddedMediaPlaybackState.Playing ? "is-playing" : "is-normal";
-        IReadOnlyList<WidgetQuickAction>? quickActions = transportActionsAvailable
+        var retainedTransport = !IsActive && state.CanDispatchTransportAction(true);
+        IReadOnlyList<WidgetQuickAction>? quickActions = transportActionsAvailable || retainedTransport
                 ?
                 [
-                    new WidgetQuickAction(ControllerButton.X, ToggleActionId, "Play or pause"),
+                    new WidgetQuickAction(ControllerButton.X, ToggleActionId, "Play or pause")
+                        { TrayOffer = Offer("play-pause") },
                     new WidgetQuickAction(ControllerButton.LeftTrigger, SeekBackwardActionId,
                         "Seek backward 10 seconds",
-                        RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
+                        RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld) { TrayOffer = Offer("seek-back") },
                     new WidgetQuickAction(ControllerButton.RightTrigger, SeekForwardActionId,
                         "Seek forward 10 seconds",
-                        RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
+                        RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld) { TrayOffer = Offer("seek-forward") },
                 ]
                 : null;
+        TrayActionOffer? Offer(string id) => playback.PendingCommand is null && videoId is not null
+            ? new(id, id == "play-pause" ? videoId + (playing ? ".pause" : ".play") : videoId)
+                { EmbeddedSessionId = SessionId, TrayOnly = retainedTransport } : null;
         var headerActions = new List<WidgetElement>
         {
             UI.Text(status, "youtube.status")
                 .Classes("youtube-status", "youtube-status-pill", statusClass),
         };
         var transportControls = new List<WidgetElement> { toggle };
-        if(videoId is not null)headerActions.Add(UI.IconButton(WidgetGlyph.Settings,"youtube.pin.manage",
-            "youtube.pin.manage","Manage pins",size:IconButtonSize.Small).Classes("youtube-route-button","youtube-transport-button"));
+        headerActions.Add(PinVideoButton(playback));
+        headerActions.Add(UI.Button("Manage pins", "youtube.pin.manage", "youtube.pin.manage").Classes("youtube-route-button"));
         if (showFullscreenAction)
         {
             transportControls.Add(fullscreen);
@@ -198,15 +223,9 @@ public sealed partial class YouTubeVideoWidget : Widget
             .Classes("youtube-timeline-group"));
         var page = UI.Stack(
                 PlayerFocusGroupId,
-                UI.Row(
-                        "youtube.header",
-                        UI.Stack("youtube.player.heading-copy",
-                            UI.Text("YOUTUBE", "youtube.eyebrow").Classes("youtube-eyebrow"),
-                            UI.Text(videoId is null ? "Play a link" : "Now playing", "youtube.title")
-                                .Classes("youtube-title"))
-                            .Classes("youtube-appbar-copy"),
-                        UI.Row("youtube.player.header-actions", headerActions.ToArray())
-                            .Classes("youtube-route-actions"))
+                UI.Row("youtube.header",
+                    UI.Text(playback.VideoTitle ?? "Now playing", "youtube.title").Classes("youtube-title", "youtube-appbar-copy"),
+                    UI.Row("youtube.player.header-actions", headerActions.ToArray()).Classes("youtube-route-actions"))
                     .Classes("youtube-header", "youtube-appbar"),
                 linkEntry,
                 UI.Stack("youtube.player-shell",
@@ -215,7 +234,7 @@ public sealed partial class YouTubeVideoWidget : Widget
                                 UI.Row("youtube.controls", transportControls.ToArray())
                                     .RememberChildFocus("youtube.playback.toggle")
                                     .Classes("youtube-controls"))
-                            .Classes("youtube-control-deck", videoId is null ? "is-unavailable" : "is-ready"))
+                            .Classes("youtube-control-deck", "is-ready"))
                     .Classes("youtube-player-shell"))
             .RememberChildFocus(playerEntryFocusId)
             .Classes("youtube-player-page");
@@ -251,6 +270,11 @@ public sealed partial class YouTubeVideoWidget : Widget
             FocusGroupEntryRequest = state.RootFocusGroupEntryRequest,
         };
     }
+
+    private static ButtonElement PinVideoButton(YouTubePlaybackState playback) =>
+        UI.Button("Pin video", PinVideoActionId, "youtube.video.pin")
+            .Disabled(playback.Error is not null || playback.IsMediaLoading || playback.State == EmbeddedMediaPlaybackState.Error)
+            .Classes("youtube-route-button");
 
     private static EmbeddedMediaSession CreateMediaSession(
         string? videoId,
@@ -377,7 +401,16 @@ public sealed partial class YouTubeVideoWidget : Widget
     /// Projects one single-flight transport intent. The declaration stays visible
     /// while this returns RejectedPending, preserving held-controller bindings.
     /// </summary>
-    private void RunPlayback(YouTubePlaybackRequest request)
+    protected override ValueTask<TrayActionResult> OnTrayActionAsync(TrayActionOffer offer, CancellationToken token)
+    {
+        var intent = offer.Id switch { "play-pause" => YouTubePlaybackIntent.TogglePlayback,
+            "seek-back" => YouTubePlaybackIntent.SeekBackward, "seek-forward" => YouTubePlaybackIntent.SeekForward, _ => (YouTubePlaybackIntent?)null };
+        return ValueTask.FromResult(intent is { } command &&
+            offer.EmbeddedSessionId == SessionId && RunPlayback(new(command, SeekStep: SeekStepSeconds, TrayTarget: offer.TargetKey))
+            ? TrayActionResult.Success : TrayActionResult.Unavailable("The YouTube player changed or is busy. Try the current video again."));
+    }
+
+    private bool RunPlayback(YouTubePlaybackRequest request)
     {
         var run = _playbackCommand.Run(request);
         if (run.IsAccepted)
@@ -388,6 +421,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             }
             SchedulePendingFeedback(run.Sequence);
         }
+        return run.IsAccepted;
     }
 
     /// <summary>Replaces an older load intent with the newest link or result.</summary>
@@ -416,7 +450,7 @@ public sealed partial class YouTubeVideoWidget : Widget
                 if (request.SearchRevision is { } revision && (state.Route != YouTubeRoute.Search || state.Search.Revision != revision))
                     return new(state, state.Playback.VideoId ?? "youtube.none", false);
                 next = state.WithSelectedResult(
-                    returnFocusId, selectedVideoId, sequence, PlayerFocusGroupId, request.ReturnCollectionItem, CreateFocusRequest().Id);
+                    returnFocusId, selectedVideoId, sequence, PlayerFocusGroupId, request.ReturnCollectionItem, CreateFocusRequest().Id, request.VideoTitle);
                 break;
             default:
                 var preferenceIntent = request.Intent is
@@ -430,6 +464,9 @@ public sealed partial class YouTubeVideoWidget : Widget
                     return new(state, state.Playback.VideoId ?? "youtube.none",
                         ShouldStart: false);
                 var playback = state.Playback;
+                if (request.TrayTarget is { } expected && expected != (request.Intent == YouTubePlaybackIntent.TogglePlayback
+                    ? videoId + (playback.PlaybackSemantic == EmbeddedMediaPlaybackState.Playing ? ".pause" : ".play") : videoId))
+                    return new(state, videoId, ShouldStart: false);
                 next = request.Intent switch
                 {
                     YouTubePlaybackIntent.TogglePlayback => state.WithPlayback(current =>

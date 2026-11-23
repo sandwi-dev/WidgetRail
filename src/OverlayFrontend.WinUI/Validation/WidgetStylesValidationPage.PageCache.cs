@@ -9,6 +9,53 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 internal sealed partial class WidgetStylesValidationPage
 {
+    private async Task NativeScopedSectionCacheAsync()
+    {
+        var page = new WidgetViewPresenter { Width = 500, Height = 240 };
+        host.Children.Add(page);
+        var calls = 0;
+        page.DispatchActionAsync = _ => { ++calls; return Task.CompletedTask; };
+        try
+        {
+            Render("one");
+            await Wait(() => Find<Button>("Widget.action.one", page) is { IsLoaded: true, ActualWidth: > 0 });
+            var original = Find<Button>("Widget.action.one", page)!;
+            var foreground = Find<FrameworkElement>("Widget.scope.one", page)!;
+            var surface = Find<WidgetPresentationSurface>("Widget.stable.background", page)!;
+            var unloads = 0;
+            foreground.Unloaded += (_, _) => ++unloads;
+            Render("two");
+            await Wait(() => Find<Button>("Widget.action.two", page) is { IsLoaded: true, ActualWidth: > 0 });
+            Check(original.IsLoaded && !original.IsHitTestVisible && unloads == 0,
+                "Switching scoped tabs parks the complete foreground without unloading its controls");
+            original.Command!.Execute(null);
+            Check(calls == 0, "The old tab cannot activate an action while its artwork is retained");
+            Render("one", disabled: true);
+            await Wait(() => !original.IsEnabled && original.IsHitTestVisible);
+            Check(page.PageCacheHits == 1 && ReferenceEquals(surface, Find<WidgetPresentationSurface>("Widget.stable.background", page))
+                && ReferenceEquals(original, Find<Button>("Widget.action.one", page)) && unloads == 0,
+                "Rapid return reuses the foreground under its original background and applies changed action availability");
+            Render("one");
+            original.Command.Execute(null);
+            await Wait(() => calls == 1);
+            Render("two"); Render("one");
+            await Wait(() => original.IsEnabled && original.IsHitTestVisible && page.OutgoingTransitionCount == 0);
+            Check(calls == 1 && unloads == 0, "Interrupted section animations release their composition paint without replaying input");
+        }
+        finally { host.Children.Remove(page); await page.DisposeAsync(); }
+
+        void Render(string key, bool disabled = false)
+        {
+            var scope = "scope." + key;
+            var button = new ViewNode { Id = "action." + key, Kind = ViewNodeKind.Button, Text = key, ActionId = "open", IsDisabled = disabled };
+            var section = new ViewNode { Id = "section." + key, Kind = ViewNodeKind.Stack,
+                Transition = new("scoped.tabs", key, key == "one" ? 0 : 1), Children = new[] { button } };
+            var branch = new ViewNode { Id = scope, InputScopeId = scope, Kind = ViewNodeKind.Stack, Children = new[] { section } };
+            var root = new ViewNode { Id = "stable.background", Kind = ViewNodeKind.BackgroundSurface, Children = new[] { branch } };
+            page.Apply(CreateFrame(root, new Dictionary<string, BridgeNodeRenderStyles>(), scope));
+        }
+    }
+
     private async Task NativeCachedDragAsync()
     {
         var page = new WidgetViewPresenter { Width = 500, Height = 120 };
@@ -51,6 +98,39 @@ internal sealed partial class WidgetStylesValidationPage
             for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(root); ++i)
                 if (HasCapture(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(root, i))) return true;
             return false;
+        }
+    }
+
+    private async Task NativeNestedSectionReturnAsync()
+    {
+        var presenter = new WidgetViewPresenter { Width = 500, Height = 220 };
+        host.Children.Add(presenter);
+        presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);
+        try
+        {
+            await Render("games", "list");
+            var original = Find<Button>("Widget.nested.list", presenter);
+            await Render("details", "overview");
+            await Render("details", "information");
+            await Render("details", "achievements");
+            await Render("details", "captures");
+            Check(presenter.CachedPageCount == 2, "The parent and the previous tab fit the two-view budget");
+            await Render("games", "list");
+            Check(original is not null && ReferenceEquals(original, Find<Button>("Widget.nested.list", presenter)),
+                "Returning after several detail tabs restores the original parent page");
+        }
+        finally { host.Children.Remove(presenter); await presenter.DisposeAsync(); }
+
+        async Task Render(string page, string section)
+        {
+            var button = new ViewNode { Id = "nested." + section, Kind = ViewNodeKind.Button, Text = section, ActionId = "select" };
+            var content = new ViewNode { Id = "nested.section", Kind = ViewNodeKind.Stack, Children = new[] { button },
+                Transition = page == "details" ? new("nested.tabs", section, 0) : null };
+            var root = new ViewNode { Id = "nested." + page, Kind = ViewNodeKind.Stack, Children = new[] { content },
+                Transition = new("nested.pages", page, 0, WidgetTransitionKind.Page,
+                    page == "details" ? WidgetNavigationOperation.Forward : WidgetNavigationOperation.Back) };
+            presenter.Apply(CreateFrame(root, new Dictionary<string, BridgeNodeRenderStyles>()));
+            await Wait(() => Find<Button>("Widget." + button.Id, presenter) is { IsLoaded: true, ActualWidth: > 0 });
         }
     }
 

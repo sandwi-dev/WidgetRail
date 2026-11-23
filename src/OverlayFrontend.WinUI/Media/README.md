@@ -1,5 +1,19 @@
 # Native embedded media adapter
 
+Native file/video players (`MediaPlayerView`) use a normal in-tree WinUI
+`MediaPlayerElement`. Its XAML ancestors own scroll position, layout, clipping
+and opacity. Native video is not relocated into `MediaPresentationStage` and
+does not have a parallel per-frame positioning loop. Galleries leave their
+inline frames and thumbnail strips mounted while the existing fullscreen
+owner hosts the live playback subtree in the same XAML root. A WinUI
+`Viewbox` fits gallery video at its decoded dimensions so the element and
+decoder survive the scale transition. Standalone players continue to move
+their card through the existing fullscreen owner.
+Native-video page-exit retention is intentionally disabled.
+
+The resident browser-media contract below applies to WebView-backed embedded
+media. It is not a requirement for native video or inline GIF playback.
+
 `EmbeddedMediaSurface` hosts the existing sealed SDK adapter in **WinUI WebView2**.
 It is a renderer for `EmbeddedMediaSession`, not a widget browser or script API.
 The session service admits bytes and document identity; this directory owns browser

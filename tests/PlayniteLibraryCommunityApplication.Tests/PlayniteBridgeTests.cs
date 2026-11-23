@@ -202,6 +202,7 @@ public sealed class PlayniteBridgeTests
             .ToArray();
         CollectionAssert.AreEqual(new[]
         {
+            nameof(PlayniteBridgeClient.BeginObservedGameAsync),
             nameof(PlayniteBridgeClient.ChangeInstallationAsync),
             nameof(PlayniteBridgeClient.ConfigureCaptureIntegrationAsync),
             nameof(PlayniteBridgeClient.CreateCategoryAsync),
@@ -214,6 +215,8 @@ public sealed class PlayniteBridgeTests
             nameof(PlayniteBridgeClient.GetCaptureIntegrationAsync),
             nameof(PlayniteBridgeClient.GetCaptureSettingsAsync),
             nameof(PlayniteBridgeClient.GetCaptureSettingsForConnectionAsync),
+            nameof(PlayniteBridgeClient.GetLaunchStatusAsync),
+            nameof(PlayniteBridgeClient.GetRecentActivityAsync),
             nameof(PlayniteBridgeClient.LaunchAsync),
             nameof(PlayniteBridgeClient.ListCategoriesAsync),
             nameof(PlayniteBridgeClient.ListCompletionStatusesAsync),
@@ -367,7 +370,7 @@ public sealed class PlayniteBridgeTests
     }
 
     [TestMethod]
-    public void ManifestDeclaresOnlyOptionalCaptureAccessAndNoCredentialValue()
+    public void ManifestDeclaresOnlyOptionalCaptureAndWindowSwitchAccessAndNoCredentialValue()
     {
         var root = RepositoryRoot();
         var manifestPath = Path.Combine(root, "samples", "PlayniteLibraryWidget", "manifest.json");
@@ -376,7 +379,7 @@ public sealed class PlayniteBridgeTests
         Assert.IsTrue(value.GetProperty("pinningSupported").GetBoolean(), "The authored progress layout requires package pin admission.");
         Assert.IsFalse(value.TryGetProperty("notificationCategories", out _), "PlayniteAchievements owns unlock notifications.");
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
-        CollectionAssert.AreEquivalent(new[]{"media.capture-library.read.v1","media.capture-library.manage.v1"},
+        CollectionAssert.AreEquivalent(new[]{"media.capture-library.read.v1","media.capture-library.manage.v1","system.apps.windows.switch.v1"},
             value.GetProperty("optionalPermissions").EnumerateArray().Select(item=>item.GetString()).ToArray());
         Assert.IsTrue(Version.TryParse(value.GetProperty("version").GetString(), out _),
             "The package must declare a valid version; its patch number is not a trust boundary.");

@@ -7,6 +7,14 @@ widget interaction, and destination loading. **Settings → Introduction**
 restarts the welcome; an unfinished tour also exposes **Continue introduction**
 in the tray's Commands menu.
 
+The guide teaches widget navigation and right-stick scrolling. Advancing to Tray
+quick actions with a controller opens the radial tray. Hovering or reading a
+hint leaves the shortcut alone. Invoking a direction during this step reports
+its assignment or explains the empty-slot chooser without running it. On the
+bottom rail the card points to Quick actions beside Manage pins. The tour count
+reflects the available destinations, so installations without Catalogue or
+Settings can still finish.
+
 ## Progress file
 
 Progress is stored separately from settings, under the active profile:

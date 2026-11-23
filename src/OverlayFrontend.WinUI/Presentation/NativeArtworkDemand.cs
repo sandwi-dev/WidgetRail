@@ -11,6 +11,7 @@ internal sealed class NativeArtworkDemand : IDisposable
 {
     private readonly FrameworkElement target;
     private readonly Func<bool> admitted;
+    private readonly Func<bool> animationAllowed;
     private readonly Func<CancellationToken, Task<NativeArtworkPayload?>> resolve;
     private readonly Action<ImageSource?> publish;
     private readonly Action<bool> completed;
@@ -29,14 +30,22 @@ internal sealed class NativeArtworkDemand : IDisposable
     private bool naturalSize;
     private bool queued;
     private bool disposed;
+    private bool playbackSuspended;
+    private NativeAnimatedArtwork? animation;
     internal NativeArtworkDecode? LastDecode { get; private set; }
 
     internal NativeArtworkDemand(FrameworkElement target, ImageFit? fit, Func<bool> admitted,
         Func<CancellationToken, Task<NativeArtworkPayload?>> resolve, Action<ImageSource?> publish,
-        Action<bool> completed, Action<Task> observe, Action<Exception> failed, CancellationToken lifetime, bool naturalSize = false)
+        Action<bool> completed, Action<Task> observe, Action<Exception> failed, CancellationToken lifetime, bool naturalSize = false,
+        Func<bool>? animationAllowed = null)
     {
         this.target = target; this.fit = fit; this.admitted = admitted; this.resolve = resolve;
+        this.animationAllowed = animationAllowed ?? (() => true);
         this.publish = publish; this.completed = completed; this.observe = observe; this.failed = failed; this.lifetime = lifetime;
+        // Ordinary image cells use a fresh viewport target only if the decoded
+        // bitmap animates. Media elements with a persistent motion owner keep
+        // their early native observation for delayed source replacement.
+        if (target is not WidgetArtworkView) NativeMotionVisibility.Prepare(target);
         target.Loaded += Loaded;
         target.SizeChanged += SizeChanged;
         cancellation = lifetime.Register(() =>
@@ -57,12 +66,15 @@ internal sealed class NativeArtworkDemand : IDisposable
         { queued = false; if (!disposed) ApplySize(); })) queued = false;
     }
     internal void RefreshSize() => Refresh(fit, naturalSize);
+    internal void SetPlaybackSuspended(bool value) { playbackSuspended = value; RefreshPlayback(); }
+    internal void RefreshPlayback() => animation?.Refresh();
     private void Loaded(object sender, RoutedEventArgs args) => RefreshSize();
     private void SizeChanged(object sender, SizeChangedEventArgs args) => RefreshSize();
     private void RootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => RefreshSize();
 
     private void ApplySize()
     {
+        RefreshPlayback();
         // Resource acquisition does not require Loaded. WinUI can have an attached,
         // arranged ContentControl whose IsLoaded flag has not caught up yet, with
         // no later size notification. Ownership plus XamlRoot establish admission;
@@ -143,15 +155,19 @@ internal sealed class NativeArtworkDemand : IDisposable
             PresentationPipelineTrace.Log.End(timing.Id, phase, phaseStarted, payload is null ? 0 : 1, PipelineOutcome.Completed);
             phase = PipelineStage.ArtworkDecode;
             phaseStarted = PresentationPipelineTrace.Timestamp(timing.Id);
-            var decoded = await NativeArtworkDecoder.DecodeAsync(payload, pixels, imageFit, token, preserveNaturalSize);
+            var decoded = await NativeArtworkDecoder.DecodeAsync(payload, pixels, imageFit, token, preserveNaturalSize, autoPlay: false);
             PresentationPipelineTrace.Log.End(timing.Id, phase, phaseStarted, decoded is null ? 0 : 1, PipelineOutcome.Completed);
             phase = PipelineStage.ArtworkPublish;
             phaseStarted = PresentationPipelineTrace.Timestamp(timing.Id);
             if (disposed || token.IsCancellationRequested || !ReferenceEquals(request, owner) || !admitted()) return;
+            animation?.Dispose(); animation = null;
             sourceSize = decoded?.Source; decodedSize = decoded?.Decoded; decodedFit = imageFit; LastDecode = decoded;
+            if (decoded?.Image.IsAnimatedBitmap == true)
+                animation = new(target, decoded.Image, () => !disposed && !playbackSuspended && admitted() && animationAllowed());
             completed(true);
             NativeArtworkCounters.Completed();
             publish(decoded?.Image);
+            RefreshPlayback();
             outcome = PipelineOutcome.Completed;
             PresentationPipelineTrace.Log.End(timing.Id, phase, phaseStarted, decoded is null ? 0 : 1, outcome);
         }
@@ -180,6 +196,7 @@ internal sealed class NativeArtworkDemand : IDisposable
         if (disposed) return;
         disposed = true;
         target.Loaded -= Loaded; target.SizeChanged -= SizeChanged;
+        animation?.Dispose(); animation = null;
         if (root is not null) root.Changed -= RootChanged;
         foreach (var (zoom, token) in zoomRoots) zoom.UnregisterPropertyChangedCallback(Shell.OverlayScaleRoot.InterfaceScaleProperty, token);
         zoomRoots.Clear();

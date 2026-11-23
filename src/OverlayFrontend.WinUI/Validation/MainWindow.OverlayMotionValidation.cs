@@ -20,10 +20,18 @@ namespace WidgetRail.OverlayFrontend.WinUI
                     await page.WaitForNativeStartupAsync().WaitAsync(TimeSpan.FromSeconds(45));
                     await Until(() => page.NativeStartupHasContent && overlayMotion?.Playback is { IsCompleted: true });
                     originalAppearance = page.Appearance;
+                    Check(overlayMotionRecipe == WidgetMotionPolicy.OverlayVisibility(originalAppearance, page.SystemAnimationsEnabled, opening: true),
+                        "cold entrance honors the saved visibility preference");
+                    page.ApplyOverlayMotionValidationAppearance(originalAppearance with { Motion = MotionPreference.Full, AnimateOverlayVisibility = false });
+                    HideOverlay();
+                    Check(!AppWindow.IsVisible && overlayMotion?.Playback is { IsCompleted: true } && !page.OverlayMotionValidationRetaining,
+                        "disabling overlay animation makes close immediate even with full motion");
+                    ShowOverlay();
+                    await Until(() => !overlayOpenPending && overlayMotion?.Playback is { IsCompleted: true });
                     page.ApplyOverlayMotionValidationAppearance(originalAppearance with
                     {
                         Motion = MotionPreference.Full, WidgetAnimationSpeed = .5,
-                        AnimateWidgetSwitching = false, SectionAnimation = WidgetSectionAnimation.None,
+                        AnimateOverlayVisibility = true, AnimateWidgetSwitching = false, SectionAnimation = WidgetSectionAnimation.None,
                     });
                     var shellVisual = ElementCompositionPreview.GetElementVisual(ShellRoot);
                     var backdropVisual = ElementCompositionPreview.GetElementVisual(desktopBackdrop!.MotionLayer);
@@ -54,6 +62,8 @@ namespace WidgetRail.OverlayFrontend.WinUI
                     HideOverlay();
                     var interrupted = overlayMotion.Playback!;
                     await Task.Delay(35);
+                    Check(shellVisual.Scale == System.Numerics.Vector3.One && backdropVisual.Scale == System.Numerics.Vector3.One,
+                        "both layers retain their original size during the fade");
                     ShowOverlay();
                     await Until(() => overlayMotion.Playback != interrupted);
                     Check(await interrupted == WidgetMotionOutcome.Superseded,
@@ -70,7 +80,7 @@ namespace WidgetRail.OverlayFrontend.WinUI
                     // Reopening re-establishes the production session, which can
                     // republish persisted appearance over this in-memory fixture
                     // override. Establish the intended policy for this next case.
-                    page.ApplyOverlayMotionValidationAppearance(page.Appearance with { Motion = MotionPreference.Full, WidgetAnimationSpeed = .5 });
+                    page.ApplyOverlayMotionValidationAppearance(page.Appearance with { AnimateOverlayVisibility = true, Motion = MotionPreference.Full, WidgetAnimationSpeed = .5 });
                     await Until(() => !overlayOpenPending && overlayMotion.Playback is { IsCompleted: true });
                     HideOverlay();
                     Check(AppWindow.IsVisible, "full-motion close is initially deferred");

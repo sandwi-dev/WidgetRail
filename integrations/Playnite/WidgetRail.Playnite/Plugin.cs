@@ -31,8 +31,18 @@ public sealed class WidgetRailPlaynitePlugin : GenericPlugin
     }
     public override void OnApplicationStarted(OnApplicationStartedEventArgs args) { started = true; StartServer(); }
     public override void OnApplicationStopped(OnApplicationStoppedEventArgs args) { started = false; StopServer(); }
-    public override void OnGameStarted(OnGameStartedEventArgs args) => dispatcher?.GameStateChanged(args.Game.Id);
-    public override void OnGameStopped(OnGameStoppedEventArgs args) => dispatcher?.GameStateChanged(args.Game.Id);
+    public override void OnGameStarting(OnGameStartingEventArgs args) => dispatcher?.CaptureGameStarting(args.Game.Id, args.Game.Name);
+    public override void OnGameStartupCancelled(OnGameStartupCancelledEventArgs args) => dispatcher?.GameStartCancelled(args.Game.Id);
+    public override void OnGameStarted(OnGameStartedEventArgs args)
+    {
+        dispatcher?.CaptureGameStarted(args.Game.Id, args.StartedProcessId, args.Game.InstallDirectory);
+        dispatcher?.GameStateChanged(args.Game.Id);
+    }
+    public override void OnGameStopped(OnGameStoppedEventArgs args)
+    {
+        dispatcher?.CaptureGameStopped(args.Game.Id);
+        dispatcher?.GameStateChanged(args.Game.Id);
+    }
     public override void OnLibraryUpdated(OnLibraryUpdatedEventArgs args) => dispatcher?.LibraryChanged();
 
     private void StartServer()

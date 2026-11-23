@@ -6,7 +6,7 @@ namespace WidgetRail.PlatformBroker;
 internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identity, CaptureLibraryStore? library = null,
     WebSessionRegistry.Owner? webSessionOwner = null, CaptureReplayService? replay = null) : IDisposable
 {
-    internal async Task<JsonElement> ExecuteAsync(string operation, JsonElement payload, CancellationToken token)
+    internal async Task<JsonElement> ExecuteAsync(string operation, JsonElement payload, CancellationToken token, TrayCaptureCommand? tray = null, long? traySequence = null, HostActionCompletion? hostCompletion = null)
     {
         if (operation.StartsWith("capture.replay.", StringComparison.Ordinal))
         {
@@ -19,6 +19,14 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
             if (replay is null) throw new BrokerException("platform_unavailable", "Replay capture is unavailable.");
             switch (operation)
             {
+                case "capture.replay.approvals":
+                    return BrokerJson.ToElement(await replay.ReadApprovalsAsync(identity, token).ConfigureAwait(false));
+                case "capture.replay.choose-approval":
+                    var choose = BrokerJson.ParsePayload<ReplayApprovalRevision>(payload);
+                    return BrokerJson.ToElement(await replay.ChooseApprovalAsync(this, identity, choose.ExpectedRevision, token).ConfigureAwait(false));
+                case "capture.replay.remove-approval":
+                    var remove = BrokerJson.ParsePayload<ReplayApprovalRemoval>(payload);
+                    return BrokerJson.ToElement(await replay.RemoveApprovalAsync(identity, remove, token).ConfigureAwait(false));
                 case "capture.replay.configure":
                     var update = BrokerJson.ParsePayload<CaptureReplaySettingsUpdate>(payload);
                     if (!update.EncodingDetails && CaptureReplayProjection.RequiresEncodingDetails(replay.Status.Settings))
@@ -26,11 +34,19 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
                     return BrokerJson.ToElement(CaptureReplayProjection.ForReader(await replay.ConfigureAsync(this, identity, update, token).ConfigureAwait(false), update.EncodingDetails));
                 case "capture.replay.start":
                     var start = BrokerJson.ParsePayload<CaptureReplayReadRequest>(payload);
-                    return BrokerJson.ToElement(CaptureReplayProjection.ForReader(await replay.StartAsync(this, identity, token).ConfigureAwait(false), start.EncodingDetails));
+                    return BrokerJson.ToElement(CaptureReplayProjection.ForReader(tray?.Revision is { } revision
+                        ? await replay.StartFromTrayAsync(this, identity, revision, token).ConfigureAwait(false)
+                        : await replay.StartAsync(this, identity, token).ConfigureAwait(false), start.EncodingDetails));
                 case "capture.replay.stop":
                     var stop = BrokerJson.ParsePayload<CaptureReplaySessionRequest>(payload);
-                    return BrokerJson.ToElement(CaptureReplayProjection.ForReader(await replay.StopAsync(stop.ExpectedSessionId, token).ConfigureAwait(false), stop.EncodingDetails));
-                case "capture.replay.save": return BrokerJson.ToElement(await replay.SaveAsync(identity, BrokerJson.ParsePayload<CaptureReplaySaveRequest>(payload), token).ConfigureAwait(false));
+                    if (tray is not null && tray.SessionId != stop.ExpectedSessionId)
+                        throw new BrokerException("capture_stale", "The replay session changed.");
+                    return BrokerJson.ToElement(CaptureReplayProjection.ForReader(await replay.StopAsync(stop.ExpectedSessionId, tray?.Revision, token).ConfigureAwait(false), stop.EncodingDetails));
+                case "capture.replay.save":
+                    var save = BrokerJson.ParsePayload<CaptureReplaySaveRequest>(payload);
+                    if (tray is not null && tray.SessionId != save.ExpectedSessionId)
+                        throw new BrokerException("capture_stale", "The replay session changed.");
+                    return BrokerJson.ToElement(await replay.SaveAsync(identity, save, token).ConfigureAwait(false));
                 default: throw new BrokerException("unsupported_operation", "Replay operation is unsupported.");
             }
         }
@@ -59,7 +75,7 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
             BrokerCapabilityDomains.DemandEmptyPayload(payload);
             await WindowCaptureRegistry.Shared.GetCapabilitiesAsync(token).ConfigureAwait(false);
         }
-        if (operation is "capture.validate" or "capture.start")
+        if (operation is "capture.validate" or "capture.start" or "capture.save-screenshot" or "capture.record-clip")
         {
             var options = BrokerJson.ParsePayload<CaptureSessionRequest>(payload);
             if (!options.IsWellFormed())
@@ -67,11 +83,21 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
                 if (operation == "capture.validate") return BrokerJson.ToElement(new CaptureConfigurationValidation(false, "invalid_capture_options"));
                 throw new BrokerException("invalid_capture_options", "Invalid capture options.");
             }
+            var save = operation is "capture.save-screenshot" or "capture.record-clip";
+            if (save && ((operation == "capture.record-clip") != (options.Recording is not null) ||
+                (options.Recording is not null) != (options.OutputPurpose == CaptureOutputPurpose.LibraryRecording)))
+                throw new BrokerException("invalid_capture_options", "Capture kind does not match the library command.");
             var captureRegistry = WindowCaptureRegistry.Shared;
             var available = options.Recording is { } video
                 ? await captureRegistry.GetRecordingCapabilitiesAsync(new(video), token).ConfigureAwait(false)
                 : await captureRegistry.GetCapabilitiesAsync(token, includeEncoding: false).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
+            if (save)
+            {
+                if (library is null) throw new BrokerException("capture_library_unavailable", "Capture Library is unavailable.");
+                await captureRegistry.EnqueueSavedAsync(identity, options, available, library, traySequence, token, hostCompletion).ConfigureAwait(false);
+                return BrokerCapabilityDomains.Acknowledged();
+            }
             if(operation=="capture.start" && options.OutputPurpose==CaptureOutputPurpose.LibraryRecording)
             {
                 if(library is null)throw new BrokerException("capture_library_unavailable","Capture Library is unavailable.");
@@ -134,6 +160,8 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
                     return BrokerCapabilityDomains.Acknowledged();
                 case "capture-library.groups":
                     return BrokerJson.ToElement(await library.GroupsAsync(BrokerJson.ParsePayload<CaptureLibraryGroupsRequest>(payload), token).ConfigureAwait(false));
+                case "capture-library.runs":
+                    return BrokerJson.ToElement(await library.RunsAsync(BrokerJson.ParsePayload<CaptureLibraryRunsRequest>(payload), token).ConfigureAwait(false));
                 case "capture-library.applications":
                     return BrokerJson.ToElement(await library.ApplicationsAsync(BrokerJson.ParsePayload<CaptureLibraryApplicationsRequest>(payload), token).ConfigureAwait(false));
                 case "capture-library.folders":
@@ -166,6 +194,19 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
                         thumbnail.Bytes.AsSpan(thumbnailRequest.Offset, Math.Min(CaptureLimits.ChunkBytes, thumbnail.Bytes.Length - thumbnailRequest.Offset)).ToArray()));
                 case "capture-library.contexts":
                     return BrokerJson.ToElement(await library.GetContextsAsync(BrokerJson.ParsePayload<CaptureLibraryContextsRequest>(payload), token).ConfigureAwait(false));
+                case "capture-library.destinations":
+                    return BrokerJson.ToElement(await library.GetDestinationsAsync(BrokerJson.ParsePayload<CaptureLibraryContextsRequest>(payload), token).ConfigureAwait(false));
+                case "capture-library.attach-context":
+                    return BrokerJson.ToElement(await library.AttachSavedContextAsync(BrokerJson.ParsePayload<CaptureLibraryAttachContextRequest>(payload), identity, token).ConfigureAwait(false));
+                case "capture-library.ensure-subject":
+                    return BrokerJson.ToElement(await library.EnsureSubjectAsync(BrokerJson.ParsePayload<CaptureLibraryEnsureSubjectRequest>(payload), identity, token).ConfigureAwait(false));
+                case "capture-library.change-destination":
+                    return BrokerJson.ToElement(new { acknowledged = await library.RequestDestinationChangeAsync(
+                        BrokerJson.ParsePayload<CaptureDestinationChange>(payload), identity, CaptureDestinationReviews.AskAsync, token).ConfigureAwait(false) });
+                case "capture-library.set-context-linked":
+                    return BrokerJson.ToElement(await library.SetContextLinkedAsync(BrokerJson.ParsePayload<CaptureLibrarySetContextLinkedRequest>(payload), identity, token).ConfigureAwait(false));
+                case "capture-library.find-owned-links":
+                    return BrokerJson.ToElement(await library.FindOwnedLinksAsync(BrokerJson.ParsePayload<CaptureLibraryOwnedLinksRequest>(payload), identity, token).ConfigureAwait(false));
                 case "capture-library.save-context":
                     var contextualSave = BrokerJson.ParsePayload<CaptureLibrarySaveWithContextRequest>(payload);
                     if (contextualSave.Attachment?.IsWellFormed() != true || contextualSave.Context?.IsWellFormed() != true) throw new BrokerException("invalid_payload", "Invalid capture context.");
@@ -227,6 +268,8 @@ internal sealed class WindowCaptureCapabilityDomain(BrokerWidgetIdentity identit
         if (capability == PlatformCapabilities.WindowCaptureV1 && replay is not null)
         { replay.CancelPending(this); _ = replay.RevokeAsync(identity); }
         if (capability == PlatformCapabilities.CaptureLibrarySaveV1) replay?.CancelPendingSave(identity);
+        if (capability is PlatformCapabilities.WindowCaptureV1 or PlatformCapabilities.CaptureLibrarySaveV1)
+            WindowCaptureRegistry.Shared.RevokeSavedCaptures(identity);
         WindowCaptureRegistry.Shared.Retire(this, capability);
         if(capability==PlatformCapabilities.WindowCaptureV1)WebSessionRegistry.Shared.RetireWebCaptures(this);
     }

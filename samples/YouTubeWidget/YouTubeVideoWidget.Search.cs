@@ -100,15 +100,14 @@ public sealed partial class YouTubeVideoWidget
                 ActionSurfaceOrientation.Horizontal,
                 UI.Image(item.ThumbnailUrl, context.Id("image"), "Thumbnail for " + item.Title, ImageFit.Cover).Classes("youtube-result-image"),
                 UI.Stack(context.Id("copy"), UI.Text(item.Title, context.Id("title")).Classes("youtube-result-title"),
-                    UI.Text(item.Channel + " · " + item.Duration, context.Id("meta")).Classes("youtube-result-meta"),
-                    UI.Text("Play", context.Id("play")).Classes("youtube-result-action")).Classes("youtube-result-copy"))
+                    UI.Text(item.Channel + " · " + item.Duration, context.Id("meta")).Classes("youtube-result-meta")).Classes("youtube-result-copy"))
                 .Classes("youtube-result-row"),
             OnAction = (query, item, action, token) =>
             {
                 token.ThrowIfCancellationRequested();
                 if (!IsActive || action.ActionId != SearchOpenActionId) return ValueTask.CompletedTask;
                 RunPlaybackLatest(new(YouTubePlaybackIntent.SelectResult, ReturnFocusId: ResultFocusId(item.VideoId), VideoId: item.VideoId,
-                    SearchRevision: query.Revision, ReturnCollectionItem: action.FocusedCollectionItem));
+                    SearchRevision: query.Revision, ReturnCollectionItem: action.FocusedCollectionItem, VideoTitle: item.Title));
                 return ValueTask.CompletedTask;
             },
         });
@@ -232,24 +231,17 @@ public sealed partial class YouTubeVideoWidget
         var children = new List<WidgetElement>
         {
             UI.Row("youtube.setup.appbar",
-                    UI.Stack("youtube.setup.heading-copy",
-                        UI.Text("YOUTUBE", "youtube.setup.eyebrow").Classes("youtube-eyebrow"),
-                        UI.Text(configured ? "Settings" : "Search setup", "youtube.setup.title")
-                            .Classes("youtube-title"))
-                        .Classes("youtube-appbar-copy"),
+                    UI.Text(configured ? "Search settings" : "Set up YouTube search", "youtube.setup.title")
+                        .Classes("youtube-title", "youtube-appbar-copy"),
                     UI.Button(routeActionLabel, routeActionId, routeActionId)
                         .Disabled(busy).Classes("youtube-route-button"))
                 .RememberChildFocus(routeActionId)
                 .Classes("youtube-appbar"),
-            UI.Stack("youtube.setup.intro-card",
-                    UI.Text(configured ? "Update your search access" : "Connect public-video search",
-                        "youtube.setup.card-title").Classes("youtube-card-title"),
-                    UI.Text("A restricted YouTube Data API key enables search only. Link playback works without it.",
-                        "youtube.setup.disclosure").Classes("youtube-copy"))
-                .Classes("youtube-card", "youtube-setup-intro"),
+            UI.Text(configured ? "YouTube search is connected." : "Add a YouTube Data API key to search. You can play a link without a key.",
+                "youtube.setup.disclosure").Classes("youtube-copy"),
             UI.Stack("youtube.setup.console-card",
-                    UI.Text("1  CREATE A RESTRICTED KEY", "youtube.setup.console-label")
-                        .Classes("youtube-section-label"),
+                    UI.Text(configured ? "Google Cloud Console" : "1. Create a key", "youtube.setup.console-label")
+                        .Classes("youtube-card-title"),
                     UI.Text("In Google Cloud Console, enable YouTube Data API v3 and restrict the key to that API.",
                         "youtube.setup.instructions").Classes("youtube-copy"),
                     UI.Button("Open Google Cloud Console", SetupOpenConsoleActionId, "youtube.setup.console")
@@ -259,8 +251,8 @@ public sealed partial class YouTubeVideoWidget
                         .Disabled(busy).FocusDown("youtube.setup.key").Classes("youtube-secondary"))
                 .Classes("youtube-card", "youtube-setup-step"),
             UI.Stack("youtube.setup.key-card",
-                    UI.Text("2  SAVE IT SECURELY", "youtube.setup.key-label")
-                        .Classes("youtube-section-label"),
+                    UI.Text(configured ? "Replace your key" : "2. Save your key", "youtube.setup.key-label")
+                        .Classes("youtube-card-title"),
                     UI.Text("The key stays protected in Windows Credential Manager and is never displayed again.",
                         "youtube.setup.key-help").Classes("youtube-copy"),
                     keyEntry)
@@ -280,7 +272,6 @@ public sealed partial class YouTubeVideoWidget
                 .Classes("youtube-state-card", "is-error"));
         if (configured)
             children.Add(UI.Stack("youtube.setup.manage-card",
-                    UI.Text("SAVED KEY", "youtube.setup.manage-label").Classes("youtube-section-label"),
                     UI.Text("Remove the saved key to disconnect search. Link playback remains available.",
                         "youtube.setup.manage-help").Classes("youtube-copy"),
                     UI.Button("Delete saved API key", SetupDeleteActionId, "youtube.setup.delete")
@@ -300,8 +291,9 @@ public sealed partial class YouTubeVideoWidget
         // Independent owners can publish on adjacent turns; never expose an old
         // source beneath a newer query label or stale keyed return request.
         var hasQuery = search.ActiveQuery.Length != 0 && snapshot.QueryGeneration == search.Revision + 1;
+        var hasResults = hasQuery && snapshot.Count > 0;
         var resultsEntry = hasQuery && snapshot.Count > 0 ? SearchScrollId : null;
-        var query = UI.TextEntry(draft, "Search public YouTube videos", SearchCommitActionId,
+        var query = UI.TextEntry(draft, "Title, channel, or topic", SearchCommitActionId,
                 "youtube.search.query", 96)
             .FocusRight(SearchSubmitActionId)
             .Classes("youtube-entry", "youtube-search-entry");
@@ -315,18 +307,15 @@ public sealed partial class YouTubeVideoWidget
             submit = submit.FocusDown(resultsEntry);
         }
         var searchTask = UI.Stack("youtube.search.task-card",
-                UI.Text("SEARCH PUBLIC VIDEOS", "youtube.search.task-label")
-                    .Classes("youtube-section-label"),
-                UI.Text("Find a video by title, channel, or topic.", "youtube.search.task-help")
-                    .Classes("youtube-section-copy"),
+                UI.Text("Search YouTube", "youtube.search.task-label").Classes("youtube-title"),
                 UI.Row("youtube.search.controls",
                         UI.Stack(SearchFieldGroupId, query).RememberChildFocus("youtube.search.query").Classes("youtube-search-field"),
                         submit)
                     .RememberChildFocus("youtube.search.query")
                     .Classes("youtube-search-controls"))
-            .Classes("youtube-card", "youtube-search-task");
+            .Classes("youtube-search-task");
         WidgetElement? content = hasQuery
-            ? UI.CollectionList(SearchScrollId, _searchResults, 112, "YouTube search results").Classes("youtube-results")
+            ? UI.CollectionList(SearchScrollId, _searchResults, 112, "YouTube search results").Classes(hasResults ? "youtube-results" : "youtube-results-empty")
             : null;
         var children = new List<WidgetElement> { searchTask };
         if (NowPlayingRow(state.Playback) is { } nowPlaying) children.Add(nowPlaying);
@@ -343,13 +332,11 @@ public sealed partial class YouTubeVideoWidget
             Mode = WidgetSurfaceMode.Standard,
             Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
             WidthMode = WidgetSurfaceAxisMode.Preferred,
-            HeightMode = !hasQuery
-                ? WidgetSurfaceAxisMode.Content
-                : WidgetSurfaceAxisMode.Preferred,
+            HeightMode = hasResults ? WidgetSurfaceAxisMode.Preferred : WidgetSurfaceAxisMode.Content,
             PreferredWidth = 820,
             PreferredHeight = 640,
             MinimumWidth = 420,
-            MinimumHeight = 420,
+            MinimumHeight = hasResults ? 420 : 180,
         })
         {
             EmbeddedMediaSession = ParkedMediaSession(state.Playback),
@@ -361,11 +348,19 @@ public sealed partial class YouTubeVideoWidget
 
     private static WidgetElement? NowPlayingRow(YouTubePlaybackState playback)
     {
-        return playback.VideoId is null ? null :
-            UI.Button(
-                    $"Return to player  ·  {(playback.PlaybackSemantic == EmbeddedMediaPlaybackState.Playing ? "Playing" : "Paused or ready")}",
+        if (playback.VideoId is null) return null;
+        var state = playback.PlaybackSemantic switch
+        {
+            EmbeddedMediaPlaybackState.Playing => "Playing",
+            EmbeddedMediaPlaybackState.Paused => "Paused",
+            EmbeddedMediaPlaybackState.Ended => "Ended",
+            _ => null,
+        };
+        var label = playback.VideoTitle is { } title ? $"Return to {title}" : "Return to player";
+        return UI.Row("youtube.now-playing.actions", UI.Button(
+                    state is null ? label : $"{label} · {state}",
                     "youtube.player.return", "youtube.player.return")
-                .Classes("youtube-now-playing");
+                .Classes("youtube-now-playing"), PinVideoButton(playback)).Classes("youtube-now-playing-actions");
     }
 
     private WidgetView RenderLinkPlayer(YouTubeWidgetState state)
@@ -697,11 +692,9 @@ public sealed partial class YouTubeVideoWidget
         var header = UI.Row(
                 "youtube.section.header",
                 parts.CompactNavigation.AddClasses("youtube-section-navigation"),
-                UI.ControllerHint(
-                    ControllerButton.Y,
-                    "Settings",
-                    "youtube.section.settings.hint")
-                    .AddClasses("youtube-section-settings-hint"))
+                UI.ActionSurface(SetupRouteActionId, SetupRouteActionId, "Search settings", ActionSurfaceOrientation.Horizontal,
+                    UI.ControllerHint(ControllerButton.Y, "Settings", "youtube.section.settings.hint"))
+                    .Classes("youtube-settings-action"))
             .Classes("youtube-section-header");
         var root = UI.Stack(
                 RootScopeId,

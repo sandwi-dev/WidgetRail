@@ -44,10 +44,10 @@ internal sealed partial class OverlayShellPage
         var monitor = MonitorAsync();
         try
         {
-            var window = XamlRoot.ContentIslandEnvironment.AppWindowId;
-            var picker = new FolderPicker(window) { CommitButtonText = commitText, SuggestedStartLocation = PickerLocationId.PicturesLibrary };
-            var chosen = await NativeFilePickerLifetime.RunAsync(window, () => picker.PickSingleFolderAsync().AsTask(), cancel.Token);
-            return chosen is not null && await current(cancel.Token) ? chosen.Path : null;
+            var chosen = await ChooseLocalPathAsync(XamlRoot,null,new(FileBrowserMode.Folder,
+                commitText == "Copy here" ? "Copy captures" : "Choose capture folder",commitText,Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)),
+                PickerLocationId.PicturesLibrary,cancel.Token);
+            return chosen is not null && await current(cancel.Token) ? chosen : null;
         }
         catch (OperationCanceledException) { return null; }
         finally

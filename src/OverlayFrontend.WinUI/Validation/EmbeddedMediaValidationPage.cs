@@ -73,6 +73,12 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
                 Commands = (EmbeddedMediaCommand[])[EmbeddedMediaCommand.Activate, EmbeddedMediaCommand.Back, EmbeddedMediaCommand.TogglePlayback],
                 AllowedFrameOrigins = (string[])["https://www.youtube.com"], AllowedFrameDomainFamilies = (string[])["googlevideo.com"],
             };
+            if (Environment.GetCommandLineArgs().Contains("--validate-signed-out-trailer"))
+                declaration = declaration with
+                {
+                    AllowedFrameOrigins = new[] { "https://www.youtube.com", "https://www.youtube-nocookie.com" },
+                    AllowedFrameDomainFamilies = new[] { "googlevideo.com", "ytimg.com", "gstatic.com", "youtube.com" },
+                };
             serving = ObserveServerAsync();
             status.Text = "Connecting fixture session";
             session = await PresentationSession.ConnectAsync(pipeName);
@@ -386,6 +392,8 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
         {
             var html = Encoding.UTF8.GetString(assets["adapter/index.html"].Bytes)
                 .Replace("script-src 'self' 'unsafe-inline'", "script-src 'self' 'unsafe-inline' https://www.youtube.com", StringComparison.Ordinal);
+            if (Environment.GetCommandLineArgs().Contains("--validate-signed-out-trailer"))
+                html = html.Replace("default-src 'self';", "default-src 'self'; frame-src https://www.youtube-nocookie.com;", StringComparison.Ordinal);
             assets["adapter/index.html"] = ("text/html", Encoding.UTF8.GetBytes(html));
         }
     }

@@ -150,6 +150,7 @@ public sealed record WidgetPresentationHostEffect(
     string? PinnedLayoutId = null)
 {
     public string? PinnedSelectionId { get; init; }
+    public long? LaunchStartedAtMilliseconds { get; init; }
 }
 
 public sealed class WidgetHostEffectEventArgs(WidgetPresentationHostEffect effect) : EventArgs

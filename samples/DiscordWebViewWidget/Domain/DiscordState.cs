@@ -16,12 +16,19 @@ internal sealed record DiscordState(int Revision, bool Ready, string Account, Di
     DiscordParticipant[] Participants, DiscordStream[] Streams, bool Sharing, bool SharePending, string? ShareError, string RelayState, DiscordFriendActivity[]? Activities=null, string ActivityAvailability="unavailable", bool ActivitiesTruncated=false,
     DiscordShareQuality[]? ShareQualities=null,string ShareQualityAvailability="unavailable",DiscordShareQuality? PreferredShareQuality=null,
     string VoiceConnection="unavailable",string? ShareQualityWarning=null,string NotificationPermission="unavailable",
-    DiscordOutgoingViewers? OutgoingViewers=null,string DesktopNotifications="unavailable",DiscordMessagingState? Messaging=null)
+    DiscordOutgoingViewers? OutgoingViewers=null,string DesktopNotifications="unavailable",DiscordMessagingState? Messaging=null,
+    string? ConnectionState=null,DiscordCalls? Calls=null)
 {
+    internal string EffectiveConnectionState => ConnectionState ?? (Ready ? "ready" : "initializing");
     public DiscordFriendActivity[] Activities { get; init; }=Activities??[];
     public DiscordShareQuality[] ShareQualities {get;init;}=ShareQualities??DiscordShareQuality.Baseline;
     internal void Validate()
     {
+        if(Calls is not null && (!Calls.IsValid(ChannelId) || !Ready&&Calls.Available))
+            throw new InvalidDataException("invalid_call_state");
+        if(ConnectionState is not(null or "initializing" or "signed-out" or "ready" or "reconnecting" or "unavailable") ||
+            ConnectionState is not null && Ready!=(ConnectionState=="ready"))
+            throw new InvalidDataException("invalid_connection_state");
         if(Ready && Messaging is not null)Messaging.Validate(Account);
         if(DesktopNotifications is not("enabled" or "disabled" or "unavailable"))
             throw new InvalidDataException("invalid_desktop_notifications");

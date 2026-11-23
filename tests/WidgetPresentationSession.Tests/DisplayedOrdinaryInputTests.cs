@@ -51,6 +51,38 @@ public sealed class DisplayedOrdinaryInputTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task OnlyTheMatchingTrayInvocationClearsProgress(bool pendingWorker)
+    {
+        var command = WidgetQuickAction.ForTray("Save", new TrayActionOffer("save", "current"));
+        var checkedPending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstRun = new BridgeWorkerRun(1, 1);
+        var wrongEventDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await Run(async channel =>
+        {
+            var request = await Read(channel);
+            var wire = BridgeJson.FromElement<BridgeControllerInputRequest>(request.Payload);
+            Assert.IsTrue(wire.ObserveTrayCompletion);
+            Assert.AreEqual(firstRun, wire.WorkerRun);
+            await Reply(channel, request.RequestId, BridgeMessageTypes.ControllerInputResult, new { handled = pendingWorker });
+            await Reply(channel, 0, BridgeMessageTypes.TrayActionFinished, new BridgeTrayActionFinished("ordinary", 12, firstRun, TrayActionResult.Success));
+            await Reply(channel, 0, BridgeMessageTypes.TrayActionFinished, new BridgeTrayActionFinished("ordinary", 11, new(1, 2), TrayActionResult.Success));
+            await Reply(channel, 0, BridgeMessageTypes.Invalidation, new { widgetId = "different", revision = 1L });
+            await checkedPending.Task.WaitAsync(Limit);
+            await Reply(channel, 0, BridgeMessageTypes.TrayActionFinished, new BridgeTrayActionFinished("ordinary", 11, firstRun, TrayActionResult.Unavailable("The player disconnected.")));
+        }, async (session, displayed) =>
+        {
+            session.Invalidated += (_, _) => wrongEventDelivered.TrySetResult();
+            var running = session.RunTrayActionAsync(displayed, command, 11, ControllerInputOrigin.AccessibilityAutomation, default, null);
+            await wrongEventDelivered.Task.WaitAsync(Limit);
+            Assert.IsFalse(running.IsCompleted);
+            checkedPending.SetResult();
+            Assert.AreEqual(TrayActionResult.Unavailable("The player disconnected."), await running.WaitAsync(Limit));
+        }, Snapshot(1) with { QuickActions = [command] }, firstRun);
+    }
+
+    [TestMethod]
     public async Task StaleInputRecoveryCoalescesAndNeverReplaysAction()
     {
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -453,14 +485,14 @@ public sealed class DisplayedOrdinaryInputTests
     };
 
     private static async Task Run(Func<BridgeFrameChannel, Task> script,
-        Func<WidgetPresentationSession, WidgetPresentationFrame, Task> exercise, ViewSnapshot? initial = null)
+        Func<WidgetPresentationSession, WidgetPresentationFrame, Task> exercise, ViewSnapshot? initial = null, BridgeWorkerRun? run = null)
     {
         await using var server = new ScriptedBridgeServer();
         var serving = server.RunAuthenticatedAsync(async channel =>
         {
             var catalog = await Read(channel);
             await Reply(channel, catalog.RequestId, BridgeMessageTypes.Widgets, new { revision = 1, isComplete = true, widgets = new[] { Descriptor } });
-            var establish = await Read(channel); await ReplySnapshot(channel, establish.RequestId, initial ?? Snapshot(1));
+            var establish = await Read(channel); await ReplySnapshot(channel, establish.RequestId, initial ?? Snapshot(1), run);
             await script(channel);
             var stop = await Read(channel); Assert.AreEqual(BridgeMessageTypes.Stop, stop.Type);
             await Reply(channel, stop.RequestId, BridgeMessageTypes.Acknowledged, new { });
@@ -477,13 +509,13 @@ public sealed class DisplayedOrdinaryInputTests
         }
         await serving.WaitAsync(Limit);
     }
-    private static async Task ReplySnapshot(BridgeFrameChannel channel, long id, ViewSnapshot snapshot)
+    private static async Task ReplySnapshot(BridgeFrameChannel channel, long id, ViewSnapshot snapshot, BridgeWorkerRun? run = null)
     {
         var errors = ViewSnapshotValidator.Validate(snapshot);
         Assert.AreEqual(0, errors.Count, string.Join("; ", errors.Select(error => error.Message)));
         using var json = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
         await Reply(channel, id, BridgeMessageTypes.Snapshot, new { widgetId = Descriptor.Id, transactionKind = "ordinaryCheckpoint",
-            baseSequence = 0, recoveryOriginSequence = 0, snapshot = json.RootElement, renderStyles = new Dictionary<string, BridgeNodeRenderStyles>() });
+            baseSequence = 0, recoveryOriginSequence = 0, workerRun = run, snapshot = json.RootElement, renderStyles = new Dictionary<string, BridgeNodeRenderStyles>() });
     }
     private static Task<BridgeEnvelope> Read(BridgeFrameChannel channel) => channel.ReadAsync(CancellationToken.None).AsTask().WaitAsync(Limit);
     private static async Task Reply(BridgeFrameChannel channel, long id, string type, object value) =>

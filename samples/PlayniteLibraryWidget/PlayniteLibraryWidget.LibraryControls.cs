@@ -29,6 +29,8 @@ public sealed partial class PlayniteLibraryWidget
     public override ValueTask<TextSuggestionResult> OnSuggestTextAsync(TextSuggestionQuery query, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (query.FieldId == GameSearchField) return SuggestCaptureGames(query, cancellationToken);
+        if (query.FieldId == Hub + ".search") return SuggestHubGames(query, cancellationToken);
         if (query.FieldId == PlayniteAchievementBrowse.SearchId) return SuggestAchievements(query, cancellationToken);
         TextSuggestion[] catalog;
         lock (_gate)

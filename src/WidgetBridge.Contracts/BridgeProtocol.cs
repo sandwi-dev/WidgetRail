@@ -30,6 +30,8 @@ internal static class BridgeMessageTypes
     public const string ListWidgets = "list-widgets";
     public const string Widgets = "widgets";
     public const string GetPlatformAppearance = "get-platform-appearance";
+    public const string PreviewCatalogueTheme = "preview-catalogue-theme";
+    public const string CatalogueThemeStyles = "catalogue-theme-styles";
     public const string ControllerControl = "controller-control";
     public const string WindowPreviewPermissions = "window-preview-permissions";
     public const string TakeCapture = "capture-take";
@@ -41,10 +43,12 @@ internal static class BridgeMessageTypes
     public const string StopReplay = "capture-replay-stop";
     public const string ReplayPowerState = "capture-replay-power";
     public const string CompleteCaptureSource = "capture-source-complete";
+    public const string CompleteReplayApproval = "replay-approval-complete";
     public const string CheckCaptureSource = "capture-source-current";
     public const string CompleteCaptureCopy = "capture-copy-complete";
     public const string CheckCaptureCopy = "capture-copy-current";
     public const string CompleteCaptureFolder = "capture-folder-complete";
+    public const string DecideCaptureDestination = "capture-destination-decision";
     public const string CheckCaptureFolder = "capture-folder-current";
     public const string TakePermission = "permission-take";
     public const string TakeFilePicker = "file-picker-take";
@@ -124,6 +128,7 @@ internal static class BridgeMessageTypes
     public const string CancelLocalWidgetPackageInstall = "cancel-local-widget-package-install";
     public const string ApproveLocalWidgetPackageInstall = "approve-local-widget-package-install";
     public const string LocalWidgetPackageInstallCompleted = "local-widget-package-install-completed";
+    public const string TrayActionFinished = "tray-action-finished";
     public const string ControllerInputResult = "controller-input-result";
     public const string Acknowledged = "acknowledged";
     public const string Invalidation = "widget-invalidated";
@@ -150,13 +155,18 @@ internal sealed record WidgetIdRequest(string WidgetId);
 internal sealed record BridgeEmptyPayload;
 internal sealed record BridgeDisplayIdentity(string Id, string Name, IReadOnlyList<string> DevicePaths);
 internal sealed record BridgeAppearanceRequest(BridgeDisplayIdentity Display);
+internal sealed record BridgeTrayPreparation(string ActionId, string RuntimeGeneration, string PresentationGeneration);
 internal sealed record BridgePresentationRequest(
     string WidgetId,
     PresentationUpdateCapabilities? Capabilities = null,
     long BaseSequence = 0,
     WidgetRail.WidgetSdk.WidgetPresentationTransactionKind TransactionKind =
         WidgetRail.WidgetSdk.WidgetPresentationTransactionKind.OrdinaryCheckpoint,
-    long RecoveryOriginSequence = 0);
+    long RecoveryOriginSequence = 0)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public BridgeTrayPreparation? TrayPreparation { get; init; }
+}
 // The WinUI frontend always supplies the paired generation authority. The
 // nullable pair preserves the private synchronous pre-WIDGE-192 caller shape.
 internal sealed record BridgeArtworkRequest(
@@ -239,7 +249,11 @@ internal sealed record BridgeControllerInputRequest(
     string? RuntimeGeneration = null,
     string? ExpectedActionId = null,
     string? ExpectedSelectOptionActionId = null,
-    BridgeWorkerRun? WorkerRun = null);
+    BridgeWorkerRun? WorkerRun = null)
+{
+    public bool ObserveTrayCompletion { get; init; }
+}
+internal sealed record BridgeTrayActionFinished(string WidgetId, long Sequence, BridgeWorkerRun WorkerRun, [property: JsonRequired] TrayActionResult Result);
 internal sealed record BridgeProtectedWifiRequest(
     string WidgetId,
     string RuntimeGeneration,
@@ -267,6 +281,7 @@ internal sealed record BridgeLocalWidgetPackageInstallCompleted(
     string Message);
 internal sealed record BridgeInvalidation(string WidgetId, long Revision);
 internal sealed record BridgeAppearanceChanged(long Revision);
+internal sealed record BridgeCatalogueThemePreviewRequest(string WidgetId, string RuntimeGeneration, string PresentationGeneration, string Key);
 internal sealed record BridgeCatalogChangedEvent(long Revision);
 internal sealed record BridgeError(string Code, string Message);
 internal sealed record BridgeEncodedArtworkEvent(

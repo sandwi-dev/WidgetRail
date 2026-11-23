@@ -241,6 +241,33 @@ internal static class NavigationShellTests
         return Task.CompletedTask;
     }
 
+    internal static Task AuthoredExitsPreserveOtherShellNeighbors()
+    {
+        var destinations = Destinations();
+        destinations[1] = destinations[1] with
+        {
+            CompactFocus = new(Right: "header.settings"),
+            RailFocus = new(Up: "header.refresh", Left: "outside"),
+        };
+        var parts = UI.NavigationShellParts("shell", "library", "page.open",
+            UI.Stack("page.with-utilities", Content(), UI.Button("Settings", "settings", "header.settings"),
+                UI.Button("Refresh", "refresh", "header.refresh"), UI.Button("Outside", "outside", "outside")), destinations);
+        var snapshot = new WidgetView(parts.Compose()).CreateSnapshot("navigation.exits", 1);
+        var compact = Find(snapshot.Root, "shell.compact").Children;
+        var rail = Find(snapshot.Root, "shell.rail").Children;
+        Equal("header.settings", compact[1].Focus!.Right);
+        Equal(compact[0].Id, compact[1].Focus!.Left);
+        Equal("page.open", compact[1].Focus!.Down);
+        Equal("header.refresh", rail[1].Focus!.Up);
+        Equal("outside", rail[1].Focus!.Left);
+        Equal(rail[2].Id, rail[1].Focus!.Down);
+        Equal("page.open", rail[1].Focus!.Right);
+        Equal(compact[1].Id, parts.CompactFocusId(destinations[1].Id));
+        Equal(compact[1].Id, parts.WithTransitions().CompactFocusId(destinations[1].Id));
+        Throws<ArgumentException>(() => parts.CompactFocusId("missing"));
+        return Task.CompletedTask;
+    }
+
     internal static Task CompactAdornmentsAreInputInertAndAdditive()
     {
         var legacy = new WidgetView(CreateShell())

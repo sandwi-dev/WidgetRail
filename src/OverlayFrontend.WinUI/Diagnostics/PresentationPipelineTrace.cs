@@ -12,6 +12,7 @@ internal enum PipelineStage
 }
 
 internal enum PipelineOutcome { Completed, Cancelled, Failed, Retired }
+internal enum ScrollTracePhase { Request = 1, NativeViewChanged = 2 }
 
 /// <summary>
 /// Opt-in EventPipe/ETW timings. No files, labels, paths, handles or request bodies.
@@ -42,5 +43,21 @@ internal sealed class PresentationPipelineTrace : EventSource
     public void Stage(long operationId, int stage, double milliseconds, int count, int outcome)
     {
         if (IsEnabled()) WriteEvent(1, operationId, stage, milliseconds, count, outcome);
+    }
+
+    internal bool ScrollEnabled
+    {
+        [NonEvent]
+        get => IsEnabled(EventLevel.Verbose, EventKeywords.None);
+    }
+
+    // Numeric gesture-local identity only; no widget, item, title or content IDs.
+    // Native ViewChanged is not a display-present event or a frame-rate measure.
+    [Event(2, Level = EventLevel.Verbose)]
+    public void Scroll(long gestureId, int phase, double requestedX, double requestedY,
+        double offsetX, double offsetY, double extentX, double extentY, int flags)
+    {
+        if (ScrollEnabled)
+            WriteEvent(2, gestureId, phase, requestedX, requestedY, offsetX, offsetY, extentX, extentY, flags);
     }
 }

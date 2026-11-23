@@ -63,14 +63,16 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Linked recycling SDK preserves exact revisions and distinct permission",LinkedRecycleTests.SdkRouting),
     ("Linked recycling rejects reparse points and corrupt relative paths",LinkedRecycleTests.PathFences),
     ("Linked recycling native guard rejects before file mutation",LinkedRecycleTests.NativeGuardRejectsBeforeMutation),
+    ("Slow bulk recycling preserves 150 receipts across the broker pipe", LinkedRecycleTests.SlowLargeBatchOverPipe),
     ("Linked recycling widget separates original recycle from library removal",GalleryTests.LinkedOriginalRecycleIsSeparateFromRemoval),
     ("Linked recycling widget retains preview after denial or failure",GalleryTests.LinkedRecycleFailureKeepsExactPreview),
     ("Detail action focus survives delayed capture reopening",GalleryTests.DetailFocusSurvivesReopen),
-    ("Detail action focus survives draft save publication",GalleryTests.DetailFocusSurvivesDraftSave),
     ("Detail actions retain inline controller bindings and media authority",GalleryTests.DetailActionsAndInlineBindings),
     ("Detail actions preserve busy admission and unavailable-media safety",GalleryTests.DetailBusyAndUnavailableActions),
-    ("Detail unsaved review rejects previous saved identity",GalleryTests.DetailUnsavedDoesNotReuseSavedIdentity),
-    ("Library recording widget retains review and adopts saved playback", GalleryTests.LibraryRecordingReviewAndSave),
+    ("Capturing stays in gallery after closing saved details",GalleryTests.CaptureKeepsGalleryAfterClosingSavedDetails),
+    ("Library capture hands off screenshots and recordings without review", GalleryTests.LibraryCaptureHandsOffWithoutReview),
+    ("Screenshot delays honor fresh, restarted and existing profiles", GalleryTests.ScreenshotPreferences),
+    ("Approved applications are editable while recording and ignore stale actions", GalleryTests.ApprovalManagementWhileRecording),
     ("Video thumbnail policy repairs legacy cache and preserves screenshot cache",VideoThumbnailTests.CachePolicy),
     ("Recording settings defaults and exact draft qualification",GalleryTests.RecordingAutoAndDraftQualification),
     ("Recording settings reject late probes and external revisions",GalleryTests.RecordingDraftRejectsLateAndExternalChanges),
@@ -90,7 +92,6 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Editing cancellation and unsupported formats preserve the preview", GalleryTests.EditCancelAndUnsupportedKeepPreview),
     ("Late edited save cannot navigate a newer gallery route", GalleryTests.EditLateSaveCannotNavigate),
     ("Late edited preview open releases its unclaimed lease", GalleryTests.EditLateOpenReleasesUnclaimedLease),
-    ("Editing unsaved captures preserves source authority and cleanup", GalleryTests.EditUnsavedUsesOwnedAttachment),
     ("Capture edits sessions retain verified input and one completion identity", EditingSessionTests.RetainedSourceAndReceipt),
     ("Capture edits sessions recover a committed copy after receipt publication failure", EditingSessionTests.RecoverCommittedBeforeReceiptReply),
     ("Capture edits sessions support owned temporary captures without saving originals", EditingSessionTests.TemporarySourceAndRetirement),
@@ -107,6 +108,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Windows capture folder SDK preserves explicit known-location hints", KnownCaptureFolderTests.SdkAndKnownFolderHint),
     ("Windows external folder linking survives replay replacement", GalleryTests.WindowsCapturesActions),
     ("Replay widget host status and session fencing", GalleryTests.ReplayUsesHostStatusAndSessionFences),
+    ("Replay widget controller shortcuts preserve session and scope", GalleryTests.ReplayControllerShortcutsFollowSessionAndScope),
     ("Replay widget cancelled and failed starts retain one valid home command", GalleryTests.ReplayUnstartedHomeKeepsOneStart),
     ("Replay widget settings preserve host revision", GalleryTests.ReplaySettingsPreserveHostRevision),
     ("Replay widget stopping remains visible until finalization", GalleryTests.ReplayStoppingRemainsVisible),
@@ -116,20 +118,31 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Gallery cards reject stale metadata and preserve batch selection", GalleryTests.CardFavoriteRejectsStaleMetadataAndPreservesSelection),
     ("Gallery clip previews cache identity and withdraw for selection or preference", GalleryTests.ClipPreviewUsesDeclarativeIdentity),
     ("Failed recycle releases and recovers only the unchanged preview", GalleryTests.FailedRecycleReleasesAndRecoversSamePreview),
-    ("Mixed library removal preserves linked provider originals", GalleryTests.LinkedRemovalKeepsProviderOriginals),
+    ("Gallery batch hide preserves every original", GalleryTests.LinkedRemovalKeepsProviderOriginals),
+    ("Gallery batch hide keeps unsupported owned selections", GalleryTests.BatchHideOwnedSelectionStaysUnchanged),
+    ("Gallery batch delete recycles both sources and keeps unavailable entries", GalleryTests.BatchDeleteRecyclesBothSourcesAndKeepsUnavailableEntries),
+    ("Large batch has one confirmation, honors the selection cap and never retries a lost receipt", GalleryTests.LargeBatchSingleConfirmation),
+    ("Gallery batch delete permission denial keeps all sources", GalleryTests.BatchDeletePermissionDenialKeepsAllSources),
     ("Capture folder settings confirm disconnect and preserve originals", GalleryTests.SourceSettingsConnectAndDisconnect),
     ("Saved-video playback retains read authority without temporary copies", PlaybackTests.RetainedOriginalAuthority),
     ("Saved-PNG playback retains read authority without temporary copies", PlaybackTests.RetainedOriginalPngAuthority),
     ("Saved-PNG playback pins original and linked library authority", PlaybackTests.OriginalPngUsesPinnedLibraryAuthority),
     ("Large linked videos use bounded retained playback without raising capture limits", PlaybackTests.LargeLinkedVideo),
     ("Capture contexts preserve associations, origin namespaces and bounded queries", ContextTests.AssociationsAndQueries),
+    ("Capture contexts link existing exact-session media with idempotent scoped references", ContextTests.ExistingCapturesBySession),
+    ("Caller-owned links support durable dismissal, explicit undo, and stale-action rejection", ContextTests.ReversibleLinks),
+    ("Capture subjects reuse inherited destinations across installations, concurrent commits and index rebuild", ContextTests.UniqueSubjectLinks),
+    ("Grouped destination unlink and Undo preserve compound references across interruption and rebuild", ContextTests.GroupedDestinationUndo),
+    ("Capture runs group exact process instances, rank source hints, and preserve legacy singleton captures", ContextTests.GroupedRuns),
     ("Capture context receipts survive recovery and prevent deleted-media resurrection", ContextTests.RebuildRecoveryAndRetirement),
     ("Capture contexts enforce host origin authority and payload bounds", ContextTests.AuthorityAndBounds),
     ("Related capture intents preserve origin and context identities", GalleryTests.RelatedCapturesIntentAndContextLinks),
+    ("Related destination Undo keeps the last link reachable and restores focus", GalleryTests.RelatedDestinationUndoAndFocus),
     ("Closed context discards a late provider result", GalleryTests.ClosedContextDoesNotReopenOnLateResult),
     ("Linked sources preserve originals and enforce read-only ownership", SourceTests.LinkingAndReadOnly),
     ("Folder queries span the index without granting integration folder management", SourceTests.FolderFiltersAndFacets),
     ("Folder selection stays visible and restricted after disconnect", GalleryTests.FolderFilterRemainsExplicitAfterDisconnect),
+    ("Capture association offers exact selected revisions without opening media", GalleryTests.AssociationOfferKeepsExactSelection),
     ("Preview sharing retains exact saved identity and rejects changed content", GalleryTests.SharingPreviewUsesExactSavedIdentity),
     ("Gallery L3 requests top controls without resetting collection identity", GalleryTests.QuickControlsKeepsGalleryIdentity),
     ("Linked sources scope grants and reconcile bounded context companions", SourceTests.ScopeAndCompanion),
@@ -149,6 +162,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Gallery metadata edit cannot authorize recycling a changed preview", GalleryTests.MetadataEditDoesNotAuthorizeRecyclingChangedPreviewContent),
     ("Gallery search supersession and live updates retain current results", GalleryTests.SearchAndLiveUpdates),
     ("Gallery selection batch favorite and recycle confirmation", GalleryTests.SelectionBatches),
+    ("Gallery selection reconciles host-started held mode", GalleryTests.HeldSelectionReconcilesPresentation),
     ("Explicit refresh detects metadata corruption with unchanged timestamp", QueryTests.ExplicitRefreshRejectsPreservedTimestampCorruption),
     ("Unavailable entry removal never deletes a restored original", QueryTests.UnavailableRemovalNeverDeletesRestoredOriginal),
     ("Legacy capture list and save preserve strict response shapes", QueryTests.LegacyWireShapeRemainsClosed),
@@ -176,7 +190,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Broker separates saved-media reading from recording and destructive management", BrokerAuthority),
     ("Full-resolution request preserves its resolution through the capture queue", OriginalRequest),
     ("Windows codec makes bounded context copies without changing odd-sized 4K originals", Codec),
-    ("Capture Library controller flow reviews before saving and confirms deletion", WidgetFlow),
+    ("Capture Library controller flow autosaves and confirms deletion", WidgetFlow),
     ("SDK generic capture reads route saved references through library permission", SdkRouting),
     ("Capture settings persist Auto constraints and reject unavailable recording before capture", SettingsFlow),
     ("Recording requests only its profile and preserves the recommended default", RecordingDiscovery),
@@ -528,18 +542,32 @@ static async Task WidgetFlow()
         .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
         .WithResponse(WidgetCaptureCapabilities.Validate, new CaptureConfigurationValidation(true))
         .WithCaptureQuery(() => page)
-        .WithHandler(WidgetCaptureCapabilities.Start, (request, _) => {
-            Check(request.Screenshot is { MaximumWidth: null, MaximumHeight: null } && request.Recording is null, "Library did not request an original screenshot");
-            return ValueTask.FromResult(new WindowCaptureTicket(id)); })
-        .WithResponse(WidgetCaptureCapabilities.Status, new WindowCaptureStatus(id, WindowCapturePhase.Ready, source))
-        .WithResponse(WidgetCaptureCapabilities.Discard, new WidgetCapabilityAcknowledgement(true))
-        .WithHandler(WidgetCaptureLibraryCapabilities.SaveCurrent, async (_, token) => { saves++; await saveGate.Task.WaitAsync(token); var item = new CaptureLibraryItem(id, source, 1); page = new([item],0,1,1000); return item; })
+        .WithHandler(WidgetCaptureLibraryCapabilities.List, (_, _) => ValueTask.FromResult(page))
+        .WithHandler(WidgetCaptureCapabilities.SaveScreenshot, async (request, token) =>
+        {
+            Check(request.Screenshot is { MaximumWidth: null, MaximumHeight: null } && request.Recording is null);
+            saves++;
+            await saveGate.Task.WaitAsync(token);
+            page = new([new CaptureLibraryItem(id, source, 1)], 0, 1, 1000);
+            return new WidgetCapabilityAcknowledgement(true);
+        })
+        .WithResponse(WidgetCaptureLibraryCapabilities.Open, source with { Origin = CaptureAttachmentOrigin.SavedLibrary })
         .WithHandler(WidgetCaptureLibraryCapabilities.Recycle, async (request, token) => { deletes++; await deleteGate.Task.WaitAsync(token); page = new([],0,0,0); return new CaptureLibraryBatchResult(request.Items.Select(item=>new CaptureLibraryMutationResult(item.Id)).ToArray()); }).Build();
     var widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), client);
     ViewSnapshot View() => widget.RenderSnapshot("library-test", 1);
     IEnumerable<ViewNode> Walk(ViewNode node) => new[] { node }.Concat(node.Children.SelectMany(Walk));
     ViewNode? Node(string name) => Walk(View().Root).FirstOrDefault(n => n.Id == name);
-    async Task Until(Func<bool> ready) { using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5)); while (!ready()) await Task.Delay(10, timeout.Token); }
+    async Task Until(Func<bool> ready)
+    {
+        var end = Environment.TickCount64 + 5000;
+        while (!ready())
+        {
+            if (Environment.TickCount64 >= end)
+                throw new TimeoutException($"Gallery did not settle: saves={saves}, count={page.TotalCount}, " +
+                    string.Join(", ", Walk(View().Root).Select(n => n.Id + ":" + (n.IndexedCollection?.Count.ToString() ?? n.Text ?? n.IsBusy?.ToString()))));
+            await Task.Delay(10);
+        }
+    }
     try
     {
         await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
@@ -547,22 +575,17 @@ static async Task WidgetFlow()
         Check(View().Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic && View().Root.StyleClasses.Contains("capture-library-base"), "Gallery must expose a desktop acrylic base");
         Check(View().Surface is { PreferredWidth: 1180, PreferredHeight: 700, WidthMode: WidgetSurfaceAxisMode.Preferred, HeightMode: WidgetSurfaceAxisMode.Preferred }, "Material changes must preserve the library, preview and settings extent");
         Check(View().ProtocolVersion >= ProtocolConstants.DesktopAcrylicVersion, "Gallery must declare desktop acrylic protocol support");
-        await widget.OnActionAsync(new("capture-library.photo", "capture-library.photo")); await Until(() => Node("capture-library.save") is not null && Node("capture-library.save")?.IsBusy != true);
-        Check(saves == 0, "Capture saved without review");
-        Check(View().Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic && View().Root.StyleClasses.Contains("capture-detail-page"), "Unsaved capture preview must expose its desktop acrylic base");
-        Check(View().Surface is { PreferredWidth: 1180, PreferredHeight: 700, WidthMode: WidgetSurfaceAxisMode.Preferred, HeightMode: WidgetSurfaceAxisMode.Preferred }, "Material changes must preserve the library, preview and settings extent");
-        Check(View().Root.Transition is { Kind: WidgetTransitionKind.Page, Key: "preview", Navigation: WidgetNavigationOperation.Forward }, "Review must be forward page navigation");
-        Check(ViewSnapshotValidator.Validate(View()).Count == 0 && WinUiPresentationContract.Validate(View()).Count == 0);
-        Check(Node("capture-library.detail.layout") is { GridLayout.Columns.Count: 2, Children.Count: 2 } detail &&
-            detail.GridLayout.Columns[0] is {Sizing:GridTrackSizing.Star,Value:7}&&detail.GridLayout.Columns[1] is {Sizing:GridTrackSizing.Star,Value:3}&&
-            Node("capture-library.preview")?.GridCell?.Column==0&&Node("capture-library.detail.scroll") is {GridCell.Column:1} sidebar&&
-            Walk(sidebar).Any(node => node.Id == "capture-library.save"),
-            "Review must place the existing media player beside its metadata and save actions");
-        Export("detail-unsaved", View());
-        await widget.OnActionAsync(new("capture-library.save", "capture-library.save")); await Until(() => saves == 1);
-        Check(Node("capture-library.save")?.IsBusy == true && Node("capture-library.save")?.IsDisabled != true);
-        saveGate.TrySetResult(); await Until(() => Node("capture-library.delete") is not null && Node("capture-library.delete")?.IsBusy != true);
-        Check(View().Root.Transition?.Key == "preview", "Saving must not navigate away from the current preview");
+        await widget.OnActionAsync(new("capture-library.photo", "capture-library.photo"));
+        await Until(() => saves == 1 && Node("capture-library.photo")?.IsBusy == true);
+        Check(View().Root.Transition?.Key == "home" && Node("capture-library.save") is null);
+        saveGate.TrySetResult();
+        await Until(() => Node("capture-library.photo")?.IsBusy != true);
+        await widget.OnActionAsync(new("capture-library.refresh","capture-library.refresh"));
+        await Until(() => Walk(View().Root).Any(node => node.IndexedCollection?.Count == 1) && Node("capture-library.photo")?.IsBusy != true);
+        using var galleryHost = WidgetTestHost.CreateIndexedCollectionHost(widget, "library-test", 100);
+        using (var lease = await galleryHost.AcquireAsync("capture-library.entries", 0, 1))
+            Check(lease.RouteAction(id, ControllerButton.A) is not null);
+        await Until(() => Node("capture-library.delete") is not null && Node("capture-library.delete")?.IsBusy != true);
         Check(View().Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic && View().Root.StyleClasses.Contains("capture-detail-page"), "Saved detail must expose its desktop acrylic base");
         Check(View().Surface is { PreferredWidth: 1180, PreferredHeight: 700, WidthMode: WidgetSurfaceAxisMode.Preferred, HeightMode: WidgetSurfaceAxisMode.Preferred }, "Material changes must preserve the library, preview and settings extent");
         Check(Node("capture-library.detail.info") is { } info && Walk(info).Any(node => node.Id == "capture-library.delete") &&
@@ -584,7 +607,7 @@ static async Task WidgetFlow()
         await widget.OnActionAsync(new("capture-library.delete", "capture-library.delete"));
         await widget.OnActionAsync(new("capture-library.delete.confirm", "capture-library.delete.confirm"));
         await Until(() => deletes == 1 && Node("capture-library.delete.confirm")?.IsBusy == true);
-        Check(Node("capture-library.delete.confirm")?.Text == "Removing…");
+        Check(Node("capture-library.delete.confirm")?.Text == "Working…");
         Export("deleting", View());
         await widget.OnActionAsync(new("capture-library.delete.confirm", "capture-library.delete.confirm"));
         Check(deletes == 1, "Busy confirmation must not delete twice");
@@ -605,20 +628,21 @@ static async Task WidgetFlow()
 }
 static async Task RecordingDiscovery()
 {
-    var id = new string('D',32); var starts = 0; var queries = new List<CaptureRecordingQuery>();
+    var id = new string('D',32); var starts = 0; var requests = new List<CaptureSessionRequest>();
     var capabilities = new CaptureCapabilities(true, [CaptureImageFormat.Png],
-        [new("1080p30-hardware",1920,1080,30,3_000_000,12_000_000,CaptureEncoderMode.Hardware)], [CaptureAudioMode.None], true,120);
+        [new("1080p30-hardware",1920,1080,30,3_000_000,12_000_000,CaptureEncoderMode.Hardware)
+        { Encoding=new(CaptureVideoCodec.H264,CaptureVideoPixelFormat.Yuv4208,CaptureVideoRateControl.ConstantBitrate),
+          Adapter=new(new string('a',32),"Fixture GPU",new string('b',32)), EditingSupported=true }], [CaptureAudioMode.None], true,120);
     var client = new WidgetTestHostServicesBuilder().WithPrivateState(new())
         .WithCaptureQuery(() => new CaptureLibraryPage([],0,0,0))
         .WithResponse(WidgetPermissionCapabilities.Request, new WidgetPermissionRequestState(WidgetPermissionOutcome.Granted))
         .WithHandler(WidgetCaptureCapabilities.Capabilities, (_, _) => throw new Exception("Recording surveyed the entire catalog"))
-        .WithHandler(WidgetCaptureCapabilities.RecordingCapabilities, (query, _) => { queries.Add(query); return ValueTask.FromResult(capabilities); })
-        .WithHandler(WidgetCaptureCapabilities.Validate, (request, _) => ValueTask.FromResult(capabilities.Validate(request)))
-        .WithHandler(WidgetCaptureCapabilities.Start, (request, _) => {
-            Check(request.Recording is { MaximumWidth: 1920, MaximumHeight: 1080, FramesPerSecond: 30, Encoder: CaptureEncoderMode.Hardware, Audio: CaptureAudioMode.None });
-            ++starts; return ValueTask.FromResult(new WindowCaptureTicket(id)); })
-        .WithResponse(WidgetCaptureCapabilities.Status, new WindowCaptureStatus(id,WindowCapturePhase.Cancelled))
-        .WithResponse(WidgetCaptureCapabilities.Cancel, new WidgetCapabilityAcknowledgement(true)).Build();
+        .WithHandler(WidgetCaptureCapabilities.RecordingCapabilities, (_, _) => throw new Exception("Recording should validate its request without a separate profile survey"))
+        .WithHandler(WidgetCaptureCapabilities.RecordClip, (request, _) => {
+            requests.Add(request);
+            Check(capabilities.Validate(request).Supported);
+            starts++;
+            return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true)); }).Build();
     var widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), client);
     IEnumerable<ViewNode> Walk(ViewNode n) => new[] {n}.Concat(n.Children.SelectMany(Walk));
     async Task Ready() { using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5)); while (Walk(widget.RenderSnapshot("recording-discovery",1).Root).Any(n=>n.IsBusy == true)) await Task.Delay(10,timeout.Token); }
@@ -626,7 +650,7 @@ static async Task RecordingDiscovery()
     {
         await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive); await Ready();
         for (var i=0;i<2;i++) { await widget.OnActionAsync(new("capture-library.video","capture-library.video")); await Ready(); }
-        Check(starts==2 && queries.Count==2 && queries[0].Recording is null && queries[1].Recording?.MaximumWidth==1920);
+        Check(starts==2 && requests.Count==2 && requests.All(request => request.Recording?.Selection == new CaptureRecordingSelection()));
     }
     finally { await WidgetTestHost.DestroyAsync(widget); }
 }
@@ -717,10 +741,14 @@ static async Task SettingsFlow()
         .WithPrivateState(savedState)
         .WithHandler(WidgetCaptureCapabilities.Capabilities, (_, _) => ValueTask.FromResult(capabilities))
         .WithHandler(WidgetCaptureCapabilities.RecordingCapabilities, (_, _) => ValueTask.FromResult(capabilities))
-        .WithHandler(WidgetCaptureCapabilities.Validate, (request, _) =>
-        { Check(request.OutputPurpose==CaptureOutputPurpose.LibraryRecording&&request.MaximumBytes==CaptureLimits.MaximumLibraryRecordingBytes,
-            "Record clip must use the library budget, not the attachment limit"); return ValueTask.FromResult(capabilities.Validate(request)); })
-        .WithHandler(WidgetCaptureCapabilities.Start, (_, _) => { starts++; throw new Exception("Invalid settings reached capture start"); }).Build();
+        .WithHandler(WidgetCaptureCapabilities.RecordClip, (request, _) =>
+        {
+            Check(request.OutputPurpose == CaptureOutputPurpose.LibraryRecording && request.MaximumBytes == CaptureLimits.MaximumLibraryRecordingBytes);
+            var validation = capabilities.Validate(request);
+            if (!validation.Supported) throw new WidgetCapabilityException(validation.ErrorCode!, "Unavailable");
+            starts++;
+            return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+        }).Build();
     CaptureLibraryWidget widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), client);
     IEnumerable<ViewNode> Walk(ViewNode n) => new[] { n }.Concat(n.Children.SelectMany(Walk));
     ViewSnapshot View() => widget.RenderSnapshot("settings", 1);
@@ -733,7 +761,7 @@ static async Task SettingsFlow()
         await Start(); await Action("capture-library.settings");
         Check(View().Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic && View().Root.StyleClasses.Contains("capture-library-base"), "Settings must expose a desktop acrylic base");
         Check(View().Surface is { PreferredWidth: 1180, PreferredHeight: 700, WidthMode: WidgetSurfaceAxisMode.Preferred, HeightMode: WidgetSurfaceAxisMode.Preferred }, "Material changes must preserve the library, preview and settings extent");
-        Check(View().ProtocolVersion == ProtocolConstants.DesktopAcrylicVersion, "Settings must declare desktop acrylic protocol support");
+        Check(View().ProtocolVersion >= ProtocolConstants.DesktopAcrylicVersion, "Settings must declare desktop acrylic protocol support");
         await Until(()=>Node("capture-library.recording.manual.resolution") is not null);
         Check(Node("capture-library.recording.manual.resolution")!.SelectOptions.Single(option=>option.IsSelected).Label=="Auto (recommended)");
         Check(ViewSnapshotValidator.Validate(View()).Count == 0 && WinUiPresentationContract.Validate(View()).Count == 0, "Settings snapshot is invalid");
@@ -792,7 +820,7 @@ static async Task PermissionContinuation()
             return ValueTask.FromResult(new WidgetPermissionRequestState(outcome, outcome == WidgetPermissionOutcome.Pending ? id : null)); })
         .WithHandler(WidgetPermissionCapabilities.Status, (_, _) => { polls++; return ValueTask.FromResult(new WidgetPermissionRequestState(outcome,id)); })
         .WithResponse(WidgetCaptureCapabilities.Validate, new CaptureConfigurationValidation(true))
-        .WithHandler(WidgetCaptureCapabilities.Start, (_, _) => { starts++; return ValueTask.FromResult(new WindowCaptureTicket(id)); })
+        .WithHandler(WidgetCaptureCapabilities.SaveScreenshot, (_, _) => { starts++; return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true)); })
         .WithResponse(WidgetCaptureCapabilities.Status, new WindowCaptureStatus(id,WindowCapturePhase.Ready,media)).Build();
     var widget = WidgetTestHost.Attach(new CaptureLibraryWidget(),client);
     IEnumerable<ViewNode> Walk(ViewNode n) => new[] { n }.Concat(n.Children.SelectMany(Walk));
@@ -811,7 +839,7 @@ static async Task PermissionContinuation()
         await Until(() => polls > 0);
         Check(starts == 0 && Node("capture-library.photo")?.IsBusy == true, "Capture ran before consent");
         outcome = WidgetPermissionOutcome.Granted;
-        await Until(() => Node("capture-library.save") is not null && Node("capture-library.save")?.IsBusy != true);
+        await Until(() => starts == 1 && Node("capture-library.photo")?.IsBusy != true);
         Check(starts == 1 && requests == 2, "Approved action failed to continue exactly once");
     }
     finally { await WidgetTestHost.DestroyAsync(widget); }

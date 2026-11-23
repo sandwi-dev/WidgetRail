@@ -72,6 +72,24 @@ internal sealed partial class WidgetStylesValidationPage
             Check(empty.A == 0 && ink.G > 245, "contained artwork aligns its letterbox to the bottom without changing its element bounds");
             Check(Math.Abs(image.ActualWidth - 120) < 1 && Math.Abs(image.ActualHeight - 120) < 1,
                 "changing artwork fit retains the authored image viewport");
+
+            var pending = new TaskCompletionSource<WidgetArtworkSource?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            page.ResolveArtworkAsync = (handle, _) => handle == "pending" ? pending.Task :
+                Task.FromResult<WidgetArtworkSource?>(new WidgetEncodedArtwork(WidgetArtworkContentType.Png, bytes));
+            var missing = node with { Id = "missing-cover", ArtworkHandle = "pending", AccessibilityLabel = "Missing cover" };
+            var fallbackStyle = new Dictionary<string, BridgeNodeRenderStyles> {
+                [missing.Id] = Compute("image { image-fallback: label; }", missing.Id, "image") };
+            var missingFrame = CreateFrame(missing, fallbackStyle);
+            page.Apply(missingFrame);
+            var slot = Find<WidgetArtworkView>("Widget.missing-cover", page)!;
+            Check(!slot.Children.OfType<TextBlock>().Any(), "a pending image does not show a failure label");
+            pending.SetResult(null);
+            await Wait(() => slot.Children.OfType<TextBlock>().Any(text => text.Text == missing.AccessibilityLabel));
+            page.Apply(missingFrame with { AppearanceRevision = ++revision, RenderStyles = new Dictionary<string, BridgeNodeRenderStyles>() });
+            Check(!slot.Children.OfType<TextBlock>().Any(), "removing the fallback style removes its text");
+            page.Apply(CreateFrame(missing with { ArtworkHandle = "working" }, fallbackStyle));
+            await Wait(() => slot.Source is BitmapImage);
+            Check(!slot.Children.OfType<TextBlock>().Any(), "a recovered cover replaces its fallback on the retained image");
         }
         finally { host.Children.Remove(page); await page.DisposeAsync(); }
 

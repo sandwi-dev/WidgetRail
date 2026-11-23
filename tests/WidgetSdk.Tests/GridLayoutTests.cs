@@ -54,6 +54,11 @@ internal static class GridLayoutTests
         var reset=new WidgetView(UI.Grid("aligned-grid",[],[GridTrack.Auto(),GridTrack.Star()],alignedElement.AlignInGrid())).CreateSnapshot("aligned",2);
         Equal(ProtocolConstants.GridLayoutVersion,reset.ProtocolVersion);
         True(!System.Text.Encoding.UTF8.GetString(SnapshotJson.Serialize(reset)).Contains("horizontalAlignment",StringComparison.Ordinal),"Default alignment must remain absent on the old wire shape.");
+        var reveal = new WidgetView(grid.RevealBodyOnFocus(), "first", ActiveInputScopeId: "scope").CreateSnapshot("grid.widget", 2);
+        Equal(ProtocolConstants.FocusRevealGridVersion, reveal.ProtocolVersion);
+        True(SnapshotJson.Deserialize(SnapshotJson.Serialize(reveal)).Root.GridLayout!.RevealBodyOnFocus, "Reveal must round-trip.");
+        True(ViewSnapshotValidator.Validate(reveal with { ProtocolVersion = ProtocolConstants.FocusRevealGridVersion - 1 })
+            .Any(error => error.Code == "feature_requires_version"), "An older host must reject an unsupported focus layout.");
         return Task.CompletedTask;
     }
 
@@ -70,6 +75,7 @@ internal static class GridLayoutTests
         Track(new() { Sizing = GridTrackSizing.Pixel, Value = -1 }, "invalid_grid_track_value");
         Track(new() { Sizing = GridTrackSizing.Star, Value = 0 }, "invalid_grid_track_value");
         Track(new() { Value = double.NaN }, "invalid_grid_track_value");
+        Reject(valid.Root with { GridLayout = valid.Root.GridLayout! with { RevealBodyOnFocus = true } }, "invalid_reveal_header");
         Track(new() { Minimum = double.PositiveInfinity }, "invalid_grid_length");
         Track(new() { Minimum = 20, Maximum = 10 }, "invalid_grid_track_bounds");
         Track(new() { Maximum = 16385 }, "invalid_grid_length");

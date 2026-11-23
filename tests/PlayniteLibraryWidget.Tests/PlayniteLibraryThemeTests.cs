@@ -15,6 +15,19 @@ public sealed partial class PlayniteLibraryLayoutTests
         var package = WrssPackageLoader.Load("default.wrss", new WrssFileSourceProvider(root));
         var result = WrssThemeCompiler.Compile(package);
         Assert.IsTrue(result.IsValid, string.Join(Environment.NewLine, result.Diagnostics));
+        foreach (var face in new[] { "playnite-library-tile", "playing-action", "playing-story", "story-card", "home-unlock-card" })
+        {
+            var element = new WrssElement("actionSurface", StyleClasses: new HashSet<string> { face });
+            Assert.IsNull(result.Theme!.Resolve(element).Get("focus-sheen"));
+            var focused = result.Theme.Resolve(new WrssElement("actionSurface", null, element.StyleClasses,
+                new HashSet<WrssPseudoState> { WrssPseudoState.Focused }));
+            Assert.AreEqual(face is "playnite-library-tile" or "home-unlock-card" ? "edge-glint" : "breathe", focused.Get("focus-outline-effect")?.Text);
+            Assert.AreEqual("reflection", focused.Get("focus-sheen")?.Text, face);
+            Assert.AreEqual(6000d, focused.Get("focus-sheen-repeat-delay")?.Number, face);
+            var borderCycle = focused.Get("focus-outline-duration")!.Number + focused.Get("focus-outline-repeat-delay")!.Number;
+            Assert.AreEqual(face is "playnite-library-tile" or "home-unlock-card" ? 2100d : 1500d, borderCycle, face);
+            Assert.AreEqual(face == "playnite-library-tile" ? .30 : .24, focused.Get("focus-sheen-opacity")?.Number, face);
+        }
     }
 
     [TestMethod]
@@ -61,12 +74,13 @@ public sealed partial class PlayniteLibraryLayoutTests
             Assert.AreEqual(tinted, panel.Get("background")?.Text, style);
             Assert.IsNull(panel.Get("opacity"), style);
         }
-        Assert.AreEqual(Resolve("stack", "playnite-library-home-summary").Get("background")?.Text,
-            Resolve("stack", "playnite-library-home-content").Get("background")?.Text, "Home uses the same translucent fill as its focused summary.");
+        var posterRail = Resolve("stack", "playnite-library-content", "playnite-library-home-content");
+        Assert.IsNull(posterRail.Get("background"));
+        Assert.IsNull(posterRail.Get("background-material"), "Home posters float over the game artwork.");
         Assert.AreEqual(text, Resolve("button", "playnite-library-section-link").Get("color")?.Text);
         Assert.AreEqual("acrylic", Resolve("stack", "wrail-modal").Get("background-material")?.Text);
         foreach (var panel in new[] { "playnite-library-home-actions", "playnite-library-home-summary",
-                     "playnite-library-home-content", "playnite-library-browse-foreground", "wrail-modal" })
+                     "playnite-library-browse-foreground" })
         {
             var material = Resolve("stack", panel);
             Assert.AreEqual("acrylic", material.Get("background-material")?.Text, panel);
@@ -76,8 +90,16 @@ public sealed partial class PlayniteLibraryLayoutTests
                 material.Get("background-luminosity-opacity")?.Text, panel);
             Assert.IsNull(material.Get("opacity"), "Panel material must not fade its children.");
         }
+        foreach (var panel in new[] { "wrail-modal", "story-card-material" })
+        {
+            var material = Resolve("stack", panel);
+            Assert.AreEqual("acrylic", material.Get("background-material")?.Text, panel);
+            Assert.AreEqual(themeName == "builtin-mineral-light" ? .55 : .35, material.Get("background-tint-opacity")?.Number, panel);
+            Assert.AreEqual(themeName == "builtin-mineral-light" ? .5 : .25, material.Get("background-luminosity-opacity")?.Number, panel);
+            Assert.IsNull(material.Get("opacity"), panel);
+        }
         foreach (var ordinary in new[] { "playnite-library-tile", "playnite-library-summary-strip",
-                     "playnite-library-home-surface", "playnite-library-favorite-card" })
+                     "playnite-library-home-surface" })
             Assert.IsNull(Resolve("stack", ordinary).Get("background-material"), ordinary);
         Assert.AreEqual(raised, Resolve("action-surface", "playnite-library-category").Get("background")?.Text);
         Assert.AreEqual(raised, Resolve("button", "playnite-library-control").Get("background")?.Text);
@@ -189,7 +211,34 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(PlayniteLibraryActions.DetailsOpen, tile.ActionId);
         var compactMetadata = Nodes(tile.FocusPresentation!).Single(node =>
             node.StyleClasses.Contains("playnite-library-summary-compact-meta"));
-        StringAssert.StartsWith(compactMetadata.Text!, "Pending · ");
+        StringAssert.StartsWith(compactMetadata.Text!, "Launching… · ");
+        Assert.IsFalse(Nodes(tile.FocusPresentation!).Any(node => node.ControllerPrompt == ControllerPrompt.Y),
+            "The selected-game strip must not advertise Play while the focused poster cannot dispatch it.");
+    }
+
+    [TestMethod]
+    public async Task HomeSummaryUsesOnlyAvailablePlayFacts()
+    {
+        var played = Item("played-app", "played-game", "Silksong", "Steam");
+        var recent = PlayniteLibraryItem.From(played with { Presentation = played.Presentation with
+        {
+            Metadata = new("one", new("fixture", "one", "Fixture", 0))
+            {
+                PlaytimeMinutes = 75, LastPlayedAtUnixMilliseconds = 1795248000000, Description = "A long store description.",
+            },
+        } });
+        var fresh = PlayniteLibraryItem.From(Item("new-app", "new-game", "Fresh installation", "Steam"));
+        var view = await CapturePresentationAsync(State(Snapshot(WidgetPagedResourceStatus.Ready, [recent, fresh]),
+            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Library, []));
+        var rows = view.Ranges.SelectMany(range => range.Items).ToArray();
+        var first = Nodes(rows.Single(row => row.Key == recent.Key.Value).Root.FocusPresentation!).ToArray();
+        CollectionAssert.AreEqual(new[] { "Last played", "Playtime" },
+            first.Where(node => node.StyleClasses.Contains("playnite-home-stat-label")).Select(node => node.Text).ToArray());
+        Assert.IsTrue(first.Any(node => node.Text == "1h 15m"));
+        Assert.IsFalse(first.Any(node => node.Text == recent.Presentation.Metadata!.Description));
+        var second = Nodes(rows.Single(row => row.Key == fresh.Key.Value).Root.FocusPresentation!).ToArray();
+        Assert.IsFalse(second.Any(node => node.StyleClasses.Contains("playnite-home-stat-label")));
+        Assert.IsTrue(second.Any(node => node.ControllerPrompt == ControllerPrompt.Y));
     }
 
     [TestMethod]
@@ -264,7 +313,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         using var host = WidgetTestHost.CreateIndexedCollectionHost(fixture, "playnite-library.warm-theme");
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(host.CurrentSnapshot).Count);
         Assert.IsNull(host.CurrentSnapshot.FocusGroupEntryRequest, "Loading must not request entry into disabled saved-only rows.");
-        Assert.AreEqual("playnite-library.home.view-library", host.CurrentSnapshot.InitialFocusId,
+        Assert.AreEqual(Nodes(host.CurrentSnapshot.Root).Single(n => n.ActionId == PlayniteLibraryActions.BrowseOpen).Id, host.CurrentSnapshot.InitialFocusId,
             "Loading must focus a reachable control, not the nonempty collection containing only disabled rows.");
         using var lease = await host.AcquireAsync(PlayniteLibraryPresentation.HomeRailId, 0, 1);
         var poster = lease.Range.Items.Single().Root;
@@ -304,16 +353,17 @@ public sealed partial class PlayniteLibraryLayoutTests
                 Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count, route + " " + phase);
                 if (route is PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)
                 {
-                    var navigation = Nodes(snapshot.Root).Where(node => (node.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen) && node.Id != "playnite-library.home.view-library").ToArray();
-                    Assert.AreEqual(2, navigation.Length);
+                    var navigation = Nodes(snapshot.Root).Where(node => node.StyleClasses.Contains("playnite-library-tab")).ToArray();
+                    CollectionAssert.AreEquivalent(new[] { PlayniteLibraryActions.HomeOpen, PlayniteLibraryActions.BrowseOpen, PlayniteLibraryActions.AchievementsOpen },
+                        navigation.Select(node => node.ActionId).ToArray());
                     Assert.AreEqual(1, navigation.Count(node => node.IsSelected == true));
                     var theme = CompileStyles();
-                    foreach (var tab in navigation.Where(node => node.Id != "playnite-library.home.view-library"))
+                    foreach (var tab in navigation)
                     {
                         var tabStyle = theme.Resolve(new WrssElement("button", tab.Id,
                             tab.StyleClasses.ToHashSet(StringComparer.Ordinal)));
-                        Assert.AreEqual("128px", tabStyle.Get("width")?.Text,
-                            "Home and Library should offer equally wide targets.");
+                        Assert.AreEqual("168px", tabStyle.Get("width")?.Text,
+                            "All three destinations need room for Achievements at the supported enlarged text size.");
                         Assert.AreEqual("104px", tabStyle.Get("min-width")?.Text,
                             "Compact layouts must retain readable destination labels.");
                         Assert.AreEqual(WidgetTransitionKind.Selection, tab.Transition?.Kind,

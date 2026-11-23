@@ -27,6 +27,9 @@ policy checks, and publishes the trimmed, self-contained .NET 10 frontend to a
 fresh directory under `artifacts/winui-verification`. Its receipt verifies that
 the published native DLLs match those just built. A metadata-only check also
 rejects the known linker regression that removes async session lock cleanup.
+Self-contained frontend builds bundle .NET 10.0.15 or a newer .NET 10 patch.
+This includes the [COM wrapper fix](https://github.com/dotnet/runtime/pull/133292)
+for repeated references to long-lived WinUI controls.
 The targeted optimizer workaround and removal criteria are documented in
 [Release readiness](release-checklist.md). It does not launch the overlay.
 Rust, Taffy, and the retired native renderer are not in this build graph.

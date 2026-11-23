@@ -28,6 +28,10 @@ Run `./Build-CommunityPackage.ps1` to create a `.wrwidget` archive and SHA-256 s
 
 ## Results and preferences
 
+Sending a question scrolls to that question. You can keep reading earlier
+answers while Gemini works. Press **RB** to jump to the beginning of the latest
+answer, or **R3** to focus the composer.
+
 An answer completing while Game Help is not visible can create an Answers ready
 notification. Open returns to that answer through the widget's declared result
 intent. Cleared/trimmed answers return quietly to the conversation; opening a

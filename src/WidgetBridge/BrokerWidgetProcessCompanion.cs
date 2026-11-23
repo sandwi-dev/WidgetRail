@@ -136,7 +136,7 @@ internal sealed class BrokerWidgetProcessCompanion :
             authority.OperationId,
             authority.InputSequence,
             authority.SnapshotSequence,
-            authority.ValidFor);
+            authority.ValidFor, authority.TrayCommand, authority.CaptureCommand, authority.HostCompletion);
         return Task.CompletedTask;
     }
 

@@ -4,7 +4,7 @@ using WidgetRail.PlatformSettings;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Motion;
 
-/// <summary>Reveals freshly decoded poster pixels on an independent opacity layer.</summary>
+/// <summary>Fades in poster pixels or a presentation surface on its own opacity layer.</summary>
 internal sealed class WidgetArtworkReveal(FrameworkElement layer) : IDisposable
 {
     private WidgetCompositionTarget? target;
@@ -14,11 +14,16 @@ internal sealed class WidgetArtworkReveal(FrameworkElement layer) : IDisposable
     internal int Starts { get; private set; }
     internal void Play(AppearanceSettings appearance, bool systemAnimationsEnabled)
     {
-        Cancel();
         var duration = WidgetMotionOptions.From(appearance, systemAnimationsEnabled).Duration(220);
         if (appearance.Transparency == TransparencyPreference.Reduced || appearance.Contrast == ContrastPreference.High ||
-            appearance.Contrast == ContrastPreference.System && new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast ||
-            duration == TimeSpan.Zero || !layer.IsLoaded || layer.ActualWidth <= 0 || layer.ActualHeight <= 0) return;
+            appearance.Contrast == ContrastPreference.System && new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
+            duration = TimeSpan.Zero;
+        Play(duration);
+    }
+    internal void Play(TimeSpan duration)
+    {
+        Cancel();
+        if (duration == TimeSpan.Zero || !layer.IsLoaded || layer.ActualWidth <= 0 || layer.ActualHeight <= 0) return;
         layer.Unloaded += Unloaded;
         target = WidgetCompositionTarget.ForClippedDialog(layer, new((float)layer.ActualWidth, (float)layer.ActualHeight));
         motion = new(ElementCompositionPreview.GetElementVisual(layer).Compositor, layer.DispatcherQueue);

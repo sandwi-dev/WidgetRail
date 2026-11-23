@@ -56,10 +56,10 @@ internal sealed partial class NativeWheelProbe : IDisposable
         DemandOwned(WindowFromPoint(point));
     }
 
-    internal unsafe void Send(int delta)
+    internal unsafe void Send(int delta, bool horizontal = false)
     {
         MoveToTarget();
-        var input = new NativeInput { Data = new() { Mouse = new() { Data = unchecked((uint)delta), Flags = 0x0800 } } };
+        var input = new NativeInput { Data = new() { Mouse = new() { Data = unchecked((uint)delta), Flags = horizontal ? 0x1000u : 0x0800u } } };
         if (SendInput(1, &input, sizeof(NativeInput)) != 1) throw new InvalidOperationException("Fixture wheel injection failed.");
     }
 

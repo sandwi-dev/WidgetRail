@@ -18,7 +18,7 @@ internal sealed partial class OverlayShellPage
     private IReadOnlyList<ControllerGuideHint> DashboardGuideHints()
     {
         if (FocusedTrayWidget() is not { } widget || DashboardFrame(widget) is not { } displayed) return [];
-        return displayed.Snapshot.QuickActions.Select(action =>
+        return displayed.Snapshot.QuickActions.Where(action => action.OnDashboard).Select(action =>
             new ControllerGuideHint(ControllerGuideModel.Prompt(action.Button), action.Label, action.Button)).ToArray();
     }
 
@@ -26,7 +26,7 @@ internal sealed partial class OverlayShellPage
         ControllerEventPhase phase = ControllerEventPhase.Pressed)
     {
         if (owner is null || DashboardFrame(widget) is not { } displayed ||
-            !displayed.Snapshot.QuickActions.Any(action => action.Button == button &&
+            !displayed.Snapshot.QuickActions.Any(action => action.OnDashboard && action.Button == button &&
                 (phase == ControllerEventPhase.Pressed || phase == ControllerEventPhase.Repeated && action.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld))) return false;
         var sequence = ++dashboardInputSequence;
         var timestamp = checked(Environment.TickCount64 * 1000);

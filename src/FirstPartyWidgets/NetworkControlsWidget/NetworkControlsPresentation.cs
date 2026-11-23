@@ -92,18 +92,18 @@ internal static class NetworkControlsPresentation
 
         var sectionKey = state.ActiveTab == NetworkControlsTab.Wifi ? "wifi" : "bluetooth";
         var sectionOrder = state.ActiveTab == NetworkControlsTab.Wifi ? 0 : 1;
+        var tabFocus=new FocusNeighbors(Up:"network.details.open",Down:activeInitialFocus);
         var tabs = UI.SegmentedTabs("network.tabs",
             state.ActiveTab == NetworkControlsTab.Wifi
                 ? "network.tab.wifi" : "network.tab.bluetooth",
             new SegmentedTab("network.tab.wifi", "Wi-Fi", "network.tab.select",
-                "Wi-Fi controls"),
+                "Wi-Fi controls"){Focus=tabFocus},
             new SegmentedTab("network.tab.bluetooth", "Bluetooth", "network.tab.select",
-                "Bluetooth controls"));
+                "Bluetooth controls"){Focus=tabFocus});
         tabs = tabs with
         {
             Children = tabs.Children.Select(child => child is ButtonElement button
-                ? button.FocusUp("network.details.open").FocusDown(activeInitialFocus)
-                    .TransitionSelection("network.tabs", sectionKey, sectionOrder)
+                ? button.TransitionSelection("network.tabs", sectionKey, sectionOrder)
                 : child).ToArray(),
         };
 

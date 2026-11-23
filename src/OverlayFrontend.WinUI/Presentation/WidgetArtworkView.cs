@@ -16,9 +16,16 @@ internal sealed partial class WidgetArtworkView : Grid
     private readonly Image measurement = new() { Stretch = Stretch.Fill };
     private readonly ImageBrush brush = new();
     private WidgetArtworkOverlays? overlays;
+    private TextBlock? fallback;
+    private string? fallbackText;
+    private double fallbackTextScale = 1;
+    private bool unavailable;
     private NativeArtworkStyle style = new(Stretch.Fill);
 
-    internal WidgetArtworkView() => Children.Add(new Border { Background = brush });
+    internal WidgetArtworkView()
+    {
+        Children.Add(new Border { Background = brush });
+    }
 
     internal ImageSource? Source
     {
@@ -27,12 +34,50 @@ internal sealed partial class WidgetArtworkView : Grid
         {
             if (ReferenceEquals(value, brush.ImageSource)) return;
             measurement.Source = brush.ImageSource = value;
+            if (value is not null) SetUnavailable(false);
             overlays?.Update(style, value is not null);
             InvalidateMeasure();
         }
     }
 
     internal Stretch Stretch => brush.Stretch;
+
+    internal void ConfigureFallback(string? text, double textScale)
+    {
+        if (text == fallbackText && textScale == fallbackTextScale) return;
+        fallbackText = text;
+        fallbackTextScale = textScale;
+        RefreshFallback();
+    }
+
+    internal void SetUnavailable(bool value)
+    {
+        if (unavailable == value) return;
+        unavailable = value;
+        RefreshFallback();
+    }
+
+    private void RefreshFallback()
+    {
+        if (!unavailable || Source is not null || string.IsNullOrWhiteSpace(fallbackText))
+        {
+            if (fallback is not null) { Children.Remove(fallback); fallback = null; }
+            return;
+        }
+        if (fallback is null)
+        {
+            fallback = new TextBlock
+            {
+                Margin = new Thickness(10), VerticalAlignment = VerticalAlignment.Center,
+                TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, MaxLines = 4,
+                TextTrimming = TextTrimming.CharacterEllipsis, IsHitTestVisible = false,
+            };
+            Children.Add(fallback);
+        }
+        fallback.FontSize = 16 * fallbackTextScale;
+        fallback.Text = fallbackText;
+    }
 
     internal void ApplyStyle(NativeArtworkStyle value)
     {

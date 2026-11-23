@@ -14,6 +14,7 @@ public sealed partial class DiscordWebViewWidget
     private bool liveRecoveryPending, liveRecoveryBlocked;
     private bool liveFreshLoadExpected;
     private WidgetOperationHandle? messageObservation;
+    internal Task WaitForMessageUpdatesAsync(CancellationToken token=default)=>Operations.WhenIdleAsync("discord.message.changes",token);
 
     private void ResetMessageUpdates(bool freshLoadExpected=true)
     {
@@ -65,17 +66,24 @@ public sealed partial class DiscordWebViewWidget
                         continue;
                     }
                     var follows=messageRows.ViewportState.FollowsEnd;
-                    var last=history.Snapshot.Items.LastOrDefault();
-                    var newTail=batch.Items.Any(change=>change.Message is {} message&&(last is null||MessageLiveOptions.Compare(message,last)>0));
+                    var lastId=history.Snapshot.Items.LastOrDefault()?.Id;
+                    // Initial history may still be loading. An edit/upsert of an
+                    // existing message is not a new arrival merely because the
+                    // native window has no rows yet. Use the opening watermark
+                    // from this exact visit as the other known tail boundary.
+                    lock(readVisitGate)
+                        if(readVisit is {OpeningWatermark:{} watermark} visit && visit.Selection==selected &&
+                            (lastId is null || Newer(watermark,lastId)))lastId=watermark;
+                    var newTail=lastId is not null && batch.Items.Any(change=>change.Message is {} message&&Newer(message.Id,lastId));
                     var result=history.ApplyMutations(scope,batch.Items.Select(change=>new WidgetCursorMutation<DiscordMessage>(
                         new(change.Id),change.Message,change.Kind=="remove")).ToArray(),allowTailEviction:follows);
                     if(!result.Applied)
                     {
-                        if(result.RequiresRefresh){liveRecoveryBlocked=true;messages.Update(value=>value with{NewMessages=true});}
+                        if(result.RequiresRefresh){liveRecoveryBlocked=true;messages.Update(value=>value with{LatestRequired=true});}
                         return;
                     }
                     liveMessageRevision=batch.Context.Revision;
-                    messages.Update(value=>value.Selection==selected?value with{NewMessages=result.HasUnseenItems || history.Snapshot.After is not null||!follows&&(value.NewMessages||newTail)}:value);
+                    messages.Update(value=>value.Selection==selected?value with{NewMessages=(!follows||result.HasUnseenItems)&&(value.NewMessages||newTail),LatestRequired=false}:value);
                     if(!batch.Context.HasMore)return;
                 }
             }
@@ -83,7 +91,7 @@ public sealed partial class DiscordWebViewWidget
             {
                 // No HTTP retry loop. A later existing provider invalidation/state
                 // read can retry this idempotent local revision read.
-                if(Current())messages.Update(value=>value with{NewMessages=true});
+                if(Current())messages.Update(value=>value with{LatestRequired=true});
             }
 
             async Task<bool> RecoverWindow()
@@ -94,7 +102,7 @@ public sealed partial class DiscordWebViewWidget
                 if(retained.Items.Count==0)
                 {
                     liveRecoveryBlocked=true;
-                    if(Current())messages.Update(value=>value with{NewMessages=true});
+                    if(Current())messages.Update(value=>value with{LatestRequired=true});
                     return false;
                 }
                 liveRecoveryBlocked=true;
@@ -109,18 +117,31 @@ public sealed partial class DiscordWebViewWidget
                 if(!result.Applied)return false;
                 liveMessageRevision=recovered.Context.Revision;
                 liveRecoveryBlocked=!recovered.Context.Complete;
-                messages.Update(value=>value.Selection==selected?value with{NewMessages=true}:value);
+                messages.Update(value=>value.Selection==selected?value with{LatestRequired=!recovered.Context.Complete}:value);
                 return !liveRecoveryBlocked;
             }
         });
     }
 
-    private void ApplySentMessage(MessageSelection selected,DiscordMessage message)
+    private void ApplySentMessage(MessageSelection selected,DiscordMessage message,InitialMessageReveal? reveal)
     {
-        if(!MessageSelectionCurrent(selected))return;
-        var follows=messageRows.ViewportState.FollowsEnd;
-        var result=history.ApplyMutations(history.MutationScope,[new(new(message.Id),message)],allowTailEviction:follows);
-        messages.Update(value=>value.Selection==selected?value with{NewMessages=result.HasUnseenItems||!follows}:value);
+        lock(messageAdmissionGate)
+        {
+            if(!MessageSelectionCurrent(selected))return;
+            var show=CurrentMessageEntry(reveal);
+            var follows=messageRows.ViewportState.FollowsEnd;
+            var result=history.ApplyMutations(history.MutationScope,[new(new(message.Id),message)],allowTailEviction:show||follows);
+            if(!show)
+            {
+                messages.Update(value=>value.Selection==selected?value with{NewMessages=result.HasUnseenItems||!follows}:value);
+                return;
+            }
+            messages.Update(value=>value with{InitialReveal=reveal,ControlFocus=null,NewMessages=false,LatestRequired=false,HistoryAnchor=null});
+            if(result.Applied && history.Snapshot.Items.Any(item=>item.Id==message.Id))return;
+            // A historical page cannot accept an out-of-window mutation without a gap.
+            // Use the same bounded latest window as the explicit Latest action.
+            ResetMessageUpdates();ObserveMessages();history.Refresh();
+        }
     }
 
     private static WidgetCursorLiveOptions<DiscordMessage> MessageLiveOptions { get; } = new(

@@ -1,7 +1,7 @@
 # Discord
 
-Discord provides controller-friendly voice channels, call and stream audio
-controls, application sharing, friend activity and voice/video pins. Discord
+Discord provides controller-friendly messages, voice channels, call and stream
+audio controls, application sharing, friend activity and voice/video pins. Discord
 sign-in and media run in a persistent WidgetRail WebView2 session; no separate
 Discord desktop client, Vesktop or Vencord installation is required.
 
@@ -15,7 +15,7 @@ Discord desktop client, Vesktop or Vencord installation is required.
 ## Install and sign in
 
 Install the matching WidgetRail host update first. The new package is
-`widgetrail.samples.discord-controls`, version `0.1.0`, shown as **Discord**.
+`widgetrail.samples.discord-controls`, shown as **Discord**.
 It requires explicit full-access approval because it runs as a normal application
 under your Windows account. Microphone and application capture still have their
 own permission prompts.
@@ -49,14 +49,88 @@ are preserved. If it cannot confirm the setting, follow the displayed instructio
 **Discord → User Settings → Notifications → Enable Desktop Notifications**.
 Permission alone does not enable Discord's own notifications.
 
+## Messages and attachments
+
+Open **Messages** and select a conversation. Search is above the conversation
+list, which loads more rows as you scroll. In the expanded layout, move right
+from the list to the composer and left from the composer or history to the
+selected conversation. In the compact layout, Back returns from chat to the
+list. Back from the list returns to WidgetRail's chooser. **X** focuses the
+composer and **Y** goes to the latest messages. The top bar has **Refresh** and
+**Open Discord**.
+Switching to Servers and back preserves your conversation and draft.
+
+Conversation rows show snippets, timestamps, unread indicators and call activity
+when available. Presence appears on the avatar as a filled circle for online, a
+crescent for idle, a minus for do-not-disturb, or an outline for offline. An
+avatar without an indicator has no reported status.
+
+Opening a chat updates your Discord unread marker through the latest message
+known when you opened it, once history appears. Messages that arrive while you
+read older history stay unread until you reach the latest messages. Opening a
+notification for an older message preserves newer unread messages. If you hide
+the overlay while a chat is loading, it stays unread until you open it again,
+even if a call pin is visible. If Discord cannot update the marker, use
+**Open Discord**.
+
+After Discord confirms a send, the chat scrolls to that message and focuses the
+composer for your next reply. This also works when you send from older history.
+An unconfirmed send leaves your reading position in place until you check delivery.
+
+Attach files beside the composer. When another widget shares files to Discord,
+choose a recipient and then **Send**. Canceling an upload keeps the draft and
+files. If delivery is uncertain, choose **Check delivery** before trying again.
+When Discord confirms your send, the open chat scrolls to that message and
+keeps the composer available for your next reply. This also works while reading
+older history. Incoming messages leave your position alone while you read back.
+
+A single video has an inline **Play** button. The first playback starts muted.
+WidgetRail remembers your playback audio settings for subsequent videos in the
+Discord widget. Leaving the chat or scrolling the player offscreen pauses it.
+GIFs play inline while
+visible and stay still with reduced motion. On the tested Windows decoder,
+animated PNG and WebP display a static frame.
+
+Select an image or attachment group to open the gallery. The group shows up to
+two thumbnail tiles, with `+N` for additional items. A video accompanied by
+other attachments uses the gallery. Spoiler media stays concealed until you
+reveal it. When a thumbnail is unavailable, a media icon identifies the item.
+Move between attachments with LB/RB or the arrows. Image zoom controls sit
+below the picture. The arrows stay available in fullscreen, and B or Escape
+returns from fullscreen. Links open
+from their inline text or link card.
+
 ## Calls and controls
+
+In a conversation, choose **Call** to start a private call, or **Join call** when
+one is already active. Incoming invitations show **Answer** and **Decline** in
+the native widget. Answering or starting a call uses the existing microphone
+consent prompt; declining does not need microphone access. **Switch & answer**
+or **Switch & call** indicates that the action will replace your current call.
+Use **Leave** to disconnect. Private calls reuse the same audio, sharing and pin
+controls as server voice channels.
+
+Incoming calls use WidgetRail's **Incoming calls** notification category. Opening
+an alert goes to the native call controls; it does not answer automatically.
+Alerts are withdrawn when ringing ends. Configure banners/list delivery in
+WidgetRail's notification settings. Synthetic native tests cover incoming alerts,
+Open, Answer, Decline, outgoing calls and Leave at compact and expanded sizes.
+Real peer calls, microphone/device audio and physical-controller acceptance
+remain to be checked; synthetic calls do not establish those results.
+
+Use **Servers / Messages** at the top, or LB/RB, to switch destinations. Open child
+controls keep their own button bindings. During a call, the bar beneath Messages
+shows participant avatars. Select the bar to return to the call, or use its
+Mute, Deafen, Share and Leave controls.
 
 Without a call, the home view shows the server/channel picker. Search and keyboard
 suggestions include both server and voice-channel names. Favorites and recent
 channels are saved per account.
 
-In a call, Xbox **X** toggles your microphone, **Y** starts sharing when available,
-and **L3** opens the server picker. Follow the on-screen hints for your controller.
+On Servers during a call, Xbox **X** toggles your microphone, **Y** starts sharing
+when available, and **L3** opens the server picker. In a chat, **L3** focuses the
+header's Call/Join/Answer button without starting or answering a call. Follow the
+on-screen hints for your controller.
 Hover or focus another participant to preview local voice volume and mute. Click
 a preview control directly, or press X (F6 on keyboard) to enter. B/Escape finishes
 slider adjustment first, then returns to the participant.
@@ -73,11 +147,21 @@ unobstructed. Ping is not a measurement of end-to-end audio latency.
 
 ## Watch, pin and share
 
-Choose **Watch** to open an incoming stream pin. Discord’s page and the pin can
-display the same decoded video track side by side. Stream mute and volume are on
-the shared-screen card in the main widget; they are independent of participant
-voice volume. Deafen also silences received audio. The video pin has no audio
-controls and does not play a second copy of stream audio.
+Under **Screens in this call**, choose **Watch** to view the stream inside the
+widget or **Watch & pin** to put it in a floating window. In the viewer, focus
+the picture and press A, or click **Fullscreen**. B or Escape returns to the
+viewer. Back returns to the same shared-screen row. If the stream is already
+pinned, the viewer borrows its picture. Closing the viewer or hiding the overlay
+returns the picture to the pin. If you chose **Watch** without pinning that
+stream, hiding the overlay pauses its picture and sound. Returning to the
+viewer resumes the live stream. Other pinned streams keep playing.
+
+If the sender stops sharing while you’re in fullscreen, the widget returns to
+the viewer and focuses **Back**. Choose it to return to the call.
+
+The viewer and the shared-screen card expose mute and volume when Discord supplies
+them. These controls affect stream audio independently of participant voice volume.
+Deafen also silences received audio. Audio plays once through Discord.
 
 Use the pin-adjustment button beside a pinned item for movement, opacity and unpinning.
 The host outlines the matching window. Video and participant-only pins remain

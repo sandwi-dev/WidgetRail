@@ -128,12 +128,17 @@ internal sealed partial class IndexedWidgetValidationPage
             var parked = Descendants(presenter).OfType<Presentation.WidgetIndexedCollectionView>().Single();
             await Wait(() => parked.IsEntryPending && parked.IsFocusParked);
             var parent = Descendants(presenter).OfType<Button>().Single(button => AutomationProperties.GetAutomationId(button) == "Widget.parent");
+            // Departure correctly drops navigation demand. Keep this one row
+            // explicitly demanded so the assertion actually observes a late
+            // delivered payload instead of depending on incidental panel cache.
+            using var lateRow = parked.RetainItemForValidation(33);
             parent.Focus(FocusState.Keyboard);
             Check(!parked.IsEntryPending, "explicit departure from the parked owner cancels the pending handoff");
             await Send("activation-release");
             await Wait(() => View()!.Items[33] is IndexedItem<WidgetIndexedRow> { Value.Lease.IsCurrent: true });
             await Task.Delay(200, lifetime.Token);
             Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), parent), "explicit focus outside the collection is not reclaimed");
+            lateRow.Dispose();
             foreach(var scenario in new string[]{"vertical","horizontal","reset","wrong-key","evicted","passive"})
             {
                 parent.Focus(FocusState.Keyboard);

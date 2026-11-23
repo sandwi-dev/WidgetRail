@@ -7,6 +7,30 @@ namespace PlayniteLibraryCommunityApplication.Tests;
 public sealed partial class PackageRuntimeTests
 {
     [TestMethod]
+    public async Task WarmCatalogValidatesOnePageAndKeepsNamedCategoryChanges()
+    {
+        using var directory = new TestDirectory();
+        var client = new FakeLibraryClient(1024) { ProviderRevision = "instance:1" };
+        await using var service = Service(directory.Path, client);
+        async Task<PlayniteLibraryCapturedQuery> Read() =>
+            await service.CaptureQueryAsync(AllGames, new(PlayniteLibraryQueryScope.Library), true, default);
+        var cold = await Read();
+        Assert.AreEqual(16, client.QueryCalls);
+        var warm = await Read();
+        Assert.AreEqual(17, client.QueryCalls);
+        Assert.AreEqual(cold.CatalogRevision, warm.CatalogRevision);
+        Assert.IsTrue(cold.CanReuseOnTabEntry!());
+        client.Categories.Add(new(Guid.NewGuid().ToString("D"), "Puzzle"));
+        Assert.AreNotEqual(warm.CatalogRevision, (await Read()).CatalogRevision);
+        Assert.IsFalse(warm.CanReuseOnTabEntry!());
+        Assert.AreEqual(18, client.QueryCalls);
+        client.ProviderRevision = "instance:2";
+        client.Games[999] = client.Games[999] with { Name = "Changed on a later page" };
+        Assert.IsTrue((await Read()).Games.Any(game => game.Name == "Changed on a later page"));
+        Assert.AreEqual(34, client.QueryCalls);
+    }
+
+    [TestMethod]
     public async Task HomeCaptureAuthorityIncludesFilteredCatalogIdentitiesWithoutCompletionStatus()
     {
         using var directory = new TestDirectory();
@@ -15,6 +39,7 @@ public sealed partial class PackageRuntimeTests
         client.Games[1] = client.Games[1] with { IsInstalled = false, Favorite = true, CompletionStatus = null };
         await using var service = Service(directory.Path, client);
         var query = await service.CaptureQueryAsync(AllGames, new(PlayniteLibraryQueryScope.Home), true, default);
+        Assert.IsFalse(query.CanReuseOnTabEntry!(), "An unversioned catalog must be checked on return.");
         Assert.AreEqual(1, query.Count);
         Assert.AreEqual(client.Games[0].Id, query.Games[0].Id);
         Assert.IsTrue(query.Authority.ContainsGame(client.Games[0].Id));

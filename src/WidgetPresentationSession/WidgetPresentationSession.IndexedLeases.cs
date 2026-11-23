@@ -40,7 +40,7 @@ public sealed partial class WidgetPresentationSession
 
     private bool IsIndexedLeaseCurrentLocked(WidgetPresentationIndexedLease lease) =>
         !lease.Retired && _indexedLeases.TryGetValue(lease.LeaseId, out var owned) && ReferenceEquals(owned, lease) &&
-        IsIndexedOwnerCurrentLocked(lease.Authority, lease.Request.Range, lease.ScopeId);
+        IsIndexedOwnerCurrentLocked(lease.Authority, lease.Request.Range, lease.ScopeId, lease);
 
     private void DemandIndexedLeaseLocked(WidgetPresentationIndexedLease lease)
     {

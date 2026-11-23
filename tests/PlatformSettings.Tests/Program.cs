@@ -169,6 +169,7 @@ static async Task DefaultsAreSafe()
     {
         var settings = await store.LoadAsync();
         Assert.Equal(3, settings.SchemaVersion);
+        Assert.Equal("settings", settings.HomeWidgetId);
         Assert.Equal(ThemeIdentity.BuiltInMonoInk, settings.Appearance.ThemeId);
         Assert.Equal(ThemeIdentity.BuiltInMonoInkVersion, settings.Appearance.ThemeVersion);
         Assert.Equal(1D, settings.Appearance.InterfaceScale);
@@ -178,6 +179,7 @@ static async Task DefaultsAreSafe()
         Assert.Equal(ContrastPreference.System, settings.Appearance.Contrast);
         Assert.Equal(true, settings.Appearance.BoldText);
         Assert.Equal(TransparencyPreference.Full, settings.Appearance.Transparency);
+        Assert.Equal(true, settings.Appearance.AnimateOverlayVisibility);
         Assert.Equal(true, settings.Appearance.AnimateWidgetSwitching);
         Assert.Equal(WidgetFocusAnimation.Settle, settings.Appearance.FocusAnimation);
         Assert.Equal(WidgetSectionAnimation.Slide, settings.Appearance.SectionAnimation);
@@ -194,6 +196,7 @@ static async Task DefaultsAreSafe()
 
         await File.WriteAllTextAsync(store.Paths.SettingsFile, SettingsJson());
         Assert.Equal(ThemeIdentity.BuiltInDefault, (await store.LoadAsync()).Appearance.ThemeId);
+        Assert.Equal(true, (await store.LoadAsync()).Appearance.AnimateOverlayVisibility);
         Assert.Equal(false, (await store.LoadAsync()).Appearance.AnimateWidgetSwitching);
         Assert.Equal(WidgetFocusAnimation.Settle, (await store.LoadAsync()).Appearance.FocusAnimation);
         Assert.Equal(WidgetSectionAnimation.Slide, (await store.LoadAsync()).Appearance.SectionAnimation);
@@ -271,6 +274,7 @@ static async Task SettingsRoundTrip()
     var store = Store(temp.Path);
     var updated = await store.UpdateAsync(current => current with
     {
+        HomeWidgetId = "widgetrail.samples.playnite-library",
         Appearance = current.Appearance with
         {
             ThemeId = "dev.example.slate",
@@ -297,6 +301,7 @@ static async Task SettingsRoundTrip()
     Assert.Equal(true, updated.Appearance.AnimateWidgetSwitching);
     var reloaded = await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync();
     Assert.DocumentEqual(updated, reloaded);
+    Assert.Equal("widgetrail.samples.playnite-library", reloaded.HomeWidgetId);
     Assert.Equal(true, reloaded.Appearance.AnimateWidgetSwitching);
     Assert.Equal(WidgetFocusAnimation.None, reloaded.Appearance.FocusAnimation);
     Assert.Equal(WidgetSectionAnimation.Slide, reloaded.Appearance.SectionAnimation);

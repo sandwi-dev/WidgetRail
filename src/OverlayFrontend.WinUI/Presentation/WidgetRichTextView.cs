@@ -15,7 +15,6 @@ internal sealed partial class WidgetRichTextView : Grid
     {
         Document.Blocks.Add(paragraph);
         Children.Add(Document);
-        SizeChanged += (_, _) => ConstrainLinks();
     }
     internal void DetachExcept(Func<FrameworkElement, bool> retain)
     {
@@ -56,7 +55,6 @@ internal sealed partial class WidgetRichTextView : Grid
             paragraph.Inlines.Remove(inline);
             paragraph.Inlines.Insert(index, inline);
         }
-        ConstrainLinks();
     }
     private static void UpdateRun(TextBlock text, Run run)
     {
@@ -69,11 +67,20 @@ internal sealed partial class WidgetRichTextView : Grid
         Copy(text, TextBlock.FontStyleProperty, run, TextElement.FontStyleProperty);
         Copy(text, TextBlock.TextDecorationsProperty, run, TextElement.TextDecorationsProperty);
     }
-    private void ConstrainLinks()
+    protected override Windows.Foundation.Size MeasureOverride(Windows.Foundation.Size availableSize)
     {
-        if (Document.ActualWidth <= 0) return;
+        // An inline control participates in the paragraph's desired width. Using
+        // that paragraph's arranged ActualWidth as the control's next constraint
+        // feeds the result back into its input and can oscillate as a virtualized
+        // row is revealed. Constrain it from the parent's measure budget instead.
+        var width = Math.Max(0, availableSize.Width - Padding.Left - Padding.Right -
+            BorderThickness.Left - BorderThickness.Right - Document.Margin.Left - Document.Margin.Right);
+        width = Math.Min(width, Document.MaxWidth);
+        if (double.IsFinite(Document.Width)) width = Math.Min(width, Document.Width);
+        var maximum = Math.Max(0, width - Document.Padding.Left - Document.Padding.Right);
         foreach (var link in spans.Keys.OfType<HyperlinkButton>())
-            link.MaxWidth = Math.Max(1, Document.ActualWidth - Document.Padding.Left - Document.Padding.Right);
+            if (link.MaxWidth != maximum) link.MaxWidth = maximum;
+        return base.MeasureOverride(availableSize);
     }
     private static void Copy(DependencyObject from, DependencyProperty source, DependencyObject to, DependencyProperty target)
     {

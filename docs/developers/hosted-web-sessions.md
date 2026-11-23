@@ -171,6 +171,15 @@ not just joining the old one. The notification authorizes no action and carries
 no provider state. Navigation, context retirement and teardown cancel pending
 notifications. Provider-store subscriptions and their account semantics remain
 the widget adapter's responsibility; remove subscriptions when the document ends.
+A sealed session backend can call `host.observeMainView?.()` to observe its
+widget's main panel. The native widget receives an initial
+`{"kind":"main-view-visibility","visible":true}` or its false equivalent in
+`ReadMessagesAsync`, followed by changes. The host computes this from the
+committed widget and the overlay's visibility. A pin, focus in a different
+window, or the backend's own offscreen WebView cannot make the main panel
+visible. The observation lasts for the adapter document and grants no input or
+media permission. Older hosts omit this optional API.
+
 Use `backend.RequestAsync<TRequest,TReply>(method, payload, token)` from native
 widget code. Correlation, cancellation and document retirement follow the shared
 request protocol, including the 16-request limit and 30-second deadline. Unlike

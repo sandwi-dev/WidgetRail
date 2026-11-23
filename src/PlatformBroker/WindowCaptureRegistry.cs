@@ -8,6 +8,8 @@ public sealed record HostWindowCapture(string RequestId, BrokerWidgetIdentity Wi
     WindowCaptureKind Kind, string OutputPath, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] CaptureImageResolution Resolution = CaptureImageResolution.Context)
 {
     public CaptureSessionRequest? Options { get; init; }
+    public bool SaveToLibrary { get; init; }
+    public long? TraySequence { get; init; }
 }
 public sealed record HostCaptureCompletion(string RequestId, int Width, int Height, double DurationSeconds, string? ErrorCode = null, NativeWindowPreviewTarget? Target = null, CaptureApplicationContext? SourceApplication = null)
 {
@@ -48,6 +50,7 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
         internal DateTimeOffset Expires = expires;
         internal WindowCapturePhase Phase;
         internal CaptureAttachment? Attachment;
+        internal long? RecordingStarted;
         internal string? Error;
         internal string RequiredCapability = PlatformCapabilities.WindowCaptureV1;
         internal bool StopRequested;
@@ -115,7 +118,8 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
             if (UsageBytes() + reservation > maximumBytes) throw Error("capture_limit");
             var id = Guid.NewGuid().ToString("N");
             var request = new HostWindowCapture(id, widget, kind,
-                Path.Combine(root, id + (kind == WindowCaptureKind.Screenshot ? ".png" : ".mp4")), resolution) { Options = options };
+                Path.Combine(root, id + (kind == WindowCaptureKind.Screenshot ? ".png" : ".mp4")), resolution) { Options = options,
+                    SaveToLibrary = owner is LibraryJob, TraySequence = (owner as LibraryJob)?.TraySequence };
             entries.Add(id, new(owner, request, clock.GetUtcNow().AddSeconds(120 + (options?.Preparation.DelaySeconds ?? 0) + (options?.Recording?.MaximumDurationSeconds ?? 0))));
             return new(id);
         }
@@ -158,6 +162,7 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
             var entry = Demand(requestId);
             if (entry.Phase != WindowCapturePhase.Preparing) throw Error("capture_stale");
             entry.Phase = WindowCapturePhase.Recording;
+            entry.RecordingStarted = clock.GetUtcNow().ToUnixTimeMilliseconds();
         }
     }
     internal void Complete(HostCaptureCompletion result)
@@ -177,7 +182,9 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
             var attachment = new CaptureAttachment(Guid.NewGuid().ToString("N"),
                 entry.Request.Kind == WindowCaptureKind.Screenshot ? "image/png" : "video/mp4", result.Width, result.Height,
                 file.Exists ? file.Length : 0, result.DurationSeconds, expires.ToUnixTimeMilliseconds())
-                { SourceApplication = result.SourceApplication, Properties = entry.Request.Options is null ? null : result.Properties,
+                { SourceApplication = result.SourceApplication,
+                    SourceProcess = CaptureApplicationMetadata.Interval(result.Target, entry.RecordingStarted, clock.GetUtcNow().ToUnixTimeMilliseconds()),
+                    Properties = entry.Request.Options is null ? null : result.Properties,
                     Origin = entry.OutputSession is null ? CaptureAttachmentOrigin.WindowCapture : CaptureAttachmentOrigin.LibraryRecordingDraft };
             var options = entry.Request.Options;
             if (!attachment.IsWellFormed() || options is not null && !MatchesOptions(options, attachment, result.ResolvedRecording) ||
@@ -323,7 +330,7 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
         }
     }
     private static HostCaptureAttachment Resolved(Entry entry) => new(entry.Attachment!, entry.Request.OutputPath, entry.RequiredCapability)
-        { LeaseExpiresAtUnixMilliseconds = entry.LibraryLease is null ? null : entry.Expires.ToUnixTimeMilliseconds() };
+        { CapturedAtUnixMilliseconds = entry.RecordingStarted, LeaseExpiresAtUnixMilliseconds = entry.LibraryLease is null ? null : entry.Expires.ToUnixTimeMilliseconds() };
     /// <summary>Transfers an already verified, path-pinned PNG or MP4 lease without copying its original bytes.</summary>
     internal CaptureAttachment AdoptLibraryMedia(object owner, BrokerWidgetIdentity identity, CaptureLibraryReadLease source, CancellationToken token)
     {
@@ -344,6 +351,7 @@ internal sealed partial class WindowCaptureRegistry(TimeProvider? time = null, l
     }
     private void ReleaseEntry(Entry entry, long? reserved = null)
     {
+        if (entry.Owner is LibraryJob job) job.Completion?.TrySetResult();
         if(entry.OutputSession is {} output){output.Dispose();}
         else if (entry.LibraryLease is { } lease) { entry.LibraryLease = null; lease.Dispose(); }
         else if (!entry.BorrowedOriginal) Delete(entry.Request.OutputPath, reserved ?? entry.Attachment?.ByteLength);

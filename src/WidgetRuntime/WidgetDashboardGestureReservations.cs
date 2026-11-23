@@ -22,8 +22,10 @@ internal sealed class WidgetDashboardGestureReservations(
         ControllerInputEvent input,
         WidgetDashboardGestureAuthority authority)
     {
-        if (input.Context != ControllerInputContext.DashboardQuickAction ||
-            input.Origin != ControllerInputOrigin.PhysicalController ||
+        if (input.Context != (authority.TrayCommand is not null || authority.CaptureCommand is not null ? ControllerInputContext.TrayQuickAction : ControllerInputContext.DashboardQuickAction) ||
+            input.TrayOffer?.MediaCommand != authority.TrayCommand ||
+            input.TrayOffer?.CaptureCommand != authority.CaptureCommand ||
+            input.Origin != ControllerInputOrigin.PhysicalController && authority.CaptureCommand is null && authority.TrayCommand is null ||
             input.Sequence != authority.InputSequence ||
             input.SnapshotSequence != authority.SnapshotSequence ||
             authority.InputSequence <= 0 || authority.SnapshotSequence <= 0 ||

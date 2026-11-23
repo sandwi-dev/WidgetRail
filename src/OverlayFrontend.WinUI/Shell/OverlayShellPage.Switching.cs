@@ -15,11 +15,12 @@ internal sealed partial class OverlayShellPage
     private (long Selection, Exception Error)? preparationFailure;
     private readonly PlatformInputDiagnostics? switchDiagnostics;
 
-    private async Task SelectAsync(string id, bool enterWidget = true, bool preserveIntent = false,
+    private async Task<bool> SelectAsync(string id, bool enterWidget = true, bool preserveIntent = false,
         Func<WidgetPresentationFrame, CancellationToken, Task>? beforeReveal = null, CancellationToken selectionCancellation = default,
-        bool retainIntentSource = false)
+        bool retainIntentSource = false, bool homeFallbackAvailable = false)
     {
-        if (retired || owner is null) return;
+        if (retired || owner is null) return false;
+        if (id != activeWidget) cataloguePreviewCancellation?.Cancel();
         if (enterWidget || id != activeWidget) CloseUtilityPanel();
         if (!preserveIntent) intentCancellation?.Cancel();
         // Closing focused switcher chrome can synchronously give XAML focus to
@@ -55,7 +56,7 @@ internal sealed partial class OverlayShellPage
             try
             {
                 token.ThrowIfCancellationRequested();
-                if (!visible) return;
+                if (!visible) return false;
                 var previousId = activeWidget;
                 var previous = previousId is not null && retainedSurfaces.TryGetValue(previousId, out var displayed) ? displayed : null;
                 if (previous is not null && previous.Presenter.CapturePresentationState() is { } memory)
@@ -74,12 +75,13 @@ internal sealed partial class OverlayShellPage
                 token.ThrowIfCancellationRequested();
                 if (owner.Session.GetTarget(id).Descriptor is { IsStopped: true } stopped)
                 {
+                    if (homeFallbackAvailable) return false;
                     await PresentStoppedWidgetAsync(stopped);
                     switching = false;
                     inputPublished = true;
                     PublishInputOwnership();
                     Mark("stopped");
-                    return;
+                    return false;
                 }
                 var incoming = await PrepareWidgetSurfaceAsync(id, token);
                 preparingSurface = incoming;
@@ -195,14 +197,15 @@ internal sealed partial class OverlayShellPage
                 selectionCancellation.IsCancellationRequested ? "cancelled" : "timed-out");
             if (!retired && visible && version == selectionVersion)
             {
-                if (preparationFailure is { } failure && failure.Selection == version) ReportFailure(failure.Error);
-                else if (!selectionCancellation.IsCancellationRequested) ShowRecovery("The widget is taking too long to open. Try again.", true);
+                if (preparationFailure is { } failure && failure.Selection == version) ReportSelectionFailure(failure.Error);
+                else if (!selectionCancellation.IsCancellationRequested && !homeFallbackAvailable)
+                    ShowRecovery("The widget is taking too long to open. Try again.", true);
             }
         }
         catch (Exception error)
         {
             Mark("failed");
-            if (version == selectionVersion) ReportFailure(error);
+            if (version == selectionVersion) ReportSelectionFailure(error);
         }
         finally
         {
@@ -220,6 +223,13 @@ internal sealed partial class OverlayShellPage
                 UpdateDiagnostics();
                 if (!retired) _ = ReconcileLifecycleAsync(restore: false);
             }
+        }
+        return inputPublished;
+
+        void ReportSelectionFailure(Exception error)
+        {
+            if (homeFallbackAvailable) Diagnostics.FrontendFailureLog.Current.Write("home-widget", error);
+            else ReportFailure(error);
         }
         void PublishInputOwnership()
         {

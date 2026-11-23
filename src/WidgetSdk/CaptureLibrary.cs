@@ -7,6 +7,11 @@ public static partial class WidgetCaptureLibraryCapabilities
     public const string ReadPermission = "media.capture-library.read.v1";
     public const string SavePermission = "media.capture-library.save.v1";
     public const string ManagePermission = "media.capture-library.manage.v1";
+    public static WidgetCapabilityOperation<CaptureLibraryAttachContextRequest, CaptureLibraryContextSaveResult> AttachContext { get; } = new(ManagePermission, "capture-library.attach-context");
+    public static WidgetCapabilityOperation<CaptureLibraryEnsureSubjectRequest, CaptureLibrarySubjectResult> EnsureSubject { get; } = new(ManagePermission, "capture-library.ensure-subject");
+    public static WidgetCapabilityOperation<CaptureDestinationChange, WidgetCapabilityAcknowledgement> ChangeDestination { get; } = new(ManagePermission, "capture-library.change-destination");
+    public static WidgetCapabilityOperation<CaptureLibrarySetContextLinkedRequest, CaptureLibraryContextSaveResult> SetContextLinked { get; } = new(ManagePermission, "capture-library.set-context-linked");
+    public static WidgetCapabilityOperation<CaptureLibraryOwnedLinksRequest, CaptureLibraryOwnedLinks> FindOwnedLinks { get; } = new(ReadPermission, "capture-library.find-owned-links");
     public const string RecycleLinkedPermission = "media.capture-library.recycle-linked.v1";
     public static WidgetCapabilityOperation<CaptureLibraryReference, CaptureLibraryItem> GetMetadata { get; } = new(ReadPermission, "capture-library.get-metadata");
     public static WidgetCapabilityOperation<CaptureLibraryQueryRequest, CaptureLibraryQueryPage> Query { get; } = new(ReadPermission, "capture-library.query");
@@ -14,6 +19,7 @@ public static partial class WidgetCaptureLibraryCapabilities
     public static WidgetCapabilityOperation<CaptureLibraryApplicationsRequest, CaptureLibraryApplications> Applications { get; } = new(ReadPermission, "capture-library.applications");
     public static WidgetCapabilityOperation<CaptureLibraryFoldersRequest, CaptureLibraryFolders> Folders { get; } = new(ReadPermission, "capture-library.folders");
     public static WidgetCapabilityOperation<CaptureLibraryGroupsRequest, CaptureLibraryGroups> Groups { get; } = new(ReadPermission, "capture-library.groups");
+    public static WidgetCapabilityOperation<CaptureLibraryRunsRequest, CaptureLibraryRunsPage> Runs { get; } = new(ReadPermission, "capture-library.runs");
     public static WidgetCapabilityOperation<CaptureLibraryFindRequest, CaptureLibraryPosition> Find { get; } = new(ReadPermission, "capture-library.find");
     public static WidgetCapabilityOperation<CaptureLibraryMetadataRequest, CaptureLibraryItem> UpdateMetadata { get; } = new(ManagePermission, "capture-library.metadata");
     public static WidgetCapabilityOperation<CaptureLibraryBatchMetadataRequest, CaptureLibraryBatchResult> UpdateMetadataBatch { get; } = new(ManagePermission, "capture-library.metadata-batch");
@@ -31,6 +37,7 @@ public static partial class WidgetCaptureLibraryCapabilities
     public static WidgetCapabilityOperation<CaptureAttachmentRequest, WidgetCapabilityAcknowledgement> Release { get; } = new(ReadPermission, "capture-library.release");
     public static WidgetCapabilityOperation<CaptureLibrarySaveWithContextRequest, CaptureLibraryContextSaveResult> SaveWithContext { get; } = new(SavePermission, "capture-library.save-context");
     public static WidgetCapabilityOperation<CaptureLibraryContextsRequest, CaptureLibraryContextsPage> GetContexts { get; } = new(ReadPermission, "capture-library.contexts");
+    public static WidgetCapabilityOperation<CaptureLibraryContextsRequest, CaptureLibraryDestinationsPage> GetDestinations { get; } = new(ReadPermission, "capture-library.destinations");
     public static WidgetCapabilityOperation<CaptureLibrarySaveRequest, CaptureLibraryItem> Save { get; } = new(SavePermission, "capture-library.save");
     public static WidgetCapabilityOperation<CaptureLibrarySaveRequest, CaptureLibraryItem> SaveCurrent { get; } = new(SavePermission, "capture-library.save-current");
     public static WidgetCapabilityOperation<CaptureLibraryReference, WidgetCapabilityAcknowledgement> Delete { get; } = new(ManagePermission, "capture-library.delete");
@@ -61,7 +68,7 @@ public sealed partial class WidgetCaptureLibraryService
         return result with { Items = result.Items.ToArray() };
     }
 
-    /// <summary>Read a bounded range with a broker proof that ordering and membership survived favorite-only edits. Compare only for identical query filters; range reads still require Page.Revision.</summary>
+    /// <summary>Read a bounded range with a broker proof of unchanged ordering and membership for identical filters. Favorite and association changes can preserve the ordering of unaffected queries. Range reads still require Page.Revision.</summary>
     public async ValueTask<CaptureLibraryContinuityPage> QueryContinuityAsync(CaptureLibraryQuery query, int offset = 0, int count = 40,
         string? revision = null, CancellationToken cancellationToken = default)
     {
@@ -99,6 +106,32 @@ public sealed partial class WidgetCaptureLibraryService
                 string.IsNullOrWhiteSpace(item.Label) || !CaptureLibraryLimits.ValidText(item.Label, 240) || item.Count < 0) ||
             result.Items.Select(item => item.SourceId).Distinct(StringComparer.Ordinal).Count() != result.Items.Count) throw Malformed();
         return result with { Items = result.Items.ToArray() };
+    }
+
+    /// <summary>Page groups of matching captures that share an exact source process instance.
+    /// Items lacking that evidence each form a separate group. Source hints rank groups without changing their membership.</summary>
+    public async ValueTask<CaptureLibraryRunsPage> RunsAsync(CaptureLibraryRunsRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!request.IsWellFormed()) throw new ArgumentException("Invalid capture run query.", nameof(request));
+        request = request with { SourceTerms = request.SourceTerms?.ToArray(),
+            Query = request.Query with { SourceIntervals = request.Query.SourceIntervals?.ToArray() } };
+        if (!request.IsWellFormed()) throw new ArgumentException("Invalid capture run query.", nameof(request));
+        var page = await client.InvokeAsync(WidgetCaptureLibraryCapabilities.Runs, request, cancellationToken).ConfigureAwait(false);
+        if (page?.Items is null || page.Offset != request.Offset || page.Items.Count > request.Count ||
+            page.HasMore && page.Items.Count != request.Count || !CaptureLibraryLimits.ValidRevision(page.Revision) ||
+            request.Revision is not null && page.Revision != request.Revision) throw Malformed();
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var run in page.Items)
+        {
+            if (run is null || !CaptureLibraryLimits.Valid(run.Latest) || run.From <= 0 || run.Through < run.From ||
+                !CaptureContextLimits.Timestamp(run.Through) || run.Screenshots < 0 || run.Videos < 0 ||
+                (run.Latest.Media.ContentType == "video/mp4" ? run.Videos : run.Screenshots) == 0 ||
+                run.ProcessInstance != run.Latest.Media.SourceProcess?.Instance || !keys.Add(run.ProcessInstance ?? run.Latest.Id) ||
+                (run.Latest.Media.SourceProcess is { } interval ? interval.From < run.From || interval.Through > run.Through :
+                    (long)run.Screenshots + run.Videos != 1)) throw Malformed();
+        }
+        return page with { Items = page.Items.ToArray() };
     }
 
     /// <summary>Returns a complete bounded month partition for Newest/Oldest ordering using the host local calendar. Widgets supply localized labels.</summary>

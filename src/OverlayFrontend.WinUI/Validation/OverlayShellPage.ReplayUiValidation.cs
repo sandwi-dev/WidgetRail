@@ -32,6 +32,157 @@ internal sealed partial class OverlayShellPage
                     throw new InvalidOperationException("Replay UI validation requires its isolated bridge fixture.");
                 App.Window!.Activate(); await Until(() => App.Window is MainWindow { ValidationOwnsForeground: true });
                 await SelectAsync("replay-approval", true); await Until(() => MainFocusEnabled && Node("approval.enable") is not null);
+                var startMode = FrontendArguments.Value(Environment.GetCommandLineArgs(), "--verify-replay-start-notice");
+                if (startMode == "rejection")
+                {
+                    step = "post-dispatch quick action failure";
+                    var assigned = new TrayActionBinding("replay-approval", "reject", "example.fixture", Package: "example.replay-approval");
+                    preferences = preferences with { TrayActions = preferences.TrayActions.Assign(TrayDirection.Up, assigned) };
+                    await SelectAsync("replay-approval", false);
+                    PrepareRadialBackEntry();
+                    RefreshRadialChooser();
+                    await Until(() => RadialOpen && displayedFavorites[(int)TrayDirection.Up]?.Action?.TrayOffer?.Id == "reject");
+                    Receive(new WidgetRail.OverlayPlatformClient.ControllerFrame { Connected = 1, PressedButtons = 1,
+                        State = new() { Buttons = 1 }, DpadNavigation = new() { Phase = WidgetRail.OverlayPlatformClient.NavigationPhase.Pressed,
+                            Direction = WidgetRail.OverlayPlatformClient.NavigationDirection.Up } });
+                    Receive(new WidgetRail.OverlayPlatformClient.ControllerFrame { Connected = 1, ReleasedButtons = 1 });
+                    await Until(() => notificationBannerState.Visible.Any(slot => slot.Entry.WasShown && slot.Entry.Body == "The fixture player disconnected."));
+                    Check(notificationBannerState.Visible.Count(slot => slot.Entry.Title == "Quick actions") == 1 &&
+                        runningFavorites.Count == 0, "One native banner displayed the worker's terminal reason and cleared progress.");
+                    await CapturePopupDecisionAsync(notificationBanner!.AutomationRoot, "rejection", output);
+                    return;
+                }
+                if (startMode == "management")
+                {
+                    step = "open approved applications";
+                    await SelectAsync("capture-replay-fixture", true);
+                    await Choose("capture-library.more", "settings");
+                    await Activate("capture-library.approvals.open");
+                    await Until(() => Node("capture-library.approvals.empty") is not null);
+                    step = "choose generated application";
+                    await Until(() => Node("capture-library.approvals.add") is { IsDisabled: not true });
+                    await Until(() => surface!.FocusHostTarget("capture-library.approvals.add"));
+                    await Press(ControllerButton.A);
+                    await Until(() => hostChoiceDialog?.IsOpenForValidation == true);
+                    var windows = await TaskWindows.GetWindowsAsync(lifetime.Token);
+                    var generated = windows.Single(item => item.PreviewTarget?.ClassName == "WidgetRailCaptureFixture");
+                    var list = Descendants(hostChoiceDialog!).OfType<ListView>().Single(view => AutomationProperties.GetName(view) == "Available options");
+                    var row = list.Items.OfType<ListViewItem>().Single(item => AutomationProperties.GetName(item) == generated.ApplicationName);
+                    list.ScrollIntoView(row);
+                    await Until(() => row.IsLoaded && row.ActualHeight > 0);
+                    Check(row.Focus(FocusState.Keyboard), "Generated application accepts native focus.");
+                    await Press(ControllerButton.A);
+                    var removal = "capture-library.approvals." + generated.ApplicationIdentity;
+                    await Until(() => hostChoiceDialog is null && Node(removal) is { IsDisabled: not true });
+                    Check(backend.Starts == 0 && ReplayStatusForHost?.Settings.Enabled == false, "Settings approved the application without starting replay.");
+                    var panel = Descendants(XamlRoot.Content).OfType<WidgetModalPanel>().Single(item => item.ActualHeight > 0 && item.IsLoaded);
+                    await CapturePopupDecisionAsync(panel, "approved-applications", output);
+                    await Until(() => surface!.FocusHostTarget(removal));
+                    await Press(ControllerButton.A);
+                    await Until(() => Node("capture-library.approvals.empty") is not null);
+                    Check(backend.Starts == 0, "Removing the approval kept recording off.");
+                    return;
+                }
+                if (startMode is "manual" or "automatic" or "ambiguous" or "focused")
+                {
+                    step = startMode + " start notice";
+                    if (startMode is "ambiguous" or "focused")
+                    {
+                        var expected = uint.Parse(FrontendArguments.Value(Environment.GetCommandLineArgs(), "--verify-replay-foreground")!);
+                        var handle = ulong.Parse(FrontendArguments.Value(Environment.GetCommandLineArgs(), "--verify-replay-window")!);
+                        using var process = System.Diagnostics.Process.GetProcessById((int)expected);
+                        var target = new WidgetRail.WindowsWindowActivation.TaskWindowTarget(handle, expected,
+                            (ulong)process.StartTime.ToUniversalTime().ToFileTimeUtc(), "WidgetRailCaptureFixture");
+                        var activation = new WidgetRail.WindowsWindowActivation.WindowsTaskWindowActivation();
+                        Check(activation.IsCurrent(target), "Foreground fixture identity matches the generated window.");
+                        // Inject the exact pre-overlay foreground observation. The live window catalog,
+                        // controller routing, chooser, recorder and notification path remain in use.
+                        ForegroundBeforeOverlay = () => new(target.Handle.ToString("X"), target.ProcessId,
+                            target.ProcessCreated.ToString("X16"), target.ClassName);
+                        await Until(() => ReplayStatusForHost is { Phase: CaptureReplayPhase.Waiting, Issue: CaptureReplayIssue.TargetUnavailable });
+                        Check(hostChoiceDialog is null && backend.Starts == 0 && !notificationCenter!.Inbox.Entries.Any(item => item.Title == "Replay recording started"),
+                            "Multiple open approved applications kept startup silent.");
+                        await SelectAsync("capture-replay-fixture", true);
+                        await OpenStart();
+                        if (startMode == "ambiguous")
+                        {
+                            await Until(() => hostChoiceDialog?.IsOpenForValidation == true);
+                            await Press(ControllerButton.B);
+                            await Until(() => hostChoiceDialog is null);
+                            Check(backend.Starts == 0, "An explicit start from an unapproved app opened a cancellable chooser.");
+                            return;
+                        }
+                    }
+                    if (startMode == "manual")
+                    {
+                        await SelectAsync("capture-replay-fixture", true);
+                        await Until(() => MainFocusEnabled && Node("capture-library.replay.start") is not null);
+                        await StartOwned(addToApproved: true);
+                    }
+                    await Until(() => ReplayStatusForHost is { Phase: CaptureReplayPhase.Recording, TargetName: not null } &&
+                        notificationCenter!.Inbox.Entries.Any(entry => entry.Title == "Replay recording started" && entry.WasShown));
+                    var notice = notificationCenter!.Inbox.Entries.Single(entry => entry.Title == "Replay recording started");
+                    Check(notice.Widget == "capture-replay-fixture" && notice.Body == ReplayStatusForHost!.TargetName && notice.Pending && backend.Starts == 1,
+                        "Exactly one start notice names the app recorded by the guarded backend.");
+                    await CapturePopupDecisionAsync(notificationBanner!.AutomationRoot, startMode + "-start", output);
+                    if (startMode == "manual")
+                    {
+                        foreach (var settings in new[] { false, true })
+                        {
+                            step = settings ? "settings replay shortcuts" : "gallery replay shortcuts";
+                            if (settings)
+                            {
+                                await Choose("capture-library.more", "settings");
+                                await Until(() => Node("capture-library.settings.page") is not null && FocusId() == "Widget.capture-library.settings.back");
+                            }
+                            await Until(() => Node("capture-library.replay.save.hint")?.ControllerPrompt == ControllerPrompt.LeftBumper &&
+                                Node("capture-library.replay.stop.hint")?.ControllerPrompt == ControllerPrompt.RightBumper);
+                            var priorClips = SavedCount();
+                            var controls = Descendants(surface!).OfType<FrameworkElement>().First(element =>
+                                AutomationProperties.GetAutomationId(element) == "Widget.capture-library.replay.controls");
+                            foreach (var family in new[] { WidgetRail.OverlayPlatformClient.ControllerFamily.Xbox, WidgetRail.OverlayPlatformClient.ControllerFamily.PlayStation })
+                            {
+                                surface!.SetControllerFamily(family);
+                                surface.ApplyAppearance(Appearance with { TextScale = settings ? 1.25 : 1 }, false);
+                                await CapturePopupDecisionAsync(controls, $"{(settings ? "settings" : "gallery")}-{family}-bumpers", output);
+                                var glyphs = Descendants(controls).OfType<FontIcon>().Where(icon =>
+                                    AutomationProperties.GetAutomationId(icon) is "Widget.capture-library.replay.save.hint" or "Widget.capture-library.replay.stop.hint").ToArray();
+                                Check(glyphs.Length == 2 && glyphs.All(icon =>
+                                {
+                                    var intrinsic = new FontIcon { FontFamily = icon.FontFamily, FontSize = icon.FontSize, Glyph = icon.Glyph };
+                                    intrinsic.Measure(new(double.PositiveInfinity, double.PositiveInfinity));
+                                    return icon.ActualWidth + .5 >= intrinsic.DesiredSize.Width && icon.ActualHeight + .5 >= intrinsic.DesiredSize.Height;
+                                }), $"{family} bumper controls fit their font metrics.");
+                            }
+                            surface!.SetControllerFamily(WidgetRail.OverlayPlatformClient.ControllerFamily.Xbox);
+                            surface.ApplyAppearance(Appearance, systemUi.AnimationsEnabled);
+                            await Press(ControllerButton.LeftBumper);
+                            await Until(() => SavedCount() == priorClips + 1 && ReplayStatusForHost?.Saving == false);
+                            await Until(() => notificationBannerState.Visible.Any(slot => slot.Entry.WasShown &&
+                                slot.Entry.Body?.EndsWith($"of replay from {notice.Body}.", StringComparison.Ordinal) == true));
+                            Check(true, $"Left bumper saved one clip from {(settings ? "settings" : "the gallery")}.");
+                            if (!settings)
+                            {
+                                step = "gallery Menu shortcut";
+                                await Until(() => Node("capture-library.entries")?.IndexedCollection?.Count > 0 &&
+                                    Descendants(surface!).OfType<WidgetIndexedCollectionView>().Any(view => view.IsLoaded && view.ActualHeight > 0));
+                                var gallery = Descendants(surface!).OfType<WidgetIndexedCollectionView>().Single();
+                                Check(gallery.Enter(), "Saved clip accepts native gallery focus.");
+                                await Until(() => gallery.CaptureContextRow() is not null && !gallery.HasPendingNativeNavigation);
+                                var key = gallery.CaptureContextRow()!.Value.Row.Item.Key;
+                                await Press(ControllerButton.Menu);
+                                await Until(() => FocusId()?.StartsWith("Widget.capture-library.more.Option.", StringComparison.Ordinal) == true);
+                                await Press(ControllerButton.B);
+                                await Until(() => !surface!.HasTransientControl && gallery.CaptureContextRow()?.Row.Item.Key == key);
+                                Check(true, "Menu opened toolbar commands and dismissal returned to the saved clip.");
+                            }
+                        }
+                        await Press(ControllerButton.RightBumper);
+                        await Until(() => ReplayStatusForHost is { SessionId: null, Settings.Enabled: false });
+                        Check(backend.Disposals == 1, "Right bumper stopped the same recording from settings.");
+                    }
+                    return;
+                }
                 step = "approval cancel";
                 await Activate("approval.enable"); await Until(() => hostChoiceDialog?.IsOpenForValidation == true);
                 Check(hostChoiceDialog!.ChoiceIdsForValidation.SequenceEqual(new string[] { "enable" }), "Explicit enabling uses the production bounded approval dialog");
@@ -178,7 +329,7 @@ internal sealed partial class OverlayShellPage
             }
             Control? Popup(string id)=>VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot).SelectMany(popup=>Descendants(popup.Child))
                 .OfType<Control>().FirstOrDefault(control=>AutomationProperties.GetAutomationId(control)==id);
-            async Task StartOwned()
+            async Task StartOwned(bool addToApproved = false)
             {
                 await OpenStart(); await Until(() => hostChoiceDialog?.IsOpenForValidation == true);
                 var list = Descendants(hostChoiceDialog!).OfType<ListView>().Single(view => AutomationProperties.GetName(view) == "Available options");
@@ -187,6 +338,14 @@ internal sealed partial class OverlayShellPage
                     ?? throw new InvalidOperationException("The owned synthetic source is absent from the native chooser.");
                 list.ScrollIntoView(row); await Until(() => row.IsLoaded && row.ActualHeight > 0);
                 Check(row.Focus(FocusState.Keyboard), "Owned source row accepts native controller focus"); await Press(ControllerButton.A);
+                await Until(() => FocusId() == "Host.Choice.Primary");
+                if (addToApproved)
+                {
+                    await CapturePopupDecisionAsync(hostChoiceDialog!, "source", output);
+                    var secondary = Descendants(hostChoiceDialog!).OfType<Button>().Single(button => button.Name == "SecondaryButton");
+                    Check(secondary.Focus(FocusState.Keyboard), "Record and add to approved accepts focus.");
+                }
+                await Press(ControllerButton.A);
                 await Until(() => hostChoiceDialog is null && ReplayStatusForHost is { Phase: CaptureReplayPhase.Recording, BufferedDurationSeconds: >= 2 });
             }
             async Task<MenuFlyoutItem> TrayCommand(string id)

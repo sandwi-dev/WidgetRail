@@ -148,6 +148,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Profile authority quarantine rejects overlapping worker targets", ProfileQuarantineRejectsOverlap),
     ("DACL comparison preserves all authority except Windows AI bookkeeping", DaclRestorationScenarios.ComparisonPreservesAuthority),
     ("DACL restoration accepts real Windows legacy descriptor normalization", DaclRestorationScenarios.LegacyDescriptorRoundTrip),
+    ("Tray action outcomes survive fast completion and worker retirement", TrayOutcomeScenarios.RunAsync),
     ("Worker exit diagnostic survives completed session cleanup", SessionRetirementScenarios.ExitDiagnosticSurvivesCleanup),
     ("Authority recovery retries exact state and rejects stale confirmation", AuthorityRecoveryIsExact),
     ("Legacy authority recovery uses the recorded profile owner", LegacyAuthorityRecoveryUsesOwner),
@@ -260,6 +261,8 @@ static async Task<int> RunWorkerAsync(string[] arguments)
         ? new TextSuggestionProcessProbe()
         : arguments.Contains("--intent-probe", StringComparer.Ordinal)
         ? new IntentProbeWidget()
+        : arguments.Contains("--tray-outcome-probe", StringComparer.Ordinal)
+        ? new TrayOutcomeProbe()
         : arguments.Contains("--indexed-lease-probe", StringComparer.Ordinal)
         ? new IndexedLeaseProbeWidget()
         : arguments.Contains("--indexed-range-probe", StringComparer.Ordinal)

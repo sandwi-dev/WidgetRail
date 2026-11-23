@@ -33,10 +33,10 @@ public sealed class CaptureLibraryOutputSession : IDisposable
         Func<bool> isAuthorized, CancellationToken cancellationToken = default)
         =>CommitCoreAsync(media,capturedAtUnixMilliseconds,isAuthorized,cancellationToken,false);
     internal Task<CaptureLibraryItem> CommitDraftAsync(CaptureAttachment media,long capturedAtUnixMilliseconds,
-        Func<bool> isAuthorized,CancellationToken cancellationToken)
-        =>CommitCoreAsync(media,capturedAtUnixMilliseconds,isAuthorized,cancellationToken,true);
+        Func<bool> isAuthorized,CancellationToken cancellationToken, Func<CancellationToken, Task>? reauthorize = null)
+        =>CommitCoreAsync(media,capturedAtUnixMilliseconds,isAuthorized,cancellationToken,true,reauthorize);
     private async Task<CaptureLibraryItem> CommitCoreAsync(CaptureAttachment media,long capturedAtUnixMilliseconds,
-        Func<bool> isAuthorized,CancellationToken cancellationToken,bool preserveUnpublished)
+        Func<bool> isAuthorized,CancellationToken cancellationToken,bool preserveUnpublished, Func<CancellationToken, Task>? reauthorize = null)
     {
         lock (gate)
         {
@@ -44,7 +44,7 @@ public sealed class CaptureLibraryOutputSession : IDisposable
             committing = true;
         }
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(Lifetime, cancellationToken);
-        try { return await store.CommitOutputAsync(this, media, capturedAtUnixMilliseconds, isAuthorized, lifetime.Token).ConfigureAwait(false); }
+        try { return await store.CommitOutputAsync(this, media, capturedAtUnixMilliseconds, isAuthorized, lifetime.Token, reauthorize).ConfigureAwait(false); }
         finally
         {
             lock (gate) { committing = false; if (closed && !cancelling) Release(); }

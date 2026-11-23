@@ -114,6 +114,9 @@ internal sealed class ProtocolVersionRequirements
                 "$.pinnedLayouts",
                 $"Pinned presentation projections require protocol version {ProtocolConstants.PinnedPresentationProjectionsVersion} or later.");
 
+        if (snapshot.EmbeddedMediaSession?.Commands?.Contains(EmbeddedMediaCommand.ToggleMute) == true)
+            Add("embedded-toggle-mute", ProtocolConstants.EmbeddedGalleryVersion, "$.embeddedMediaSession.commands",
+                "Mute commands for embedded players require protocol version 141 or later.");
         if (snapshot.EmbeddedMediaSession is not null)
             Add(
                 "embedded-media-session",
@@ -134,9 +137,15 @@ internal sealed class ProtocolVersionRequirements
                     inferDeferredFocusGroupEntry: false);
         }
 
+        if (snapshot.UnavailableTrayActions is not null)
+            Add("tray-action-reasons", ProtocolConstants.TrayActionOfferVersion, "$.unavailableTrayActions",
+                $"Tray action explanations require protocol version {ProtocolConstants.TrayActionOfferVersion} or later.");
         var quickActions = snapshot.QuickActions ?? [];
         for (var index = 0; index < quickActions.Count; index++)
         {
+            if (quickActions[index]?.TrayOffer is not null)
+                Add("tray-action-offer", ProtocolConstants.TrayActionOfferVersion, $"$.quickActions[{index}].trayOffer",
+                    $"Tray action offers require protocol version {ProtocolConstants.TrayActionOfferVersion} or later.");
             if (quickActions[index]?.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld)
                 Add(
                     "held-button-action-repeat",
@@ -158,9 +167,39 @@ internal sealed class ProtocolVersionRequirements
             string path,
             int depth,
             string inheritedScope,
-            bool inferDeferredFocusGroupEntry)
+            bool inferDeferredFocusGroupEntry, bool inReadingGroup = false)
         {
             if (node is null) return;
+            if (inReadingGroup && ReadingGroupContentContract.IsSavedPreview(node.MediaPlayer))
+                Add("reading-group-saved-preview", ProtocolConstants.ReadingGroupViewportVersion, path,
+                    "Expanded saved capture previews in reading groups require protocol version 139 or later.");
+            if (node.MediaPlayer?.Presentation == MediaPlayerPresentation.Inline)
+                Add("inline-video", ProtocolConstants.InlineVideoVersion, path,
+                    "On-demand inline video requires protocol version 134 or later.");
+            if (node.ImageIsPublicMedia || node.MediaPlayer?.Source.IsPublicMedia == true ||
+                node.MediaPlayer?.Gallery?.Any(item => item?.Source.IsPublicMedia == true) == true)
+                Add("public-media", ProtocolConstants.PublicMediaVersion, path,
+                    "Anonymous same-origin media requires protocol version 133 or later.");
+            if (node.MediaPlayer is { } media && (media.Presentation == MediaPlayerPresentation.Animation ||
+                media.Options?.IsAnimation == true || media.Gallery?.Any(item => item?.Options?.IsAnimation == true) == true || node.ImageSource is not null))
+                Add("inline-animation", ProtocolConstants.InlineAnimationVersion, path,
+                    "Passive media, decorative video motion and URL posters require protocol version 131 or later.");
+            if (node.MediaPlayer?.Source.Kind == MediaPlayerSourceKind.WebImage)
+                Add("remote-image-player", ProtocolConstants.RemoteImagePlayerVersion, path,
+                    "Remote image viewers require protocol version 129 or later.");
+            if (node.MediaPlayer?.Gallery is not null)
+                Add("media-player-gallery", ProtocolConstants.MediaPlayerGalleryVersion, path,
+                    "Media galleries require protocol version 129 or later.");
+            if (node.MediaPlayer?.InlineCarousel == true)
+                Add("inline-carousel", ProtocolConstants.InlineCarouselVersion, path, "Inline media carousels require protocol version 142 or later.");
+            if (node.MediaPlayer?.Source.Kind == MediaPlayerSourceKind.EmbeddedSession ||
+                node.MediaPlayer?.Gallery?.Any(item => item?.Source?.Kind == MediaPlayerSourceKind.EmbeddedSession) == true)
+                Add("embedded-gallery", ProtocolConstants.EmbeddedGalleryVersion, path, "Embedded session galleries require protocol version 141 or later.");
+            if (node.MediaPlayer?.Gallery?.Any(item => item?.PublicThumbnail is not null) == true)
+                Add("gallery-thumbnails", ProtocolConstants.GalleryThumbnailVersion, path,
+                    "Public gallery thumbnails require protocol version 140 or later.");
+            if (node.MediaPlayer?.Source.IsAdaptiveDash == true || node.MediaPlayer?.Gallery?.Any(item => item?.Source.IsAdaptiveDash == true) == true)
+                Add("adaptive-dash", ProtocolConstants.GalleryThumbnailVersion, path, "Checked DASH playback requires protocol version 140 or later.");
             if (node.FocusPreview?.AllowMedia == true || node.MediaPlayer?.Source.Kind == MediaPlayerSourceKind.SavedCapture ||
                 node.Kind == ViewNodeKind.MediaPlayer && node.ArtworkHandle is not null)
                 Add("preview-media", ProtocolConstants.PreviewMediaVersion, path, "Saved capture sources and native preview media require protocol version 116 or later.");
@@ -195,12 +234,18 @@ internal sealed class ProtocolVersionRequirements
             if (node.ModalDismissal is not null)
                 Add("modal-dismissal", ProtocolConstants.ModalDismissalVersion, path + ".modalDismissal",
                     $"Explicit modal dismissal requires protocol version {ProtocolConstants.ModalDismissalVersion} or later.");
+            if (node.OverlayModal is not null)
+                Add("overlay-modal", ProtocolConstants.OverlayModalVersion, path + ".overlayModal",
+                    "Overlay-relative modals require protocol version 135 or later.");
             if (node.GridLayout is not null || node.GridCell is not null)
                 Add("grid-layout", ProtocolConstants.GridLayoutVersion, path,
                     $"Explicit Grid layout and cell placement require protocol version {ProtocolConstants.GridLayoutVersion} or later.");
             if(node.GridCell is {HorizontalAlignment:not null} or {VerticalAlignment:not null})
                 Add("grid-cell-alignment",ProtocolConstants.TargetedCollectionPresentationVersion,path+".gridCell",
                     $"Grid cell content alignment requires protocol version {ProtocolConstants.TargetedCollectionPresentationVersion} or later.");
+            if (node.GridLayout?.RevealBodyOnFocus == true)
+                Add("focus-reveal-grid", ProtocolConstants.FocusRevealGridVersion, path + ".gridLayout.revealBodyOnFocus",
+                    $"Focus-driven header reveal requires protocol version {ProtocolConstants.FocusRevealGridVersion} or later.");
             nodes++;
             if (nodes > ProtocolConstants.MaximumNodeCount ||
                 depth > ProtocolConstants.MaximumTreeDepth)
@@ -276,6 +321,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.IndexedSelection is not null)
                 Add("indexed-selection", ProtocolConstants.IndexedSelectionVersion, path + ".indexedSelection",
                     "Indexed selection requires protocol version 112 or later.");
+            if(node.IndexedSelection?.SupportsHeldSelection==true)
+                Add("held-indexed-selection",ProtocolConstants.HeldCollectionSelectionVersion,path+".indexedSelection.supportsHeldSelection",
+                    "Held indexed selection requires protocol version 128 or later.");
             if (node.IndexedOccurrenceKeys is not null)
                 Add("indexed-continuity", ProtocolConstants.IndexedContinuityVersion, path + ".indexedOccurrenceKeys",
                     "Indexed occurrence continuity requires protocol version 91 or later.");
@@ -309,6 +357,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.ContextMenuButton is not null)
                 Add("context-menu-trigger", ProtocolConstants.ContextMenuTriggerVersion,
                     $"{path}.contextMenuButton", "Context menu triggers require protocol version 51 or later.");
+            if (node.NativeContextMenuOnly.HasValue || node.Kind == ViewNodeKind.Select && node.ContextMenuButton.HasValue)
+                Add("scoped-command-menu", ProtocolConstants.ScopedCommandMenuVersion, path,
+                    "Scoped command menus and native-only context actions require protocol version 137 or later.");
             if ((node.ContextActions?.Count ?? 0) != 0)
                 Add(
                     "context-actions",
@@ -558,6 +609,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.CollectionLayout is not null)
                 Add("collection-layout", ProtocolConstants.CollectionLayoutVersion,
                     $"{path}.collectionLayout", "Collection realization requires protocol version 59 or later.");
+            if (node.ForegroundBackgroundProcessKey is not null)
+                Add("foreground-background", ProtocolConstants.ForegroundBackgroundVersion, path,
+                    "A conditional foreground background requires protocol version 144 or later.");
             if (node.FocusBackgroundArtworkHandle is not null ||
                 node.UsesFocusedDescendantArtwork is true)
                 Add(
@@ -604,9 +658,24 @@ internal sealed class ProtocolVersionRequirements
             if (node.FocusVisualTargetId is not null)
                 Add("focus-visual-target", ProtocolConstants.TargetedCollectionPresentationVersion, $"{path}.focusVisualTargetId",
                     "Targeted focus decorations require protocol version 122 or later.");
+            if(node.IsReadingGroup)
+                Add("reading-group",ProtocolConstants.ReadingGroupVersion,path,
+                    "Reading groups require protocol version 132 or later.");
+            if (node.IsReadingGroup && node.Children?.Any(ReadingGroupContentContract.IsHorizontalViewport) == true)
+                Add("reading-group-viewport", ProtocolConstants.ReadingGroupViewportVersion, path,
+                    "Horizontally scrollable reading groups require protocol version 139 or later.");
+            if(node.IndexedPreferredEntryKey is not null)
+                Add("indexed-preferred-entry",ProtocolConstants.PreferredCollectionEntryVersion,$"{path}.indexedPreferredEntryKey",
+                    "Preferred occurrence entry requires protocol version 130 or later.");
             if(node.IndexedDirectionalEntry!=IndexedDirectionalEntryMode.Remembered)
                 Add("indexed-directional-entry",ProtocolConstants.DirectionalCollectionEntryVersion,$"{path}.indexedDirectionalEntry",
                     "Visible-edge indexed entry requires protocol version 125 or later.");
+            if (node.DirectionalAnchor is not null && node.Kind == ViewNodeKind.Scroll)
+                Add("scroll-container-anchor", ProtocolConstants.ScrollContainerAnchorVersion, path,
+                    "Anchoring directional moves in a scroll container requires protocol version 145 or later.");
+            else if (node.DirectionalAnchor is not null)
+                Add("directional-scroll-anchor", ProtocolConstants.DirectionalScrollAnchorVersion, path,
+                    "Directional scroll anchors require protocol version 143 or later.");
             if (node.IndexedCollection?.ObservesBoundaries==true || node.CollectionBoundaries is not null)
                 Add("indexed-boundary-observation", ProtocolConstants.TargetedCollectionPresentationVersion, $"{path}.collectionBoundaries",
                     "Indexed boundary observation requires protocol version 122 or later.");
@@ -647,7 +716,7 @@ internal sealed class ProtocolVersionRequirements
                     scope, inferDeferredFocusGroupEntry);
             for (var index = 0; index < children.Count; index++)
                 Visit(children[index], $"{path}.children[{index}]", depth + 1,
-                    scope, inferDeferredFocusGroupEntry);
+                    scope, inferDeferredFocusGroupEntry, inReadingGroup || node.IsReadingGroup);
         }
 
         void Add(string feature, int version, string path, string message) =>

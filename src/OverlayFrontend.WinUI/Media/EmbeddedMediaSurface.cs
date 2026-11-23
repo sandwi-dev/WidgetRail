@@ -63,6 +63,8 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
     internal Func<bool>? InputAuthority { get; set; }
     private bool AcceptsInput => !retired && visible && inputEnabled && (InputAuthority?.Invoke() ?? true);
     internal Func<bool>? PlaybackActivationAuthority { get; set; }
+    internal Func<MediaPlayerDefinition?>? SelectedGalleryMedia { get; set; }
+    private bool galleryItemOpened;
     private bool AcceptsPlaybackActivation => !retired && visible &&
         (AcceptsInput || PlaybackActivationAuthority?.Invoke() == true);
     public event Action<string>? Diagnostic;
@@ -241,6 +243,7 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
         if (message is not null) Send(message);
         return true; // Busy commands are consumed once, never queued or replayed.
     }
+
 
     private void OnLoaded(object sender, RoutedEventArgs args)
     {
@@ -532,6 +535,15 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
     private void Pump()
     {
         if (!Current() || core is null || pendingSubmissions != 0 || transport.Busy || !transport.Ready) return;
+        if (SelectedGalleryMedia is { } selected)
+        {
+            if (!galleryItemOpened && visible && selected() is { } item && transport.OpenGalleryItem(item) is { } open)
+            {
+                galleryItemOpened = true;
+                Send(open);
+            }
+            return;
+        }
         var command = session.GetEmbeddedMediaState(document)?.Declaration.PendingCommand;
         // Gesture-requiring playback waits for a visible, uncovered viewport.
         if (command is null || command.Kind == EmbeddedMediaPlaybackCommandKind.Play && !AcceptsPlaybackActivation) return;

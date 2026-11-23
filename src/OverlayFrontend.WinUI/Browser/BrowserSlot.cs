@@ -18,6 +18,11 @@ internal sealed partial class BrowserSlot : ContentControl
     internal BrowserSurface? Surface { get; private set; }
     internal Action? PlacementChanged { get; set; }
     internal Action? InteractionChanged { get; set; }
+    internal Func<BrowserSlot, BrowserSurface, Task>? ExpandVideo { get; set; }
+    private Button? fullscreenVideo;
+    private Shell.ShellChromePalette? palette;
+    internal bool CanExpandVideo => !Pinned && !Expanded && !Retired && AcceptsInput &&
+        ExpandVideo is not null && Surface?.CanPresentBackendVideo == true;
     internal bool Active { get; set; }
     internal bool AcceptsInput { get; set; }
     private bool pinned;
@@ -33,6 +38,7 @@ internal sealed partial class BrowserSlot : ContentControl
         }
     }
     internal bool Expanded { get; set; }
+    internal bool PassiveVideoExpansion { get; init; }
     internal bool Retired { get; private set; }
     internal bool IsProviderDocument { get; set; }
     private Windows.Foundation.Rect providerViewport;
@@ -83,6 +89,17 @@ internal sealed partial class BrowserSlot : ContentControl
             surface.InteractionChanged = () => { RefreshFocusPresentation(); InteractionChanged?.Invoke(); }; surface.RefreshInteractionFocus();
             surface.ProviderHeightChanged = RefreshProviderHeight; }
         RefreshProviderHeight();
+        if (surface?.IsBackendVideo == true && !Pinned && !Expanded && fullscreenVideo is null)
+        {
+            fullscreenVideo = new Button { Content = "Fullscreen", IsTabStop = false, MinHeight = 40,
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new(8) };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(fullscreenVideo, "Fullscreen");
+            ToolTipService.SetToolTip(fullscreenVideo, "Fullscreen");
+            fullscreenVideo.Click += (_, _) => Enter();
+            ((Grid)Content).Children.Add(fullscreenVideo);
+            palette?.PaintButton(fullscreenVideo);
+        }
+        if (fullscreenVideo is not null) fullscreenVideo.Visibility = surface?.IsBackendVideo == true && !Pinned && !Expanded ? Visibility.Visible : Visibility.Collapsed;
     }
     private void RefreshProviderHeight()
     {
@@ -90,8 +107,12 @@ internal sealed partial class BrowserSlot : ContentControl
         Host.Height = Math.Clamp(Surface?.ProviderContentHeight ?? 72, 0,
             Math.Max(0, Math.Min(MaxHeight, 4096) - Host.Margin.Top - Host.Margin.Bottom));
     }
-    internal void ApplyFocusTheme(Brush focus, double radius)
-    { focusOutline.BorderBrush = focus; focusOutline.CornerRadius = new(Math.Max(2, radius)); }
+    internal void ApplyFocusTheme(Brush focus, double radius, Shell.ShellChromePalette? nextPalette)
+    {
+        focusOutline.BorderBrush = focus; focusOutline.CornerRadius = new(Math.Max(2, radius));
+        palette = nextPalette;
+        if (fullscreenVideo is not null) palette?.PaintButton(fullscreenVideo);
+    }
     internal void RefreshFocusPresentation() => focusOutline.Visibility = !Retired && IsLoaded && !IsInteracting && OwnsFocus() ? Visibility.Visible : Visibility.Collapsed;
     private bool OwnsFocus()
     {
@@ -108,7 +129,11 @@ internal sealed partial class BrowserSlot : ContentControl
         SetMessage(pinned ? "This page is pinned. Open the pin controls to manage it, or unpin it to browse here." : "This page is open in the main widget.");
         if (changed) InteractionChanged?.Invoke();
     }
-    internal void Enter() => Surface?.Enter();
+    internal void Enter()
+    {
+        if (CanExpandVideo && Surface is { } video) _ = ExpandVideo!(this, video);
+        else Surface?.Enter();
+    }
     internal bool HandleButton(ControllerButton button, ControllerEventPhase phase) => Surface?.HandleButton(button, phase) == true;
     internal bool MoveFocus(FocusNavigationDirection direction) => Surface?.MoveFocus(direction) == true;
     internal bool Scroll(double x, double y) => Surface?.Scroll(x, y) == true;

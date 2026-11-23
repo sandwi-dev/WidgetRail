@@ -6,6 +6,7 @@ using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Action Run)[]
 {
+    ("Reading group links reuse indexed intent authority without a preview", ReadingGroupIntentAuthority),
     ("Prepared intents retain action identity and require protocol 85", PreparedIntents),
     ("Search and one declared fallback preserve authority and require protocol 72", SearchFeedback),
     ("Custom contracts require no host intent enumeration", CustomContract),
@@ -390,6 +391,24 @@ static void InlinePreviewIntentAuthority()
     var changed = source with { FocusPresentation = source.FocusPresentation! with { Children = [button with { Intent = button.Intent! with { PreparationKey = "different" } }] } };
     Check(IntentActionAuthority.Revalidate(snapshot, snapshot with { Root = snapshot.Root with { Children = [changed] } }, action) is null);
     Check(IntentActionAuthority.Revalidate(snapshot, snapshot, action with { FocusedElementId = "other" }) is null);
+}
+
+static void ReadingGroupIntentAuthority()
+{
+    var button=IntentSnapshot().Root.Children[0];
+    var collection=new ViewNode{Id="list",Kind=ViewNodeKind.IndexedCollection};
+    var body=new ViewNode{Id="body",Kind=ViewNodeKind.Stack,Children=[button]};
+    var group=new ViewNode{Id="message",Kind=ViewNodeKind.ActionSurface,IsReadingGroup=true,Children=[body]};
+    var reference=new IndexedCollectionItemReference(Guid.NewGuid().ToString("N"),"message.key");
+    var action=IntentAction();
+    Check(IntentActionAuthority.RevalidateIndexed([collection],[collection],group,action,reference) is not null);
+    Check(IntentActionAuthority.RevalidateIndexed([collection],[collection],group with{IsReadingGroup=false},action,reference) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([collection],[collection],group with{IsDisabled=true},action,reference) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([collection],[collection with{IsBusy=true}],group,action,reference) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([collection],[collection],group,action with{SourceElementId="message"},reference) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([collection],[collection],group,action with{ActionId="other"},reference) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([collection],[collection],group with{Children=[body with{Children=[button with{IsDisabled=true}]}]},action,reference) is null);
+    Check(IntentActionAuthority.RevalidateIndexed([collection],[collection],group with{Children=[]},action,reference) is null);
 }
 
 static void PreviewLeaseIntentAuthority()

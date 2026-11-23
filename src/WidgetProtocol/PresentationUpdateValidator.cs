@@ -292,12 +292,14 @@ public static class PresentationUpdateMaterializer
             {
                 PresentationProperty.ActiveInputScopeId => ReadRequired<string>(change.Value),
                 PresentationProperty.InitialFocusId => Read<string?>(change.Value),
+                PresentationProperty.UnavailableTrayActions => Read<IReadOnlyDictionary<string, string>?>(change.Value),
                 PresentationProperty.QuickActions => ReadRequired<IReadOnlyList<WidgetQuickAction>>(change.Value),
                 PresentationProperty.ContextMenuButton => Read<ControllerButton?>(change.Value),
                 PresentationProperty.ContextActions => ReadRequired<IReadOnlyList<WidgetContextAction>>(change.Value),
                 PresentationProperty.Intent => Read<WidgetIntentRequest?>(change.Value),
                 PresentationProperty.WebBrowser => Read<WebBrowserDocument?>(change.Value),
                 PresentationProperty.MediaPlayer => Read<MediaPlayerDefinition?>(change.Value),
+                PresentationProperty.ImageIsPublicMedia => Read<bool>(change.Value),
                 PresentationProperty.CapturedMedia => Read<CaptureAttachment?>(change.Value),
                 PresentationProperty.Graph => Read<LineGraphDefinition?>(change.Value),
                 PresentationProperty.SelectOptions => ReadRequired<IReadOnlyList<WidgetSelectOption>>(change.Value),
@@ -309,6 +311,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ValueChangedActionId or PresentationProperty.ImageSource or
                 PresentationProperty.ArtworkHandle or PresentationProperty.FocusPersistenceId or
                 PresentationProperty.FocusBackgroundArtworkHandle or
+                PresentationProperty.ForegroundBackgroundProcessKey or
                 PresentationProperty.InputScopeId or PresentationProperty.InitialChildFocusId or PresentationProperty.ScrollNearStartActionId or
                 PresentationProperty.ScrollNearEndActionId or PresentationProperty.CollectionAnchorKey or
                 PresentationProperty.CollectionItemKey => Read<string?>(change.Value),
@@ -337,7 +340,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ActionSurfaceOrientation => Read<ActionSurfaceOrientation?>(change.Value),
                 PresentationProperty.ActionSurfacePresentation => Read<ActionSurfacePresentation?>(change.Value),
                 PresentationProperty.IsDisabled or PresentationProperty.IsSelected or
-                PresentationProperty.IsCommandMenu or PresentationProperty.IsBusy or
+                PresentationProperty.NativeContextMenuOnly or PresentationProperty.IsCommandMenu or PresentationProperty.IsBusy or
                 PresentationProperty.UsesFocusedDescendantArtwork or PresentationProperty.RetainLastPresentation => Read<bool?>(change.Value),
                 PresentationProperty.Disclosure => Read<WidgetDisclosure?>(change.Value),
                 PresentationProperty.Focus => Read<FocusNeighbors?>(change.Value),
@@ -347,6 +350,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.GridCell => Read<GridCellPlacement?>(change.Value),
                 PresentationProperty.AnchoredPresentation => Read<AnchoredPresentation?>(change.Value),
                 PresentationProperty.ModalDismissal => Read<WidgetModalDismissal?>(change.Value),
+                PresentationProperty.OverlayModal => Read<OverlayModalPresentation?>(change.Value),
                 PresentationProperty.FocusPreview => Read<FocusPreviewOptions?>(change.Value),
                 PresentationProperty.FocusPreviewSource => Read<IndexedCollectionDescriptor?>(change.Value),
                 PresentationProperty.FocusPreviewKey => Read<string?>(change.Value),
@@ -435,6 +439,7 @@ public static class PresentationUpdateMaterializer
                 {
                     PresentationProperty.ActiveInputScopeId => snapshot with { ActiveInputScopeId = ReadRequired<string>(change.Value) },
                     PresentationProperty.InitialFocusId => snapshot with { InitialFocusId = Read<string?>(change.Value) },
+                    PresentationProperty.UnavailableTrayActions => snapshot with { UnavailableTrayActions = Read<IReadOnlyDictionary<string, string>?>(change.Value) },
                     PresentationProperty.QuickActions => snapshot with { QuickActions = ReadRequired<IReadOnlyList<WidgetQuickAction>>(change.Value) },
                     PresentationProperty.Surface => snapshot with { Surface = Read<WidgetSurfaceHints?>(change.Value) },
                     _ => throw Error("$.operations", "wrong_property_target", "Node property cannot target the document."),
@@ -465,6 +470,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.CapturedMedia => node with { CapturedMedia = Read<CaptureAttachment?>(change.Value) },
                 PresentationProperty.Graph => node with { Graph = Read<LineGraphDefinition?>(change.Value) },
                 PresentationProperty.ContextMenuButton => node with { ContextMenuButton = Read<ControllerButton?>(change.Value) },
+                PresentationProperty.NativeContextMenuOnly => node with { NativeContextMenuOnly = Read<bool?>(change.Value) },
                 PresentationProperty.ContextActions => node with { ContextActions = ReadRequired<IReadOnlyList<WidgetContextAction>>(change.Value) },
                 PresentationProperty.SelectOptions => node with { SelectOptions = ReadRequired<IReadOnlyList<WidgetSelectOption>>(change.Value) },
                 PresentationProperty.IsCommandMenu => node with { IsCommandMenu = Read<bool?>(change.Value) },
@@ -480,8 +486,10 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ValueChangedActionId => node with { ValueChangedActionId = Read<string?>(change.Value) },
                 PresentationProperty.SliderInteractionMode => node with { SliderInteractionMode = Read<SliderInteractionMode?>(change.Value) },
                 PresentationProperty.ImageSource => node with { ImageSource = Read<string?>(change.Value) },
+                PresentationProperty.ImageIsPublicMedia => node with { ImageIsPublicMedia = Read<bool>(change.Value) },
                 PresentationProperty.ArtworkHandle => node with { ArtworkHandle = Read<string?>(change.Value) },
                 PresentationProperty.FocusBackgroundArtworkHandle => node with { FocusBackgroundArtworkHandle = Read<string?>(change.Value) },
+                PresentationProperty.ForegroundBackgroundProcessKey => node with { ForegroundBackgroundProcessKey = Read<string?>(change.Value) },
                 PresentationProperty.ImageFit => node with { ImageFit = Read<ImageFit?>(change.Value) },
                 PresentationProperty.Glyph => node with { Glyph = Read<WidgetGlyph?>(change.Value) },
                 PresentationProperty.PackageIcon => node with { PackageIcon = Read<WidgetPackageIcon?>(change.Value) },
@@ -494,6 +502,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.GridCell => node with { GridCell = Read<GridCellPlacement?>(change.Value) },
                 PresentationProperty.AnchoredPresentation => node with { AnchoredPresentation = Read<AnchoredPresentation?>(change.Value) },
                 PresentationProperty.ModalDismissal => node with { ModalDismissal = Read<WidgetModalDismissal?>(change.Value) },
+                PresentationProperty.OverlayModal => node with { OverlayModal = Read<OverlayModalPresentation?>(change.Value) },
                 PresentationProperty.FocusPreview => node with { FocusPreview = Read<FocusPreviewOptions?>(change.Value) },
                 PresentationProperty.FocusPreviewSource => node with { FocusPreviewSource = Read<IndexedCollectionDescriptor?>(change.Value) },
                 PresentationProperty.FocusPreviewKey => node with { FocusPreviewKey = Read<string?>(change.Value) },

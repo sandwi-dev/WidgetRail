@@ -167,6 +167,7 @@ try {
         Invoke-PlatformContractTest 'ControllerIsolationReaderTests' @('ControllerIsolationReader.cpp') -Definitions @('/DWRAIL_CONTROLLER_ISOLATION_READER_TESTING')
         Invoke-PlatformContractTest 'ControllerIsolationRoutingSessionTests' @('ControllerIsolationRoutingSession.cpp','ControllerIsolationReader.cpp','ControllerIsolationCore.cpp') -Definitions @('/DWRAIL_CONTROLLER_ISOLATION_READER_TESTING')
         Invoke-PlatformContractTest 'ViGEmOutputAdapterTests' @('ViGEmOutputAdapter.cpp','ControllerIsolationReader.cpp')
+        Invoke-PlatformContractTest 'X360FeedbackReaderTests'
         Invoke-PlatformContractTest 'HidHideConfigurationAdapterTests' @('HidHideConfigurationAdapter.cpp')
         Invoke-PlatformContractTest 'LocalControllerOwnerTests' @('ControllerIsolationHostSession.cpp','LocalControllerPolicy.cpp','ControllerIsolationCore.cpp','ControllerIsolationReader.cpp','ControllerIsolationRoutingSession.cpp','ViGEmOutputAdapter.cpp','HidHideConfigurationAdapter.cpp') -Definitions @('/DWRAIL_LOCAL_CONTROLLER_TESTING','/DWRAIL_GAMEINPUT_ISOLATION_READER','/DWRAIL_CONTROLLER_ISOLATION_READER_TESTING') -Libraries @('shell32.lib','ole32.lib','advapi32.lib')
         Invoke-PlatformContractTest 'OverlayPlatformInteropTests' @('OverlayPlatformPolicy.cpp') -Definitions @('/DWRAIL_OVERLAY_PLATFORM_IMPORTS') -Libraries @((Join-Path $OutputDirectory 'OverlayPlatformInterop.lib'),'user32.lib')

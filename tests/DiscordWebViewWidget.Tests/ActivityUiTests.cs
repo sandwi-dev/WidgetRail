@@ -26,14 +26,16 @@ internal static class ActivityUiTests
             check(rows.Range.Items.Select(item=>item.Key).SequenceEqual(new[]{"friend.30","friend.31","friend.32"}),
                 "Home defaults to stable Watch then Join then read-only activity ordering");
             var watch=rows.Range.Items[0].Root;var join=rows.Range.Items[1].Root;var read=rows.Range.Items[2].Root;
+            check(watch.AccessibilityLabel!.EndsWith("Watch & pin",StringComparison.Ordinal),
+                "The friend activity shortcut announces that activating it will also pin the stream");
             check(!watch.AccessibilityLabel!.Contains("In voice In voice")&&watch.AccessibilityLabel.Contains("Lobby")&&
                 join.AccessibilityLabel!.Contains("Co-op")&&join.AccessibilityLabel.Contains("Test guild"),
                 "Activity actions identify their voice destination without repeated voice text");
             check(read.ActionId is null&&read.AccessibilityLabel!.Contains("Offline")&&!read.AccessibilityLabel.Contains("Online"),
                 "Offline activity stays read-only and is not labeled online");
             check(Nodes(join).Single(node=>node.Kind==ViewNodeKind.Image).ImageSource==avatar&&
-                Nodes(read).Any(node=>node.PackageIcon?.AssetId=="discord.person"),
-                "Avatars use host HTTPS images with semantic person fallback when absent");
+                Nodes(read).Any(node=>node.Text=="A"&&node.AccessibilityLabel=="Alpha"),
+                "Avatars use host HTTPS images with an accessible initial fallback when absent");
 
             fake.CommandGate=new(TaskCreationOptions.RunContinuationsAsynchronously);
             await widget.OnActionAsync(new(DeclaredActions.Resolve(widget.Render().CreateSnapshot("activity",1),"mute"),"discord.main.mute"));await Wait(()=>fake.Commands.Any(c=>c.Method=="mute"));

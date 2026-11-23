@@ -24,6 +24,7 @@ internal sealed class WidgetCompositionTarget : IDisposable
     private readonly Vector3 originalScale;
     private readonly Vector3 originalCenter;
     private readonly float originalOpacity;
+    private readonly bool opacityOnly;
     private readonly int thread = Environment.CurrentManagedThreadId;
     private bool disposed;
     internal Compositor Compositor => visual.Compositor;
@@ -36,7 +37,7 @@ internal sealed class WidgetCompositionTarget : IDisposable
     internal WidgetCompositionTarget(Visual content, Visual clipViewport, Vector2 size)
         : this(content, clipViewport, size, xamlTranslation: false) { }
 
-    private WidgetCompositionTarget(Visual content, Visual? clipViewport, Vector2 size, bool xamlTranslation)
+    private WidgetCompositionTarget(Visual content, Visual? clipViewport, Vector2 size, bool xamlTranslation, bool opacityOnly = false)
     {
         ArgumentNullException.ThrowIfNull(content);
         if (ReferenceEquals(content, clipViewport) || clipViewport?.Clip is not null ||
@@ -48,7 +49,8 @@ internal sealed class WidgetCompositionTarget : IDisposable
         translationProperty = xamlTranslation ? "Translation" : nameof(Visual.Offset);
         if (xamlTranslation) visual.Properties.TryGetVector3("Translation", out originalTranslation);
         else originalTranslation = visual.Offset;
-        visual.CenterPoint = new(size / 2, 0);
+        this.opacityOnly = opacityOnly;
+        if (!opacityOnly) visual.CenterPoint = new(size / 2, 0);
         if (viewport is not null) { clip = Compositor.CreateInsetClip(); viewport.Clip = clip; }
     }
 
@@ -59,6 +61,9 @@ internal sealed class WidgetCompositionTarget : IDisposable
         ElementCompositionPreview.SetIsTranslationEnabled(contentLayer, true);
         return new(ElementCompositionPreview.GetElementVisual(contentLayer), ElementCompositionPreview.GetElementVisual(viewportLayer), size, true);
     }
+
+    internal static WidgetCompositionTarget ForOpacity(UIElement layer) =>
+        new(ElementCompositionPreview.GetElementVisual(layer), null, Vector2.One, xamlTranslation: false, opacityOnly: true);
 
     /// <summary>Dialog-owned surface whose ancestor already supplies widget-local clipping.</summary>
     internal static WidgetCompositionTarget ForClippedDialog(UIElement dialog, Vector2 size)
@@ -78,8 +83,11 @@ internal sealed class WidgetCompositionTarget : IDisposable
         using var easing = Compositor.CreateCubicBezierEasingFunction(
             new(1f / 3, recipe.Easing == WidgetMotionEasing.EaseOut ? 1 : 0),
             new(2f / 3, recipe.Easing == WidgetMotionEasing.EaseIn ? 0 : 1));
-        AnimateVector(translation, translationProperty, originalTranslation + recipe.To.Translation);
-        AnimateVector(visual, nameof(Visual.Scale), originalScale * recipe.To.Scale);
+        if (!opacityOnly)
+        {
+            AnimateVector(translation, translationProperty, originalTranslation + recipe.To.Translation);
+            AnimateVector(visual, nameof(Visual.Scale), originalScale * recipe.To.Scale);
+        }
         AnimateScalar(visual, nameof(Visual.Opacity), originalOpacity * recipe.To.Opacity);
         if (clip is not null)
         {
@@ -112,9 +120,11 @@ internal sealed class WidgetCompositionTarget : IDisposable
     internal void Set(WidgetMotionPose pose)
     {
         Check(); Stop();
+        visual.Opacity = originalOpacity * pose.Opacity;
+        if (opacityOnly) return;
         if (ReferenceEquals(translation, visual)) visual.Offset = originalTranslation + pose.Translation;
         else visual.Properties.InsertVector3(translationProperty, originalTranslation + pose.Translation);
-        visual.Scale = originalScale * pose.Scale; visual.Opacity = originalOpacity * pose.Opacity;
+        visual.Scale = originalScale * pose.Scale;
         if (clip is not null)
         {
             clip.LeftInset = pose.Insets.X; clip.TopInset = pose.Insets.Y;
@@ -124,8 +134,10 @@ internal sealed class WidgetCompositionTarget : IDisposable
 
     private void Stop()
     {
+        visual.StopAnimation(nameof(Visual.Opacity));
+        if (opacityOnly) return;
         translation.StopAnimation(translationProperty);
-        visual.StopAnimation(nameof(Visual.Scale)); visual.StopAnimation(nameof(Visual.Opacity));
+        visual.StopAnimation(nameof(Visual.Scale));
         if (clip is not null)
         {
             clip.StopAnimation(nameof(InsetClip.LeftInset)); clip.StopAnimation(nameof(InsetClip.TopInset));
@@ -156,7 +168,7 @@ internal sealed class WidgetCompositionTarget : IDisposable
     {
         if (disposed) return;
         Check(); Set(WidgetMotionPose.Identity);
-        visual.CenterPoint = originalCenter;
+        if (!opacityOnly) visual.CenterPoint = originalCenter;
         if (viewport is not null) viewport.Clip = null;
         clip?.Dispose(); disposed = true;
     }

@@ -48,7 +48,7 @@ internal sealed partial class OverlayShellPage
             shellContext = ("shell-utility", shownUtility, UtilityListFocused, SystemTaskViewFocused);
         }
         else if (SystemFilePickerOpen)
-        { shell = Array.Empty<ControllerGuideHint>(); shellContext = "system-file-picker"; }
+        { shell = fileBrowser?.Guide ?? Array.Empty<ControllerGuideHint>(); shellContext = (object?)fileBrowser ?? "system-file-picker"; }
         else if (nativeBrowserPickerActive)
         {
             shell = (ControllerGuideHint[])[new(ControllerPrompt.LeftStickMove, "Pointer"),

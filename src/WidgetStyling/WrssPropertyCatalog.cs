@@ -24,6 +24,7 @@ public static partial class WrssPropertyCatalog
         TextAlign,
         Ratio,
         ObjectFit,
+        ImageFallback,
         ObjectPosition,
         Shape,
         LineHeight,
@@ -32,11 +33,22 @@ public static partial class WrssPropertyCatalog
         OverflowWrap,
         TextTransform,
         TransitionEasing,
+        SurfaceEntrance,
+        ForegroundChrome,
+        FocusSheen,
+        FocusOutlineEffect,
+        ArtworkTransition,
+        ArtworkMotion,
+        Percent,
+        PercentPair,
+        IntentVisibility,
+        FocusPresentationLayout,
         BoundedNumber,
         LengthOrAuto,
         FlexWrap,
         BackgroundMaterial,
         OpacityOrAuto,
+        InteractionStateSource,
     }
 
     private sealed record Definition(PropertyType Type, double Minimum = 0, double Maximum = 0, bool AllowNegative = false);
@@ -46,6 +58,7 @@ public static partial class WrssPropertyCatalog
         {
             ["background"] = new(PropertyType.Color),
             ["background-material"] = new(PropertyType.BackgroundMaterial),
+            ["interaction-state-source"] = new(PropertyType.InteractionStateSource),
             ["background-tint-opacity"] = new(PropertyType.Opacity, 0, 1),
             ["background-luminosity-opacity"] = new(PropertyType.OpacityOrAuto, 0, 1),
             ["surface-shading"] = new(PropertyType.BoundedNumber, -0.25, 0.25, true),
@@ -63,7 +76,7 @@ public static partial class WrssPropertyCatalog
             ["scrollbar-thumb-color"] = new(PropertyType.Color),
             ["scrollbar-width"] = new(PropertyType.Length, 2, 8),
             ["width"] = new(PropertyType.Length, 0, 4096),
-            ["height"] = new(PropertyType.Length, 0, 4096),
+            ["height"] = new(PropertyType.LengthOrAuto, 0, 4096),
             ["min-width"] = new(PropertyType.Length, 0, 4096),
             ["min-height"] = new(PropertyType.Length, 0, 4096),
             ["max-width"] = new(PropertyType.Length, 0, 4096),
@@ -95,6 +108,7 @@ public static partial class WrssPropertyCatalog
             ["transition-duration"] = new(PropertyType.Duration, 0, 2000),
             ["aspect-ratio"] = new(PropertyType.Ratio, 0.2, 5),
             ["object-fit"] = new(PropertyType.ObjectFit),
+            ["image-fallback"] = new(PropertyType.ImageFallback),
             ["object-position"] = new(PropertyType.ObjectPosition),
             ["shape"] = new(PropertyType.Shape),
             ["font-weight"] = new(PropertyType.FontWeight),
@@ -107,6 +121,31 @@ public static partial class WrssPropertyCatalog
             ["overflow-wrap"] = new(PropertyType.OverflowWrap),
             ["text-transform"] = new(PropertyType.TextTransform),
             ["transition-easing"] = new(PropertyType.TransitionEasing),
+            ["focus-snap-end"] = new(PropertyType.Length, 0, 4096),
+            ["focus-snap-peek"] = new(PropertyType.Length, 0, 4096),
+            ["focus-presentation-layout"] = new(PropertyType.FocusPresentationLayout),
+            ["intent-visibility"] = new(PropertyType.IntentVisibility),
+            ["surface-entrance"] = new(PropertyType.SurfaceEntrance),
+            ["foreground-chrome"] = new(PropertyType.ForegroundChrome),
+            ["artwork-transition"] = new(PropertyType.ArtworkTransition),
+            ["artwork-transition-duration"] = new(PropertyType.Duration, 0, 1000),
+            ["artwork-transition-travel-x"] = new(PropertyType.Percent, 0, 5),
+            ["artwork-transition-travel-y"] = new(PropertyType.Percent, 0, 5),
+            ["artwork-motion"] = new(PropertyType.ArtworkMotion),
+            ["artwork-motion-scale-from"] = new(PropertyType.Scale, 1, 1.25),
+            ["artwork-motion-scale-to"] = new(PropertyType.Scale, 1, 1.25),
+            ["artwork-motion-duration"] = new(PropertyType.Duration, 0, 30000),
+            ["artwork-motion-origin"] = new(PropertyType.PercentPair, 0, 100),
+            ["focus-sheen"] = new(PropertyType.FocusSheen),
+            ["focus-outline-effect"] = new(PropertyType.FocusOutlineEffect),
+            ["focus-outline-highlight"] = new(PropertyType.Color),
+            ["focus-outline-duration"] = new(PropertyType.Duration, 0, 5000),
+            ["focus-outline-intensity"] = new(PropertyType.Opacity, 0, 1),
+            ["focus-outline-repeat-delay"] = new(PropertyType.Duration, 0, 60000),
+            ["focus-sheen-duration"] = new(PropertyType.Duration, 0, 5000),
+            ["focus-sheen-repeat-delay"] = new(PropertyType.Duration, 0, 60000),
+            ["focus-sheen-delay"] = new(PropertyType.Duration, 0, 1500),
+            ["focus-sheen-opacity"] = new(PropertyType.Opacity, 0, 1),
             ["flex-grow"] = new(PropertyType.BoundedNumber, 0, 8),
             ["flex-shrink"] = new(PropertyType.BoundedNumber, 0, 8),
             ["flex-basis"] = new(PropertyType.LengthOrAuto, 0, 4096),
@@ -219,6 +258,8 @@ public static partial class WrssPropertyCatalog
                 return TryRatio(value, definition, out computed, out clamped, out error);
             case PropertyType.ObjectFit:
                 return TryKeyword(value, ["cover", "contain", "fill", "none"], out computed, out error);
+            case PropertyType.ImageFallback:
+                return TryKeyword(value, ["none", "label"], out computed, out error);
             case PropertyType.ObjectPosition:
                 return TryKeyword(value, ["center", "top", "right", "bottom", "left", "top-left", "top-right", "bottom-left", "bottom-right"], out computed, out error);
             case PropertyType.Shape:
@@ -249,6 +290,38 @@ public static partial class WrssPropertyCatalog
                 return TryKeyword(value, ["none", "uppercase", "lowercase"], out computed, out error);
             case PropertyType.TransitionEasing:
                 return TryKeyword(value, ["linear", "ease-out", "ease-in-out", "spring"], out computed, out error);
+            case PropertyType.FocusPresentationLayout:
+                return TryKeyword(value, ["flow", "reading-pane"], out computed, out error);
+            case PropertyType.IntentVisibility:
+                return TryKeyword(value, ["always", "when-handler-installed"], out computed, out error);
+            case PropertyType.SurfaceEntrance:
+                return TryKeyword(value, ["none", "fade"], out computed, out error);
+            case PropertyType.ForegroundChrome:
+                return TryKeyword(value, ["always", "auto-hide"], out computed, out error);
+            case PropertyType.ArtworkTransition:
+                return TryKeyword(value, ["none", "fade", "directional-fade"], out computed, out error);
+            case PropertyType.ArtworkMotion:
+                return TryKeyword(value, ["none", "pan-zoom"], out computed, out error);
+            case PropertyType.Percent:
+            case PropertyType.PercentPair:
+                var parts = value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length != (definition.Type == PropertyType.Percent ? 1 : 2) ||
+                    parts.Any(part => !part.EndsWith('%') || !TryInvariantDouble(part[..^1], out _)))
+                {
+                    error = definition.Type == PropertyType.Percent ? "Expected a percentage." : "Expected two percentages.";
+                    return false;
+                }
+                var percentages = new double[parts.Length];
+                for (var i = 0; i < parts.Length; ++i)
+                    percentages[i] = Clamp(double.Parse(parts[i][..^1], CultureInfo.InvariantCulture), definition.Minimum, definition.Maximum, ref clamped);
+                computed = percentages.Length == 1
+                    ? new(WrssValueKind.Length, Format(percentages[0]) + "%", percentages[0], "%")
+                    : new(WrssValueKind.LengthList, string.Join(" ", percentages.Select(n => Format(n) + "%")));
+                return true;
+            case PropertyType.FocusSheen:
+                return TryKeyword(value, ["none", "sweep", "reflection"], out computed, out error);
+            case PropertyType.FocusOutlineEffect:
+                return TryKeyword(value, ["none", "edge-glint", "breathe"], out computed, out error);
             case PropertyType.BoundedNumber:
                 if (!TryInvariantDouble(value, out var flexFactor) || (!definition.AllowNegative && flexFactor < 0))
                 {
@@ -267,6 +340,8 @@ public static partial class WrssPropertyCatalog
                 return TryLength(value, definition, out computed, out clamped, out error);
             case PropertyType.BackgroundMaterial:
                 return TryKeyword(value, ["standard", "acrylic"], out computed, out error);
+            case PropertyType.InteractionStateSource:
+                return TryKeyword(value, ["self", "indexed-item"], out computed, out error);
             case PropertyType.FlexWrap:
                 return TryKeyword(value, ["nowrap", "wrap"], out computed, out error);
             default:

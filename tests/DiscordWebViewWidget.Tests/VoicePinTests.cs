@@ -32,7 +32,7 @@ internal static class VoicePinTests
             check(pin.Root!.Id=="discord.pin.controls"&&pin.Surface.PreferredWidth==400&&pin.Surface.PreferredHeight==340&&
                 pin.Surface.MinimumWidth==320&&pin.Surface.MinimumHeight==340,
                 "Voice pin retains its stable root and compact preferred/minimum surface: "+count+" participants");
-            var avatars=nodes.Where(node=>node.Id.StartsWith("discord.pin.avatar.",StringComparison.Ordinal)).ToArray();
+            var avatars=nodes.Where(node=>node.Id.StartsWith("discord.pin.avatar.",StringComparison.Ordinal)&&node.StyleClasses.Contains("discord-avatar")).ToArray();
             check(avatars.Length==Math.Min(count,4)&&avatars.All(node=>!node.IsFocusable)&&
                 avatars.Count(node=>node.Kind==ViewNodeKind.Image)==people.Take(4).Count(person=>person.AvatarUrl is not null),
                 "Voice pin requests at most four passive participant avatars: "+count+" participants");

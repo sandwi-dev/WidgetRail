@@ -355,12 +355,34 @@ public sealed record IndexedCollectionElement : ContainerElement
     public IReadOnlyList<IndexedCollectionGroup>? Groups { get; private init; }
     public IndexedCollectionBoundaries? Boundaries { get; private init; }
     public IndexedDirectionalEntryMode DirectionalEntryMode { get; private init; }
+    public DirectionalScrollAnchor? DirectionalAnchor { get; private init; }
+    public IndexedCollectionElement WithDirectionalAnchor(FocusAnchorPoint itemPoint, int viewportPercent)
+    {
+        var anchor = new DirectionalScrollAnchor(itemPoint, viewportPercent);
+        if (!anchor.IsValid()) throw new ArgumentException("Specify a defined anchor point and a percentage from 0 to 100.");
+        return this with { DirectionalAnchor = anchor };
+    }
+    public WidgetCollectionItemKey? PreferredEntryKey { get; private init; }
+    /// <summary>Authored collection exits, used when the focused row has no neighbor in that direction.</summary>
+    public FocusNeighbors? FocusNeighbors { get; init; }
+    public IndexedCollectionElement FocusUp(string id) => this with { FocusNeighbors = (FocusNeighbors ?? new()) with { Up = RequireId(id) } };
+    public IndexedCollectionElement FocusDown(string id) => this with { FocusNeighbors = (FocusNeighbors ?? new()) with { Down = RequireId(id) } };
+    public IndexedCollectionElement FocusLeft(string id) => this with { FocusNeighbors = (FocusNeighbors ?? new()) with { Left = RequireId(id) } };
+    public IndexedCollectionElement FocusRight(string id) => this with { FocusNeighbors = (FocusNeighbors ?? new()) with { Right = RequireId(id) } };
     /// <summary>Choose remembered entry or the visible edge for directional movement into this list. Explicit focus/reveal/return requests are unaffected. Requires protocol125 when opted in.</summary>
     public IndexedCollectionElement DirectionalEntry(IndexedDirectionalEntryMode mode)
     {
         if(!Enum.IsDefined(mode) || mode!=IndexedDirectionalEntryMode.Remembered && Layout.Kind!=CollectionLayoutKind.List)
             throw new ArgumentException("Visible-edge directional entry requires an indexed list.",nameof(mode));
-        return this with{DirectionalEntryMode=mode};
+        return this with{DirectionalEntryMode=mode,PreferredEntryKey=null};
+    }
+    /// <summary>Prefer this occurrence on default or directional entry. The host locates and realizes only the target;
+    /// a missing key falls back to remembered/default entry. Explicit focus/reveal/return requests are unaffected. Requires protocol130 and FindIndex.</summary>
+    public IndexedCollectionElement PreferredEntry(WidgetCollectionItemKey? key)
+    {
+        if(key is {} item && (!Source.CanLocateItems || string.IsNullOrEmpty(item.Value)))
+            throw new ArgumentException("Preferred entry requires a valid occurrence key and a locatable source.",nameof(key));
+        return this with{PreferredEntryKey=key,DirectionalEntryMode=IndexedDirectionalEntryMode.Remembered};
     }
     /// <summary>Declares the currently loadable adjacent edges without changing item/query authority.</summary>
     public IndexedCollectionElement AdjacentPages(bool before, bool after)
@@ -387,7 +409,8 @@ public sealed record IndexedCollectionElement : ContainerElement
     internal override ViewNode ToProtocolNode() => ToContainerProtocolNode(ViewNodeKind.IndexedCollection) with
     {
         IndexedCollection = Source, IndexedGroups = Groups, IndexedOccurrenceKeys = OccurrenceKeys, IndexedSelection = Selection, CollectionLayout = Layout, ScrollAxis = Axis, AccessibilityLabel = AccessibilityLabel,
-        CollectionBoundaries=Boundaries,IndexedDirectionalEntry=DirectionalEntryMode,
+        CollectionBoundaries=Boundaries,IndexedDirectionalEntry=DirectionalEntryMode,IndexedPreferredEntryKey=PreferredEntryKey?.Value,Focus=FocusNeighbors,
+        DirectionalAnchor = DirectionalAnchor,
     };
 }
 

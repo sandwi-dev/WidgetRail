@@ -15,12 +15,11 @@ internal static class SettingsInstalledWidgetPresentation
         if (!state.CatalogValid && state.Catalog.Widgets.Count == 0)
             return RenderInstalledCatalogRecoveryList(header, busy, state.Diagnostic, state);
         var tab = "installed.filter." + state.Filter.ToString().ToLowerInvariant();
+        var filterFocus=new FocusNeighbors(Up:"installed.add-webapp",Down:list.Count==0?"installed.install-local":list.Id);
         var tabs = UI.SegmentedTabs("installed.filters", tab,
-            new SegmentedTab("installed.filter.all", "All", "installed.filter.all"),
-            new SegmentedTab("installed.filter.builtin", "Built-in", "installed.filter.builtin"),
-            new SegmentedTab("installed.filter.installed", "Widgets", "installed.filter.installed"));
-        tabs = tabs with { Children = tabs.Children.Select(child => child is ButtonElement button
-            ? button.FocusUp("installed.add-webapp").FocusDown(list.Count == 0 ? "installed.install-local" : list.Id) : child).ToArray() };
+            new SegmentedTab("installed.filter.all", "All", "installed.filter.all"){Focus=filterFocus},
+            new SegmentedTab("installed.filter.builtin", "Built-in", "installed.filter.builtin"){Focus=filterFocus},
+            new SegmentedTab("installed.filter.installed", "Widgets", "installed.filter.installed"){Focus=filterFocus});
         var children = new List<WidgetElement>
         {
             UI.Text("Widgets", "installed.heading").Classes("page-heading"),

@@ -86,7 +86,8 @@ public sealed partial class CaptureReplayService
                         throw new BrokerException("capture_library_invalid_media", "Replay output does not match the admitted recording.");
                     var media = new CaptureAttachment(output.Id, "video/mp4", encoded.Width, encoded.Height, encoded.ByteLength,
                         encoded.ActualDurationSeconds, long.MaxValue)
-                    { Origin = CaptureAttachmentOrigin.SavedLibrary, Properties = encoded.Properties, SourceApplication = operation.Session.Application };
+                    { Origin = CaptureAttachmentOrigin.SavedLibrary, Properties = encoded.Properties, SourceApplication = operation.Session.Application,
+                        SourceProcess = CaptureApplicationMetadata.Interval(operation.Session.Target, operation.Session.StartedAt, operation.CapturedAt) };
                     var item = await output.CommitAsync(media, operation.CapturedAt, Current, stop.Token).ConfigureAwait(false);
                     result = new(CaptureReplayOutcome.Accepted, operation.RequestId, item, item.Media.DurationSeconds);
                 }

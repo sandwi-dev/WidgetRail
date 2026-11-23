@@ -158,7 +158,7 @@ internal sealed partial class OverlayMouseValidationPage : Page
         if (ClientToScreen(owner, ref point) == 0 || SetCursorPos(point.X, point.Y) == 0) throw new InvalidOperationException("Cannot position probe mouse");
         MoveBy(1);
     }
-    private static uint Pixel(FrameworkElement target)
+    internal static uint Pixel(FrameworkElement target)
     {
         var bounds = target.TransformToVisual(null).TransformBounds(new(0, 0, target.ActualWidth, target.ActualHeight));
         var scale = target.XamlRoot.RasterizationScale;

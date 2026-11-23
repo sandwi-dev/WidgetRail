@@ -59,6 +59,12 @@ internal sealed partial class PinnedWindowValidationPage : Page, IAsyncDisposabl
             try
             {
                 await Task.Delay(100);
+                if (Environment.GetCommandLineArgs().Contains("--check-pin-gdi"))
+                {
+                    await CheckBackdropResourcesAsync();
+                    Write("passed");
+                    return;
+                }
                 var scale = XamlRoot.RasterizationScale;
                 var rect = underneath.TransformToVisual(owner.Content).TransformBounds(new(0, 0, underneath.ActualWidth, underneath.ActualHeight));
                 var origin = new NativePoint();
@@ -101,6 +107,31 @@ internal sealed partial class PinnedWindowValidationPage : Page, IAsyncDisposabl
             catch (Exception error) { Fail(error); }
         };
     }
+    private async Task CheckBackdropResourcesAsync()
+    {
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        uint baseline = 0;
+        for (int i = 0; i < 30; i++)
+        {
+            using (var peer = new PinnedWidgetWindow("backdrop validation"))
+            {
+                peer.SetContent(new Grid());
+                peer.Place(new(60, 60, 240, 135));
+                peer.Show();
+                await Task.Delay(40);
+                for (var change = 0; change < 6; change++)
+                    SendMessageW(peer.Handle, 0x031e, 0, 0); // WM_DWMCOMPOSITIONCHANGED
+            }
+            await Task.Delay(40);
+            if (i == 5) baseline = GetGuiResources(process.Handle, 0);
+        }
+        var final = GetGuiResources(process.Handle, 0);
+        Check(baseline > 0 && final > 0 && final <= baseline + 4,
+            $"GDI objects across 24 measured pin lifetimes: {baseline} to {final}");
+    }
+    [LibraryImport("user32.dll"), DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static partial uint GetGuiResources(nint process, uint flags);
+
     private async Task AdvanceAsync()
     {
         if (advancing || phase == "failed") return;

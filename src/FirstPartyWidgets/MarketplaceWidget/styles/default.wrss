@@ -24,3 +24,13 @@ text { color: var(--text); }
 
 .marketplace-section-navigation { gap: 8px; align: center; }
 .marketplace-bumper-key { font-size: var(--controller-glyph-size, 24px); color: var(--controller-glyph-color, var(--text-muted)); padding: 0px; }
+.theme-card { background: var(--surface-raised); corner-radius: 8px; padding: 4px; }
+.theme-card:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.theme-caption { padding: 12px; gap: 6px; align: stretch; }
+.theme-title { font-size: 28px; font-weight: 600; text-align: start; }
+.theme-feature-link { color: var(--data-blue, var(--text)); font-weight: 600; margin: 8px 0px 0px 0px; text-align: start; }
+.theme-art { image-fallback: label; }
+.theme-feature-art { aspect-ratio: 1.7778; max-height: 234px; background: #21242a; }
+.theme-card-art { aspect-ratio: 1.7778; max-height: 180px; background: #21242a; }
+.theme-gallery-art { aspect-ratio: 1.7778; background: #21242a; }
+.theme-gallery, .theme-overview { gap: 10px; }

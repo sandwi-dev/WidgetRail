@@ -98,7 +98,10 @@ public sealed record SpotifyPlaybackSummary(
     bool ShuffleState,
     SpotifyPlaybackItemSummary? Item,
     SpotifyPlaybackDisallowedActions DisallowedActions,
-    string Attribution);
+    string Attribution)
+{
+    public string? DeviceId { get; init; }
+}
 
 public enum SpotifyPlaybackOperation
 {
@@ -115,7 +118,11 @@ public sealed record SpotifyPlaybackCommand(
     SpotifyPlaybackOperation Operation,
     long? PositionMilliseconds = null,
     SpotifyRepeatState? RepeatState = null,
-    bool? Enabled = null);
+    bool? Enabled = null)
+{
+    public string? DeviceId { get; init; }
+    public string? ExpectedAccount { get; init; }
+}
 
 public enum SpotifyLocalPlaybackState
 {

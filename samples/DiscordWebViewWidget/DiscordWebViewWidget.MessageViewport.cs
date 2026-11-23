@@ -20,12 +20,13 @@ public sealed partial class DiscordWebViewWidget
     private ValueTask MessageViewportChanged(string channel,WidgetCollectionViewportState viewport,CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        ObserveMessageReadState(channel,viewport);
         if(!viewport.FollowsEnd||viewport.Recovering||!IsActive||navigation.Value.Route!=Route.Conversation||
             messages.Value.Selection is not {} selected||selected.Channel!=channel||!MessageSelectionCurrent(selected))return ValueTask.CompletedTask;
         // Consume any bounded tail deferred while reading. The host can recover
         // the exact old anchor if a new native scroll races this observation.
         var result=history.ApplyMutations(history.MutationScope,[],allowTailEviction:true);
-        if(result.Applied)messages.Update(value=>value.Selection==selected?value with{NewMessages=result.HasUnseenItems||history.Snapshot.After is not null}:value);
+        if(result.Applied)messages.Update(value=>value.Selection==selected?value with{NewMessages=value.NewMessages&&result.HasUnseenItems}:value);
         return ValueTask.CompletedTask;
     }
 

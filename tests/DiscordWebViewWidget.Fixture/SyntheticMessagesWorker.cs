@@ -11,6 +11,7 @@ internal static class SyntheticMessagesWorker
     // fabricated and this scenario cannot qualify OS picker authorization.
     internal static async Task RunAsync(string[] args)
     {
+        using var cursorDiagnostics = SyntheticCursorDiagnostics.Open();
         var file=new WidgetFileReference(new string('e',32),"messages-upload-fixture.txt","text/plain",16384,long.MaxValue);
         var released=false;
         var services=new WidgetTestHostServicesBuilder().WithPrivateState(new())

@@ -155,7 +155,7 @@ internal sealed partial class OverlayShellPage
         for (var node = args.OriginalSource as DependencyObject; node is not null; node = Presentation.PresentationLayers.LogicalParent(node))
             // Popup routed input can reach this root even though its visual
             // ancestry lives outside WidgetSurface. It is still UI content.
-            if (ReferenceEquals(node, introductionCard) || ReferenceEquals(node, WidgetSurface) || node is Presentation.WidgetViewPresenter or MenuFlyoutPresenter or MenuFlyoutItemBase or ContentDialog || ReferenceEquals(node, RailRegion) || ReferenceEquals(node, GuideRegion) || ReferenceEquals(node, StatusChrome) || ReferenceEquals(node, radialView))
+            if (ReferenceEquals(node, introductionCard) || ReferenceEquals(node, utilityPanel) || ReferenceEquals(node, WidgetSurface) || node is Presentation.WidgetViewPresenter or MenuFlyoutPresenter or MenuFlyoutItemBase or ContentDialog || ReferenceEquals(node, RailRegion) || ReferenceEquals(node, GuideRegion) || ReferenceEquals(node, StatusChrome) || ReferenceEquals(node, radialView))
             {
 #if ENABLE_WIDGET_VALIDATION
                 if(pinReturnGapTraceForValidation is {Count:<16} kept)kept.Add("kept="+(node as FrameworkElement)?.Name);

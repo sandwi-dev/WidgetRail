@@ -25,6 +25,7 @@
   --scrollbar-thumb: #a3afbd;
   --text-subdued: #92a2b3;
   --focus: var(--accent);
+  --focus-highlight: #f1faff;
   --accent: #acc9df;
   --success: #aad4bf;
   --info: #acc9df;

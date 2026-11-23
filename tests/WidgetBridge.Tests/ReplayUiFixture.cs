@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using WidgetRail.WidgetCatalog;
 using WidgetRail.PlatformBroker;
 using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetBridge;
@@ -17,7 +19,24 @@ internal static class ReplayUiFixture
         string[] permissions = [PlatformCapabilities.WindowCaptureV1, PlatformCapabilities.CaptureLibraryReadV1,
             PlatformCapabilities.CaptureLibrarySaveV1, PlatformCapabilities.CaptureLibraryManageV1];
         var style = WrssPackageLoader.LoadFile(Path.Combine(AppContext.BaseDirectory, "fixture", "capture-replay.wrss"));
-        var widgets = new[] { Widget("capture-replay-fixture", "capture-replay.instance", "Capture Library"), Widget("replay-approval", "replay-approval.instance", "Replay approval fixture") };
+        var root = Path.Combine(AppContext.BaseDirectory, "fixture", "capture");
+        var manifestBytes = await File.ReadAllBytesAsync(Path.Combine(root, "manifest.json"));
+        var manifest = ManifestJson.Deserialize(manifestBytes);
+        var files = manifest.IconAssets.Values.ToDictionary(asset => asset.Path, asset =>
+        {
+            var bytes = File.ReadAllBytes(Path.Combine(root, asset.Path));
+            return new VerifiedPackageFile(asset.Path, bytes.Length, Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
+        }, StringComparer.Ordinal);
+        var capture = Widget("capture-replay-fixture", "capture-replay.instance", "Capture Library") with
+        {
+            PackageRoot = root, VerifiedPackageFiles = files,
+            PackageContentDigest = Convert.ToHexString(SHA256.HashData(manifestBytes)).ToLowerInvariant(),
+            PackageIconAssets = PackageIconAssetResolver.LoadMetadata(root, manifest, files),
+            DeclaredPackageIconAssetIds = manifest.IconAssets.Keys.ToHashSet(StringComparer.Ordinal),
+            Intents = manifest.Intents, TrayActions = manifest.TrayActions
+        };
+        var widgets = new[] { capture, Widget("replay-approval", "replay-approval.instance", "Replay approval fixture") with
+            { TrayActions = [new("reject", "Fixture action")] } };
         ConfiguredWidget Widget(string id, string instance, string name) => new()
         {
             Id = id, InstanceId = instance, PackageId = "example." + id, PublisherId = "example.fixture", Name = name,
@@ -52,7 +71,10 @@ internal static class ReplayUiFixture
         public override WidgetView Render() => new(UI.Stack("approval.root",
             UI.Button("Enable replay", "approval.enable", "approval.enable"),
             UI.Button("Disable replay", "approval.disable", "approval.disable"),
-            UI.Text(result, "approval.result")), ActiveInputScopeId: "approval.root");
+            UI.Text(result, "approval.result")), ActiveInputScopeId: "approval.root",
+            QuickActions: [WidgetQuickAction.ForTray("Fixture action", new("reject", "fixture"))]);
+        protected override ValueTask<TrayActionResult> OnTrayActionAsync(TrayActionOffer offer, CancellationToken token) =>
+            ValueTask.FromResult(TrayActionResult.Unavailable("The fixture player disconnected."));
         public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken token = default)
         {
             if (action.ActionId is not ("approval.enable" or "approval.disable")) return ValueTask.CompletedTask;

@@ -18,6 +18,36 @@ internal sealed partial class OverlayShellPage
         replayRoots.Add(root, new());
         root.AddHandler(PreviewKeyDownEvent, new KeyEventHandler((_, args) =>
         {
+            if ((args.Key is VirtualKey.Number5 or VirtualKey.Number6 or VirtualKey.Number0 or VirtualKey.PageDown or VirtualKey.PageUp) &&
+                Environment.GetCommandLineArgs().Contains("--tray-test-directions"))
+            {
+                args.Handled = true;
+                var sample = ControllerFrame.Create();
+                sample.Connected = 1;
+                sample.State.RightThumbX = args.Key switch
+                {
+                    VirtualKey.Number5 => short.MinValue, VirtualKey.Number6 => short.MaxValue, _ => 0,
+                };
+                sample.State.RightThumbY = args.Key switch
+                {
+                    VirtualKey.PageDown => short.MinValue, VirtualKey.PageUp => short.MaxValue, _ => 0,
+                };
+                Receive(sample);
+                return;
+            }
+            if (args.Key is >= VirtualKey.Number1 and <= VirtualKey.Number4 && Environment.GetCommandLineArgs().Contains("--tray-test-directions"))
+            {
+                args.Handled = true;
+                var index = (int)args.Key - (int)VirtualKey.Number1;
+                var directionMask = (ushort)(index switch { 0 => 1, 1 => 8, 2 => 2, _ => 4 });
+                var sample = ControllerFrame.Create(); sample.Connected = 1; Receive(sample);
+                sample.PressedButtons = sample.State.Buttons = directionMask;
+                sample.DpadNavigation = new() { Phase = NavigationPhase.Pressed, Direction = index switch
+                    { 0 => NavigationDirection.Up, 1 => NavigationDirection.Right, 2 => NavigationDirection.Down, _ => NavigationDirection.Left } };
+                Receive(sample);
+                sample.PressedButtons = sample.State.Buttons = 0; sample.ReleasedButtons = directionMask; sample.DpadNavigation = default;
+                Receive(sample); return;
+            }
             // Arrange rail ownership without relying on the removed widget exit.
             if (args.Key == VirtualKey.F4) { args.Handled = true; FocusDirectionalTray(); return; }
             if (args.Key is VirtualKey.F2 or VirtualKey.F3)

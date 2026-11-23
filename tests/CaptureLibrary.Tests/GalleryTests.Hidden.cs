@@ -46,7 +46,7 @@ internal static partial class GalleryTests
         await fixture.Action("capture-library.selection.toggle");
         await fixture.Action("capture-library.selection.all");
         await fixture.Until(()=>fixture.Collection?.IndexedSelection?.Count==2);
-        Check(fixture.Node("capture-library.batch.recycle") is {Text:"Unhide",ActionId:"capture-library.batch.unhide"},
+        Check(fixture.Node("capture-library.batch.hide") is {Text:"Unhide",ActionId:"capture-library.batch.unhide"},
             "Hidden selection must offer restoration instead of removal");
         await fixture.Action("capture-library.batch.unhide");
         await fixture.Until(()=>!fixture.Busy&&fixture.Node("capture-library.empty") is not null);

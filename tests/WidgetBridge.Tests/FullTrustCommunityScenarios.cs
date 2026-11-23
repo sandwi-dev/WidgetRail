@@ -282,10 +282,8 @@ internal static partial class FullTrustCommunityScenarios
         Check(load.InstalledCatalogValid && load.Warnings.Count == 0,
             "The packaged Playnite Library application failed ordinary catalog admission.");
         var configured = load.Catalog.GetConfigured(installed.Id);
-        AssertFullTrust(configured, "PlayniteLibraryApplication.exe");
-        Check(configured.DeclaredCapabilities.Count == 0 &&
-              configured.WorkerArguments.Count == 0,
-            "Playnite Library retained a product capability or special host argument.");
+        AssertFullTrust(configured, "PlayniteLibraryApplication.exe",
+            WidgetCaptureLibraryCapabilities.ReadPermission, WidgetCaptureLibraryCapabilities.ManagePermission);
 
         var variable = "WRAIL_PLAYNITE_LIBRARY_DATA_ROOT";
         var previousRoot = Environment.GetEnvironmentVariable(variable);
@@ -443,15 +441,15 @@ internal static partial class FullTrustCommunityScenarios
             $"Host runtime artifact was stale: {actual}.");
     }
 
-    private static void AssertFullTrust(ConfiguredWidget configured, string executableName)
+    private static void AssertFullTrust(ConfiguredWidget configured, string executableName, params string[] expectedCapabilities)
     {
         Check(configured.ExecutionTrust == WidgetExecutionTrust.FullTrustCurrentUser,
             "The manifest runtime did not become host-owned full-trust policy.");
         Check(!configured.RequiresAppContainer && configured.IsolationKey is null,
             "The full-trust application retained AppContainer identity.");
-        Check(configured.DeclaredCapabilities.Count == 0 &&
-              configured.ReadOnlyPaths.Count == 0,
-            "The full-trust application retained sandbox broker authority.");
+        Check(configured.DeclaredCapabilities.Order(StringComparer.Ordinal).SequenceEqual(expectedCapabilities.Order(StringComparer.Ordinal)) &&
+              configured.ReadOnlyPaths.Count == 0 && !configured.GrantsBundledPermissionDefaults,
+            "The community application has unexpected capability declarations, filesystem grants, or bundled permission defaults.");
         Check(configured.ContentLeaseFactory is not null,
             "The exact immutable package generation lost its launch lease.");
         Check(Path.GetFileName(configured.WorkerExecutable) == executableName &&

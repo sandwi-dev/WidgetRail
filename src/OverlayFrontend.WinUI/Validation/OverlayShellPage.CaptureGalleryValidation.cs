@@ -33,10 +33,11 @@ internal sealed partial class OverlayShellPage
             object? failedState = null;
             object? actionGeometry = null;
             MediaPlayerView? testedMedia = null;
-            MediaPresentationStage? testedPlane = null;
+            FrameworkElement? testedPlane = null;
             var originalPlayers = 0;
             var appliedFilter = false;
-            var favoriteOnly = Environment.GetCommandLineArgs().Contains("--capture-favorite-continuity-only");
+            var cacheReturn = Environment.GetCommandLineArgs().Contains("--capture-cache-return-only");
+            var favoriteOnly = cacheReturn || Environment.GetCommandLineArgs().Contains("--capture-favorite-continuity-only");
             string[]? favoriteIds = null;
             Func<object>? favoriteDiagnostic = null;
             WidgetIndexedCollectionView? favoriteGallery = null;
@@ -56,7 +57,9 @@ internal sealed partial class OverlayShellPage
                     if (favoriteIds.Length < 2 || favoriteIds.Any(id => !CaptureLimits.ValidToken(id)) || favoriteIds.Distinct().Count() != favoriteIds.Length)
                         throw new InvalidOperationException("Favorite fixture needs at least two exact copied captures.");
                 }
-                const string widgetId = "widgetrail.firstparty.capture-library";
+                var widgetId = favoriteOnly && catalogItems.Any(item => item.Id == "capture-replay-fixture")
+                    ? "capture-replay-fixture"
+                    : catalogItems.Any(item => item.Id == "capture-library") ? "capture-library" : "widgetrail.firstparty.capture-library";
                 if (owner is null || !catalogItems.Any(item => item.Id == widgetId))
                     throw new InvalidOperationException("The production Capture Library must be installed for this smoke test.");
                 await SelectAsync(widgetId, true);
@@ -105,8 +108,8 @@ internal sealed partial class OverlayShellPage
                 Check(testedMedia.PreviewMutedForValidation && testedMedia.PreviewSystemControlsDisabledForValidation && !surface.IsPreviewEnteredForValidation,
                     "The actual passive clip plays muted without taking system media controls or preview focus");
                 Check(MediaPlayerView.ResidentPlayers == originalPlayers + 1, "The gallery starts exactly one additional native decoder");
-                testedPlane = testedMedia.PreviewStageForValidation ?? throw new InvalidOperationException("The actual clip has no native presentation stage.");
-                Check(Canvas.GetZIndex(testedPlane) == (int)PresentationLayer.ContentPreviewMedia,
+                testedPlane = testedMedia.PreviewVideoForValidation ?? throw new InvalidOperationException("The actual clip has no native presentation stage.");
+                Check(testedPlane.Parent is not null && !ReferenceEquals(testedPlane.Parent, ProductionRoot),
                     "The actual gallery clip uses the preview media band above its frame");
                 var fragment = Walk(surface.FocusPreviewChrome!).OfType<WidgetViewPresenter>().Single();
                 var actions = Walk(fragment).OfType<Button>().Where(button => button.Tag is WidgetElementIdentity { Kind: ViewNodeKind.Button }).ToArray();
@@ -129,13 +132,13 @@ internal sealed partial class OverlayShellPage
                 await Pixels("playing");
                 try
                 {
-                    testedPlane.SetCovered(true);
+                    testedPlane.Visibility = Visibility.Collapsed;
                     await NativeFrame();
-                    Check(ReferenceEquals(testedPlane, testedMedia.PreviewStageForValidation) && testedPlane.Visibility == Visibility.Collapsed,
+                    Check(ReferenceEquals(testedPlane, testedMedia.PreviewVideoForValidation) && testedPlane.Visibility == Visibility.Collapsed,
                         "Negative pixel control still owns the collapsed current media plane");
                     await Pixels("covered");
                 }
-                finally { testedPlane.SetCovered(false); }
+                finally { testedPlane.Visibility = Visibility.Visible; }
                 await Pixels("restored");
                 Check(true, "Actual window pixels distinguish the playing/restored clip from its covered negative control");
 
@@ -249,7 +252,7 @@ internal sealed partial class OverlayShellPage
             }
             finally
             {
-                testedPlane?.SetCovered(false);
+                if(testedPlane is not null)testedPlane.Visibility = Visibility.Visible;
                 if (favoriteGallery is not null) favoriteGallery.NavigationTrace = null;
                 if (appliedFilter && surface?.FocusHostTarget("capture-library.active.type") == true)
                 {
@@ -330,6 +333,15 @@ internal sealed partial class OverlayShellPage
                     { index, key = Row(index)!.Item.Key, current = Row(index)!.Lease.IsCurrent, star = Star(index), bounds = Container(index) is { } container ? Bounds(container) : (Windows.Foundation.Rect?)null }).ToArray()
                 };
                 void Observe(string phase) => favoriteObservations.Add(new { phase, state = favoriteDiagnostic() });
+                async Task WaitForRestingViewport()
+                {
+                    var scroll = Scroll();
+                    var lastChange = Environment.TickCount64;
+                    void Changed(object? sender, ScrollViewerViewChangedEventArgs args) => lastChange = Environment.TickCount64;
+                    scroll.ViewChanged += Changed;
+                    try { await Until(() => Environment.TickCount64 - lastChange >= 250 && !gallery.HasPendingNativeNavigation && !gallery.IsEntryPending); }
+                    finally { scroll.ViewChanged -= Changed; }
+                }
                 async Task Enter(int index)
                 {
                     View().ScrollIntoView(View().Items[index]);
@@ -340,27 +352,85 @@ internal sealed partial class OverlayShellPage
                     await Until(() => gallery.CaptureFocusedItem()?.ItemKey == key && !gallery.HasPendingNativeNavigation && !gallery.IsEntryPending);
                     await NativeFrame();
                 }
-                async Task ContextFavorite()
+                async Task ContextFavorite(bool keyboard = false)
                 {
                     var target = gallery.CaptureContextRow() ?? throw new InvalidOperationException("No current native context row.");
                     Check(target.Row.Item.Root.ContextActions is { Count: 1 } actions && actions[0].ActionId == "capture-library.item.favorite" && !actions[0].IsDisabled,
                         "The native row menu contains only the authorized Favorite action");
-                    await Button(ControllerButton.Menu);
+                    if (keyboard) Validation.NativeContextProbeInput.Keyboard(shiftF10: true);
+                    else await Validation.NativeContextProbeInput.ClickWindowElementAsync((nint)hostWindow, target.Anchor, right: true);
                     await Until(() => surface!.HasTransientControl && FocusId().EndsWith(".Context.capture-library.item.favorite", StringComparison.Ordinal));
+                    Check(true, keyboard ? "Shift+F10 opens Favorite on the focused card." : "Right click opens Favorite on the exact card.");
                     await Button(ControllerButton.A);
                     await Until(() => !surface!.HasTransientControl);
                 }
 
                 Check(Definition().Count == favoriteIds!.Length, "The real broker exposes exactly the staged fixture records");
+                if (cacheReturn)
+                {
+                    var index = Definition().Count - 2;
+                    step = "cache return from a scrolled capture";
+                    await Enter(index);
+                    await WaitForRestingViewport();
+                    var key = Row(index)!.Item.Key;
+                    var savedOffset = Scroll().VerticalOffset;
+                    var original = Star(index);
+                    bool Painted() => Container(index) is { } card && Walk(card).OfType<WidgetArtworkView>().Any(image => image.Source is not null);
+                    await Until(Painted);
+                    Check(savedOffset > 1, "The selected screenshot and its decoded thumbnail are below the first viewport");
+                    for (var pass = 0; pass < 3; pass++)
+                    {
+                        step = "detail and Back pass " + pass;
+                        await Button(ControllerButton.A);
+                        await Until(() => Node("capture-library.preview")?.MediaPlayer?.Source.Attachment is not null &&
+                            Node("capture-library.favorite") is { IsBusy: not true });
+                        if (pass > 0)
+                        {
+                            await Button(ControllerButton.Y);
+                            var expected = pass == 1 ? !original : original;
+                            await Until(() => Node("capture-library.favorite") is { IsBusy: not true } favorite &&
+                                (favorite.IsSelected == true) == expected);
+                        }
+                        if (pass == 1)
+                        {
+                            Check(surface!.CachedPageCount > 0, "Capture detail retains its gallery before cache pressure");
+                            await EvictGallery();
+                            Check(surface.CachedPageCount == 0, "Other presenters evict the gallery through the shared host budget");
+                        }
+                        await Button(ControllerButton.B);
+                        await Until(() => Node(id) is not null && Node("capture-library.back") is null);
+                        await Until(() =>
+                        {
+                            var mounted = Walk(surface!).OfType<WidgetIndexedCollectionView>().FirstOrDefault(view =>
+                                view.IsLoaded && view.IsHitTestVisible && AutomationProperties.GetAutomationId(view) == "Widget." + id);
+                            if (mounted is null) return false;
+                            gallery = mounted;
+                            return true;
+                        });
+                        await Until(() => gallery.CaptureFocusedItem()?.ItemKey == key && Row(index)?.Lease.IsCurrent == true && Painted());
+                        await WaitForRestingViewport();
+                        Check(Math.Abs(savedOffset - Scroll().VerticalOffset) < 1 && Star(index) == (pass == 1 ? !original : original),
+                            "Back restores the scrolled screenshot, current favorite state and decoded thumbnail on pass " + pass);
+                    }
+                    return;
+                }
                 step = "favorite current scrolled card";
                 var firstIndex = Definition().Count - 2;
                 await Enter(firstIndex);
                 Check(!Star(firstIndex), "The staged card starts without a favorite star");
                 var firstKey = Row(firstIndex)!.Item.Key;
+                await WaitForRestingViewport();
                 var before = Definition(); var retainedContainer = Container(firstIndex); var offset = Scroll().VerticalOffset;
                 Check(Scroll().ScrollableHeight <= 1 || offset > 1, "Favorite checks use a scrolled row whenever the gallery has scrollable content");
                 Observe("ordinary-before");
-                await ContextFavorite();
+                await Button(ControllerButton.Menu);
+                await Until(() => surface!.HasTransientControl && FocusId().StartsWith("Widget.capture-library.more.Option.", StringComparison.Ordinal));
+                await Button(ControllerButton.B);
+                await Until(() => !surface!.HasTransientControl && gallery.CaptureFocusedItem()?.ItemKey == firstKey);
+                await WaitForRestingViewport();
+                Check(Math.Abs(Scroll().VerticalOffset - offset) < 1 && !Star(firstIndex),
+                    "Menu opens toolbar commands and returns to the same scrolled card without favoriting it");
+                await ContextFavorite(keyboard: true);
                 await Until(() => Definition().ContentRevision > before.ContentRevision && Star(firstIndex) && gallery.CaptureFocusedItem()?.ItemKey == firstKey);
                 await NativeFrame();
                 Check(Definition().QueryGeneration == before.QueryGeneration && ReferenceEquals(Container(firstIndex), retainedContainer),
@@ -429,6 +499,42 @@ internal sealed partial class OverlayShellPage
                 Observe("removal-after");
                 Check(validationFailure is null, "Favorite continuity completes without host recovery or stale-action dispatch");
             }
+
+            async Task EvictGallery()
+            {
+                var pages = new List<WidgetViewPresenter>();
+                var template = surface!.CurrentBinding!.Frame;
+                try
+                {
+                    for (var index = 0; index < 3; index++)
+                    {
+                        var pressure = new WidgetViewPresenter { Width = 32, Height = 24, Opacity = 0, IsHitTestVisible = false };
+                        pressure.SetAutomaticFocusEnabled(false);
+                        pages.Add(pressure);
+                        WidgetSurfaces.Children.Add(pressure);
+                        Show("one", 1);
+                        await Until(() => pressure.IsLoaded && pressure.ActualHeight > 0 && Walk(pressure).OfType<TextBlock>().Any(text => text.ActualHeight > 0));
+                        Show("two", 2);
+                        Check(pressure.CachedPageCount == 1, "A separate presenter occupies one native cache slot");
+
+                        void Show(string key, long sequence)
+                        {
+                            const string scope = "pressure";
+                            var root = new ViewNode { Id = scope, Kind = ViewNodeKind.Stack,
+                                Transition = new("pressure.pages", key, 0, WidgetTransitionKind.Page, WidgetNavigationOperation.Replace),
+                                Children = new[] { new ViewNode { Id = key, Kind = ViewNodeKind.Text, Text = key } } };
+                            var snapshot = new ViewSnapshot { Root = root, ActiveInputScopeId = scope, Sequence = sequence,
+                                WidgetInstanceId = template.Authority.WidgetInstanceId };
+                            pressure.Apply(new(template.Authority with { SnapshotSequence = sequence, ActiveInputScopeId = scope },
+                                template.Descriptor, snapshot, new Dictionary<string, WidgetRail.WidgetBridge.BridgeNodeRenderStyles>()));
+                        }
+                    }
+                }
+                finally
+                {
+                    foreach (var pressure in pages) { WidgetSurfaces.Children.Remove(pressure); await pressure.DisposeAsync(); }
+                }
+            }
             async Task Until(Func<bool> ready)
             {
                 var deadline = Environment.TickCount64 + 20000;
@@ -456,8 +562,8 @@ internal sealed partial class OverlayShellPage
                 await File.WriteAllTextAsync(phasePath + ".pending", JsonSerializer.Serialize(new { phase, processId = Environment.ProcessId,
                     window = WinRT.Interop.WindowNative.GetWindowHandle(App.Window).ToInt64(),
                     x = rect.X * factor, y = rect.Y * factor, width = rect.Width * factor, height = rect.Height * factor,
-                    currentMediaPlane = testedMedia.PreviewStageForValidation?.Visibility.ToString(),
-                    sameMediaPlane = ReferenceEquals(testedPlane, testedMedia.PreviewStageForValidation),
+                    currentMediaPlane = testedMedia.PreviewVideoForValidation?.Visibility.ToString(),
+                    sameMediaPlane = ReferenceEquals(testedPlane, testedMedia.PreviewVideoForValidation),
                     startupPresentationPending, startupShowing = startupIndicator?.IsShowing,
                     startupStageOpacity = StartupContentStage.Opacity,
                     startupNativeOpacity = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(StartupContentStage).Opacity,

@@ -17,13 +17,17 @@ internal sealed partial class OverlayShellPage
         var folder = Path.GetDirectoryName(Path.GetFullPath(path))!;
         Directory.CreateDirectory(folder);
         var sourceArgument = FrontendArguments.Value(Environment.GetCommandLineArgs(), "--capture-fixture-window");
-        if (!long.TryParse(sourceArgument, out var sourceHandle) || sourceHandle == 0)
+        var transcriptOnly = Environment.GetCommandLineArgs().Contains("--game-help-transcript-only");
+        if ((!long.TryParse(sourceArgument, out var sourceHandle) || sourceHandle == 0) && !transcriptOnly)
             throw new InvalidOperationException("Game Help validation requires a disposable external capture fixture window.");
         var handle = (nint)sourceHandle;
         var identity = new NativePreviewTarget { Size = (uint)Marshal.SizeOf<NativePreviewTarget>(), Version = 1 };
-        Marshal.ThrowExceptionForHR(PreviewNative.ReadIdentity((ulong)handle, ref identity));
-        if (identity.ProcessId == (uint)Environment.ProcessId)
-            throw new InvalidOperationException("Capture fixture must be outside the overlay process.");
+        if (!transcriptOnly)
+        {
+            Marshal.ThrowExceptionForHR(PreviewNative.ReadIdentity((ulong)handle, ref identity));
+            if (identity.ProcessId == (uint)Environment.ProcessId)
+                throw new InvalidOperationException("Capture fixture must be outside the overlay process.");
+        }
         Loaded += async (_, _) =>
         {
             var checks = new List<string>(); string? error = null;
@@ -31,6 +35,52 @@ internal sealed partial class OverlayShellPage
             {
                 if (startup is not null) await startup;
                 await Until(() => activeWidget == "game-help" && interactive && foreground && Has("help.composer"));
+                if (transcriptOnly)
+                {
+                    await Act("starter.0", "help.starter.0");
+                    await Until(() => Has("help.answer-plain"));
+                    await Act("ask.plain", "help.answer-plain");
+                    for (var id = 2; id < 12; id += 2)
+                    {
+                        await Until(() => Has($"help.message.{id}.suggest.0"));
+                        await Act($"suggest.{id}.0", $"help.message.{id}.suggest.0");
+                    }
+                    await Until(() => Has("help.message.12.suggest.0"));
+                    var transcript = (ScrollViewer)Find(surface!, "Widget.help.transcript")!;
+                    Check(surface!.FocusHostTarget("help.composer"), "The composer accepts native controller focus");
+                    transcript.ChangeView(null, 0, null, true);
+                    await Until(() => transcript.VerticalOffset < 1 && transcript.ScrollableHeight > transcript.ViewportHeight);
+                    var latest = (FrameworkElement)Find(surface, "Widget.help.message.12")!;
+                    Check(latest.TransformToVisual(transcript).TransformPoint(new()).Y >= transcript.ViewportHeight,
+                        "Older history is visible and the latest answer starts offscreen");
+                    await RouteButtonAsync(ControllerButton.RightBumper, ControllerEventPhase.Pressed);
+                    await RouteButtonAsync(ControllerButton.RightBumper, ControllerEventPhase.Released);
+                    await Until(() => surface.CurrentBinding!.View.ScrollRevealRequest?.TargetId == "help.message.12" &&
+                        AtLatestAnswer());
+                    Check(Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(surface.XamlRoot) is DependencyObject focused &&
+                        AutomationProperties.GetAutomationId(focused) == "Widget.help.composer",
+                        "Latest answer reveals the newest answer and preserves composer focus");
+                    await CaptureSettingsListAsync(surface, Path.Combine(folder, "latest-answer.png"));
+                    transcript.ChangeView(null, 0, null, true);
+                    await Until(() => transcript.VerticalOffset < 1);
+                    Check(surface.FocusHostTarget("help.message.2.suggest.0"), "An earlier suggested reply accepts controller focus");
+                    await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Pressed);
+                    await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
+                    await Until(() => surface.CurrentBinding!.View.ScrollRevealRequest?.TargetId == "help.message.13" &&
+                        Find(surface, "Widget.help.message.13") is FrameworkElement question &&
+                        question.TransformToVisual(transcript).TransformPoint(new()).Y is var top && top >= -1 && top < transcript.ViewportHeight);
+                    Check(Has("help.message.13"), "Sending from older history brings the new question into the viewport");
+                    await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new { passed = true, checks }));
+                    return;
+
+                    bool AtLatestAnswer()
+                    {
+                        var viewport = Presentation.WidgetScrollViewport.ContentBounds(transcript);
+                        var y = latest.TransformToVisual(transcript).TransformPoint(new()).Y;
+                        return y >= viewport.Top - 1 && y < viewport.Bottom &&
+                            (Math.Abs(y - viewport.Top) < 1 || transcript.ScrollableHeight - transcript.VerticalOffset < 1);
+                    }
+                }
                 Check(!Has("help.application"), "Full-trust Game Help initializes without an application picker or window-list capability");
                 var rejectedSelf = false;
                 try { _ = WidgetRail.OverlayFrontend.WinUI.Capture.NativeWindowCapture.ForegroundTarget(); }

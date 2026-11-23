@@ -20,6 +20,7 @@
   --text-subdued: #aaaaaa;
   --accent: #ededed;
   --focus: var(--accent);
+  --focus-highlight: #707070;
   --controller-glyph-color: #e0e0e0;
   --scrollbar-track: #333333;
   --scrollbar-thumb: #d1d1d1;

@@ -55,6 +55,7 @@ public sealed partial class PlayniteLibraryTests
         var game = PageNodes(widget, Snapshot(widget, 112_001).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
         await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
         await Bounded(widget.WhenDetailsIdleAsync(), "full details");
+        await widget.OnActionAsync(new(DetailAction + "tab.information", "tab"));
         var modal = Snapshot(widget, 112_002);
         Assert.AreEqual("Full game description from the detail endpoint.",
             PageNodes(widget, modal.Root).Single(node => node.Id == "playnite-library.details.description").Text);
@@ -87,7 +88,7 @@ public sealed partial class PlayniteLibraryTests
             .Where(node => node.ActionId == PlayniteLibraryActions.DetailsOpen).Skip(1).First();
         await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
         var modal = Snapshot(widget, 111_001);
-        Assert.AreEqual(PlayniteLibraryDetailsPresentation.PlayId, modal.InitialFocusId);
+        Assert.AreEqual(DetailAction + "tab.description", Nodes(modal.Root).Single(n => n.Id == modal.InitialFocusId).ActionId);
         await widget.OnActionAsync(new(PlayniteLibraryActions.Launch, PlayniteLibraryDetailsPresentation.PlayId));
         CollectionAssert.AreEqual(new[] { "app-00001" }, host.Launches.ToArray());
         await Background(widget);
@@ -120,7 +121,7 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task GameActivationOpensModalAndBackPreservesThePage()
+    public async Task GameActivationOpensDetailsModalAndBackRestoresTheLibrary()
     {
         var host = new FakeHost(20);
         var widget = Create(host);
@@ -134,6 +135,7 @@ public sealed partial class PlayniteLibraryTests
         Assert.AreEqual(ViewNodeKind.ModalLayer, modal.Root.Kind);
         Assert.AreEqual(0, host.Launches.Count, "Opening details must not launch a game.");
         Assert.AreEqual(page.Root.Id, modal.Root.Children[0].Id);
+        Assert.IsFalse(Nodes(modal.Root).Any(node => node.Transition?.Kind == WidgetTransitionKind.Page));
         Assert.AreEqual(page.Surface, modal.Surface);
         Assert.IsFalse(await Route(widget, modal, ControllerButton.A, game.Id), "Background controls cannot activate.");
         Assert.IsTrue(await Route(widget, modal, ControllerButton.B, modal.InitialFocusId!));
@@ -379,7 +381,9 @@ public sealed partial class PlayniteLibraryTests
         await Ready(widget, host);
         var snapshot = Snapshot(widget, 90_001);
         var header = PageNodes(widget, snapshot.Root).Single(node => node.Id == "playnite-library.home.actions");
-        Assert.AreEqual(3, PageNodes(widget, snapshot.Root).Count(node => node.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen));
+        CollectionAssert.AreEquivalent(new[] { PlayniteLibraryActions.HomeOpen, PlayniteLibraryActions.BrowseOpen },
+            Nodes(header).Where(node => node.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen)
+                .Select(node => node.ActionId).ToArray());
         Assert.AreEqual(PlayniteLibraryPresentation.HomeRailId, snapshot.InitialFocusId);
         var before = host.Queries.Count;
         host.NextQueryStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -2608,18 +2612,18 @@ public sealed partial class PlayniteLibraryTests
         CollectionAssert.AreEquivalent(new[]
         {
             "_application", "_setupService", "_gate", "_launchGeneration", "_launchStateRecency",
-            "_launchStates", "_indexedHome", "_indexedBrowse", "_indexedFavorites",
+            "_launchStates", "_indexedHome", "_indexedBrowse", "homePosts", "homeRecentActivity", "homeCaptures",
             "suggestionOwner", "suggestionSource", "gameSuggestions", "achievementBrowse", "achievementRows", "_hiddenRows", "_model", "_navigation", "_organization",
-            "progressPin", "progressData",
+            "progressPin", "progressData", "playingNews", "playingDetails", "playingAwards", "playingCaptures", "playingAuthority",
             // SDK resource/collection owners and their immutable publication cache; controls live in the model.
             "achievementHub", "achievementGames", "recentAchievements", "publishedAchievementOverview", "publishedAchievementFilter",
-            "captureSetup", "relatedCaptures", "relatedCaptureRows", "publishedCaptures",
+            "captureSetup", "relatedCaptures", "capturePicker", "sessionRows", "captureGames", "gameChoiceRows", "gameLinkFeedback", "timelineRows", "timelineCaptures", "sessionHistoryRows", "sessionAnalysis",
             "_actionFeedbackExpiry", "_playniteFeedbackExpiry",
             "_createdCategoriesPendingReconciliation", "_browseReloadAttempt",
             "_livePlayniteAuthority", "_presentationAuthority", "_homeQueryAuthorityGeneration",
             "_browseQueryAuthorityGeneration",
             "_authorityRevision", "_hasLivePlayniteAuthority", "_playniteClient",
-            "_playniteConnection", "_detailsAchievements", "_detailsActivity",
+            "_playniteConnection", "_detailsAchievements", "_detailsActivity", "storeMedia",
             "_stateGate", "_stateRevision",
         }, fields.Select(field => field.Name).ToArray(),
             "A mutable presentation owner was added outside the model boundary.");
@@ -3442,6 +3446,40 @@ public sealed partial class PlayniteLibraryTests
 
 
     [TestMethod, Timeout(30_000)]
+    public async Task RunningGameConfirmationUsesTheCurrentPromptAndTheOriginalTarget()
+    {
+        var host = new FakeHost(1);
+        var widget = Create(host, out var application);
+        var token = Guid.NewGuid().ToString("N");
+        var launches = new List<string>();
+        application.GuardedLaunch = (app, approval) =>
+        {
+            if (approval is null) return new(new(WidgetAppLaunchObservationState.Ended, false, false),
+                Conflict: new(token, "Running game", 1));
+            Assert.AreEqual(token, approval);
+            launches.Add(app);
+            return new(new(WidgetAppLaunchObservationState.RequestAccepted, false, false));
+        };
+        await Interactive(widget);
+        await Ready(widget, host);
+        var tile = PageNodes(widget, Snapshot(widget, 2).Root).Single(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.Launch, tile.Id));
+        var original = Snapshot(widget, 3);
+        var cancel = Nodes(original.Root).Single(node => node.ActionId?.EndsWith(".cancel") == true);
+        var stale = Nodes(original.Root).Single(node => node.ActionId?.EndsWith(".confirm") == true);
+        await widget.OnActionAsync(new(cancel.ActionId!, cancel.Id));
+        Assert.AreEqual(0, launches.Count);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.Launch, tile.Id));
+        await widget.OnActionAsync(new(stale.ActionId!, stale.Id));
+        Assert.AreEqual(0, launches.Count);
+        var confirm = Nodes(Snapshot(widget, 4).Root).Single(node => node.ActionId?.EndsWith(".confirm") == true);
+        await widget.OnActionAsync(new(confirm.ActionId!, confirm.Id));
+        await widget.OnActionAsync(new(confirm.ActionId!, confirm.Id));
+        Assert.AreEqual(1, launches.Count);
+        await Background(widget);
+    }
+
+    [TestMethod, Timeout(30_000)]
     public async Task ExactLaunchRevalidatesSavedIdentity()
     {
         var host = new FakeHost(1)
@@ -4246,7 +4284,7 @@ public sealed partial class PlayniteLibraryTests
         LauncherWidget widget, ViewSnapshot snapshot, ControllerButton button, string focusedElementId,
         ControllerEventPhase phase = ControllerEventPhase.Pressed)
     {
-        if (snapshot.Root.Kind != ViewNodeKind.ModalLayer &&
+        if (snapshot.Root.Kind != ViewNodeKind.ModalLayer && Nodes(snapshot.Root).Any(node => node.Kind == ViewNodeKind.IndexedCollection) &&
             focusedElementId.StartsWith("playnite-library.item.grid.", StringComparison.Ordinal))
         {
             using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "home-input-test");
@@ -4442,6 +4480,13 @@ public sealed partial class PlayniteLibraryTests
         internal List<(string Id, string Status)> CompletionRequests { get; } = [];
         internal Func<CancellationToken, ValueTask<IReadOnlyList<string>>>? CompletionStatusesHandler { get; set; }
         internal Func<string, CancellationToken, ValueTask<PlayniteGameDetails?>>? DetailsHandler { get; set; }
+        internal Func<uint, CancellationToken, ValueTask<SteamAnnouncements>>? NewsHandler { get; set; }
+        public ValueTask<SteamAnnouncements> GetAnnouncementsAsync(uint appId, CancellationToken token) =>
+            NewsHandler?.Invoke(appId, token) ?? ValueTask.FromResult(new SteamAnnouncements(appId, []));
+        internal Func<uint, CancellationToken, ValueTask<SteamStoreMedia>>? StoreHandler { get; set; }
+        public ValueTask<SteamStoreMedia> GetStoreMediaAsync(PlayniteStoreLookup lookup, CancellationToken token) =>
+            lookup.AppId is uint appId && StoreHandler is not null ? StoreHandler(appId, token) :
+                ValueTask.FromResult(SteamStoreMedia.Empty with { PublisherTrailerId = lookup.LinkedTrailer });
         internal Func<string, bool, CancellationToken, ValueTask<bool>>? InstallationHandler { get; set; }
         public async ValueTask<PlayniteGameDetails?> GetGameDetailsAsync(string gameId, CancellationToken token)
         {
@@ -4452,12 +4497,15 @@ public sealed partial class PlayniteLibraryTests
         }
 
         internal Func<CancellationToken, ValueTask<PlayniteAchievementOverview>>? OverviewHandler { get; set; }
+        internal Func<CancellationToken, ValueTask<PlayniteRecentActivity>>? RecentActivityHandler { get; set; }
+        public ValueTask<PlayniteRecentActivity> GetRecentActivityAsync(CancellationToken token) =>
+            RecentActivityHandler?.Invoke(token) ?? ValueTask.FromResult(PlayniteRecentActivity.Empty);
         internal Func<CancellationToken, ValueTask<PlayniteCaptureSettings>>? CaptureSettingsHandler { get; set; }
         internal Func<PlayniteCaptureSettings,IReadOnlyDictionary<string,System.Text.Json.JsonElement>,CancellationToken,ValueTask<PlayniteCaptureSettings>>? CaptureUpdateHandler { get; set; }
         internal Func<CancellationToken, ValueTask<PlayniteCaptureIntegration?>>? CaptureIntegrationHandler { get; set; }
         public ValueTask<PlayniteCaptureSettings> GetCaptureSettingsAsync(CancellationToken token)=>CaptureSettingsHandler?.Invoke(token)??ValueTask.FromResult(PlayniteCaptureSettings.Unavailable);
         public ValueTask<PlayniteCaptureSettings> UpdateCaptureSettingsAsync(PlayniteCaptureSettings current,IReadOnlyDictionary<string,System.Text.Json.JsonElement> patch,CancellationToken token)=>CaptureUpdateHandler?.Invoke(current,patch,token)??ValueTask.FromException<PlayniteCaptureSettings>(new NotSupportedException());
-        public ValueTask<PlayniteCaptureIntegration?> GetCaptureIntegrationAsync(CancellationToken token)=>CaptureIntegrationHandler?.Invoke(token)??ValueTask.FromResult<PlayniteCaptureIntegration?>(null);
+        public ValueTask<PlayniteCaptureIntegration?> GetCaptureIntegrationAsync(CancellationToken token, string? gameId = null)=>CaptureIntegrationHandler?.Invoke(token)??ValueTask.FromResult<PlayniteCaptureIntegration?>(null);
         public ValueTask<PlayniteAchievementOverview> GetAchievementOverviewAsync(CancellationToken token) =>
             OverviewHandler?.Invoke(token) ?? ValueTask.FromResult(PlayniteAchievementOverview.Unavailable);
         internal Func<string, CancellationToken, ValueTask<PlayniteAchievements>>? AchievementsHandler { get; set; }
@@ -4518,6 +4566,20 @@ public sealed partial class PlayniteLibraryTests
             string savedId, string revision, CancellationToken cancellationToken) =>
             services.AppLibrary.ConfirmRunningAsync(
                 savedId, revision, cancellationToken);
+
+        internal Func<string, string?, PlayniteWidgetLaunchResult>? GuardedLaunch { get; set; }
+        internal List<string> ReturnedGames { get; } = [];
+        public ValueTask<PlayniteWidgetLaunchResult> ReturnToGameAsync(string appId, WidgetHostServices host,
+            Func<bool> current, CancellationToken token)
+        {
+            Assert.IsTrue(current());
+            ReturnedGames.Add(appId);
+            return ValueTask.FromResult(new PlayniteWidgetLaunchResult(new(WidgetAppLaunchObservationState.Running, true, false)));
+        }
+        public async ValueTask<PlayniteWidgetLaunchResult> LaunchFromWidgetAsync(string appId, WidgetHostServices host,
+            Func<bool> current, CancellationToken token, string? approval, Action admitted) =>
+            GuardedLaunch?.Invoke(appId, approval) ?? new(await LaunchObservedAsync(appId,
+                WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess, token));
 
         public ValueTask<WidgetAppLaunchObservation> LaunchObservedAsync(
             string appId, WidgetAppLaunchOverlayBehavior overlayBehavior,

@@ -181,7 +181,7 @@ camera and the other supported permissions are always listed with explicit
 **Ask next time / Allow / Block** choices, including when no decision was saved.
 Changing a permission reloads pages in that profile and ends active calls; it
 does not clear login data. Ask also resets a temporary decision.
-Uploads and downloads use origin-labelled confirmation and Windows file pickers.
+Uploads and downloads use origin-labelled confirmation and the overlay file picker.
 Script dialogs and standard context menus use the existing controller dialog
 framework. Choice lists fit their available window height and scroll to the
 controller-selected item, with the action footer kept visible. Page actions
@@ -549,16 +549,14 @@ including submenus, without exposing native command IDs to widget code.
 
 ### Files
 
-Ordinary HTML file inputs use Windows Open dialogs after a confirmation showing
+Ordinary HTML file inputs use the overlay file chooser after a confirmation showing
 the widget and requesting frame's origin. Multiple selection is supported up to
 32 files. Cancelling preserves an existing selection; replacing the input or
-navigating while the picker is open invalidates the selection. Windows pickers
-currently require mouse/keyboard. They block overlay shortcuts while open.
+navigating while the picker is open invalidates the selection. The chooser supports controller, keyboard and mouse, with **Windows picker…** for additional shell locations.
 Directory uploads and File System Access API workflows are not advertised.
 
-Downloads require a confirmation and a Windows Save destination for each file.
-Windows overwrite confirmation and WebView2's file security checks remain in
-place. Files are never opened automatically. Up to two downloads per surface can
+Downloads require a confirmation and a Save destination for each file.
+The overlay asks before replacing an existing file. WebView2 retains its file security checks. Files are never opened automatically. Up to two downloads per surface can
 run; Website settings lists running downloads with cancellation. Stopping the
 session, clearing its profile or retiring it cancels remaining downloads. A
 website requesting repeated downloads receives a separate permission prompt;

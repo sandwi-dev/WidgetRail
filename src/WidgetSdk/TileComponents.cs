@@ -114,7 +114,7 @@ public sealed record ActionSurfaceElement : WidgetElement
         string? actionId,
         string accessibilityLabel,
         ActionSurfaceOrientation orientation,
-        IReadOnlyList<WidgetElement> children) : base(RequireId(id))
+        IReadOnlyList<WidgetElement> children, bool readingGroup = false) : base(RequireId(id))
     {
         StableIdentifier.Validate(id, nameof(id));
         if (actionId is not null) StableIdentifier.Validate(actionId, nameof(actionId));
@@ -135,9 +135,14 @@ public sealed record ActionSurfaceElement : WidgetElement
         var contentBudget = new ActionSurfaceContentBudget();
         foreach (var child in children)
             ValidatePresentationalNode(
-                child.ToProtocolNode(), nameof(children), 1, null, ref contentBudget);
+                child.ToProtocolNode(), nameof(children), 1, null, ref contentBudget, readingGroup, readingGroup);
+        if (readingGroup && (actionId is not null || contentBudget.InlineActions > ProtocolConstants.MaximumReadingGroupActions))
+            throw new ArgumentException("A reading group has no primary action and contains at most 32 inline actions.", nameof(children));
+        if (readingGroup && contentBudget.SavedPreviews > 1)
+            throw new ArgumentException("A reading group can expand one saved capture at a time.", nameof(children));
 
         ActionId = actionId;
+        IsReadingGroup = readingGroup;
         AccessibilityLabel = accessibilityLabel;
         Orientation = orientation;
         Children = children.ToArray();
@@ -145,6 +150,8 @@ public sealed record ActionSurfaceElement : WidgetElement
     }
 
     public string? ActionId { get; init; }
+    /// <summary>Whether this is an opt-in reading group with bounded inline actions.</summary>
+    public bool IsReadingGroup { get; init; }
     public WidgetIntentRequest? Intent { get; init; }
     /// <summary>Binds a host-routed intent to the surface's primary activation.</summary>
     public ActionSurfaceElement OpenIntent(WidgetIntentContract contract, System.Text.Json.JsonElement payload,
@@ -167,6 +174,7 @@ public sealed record ActionSurfaceElement : WidgetElement
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
     public IReadOnlyList<WidgetContextAction> ContextActions { get; init; } = [];
     public ControllerButton? ContextMenuButton { get; init; }
+    public bool NativeContextMenuOnly { get; init; }
 
     public ActionSurfaceElement ContextMenuShortcut(ControllerButton button)
     {
@@ -270,7 +278,9 @@ public sealed record ActionSurfaceElement : WidgetElement
         Intent = Intent,
         ContextActions = ContextActions,
         ContextMenuButton = ContextMenuButton,
+        NativeContextMenuOnly = NativeContextMenuOnly ? true : null,
         ActionSurfaceOrientation = Orientation,
+        IsReadingGroup = IsReadingGroup,
         ActionSurfacePresentation = Presentation,
         FocusVisualTargetId = FocusVisualTargetId,
         IsDisabled = IsDisabled,
@@ -288,12 +298,15 @@ public sealed record ActionSurfaceElement : WidgetElement
         string parameterName,
         int relativeDepth,
         ViewNodeKind? parentKind,
-        ref ActionSurfaceContentBudget contentBudget)
+        ref ActionSurfaceContentBudget contentBudget, bool inlineActions = false, bool readingContent = false)
     {
         contentBudget.Add(node, parentKind);
-        if (contentBudget.LayoutNodes > ProtocolConstants.MaximumActionSurfaceDescendants)
+        if (readingContent && !ReadingGroupContentContract.IsContent(node))
+            throw new ArgumentException("Reading-group content cannot contain nested scopes, services, previews, menus or interactive media.", parameterName);
+        var maximumNodes = readingContent ? ProtocolConstants.MaximumReadingGroupDescendants : ProtocolConstants.MaximumActionSurfaceDescendants;
+        if (contentBudget.LayoutNodes > maximumNodes)
             throw new ArgumentException(
-                $"An action surface may contain at most {ProtocolConstants.MaximumActionSurfaceDescendants} layout descendants.",
+                $"This surface may contain at most {maximumNodes} layout descendants.",
                 parameterName);
         if (contentBudget.RichTextSpans > ProtocolConstants.MaximumActionSurfaceRichTextSpans)
             throw new ArgumentException(
@@ -303,18 +316,23 @@ public sealed record ActionSurfaceElement : WidgetElement
             throw new ArgumentException(
                 $"Action-surface content may be at most {ProtocolConstants.MaximumActionSurfaceRelativeDepth} levels deep relative to its surface.",
                 parameterName);
-        if (node.Kind is ViewNodeKind.Button or ViewNodeKind.Slider or
-            ViewNodeKind.ActionSurface or ViewNodeKind.Scroll ||
+        var inlineAction = inlineActions && ReadingGroupContentContract.IsInlineControl(node);
+        if (!inlineAction && (node.Kind is ViewNodeKind.Button or ViewNodeKind.Slider or
+            ViewNodeKind.ActionSurface ||
+            node.Kind == ViewNodeKind.Scroll && !(inlineActions && relativeDepth == 1 && ReadingGroupContentContract.IsHorizontalViewport(node)) ||
+            node.Kind == ViewNodeKind.MediaPlayer && (node.MediaPlayer?.Presentation == MediaPlayerPresentation.Inline ||
+                readingContent && ReadingGroupContentContract.IsSavedPreview(node.MediaPlayer)) ||
             node.ActionId is not null || node.ValueChangedActionId is not null ||
             node.Focus is not null || node.InputScopeId is not null ||
             node.Shortcuts.Count != 0 || node.IsDisabled is not null ||
-            node.IsSelected is not null || node.IsBusy is not null)
+            node.IsSelected is not null || node.IsBusy is not null || node.IsReadingGroup))
             throw new ArgumentException(
                 "Action-surface descendants must be presentational and cannot own focus, actions, scopes, scrolling, shortcuts, or interaction state.",
                 parameterName);
         foreach (var child in node.Children)
             ValidatePresentationalNode(
-                child, parameterName, relativeDepth + (ActionSurfaceContentBudget.IsInlineSpan(child, node.Kind) ? 0 : 1), node.Kind, ref contentBudget);
+                child, parameterName, ActionSurfaceContentBudget.ChildDepth(child, node, relativeDepth, inlineAction), node.Kind, ref contentBudget,
+                inlineActions && !inlineAction, readingContent);
     }
 }
 
@@ -347,6 +365,11 @@ public static partial class UI
     public static ActionSurfaceElement ReadingSurface(string id, string accessibilityLabel,
         ActionSurfaceOrientation orientation, params WidgetElement[] children) =>
         new(id, null, accessibilityLabel, orientation, children);
+
+    /// <summary>Creates a reading group whose bounded inline buttons are independently actionable. Requires protocol 132.</summary>
+    public static ActionSurfaceElement ReadingGroup(string id, string accessibilityLabel,
+        ActionSurfaceOrientation orientation, params WidgetElement[] children) =>
+        new(id, null, accessibilityLabel, orientation, children, readingGroup: true);
 
     /// <summary>
     /// Creates a controller-first tile with separate title, subtitle, metadata,

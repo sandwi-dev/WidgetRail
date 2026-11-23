@@ -5,6 +5,9 @@ using WidgetRail.PlatformBroker;
 
 var allTests = new (string Name, Func<Task> Run)[]
 {
+    ("Accepted screenshots verify final permission and preserve distinct presses", LibraryRecordingDraftTests.ScreenshotCommitChecksPermissionAndKeepsSeparatePresses),
+    ("Action completion includes each accepted host task", LibraryRecordingDraftTests.CompletionIncludesEachAcceptedHostTask),
+    ("Accepted recording survives worker retirement and saves once", LibraryRecordingDraftTests.AcceptedRecordingSurvivesWorkerRetirement),
     ("Library recording drafts stage move and retain exact authority",LibraryRecordingDraftTests.StorageAndRetirement),
     ("Library recording drafts require both capture and save grants",LibraryRecordingDraftTests.Authorization),
     ("Library recording drafts verify resolved exact source configuration",LibraryRecordingDraftTests.ResolvedConfiguration),
@@ -21,6 +24,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("File references bind native picker completion to current owner", FileReferenceTests.Picker),
     ("File references require host grants and interactive selection", FileReferenceTests.BrokerPolicy),
     ("Web capture streams source picker filters targets and bounds native identities", WebCaptureSourcePolicyTests.Run),
+    ("Automatic replay recognizes the approved application behind the overlay", WebCaptureSourcePolicyTests.AutomaticReplay),
     ("Web capture streams synthetic source requires exact process incarnation", CaptureProbeSourceIdentityTests.Run),
     ("Web capture streams preserve source ownership cancellation and bounds", WebCaptureStreamTests.Ownership),
     ("Web capture streams require consent and preserve admitted background work", WebCaptureStreamTests.ConsentAndBackground),
@@ -90,6 +94,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Exact-port loopback separates visible reads from interactive controls", LoopbackHttpContracts),
     ("Private secrets are write-only and revocation cancels dependent loopback work", PrivateSecretContracts),
     ("Private state is host-granted consentless identity-bound and active-lifecycle safe", PrivateStateHostGrantContracts),
+    ("Capture tray grants bind to one operation and require separate save consent", CaptureTrayGrantsAreExact),
     ("Dashboard gesture authority is exact sequence-bound expiring and single-use", DashboardGestureAuthorityIsBounded),
     ("Active Bluetooth inquiry requires pairing consent and interactive lifecycle", BluetoothScanContracts),
     ("Wi-Fi management validates consent lifecycle payload and exact routing", WifiManagementContracts),
@@ -278,6 +283,20 @@ static async Task TaskWindowBroker()
     Assert.True(list[0].WindowId != "native-target");
     Assert.True(list[0].PreviewTarget is null);
     Assert.True(WindowPreviewRegistry.Resolve(identity, list[0].WindowId)?.Handle == "1234");
+    async Task<string> Begin() => (await Send(broker, capabilities[1], PlatformCapabilities.LaunchHandoffBegin, new { }))
+        .Deserialize<LaunchHandoffTicket>(BrokerJson.StrictOptions)!.Ticket;
+    Task<JsonElement> Ready(string ticket, long created) => Send(broker, capabilities[1], PlatformCapabilities.LaunchHandoffReady,
+        new LaunchHandoffTarget(ticket, 42, created, 0x1234));
+    var expired = await Begin();
+    broker.SetLifecycle(BrokerLifecycleState.Visible);
+    broker.SetLifecycle(BrokerLifecycleState.Interactive);
+    await Assert.ThrowsAsync<BrokerException>(() => Ready(expired, 0x12345678));
+    var launch = await Begin();
+    Assert.True((await Ready(launch, 1)).Deserialize<LaunchHandoffResult>(BrokerJson.StrictOptions)!.WindowId is null);
+    var found = (await Ready(launch, 0x12345678)).Deserialize<LaunchHandoffResult>(BrokerJson.StrictOptions)!.WindowId!;
+    Assert.True(WindowPreviewRegistry.Resolve(identity, found)?.Handle == "1234" &&
+        WindowPreviewRegistry.Resolve(identity, list[0].WindowId)?.Handle == "1234");
+    await Assert.ThrowsAsync<BrokerException>(() => Ready(launch, 0x12345678));
     Assert.True(WindowPreviewRegistry.Resolve(identity with { InstanceId = "another.instance" }, list[0].WindowId) is null);
     await Send(broker, capabilities[1], PlatformCapabilities.TaskWindowsSwitch, new TaskWindowRequest(list[0].WindowId));
     Assert.Equal("native-target", switched);
@@ -575,6 +594,14 @@ static Task CapabilityVocabularyIsClosed()
     Assert.Equal(TimeSpan.FromSeconds(900), BrokerPipeRequestTimeoutPolicy.Resolve(new() { RequestTimeout = TimeSpan.FromSeconds(900) }, defaultCopy));
     Assert.Equal(copyOptions.RequestTimeout, BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, defaultCopy with { Operation = "capture-library.metadata" }));
     var replayRequest = defaultCopy with { CapabilityId = PlatformCapabilities.WindowCaptureV1 };
+    foreach (var operation in new[] { "capture-library.recycle", "capture-library.metadata-batch", "capture-library.recycle-linked" })
+    {
+        var batch = defaultCopy with { Operation = operation, CapabilityId = operation == "capture-library.recycle-linked"
+            ? PlatformCapabilities.CaptureLibraryRecycleLinkedV1 : PlatformCapabilities.CaptureLibraryManageV1 };
+        Assert.Equal(TimeSpan.FromMinutes(2), BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, batch));
+        Assert.Equal(TimeSpan.FromMinutes(3), BrokerPipeRequestTimeoutPolicy.Resolve(new() { RequestTimeout = TimeSpan.FromMinutes(3) }, batch));
+        Assert.Equal(copyOptions.RequestTimeout, BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, batch with { CapabilityId = PlatformCapabilities.WindowCaptureV1 }));
+    }
     Assert.Equal(TimeSpan.FromSeconds(130), BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, replayRequest with { Operation = "capture.replay.start" }));
     Assert.Equal(TimeSpan.FromSeconds(130), BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, replayRequest with { Operation = "capture.replay.configure" }));
     Assert.Equal(TimeSpan.FromSeconds(50), BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, replayRequest with { Operation = "capture.replay.save" }));
@@ -2357,6 +2384,31 @@ static async Task ConsentFailsClosed()
     Assert.Equal("permission_denied", denied.ErrorCode);
 }
 
+static async Task CaptureTrayGrantsAreExact()
+{
+    using var temp = new TemporaryDirectory();
+    var identity = Identity();
+    var consent = new ConsentStore(temp.Path);
+    var capture = PlatformCapabilities.WindowCaptureV1;
+    var save = PlatformCapabilities.CaptureLibrarySaveV1;
+    await consent.SetDecisionAsync(identity, capture, ConsentDecision.Grant);
+    await using var broker = Broker(identity, consent, AudioBackend(), capture, save);
+    broker.SetLifecycle(BrokerLifecycleState.Background);
+    var settings = new WidgetRail.WidgetProtocol.CaptureSessionRequest { Screenshot = new() };
+    void Grant(long sequence, string op) => broker.GrantDashboardGestureAuthority(capture, op, sequence, 8,
+        TimeSpan.FromSeconds(2), null, new WidgetRail.WidgetProtocol.TrayCaptureCommand(op));
+    Task<BrokerResponseEnvelope> Send(long sequence, string op) =>
+        broker.HandleAsync(GestureRequest(identity, capture, op, settings, sequence, 8));
+    Assert.Equal("lifecycle_denied", (await Send(1, "capture.save-screenshot")).ErrorCode);
+    Grant(2, "capture.save-screenshot");
+    Assert.Equal("lifecycle_denied", (await Send(2, "capture.record-clip")).ErrorCode);
+    Grant(3, "capture.save-screenshot");
+    Assert.Equal("permission_denied", (await Send(3, "capture.save-screenshot")).ErrorCode);
+    Assert.Equal("lifecycle_denied", (await Send(3, "capture.save-screenshot")).ErrorCode);
+    Assert.Throws<BrokerException>(() => broker.GrantDashboardGestureAuthority(capture, "capture.replay.configure",
+        4, 8, TimeSpan.FromSeconds(2), null, new WidgetRail.WidgetProtocol.TrayCaptureCommand("capture.save-screenshot")), "unsupported_capability");
+}
+
 static async Task DashboardGestureAuthorityIsBounded()
 {
     using var temp = new TemporaryDirectory();
@@ -2503,6 +2555,22 @@ static async Task DashboardGestureAuthorityIsBounded()
         PlatformCapabilities.MediaSessionsControlV1,
         PlatformCapabilities.MediaSessionControl, 17, 10, TimeSpan.FromSeconds(1)),
         "lifecycle_denied");
+
+    await store.SetDecisionAsync(identity, PlatformCapabilities.MediaSessionsControlV1, ConsentDecision.Grant);
+    broker.SetLifecycle(BrokerLifecycleState.Background);
+    var grant = new WidgetRail.WidgetProtocol.TrayMediaCommand("media-1", "Next");
+    void Grant(long sequence) => broker.GrantDashboardGestureAuthority(PlatformCapabilities.MediaSessionsControlV1,
+        PlatformCapabilities.MediaSessionControl, sequence, 12, TimeSpan.FromSeconds(2), grant);
+    Task<BrokerResponseEnvelope> Send(long sequence, string target, string command) => broker.HandleAsync(GestureRequest(identity,
+        PlatformCapabilities.MediaSessionsControlV1, PlatformCapabilities.MediaSessionControl, new { sessionId = target, command }, sequence, 12));
+    Grant(21);
+    Assert.Equal("lifecycle_denied", (await Send(21, "other", "next")).ErrorCode);
+    Assert.Equal("lifecycle_denied", (await Send(21, "media-1", "next")).ErrorCode);
+    Grant(22);
+    Assert.Equal("lifecycle_denied", (await Send(22, "media-1", "previous")).ErrorCode);
+    Grant(23);
+    Assert.True((await Send(23, "media-1", "next")).Succeeded);
+    Assert.Equal("lifecycle_denied", (await Send(23, "media-1", "next")).ErrorCode);
 }
 
 static async Task IdentityMismatchIsDenied()

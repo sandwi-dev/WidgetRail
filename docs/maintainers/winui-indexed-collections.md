@@ -442,6 +442,10 @@ are copied when authored and when retained. They add no input scope, action owne
 row key, provider request or focus index. All row actions and exact focus targets
 continue to use flat query indices.
 
+Set `ShowHeaderRule = true` on an `IndexedCollectionGroup` to extend a thin
+line from its label to the trailing edge. This is useful for date boundaries
+above activity cards. The label remains the only accessible text in the header.
+
 WinUI receives observable slices over that single source through its native
 CollectionViewSource and a range-forwarding ICollectionView adapter. The standard
 grouping wrapper alone does not forward IItemsRangeInfo. Native ListView/GridView

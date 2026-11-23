@@ -8,6 +8,12 @@ public sealed record WidgetCollectionViewportState(int ActiveViews, bool Follows
     /// <summary>All active native viewports are physically at their loaded end, independently of inspected-row protection.</summary>
     public bool IsAtEnd { get; init; }
     public bool IsAtStart { get; init; }
+    /// <summary>The last occurrence in the exact collection revision observed by
+    /// every active viewport at its physical end. Null while refreshing/recovering,
+    /// when any viewport is reading earlier items, or when the collection is empty.
+    /// Unlike inspecting current data after an asynchronous callback, this cannot
+    /// include a newly published tail the host has not yet observed.</summary>
+    public WidgetCollectionItemKey? ObservedEndItemKey { get; init; }
 }
 public enum WidgetViewportRecoveryResult { Recovered, NotFound }
 public sealed class WidgetCollectionBoundaryDemand
@@ -78,6 +84,9 @@ public sealed partial class WidgetLoadedCollection<TContext, TItem>
         }
         return new(viewports.Count, viewportRecovery is null && viewports.Count > 0 && viewports.Values.All(view => view.AtEnd), viewportRecovery is not null)
             { IsAtEnd=viewportRecovery is null && viewports.Count>0 && viewports.Values.All(view=>view.PhysicalAtEnd),
+                ObservedEndItemKey=viewportRecovery is null && viewports.Count>0 && current.Keys.Count>0 &&
+                    viewports.Values.All(view=>view.PhysicalAtEnd&&view.Request.Source==source.Descriptor)
+                        ?current.Keys[^1]:null,
                 IsAtStart=viewportRecovery is null && viewports.Count>0 && viewports.Values.All(view=>view.PhysicalAtStart) };
     }
 

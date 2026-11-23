@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)][string]$ShellConfig,
     [Parameter(Mandatory)][string]$OutputDirectory,
-    [ValidateSet('timeout','denied','late-success','reopen','keyboard-busy','input-rejected','stale-target')][string]$Case
+    [ValidateSet('timeout','denied','widget-denied','late-success','reopen','keyboard-busy','input-rejected','stale-target')][string]$Case
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest

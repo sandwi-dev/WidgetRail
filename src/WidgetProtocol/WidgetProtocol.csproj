@@ -6,6 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Shared/CaptureProcessKey.cs" Link="Internal/CaptureProcessKey.cs" />
     <EmbeddedResource Include="..\..\third_party\public_suffix_list\public_suffix_list.dat"
                       Link="public_suffix_list.dat"
                       LogicalName="WidgetRail.PublicSuffixList.dat" />

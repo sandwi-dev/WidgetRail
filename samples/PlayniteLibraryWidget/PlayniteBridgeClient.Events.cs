@@ -5,7 +5,8 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 internal enum PlayniteProviderRefreshResult { Completed, StillRunning, Failed, Unavailable }
 internal sealed record PlayniteChange(long Sequence, string Kind, string? GameId, string? AchievementId, long ObservedAt);
 internal sealed record PlayniteEventBatch(string ConnectionId, string InstanceId, bool ResetRequired, long NextSequence,
-    IReadOnlyList<PlayniteChange> Changes);
+    IReadOnlyList<PlayniteChange> Changes, IReadOnlyList<string>? RunningGames = null, IReadOnlyDictionary<string, long>? RunningSince = null, IReadOnlyDictionary<string, string>? RunningNames = null,
+    IReadOnlyDictionary<string, string>? RunningProcesses = null);
 
 internal sealed partial class PlayniteBridgeClient
 {
@@ -15,6 +16,15 @@ internal sealed partial class PlayniteBridgeClient
         if (after < -1) throw new ArgumentOutOfRangeException(nameof(after));
         var response = await SendRequiredAsync(new(PlayniteBridgeCommandKind.IntegrationEvents)
             { AfterSequence = after, WaitMilliseconds = after < 0 ? 0 : 25000 }, token).ConfigureAwait(false);
+        // Closing the overlay cancels the client read. HttpListener can keep
+        // that wait alive until its deadline. A full wait pool still permits
+        // immediate reads with the same cursor, including game-stop events.
+        if (after >= 0 && response.StatusCode == 429)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), token).ConfigureAwait(false);
+            response = await SendRequiredAsync(new(PlayniteBridgeCommandKind.IntegrationEvents)
+                { AfterSequence = after, WaitMilliseconds = 0 }, token).ConfigureAwait(false);
+        }
         EnsureSuccess(response);
         using var json = JsonDocument.Parse(response.Body, new() { MaxDepth = 8 });
         var root = json.RootElement;
@@ -33,7 +43,42 @@ internal sealed partial class PlayniteBridgeClient
             if (game is not null && !Guid.TryParseExact(game, "D", out _)) throw new PlayniteBridgeDataException("invalid_playnite_data");
             changes.Add(new(sequence, kind, game, OptionalString(item, "achievementId", 256), stamp)); previous = sequence;
         }
-        return new(response.ConnectionId, instance, reset, next, changes);
+        List<string>? running = null;
+        if (root.TryGetProperty("runningGames", out var active))
+        {
+            if (active.ValueKind != JsonValueKind.Array) throw new PlayniteBridgeDataException("invalid_playnite_data");
+            running = [];
+            foreach (var id in active.EnumerateArray())
+            {
+                if (id.ValueKind != JsonValueKind.String || !Guid.TryParseExact(id.GetString(), "D", out var gameId))
+                    throw new PlayniteBridgeDataException("invalid_playnite_data");
+                running.Add(gameId.ToString("D"));
+            }
+        }
+        var since = new Dictionary<string, long>(StringComparer.Ordinal);
+        if (root.TryGetProperty("runningSince", out var times))
+        {
+            if (times.ValueKind != JsonValueKind.Object) throw new PlayniteBridgeDataException("invalid_playnite_data");
+            foreach (var entry in times.EnumerateObject())
+                if (running?.Contains(entry.Name) == true && entry.Value.ValueKind == JsonValueKind.Number &&
+                    entry.Value.TryGetInt64(out var stamp) && stamp is > 0 and <= 253402300799999)
+                    since[entry.Name] = stamp;
+        }
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (root.TryGetProperty("runningNames", out var titles))
+        {
+            if (titles.ValueKind != JsonValueKind.Object) throw new PlayniteBridgeDataException("invalid_playnite_data");
+            foreach (var entry in titles.EnumerateObject())
+                if (running?.Contains(entry.Name) == true && entry.Value.ValueKind == JsonValueKind.String &&
+                    entry.Value.GetString() is { Length: > 0 and <= 256 } name && !name.Any(char.IsControl)) names[entry.Name] = name;
+        }
+        var processes = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (root.TryGetProperty("runningProcesses", out var instances) && instances.ValueKind == JsonValueKind.Object)
+            foreach (var pair in instances.EnumerateObject())
+                if (running?.Contains(pair.Name) == true && pair.Value.ValueKind == JsonValueKind.String &&
+                    pair.Value.GetString() is { Length: 64 } key && key.All(char.IsAsciiHexDigitLower))
+                    processes[pair.Name] = key;
+        return new(response.ConnectionId, instance, reset, next, changes, running, since, names, processes);
     }
 
     public async ValueTask<PlayniteProviderRefreshResult> RefreshAchievementsAsync(string gameId, CancellationToken token)

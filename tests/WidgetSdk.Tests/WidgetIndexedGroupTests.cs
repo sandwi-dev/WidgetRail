@@ -10,7 +10,7 @@ internal static class WidgetIndexedGroupTests
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
         try
         {
-            var groups = new[] { new IndexedCollectionGroup("first", "Recommendations", 10),
+            var groups = new[] { new IndexedCollectionGroup("first", "Recommendations", 10) { ShowHeaderRule = true },
                 new("empty", "Empty section", 0), new("second", "Recommendations", 30) };
             var declaration = UI.CollectionGrid("collection", widget.Source, 130, 170, "Home", 4).Grouped(groups);
             groups[0] = new("mutated", "Mutation", 10);
@@ -54,6 +54,8 @@ internal static class WidgetIndexedGroupTests
             var frozen = WidgetDeclarationSnapshot.Freeze(snapshot.Root with { IndexedGroups = mutable }, 1, ref nodes);
             mutable.Clear();
             Check(frozen.IndexedGroups!.Count == 3, "retained declarations clone grouping metadata");
+            Check(frozen.IndexedGroups[0].ShowHeaderRule && !frozen.IndexedGroups[2].ShowHeaderRule,
+                "each group retains its optional divider independently");
 
             using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "groups-widget");
             using var lease = await host.AcquireAsync("collection", 8, 5);

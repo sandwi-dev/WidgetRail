@@ -3251,14 +3251,14 @@ static async Task UninstallWorkflow()
     var otherReplaySettings = new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path));
     var replay = new CaptureReplayPreferences { Revision = 9, Settings = new() { Enabled = true, AutoStart = true },
         OwnerPackageId = "dev.test.profile-cleanup", OwnerPublisherId = "old.reviewed.authority", OwnerInstanceId = "old.instance",
-        ApprovedApplication = new string('a', 64), ApplicationName = "Fixture game" };
+        Approvals = new([new(new string('a', 64), "Fixture game")]) };
     await replaySettings.UpdateAsync(current => current with { ReplayCapture = replay });
     await otherReplaySettings.UpdateAsync(current => current with { ReplayCapture = replay });
     Assert.Equal(0, (await RunCli("uninstall", "dev.test.profile-cleanup", "--catalog", catalog, "--settings-root", profileRoot)).Code);
     Assert.True((await browserData.ReadAsync("dev.test.profile-cleanup")).Removed, "Custom-profile uninstall did not record browser removal.");
     Assert.True((await otherData.ReadAsync("dev.test.profile-cleanup")).Profiles.Contains(other!), "Custom-profile uninstall touched another Settings root.");
     var retiredReplay = (await replaySettings.LoadAsync()).ReplayCapture;
-    Assert.True(!retiredReplay.Settings.Enabled && !retiredReplay.Settings.AutoStart && retiredReplay.OwnerPackageId is null && retiredReplay.ApprovedApplication is null,
+    Assert.True(!retiredReplay.Settings.Enabled && !retiredReplay.Settings.AutoStart && retiredReplay.OwnerPackageId is null && retiredReplay.Approvals.Applications.Count == 0,
         "CLI uninstall without a running host retained replay intent.");
     Assert.Equal(replay.Revision + 1, retiredReplay.Revision);
     Assert.Equal(replay, (await otherReplaySettings.LoadAsync()).ReplayCapture);

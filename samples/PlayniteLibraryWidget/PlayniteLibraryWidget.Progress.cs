@@ -75,7 +75,7 @@ public sealed partial class PlayniteLibraryWidget
         // A filtered/removed entry is unavailable. Never expose a newly hidden
         // achievement's title or replace it with a similar display name.
         if (item is { Hidden: true, Unlocked: false }) item = null;
-        if (item is { Unlocked: false } && !PlayniteAchievementPresentation.CanTrack(item)) item = null;
+        if (item is { Unlocked: false } && !PlayniteAchievementPresentation.CanPinProgress(item)) item = null;
         return item;
     }
 
@@ -98,16 +98,38 @@ public sealed partial class PlayniteLibraryWidget
         return ReferenceEquals(_model.Value.Progress.Target, target) ? new WidgetFileArtwork(path, handle.Value) : null;
     }
 
-    private async ValueTask TrackAchievementAsync(PlayniteAchievementBrowse query, PlayniteAchievementEntry entry, CancellationToken token)
+    private PlayniteProgressTarget? AchievementTarget(PlayniteLibraryRenderState state, PlayniteAchievementBrowse query, PlayniteAchievementEntry entry)
+    {
+        if (LifecycleState != WidgetLifecycleState.Interactive || state.DetailsExtras.Tab != PlayniteDetailsTab.Achievements ||
+            state.DetailsCapturedTarget is { IsCurrent: false } || query.Generation != state.DetailsGeneration || entry.Secret || !entry.UniqueId ||
+            entry.Item.Id is not { Length: > 0 } id || state.DetailsItem is not { } game || query.State.Achievements?.ConnectionId is not { } connection ||
+            !ReferenceEquals(query.State.Achievements, state.DetailsExtras.Achievements)) return null;
+        return new(connection, query.State.Achievements.Provider, game.Value.SavedId,
+            game.Value.Presentation.DisplayName, id, entry.Item);
+    }
+
+    private async ValueTask SetTrackedAchievementAsync(PlayniteAchievementBrowse query, PlayniteAchievementEntry entry, bool track, CancellationToken token)
+    {
+        var target = AchievementTarget(WithDetailsResources(_model.Value), query, entry);
+        if (target is null || track && !PlayniteAchievementPresentation.CanTrack(entry.Item)) return;
+        var choice = new TrackedAchievement(target.GameId, target.ConnectionId, target.Provider, target.AchievementId);
+        var result = await SaveStateAsync(state =>
+        {
+            var old = state.TrackedAchievements.FirstOrDefault(t => t.Game == choice.Game && t.Connection == choice.Connection);
+            if (!track && old != choice) return PlayniteLibraryStateMutation.Reject(state);
+            var others = state.TrackedAchievements.Where(t => t != old);
+            return PlayniteLibraryStateMutation.Apply(state with { TrackedAchievements = (track ? others.Append(choice) : others).ToArray() });
+        }, token);
+        if (!result.Saved) ShowActionToast("Achievement tracking", "Could not save this change. Try again.", false);
+        else Invalidate();
+    }
+
+    private async ValueTask PinAchievementAsync(PlayniteAchievementBrowse query, PlayniteAchievementEntry entry, CancellationToken token)
     {
         var state = WithDetailsResources(_model.Value);
-        if (LifecycleState != WidgetLifecycleState.Interactive || state.DetailsCapturedTarget is { IsCurrent: false } || query.Generation != state.DetailsGeneration || entry.Secret || !PlayniteAchievementPresentation.CanTrack(entry.Item) ||
-            entry.Item.Id is not { Length: > 0 } id || state.DetailsItem is not { } game || query.State.Achievements?.ConnectionId is not { } connection ||
-            !ReferenceEquals(query.State.Achievements, state.DetailsExtras.Achievements)) return;
-        if (_model.Value.Progress.Pending) return;
+        var target = AchievementTarget(state, query, entry);
+        if (target is null || !PlayniteAchievementPresentation.CanPinProgress(entry.Item) || _model.Value.Progress.Pending) return;
         var selected = progressPin.IsSelected;
-        var target = new PlayniteProgressTarget(connection, query.State.Achievements.Provider, game.Value.SavedId,
-            game.Value.Presentation.DisplayName, id, entry.Item);
         // Same layout, new domain target: update the selected window in place.
         // QueryResource retires the previous value/work before admitting this target.
         UpdateProgress(_ => new(target, Pending: !selected));

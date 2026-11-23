@@ -25,7 +25,7 @@ internal sealed partial class WidgetStylesValidationPage
         using var adapter = new NativeComputedStyleAdapter(button);
         var styles = Compute("""
             #outline { color: #ffeedd; background: #123456; corner-radius: 8px; transition-duration: 120ms; }
-            #outline:focused { outline-color: #aabbcc; outline-width: 2px; outline-offset: -2px; scale: 1.05; }
+            #outline:focused { outline-color: #aabbcc; outline-width: 2px; outline-offset: -2px; scale: 1.05; focus-outline-effect: edge-glint; focus-outline-repeat-delay: 2s; }
             #outline:pressed { scale: 0.95; }
             """, "outline", "button");
         try
@@ -45,16 +45,20 @@ internal sealed partial class WidgetStylesValidationPage
             Check(await decoration.Playback! == WidgetMotionOutcome.Completed,
                 "global Fade animates the authored focus decoration on the compositor");
             await Wait(() => adapter.ScaleMotion is { IsAnimating: false });
+            var layers = ((Microsoft.UI.Composition.ShapeVisual)decoration.DecorationVisual).Shapes;
+            await Wait(() => layers.Count == 2);
+            var highlight = layers[1];
             Check(decoration.IsVisible && Math.Abs(button.Scale.X - 1.05f) < .0001 && button.Opacity == 1 &&
                 ColorOf(button.Background) == Windows.UI.Color.FromArgb(255, 18, 52, 86),
                 "authored scale and focus decoration share the control without tinting its content");
             var playback = decoration.Playback;
             adapter.Update(styles);
+            Check(ReferenceEquals(layers[1], highlight), "Repeated snapshots retain the settled edge glint");
             Check(ReferenceEquals(playback, decoration.Playback), "same-state snapshots do not replay focus decoration motion");
             NativeComputedStyleAdapter.SetMotionPolicy(settings with { FocusAnimation = WidgetFocusAnimation.Settle }, true);
             await Task.Delay(20);
             outside.Focus(FocusState.Keyboard);
-            await Wait(() => decoration.Playback != playback);
+            await Wait(() => decoration.Playback is not null && decoration.Playback != playback);
             await decoration.Playback!;
             button.Focus(FocusState.Keyboard);
             await Wait(() => decoration.IsVisible);
@@ -67,6 +71,14 @@ internal sealed partial class WidgetStylesValidationPage
                 "high contrast restores the platform focus visual and removes the authored layer");
             WidgetViewPresenter.SetHighContrastStyleOverride(false);
             await Wait(() => adapter.FocusDecoration is not null);
+            adapter.Update(Compute("#breath:focused { outline-color:#cccccc; outline-width:2px; focus-outline-effect:breathe; }", "breath", "button"));
+            var breathing = ((Microsoft.UI.Composition.ShapeVisual)adapter.FocusDecoration!.DecorationVisual).Shapes;
+            await Wait(() => breathing.Count == 2);
+            Check(((Microsoft.UI.Composition.CompositionSpriteShape)breathing[1]).StrokeBrush is Microsoft.UI.Composition.CompositionColorBrush,
+                "Breathing animates a second stroke over the steady accessible outline");
+            NativeComputedStyleAdapter.SetMotionPolicy(settings with { Motion = MotionPreference.Reduced }, true);
+            await Wait(() => breathing.Count == 1);
+            NativeComputedStyleAdapter.SetMotionPolicy(settings, true);
             adapter.Update(null);
             Check(button.UseSystemFocusVisuals && ElementCompositionPreview.GetElementChildVisual(button) is null,
                 "removing outline styles retires compositor resources and restores native focus behavior");

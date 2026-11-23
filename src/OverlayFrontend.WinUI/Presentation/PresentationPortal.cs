@@ -22,6 +22,7 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
     private readonly WidgetViewPresenter? owner;
     private readonly Microsoft.UI.Composition.CompositionRoundedRectangleGeometry rounded;
     private readonly Microsoft.UI.Composition.CompositionGeometricClip roundedClip;
+    private CompositionOpacityBinding? opacityBinding;
     private bool disposed;
     private bool paintOnly;
     private readonly bool followComposition;
@@ -65,17 +66,8 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
 
     private void FollowOpacity()
     {
-        var visual = ElementCompositionPreview.GetElementVisual(this);
-        using var expression = visual.Compositor.CreateExpressionAnimation();
-        var terms = new List<string>();
-        for (DependencyObject? item = anchor; item is UIElement element && !ReferenceEquals(item, root); item = VisualTreeHelper.GetParent(item))
-        {
-            var name = "ancestor" + terms.Count;
-            expression.SetReferenceParameter(name, ElementCompositionPreview.GetElementVisual(element));
-            terms.Add(name + ".Opacity");
-        }
-        expression.Expression = terms.Count == 0 ? "1.0" : string.Join(" * ", terms);
-        visual.StartAnimation("Opacity", expression);
+        opacityBinding?.Dispose(); opacityBinding = null;
+        opacityBinding = new CompositionOpacityBinding(ElementCompositionPreview.GetElementVisual(this), anchor, root);
     }
 
     private void Refresh(object? sender, object args)
@@ -84,6 +76,8 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
         if (!anchor.IsLoaded || anchor.ActualWidth <= 0 || anchor.ActualHeight <= 0 || anchor.XamlRoot != root.XamlRoot)
         { Visibility = Visibility.Collapsed; return; }
         var bounds = anchor.TransformToVisual(root).TransformBounds(new(0, 0, anchor.ActualWidth, anchor.ActualHeight));
+        var overlay = Content is WidgetModalLayer { OverlayPresentation: not null };
+        if (overlay) bounds = new Rect(0, 0, root.ActualWidth, root.ActualHeight);
         var visible = bounds;
         var acceptsInput = true;
         for (DependencyObject? item = anchor; item is UIElement element; item = VisualTreeHelper.GetParent(item))
@@ -91,17 +85,17 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
             if (element.Visibility != Visibility.Visible) { Visibility = Visibility.Collapsed; return; }
             acceptsInput &= element.IsHitTestVisible && (element is not Control control || control.IsEnabled);
             var ancestorClip = PresentationLayers.LocalClip(element);
-            if (ancestorClip is { } value) visible.Intersect(element.TransformToVisual(root).TransformBounds(value));
+            if (!overlay && ancestorClip is { } value) visible.Intersect(element.TransformToVisual(root).TransformBounds(value));
         }
         visible.Intersect(new(0, 0, root.ActualWidth, root.ActualHeight));
         if (visible.IsEmpty || visible.Width <= 0 || visible.Height <= 0 || bounds.Width <= 0 || bounds.Height <= 0)
         { Visibility = Visibility.Collapsed; return; }
-        Width = anchor.ActualWidth; Height = anchor.ActualHeight; FlowDirection = anchor.FlowDirection;
-        var ownerBounds = owner is null ? new Rect(0, 0, Width, Height) :
+        Width = overlay ? root.ActualWidth : anchor.ActualWidth; Height = overlay ? root.ActualHeight : anchor.ActualHeight; FlowDirection = anchor.FlowDirection;
+        var ownerBounds = overlay || owner is null ? new Rect(0, 0, Width, Height) :
             owner.TransformToVisual(anchor).TransformBounds(new(0, 0, owner.ActualWidth, owner.ActualHeight));
         rounded.Offset = new((float)ownerBounds.X, (float)ownerBounds.Y);
         rounded.Size = new((float)ownerBounds.Width, (float)ownerBounds.Height);
-        rounded.CornerRadius = new((float)Math.Min(owner?.SurfaceCornerRadius ?? 0, Math.Min(ownerBounds.Width, ownerBounds.Height) / 2));
+        rounded.CornerRadius = new(overlay ? 0 : (float)Math.Min(owner?.SurfaceCornerRadius ?? 0, Math.Min(ownerBounds.Width, ownerBounds.Height) / 2));
         placement.ScaleX = bounds.Width / Width; placement.ScaleY = bounds.Height / Height;
         placement.TranslateX = bounds.X; placement.TranslateY = bounds.Y;
         var localClip = new Rect((visible.X - bounds.X) / placement.ScaleX, (visible.Y - bounds.Y) / placement.ScaleY,
@@ -126,6 +120,7 @@ internal sealed partial class PresentationPortal : Grid, IDisposable
         if (disposed) return;
         disposed = true; Visibility = Visibility.Collapsed;
         anchor.LayoutUpdated -= Refresh; if (followComposition) CompositionTarget.Rendering -= Refresh;
+        opacityBinding?.Dispose(); opacityBinding = null;
         ElementCompositionPreview.GetElementVisual(this).StopAnimation("Opacity");
         ElementCompositionPreview.GetElementVisual(roundedLayer).Clip = null;
         roundedClip.Dispose(); rounded.Dispose();

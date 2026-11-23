@@ -253,7 +253,8 @@ public sealed partial class WidgetPresentationSession
     private bool IsIndexedDemandCurrentLocked(IndexedDemand demand) =>
         IsIndexedOwnerCurrentLocked(demand.Authority, demand.Request.Range, demand.ScopeId);
 
-    private bool IsIndexedOwnerCurrentLocked(WidgetPresentationAuthority authority, IndexedCollectionRangeRequest request, string scopeId)
+    private bool IsIndexedOwnerCurrentLocked(WidgetPresentationAuthority authority, IndexedCollectionRangeRequest request,
+        string scopeId, WidgetPresentationIndexedLease? lease = null)
     {
         if (_disposed || _terminalFailure is not null || _indexedHiddenWidgets.Contains(authority.WidgetId) ||
             !_descriptors.TryGetValue(authority.WidgetId, out var descriptor) ||
@@ -262,7 +263,16 @@ public sealed partial class WidgetPresentationSession
             _sessionGenerations.GetValueOrDefault(authority.WidgetId) != authority.SessionGeneration ||
             !_states.TryGetValue(authority.WidgetId, out var state) || state.LastGood is not { } parent ||
             !SameIndexedOwner(authority, parent.Authority)) return false;
-        try { return IndexedCollectionContract.ResolveScope(parent.Snapshot, request) == scopeId; }
+        // Only an owned lease reaches this fast path. Its range and scope are
+        // fixed for life. CommitStateLocked advances the session-owned revision
+        // and reconciles leases under this same gate before exposing new state.
+        if (lease?.VerifiedPublicationRevision == state.PublicationRevision) return true;
+        try
+        {
+            if (IndexedCollectionContract.ResolveScope(parent.Snapshot, request) != scopeId) return false;
+            if (lease is not null) lease.VerifiedPublicationRevision = state.PublicationRevision;
+            return true;
+        }
         catch (Exception exception) when (exception is ArgumentException or ProtocolValidationException) { return false; }
     }
 

@@ -30,6 +30,8 @@ internal static class PlayniteDescriptionText
             var lines = bounded.Split('\n').Select(line => string.Join(' ',
                 line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)));
             bounded = string.Join('\n', lines);
+            // Store markup can wrap list text in its own paragraph.
+            bounded = Regex.Replace(bounded, @"(?m)^•\n+([^\s•])", "• $1", RegexOptions.None, MatchTimeout);
             bounded = Regex.Replace(bounded, @"\n{3,}", "\n\n", RegexOptions.None, MatchTimeout).Trim();
             bounded = new string(bounded.Where(c => c == '\n' || !char.IsControl(c)).ToArray());
             if (bounded.Length == 0) return null;

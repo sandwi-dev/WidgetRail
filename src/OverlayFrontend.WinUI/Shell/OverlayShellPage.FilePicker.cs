@@ -51,7 +51,8 @@ internal sealed partial class OverlayShellPage
             if (root is null) return;
             monitor = MonitorAsync();
             var selected = await WithNativeFilePickerAsync(root, sourcePin, pickerToken =>
-                BrowserFilePicker.PickAsync(root.ContentIslandEnvironment.AppWindowId, new(false, request.Multiple), pickerToken, request.Title), token);
+                ChooseBrowserPathsAsync(root, sourcePin, new(false, request.Multiple), request.Title,
+                    request.Multiple ? WidgetFileContract.MaximumFiles : 1, pickerToken, request.CommitLabel), token);
             if (await Current())
             {
                 if (selected.Length > WidgetFileContract.MaximumFiles)

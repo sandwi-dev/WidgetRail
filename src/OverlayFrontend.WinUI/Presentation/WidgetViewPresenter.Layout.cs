@@ -13,9 +13,13 @@ internal sealed partial class WidgetViewPresenter
     private double? Length(ViewNode node, string property)
     {
         if (ComputedStyle(node, property) is not { Number: { } number } value || !double.IsFinite(number) || number < 0) return null;
-        var viewport = Viewport();
-        return value.Unit switch { "px" or null => number, "vw" => viewport.Width * number / 100,
-            "vh" => viewport.Height * number / 100, _ => null };
+        return value.Unit switch
+        {
+            "px" or null => number,
+            "vw" => Viewport().Width * number / 100,
+            "vh" => Viewport().Height * number / 100,
+            _ => null,
+        };
     }
 
     private void ApplySizeAndTypography(FrameworkElement element, ViewNode node)
@@ -88,10 +92,48 @@ internal sealed partial class WidgetViewPresenter
             var grows = node.Children.Where(child => bindings[child.Id].Element.Visibility == Visibility.Visible).Any(child => (ComputedStyle(child, "flex-grow")?.Number ??
                 (NeedsConstrainedViewport(child) && Length(child, axis) is null && Length(child, "max-" + axis) is null ? 1 : 0)) > 0);
             var gap = NativeComputedStyleAdapter.Spacing(presentation?.RenderStyles.GetValueOrDefault(node.Id)?.Base, "gap");
+            surface.ConfigureReadingPane(ComputedStyle(node, "focus-presentation-layout")?.Text == "reading-pane");
+            hasReadingPane |= surface.ReadingPane is not null;
             surface.ConfigureFocusLayout(horizontal, ComputedStyle(node, "justify")?.Text, ComputedStyle(node, "align")?.Text,
                 (horizontal ? gap?.Right : gap?.Top) ?? 12, grows);
         }
-        if (binding.Element is Grid layout && layout is not (WidgetModalLayer or WidgetPosterPanel or WidgetArtworkView or WidgetRichTextView)) UpdateLayout(layout, node);
+        if (binding.Element is WidgetFocusRevealGrid reveal)
+        {
+            reveal.ReducedMotion = Motion.WidgetMotionOptions.From(appearance, systemAnimationsEnabled).Reduced;
+            UpdateExplicitGrid(reveal.Tracks, node, node.GridLayout!);
+            // An opt-in sequence of intrinsic sections followed by a viewport.
+            // Read only declared nodes. Virtual rows and preview fragments own
+            // their own scopes and are never realized to locate an anchor.
+            if (node.GridLayout!.Rows is [.., { Sizing: GridTrackSizing.Star }] tracks &&
+                tracks.Take(tracks.Count - 1).All(track => track.Sizing == GridTrackSizing.Auto) &&
+                node.Children.All(child => (child.GridCell?.RowSpan ?? 1) == 1) &&
+                node.Children.Any(child => ComputedStyle(child, "focus-snap-end") is not null))
+            {
+                var ends = new double?[tracks.Count];
+                FrameworkElement? peek = null;
+                double extent = 0;
+                foreach (var child in node.Children)
+                {
+                    var row = child.GridCell?.Row ?? 0;
+                    ends[row] ??= Length(child, "focus-snap-end");
+                    if (row == 1 && peek is null) FindPeek(child);
+                }
+                reveal.ConfigureStops(ends, peek, extent);
+                void FindPeek(ViewNode child)
+                {
+                    if (Length(child, "focus-snap-peek") is { } amount)
+                    { peek = bindings[child.Id].LayoutElement; extent = amount; return; }
+                    if (child.GridLayout?.RevealBodyOnFocus == true) return;
+                    foreach (var nested in child.Children)
+                    {
+                        FindPeek(nested);
+                        if (peek is not null) break;
+                    }
+                }
+            }
+            else reveal.ConfigureStops(null, null, 0);
+        }
+        else if (binding.Element is Grid layout && layout is not (WidgetModalLayer or WidgetPosterPanel or WidgetArtworkView or WidgetRichTextView)) UpdateLayout(layout, node);
         if (node.Kind == ViewNodeKind.ActionSurface && binding.Children is Grid content &&
             content is not WidgetPosterPanel && !ReferenceEquals(content, binding.Element)) UpdateLayout(content, node);
     }

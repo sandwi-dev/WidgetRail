@@ -4,6 +4,14 @@
     <ProjectReference Include="..\FirstPartyWidgets\CaptureLibraryWidget\CaptureLibraryWidget.csproj" />
   </ItemGroup>
   <Import Project="..\..\eng\WinUiNativeInputs.targets" />
+  <ItemGroup><Compile Include="../Shared/CaptureReplayFeedback.cs" Link="CaptureReplayFeedback.cs" /></ItemGroup>
+  <ItemGroup>
+    <!-- Self-contained publishes use the serviced ComWrappers implementation.
+         Keep the SDK's minimum runtime for framework-dependent development. -->
+    <KnownFrameworkReference Update="Microsoft.NETCore.App">
+      <LatestRuntimeFrameworkVersion Condition="'%(TargetFramework)' == 'net10.0' and $([MSBuild]::VersionLessThan('%(LatestRuntimeFrameworkVersion)', '10.0.15'))">10.0.15</LatestRuntimeFrameworkVersion>
+    </KnownFrameworkReference>
+  </ItemGroup>
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
@@ -65,6 +73,7 @@
     <Content Include="Assets\Square44x44Logo.targetsize-48_altform-lightunplated.png" />
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="..\..\assets\branding\widgetrail.png" Link="Assets\WidgetRail.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\theme-preview\*.jpg" Link="Assets\ThemePreview\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\assets\branding\widgetrail.ico" Link="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
     <Content Include="..\..\assets\fonts\winui-controller\xbox.ttf" Link="Assets\Fonts\xbox.ttf" CopyToOutputDirectory="PreserveNewest" />
@@ -92,6 +101,7 @@
     <ProjectReference Include="..\PlatformSettings\PlatformSettings.csproj" />
     <ProjectReference Include="..\WindowsDisplayProvider\WindowsDisplayProvider.csproj" />
     <ProjectReference Include="..\WidgetPresentationSession\WidgetPresentationSession.csproj" />
+    <ProjectReference Include="..\RemoteMediaTransport\RemoteMediaTransport.csproj" />
     <Content Include="$(OverlayPlatformInteropPath)"
              Condition="Exists('$(OverlayPlatformInteropPath)')"
              Link="OverlayPlatformInterop.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

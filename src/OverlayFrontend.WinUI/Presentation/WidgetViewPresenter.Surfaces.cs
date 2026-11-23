@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Input;
 using WidgetRail.OverlayFrontend.WinUI.Collections;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
@@ -19,6 +21,8 @@ internal sealed partial class WidgetViewPresenter
     private readonly PresentationSourceCoordinator<SurfaceValue> surfaceSources = new();
     private readonly Dictionary<PresentationSurfaceId, SurfaceRetention> surfaceRetentions = [];
     private bool surfacesQueued;
+    private WeakReference<DependencyObject>? artworkFocusTarget;
+    private FocusNavigationDirection artworkFocusDirection;
 
     private bool SameSurfaceOwnership(Declaration incoming, Dictionary<string, Declaration> plan)
     {
@@ -67,6 +71,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void ClearSurfaceState()
     {
+        artworkFocusTarget = null;
         ClearFocusPreview(); ClearDeferredPreviews();
         foreach (var retention in surfaceRetentions.Values) retention.Dispose();
         surfaceRetentions.Clear(); surfaceSources.Clear();
@@ -101,7 +106,7 @@ internal sealed partial class WidgetViewPresenter
         {
             focusedSource = RowIdentity(row);
             foreach (var kind in Enum.GetValues<PresentationSurfaceKind>())
-                if (Owner(focused.Identity.Id, kind) is { } owner && RowContent(row, kind) is not null)
+                if (Owner(focused.Identity.Id, kind) is { } owner && RowContent(row, kind, ForegroundSurface(owner)) is not null)
                 {
                     if (surfaceRetentions.TryGetValue(owner, out var old) && ReferenceEquals(old.Owner, row.Owner) && old.Lease.Slot.Key == row.Item.Key) continue;
                     var retention = indexed.RetainFocusedRow();
@@ -118,14 +123,14 @@ internal sealed partial class WidgetViewPresenter
         foreach (var declaration in declarations.Values)
         {
             if (!declaration.Node.IsFocusable) continue;
-            if (Owner(declaration.Node.Id, PresentationSurfaceKind.Background) is { } background && declaration.Node.FocusBackgroundArtworkHandle is { } handle)
+            if (Owner(declaration.Node.Id, PresentationSurfaceKind.Background) is { } background && BackgroundContent(declaration.Node) is { } backgroundNode)
                 contributions.Add(new(StaticIdentity(declaration.Identity), background,
-                    new(new() { Id = declaration.Node.Id, Kind = ViewNodeKind.Image, ArtworkHandle = handle, ImageFit = ImageFit.Cover }, declaration.Identity.Scope)));
+                    new(backgroundNode, declaration.Identity.Scope)));
             if (Owner(declaration.Node.Id, PresentationSurfaceKind.FocusFragment) is { } fragment && declaration.Node.FocusPresentation is { } content)
                 contributions.Add(new(StaticIdentity(declaration.Identity), fragment, new(content, declaration.Identity.Scope)));
         }
         foreach (var (id, retention) in surfaceRetentions)
-            if (retention.Lease.Slot.Value is { } retained && RowContent(retained, id.Kind) is { } content)
+            if (retention.Lease.Slot.Value is { } retained && RowContent(retained, id.Kind, ForegroundSurface(id)) is { } content)
                 contributions.Add(new(RowIdentity(retained), id, new(content, retained.Lease.Range.ScopeId, retained)));
         var authority = frame.Authority;
         var revision = new PresentationRevision<SurfaceValue>(new(authority.RuntimeGeneration, authority.WidgetInstanceId,
@@ -155,7 +160,12 @@ internal sealed partial class WidgetViewPresenter
                 // Retain decoded paint within this declared surface, not old
                 // source authority. Even an empty selection still retires demand.
                 surface.SetArtworkRetention(declarations[binding.Identity.Id].Node.RetainLastPresentation != false);
-                UpdateArtwork(binding, value.Node, surface.PublishArtwork, resolve, generation,
+                var movement = selection.Source is not null && selection.Source == focusedSource &&
+                    artworkFocusTarget?.TryGetTarget(out var target) == true && XamlRoot is not null &&
+                    ReferenceEquals(target, FocusManager.GetFocusedElement(XamlRoot)) ? artworkFocusDirection : FocusNavigationDirection.None;
+                var artworkKey = value.Node.ArtworkHandle ?? value.Node.ImageSource;
+                surface.SelectBackground(value.Node.ForegroundBackgroundProcessKey, artworkKey);
+                UpdateArtwork(binding, value.Node, image => surface.PublishArtwork(image, movement, artworkKey), resolve, generation,
                     sourceCurrent, fallback);
             }
             else if (surface.Fragment is { } fragment)
@@ -168,12 +178,16 @@ internal sealed partial class WidgetViewPresenter
                 fragment.ArtworkAuthorityCurrent = sourceCurrent;
                 fragment.Failed = ReportFailure;
                 _ = fragment.SetPresentationActiveAsync(true);
+                surface.ResetReadingPosition(value.Node.Id);
                 fragment.ApplyFragment(selectedRow is null ? presentation! : presentation!.WithStyles(selectedRow.Lease.RenderStyles), value.Node, value.Scope);
             }
             if (selectedRow is null && surfaceRetentions.Remove(selection.Surface, out var unused)) unused.Dispose();
         }
 
         UpdateFocusPreview();
+
+        bool ForegroundSurface(PresentationSurfaceId id) => id.Kind == PresentationSurfaceKind.Background &&
+            surfaceBindings.TryGetValue(id, out var owner) && declarations[owner.Identity.Id].Node.ForegroundBackgroundProcessKey != null;
 
         PresentationSurfaceId? Owner(string sourceId, PresentationSurfaceKind kind)
         {
@@ -194,7 +208,11 @@ internal sealed partial class WidgetViewPresenter
     private static PresentationSourceId StaticIdentity(WidgetElementIdentity identity) => new(identity.Scope, identity.Id, identity.Kind.ToString(), identity.ItemPath);
     private static PresentationSourceId RowIdentity(WidgetIndexedRow row) => new(row.Lease.Range.ScopeId, row.Item.Root.Id, row.Item.Root.Kind.ToString(),
         row.Owner.Declaration.Id + ":" + row.Lease.Range.Source.SourceId + ":" + row.Lease.Range.Source.QueryGeneration + ":" + row.Item.Key);
-    private static ViewNode? RowContent(WidgetIndexedRow row, PresentationSurfaceKind kind) => kind == PresentationSurfaceKind.FocusFragment
-        ? row.Item.Root.FocusPresentation : row.Item.Root.FocusBackgroundArtworkHandle is { } handle
-            ? new() { Id = row.Item.Root.Id, Kind = ViewNodeKind.Image, ArtworkHandle = handle, ImageFit = ImageFit.Cover } : null;
+    private static ViewNode? RowContent(WidgetIndexedRow row, PresentationSurfaceKind kind, bool foregroundSurface) => kind == PresentationSurfaceKind.FocusFragment
+        ? row.Item.Root.FocusPresentation : BackgroundContent(row.Item.Root) ??
+            (foregroundSurface ? new() { Id = row.Item.Root.Id, Kind = ViewNodeKind.Image } : null);
+    private static ViewNode? BackgroundContent(ViewNode node) =>
+        node.FocusBackgroundArtworkHandle is null && node.ForegroundBackgroundProcessKey is null ? null :
+        new() { Id = node.Id, Kind = ViewNodeKind.Image, ArtworkHandle = node.FocusBackgroundArtworkHandle,
+            ForegroundBackgroundProcessKey = node.ForegroundBackgroundProcessKey, ImageFit = ImageFit.Cover };
 }

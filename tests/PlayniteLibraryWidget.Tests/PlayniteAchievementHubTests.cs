@@ -9,6 +9,52 @@ public sealed partial class PlayniteLibraryTests
 {
     private const string AchievementHubId = "playnite-library.achievement-hub";
     [TestMethod]
+    public async Task AchievementHeaderExitsToCaptureSettingsAndReturnsToItsTab()
+    {
+        var provider = new FakeHost(2); var widget = Create(provider, out TestApplicationService app);
+        var game = new PlayniteAchievementGame(provider.ItemFactory(0).SavedId, "Stardew Valley", "Steam", true, 10, 1, 1, null, null);
+        app.OverviewHandler = _ => ValueTask.FromResult(new PlayniteAchievementOverview("ready", "profile", "one", DateTimeOffset.UtcNow, [game], []));
+        await Interactive(widget); await Ready(widget, provider);
+        await widget.OnActionAsync(new(PlayniteLibraryActions.AchievementsOpen, "navigation"));
+        await PrivateField<WidgetResource<PlayniteAchievementOverview>>(widget, "achievementHub").WhenIdleAsync();
+        var snapshot = Snapshot(widget, 240000);
+        var tab = Nodes(snapshot.Root).Single(node => node.ActionId == PlayniteLibraryActions.AchievementsOpen);
+        var capture = Nodes(snapshot.Root).Single(node => node.Text == "Capture settings");
+        var refresh = Nodes(snapshot.Root).Single(node => node.Id == AchievementHubId + ".refresh");
+        var search = Nodes(snapshot.Root).Single(node => node.Id == AchievementHubId + ".search");
+        Assert.AreEqual(tab.Id, search.Focus?.Up);
+        foreach (var field in new[] { "clear", "filter", "sort", "refresh.compact" })
+            Assert.AreEqual(tab.Id, Nodes(snapshot.Root).Single(n=>n.Id==AchievementHubId+"."+field).Focus?.Up);
+
+        var query = new TextSuggestionQuery(search.Id, search.TextEntrySuggestions!.Key, Guid.NewGuid().ToString("N"), 1, "Val", MaximumValueLength:160);
+        Assert.AreEqual(game.Name, (await widget.OnSuggestTextAsync(query, default)).Items.Single().Value);
+        Assert.IsTrue((await widget.OnSuggestTextAsync(query with {SourceKey="stale"}, default)).Unavailable);
+        Assert.AreEqual(capture.Id, tab.Focus?.Right);
+        Assert.AreEqual(tab.Id, capture.Focus?.Left);
+        Assert.AreEqual(refresh.Id, capture.Focus?.Right);
+        Assert.AreEqual(capture.Id, refresh.Focus?.Left);
+        Assert.AreEqual(0, WidgetTestHost.ValidateWinUiPresentation(snapshot).Count);
+        if (Environment.GetEnvironmentVariable("WIDGETRAIL_PLAYNITE_HEADER_FIXTURE") is { Length: > 0 } path)
+        {
+            // This standalone renderer has no indexed item provider. The full shell covers populated rows.
+            await widget.OnActionAsync(new(AchievementHubId+".search", search.Id) { CommittedText="No matching game" });
+            RendererFixtureExporter.Write(path, Snapshot(widget,240006),
+                RendererFixtureExporter.CompileTheme(Path.Combine(AppContext.BaseDirectory, "styles"), "default.wrss"));
+            await widget.OnActionAsync(new(AchievementHubId+".clear", AchievementHubId+".clear"));
+        }
+        var recent = new PlayniteRecentAchievement(game.Id, game.Name, "first", "First unlock", DateTimeOffset.UtcNow, null);
+        app.OverviewHandler = _ => ValueTask.FromResult(new PlayniteAchievementOverview("ready", "profile", "two", DateTimeOffset.UtcNow, [game], [recent]));
+        await widget.OnActionAsync(new(AchievementHubId+".refresh","refresh"));
+        await PrivateField<WidgetResource<PlayniteAchievementOverview>>(widget, "achievementHub").WhenIdleAsync();
+        var populated = Snapshot(widget,240005);
+        foreach (var field in new[] { "search", "clear", "filter", "sort" })
+            Assert.AreEqual(AchievementHubId+".recent", Nodes(populated.Root).Single(n=>n.Id==AchievementHubId+"."+field).Focus?.Up);
+        if (Environment.GetEnvironmentVariable("WIDGETRAIL_PLAYNITE_HEADER_FIXTURE") is { Length: > 0 } expandedPath)
+            RendererFixtureExporter.Write(expandedPath+".recent.json", populated,
+                RendererFixtureExporter.CompileTheme(Path.Combine(AppContext.BaseDirectory,"styles"),"default.wrss"));
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+    [TestMethod]
     [DataRow("missing", "Add PlayniteAchievements")]
     [DataRow("unsupported", "Update PlayniteAchievements")]
     [DataRow("update-required", "Update WidgetRail for Playnite")]
@@ -168,7 +214,7 @@ public sealed partial class PlayniteLibraryTests
         await Bounded(widget.WhenDetailsIdleAsync(), "achievement details");
         host.PublishSnapshot();
         var query = PrivateField<PlayniteAchievementBrowse>(widget, "achievementBrowse");
-        var track = widget.GetType().GetMethod("TrackAchievementAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var track = widget.GetType().GetMethod("PinAchievementAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         await (ValueTask)track.Invoke(widget, [query, query.All.Single(), CancellationToken.None])!;
         Assert.AreEqual(change == "reorder", widget.RenderState.Value.Progress.Target is not null,
             "Tracking follows the current game/profile authority, not the old modal's visible text.");

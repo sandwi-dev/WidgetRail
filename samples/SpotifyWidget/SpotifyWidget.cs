@@ -1122,7 +1122,7 @@ public sealed partial class SpotifyWidget : Widget
             if (navigation.CollectionReturnFocus is { } returnFocus &&
                 ReturnCollectionSource(navigation.Route, returnFocus.Item.CollectionId) is { } returnSource)
                 result = result with { CollectionEntry = returnFocus.Resolve(returnFocus.Item.CollectionId, returnSource) };
-            return result with { SavedSong = _playback?.Item is { Uri: not null } current
+            return result with { PlaybackAccount = _savedAccountPartition, SavedSong = _playback?.Item is { Uri: not null } current
                 ? new(_savedLibrary.Get(current.Uri), _savedBusy.Contains(current.Uri)) : null };
         }
     }
@@ -1636,6 +1636,26 @@ public sealed partial class SpotifyWidget : Widget
         exception is SpotifyApplicationException capability
             ? PageError(capability)
             : "Spotify could not load this page. Try again.");
+
+    protected override async ValueTask<TrayActionResult> OnTrayActionAsync(TrayActionOffer offer, CancellationToken token)
+    {
+        if (offer.Id is not ("play-pause" or "next" or "previous")) return default;
+        // The background worker does not poll. Read the active device on demand and bind the write to it.
+        var now = await _spotify.GetPlaybackAsync(token).ConfigureAwait(false);
+        string? account;
+        lock (_gate) account = _savedAccountPartition;
+        if (SpotifyPlaybackPolicy.TrayOffer(now, offer.Id, account) != offer)
+            return TrayActionResult.Unavailable("Spotify playback changed. Try again with the current device.");
+        var operation = offer.Id switch { "next" => SpotifyPlaybackOperation.Next, "previous" => SpotifyPlaybackOperation.Previous,
+            _ => SpotifyPlaybackPolicy.ResolveToggle(now) };
+        if (SpotifyPlaybackPolicy.BuildCommand(now, operation, null) is not { } command) return default;
+        lock (_gate)
+            if (_viewState != SpotifyWidgetViewState.Ready || _pendingOperation is not null ||
+                SpotifyPlaybackPolicy.TrayOffer(_playback, offer.Id, _savedAccountPartition) != offer) return default;
+        await _spotify.ControlPlaybackAsync(command with { DeviceId = now.DeviceId, ExpectedAccount = account }, token).ConfigureAwait(false);
+        await RefreshPlaybackAsync(Volatile.Read(ref _activeGeneration), token).ConfigureAwait(false);
+        return TrayActionResult.Success;
+    }
 
     private async Task ExecuteAsync(
         SpotifyPlaybackOperation operation,

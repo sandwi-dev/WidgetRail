@@ -20,6 +20,7 @@ public enum BrokerHostEffectKind
 
 public sealed record BrokerHostEffect(BrokerHostEffectKind Kind)
 {
+    public long? LaunchStartedAtMilliseconds { get; init; }
     public long InitiatedAtMilliseconds { get; init; }
     public string? WindowId { get; init; }
     public NativeWindowPreviewTarget? WindowTarget { get; init; }
@@ -45,6 +46,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
     private readonly ConsentChangeMonitor _consentMonitor;
     private readonly Action<BrokerHostEffect, long?, long?>? _hostEffectSink;
     private readonly Func<long, long?>? _actionExecutionAdmission;
+    private sealed record LaunchOrigin(string Ticket, long? Action, long? Lifecycle, long StartedAt);
+    private LaunchOrigin? _launchOrigin;
     private readonly Action<BrokerCapabilityDiagnostic>? _diagnosticSink;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _writeGate = new(1, 1);
@@ -195,11 +198,24 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         string operationId,
         long inputSequence,
         long snapshotSequence,
-        TimeSpan validFor)
+        TimeSpan validFor) => GrantDashboardGestureAuthority(capabilityId, operationId, inputSequence, snapshotSequence, validFor, null);
+
+    public void GrantDashboardGestureAuthority(string capabilityId, string operationId, long inputSequence,
+        long snapshotSequence, TimeSpan validFor, WidgetRail.WidgetProtocol.TrayMediaCommand? trayCommand) => GrantDashboardGestureAuthority(
+            capabilityId, operationId, inputSequence, snapshotSequence, validFor, trayCommand, null);
+
+    public void GrantDashboardGestureAuthority(string capabilityId, string operationId, long inputSequence,
+        long snapshotSequence, TimeSpan validFor, WidgetRail.WidgetProtocol.TrayMediaCommand? trayCommand,
+        WidgetRail.WidgetProtocol.TrayCaptureCommand? captureCommand) => GrantDashboardGestureAuthority(
+            capabilityId, operationId, inputSequence, snapshotSequence, validFor, trayCommand, captureCommand, null);
+
+    internal void GrantDashboardGestureAuthority(string capabilityId, string operationId, long inputSequence,
+        long snapshotSequence, TimeSpan validFor, WidgetRail.WidgetProtocol.TrayMediaCommand? trayCommand,
+        WidgetRail.WidgetProtocol.TrayCaptureCommand? captureCommand, HostActionCompletion? hostCompletion)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _broker.GrantDashboardGestureAuthority(
-            capabilityId, operationId, inputSequence, snapshotSequence, validFor);
+            capabilityId, operationId, inputSequence, snapshotSequence, validFor, trayCommand, captureCommand, hostCompletion);
     }
 
     public void RevokeDashboardGestureAuthority(long inputSequence)
@@ -331,7 +347,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         long? actionLifecycleGeneration = null;
         // Pinning is a user presentation action, never a background capability.
         // Require the runtime's action scope and terminal-success handoff.
-        if (request.CapabilityId == PlatformCapabilities.WidgetPinningV1 &&
+        if ((request.CapabilityId == PlatformCapabilities.WidgetPinningV1 ||
+            request.Operation is PlatformCapabilities.LaunchHandoffBegin or PlatformCapabilities.LaunchHandoffReady) &&
             (message.ActionExecutionId is null || _actionExecutionAdmission is null || _hostEffectSink is null))
         {
             _ = SendErrorSafeAsync(message.CorrelationId,"action_context_required",cancellationToken);
@@ -386,8 +403,29 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         var initiatedAt = Environment.TickCount64;
         try
         {
+            LaunchOrigin? launch = null;
+            if (request.Operation == PlatformCapabilities.LaunchHandoffReady)
+            {
+                LaunchHandoffTarget ready;
+                try { ready = BrokerJson.ParsePayload<LaunchHandoffTarget>(request.Payload); }
+                catch (BrokerException error)
+                {
+                    await SendErrorSafeAsync(correlationId, error.Code, requestCancellation.Token).ConfigureAwait(false);
+                    return;
+                }
+                launch = Volatile.Read(ref _launchOrigin);
+                if (launch is null || launch.Ticket != ready.Ticket || launch.Action != actionExecutionId ||
+                    launch.Lifecycle != actionLifecycleGeneration || initiatedAt - launch.StartedAt > 30000)
+                {
+                    await SendErrorSafeAsync(correlationId, "launch_expired", requestCancellation.Token).ConfigureAwait(false);
+                    return;
+                }
+            }
             var response = await _broker.HandleAsync(requestBytes, requestCancellation.Token)
                 .ConfigureAwait(false);
+            if (request.Operation == PlatformCapabilities.LaunchHandoffBegin && response.Succeeded && response.Payload is { } receipt)
+                Volatile.Write(ref _launchOrigin, new(BrokerJson.ParsePayload<LaunchHandoffTicket>(receipt).Ticket,
+                    actionExecutionId, actionLifecycleGeneration, initiatedAt));
             ReportDiagnostic(
                 request.CapabilityId,
                 request.Operation,
@@ -397,7 +435,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             var effect = response.Succeeded
                 ? ConfirmedHostEffect(requestBytes, response)
                 : null;
-            if (effect is not null) effect = effect with { InitiatedAtMilliseconds = initiatedAt };
+            if (effect is not null) effect = effect with { InitiatedAtMilliseconds = initiatedAt, LaunchStartedAtMilliseconds = launch?.StartedAt };
             if (effect is not null && actionExecutionId is not null)
                 PublishHostEffect(
                     effect, actionExecutionId, actionLifecycleGeneration);
@@ -439,13 +477,16 @@ public sealed class BrokerPipeServer : IAsyncDisposable
             return new(BrokerHostEffectKind.OpenPinnedLayout)
             { PinnedLayoutId=BrokerJson.ParsePayload<WidgetRail.WidgetProtocol.WidgetPinRequest>(request.Payload).LayoutId };
         if (request.CapabilityId == PlatformCapabilities.TaskWindowsSwitchV1 &&
-            request.Operation == PlatformCapabilities.TaskWindowsSwitch)
+            request.Operation is PlatformCapabilities.TaskWindowsSwitch or PlatformCapabilities.LaunchHandoffReady)
         {
-            var window = BrokerJson.ParsePayload<TaskWindowRequest>(request.Payload);
-            var target = WindowPreviewRegistry.Resolve(_identity, window.WindowId);
+            var id = request.Operation == PlatformCapabilities.LaunchHandoffReady
+                ? response.Payload is { } ready ? BrokerJson.ParsePayload<LaunchHandoffResult>(ready).WindowId : null
+                : BrokerJson.ParsePayload<TaskWindowRequest>(request.Payload).WindowId;
+            if (id is null) return null;
+            var target = WindowPreviewRegistry.Resolve(_identity, id);
             return target is null ? null : new BrokerHostEffect(BrokerHostEffectKind.ActivateTaskWindow)
             {
-                WindowId = window.WindowId,
+                WindowId = id,
                 WindowTarget = target,
             };
         }

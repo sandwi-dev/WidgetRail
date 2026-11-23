@@ -20,6 +20,10 @@ internal sealed partial class WidgetViewPresenter
         if (surfaceResize.Playback is { } playback) _ = RefreshPreviewAfterMotionAsync(playback);
     }
     internal void SettleWidgetResize() => surfaceResize?.Cancel();
+    internal void ApplyInheritedAppearance(AppearanceSettings value, bool animationsEnabled)
+    {
+        if (appearance != value || systemAnimationsEnabled != animationsEnabled) ApplyAppearance(value, animationsEnabled);
+    }
     internal void ApplyAppearance(AppearanceSettings value, bool animationsEnabled)
     {
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Apply appearance on the widget dispatcher.");
@@ -31,6 +35,14 @@ internal sealed partial class WidgetViewPresenter
         }
         appearance = value ?? throw new ArgumentNullException(nameof(value));
         systemAnimationsEnabled = animationsEnabled;
+        RefreshArtworkPlayback();
+        foreach (var binding in bindings.Values)
+            if (binding.Element is WidgetIndexedCollectionView collection) collection.SetRowAppearance(value, animationsEnabled);
+        foreach (var binding in bindings.Values)
+            if (binding.Element is Media.MediaPlayerView media)
+                media.SetAnimationsAllowed(!Motion.WidgetMotionOptions.From(value, animationsEnabled).Reduced);
+            else if (binding.Element is WidgetFocusRevealGrid reveal)
+                reveal.ReducedMotion = Motion.WidgetMotionOptions.From(value, animationsEnabled).Reduced;
         previewMotion?.ApplyAppearance(value, animationsEnabled);
         WidgetPresentationSurface.SetMotionAppearance(value, animationsEnabled);
         NativeComputedStyleAdapter.SetMotionPolicy(value, animationsEnabled);

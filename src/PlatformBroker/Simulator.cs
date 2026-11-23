@@ -43,6 +43,12 @@ public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend
     }
     public Task SwitchTaskWindowAsync(string windowId, CancellationToken cancellationToken) =>
         TaskWindowSwitch?.Invoke(windowId, cancellationToken) ?? Task.CompletedTask;
+    public Task<NativeWindowPreviewTarget?> InspectLaunchWindowAsync(long handle, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        return Task.FromResult(TaskWindows.Select(window => window.PreviewTarget).FirstOrDefault(target =>
+            target is not null && Convert.ToInt64(target.Handle, 16) == handle));
+    }
     public Task CloseTaskWindowAsync(string windowId, CancellationToken cancellationToken) =>
         TaskWindowClose?.Invoke(windowId, cancellationToken) ?? Task.CompletedTask;
 

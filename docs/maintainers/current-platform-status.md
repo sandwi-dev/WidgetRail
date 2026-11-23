@@ -1,7 +1,9 @@
 # Current platform status
 
-Reviewed against source on 2026-11-17: local application candidate `0.1.0-preview.40.local.1`, SDK/CLI
-`0.4.8-dev`. The presentation contract is protocol 127, including backend web
+Reviewed against source on 2026-11-18: local application candidate `0.1.0-preview.41.local.1`, SDK/CLI
+`0.4.8-dev`. The current refinement source uses presentation protocol 131 (native
+candidate qualification pending), including preferred collection entry and
+remote-image/media galleries and explicit passive video animation in addition to backend web
 sessions, native capture, explicit modal dismissal, exact pin-selection identities,
 interactive/passive pin declarations, desktop acrylic surfaces, opted-in pin
 restoration, numeric values in interactive rich previews, graph empty-state text,
@@ -10,7 +12,7 @@ command menus, primary rich-preview entry, worker-bound inline preview actions,
 opted-in native saved-media previews, semantic action glyphs, bounded timeline
 following/recovery, inline rich images, source-bound native notification intents,
 opt-in boundary demands/deferred reveals and message-content focus targets, and
-capability-qualified recording settings. The local refinement
+capability-qualified recording settings and opted-in held-trigger selection. The local refinement
 branch supports up to six pins with shared adjustment controls, three incoming
 Discord streams, and the independent local Playnite integration; see
 [implementation and qualification](../input-discord-refinements-plan.md).
@@ -25,6 +27,13 @@ Catalogue can download it; the local candidate is supplied as a `.wrwidget` file
 The user accepted continued use, with further platform/device coverage to develop
 through testing. The desktop-client migration and later codec/bitrate experiments
 are not included. See the [Discord guide](../users/discord.md).
+
+The unmerged navigation candidate prepares Discord `0.1.0.22` and Capture Library
+`0.2.1`: integrated Call/Messages navigation, scoped read acknowledgments, truthful
+authentication states, transient toast feedback and shared L2/LT held selection.
+See its [implementation and qualification plan](../discord-navigation-selection-plan.md)
+for native evidence and remaining live acceptance checks. These packages are not
+a published release or an update to the accepted package version above.
 
 ## Frontend and distribution
 

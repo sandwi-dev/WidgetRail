@@ -3,26 +3,59 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
+using WidgetRail.OverlayFrontend.WinUI.Diagnostics;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
+    private bool hasReadingPane;
     private PassiveScrollFocus? passiveScrollFocus;
     private bool CollectionBoundaryReady(WidgetIndexedCollectionView collection) => !applying &&
         (!ReferenceEquals(pendingIndexedScrollReveal?.Collection.Element,collection) ||
             pendingIndexedScrollReveal is {Started:true} && !collection.IsScrollRevealPending);
     private bool CollectionScrollPending(WidgetIndexedCollectionView collection) =>
+        CollectionMemoryPending(collection) ||
         scrollGesture is { } gesture && ReferenceEquals(gesture.Owner.Element, collection) &&
             (gesture.Intermediate || gesture.Horizontal.IsPending || gesture.Vertical.IsPending) ||
         directionalScroll is { Pending: true } directional && ReferenceEquals(directional.Owner.Element, collection);
-    private void RetireCollectionScrolling(string id)
+    private bool CollectionMemoryPending(WidgetIndexedCollectionView collection)
     {
-        // Called before native source replacement, while the old viewport still
-        // owns its motion. The new query keeps its existing continuity policy.
-        if (scrollGesture?.Owner.Identity.Id == id) scrollGesture = null;
+        return pendingIndexedViewports.Any(pending => Owns(pending.Memory.Element)) ||
+            pendingPageMemory.Any(memory => memory.Indexed.Any(viewport => Owns(viewport.Element)));
+        bool Owns(WidgetElementIdentity identity) => bindings.TryGetValue(identity.Id,out var binding) &&
+            binding.Identity==identity && ReferenceEquals(binding.Element,collection);
+    }
+    private bool OwnsCollectionScrollGesture(WidgetIndexedCollectionView collection) =>
+        scrollGesture is { } gesture && gesture.Scope == activeScope && ReferenceEquals(gesture.Owner.Element, collection);
+    private bool NeedsCollectionEntry(WidgetIndexedCollectionView collection) =>
+        collection.IsFocusParked && !collection.IsEntryPending && !OwnsCollectionScrollGesture(collection);
+
+    private void DeferredIndexedQueryCommitted(WidgetIndexedCollectionView collection)
+    {
+        // Match Apply's parked-focus reconciliation after an asynchronous data
+        // commit. A newer explicit focus choice or scroll owner still wins.
+        if (disposed || applying || !presentationActive || !presentationInputEnabled || !automaticFocusEnabled ||
+            presentationOnly || pendingGroupEntry is not null ||
+            FocusedBinding() is not { } focused || !ReferenceEquals(focused.Element,collection) ||
+            focused.Identity.Scope != activeScope || !NeedsCollectionEntry(collection)) return;
+        needsEntry=true;
+        CaptureEntryOwnership(replace:true);
+        QueueEntryFocus();
+    }
+
+    private void ChangeCollectionScrolling(string id, bool retainedViewport)
+    {
+        // An ordered window rebase retains the same native viewport and input
+        // owner. Discard old coordinates/motion, not the user's scroll ownership;
+        // otherwise parked focus can replay an old offscreen entry mid-gesture.
+        if (scrollGesture is { } gesture && gesture.Owner.Identity.Id == id)
+        {
+            if (retainedViewport) gesture.Stop();
+            else scrollGesture = null;
+        }
         if (directionalScroll?.Owner.Identity.Id == id) directionalScroll = null;
-        if (passiveScrollFocus is { } focus && FindBinding(focus.Viewport)?.Identity.Id == id)
+        if (!retainedViewport && passiveScrollFocus is { } focus && FindBinding(focus.Viewport)?.Identity.Id == id)
             CancelPassiveScrollFocus();
     }
     private void CancelPassiveScrollFocus()
@@ -84,6 +117,8 @@ internal sealed partial class WidgetViewPresenter
         internal int VerticalDirection;
         internal bool Animated;
         internal bool Intermediate;
+        internal bool NativeWheel;
+        internal long TraceId;
         internal double Tolerance => 1 / (Viewport.XamlRoot?.RasterizationScale ?? 1);
         internal void Observe()
         {
@@ -126,6 +161,8 @@ internal sealed partial class WidgetViewPresenter
         {
             gesture.Intermediate = args.IsIntermediate;
             if (!args.IsIntermediate && !gesture.Horizontal.IsPending && !gesture.Vertical.IsPending) gesture.Animated = false;
+            TraceScrollGesture(gesture, ScrollTracePhase.NativeViewChanged,
+                gesture.Viewport.HorizontalOffset, gesture.Viewport.VerticalOffset);
         }
         RefreshScrollFocusOutline();
     }
@@ -142,6 +179,13 @@ internal sealed partial class WidgetViewPresenter
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Scroll on the widget dispatcher.");
         if (!presentationActive || !presentationInputEnabled || disposed || applying || !IsLoaded || frame is null || !double.IsFinite(horizontalDelta) || !double.IsFinite(verticalDelta)) return false;
         if (HasTransientControl) return true;
+        for (var binding = hasReadingPane && verticalDelta != 0 ? FocusedBinding() : null; binding is not null;
+             binding = declarations[binding.Identity.Id].ParentId is { } parent ? bindings.GetValueOrDefault(parent) : null)
+            if (binding.Element is WidgetPresentationSurface { ReadingPane: { } reader })
+            {
+                reader.ChangeView(null, Math.Clamp(reader.VerticalOffset + verticalDelta, 0, reader.ScrollableHeight), null, true);
+                return true;
+            }
         CancelPassiveScrollFocus();
         CancelScrollReveal();
         if (FocusedBrowser?.Scroll(horizontalDelta, verticalDelta) == true) return true;
@@ -153,11 +197,14 @@ internal sealed partial class WidgetViewPresenter
             if (current is ScrollViewer viewer && CanScroll(viewer)) { target = viewer; break; }
         // A panel can keep its actions fixed above a scrolling document. Prefer
         // that panel's viewport before falling back to another column's list.
+        // Indexed focus can be parked on the wrapper while a page retires; its
+        // native viewport is a descendant, not an ancestor of that focus target.
         for (var current = FocusedBinding(); target is null && current is not null;
              current = declarations[current.Identity.Id].ParentId is { } parent ? bindings.GetValueOrDefault(parent) : null)
             target = bindings.Values.Where(binding => binding.Identity.Scope == activeScope &&
                     IsDescendant(binding.Identity.Id, current.Identity.Id))
-                .Select(binding => binding.Element as ScrollViewer)
+                .Select(binding => binding.Element is ScrollViewer viewer ? viewer :
+                    binding.Element is WidgetIndexedCollectionView collection ? FindScroll(collection.NativeView) : null)
                 .FirstOrDefault(viewer => viewer is not null && CanScroll(viewer));
         target ??= bindings.Values.Where(binding => binding.Identity.Scope == activeScope &&
                 binding.Element.Visibility == Visibility.Visible)
@@ -171,6 +218,7 @@ internal sealed partial class WidgetViewPresenter
             ReferenceEquals(prior.Owner, owner) && prior.Scope == activeScope
                 ? prior : new ScrollGesture(target, owner, activeScope);
         scrollGesture = gesture;
+        gesture.NativeWheel = false;
         if (owner.Element is WidgetIndexedCollectionView indexed)
         {
             indexed.CancelHostNavigation(preserveReader: true);
@@ -189,12 +237,14 @@ internal sealed partial class WidgetViewPresenter
         var vertical = gesture.Vertical.Propose(target.VerticalOffset, verticalDelta, target.ScrollableHeight, gesture.Tolerance);
         var animate = !Motion.WidgetMotionOptions.From(appearance, systemAnimationsEnabled).Reduced;
         TraceScrollRequest(horizontal, vertical);
-        if (target.ChangeView(horizontal, vertical, null, disableAnimation: !animate))
+        var accepted = target.ChangeView(horizontal, vertical, null, disableAnimation: !animate);
+        if (accepted)
         {
             gesture.Horizontal.Accepted(horizontal);
             gesture.Vertical.Accepted(vertical);
             gesture.Animated = animate;
         }
+        TraceScrollGesture(gesture, ScrollTracePhase.Request, horizontal, vertical, accepted);
         return true;
 
         bool CanScroll(ScrollViewer viewer) => viewer.IsLoaded && viewer.Visibility == Visibility.Visible &&
@@ -202,6 +252,20 @@ internal sealed partial class WidgetViewPresenter
              verticalDelta != 0 && viewer.VerticalScrollMode != ScrollMode.Disabled && viewer.ScrollableHeight > 0);
     }
     partial void TraceScrollRequest(double horizontal, double vertical);
+
+    private static void TraceScrollGesture(ScrollGesture gesture, ScrollTracePhase phase,
+        double requestedX, double requestedY, bool accepted = false)
+    {
+        var log = PresentationPipelineTrace.Log;
+        if (!log.ScrollEnabled) return;
+        if (gesture.TraceId == 0) gesture.TraceId = log.Begin().Id;
+        var viewport = gesture.Viewport;
+        var flags = (accepted ? 1 : 0) | (gesture.Animated ? 2 : 0) |
+            (gesture.Intermediate ? 4 : 0) | (gesture.NativeWheel ? 8 : 0);
+        log.Scroll(gesture.TraceId, (int)phase, requestedX, requestedY,
+            viewport.HorizontalOffset, viewport.VerticalOffset,
+            viewport.ScrollableWidth, viewport.ScrollableHeight, flags);
+    }
 
     /// <summary>
     /// Rejoin directional navigation after free scrolling. Only native realized
@@ -221,17 +285,15 @@ internal sealed partial class WidgetViewPresenter
         var scroll = gesture.Viewport;
         var visible = WidgetScrollViewport.ContentBounds(scroll);
         if (visible.Width <= 0 || visible.Height <= 0) return false;
-        // Reading-only viewports (notes, preview details) own focus themselves.
-        // Indexed collections may still be realizing rows, so retain their wait.
-        if (owner.Element is not WidgetIndexedCollectionView &&
-            !bindings.Values.Any(binding => !ReferenceEquals(binding, owner) && Navigable(binding) && binding.Element is Control &&
-                IsDescendant(binding.Identity.Id, owner.Identity.Id)))
-        { return FocusReadingRegion(); }
-        var controls = owner.Element is WidgetIndexedCollectionView collection
-            ? collection.ScrollFocusCandidates()
-            : bindings.Values.Where(binding => !ReferenceEquals(binding, owner) && Navigable(binding) && binding.Element is Control &&
+        // Composite controls own native children that have no separate widget declaration.
+        var controls = owner.Element switch
+        {
+            WidgetIndexedCollectionView collection => collection.ScrollFocusCandidates(),
+            Media.MediaPlayerView media when media.ThumbnailFocusCandidates(scroll) is { } tiles => tiles,
+            _ => bindings.Values.Where(binding => !ReferenceEquals(binding, owner) && Navigable(binding) && binding.Element is Control &&
                 IsDescendant(binding.Identity.Id, owner.Identity.Id))
-                .Select(binding => (Control)binding.Element);
+                .Select(binding => (Control)binding.Element),
+        };
         var candidates = controls.Where(control => control.IsLoaded && control.IsEnabled &&
                 control.Visibility == Visibility.Visible && NearestScroll(control) == scroll)
             .Select(control => (Control: control, Bounds: control.TransformToVisual(scroll).TransformBounds(

@@ -3,10 +3,16 @@ using WidgetRail.WidgetProtocol;
 
 var checks = new (string Name, Func<Task> Run)[]
 {
+    ("Tray start rejects stale, denied and duplicate requests and requires source choice", PolicyTests.TrayStart),
     ("Reviewed durable owner replacement retires old work and reauthorizes without reviving Stop", PolicyTests.ReviewedOwnerReplacement),
     ("Detailed replay settings protect legacy readers and exact source constraints", BrokerTests.EncodingCompatibility),
     ("Pending gestures cancel without admitting recording", PolicyTests.PendingCancellation),
     ("Admitted recording outlives widget and stale stop", PolicyTests.HostLifetime),
+    ("Automatic discovery waits five seconds between unsuccessful scans", PolicyTests.DiscoveryInterval),
+    ("Managing replay approvals preserves an admitted save and rejects stale or foreign authority", PolicyTests.ManageApprovals),
+    ("Approved target remains sticky and hands off only after the old save drains", PolicyTests.ApprovedTargetHandoff),
+    ("Manual start takes over an ambiguous automatic scan and Stop remains available", PolicyTests.ManualWhileWaiting),
+    ("Manual and automatic sessions each announce their first recording once", CoordinatorTests.StartNotices),
     ("Automatic start never admits a different application", PolicyTests.AutomaticIdentity),
     ("Capture permission revocation disables recording intent", PolicyTests.Revocation),
     ("Partial startup catalog does not erase enabled intent", PolicyTests.StartupAuthority),
@@ -43,6 +49,24 @@ return failures == 0 ? 0 : 1;
 
 internal static class PolicyTests
 {
+    internal static async Task TrayStart()
+    {
+        await using var f = new ReplayFixture();
+        await f.Service.PollHostAsync();
+        var revision = f.Service.Status.Revision;
+        var owner = new object();
+        Task<CaptureReplayControlResult> Start(long seen) => f.Service.StartFromTrayAsync(owner, ReplayFixture.Actor, seen, default);
+        Check((await Start(revision + 1)).Outcome == CaptureReplayOutcome.Conflict, "Stale tray command started capture");
+        f.CaptureAllowed = false;
+        Check((await Start(revision)).Issue == CaptureReplayIssue.PermissionRevoked, "Tray bypassed permission");
+        f.CaptureAllowed = true;
+        var pending = Start(revision);
+        var command = (await f.Service.PollHostAsync()).Command;
+        Check(command is { RequestedFromTray: true, Automatic: false } && !pending.IsCompleted, "Tray bypassed source choice");
+        Check((await Start(revision)).Outcome != CaptureReplayOutcome.Accepted, "Duplicate tray start admitted");
+        f.Service.CancelPending(owner);
+        Check((await pending).Outcome == CaptureReplayOutcome.Cancelled && !await f.Service.CompleteHostAsync(f.Started(command!)), "Cancelled tray source accepted");
+    }
     internal static void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
     internal static async Task ReviewedOwnerReplacement()
     {
@@ -71,7 +95,7 @@ internal static class PolicyTests
             var resumed = await f.Service.PollHostAsync();
             if (scenario is "active" or "saving" or "commit-during-revocation")
                 Check(resumed.Command is { Automatic: true } command && command.Widget == successor && command.SessionId != old.SessionId &&
-                    command.ApprovedApplication == ReplayFixture.Application, "Replacement did not receive fresh approved-app admission");
+                    command.Approvals.Contains(ReplayFixture.Application), "Replacement did not receive fresh approved-app admission");
             else Check(resumed.Command is null && !resumed.Status.Settings.Enabled, scenario + " revived recording without valid newer authority");
         }
     }
@@ -101,12 +125,136 @@ internal static class PolicyTests
         await f.Report(command.SessionId!, CaptureReplayPhase.Off, ended: true);
         Check(f.Service.Status.Phase == CaptureReplayPhase.Off && f.Service.Status.SessionId is null, "Stopped recorder retained a session");
     }
+    internal static async Task DiscoveryInterval()
+    {
+        await using var f = new ReplayFixture(enabled: true, automatic: true);
+        var first = (await f.Service.PollHostAsync()).Command!;
+        Check(first.Automatic, "Initial discovery was delayed.");
+        var unavailable = new HostReplayCompletion(first.Id, CaptureReplayOutcome.Unavailable, CaptureReplayIssue.TargetUnavailable)
+            { SessionId = first.SessionId };
+        Check(await f.Service.CompleteHostAsync(unavailable), "Could not finish unavailable scan.");
+        f.Clock.Advance(TimeSpan.FromMilliseconds(4999));
+        Check((await f.Service.PollHostAsync()).Command is null, "Automatic discovery ran before five seconds.");
+        f.Clock.Advance(TimeSpan.FromMilliseconds(1));
+        var second = (await f.Service.PollHostAsync()).Command;
+        Check(second is { Automatic: true } && second.Id != first.Id, "A new scan was not admitted at five seconds.");
+    }
+    internal static async Task ApprovedTargetHandoff()
+    {
+        await using var f = new ReplayFixture(enabled: true, automatic: true);
+        var first = (await f.Service.PollHostAsync()).Command!;
+        Check(await f.Service.CompleteHostAsync(f.Started(first)), "First approved app did not start");
+        await f.Report(first.SessionId!, CaptureReplayPhase.Recording);
+        var second = new ReplayApprovedApplication(new string('b', 64), "Second app");
+        var add = f.Service.ChooseApprovalAsync(new object(), ReplayFixture.Actor, f.Service.Status.SettingsRevision, default);
+        f.Service.CompleteApprovalPicker(f.Service.PendingApproval!.Id, second);
+        Check((await add).Outcome == CaptureReplayOutcome.Accepted, "Could not approve a second target");
+        f.Clock.Advance(TimeSpan.FromSeconds(10));
+        foreach (var phase in new[] { CaptureReplayPhase.Paused, CaptureReplayPhase.Recording })
+        {
+            var work = await f.Report(first.SessionId!, phase);
+            Check(work.Command is null && work.SessionId == first.SessionId, "Another approval or minimize/restore replaced the first recorder");
+        }
+        var save = f.Service.SaveAsync(ReplayFixture.Actor, new(first.SessionId!, Guid.NewGuid().ToString("N")));
+        var output = await f.WaitSave();
+        var ended = await f.Report(first.SessionId!, CaptureReplayPhase.Off, ended: true);
+        Check(ended.SessionId == first.SessionId && ended.Command?.Id == output.Id, "Target exit dropped the admitted save");
+        await File.WriteAllBytesAsync(output.OutputPath!, ReplayFixture.Bytes);
+        await f.Service.CompleteHostAsync(f.Encoded(output));
+        Check((await save).Outcome == CaptureReplayOutcome.Accepted, "The previous buffer did not commit");
+        f.Clock.Advance(TimeSpan.FromSeconds(2));
+        var next = (await f.Service.PollHostAsync()).Command!;
+        Check(next.Automatic && next.SessionId != first.SessionId && next.Approvals.Contains(second.Id), "Old recording authority reused");
+        Check(await f.Service.CompleteHostAsync(f.Started(next) with { ApplicationIdentity = second.Id, ApplicationName = second.Name,
+            SourceApplication = new(second.Name, second.Name), Target = new("234", 567, "89a", "SecondWindow") }), "Second app not admitted");
+        var status = f.Service.Status;
+        Check(status.TargetName == second.Name && status.BufferedDurationSeconds == 0 && status.SessionId == next.SessionId,
+            "Recording handoff inherited the previous buffer");
+    }
+    internal static async Task ManageApprovals()
+    {
+        await using var f = new ReplayFixture();
+        var service = f.Service;
+        var actor = ReplayFixture.Actor;
+        var owner = new object();
+        var game = new ReplayApprovedApplication(ReplayFixture.Application, "Game");
+        var adding = service.ChooseApprovalAsync(owner, actor, 0, default);
+        var picker = service.PendingApproval!;
+        Check(!service.CompleteApprovalPicker("wrong", game) && service.CompleteApprovalPicker(picker.Id, game), "Picker ownership lost");
+        Check((await adding).Outcome == CaptureReplayOutcome.Accepted && !service.Status.Settings.Enabled &&
+            service.Status.SessionId is null && (await service.ReadApprovalsAsync(actor, default)).Approvals.Contains(game.Id), "Adding started a recording or failed to persist");
+        var foreign = actor with { PublisherId = "foreign.publisher" };
+        try { await service.ReadApprovalsAsync(foreign, default); throw new Exception("Foreign approval access"); }
+        catch (BrokerException error) when (error.Code == "permission_denied") { }
+        var start = await f.Start();
+        await f.Report(start.SessionId!, CaptureReplayPhase.Recording);
+        var revision = service.Status.SettingsRevision;
+        var save = service.SaveAsync(actor, new(start.SessionId!, Guid.NewGuid().ToString("N")));
+        var output = await f.WaitSave();
+        var pending = service.ChooseApprovalAsync(owner, actor, revision, default);
+        var stalePicker = service.PendingApproval!;
+        var remove = await service.RemoveApprovalAsync(actor, new(revision, game.Id), default);
+        Check(remove.Outcome == CaptureReplayOutcome.Accepted && remove.Status.SessionId == start.SessionId && remove.Status.Saving &&
+            !f.Configuration.Approvals.Contains(game.Id) && (await service.PollHostAsync()).Command?.Id == output.Id, "Removal interrupted an admitted save");
+        service.CompleteApprovalPicker(stalePicker.Id, new(new string('b', 64), "Second"));
+        Check((await pending).Outcome == CaptureReplayOutcome.Conflict, "Stale picker committed after a newer edit");
+        var currentRevision = service.Status.SettingsRevision;
+        Check((await service.RemoveApprovalAsync(actor, new(currentRevision, game.Id), default)).Status.SettingsRevision == currentRevision,
+            "Repeating a removal changed the settings revision");
+        await File.WriteAllBytesAsync(output.OutputPath!, ReplayFixture.Bytes);
+        await service.CompleteHostAsync(f.Encoded(output));
+        Check((await save).Outcome == CaptureReplayOutcome.Accepted, "Approval edit broke replay save");
+        var revoked = service.ChooseApprovalAsync(owner, actor, currentRevision, default);
+        f.CaptureAllowed = false;
+        service.CompleteApprovalPicker(service.PendingApproval!.Id, game);
+        try { await revoked; throw new Exception("Revoked picker persisted"); }
+        catch (BrokerException error) when (error.Code == "permission_denied") { }
+        Check(!f.Configuration.Approvals.Contains(game.Id), "Revocation did not prevent approval");
+        f.CaptureAllowed = true;
+        var external = service.ChooseApprovalAsync(owner, actor, currentRevision, default);
+        f.BeforePersist = () =>
+        {
+            f.BeforePersist = null;
+            f.Configuration = f.Configuration with { Owner = null, Revision = currentRevision + 1, Settings = new() };
+        };
+        service.CompleteApprovalPicker(service.PendingApproval!.Id, game);
+        Check((await external).Outcome == CaptureReplayOutcome.Conflict &&
+            (await f.Report(start.SessionId!, CaptureReplayPhase.Recording)).AbortRequested && !service.Status.Settings.Enabled,
+            "A competing durable removal retained the old recording grant");
+    }
+
+    internal static async Task ManualWhileWaiting()
+    {
+        foreach (var stop in new[] { false, true })
+        {
+            await using var f = new ReplayFixture(enabled: true, automatic: true);
+            var probe = (await f.Service.PollHostAsync()).Command!;
+            var waiting = f.Service.Status;
+            Check(waiting.Phase == CaptureReplayPhase.Waiting && TrayReplayState.From(waiting).CanStart &&
+                waiting.SessionId is null, "Automatic discovery displaced manual Start or Stop.");
+            if (stop)
+            {
+                var stopped = await f.Service.StopAsync(null, waiting.Revision, default);
+                Check(stopped.Outcome == CaptureReplayOutcome.Accepted && !stopped.Status.Settings.Enabled, "Stop failed during discovery.");
+            }
+            else
+            {
+                var manual = f.Service.StartFromTrayAsync(new object(), ReplayFixture.Actor, waiting.Revision, default);
+                var command = (await f.Service.PollHostAsync()).Command!;
+                Check(!command.Automatic && command.RequestedFromTray && command.Id != probe.Id, "The explicit start did not own the chooser.");
+                Check(await f.Service.CompleteHostAsync(f.Started(command) with { AddToApproved = false }) &&
+                    (await manual).Outcome == CaptureReplayOutcome.Accepted, "Manual choice did not start recording.");
+            }
+            Check(!await f.Service.CompleteHostAsync(f.Started(probe)), "A stale scan restarted or replaced the recording.");
+        }
+    }
+
     internal static async Task AutomaticIdentity()
     {
         await using var f = new ReplayFixture(enabled: true, automatic: true);
         var command = (await f.Service.PollHostAsync()).Command!;
-        Check(command.Automatic && command.ApprovedApplication == ReplayFixture.Application, "Automatic start lost approved application");
-        Check(!await f.Service.CompleteHostAsync(f.Started(command) with { ApprovedApplication = new string('b', 64) }), "Automatic start admitted another app");
+        Check(command.Automatic && command.Approvals.Contains(ReplayFixture.Application), "Automatic start lost approved application");
+        Check(!await f.Service.CompleteHostAsync(f.Started(command) with { ApplicationIdentity = new string('b', 64) }), "Automatic start admitted another app");
         Check((await f.Service.PollHostAsync()).Command is null, "Invalid automatic target caused repeated capture attempts");
     }
     internal static async Task Revocation()
@@ -338,8 +486,8 @@ internal sealed class ReplayFixture : IAsyncDisposable
         Library = new(Path.Combine(Root, "index"), Path.Combine(Root, "captures"), null, null,
             async (path, media, token) => { token.ThrowIfCancellationRequested(); if (InspectBarrier is not null) await InspectBarrier(token); return media with
                 { ByteLength = new FileInfo(path).Length, DurationSeconds = InspectedDuration ?? media.DurationSeconds, Properties = null }; });
-        Configuration = new(0, new() { Enabled = enabled, AutoStart = automatic }, enabled ? Actor : null,
-            enabled ? Application : null, enabled ? "Fixture game" : null);
+        Configuration = new(0, new() { Enabled = enabled, AutoStart = automatic }, enabled ? Actor : null)
+            { Approvals = enabled ? new([new(Application, "Fixture game")]) : ReplayApplicationApprovals.Empty };
         Service = new(Library, Configuration, (next, expected, token) =>
         { token.ThrowIfCancellationRequested(); BeforePersist?.Invoke(); if (PersistFails) throw new IOException("Injected storage failure"); if (Configuration.Revision != expected) throw new BrokerException("replay_settings_conflict", "Persistence revision mismatch"); Configuration = next; return Task.FromResult(next); },
             (actor, capability, _) => Task.FromResult(!CatalogReady ? CaptureReplayIssue.HostUnavailable : Removed || ActiveIdentity is not null && actor != ActiveIdentity ? CaptureReplayIssue.FeatureRemoved :
@@ -355,7 +503,7 @@ internal sealed class ReplayFixture : IAsyncDisposable
         PolicyTests.Check((await waiting).Outcome == CaptureReplayOutcome.Accepted, "Start failed"); return command;
     }
     internal HostReplayCompletion Started(HostReplayCommand command) => new(command.Id, CaptureReplayOutcome.Accepted)
-    { SessionId = command.SessionId, Target = new("123", 456, "789", "FixtureWindow"), ApprovedApplication = Application,
+    { SessionId = command.SessionId, Target = new("123", 456, "789", "FixtureWindow"), ApplicationIdentity = Application, AddToApproved = !command.Automatic,
         ApplicationName = "Fixture game", SourceApplication = new("Fixture game", "Fixture level") };
     internal HostReplayCompletion Encoded(HostReplayCommand command) => new(command.Id, CaptureReplayOutcome.Accepted)
     { SessionId = command.SessionId, Width = 1280, Height = 720, ByteLength = Bytes.Length, ActualDurationSeconds = 2,

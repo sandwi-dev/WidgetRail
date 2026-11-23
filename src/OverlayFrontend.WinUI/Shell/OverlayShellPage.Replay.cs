@@ -17,13 +17,14 @@ internal sealed partial class OverlayShellPage
             var sessionId = expectedSessionId ?? status.SessionId;
             if (sessionId is null)
             {
-                await ShowReplayNoticeAsync("Replay recording is off. Start recording in Capture Library first.");
+                await ShowReplayNoticeAsync(status.Issue is CaptureReplayIssue.FeatureRemoved or CaptureReplayIssue.PermissionRevoked
+                    ? ReplayHostIssue(status.Issue) : "Replay recording is off. Start replay before saving a clip.");
                 return;
             }
             var result = await current.Session.SaveReplayAsync(sessionId, lifetime.Token);
             if (retired || !ReferenceEquals(owner, current)) return;
             await ShowReplayNoticeAsync(result.Outcome == CaptureReplayOutcome.Accepted
-                ? $"Saved {result.ActualDurationSeconds:0.#} seconds to Capture Library."
+                ? WidgetRail.Internal.CaptureReplayFeedback.Saved(result)
                 : ReplayHostIssue(result.Issue));
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
@@ -34,14 +35,14 @@ internal sealed partial class OverlayShellPage
         }
     }
 
-    internal async Task StopReplayFromHostAsync(string? expectedSessionId)
+    internal async Task StopReplayFromHostAsync(string? expectedSessionId, long? expectedRevision = null)
     {
         if (retired || owner is not { } current) return;
         try
         {
             // A menu command carries its observed session, including null while
             // waiting. Never replace it with a newer recording's session ID.
-            var result = await current.Session.StopReplayAsync(expectedSessionId, lifetime.Token);
+            var result = await current.Session.StopReplayAsync(expectedSessionId, expectedRevision, lifetime.Token);
             if (retired || !ReferenceEquals(owner, current)) return;
             await ShowReplayNoticeAsync(result.Outcome == CaptureReplayOutcome.Accepted
                 ? result.Status.Phase == CaptureReplayPhase.Stopping ? "Stopping replay recording…" : "Replay recording stopped."
@@ -58,16 +59,18 @@ internal sealed partial class OverlayShellPage
         }
     }
 
-    private async Task ShowReplayNoticeAsync(string text)
+    private async Task ShowReplayNoticeAsync(string text, string id = "replay-status", string title = "Replay recording",
+        WidgetNotificationRetention retention = WidgetNotificationRetention.BannerOnly, string widgetId = "settings")
     {
         if (retired || notificationCenter is not { } center) return;
         await center.Ready;
         if (retired || !ReferenceEquals(notificationCenter, center)) return;
-        center.Publish("settings", replayNotificationOwner, new("replay-status", new WidgetNotification("replay-status", "Replay recording")
+        center.Publish(widgetId, replayNotificationOwner, new(id, new WidgetNotification(id, title)
         {
             Body = text,
             Visibility = WidgetNotificationVisibility.Always,
             Interaction = WidgetNotificationInteraction.Informational,
+            Retention = retention,
         }), () => !retired && ReferenceEquals(notificationCenter, center));
     }
 
@@ -77,7 +80,8 @@ internal sealed partial class OverlayShellPage
         CaptureReplayIssue.SaveInProgress => "A replay is already being saved.",
         CaptureReplayIssue.SessionChanged => "The recording changed. Try again with the current recording.",
         CaptureReplayIssue.StorageUnavailable => "The replay could not be saved. Check the capture folder and available disk space.",
-        CaptureReplayIssue.PermissionRevoked or CaptureReplayIssue.FeatureRemoved => "Recording access is unavailable. Open Capture Library to review it.",
+        CaptureReplayIssue.FeatureRemoved => "The capture provider is unavailable. Enable it before starting replay.",
+        CaptureReplayIssue.PermissionRevoked => "Replay needs recording access. Review the capture provider's permissions in Settings.",
         _ => "Replay recording is unavailable. Check recording status in Capture Library.",
     };
 }

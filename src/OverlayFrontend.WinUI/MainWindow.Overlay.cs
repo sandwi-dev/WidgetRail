@@ -51,6 +51,7 @@ public sealed partial class MainWindow
         {
             placementWindow = input?.PlacementWindow ?? WinRT.Interop.WindowNative.GetWindowHandle(this);
             QueueDisplayRefresh();
+            BeginForegroundBackground();
             page.SetVisible(true);
         }
         AppWindow.Show();

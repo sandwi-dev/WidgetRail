@@ -24,7 +24,11 @@ public sealed record SegmentedTab(
     string Label,
     string ActionId,
     string? AccessibilityLabel = null,
-    bool IsDisabled = false);
+    bool IsDisabled = false)
+{
+    /// <summary>Optional authored exits. Unspecified horizontal directions retain tab wrapping.</summary>
+    public FocusNeighbors? Focus { get; init; }
+}
 
 /// <summary>A bounded, stable controller action presented in an action sheet.</summary>
 public sealed record ActionSheetItem(
@@ -1050,7 +1054,7 @@ public static partial class UI
     }
 
     /// <summary>
-    /// Creates a one-dimensional tab row. Left and Right stay inside the row,
+    /// Creates a one-dimensional tab row. Left and Right wrap unless a tab declares an exit,
     /// selected state is semantic, and each item keeps the author-provided ID.
     /// The selected tab's content remains widget-owned.
     /// </summary>
@@ -1093,8 +1097,10 @@ public static partial class UI
                 ],
             };
             button = button
-                .FocusLeft(tabs[(index - 1 + tabs.Length) % tabs.Length].Id)
-                .FocusRight(tabs[(index + 1) % tabs.Length].Id);
+                .FocusLeft(tab.Focus?.Left ?? tabs[(index - 1 + tabs.Length) % tabs.Length].Id)
+                .FocusRight(tab.Focus?.Right ?? tabs[(index + 1) % tabs.Length].Id);
+            if(tab.Focus?.Up is {} up)button=button.FocusUp(up);
+            if(tab.Focus?.Down is {} down)button=button.FocusDown(down);
             buttons[index] = button;
         }
 

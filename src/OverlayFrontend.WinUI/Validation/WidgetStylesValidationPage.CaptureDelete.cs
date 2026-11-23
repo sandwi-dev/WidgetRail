@@ -90,7 +90,7 @@ internal sealed partial class WidgetStylesValidationPage
                     page.UpdateLayout();
                 }
             }
-            if (File.Exists(Path.Combine(directory, "detail-unsaved.json")))
+            if (File.Exists(Path.Combine(directory, "detail-saved.json")))
                 await CaptureDetailGeometryAsync(directory, root, page, catalog, package.Document);
         }
         catch (Exception error) { failure = error; }

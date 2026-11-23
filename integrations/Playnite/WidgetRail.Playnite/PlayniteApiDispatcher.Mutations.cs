@@ -35,7 +35,7 @@ internal sealed partial class PlayniteApiDispatcher
     private static string CommandSignature(LocalApiRequest request)
     {
         using (var hash = SHA256.Create())
-            return BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(request.Method + "\n" + request.Path + "\n" + Convert.ToBase64String(request.Body)))).Replace("-", "");
+            return BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(request.Method + "\n" + request.Path + "\n" + request.Query["running"] + "\n" + Convert.ToBase64String(request.Body)))).Replace("-", "");
     }
     private object UpdateGame(Guid id, Dictionary<string, object> body)
     {
@@ -47,13 +47,20 @@ internal sealed partial class PlayniteApiDispatcher
         api.Database.Games.Update(game);
         return ProjectGame(game, false);
     }
-    private object RequestGameAction(Guid id, string action)
+    private object RequestGameAction(Guid id, string action, string? approval)
     {
         var game = RequireGame(id);
-        if (action == "launch")
+        if (action == "launch" || action == "return")
         {
             if (!game.IsInstalled) throw new ApiException(409, "game_not_installed");
-            api.StartGame(id);
+            var running = game.IsRunning;
+            if (action == "return" && !running) throw new ApiException(404, "game_not_running");
+            var starting = game.IsLaunching;
+            if (approval != null && !running && !starting && launchTracker.Conflict(id, approval) is { } conflict)
+                return new { conflict = conflict.Revision, count = conflict.Count, name = api.Database.Games.Get(conflict.Game)?.Name ?? "Another game" };
+            var observation = launchTracker.Begin(id, running, starting);
+            if (!running && !starting) api.StartGame(id);
+            return new { ok = true, gameId = id.ToString("D"), action = "launch_requested", observation };
         }
         else if (action == "install" && !game.IsInstalled) api.InstallGame(id);
         else if (action == "uninstall" && game.IsInstalled) api.UninstallGame(id);

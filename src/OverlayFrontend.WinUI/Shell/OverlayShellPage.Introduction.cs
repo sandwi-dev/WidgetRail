@@ -21,9 +21,10 @@ internal sealed partial class OverlayShellPage
     private Task introductionWrite = Task.CompletedTask;
     private bool introductionLoaded, introductionQueued, introductionBusy, introductionSaveFailed;
     private string? introductionPendingFocus, introductionError;
+    private string? introductionDirectionHint;
     private long introductionNavigation;
     private bool IntroductionRunning => introductionLoaded && !introduction.Paused && !introduction.Finished;
-    private (string Step, bool Notifications, ControllerOpenShortcut Shortcut, string? Keyboard)? introductionContent;
+    private (string Step, bool Notifications, ControllerOpenShortcut Shortcut, string? Keyboard, bool Catalogue, bool Appearance, bool Radial)? introductionContent;
     private (FrameworkElement Target, Rect Bounds)[] introductionBounds = [];
     private Windows.UI.Color introductionOutline;
 
@@ -74,6 +75,7 @@ internal sealed partial class OverlayShellPage
 
     private void SetIntroduction(IntroductionProgress progress)
     {
+        introductionDirectionHint = null;
         if (introduction == progress) return;
         introduction = progress;
         introductionError = null;
@@ -109,15 +111,16 @@ internal sealed partial class OverlayShellPage
         card.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (!show) { introductionHighlights.Children.Clear(); introductionBounds = []; return; }
         var keyboard = introductionControllers.EffectiveOverlayShortcut;
-        var content = (introduction.Step, HasPendingNotifications, introductionControllers.OpenShortcut, keyboard.Enabled ? keyboard.DisplayName : null);
+        var content = (introduction.Step, HasPendingNotifications, introductionControllers.OpenShortcut, keyboard.Enabled ? keyboard.DisplayName : null,
+            Catalogue: catalogItems.Any(item => item.Id == "marketplace"), Appearance: catalogItems.Any(item => item.Id == "settings"), Radial: RadialOpen);
         if (introductionContent != content)
         {
             introductionContent = content;
             card.Present(introduction.Step, HasPendingNotifications, "Show or hide the overlay",
                 introductionControllers.OpenShortcut == ControllerOpenShortcut.Guide ? ControllerPrompt.Guide : ControllerPrompt.View,
-                keyboard.Enabled ? keyboard.DisplayName : null);
+                keyboard.Enabled ? keyboard.DisplayName : null, IntroductionProgress.VisibleSteps(content.Catalogue, content.Appearance), content.Radial);
         }
-        card.ShowStatus(introductionError ?? (introductionBusy || introductionPendingFocus is not null
+        card.ShowStatus(introductionError ?? introductionDirectionHint ?? (introductionBusy || introductionPendingFocus is not null
             ? introduction.Step == "appearance-details" ? "Opening Appearance…" : "Opening Catalogue…" : null));
         TryFocusIntroductionTarget();
         PositionIntroduction();
@@ -125,7 +128,9 @@ internal sealed partial class OverlayShellPage
 
     private IEnumerable<FrameworkElement> IntroductionTargets()
     {
-        if (introduction.Step is "guide" or "commands") yield return TrayHelp;
+        if (introduction.Step == "commands" && RadialOpen && radialView is not null && RadialSelectedWidget() is { } selected)
+            yield return radialView.ContextAnchor(selected.Id);
+        else if (introduction.Step is "guide" or "commands") yield return TrayHelp;
         else if (introduction.Step == "utilities")
         {
             if (utilityPanel is { IsLoaded: true } panel) yield return panel;
@@ -204,18 +209,20 @@ internal sealed partial class OverlayShellPage
         }
     }
 
-    private async Task IntroductionActionAsync(string action)
+    private async Task IntroductionActionAsync(string action, bool controller = false)
     {
         if (retired || !visible || !IntroductionRunning) return;
         if (action == "close") { LeaveIntroduction(); return; }
         if (action != "next" || introductionBusy || introductionPendingFocus is not null) return;
         var previous = introduction;
-        var next = introduction.Step is "catalogue" or "appearance" ? "appearance-details" : introduction.Next().Step;
+        var steps = IntroductionProgress.VisibleSteps(catalogItems.Any(item => item.Id == "marketplace"), catalogItems.Any(item => item.Id == "settings"));
+        var next = introduction.NextVisible(steps);
         CloseTrayMenu(false);
         if (next is not ("catalogue" or "appearance-details"))
         {
             SetIntroduction(introduction with { Step = next });
             if (next is "guide" or "commands" or "utilities") { CloseUtilityPanel(); FocusDirectionalTray(); }
+            if (next == "commands" && controller) { PrepareRadialBackEntry(); RefreshRadialChooser(); }
             RefreshIntroduction(); PublishControllerGuide(); return;
         }
         if (owner is null) return;
@@ -268,7 +275,7 @@ internal sealed partial class OverlayShellPage
         if (phase == ControllerEventPhase.Pressed)
         {
             shellGestures.Claim(button);
-            if (button == ControllerButton.X) _ = IntroductionActionAsync("next"); else LeaveIntroduction();
+            if (button == ControllerButton.X) _ = IntroductionActionAsync("next", controller: true); else LeaveIntroduction();
         }
         return true;
     }

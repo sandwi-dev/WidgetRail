@@ -37,13 +37,18 @@ internal sealed partial class OverlayShellPage
             RequestPermission = RequestWebSessionPermissionAsync,
             ChooseWebCaptureSource = ChooseWebCaptureSourceAsync,
             PrepareScreenPicker = PrepareBrowserScreenPickerAsync,
+            ExpandVideo = ExpandVideoFromSlotAsync,
             PopupPresentationInvalidated = InvalidatePopupPin,
             RequestPopupPin = RequestBrowserPopupPinAsync,
             SaveWebAppIcon = SaveUserWebAppIconAsync,
             AddWebApp = AddBrowserWebAppAsync,
             ChoosePopupPlacement = ChooseBrowserPopupPlacementAsync,
             ReadPopupPlacement = ReadBrowserPopupPlacementAsync, WritePopupPlacement = SavePopupPreferenceAsync,
-            ExpansionInvalidated = () => { if (expandedBrowser is not null) fullscreenLayer.Close(restoreFocus: false); } };
+            ExpansionInvalidated = () =>
+            {
+                if (expandedBrowser is { } slot)
+                    fullscreenLayer.Close(restoreFocus: slot.PassiveVideoExpansion && MainFocusEnabled);
+            } };
         browserOwner.ActivityChanged += RefreshWebappStatus;
         browserOwner.StartHostedSessions();
         InitializeNotifications();
@@ -80,7 +85,7 @@ internal sealed partial class OverlayShellPage
                 var origin = fullscreenLayer.BoundsOf(mediaOwner.FullscreenOrigin);
                 if (origin is { } viewport) origin = MediaTransitionGeometry.Fit(viewport, state.Declaration.AspectRatio);
                 _ = fullscreenLayer.ShowAsync(new(fullscreenView, fullscreenView, HandleEmbeddedFullscreen,
-                    fullscreenView.MoveFocus, fullscreenView.Enter,
+                    fullscreenView.MoveFocus, fullscreenView.FocusPresentation,
                     () => { fullscreenView.Hide(); fullscreenLayer.Park(fullscreenView); mediaOwner?.ExitFullscreen(); },
                     () => { if (previous is { IsLoaded: true, IsEnabled: true }) previous.Focus(FocusState.Keyboard); else QueueEntryFocus(); },
                     Origin: origin, Chrome: fullscreenView.TransitionChrome, MediaBounds: () => stage?.VideoBounds ?? fullscreenView.VideoBounds,
@@ -136,11 +141,15 @@ internal sealed partial class OverlayShellPage
         }
         return fullscreenLayer.Route(button, phase);
     }
-    private void ReconcileMediaHostState() => mediaOwner?.SetHostState(activeWidget,
-        !retired && PresentationVisible, !retired && visible && !switching && interactive && foreground,
-        acceptsDashboardPlayback: !retired && visible && foreground && !switching && !interactive &&
-            trayMenu is null && !reordering && activeWidget == requestedWidget,
-        retainFullscreenDuringExit: retainingExitPresentation && !retired);
+    private void ReconcileMediaHostState()
+    {
+        browserOwner?.SetMainViewWidget(!retired && visible && surface is not null ? activeWidget : null);
+        mediaOwner?.SetHostState(activeWidget,
+            !retired && PresentationVisible, !retired && visible && !switching && interactive && foreground,
+            acceptsDashboardPlayback: !retired && visible && foreground && !switching && !interactive &&
+                trayMenu is null && !reordering && activeWidget == requestedWidget,
+            retainFullscreenDuringExit: retainingExitPresentation && !retired);
+    }
 
     private void ShowPresentationStatus(string widgetName)
     {

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 2,
+  "id": "local.widgetrail.asphodel-ember",
+  "publisher": "local.widgetrail",
+  "name": "Asphodel Ember",
+  "version": "1.0.1",
+  "entryFile": "theme.wrss"
+}

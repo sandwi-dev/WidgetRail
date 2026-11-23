@@ -7,6 +7,14 @@ For a multi-section layout, start with
 [NavigationShell](../reference/presentation-composition.md). It composes compact
 tabs and an expanded rail around shared content while your widget owns route state.
 
+When navigation shares a header with utility controls, declare exits instead of
+rewriting generated buttons. `SegmentedTab.Focus` overrides individual neighbors;
+`NavigationShellDestination.CompactFocus` and `RailFocus` do the same for their
+respective presentations. Unspecified directions keep the existing defaults.
+Use `parts.CompactFocusId(destinationId)` for a utility control's return edge,
+without depending on the SDK's generated ID format. Targets must exist in the
+same input scope; native navigation ignores targets hidden by responsive layout.
+
 ## Let controls do the ordinary work
 
 Start with SDK buttons, sliders, menus, and collection components. They already
@@ -101,6 +109,10 @@ For API signatures and detailed targeting rules, see
 [UI elements](../reference/declarative-ui.md).
 
 
+## Focus-driven header reveal
+
+Use `UI.Grid(...).RevealBodyOnFocus()` for an artwork header or cover shelf above a browsable body. Give row zero an Auto track and put the body in the remaining rows. The grid needs a bounded height. When focus enters a body row, the native viewport scrolls the header away. Returning focus to a control in the header reveals it again. Body collections retain a bounded viewport and scroll independently. Declare the Up neighbor on the first body control when the intended header target is specific, such as Play or a remembered poster. Mouse and keyboard focus use the same layout and reduced motion selects the destination immediately. This opt-in requires protocol 138.
+
 ## Coordinated section transitions
 
 Page navigation and section selection are separate contracts. Use page navigation
@@ -154,6 +166,12 @@ positions and the shell-owned content together. Existing navigation overloads
 keep their static presentation. For a custom arrangement, apply
 `TransitionContent(shellId, selectedSectionId, selectedIndex)` to the changing
 content container; keep persistent players, toolbars and navigation outside it.
+
+The host remembers bounded scroll positions for visited section keys, including
+indexed collection anchors. Returning to a section restores compatible viewports
+without moving focus away from the navigation control. Indexed anchors must still
+match their source, query, occurrence key and layout; a new query does not inherit
+an unrelated old position. Keep keys stable while loading or refreshing data.
 
 ```csharp
 var parts = UI.NavigationShellParts(
@@ -267,6 +285,11 @@ Text, artwork, grids, tiles, sliders, text entry, and nested scrollers use their
 normal component contracts. Select/context popups and the host keyboard retain
 their own higher input layer. The keyboard still uses its existing placement.
 
+For a media viewer that supplies its own navigation, `ShowHeader = false` omits
+the standard title/action row. Keep a meaningful `Title`: it becomes the modal's
+accessible name. The input scope, B/Escape/backdrop dismissal, initial focus and
+return behavior remain unchanged. Other modals keep their header by default.
+
 Only the dialog's input scope accepts main-widget input. B closes the topmost
 host popup before reaching the dialog dismiss action. Background scroll offsets
 and focus memory are retained; dismissal restores a valid remembered target,
@@ -291,3 +314,9 @@ Themes style `.wrail-modal-layer` (scrim), `.wrail-modal` (panel),
 Panel width/height are preferred bounds and are always clamped to the widget.
 Scrollbar styling follows the ordinary container contract. Set `WidgetModal.ShowScrollbar`
 to false to hide the body indicator and remove its reserved gutter.
+
+### Focus stops within a reveal grid
+
+A bounded `RevealBodyOnFocus()` grid can contain several intrinsic-height sections and one final viewport. Use Auto rows followed by a single Star row, with each direct child occupying a single row. Give an intermediate section `focus-snap-end: 68vh`, for example, to align its bottom edge with that position in the widget viewport when focused. A taller section aligns at its start so its first control stays reachable. The final row snaps to the top and gets the full viewport.
+
+A descendant of the second row can declare `focus-snap-peek: 36px`. When the first row is focused, the host measures that element and reveals the specified amount at the bottom of the viewport. This works with wrapped text and resized artwork. Use one peek anchor. These lengths support DIPs (`px`) and widget viewport units (`vh`, `vw`). The first placement is immediate and later snaps follow the user's motion preference.

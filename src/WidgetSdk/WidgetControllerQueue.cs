@@ -34,6 +34,8 @@ public abstract partial class Widget
     private readonly object _actionQueueLock = new();
     private ActionQueueState? _actionQueue;
     private long _actionExecutionSequence;
+    internal bool IsActionQueueIdle
+    { get { lock(_actionQueueLock)return _actionQueue is null || _actionQueue.Active is null && _actionQueue.Pending.Count==0; } }
 
     internal event EventHandler<WidgetActionExecutionTerminal>? ActionTerminated;
 

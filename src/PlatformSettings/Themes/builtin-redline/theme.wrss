@@ -36,6 +36,7 @@
 
   /* The accent edge reinforces the raised focused surface. */
   --focus: var(--accent);
+  --focus-highlight: #fff2cd;
 
   --accent: #ffab91;
   --structural-accent: #e06a5d;

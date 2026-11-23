@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Input;
 using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.OverlayPlatformClient;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
@@ -35,7 +36,13 @@ internal sealed partial class OverlayShellPage
                     await Until(() => interactive && !switching);
                     Check(card.Visibility == Visibility.Visible && introduction.Step == "guide", "Users can enter a widget while the guide tip remains visible");
                     await Press(ControllerButton.X);
-                    await Until(() => introduction.Step == "commands" && FocusedTrayWidget() is not null);
+                    await Until(() => introduction.Step == "commands" && RadialOpen && RadialSelectedWidget() is not null);
+                    await InvokeFavoriteAsync(TrayDirection.Up, new Favorite("Test shortcut", "test.shortcut"), ControllerInputOrigin.PhysicalController);
+                    Check(introductionDirectionHint?.Contains("Test shortcut") == true && runningFavorites.Count == 0,
+                        "Rehearsing an assigned radial direction explains it without running the action");
+                    await InvokeFavoriteAsync(TrayDirection.Left, null, ControllerInputOrigin.PhysicalController);
+                    Check(introductionDirectionHint?.Contains("empty") == true && !HostChoiceActive,
+                        "Rehearsing an empty direction explains the chooser without replacing the tour");
                     await Press(ControllerButton.Menu);
                     await Until(() => trayMenu is not null);
                     Check(card.Visibility == Visibility.Visible && introduction.Step == "commands", "Opening Commands neither hides nor advances the tour");

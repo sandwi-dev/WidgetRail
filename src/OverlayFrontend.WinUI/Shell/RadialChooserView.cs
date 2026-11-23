@@ -16,8 +16,52 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 /// <summary>Eight native controls on an authored Grid; no custom measure/paint or input polling.</summary>
 internal sealed partial class RadialChooserView : ContentControl, IDisposable
 {
+    private const double FaceDiameter = 368;
+    private const double HintSpan = FaceDiameter + 2 * 18;
+    private const double SideHintWidth = 198;
     private readonly Grid wheel = new() { Width = 400, Height = 400 };
-    private readonly Border face = new() { Width = 368, Height = 368, CornerRadius = new(184), Translation = new(0, 0, 16), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+    private readonly RadialContourStage stage = new() { Width = HintSpan, Height = HintSpan };
+    private readonly (Button Button, TextBlock Label, FontIcon Glyph, ViewNode Prompt)[] favoriteHints =
+        new (Button, TextBlock, FontIcon, ViewNode)[4];
+    private readonly FavoriteButtonFeedback?[] feedback = new FavoriteButtonFeedback?[4];
+    internal void PressFavorite(TrayDirection direction, WidgetMotionOptions motion) =>
+        GetFeedback(direction).Press(motion);
+    internal void SetFavoriteProgress(TrayDirection direction, bool busy, ShellChromePalette palette, WidgetMotionOptions motion)
+    {
+        if (busy || feedback[(int)direction] is not null) GetFeedback(direction).SetBusy(busy, palette, motion);
+        var (button, label, _, _) = favoriteHints[(int)direction];
+        SetFavoriteAutomationName(button, direction, label.Text, busy);
+    }
+    private FavoriteButtonFeedback GetFeedback(TrayDirection direction) =>
+        feedback[(int)direction] ??= new(favoriteHints[(int)direction].Button);
+    internal Action<TrayDirection>? FavoriteInvoked;
+    internal void FitStage(bool sideHints, bool verticalHints, double maxWidth, double maxHeight, bool reordering)
+    {
+        // Reserve both sides of each occupied axis so a single hint never shifts the hub.
+        stage.Width = HintSpan + (sideHints ? 2 * (SideHintWidth + RadialContourStage.Gutter) : 0);
+        stage.Height = HintSpan + (verticalHints ? 2 * (50 + RadialContourStage.Gutter) : 0);
+        stage.Reordering = reordering;
+        var scale = Math.Min(1, Math.Min(maxWidth / stage.Width, maxHeight / stage.Height));
+        Width = Math.Max(1, stage.Width * scale);
+        Height = Math.Max(1, stage.Height * scale);
+    }
+    internal void SetFavorite(TrayDirection direction, string? label, bool available)
+    {
+        var (button, text, _, _) = favoriteHints[(int)direction];
+        if (text.Text == (label ?? "") && button.IsEnabled == available) return;
+        text.Text = label ?? "";
+        button.Visibility = label is null ? Visibility.Collapsed : Visibility.Visible;
+        button.IsEnabled = available;
+        text.Opacity = favoriteHints[(int)direction].Glyph.Opacity = available || badgePalette?.HighContrast == true ? 1 : .85;
+        ToolTipService.SetToolTip(button, label);
+        SetFavoriteAutomationName(button, direction, text.Text, feedback[(int)direction]?.IsBusy == true);
+    }
+    private static void SetFavoriteAutomationName(Button button, TrayDirection direction, string label, bool busy)
+    {
+        var name = $"D-pad {direction}, {label}" + (busy ? ", In progress" : "");
+        if (AutomationProperties.GetName(button) != name) AutomationProperties.SetName(button, name);
+    }
+    private readonly Border face = new() { Width = FaceDiameter, Height = FaceDiameter, CornerRadius = new(FaceDiameter / 2), Translation = new(0, 0, 16), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private readonly ThemeShadow elevation = new();
     private readonly Canvas slots = new() { Width = 400, Height = 400 };
     private readonly RadialChooserSurface sectors = new();
@@ -27,6 +71,8 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
         IsTabStop = true, UseSystemFocusVisuals = false, XYFocusKeyboardNavigation = XYFocusKeyboardNavigationMode.Disabled };
     private readonly Grid paging = new() { ColumnSpacing = 8, HorizontalAlignment = HorizontalAlignment.Center };
     private readonly TextBlock pageText = new() { VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
+    private readonly TextBlock widgetName = new() { TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap,
+        MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly FontIcon pageGlyph = new() { FontSize = 48, Width = 48, Height = 48, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private readonly Button previous = new() { Content = new FontIcon { Glyph = "\uE76B", FontFamily = new("Segoe Fluent Icons"), FontSize = 14 }, Width = 32, Height = 32, Padding = new(0), AllowFocusOnInteraction = false };
     private readonly Button next = new() { Content = new FontIcon { Glyph = "\uE76C", FontFamily = new("Segoe Fluent Icons"), FontSize = 14 }, Width = 32, Height = 32, Padding = new(0), AllowFocusOnInteraction = false };
@@ -38,10 +84,11 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
     private ShellChromePalette? badgePalette;
     internal Action<WidgetPackageIconView, BridgeWidgetDescriptor>? ApplyWebAppIcon { get; set; }
     private readonly Func<BridgeWidgetDescriptor, string, CancellationToken, Task<WidgetPresentationPackageIcon>> resolveIcon;
-    private readonly ShellChromeStyles chrome = new();
+    private readonly ShellChromeStyles chrome;
     private readonly SolidColorBrush clear = new(Microsoft.UI.Colors.Transparent);
     private IReadOnlyList<BridgeWidgetDescriptor> catalog = [];
     private string? selected;
+    private string selectedName = "";
     private int page;
     private bool updating, disposed, focusPending;
     private WidgetCompositionMotion? motion;
@@ -57,11 +104,46 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
     internal Action<FocusNavigationDirection>? DirectionRequested;
     internal Func<Task>? BackRequested;
 
-    internal RadialChooserView(Func<BridgeWidgetDescriptor, string, CancellationToken, Task<WidgetPresentationPackageIcon>> icons)
+    internal RadialChooserView(Func<BridgeWidgetDescriptor, string, CancellationToken, Task<WidgetPresentationPackageIcon>> icons,
+        bool appliesApplicationPolicy = true)
     {
+        chrome = new(appliesApplicationPolicy);
         resolveIcon = icons;
         IsTabStop = false;
-        Content = new Viewbox { Child = wheel, Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly };
+        // Hints face inward against one square around the wheel, regardless of label size.
+        stage.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+        stage.ColumnDefinitions.Add(new() { Width = new(HintSpan) });
+        stage.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+        stage.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
+        stage.RowDefinitions.Add(new() { Height = new(HintSpan) });
+        stage.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
+        Grid.SetColumnSpan(wheel, 3);
+        Grid.SetRowSpan(wheel, 3);
+        stage.Children.Add(wheel);
+        foreach (var direction in Enum.GetValues<TrayDirection>())
+        {
+            var prompt = direction switch { TrayDirection.Up => ControllerPrompt.DPadUp, TrayDirection.Right => ControllerPrompt.DPadRight,
+                TrayDirection.Down => ControllerPrompt.DPadDown, _ => ControllerPrompt.DPadLeft };
+            var glyph = new FontIcon { FontSize = 27, Width = 30, VerticalAlignment = VerticalAlignment.Center };
+            var label = new TextBlock { VerticalAlignment = VerticalAlignment.Center, MaxWidth = 140, TextTrimming = TextTrimming.CharacterEllipsis };
+            var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            content.Children.Add(glyph); content.Children.Add(label);
+            var side = direction is TrayDirection.Left or TrayDirection.Right;
+            var hint = new Button { Content = content, Visibility = Visibility.Collapsed, Width = side ? SideHintWidth : double.NaN,
+                HorizontalContentAlignment = side ? HorizontalAlignment.Left : HorizontalAlignment.Center,
+                MinHeight = 40, Padding = new(10, 3, 10, 3),
+                BorderThickness = new(1.5, 1.5, 1.5, 2), CornerRadius = new(22), IsTabStop = false, AllowFocusOnInteraction = false,
+                HorizontalAlignment = direction switch { TrayDirection.Left => HorizontalAlignment.Right, TrayDirection.Right => HorizontalAlignment.Left, _ => HorizontalAlignment.Center },
+                VerticalAlignment = direction switch { TrayDirection.Up => VerticalAlignment.Bottom, TrayDirection.Down => VerticalAlignment.Top, _ => VerticalAlignment.Center } };
+            hint.Click += (_, _) => FavoriteInvoked?.Invoke(direction);
+            favoriteHints[(int)direction] = (hint, label, glyph, new() { Id = "radial.favorite." + direction, Kind = ViewNodeKind.ControllerGlyph, ControllerPrompt = prompt });
+            AutomationProperties.SetAccessibilityView(glyph, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+            AutomationProperties.SetAutomationId(hint, "Overlay.Radial.Favorite." + direction);
+            Grid.SetColumn(hint, direction switch { TrayDirection.Left => 0, TrayDirection.Right => 2, _ => 1 });
+            Grid.SetRow(hint, direction switch { TrayDirection.Up => 0, TrayDirection.Down => 2, _ => 1 });
+            stage.AddHint(direction, hint);
+        }
+        Content = new Viewbox { Child = stage, Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly };
         var receiver = new Grid { Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent) };
         elevation.Receivers.Add(receiver); face.Shadow = elevation;
         wheel.Children.Add(receiver); wheel.Children.Add(face); wheel.Children.Add(sectors); wheel.Children.Add(slots);
@@ -81,6 +163,8 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
             Canvas.SetTop(button, 200 - Math.Cos(index * Math.PI / 4) * 144 - 33);
             slots.Children.Add(button);
             button.GotFocus += (_, _) => { if (!updating && Item(index) is { } item) Selected?.Invoke(item); };
+            button.PointerEntered += (_, _) => { if (Item(index) is { } item) ShowWidgetName(item.Name); };
+            button.PointerExited += (_, _) => ShowWidgetName(selectedName);
             button.Click += (_, _) => { if (Item(index) is { } item) Activated?.Invoke(item); };
             button.ContextRequested += (_, args) => { if (Item(index) is { } item) { args.Handled = true; ContextRequestedFor?.Invoke(item); } };
             return (button, icon, badges);
@@ -88,7 +172,8 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
         var hub = new StackPanel { Width = 148, Spacing = 12, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
         paging.ColumnDefinitions.Add(new() { Width = GridLength.Auto }); paging.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) }); paging.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         paging.Children.Add(previous); paging.Children.Add(pageGlyph); paging.Children.Add(next); Grid.SetColumn(pageGlyph, 1); Grid.SetColumn(next, 2);
-        hub.Children.Add(paging); hub.Children.Add(pageText);
+        hub.Spacing = 4;
+        hub.Children.Add(widgetName); hub.Children.Add(paging); hub.Children.Add(pageText);
         hubSurface.Content = hub; wheel.Children.Add(hubSurface);
         previous.Click += (_, _) => PageRequested?.Invoke(-1); next.Click += (_, _) => PageRequested?.Invoke(1);
         AutomationProperties.SetAutomationId(this, "Overlay.Radial"); AutomationProperties.SetName(this, "Choose widget");
@@ -96,8 +181,8 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
         AutomationProperties.SetAutomationId(next, "Overlay.Radial.Next"); AutomationProperties.SetName(next, "Next widgets");
         AutomationProperties.SetAutomationId(hubSurface, "Overlay.Radial.Paging");
         AutomationProperties.SetAutomationId(pageGlyph, "Overlay.Radial.PagingHint");
-        chrome.Register(pageText, "hint"); chrome.Register(previous, "tray-item"); chrome.Register(next, "tray-item");
-        WidgetControllerPrompts.Changed += UpdatePagingGlyph; UpdatePagingGlyph();
+        chrome.Register(widgetName, "body"); chrome.Register(pageText, "hint"); chrome.Register(previous, "tray-item"); chrome.Register(next, "tray-item");
+        WidgetControllerPrompts.Changed += UpdateControllerGlyphs; UpdateControllerGlyphs();
         PreviewKeyDown += (_, args) =>
         {
             if (Input.GamepadKeyBoundary.Owns(this, args)) return;
@@ -111,6 +196,41 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
     }
 
     private BridgeWidgetDescriptor? Item(int slot) => page * 8 + slot < catalog.Count ? catalog[page * 8 + slot] : null;
+    private void PaintFavoriteHints(ShellChromePalette palette)
+    {
+        var surface = ShellChromePalette.Blend(palette.Surface, palette.Text, .065);
+        var lit = ShellChromePalette.Blend(surface, Microsoft.UI.Colors.White, .13);
+        var shaded = ShellChromePalette.Blend(surface, Microsoft.UI.Colors.Black, .16);
+        var text = ShellChromePalette.Brush(palette.Text);
+        var glyph = ShellChromePalette.Brush(palette.Focus);
+        Brush face = palette.HighContrast ? ShellChromePalette.Brush(palette.Surface) : Bevel(lit, surface, shaded);
+        Brush rim = palette.HighContrast ? text : Bevel(
+            ShellChromePalette.Blend(surface, Microsoft.UI.Colors.White, .46),
+            ShellChromePalette.Blend(surface, Microsoft.UI.Colors.White, .18),
+            ShellChromePalette.Blend(surface, Microsoft.UI.Colors.Black, .66));
+        Brush hover = palette.HighContrast ? face : Bevel(ShellChromePalette.Blend(lit, palette.Text, .08), lit, surface);
+        Brush pressed = palette.HighContrast ? face : Bevel(shaded, surface, surface);
+        foreach (var hint in favoriteHints)
+        {
+            hint.Button.Background = face;
+            hint.Button.BorderBrush = rim;
+            hint.Button.Resources["ButtonBackgroundDisabled"] = face;
+            hint.Button.Resources["ButtonBorderBrushDisabled"] = rim;
+            hint.Button.Resources["ButtonBackgroundPointerOver"] = hover;
+            hint.Button.Resources["ButtonBorderBrushPointerOver"] = glyph;
+            hint.Button.Resources["ButtonBackgroundPressed"] = pressed;
+            hint.Button.Resources["ButtonBorderBrushPressed"] = rim;
+            hint.Label.Foreground = text;
+            hint.Glyph.Foreground = glyph;
+            hint.Label.Opacity = hint.Glyph.Opacity = hint.Button.IsEnabled || palette.HighContrast ? 1 : .85;
+        }
+
+        static LinearGradientBrush Bevel(Windows.UI.Color top, Windows.UI.Color middle, Windows.UI.Color bottom) => new()
+        {
+            StartPoint = new(.5, 0), EndPoint = new(.5, 1),
+            GradientStops = { new() { Offset = 0, Color = top }, new() { Offset = .45, Color = middle }, new() { Offset = 1, Color = bottom } }
+        };
+    }
     internal void Update(IReadOnlyList<BridgeWidgetDescriptor> value, string? selection, int browsedPage,
         IReadOnlyDictionary<string, BridgeNodeRenderStyles>? styles, AppearanceSettings appearance, bool animations)
     {
@@ -118,6 +238,9 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
         catalog = value; selected = selection; page = Math.Clamp(browsedPage, 0, RadialChooserPolicy.PageCount(value.Count) - 1);
         chrome.Update(styles, appearance, animations);
         var palette = ShellChromePalette.Resolve(styles, appearance);
+        stage.ApplyAppearance(palette, appearance, animations);
+        if (badgePalette != palette) PaintFavoriteHints(palette);
+        foreach (var hint in favoriteHints) hint.Label.FontSize = Math.Clamp(18 * appearance.TextScale, 18, 27);
         badgePalette = palette;
         if (face.Background is SolidColorBrush background) background.Color = palette.Surface;
         else face.Background = new SolidColorBrush(palette.Surface);
@@ -168,7 +291,6 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
 
                 AutomationProperties.SetAutomationId(entry.Button, "Overlay.Radial.Widget." + (item?.Id ?? index.ToString()));
                 AutomationProperties.SetName(entry.Button, item?.Name ?? "");
-                NativePopupTheme.SetToolTip(entry.Button, item?.Name);
                 var chosen = item?.Id == selected;
                 AutomationProperties.SetItemStatus(entry.Button, chosen ? "Selected" : "");
                 AutomationProperties.SetPositionInSet(entry.Button, page * 8 + index + 1);
@@ -188,10 +310,12 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
                          .Take(Math.Max(0, retainedIcons.Count - 24)).Select(pair => pair.Key).ToArray())
                 RetireIcon(key);
             pageText.Text = $"{page + 1}/{RadialChooserPolicy.PageCount(catalog.Count)}";
+            selectedName = catalog.FirstOrDefault(item => item.Id == selected)?.Name ?? "";
+            ShowWidgetName(selectedName);
             pageText.Visibility = catalog.Count > 8 ? Visibility.Visible : Visibility.Collapsed;
             previous.Visibility = next.Visibility = catalog.Count > 8 ? Visibility.Visible : Visibility.Collapsed;
             AutomationProperties.SetName(hubSurface, $"Widget page {page + 1} of {RadialChooserPolicy.PageCount(catalog.Count)}");
-            AutomationProperties.SetHelpText(this, $"{catalog.FirstOrDefault(item => item.Id == selected)?.Name ?? "Choose widget"}. Page {pageText.Text}");
+            AutomationProperties.SetHelpText(this, $"{selectedName}. Page {pageText.Text}");
             UpdatePagingGlyph();
         }
         finally { updating = false; }
@@ -200,6 +324,11 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
     private void RetireIcon(string key)
     {
         if (retainedIcons.Remove(key, out var item)) item.View.Dispose();
+    }
+    private void ShowWidgetName(string name)
+    {
+        if (widgetName.Text != name) widgetName.Text = name;
+        widgetName.Visibility = name.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
     }
     internal void RefreshBadges()
     {
@@ -213,9 +342,13 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
             if (AutomationProperties.GetName(items[index].Button) != description)
             {
                 AutomationProperties.SetName(items[index].Button, description);
-                NativePopupTheme.SetToolTip(items[index].Button, description);
             }
         }
+    }
+    private void UpdateControllerGlyphs()
+    {
+        UpdatePagingGlyph();
+        foreach (var hint in favoriteHints) WidgetGlyphs.Apply(hint.Glyph, hint.Prompt, WidgetControllerPrompts.PlayStation);
     }
     private void UpdatePagingGlyph() => WidgetGlyphs.Apply(pageGlyph, new() { Id = "radial.paging", Kind = ViewNodeKind.ControllerGlyph,
         ControllerPrompt = catalog.Count > 8 ? ControllerPrompt.RightStickMove : ControllerPrompt.LeftStickMove,
@@ -253,15 +386,17 @@ internal sealed partial class RadialChooserView : ContentControl, IDisposable
         pendingMotion = null; LayoutUpdated -= MotionReady;
         LastEntranceDuration = WidgetMotionPolicy.Dialog(options, true).Duration;
         if (options.Reduced) return;
-        motionTarget = WidgetCompositionTarget.ForClippedDialog(wheel, new Vector2(400));
+        motionTarget = WidgetCompositionTarget.ForClippedDialog(stage, new((float)stage.ActualWidth, (float)stage.ActualHeight));
         motion = new(CompositionTarget.GetCompositorForCurrentThread(), DispatcherQueue);
         _ = motion.PlayAsync((WidgetMotionPlayback[])[new(motionTarget, WidgetMotionPolicy.Dialog(options, true))]);
     }
     private void StopMotion() { pendingMotion = null; LayoutUpdated -= MotionReady; motion?.Dispose(); motion = null; motionTarget?.Dispose(); motionTarget = null; }
     public void Dispose()
     {
-        if (disposed) return; disposed = true; CancelFocus(); StopMotion(); chrome.Dispose();
-        WidgetControllerPrompts.Changed -= UpdatePagingGlyph;
+        if (disposed) return; disposed = true;
+        foreach (var item in feedback) item?.Dispose();
+        CancelFocus(); StopMotion(); chrome.Dispose();
+        WidgetControllerPrompts.Changed -= UpdateControllerGlyphs;
         face.Shadow = null; elevation.Receivers.Clear();
         foreach (var item in items) item.Icon.Dispose();
         foreach (var item in retainedIcons.Values) item.View.Dispose();

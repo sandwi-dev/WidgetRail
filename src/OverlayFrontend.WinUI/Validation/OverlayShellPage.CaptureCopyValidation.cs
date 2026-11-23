@@ -27,8 +27,14 @@ internal sealed partial class OverlayShellPage
                 var target = Path.Combine(directory, "destination"); Directory.CreateDirectory(target);
                 await File.WriteAllTextAsync(Path.Combine(directory, "picker-ready.json"), JsonSerializer.Serialize(new { destination = target, pid = Environment.ProcessId }));
                 var before = FocusManager.GetFocusedElement(XamlRoot);
-                var selected = await PickCaptureCopyDestinationAsync(_ => Task.FromResult(true), lifetime.Token, source ? "Link this folder" : "Copy here");
-                Check(string.Equals(selected, target, StringComparison.OrdinalIgnoreCase), "Windows folder picker returns the exact user-selected destination");
+                var choosing = PickCaptureCopyDestinationAsync(_ => Task.FromResult(true), lifetime.Token, source ? "Link this folder" : "Copy here");
+                if (Environment.GetCommandLineArgs().Contains("--test-file-destination"))
+                {
+                    await Wait(() => fileBrowser is not null);
+                    await fileBrowser!.ChooseFolderForValidationAsync(target);
+                }
+                var selected = await choosing;
+                Check(string.Equals(selected, target, StringComparison.OrdinalIgnoreCase), "The overlay folder picker returns the exact user-selected destination");
                 Check(!SystemFilePickerOpen && interactive, "Completing the picker releases shell input ownership");
                 await Wait(() => foreground);
                 if (before is Control control && control.IsLoaded)

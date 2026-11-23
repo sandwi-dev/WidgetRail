@@ -31,7 +31,7 @@ public sealed partial class PlayniteLibraryTests
         await Ready(widget, provider);
         var game = PageNodes(widget, Snapshot(widget, 160_000).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
         await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
-        await Bounded(widget.WhenDetailsIdleAsync(), "initial details");
+        if (scenario != "loading") await Bounded(widget.WhenDetailsIdleAsync(), "initial details");
         var initial = Snapshot(widget, 160_001);
         var ancestry = Path(initial.Root, PlayniteLibraryDetailsPresentation.PlayId);
         long sequence = 160_002;
@@ -47,7 +47,7 @@ public sealed partial class PlayniteLibraryTests
                     scenario + ": the bumper must route from retained Play focus");
                 await WaitFor(() => widget.RenderState.Value.DetailsExtras.Tab == expected, "bumper navigates to " + expected);
                 if (leavingAchievements) pending.TrySetResult(new(true, 0, 0, []));
-                if (scenario != "loading" || expected != PlayniteDetailsTab.Achievements)
+                if (scenario != "loading" || pending.Task.IsCompleted)
                     await Bounded(widget.WhenDetailsIdleAsync(), "details " + expected);
                 var after = Snapshot(widget, sequence++);
                 Assert.AreEqual(initial.ActiveInputScopeId, after.ActiveInputScopeId);

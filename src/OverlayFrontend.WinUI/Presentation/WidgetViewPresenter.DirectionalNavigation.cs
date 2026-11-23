@@ -12,7 +12,10 @@ internal sealed partial class WidgetViewPresenter
         if (args.Handled || presentationOnly || XamlRoot is null || Input.GamepadKeyBoundary.Owns(this, args) || HasTransientControl ||
             FocusManager.GetFocusedElement(XamlRoot) is TextBox or PasswordBox or RichEditBox ||
             FocusedBrowser?.Surface?.HasNativeKeyboardFocus == true) return;
-        if (FindIndexedCollection()?.HandleSelectionKey(args) == true) return;
+        var collection = FindIndexedCollection();
+        if (collection?.HandleSelectionKey(args) == true) return;
+        if (collection?.HandleEndpointKey(args) == true) { args.Handled = true; return; }
+        if (HandleReadingGroupKey(args)) return;
         var direction = args.Key switch
         {
             Windows.System.VirtualKey.Up => FocusNavigationDirection.Up, Windows.System.VirtualKey.Down => FocusNavigationDirection.Down,
@@ -38,7 +41,15 @@ internal sealed partial class WidgetViewPresenter
         return true;
     }
 
+    private FocusNavigationDirection routingDirection;
     private bool MoveDirectionalFocus(FocusNavigationDirection direction, bool isRepeat)
+    {
+        routingDirection = direction;
+        try { return RouteDirectionalFocus(direction, isRepeat); }
+        finally { routingDirection = FocusNavigationDirection.None; }
+    }
+
+    private bool RouteDirectionalFocus(FocusNavigationDirection direction, bool isRepeat)
     {
         CancelScrollReveal();
         if (FocusedMediaPlayer?.MoveFocus(direction, isRepeat) == true) return true;
@@ -47,12 +58,22 @@ internal sealed partial class WidgetViewPresenter
         if (ReverseDirectionalScroll(origin, direction, isRepeat)) return true;
         var scrollOwners = DirectionalScrollOwners(origin, direction).ToArray();
         var indexed = FindIndexedCollection();
-        var neighbors = indexed?.FocusedRowNavigation ?? declarations[origin.Identity.Id].Node.Focus;
-        var explicitId = direction switch
+        var rowNeighbors = indexed?.FocusedRowNavigation;
+        var neighbors = declarations[origin.Identity.Id].Node.Focus;
+        var rowExplicitId = direction switch
+        {
+            FocusNavigationDirection.Up => rowNeighbors?.Up, FocusNavigationDirection.Down => rowNeighbors?.Down,
+            FocusNavigationDirection.Left => rowNeighbors?.Left, FocusNavigationDirection.Right => rowNeighbors?.Right, _ => null,
+        };
+        // Collection-level neighbors are boundary exits. Let its native indexed
+        // navigation move between rows (including delayed ranges) first. A row's
+        // own authored neighbor retains its existing explicit priority.
+        if (rowExplicitId is null && indexed?.MoveFocus(direction) == true) return true;
+        var explicitId = rowExplicitId ?? (direction switch
         {
             FocusNavigationDirection.Up => neighbors?.Up, FocusNavigationDirection.Down => neighbors?.Down,
             FocusNavigationDirection.Left => neighbors?.Left, FocusNavigationDirection.Right => neighbors?.Right, _ => null,
-        };
+        });
         Binding? deferredExit = null;
         if (explicitId is not null && bindings.TryGetValue(explicitId, out var authored) && !ReferenceEquals(authored, origin))
         {
@@ -70,7 +91,7 @@ internal sealed partial class WidgetViewPresenter
                 else { Commit(target); return true; }
             }
         }
-        if (indexed?.MoveFocus(direction) == true) return true;
+        if (rowExplicitId is not null && indexed?.MoveFocus(direction) == true) return true;
         FrameworkElement? exitedViewport = null;
         string? exitedScrollOwner = null;
         if (indexed is not null)
@@ -169,8 +190,46 @@ internal sealed partial class WidgetViewPresenter
                 !NavigationTarget(target)) return;
             indexed?.CancelHostNavigation();
             directionalScroll = null;
-            if (FocusBinding(target,direction,indexed?.FocusedNavigationElement??origin.Element)) target.Element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+            var focusOrigin = indexed?.FocusedNavigationElement ?? origin.Element;
+            foreach (var (owner, viewport) in scrollOwners)
+            {
+                if (!IsDescendant(target.Identity.Id, owner.Identity.Id)) continue;
+                // The nearest same-axis viewport owns this move. Its preferred offset
+                // applies only to navigation between descendants, never pointer or entry.
+                if (declarations[owner.Identity.Id].Node is { Kind: ViewNodeKind.Scroll, DirectionalAnchor: { } anchor })
+                {
+                    // WinUI may deliver an earlier focus reveal after the next
+                    // repeat. Give the anchored move sole ownership of this viewport.
+                    if (target.Element is Control control && control is not WidgetIndexedCollectionView)
+                    {
+                        CancelPassiveScrollFocus();
+                        passiveScrollFocus = new(viewport, control, RetirePassiveScrollFocus);
+                    }
+                    if (!FocusBinding(target, direction, focusOrigin)) { CancelPassiveScrollFocus(); return; }
+                    if (!AnchorScrollTarget(viewport, target.Element, anchor, Horizontal(direction)))
+                        target.Element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+                    return;
+                }
+                break;
+            }
+            if (!FocusBinding(target, direction, focusOrigin)) return;
+            target.Element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
         }
+    }
+
+    private bool AnchorScrollTarget(ScrollViewer viewport, FrameworkElement target, DirectionalScrollAnchor anchor, bool horizontal)
+    {
+        var bounds = target.TransformToVisual(viewport).TransformBounds(new(0, 0, target.ActualWidth, target.ActualHeight));
+        var visible = WidgetScrollViewport.ContentBounds(viewport);
+        var extent = horizontal ? visible.Width : visible.Height;
+        var size = horizontal ? bounds.Width : bounds.Height;
+        if (extent <= 0 || size <= 0) return false;
+        var offset = horizontal ? viewport.HorizontalOffset : viewport.VerticalOffset;
+        var leading = horizontal ? bounds.Left - visible.Left : bounds.Top - visible.Top;
+        var destination = Math.Clamp(offset + leading - WidgetScrollViewport.AnchoredLeading(anchor, extent, size),
+            0, horizontal ? viewport.ScrollableWidth : viewport.ScrollableHeight);
+        return viewport.ChangeView(horizontal ? destination : null, horizontal ? null : destination, null,
+            disableAnimation: Motion.WidgetMotionOptions.From(appearance, systemAnimationsEnabled).Reduced);
     }
 
     private bool NavigationTarget(Binding binding) => Navigable(binding) && binding.Element.IsLoaded &&

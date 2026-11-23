@@ -18,6 +18,9 @@ internal sealed partial class WidgetIndexedCollectionView
     internal void SetControllerPressedStyle(bool value)
     {
         pressedStyle?.SetControllerPressed(false); pressedStyle = null;
+        if(!value)foreach(var row in containers.Values)row.LayoutOwner?.SetReadingActionPressed(false);
+        if(value && FocusedReadingView is {FocusedReadingAction:not null} reading)
+        {reading.SetReadingActionPressed(true);return;}
         if (!value || !CanReceiveInput || view?.XamlRoot is null) return;
         for (var current = FocusManager.GetFocusedElement(view.XamlRoot) as DependencyObject;
             current is not null && !ReferenceEquals(current, view); current = VisualTreeHelper.GetParent(current))

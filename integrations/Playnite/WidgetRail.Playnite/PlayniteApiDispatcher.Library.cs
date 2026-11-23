@@ -49,6 +49,7 @@ internal sealed partial class PlayniteApiDispatcher
             ["playtime"] = Count(game.Playtime), ["lastActivity"] = game.LastActivity?.ToString("o", CultureInfo.InvariantCulture),
         };
         if (!detailed) return result;
+        result["steamAppId"] = SteamGameIdentity.Resolve(game.PluginId, game.GameId, game.Links?.Select(link => link.Url));
         result["description"] = WireJson.Text(game.Description, 128 * 1024);
         result["notes"] = WireJson.Text(game.Notes, 32 * 1024);
         result["developers"] = Names(game.Developers); result["publishers"] = Names(game.Publishers);

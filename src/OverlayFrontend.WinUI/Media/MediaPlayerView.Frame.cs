@@ -21,10 +21,11 @@ internal sealed partial class MediaPlayerView
 
     private void ApplyFrameLayout(bool expanded)
     {
-        card.Padding = expanded ? new(0) : authoredFramePadding ?? new(8);
-        card.BorderThickness = expanded ? new(0) : authoredFrameThickness ?? new(1);
+        expanded &= fullscreenGallery is null;
+        card.Padding = expanded ? new(0) : authoredFramePadding ?? new(PassiveAnimation ? 0 : 8);
+        card.BorderThickness = expanded ? new(0) : authoredFrameThickness ?? new(PassiveAnimation ? 0 : 1);
         card.CornerRadius = expanded ? new(0) : authoredFrameRadius ?? inlineRadius;
         card.BorderBrush = authoredFrameBorder ?? themeFrameBorder;
-        card.Background = expanded ? videoStage is not null ? null : normalBrush : authoredFrameBackground ?? normalBrush;
+        card.Background = expanded ? normalBrush : authoredFrameBackground ?? (PassiveAnimation ? null : normalBrush);
     }
 }

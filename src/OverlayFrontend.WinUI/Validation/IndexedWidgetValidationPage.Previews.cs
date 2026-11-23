@@ -66,7 +66,12 @@ internal sealed partial class IndexedWidgetValidationPage
             await Wait(() => presenter.IsFocusPreviewOpen);
             Check(FocusId() == "Widget.parent", "Indexed hover preview does not steal toolbar focus");
             Scroll().ChangeView(null, 0, null, true);
-            await Wait(() => Scroll().VerticalOffset < 1 && !presenter.IsFocusPreviewOpen);
+            // Native estimation may adjust the numerical offset as the distant
+            // first rows realize. This check is about retiring the hovered
+            // occurrence: require its actual visible authority to disappear,
+            // rather than mistaking an adjusted offset for a preview failure.
+            await Wait(() => !presenter.IsFocusPreviewOpen &&
+                (collection.ResolveAnchor(target) is not { } anchor || WidgetViewPresenter.VisibleAnchorBounds(anchor, presenter) is null));
             Check(collection.ResolveAnchor(target) is not { } oldAnchor || WidgetViewPresenter.VisibleAnchorBounds(oldAnchor, presenter) is null,
                 "Recycled or offscreen occurrence loses visible anchor authority");
             Check(!presenter.IsFocusPreviewOpen, "Scrolling the hovered occurrence away removes its passive preview");
@@ -121,7 +126,9 @@ internal sealed partial class IndexedWidgetValidationPage
         void Write(bool passed, string? error)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-            File.WriteAllText(path, JsonSerializer.Serialize(new { passed, checks, error, text = PreviewText(), preview = presenter.FocusPreviewDiagnostics() },
+            var scroll=View() is {} current?Descendants(current).OfType<ScrollViewer>().FirstOrDefault():null;
+            File.WriteAllText(path, JsonSerializer.Serialize(new { passed, checks, error, text = PreviewText(), preview = presenter.FocusPreviewDiagnostics(),
+                offset=scroll?.VerticalOffset,extent=scroll?.ExtentHeight,viewport=scroll?.ViewportHeight },
                 new JsonSerializerOptions { WriteIndented = true }));
         }
     }

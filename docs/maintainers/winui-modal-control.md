@@ -35,6 +35,11 @@ clearance. Resizing updates native Width/Height/MaxWidth/MaxHeight and a local
 clip; WinUI owns measurement and arrangement. The main host must provide a
 bounded widget viewport. Intrinsic-height pinned projections omit the modal.
 
+A centered dialog can specify `height: auto` in WRSS. WinUI measures its header
+and body and updates its height when either changes. An authored `max-height`
+and the available widget height still bound the scroll region. An anchored
+dialog continues to use its declared placement and sizing policy.
+
 The default dialog brushes and corner radius use native ThemeResource bindings;
 these are defaults for the shared style adapter to override with resolved WRSS.
 This checkpoint does not claim full WRSS visual parity or opening/closing motion.

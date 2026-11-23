@@ -13,7 +13,8 @@ internal static class CaptureLibraryStartupScenarios
                 .WithEvents(WidgetCaptureLibraryCapabilities.Changed, Array.Empty<CaptureLibraryChanged>())
                 .WithResponse(WidgetCaptureLibraryCapabilities.Applications, new CaptureLibraryApplications([], false))
                 .WithHandler(WidgetCaptureLibraryCapabilities.Folders,(request,_)=>ValueTask.FromResult(new CaptureLibraryFolders([new("", "WidgetRail captures", 0)],request.Revision ?? "a")))
-                .WithResponse(WidgetCaptureLibraryCapabilities.Query, new CaptureLibraryQueryPage([item], 0, 1, 12, "1"))
+                .WithResponse(WidgetCaptureLibraryCapabilities.QueryContinuity,
+                    new CaptureLibraryContinuityPage(new([item], 0, 1, 12, "1"), "1"))
                 .WithResponse(WidgetCaptureLibraryCapabilities.Groups, new CaptureLibraryGroups([new("unknown", 1)], 1, "1")).Build();
             var client = new FirstPreferenceFailureClient(services.Capabilities);
             var widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), new WidgetHostServices(client));
@@ -84,14 +85,14 @@ internal static class CaptureLibraryStartupScenarios
             .WithEvents(WidgetCaptureLibraryCapabilities.Changed, Array.Empty<CaptureLibraryChanged>())
             .WithResponse(WidgetCaptureLibraryCapabilities.Applications, new CaptureLibraryApplications([], false))
             .WithHandler(WidgetCaptureLibraryCapabilities.Folders,(request,_)=>ValueTask.FromResult(new CaptureLibraryFolders([new("", "WidgetRail captures", 0)],request.Revision ?? "a")))
-            .WithHandler(WidgetCaptureLibraryCapabilities.Query, async (_, token) =>
+            .WithHandler(WidgetCaptureLibraryCapabilities.QueryContinuity, async (_, token) =>
             {
                 if (Interlocked.Increment(ref queries) == 1)
                 {
                     firstQuery.TrySetResult();
                     await Task.Delay(Timeout.Infinite, token);
                 }
-                return new CaptureLibraryQueryPage([item], 0, 1, 12, "1");
+                return new CaptureLibraryContinuityPage(new([item], 0, 1, 12, "1"), "1");
             })
             .WithHandler(WidgetCaptureLibraryCapabilities.Groups, async (_, token) =>
             {

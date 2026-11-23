@@ -1,5 +1,29 @@
 # Discord UI fixture
 
+`Stage.ps1 -Messages -RichConversations` stages six synthetic conversation rows
+for visual review: online/idle/do-not-disturb/offline/unknown presence, unread
+state, long names, a group snippet, cached message timestamps and missing cache
+metadata. It performs no Discord/network access and does not change the normal
+two-conversation native navigation scenario. It cannot be combined with
+`-LargeConversations`.
+
+`Stage.ps1 -Messages -LargeConversations` supplies 120 synthetic conversations.
+Run the validation frontend with `--validate-discord-messages=<result.json>` and
+`--discord-large-conversations` at the expanded size. This checks automatic
+bounded range loading, provider order, off-page selected-key lookup, composer
+entry, and selected-conversation restoration after changing sections. The audit
+records range/lookup arguments separately from message-history reads.
+
+`Stage.ps1 -Messages -PrivateCalls` enables a separate fake private-call scenario.
+Its published worker supports `--calls-contract-check <fresh-directory>` before
+native testing. The frontend uses `--discord-private-calls` alongside the normal
+Messages validation output flag. Decline, outgoing connection, Leave, a delayed
+background invitation, notification Open, Answer and final Leave affect only
+the synthetic provider. Microphone admission returns a fixture receipt; no
+microphone, Discord account, call, media capture or network exists. This mode
+uses the normal application bootstrap so notifications traverse the real broker,
+bridge and native inbox/banner. It does not use the Messages upload-service stub.
+
 `Stage.ps1 -Messages` and `Test-Messages.ps1` add an opt-in native Messages case.
 It runs the production widget with two synthetic conversations and 120 synthetic
 long messages, served in bounded cursor pages. The worker writes only a provider
@@ -17,6 +41,11 @@ those boundaries have separate broker and picker-lifetime fixtures.
 No Discord page, credentials, external messages or network uploads are involved. Incoming
 file-intent routing requires a second authorized sender and is qualified separately;
 this single-widget fixture does not bypass the broker to fabricate that authority.
+The synthetic provider also exposes a validated channel-watch/read-state contract.
+Only IDs actually returned by its bounded history can be acknowledged; reads
+update a local audit and unread flag without any network. Native checks verify
+that visible history triggers the opening acknowledgment and clears the primary
+unread indicator. This qualifies presentation timing, not Discord server delivery.
 The published fixture's `--messages-contract-check <fresh-directory>` command runs
 nine non-UI checks against these exact synthetic replies and production declarations
 before desktop qualification, including both history cursor directions and full
@@ -56,6 +85,15 @@ catalog/profile. `-ThemeId widgetrail.builtin.mineral-light` selects the light c
 `-Contrast High` selects the host's high-contrast policy. It does not change Windows
 or the user's WidgetRail settings.
 
+`Test-Messages.ps1 -HistoryContinuityOnly` runs three delayed older-history loads
+at each requested surface size, including bounded opposite-edge trimming. It
+samples every native rendering frame from before the response through publication
+and asserts stable source/container identity, no empty painted list and less than
+two DIPs of anchor movement. Before/after screenshots and per-load measurements
+are written beside `result.json`. This mode isolates loading from the test's
+deliberate large scroll to reach the edge. The normal expanded Messages run also
+checks the first prepend and the surrounding navigation/composer flows.
+
 Launch the matching frontend with `--shell-config=<output>/shell.json` and
 `--shell-no-controller`. The existing validation option
 `--validation-viewport-dips=468x548` gives exactly 420×360 DIPs of widget content
@@ -73,9 +111,9 @@ pin, including the real compact footer and main audio controls.
 These semantic snapshots complement native screenshots/layout measurements; they
 do not prove native focus, controller routing or remote audio/video delivery.
 
-Check call controls across every tab, participant speaking/mute labels, Home action
-ordering and destination text, channel search and clearing, empty states, and the
-compact voice pin. At minimum size, all four sections must retain reachable content.
+Check Call/Messages destinations, retained drafts, the conversation sidebar,
+participant state, call action ordering, channel search and clearing, empty states,
+and the compact voice pin. At minimum size, both destinations must retain reachable content.
 Use only the synthetic profile, and close its exact process before changing a
 fixture package or starting the next case.
 
@@ -107,3 +145,100 @@ profile. Capture the resulting full-widget pin window: it contains only fake dat
 has its own exact window bounds and does not reveal the user's desktop through the
 widget surface. This is capture scaffolding, not a change to Discord's production
 pinning declaration or the user's appearance settings.
+
+`Test-Messages.ps1 -MediaMessages` runs the explicit attachment-modal scenario
+at both minimum and expanded sizes (or the requested `-Surface`). It stages rich
+conversation metadata, inline URLs, text-only link cards and a two-attachment
+message, then checks modal input ownership, RB switching and exact visible
+message-position restoration on Back. Screenshots cover the main screens and
+the modal. Its unavailable synthetic CDN URLs intentionally exercise media
+failure; this scenario does not qualify decoded images or playback.
+
+Add `-PointerMediaClick` to open the first gallery through an actual native
+mouse click while focus remains in the composer, then exercise repeated
+controller opening/return. `-PointerMediaOpen` invokes the same native Button
+command directly to separate dispatch from pointer delivery. These scenarios
+record input admission sequence facts and pointer hit-test ownership. Retained
+row content must remain usable as its parent publishes newer snapshots; the
+tests do not extend the bridge's bounded input-origin history or bypass leases.
+
+`Test-Messages.ps1` also accepts `-ThemeId`, `-Contrast Standard|High`, and
+`-TextScale 1..2`. They change only the isolated fixture profile. Use the same
+matched host/worker payload for comparisons, with a fresh output directory per
+run. Add `-SolidSurface` for visual comparisons: the native validation host
+captures the whole Page with its actual solid host material, then crops to the
+widget surface in the same coordinate space. It waits for visible package icons
+to finish preparation and checks their set remains stable through the pixel read.
+Each image has a `.capture.json` sidecar recording bounds and icon readiness.
+Use these captures to review solid-material colors, layout and icon stability.
+They do not qualify desktop acrylic or decoded native video-plane pixels.
+Older presenter-only captures exclude the sibling host backdrop and cannot
+establish light-theme/high-contrast appearance.
+
+`-HeldScrollOnly -ReverseWhileMoving -FocusHistoryBeforeScrolling` exercises
+continuous up/down/up input with native focus initially on the latest message.
+Use `-HistoryDelayMilliseconds 500 -Motion Full` for delayed page publication
+during animated scrolling. The initial upward leg continues through two page
+requests so the bounded window must evict a page; the downward leg must fetch
+newer messages. A maximum input budget prevents a stuck load from running forever.
+The runner checks current occurrence identity, reading-direction continuity,
+native anchoring retirement, and visible focus settlement without moving the
+reading position. The composer-focused variant remains useful as a separate
+entry case. This is synthetic controller-route evidence, not physical hardware
+or live Discord network evidence.
+
+The fixture does not inject the generic message-loading error. Its optional
+`cursor-exceptions.jsonl` records bounded first-chance cursor/history exceptions
+before user-facing error mapping; cancellation is distinguished from failures.
+These diagnostics run only in the isolated synthetic worker, not the shipping
+widget. A focused-row regression exposed offscreen focus preventing bounded-page
+eviction. A passing composer-only scenario does not cover that failure mode.
+
+Add `-WheelHistoryScrolling` to drive the same boundary scenario through actual
+native wheel notches, using `NativeWheelProbe` and its owned-window/input guards.
+This exercises wheel ownership separately from controller `ScrollBy`. The bounded
+pipeline listener records range data/queue/publication timings, while missing
+anchors include native loading/layout state. Those diagnostics are excluded from
+shipping builds. Keep failed readiness receipts: zero backward motion does not
+by itself establish that all sampled frames contain readable message data.
+
+`-HistoryLifecycleOnly -SuspendDuringPreparation` hides the overlay after the
+provider page has succeeded but while the host is preparing its row leases. It
+checks drained preparation, retained sidebar identity, no mapped cancellation
+error and a successful later page read. Without that switch, the same scenario
+suspends the earlier provider request. The two cancellation phases are distinct.
+
+The expanded `-MediaMessages` lane also samples cold Inbox-to-chat entry. It
+requires painted sidebar rows on every sampled native frame and verifies that
+retained rows cannot claim new-scope input. Its trace distinguishes those passive
+rows from freshly acquired ranges. Source checks cover identical-query paint
+seeding, independent range ownership, rejection of foreign queries/instances,
+changed counts and backwards revisions, and exact cleanup. This is separate
+from the existing same-scope chat-switch and paging checks.
+
+Opt in to `-PublicPortrait -Surface Expanded -MediaMessages` to test actual
+portrait pixels across cold entry. This fetches Discord's public default avatar
+at `https://cdn.discordapp.com/embed/avatars/0.png`; it uses no account media or
+credentials. The lane waits for decoded initial pixels, then requires no missing
+portrait on sampled entry frames. Ordinary fixture runs remain network-free
+apart from their deliberately unavailable synthetic media URLs. The separate
+`--static-artwork-paint-output=<json>` native style scenario uses generated PNG/GIF
+bytes to check source identity, retirement, worker replacement and animation
+exclusion without the network.
+
+The private-call lane also drives `call-dock-phase.txt` inside its isolated result
+directory through four fixed synthetic states: seven participants, reversed order
+while reconnecting, one participant, and an empty participant snapshot. It keeps
+native Mute focused, verifies the same control identity, unchanged dock/composer
+geometry, bounded truthful overflow, and one-step Left access to the call summary.
+Activating that summary opens the existing call screen; RB returns to Messages.
+The file is consumed only by the credential-free test provider. No corresponding
+command or diagnostic endpoint exists in the shipped Discord adapter.
+
+`Test-VoicePin.ps1` accepts `-ThemeId`, `-TextScale` and `-Contrast` for the existing
+400/320-DIP native pin scenario. It checks full action labels, not only button
+bounds, and writes `voice-400.png`, `voice-320.png` and `participants.png`.
+High contrast must use the system's opaque background; ordinary mode still
+requires the authored transparent participant background. RenderTargetBitmap
+cannot faithfully capture all desktop material/alpha effects, so assess ordinary
+pin contrast on the desktop as well as using these geometry/label receipts.

@@ -7,16 +7,12 @@ public sealed partial class PlayniteLibraryWidget
 {
     private const string IndexedHomeOperation = "playnite-library.indexed-home";
     private readonly WidgetIndexedCollection<PlayniteLibraryHomeContent, PlayniteLibraryHomeItem> _indexedHome;
-    private readonly WidgetIndexedCollection<PlayniteLibraryHomeContent, PlayniteLibraryHomeItem> _indexedFavorites;
 
     private void PublishHomeContent(PlayniteLibraryHomeContent content, bool replace)
     {
         if (replace) _indexedHome.PublishQuery(content, content.Query.Count);
         else _indexedHome.UpdateContent(content);
-        var keys = content.Query.FavoriteKeys.ToArray();
-        if (replace || !(HomeState.Publication?.Query.FavoriteKeys ?? []).SequenceEqual(keys))
-            _indexedFavorites.PublishQuery(content, keys.Length);
-        else _indexedFavorites.UpdateContent(content);
+
     }
     private PlayniteLibraryIndexedHomeState HomeState => _model.Value.IndexedHome;
     private void UpdateHomeState(Func<PlayniteLibraryIndexedHomeState, PlayniteLibraryIndexedHomeState> update) =>
@@ -43,6 +39,7 @@ public sealed partial class PlayniteLibraryWidget
 
     private WidgetOperationHandle EnsureIndexedHome()
     {
+        LoadHomeActivity();
         lock (_gate)
             if (HomeState.Publication is { Query.IsWarmDisplayOnly: false } && IndexedHomeSelectionIsCurrent() || Operations.IsBusy(IndexedHomeOperation))
                 return new(WidgetOperationAdmission.Completed, Task.FromResult(new WidgetOperationResult(WidgetOperationStatus.Succeeded)));
@@ -51,6 +48,19 @@ public sealed partial class PlayniteLibraryWidget
 
     private bool IndexedHomeSelectionIsCurrent() => HomeState.Selection is { } selection &&
         SameCollectionQuery(selection, _model.Value.Collection);
+
+    private bool CanReuseHomeOnTabEntry()
+    {
+        lock (_gate)
+        {
+            // Manual and title-search rows may depend on saved apps outside the
+            // Playnite catalog. A provider revision cannot vouch for those rows.
+            return HomeState is { Status: WidgetPagedResourceStatus.Ready, Publication.Query: { IsWarmDisplayOnly: false } query } &&
+                _organization.ManualSavedIds.Count == 0 && string.IsNullOrEmpty(query.Source.Query.SearchText) &&
+                _model.Value.PendingRestoredSavedId is null && IndexedHomeSelectionIsCurrent() &&
+                query.Source.CanReuseOnTabEntry?.Invoke() == true;
+        }
+    }
 
     private WidgetOperationHandle RefreshIndexedHome()
     {
@@ -111,8 +121,7 @@ public sealed partial class PlayniteLibraryWidget
                     _model.Update(state => state with
                     {
                         IndexedHome = state.IndexedHome with { Publication = content, Selection = selection,
-                            Status = WidgetPagedResourceStatus.Ready,
-                            ModalReturn = sameQuery ? state.IndexedHome.ModalReturn : null },
+                            Status = WidgetPagedResourceStatus.Ready },
                         HomeGameCount = new(authorityGeneration, projected.Count),
                         SourceObservations = PlayniteLibrarySourceCatalog.RetainObservations(state.SourceObservations, captured.Sources),
                         FixedRows = fixedRows, FixedRowsRevision = state.FixedRowsRevision + 1,
@@ -120,6 +129,7 @@ public sealed partial class PlayniteLibraryWidget
                             : projected.Count == 0 ? "No games" : "Games loaded",
                     });
                 }
+                LoadHomeActivity();
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested || !context.IsCurrent)
             {
@@ -141,7 +151,6 @@ public sealed partial class PlayniteLibraryWidget
                             {
                                 Status = WidgetPagedResourceStatus.Error, Error = MapError(error),
                                 Publication = retirePriorQuery ? null : state.IndexedHome.Publication,
-                                ModalReturn = retirePriorQuery ? null : state.IndexedHome.ModalReturn,
                             } });
                     }
             }
@@ -159,7 +168,7 @@ public sealed partial class PlayniteLibraryWidget
     {
         var local = _model.Value;
         return new(query, !query.IsWarmDisplayOnly && !local.OrganizationBusy,
-            local.LaunchingSavedId, _launchStates, owner);
+            local.LaunchingSavedId, EffectiveLaunchStates(), owner);
     }
 
     private void UpdateIndexedHomePresentation()
@@ -183,12 +192,10 @@ public sealed partial class PlayniteLibraryWidget
         if (item.Row.Current is not { } current) return ValueTask.CompletedTask;
         var target = new PlayniteLibraryGameTarget(current, () =>
         {
-            lock (_gate) return !route.RouteCancellationToken.IsCancellationRequested &&
-                _navigation.Value.Route == PlayniteLibraryRoute.Library &&
+            lock (_gate) return !route.RootRouteCancellationToken.IsCancellationRequested &&
+                _navigation.Value.RootRoute == PlayniteLibraryRoute.Library &&
                 ReferenceEquals(HomeState.Publication?.QueryOwner, content.QueryOwner);
         });
-        if (action.ActionId is (PlayniteLibraryActions.DetailsOpen or PlayniteLibraryActions.QuickPlay) && target.IsCurrent)
-            lock (_gate) UpdateHomeState(state => state with { ModalReturn = action.FocusedCollectionItem, ModalReturnRequestId = 0 });
         return HandleCapturedGameActionAsync(target, action, token);
     }
 
@@ -201,7 +208,7 @@ public sealed partial class PlayniteLibraryWidget
         {
             if (HomeState.Publication is not { } content ||
                 content.Query.Find(new(sourceElementId[prefix.Length..])) is not { } row) return null;
-            return row.Row.Current is not { } current ? null : new(current, () => !route.RouteCancellationToken.IsCancellationRequested &&
+            return row.Row.Current is not { } current ? null : new(current, () => !route.RootRouteCancellationToken.IsCancellationRequested &&
                 ReferenceEquals(HomeState.Publication?.QueryOwner, content.QueryOwner));
         }
     }
@@ -218,7 +225,7 @@ public sealed partial class PlayniteLibraryWidget
             var next = CaptureHomeContent(query, same ? previous.QueryOwner : new object());
             if (same) PublishHomeContent(next, replace: false);
             else PublishHomeContent(next, replace: true);
-            UpdateHomeState(state => state with { Publication = next, ModalReturn = same ? state.ModalReturn : null });
+            UpdateHomeState(state => state with { Publication = next });
         }
     }
 

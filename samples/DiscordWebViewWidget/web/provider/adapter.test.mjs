@@ -3,10 +3,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { EventEmitter } from 'node:events';
+import { webcrypto } from 'node:crypto';
 
 const build=JSON.parse(await readFile(new URL('./adapter-contract.json',import.meta.url),'utf8')).build;
-let source = (await readFile(new URL('./activity-provider.js', import.meta.url), 'utf8'))+'\n'+(await readFile(new URL('./messaging-provider.js', import.meta.url), 'utf8'))+'\n'+(await readFile(new URL('./adapter.js', import.meta.url), 'utf8'))+`\ninitializeWidgetRailDiscordAdapter(${build},globalThis.testVideoHost);`;
+let source = (await readFile(new URL('./activity-provider.js', import.meta.url), 'utf8'))+'\n'+(await readFile(new URL('./messaging-provider.js', import.meta.url), 'utf8'))+'\n'+(await readFile(new URL('./call-provider.js', import.meta.url), 'utf8'))+'\n'+(await readFile(new URL('./adapter.js', import.meta.url), 'utf8'))+`\ninitializeWidgetRailDiscordAdapter(${build},globalThis.testVideoHost);`;
 if(process.env.WRAIL_MINIFIED_TESTS==='1')source=await(await import('../../../../tools/DiscordWebViewPrototype/Build-Backend.mjs')).minifySource(source);
+// SessionBackend installs package code inside a host-owned function, not as a
+// top-level script. Provider factories used through globalThis must be exported.
+source=`(()=>{${source}\n})()`;
 
 test('direct domain installer does not downgrade a newer provider',()=>{
     const newer={build:build+1,dispose(){throw Error('disposed');}};
@@ -106,6 +110,50 @@ function fixture() {
     const invoke = (method, args = {}) => context.WidgetRailDiscordPrototype.invoke({ method, owner: 'c'.repeat(32), args: { account: '1', channelId: '20', ...args } });
     return { state, stores, events, pending, captureOptions, audioReads, audioActions, demandCalls,videoTracks,peers,initial,visibility,makeRtc,timers, invoke, context, engine };
 }
+
+test('adapter forwards a fenced incoming private-call action through the resident call provider',async()=>{
+    const f=fixture();f.context.crypto=webcrypto;
+    const originalChannel=f.stores.ChannelStore.getChannel;
+    f.stores.ChannelStore.getChannel=id=>id==='50'?{id,type:1,recipients:['2']}:originalChannel(id);
+    f.stores.RelationshipStore={isBlockedOrIgnored:()=>false};
+    const call={channelId:'50',messageId:'500',ringing:['1']};
+    f.stores.CallStore={getCalls:()=>[call],getCall:id=>id==='50'?call:null,addChangeListener(){},removeChangeListener(){}};
+    const previous=f.context.WidgetRailWebWebpack.findByProps;
+    f.context.WidgetRailWebWebpack.findByProps=(...names)=>names[0]==='startCall'?{startCall(){throw Error('Answer must not ring');}}:
+        names[0]==='stopRinging'?{stopRinging(){}}:previous(...names);
+    const invite=(await f.invoke('snapshot')).value.calls.incoming[0];
+    const reply=await f.invoke('callAnswer',{channelId:'50',previousChannelId:'20',invitationId:invite.id,commandId:'b'.repeat(32)});
+    assert.equal(reply.ok,true);assert.equal(f.state.channel,'50');
+    assert.equal((await f.invoke('snapshot')).value.channelName,'Test participant');
+    assert.equal((await f.invoke('snapshot')).value.calls.incoming.length,0);
+});
+test('startup distinguishes hydration from an explicitly signed-out client without accessing credentials',async()=>{
+ const f=fixture();f.state.account=null;f.context.location={pathname:'/app'};
+ f.stores.AuthenticationStore={isAuthenticated:()=>false,getToken(){throw Error('Credentials must not be read');}};
+ assert.equal((await f.invoke('snapshot')).value.connectionState,'initializing');
+ f.state.now+=10000;assert.equal((await f.invoke('snapshot')).value.connectionState,'initializing');
+ f.context.location.pathname='/login';
+ assert.equal((await f.invoke('snapshot')).value.connectionState,'signed-out');
+ f.stores.AuthenticationStore.isAuthenticated=()=>true;
+ assert.equal((await f.invoke('snapshot')).value.connectionState,'initializing');
+ f.state.account='1';
+ assert.equal((await f.invoke('snapshot')).value.connectionState,'ready');
+ f.state.account=null;f.context.location.pathname='/channels/@me';
+ assert.equal((await f.invoke('snapshot')).value.connectionState,'reconnecting');
+ f.state.now+=30001;
+ assert.equal((await f.invoke('snapshot')).value.connectionState,'unavailable');
+ f.state.account='2';
+ const recovered=await f.invoke('snapshot');assert.equal(recovered.value.connectionState,'ready');assert.equal(recovered.value.account,'2');
+});
+
+test('unknown or failed authentication probes never imply a sign-in requirement',async()=>{
+ const f=fixture();f.state.account=null;f.context.location={pathname:'/login'};
+ assert.equal((await f.invoke('snapshot')).value.connectionState,'initializing');
+ f.stores.AuthenticationStore={isAuthenticated(){throw Error('Changed provider');}};
+ assert.equal((await f.invoke('snapshot')).value.connectionState,'initializing');
+ f.state.now+=30001;
+ assert.equal((await f.invoke('snapshot')).value.connectionState,'unavailable');
+});
 
 test('outgoing viewer eyes describe who watches our stream, not our incoming subscriptions',async()=>{
  const f=fixture();f.state.viewers=['1'];
@@ -1097,7 +1145,8 @@ test('saved custom preference comes from provider persisted settings and survive
     assert.deepEqual(f.qualityWrites,[]);
     // Adapter recreation has no private copy of this preference to restore.
     const previous=f.context.WidgetRailDiscordPrototype;
-    vm.runInContext(`initializeWidgetRailDiscordAdapter(${build+1});`,f.context);
+    vm.runInContext(source.replace(`initializeWidgetRailDiscordAdapter(${build},globalThis.testVideoHost)`,
+        `initializeWidgetRailDiscordAdapter(${build+1},globalThis.testVideoHost)`),f.context);
     assert.notEqual(f.context.WidgetRailDiscordPrototype,previous);
     assert.deepEqual(JSON.parse(JSON.stringify((await f.invoke('snapshot')).value.preferredShareQuality)),{resolution:1080,frameRate:60});
     for(const saved of [null,{}, {preset:1,resolution:1080,fps:60},{preset:3,resolution:2160,fps:60},{preset:3,resolution:720,fps:120}]){

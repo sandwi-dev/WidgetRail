@@ -7,6 +7,7 @@ internal static class MultiStreamTests
 {
     internal static async Task RunAsync(Action<bool,string> check)
     {
+        await ViewerWithoutPinAsync(check);
         var fake=new FakeSession();
         fake.State=fake.State with {Streams=[new("guild:1:10:30","30","First"),new("guild:1:10:31","31","Second"),
             new("guild:1:10:32","32","Third",Audio:new(true,false,40)),new("guild:1:10:33","33","Fourth")]};
@@ -27,9 +28,24 @@ internal static class MultiStreamTests
             check(Snapshot().PinnedLayouts.Where(pin=>pin.Id.StartsWith("discord.stream",StringComparison.Ordinal)).Select(pin=>pin.Id).SequenceEqual(new[]{"discord.stream"}),
                 "Watch intent publishes only its chosen stream layout before requesting host selection");
             var first=Guid.NewGuid().ToString("N");
+            fake.ReceiverGate=new(TaskCreationOptions.RunContinuationsAsynchronously);
             await Select("discord.stream",first,true);
+            await Until(()=>fake.ReceiverRequests==1);
+            await Act("discord.stream.30.view");
+            await Act("discord.viewer.back");
+            await Act("discord.stream.30.view");
+            await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Background);
+            await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive);
+            fake.ReceiverGate.SetResult();
             await Until(()=>Video("discord.stream") is not null);
             var firstVideo=Video("discord.stream");
+            check(fake.ReceiverRequests==1 && fake.Commands.Count(command=>command.Method=="watch")==1,
+                "Opening, leaving and reopening Watch while its pin connects keeps the original receiver request");
+            check(Nodes(Snapshot().Root).Single(node=>node.Id=="discord.viewer.video").WebBrowser?.HostedSession == firstVideo &&
+                fake.Receivers.Count == 1, "Watching a pinned screen reuses its exact live receiver");
+            await Act("discord.viewer.back");
+            check(Video("discord.stream") == firstVideo && !fake.Receivers.Single().Disposed,
+                "Leaving the viewer retains the selected pin and subscription");
             CheckNoDetachedCards("One live stream pin does not render a placeholder card for the unused second slot");
             check(!Snapshot().PinnedLayouts.Any(pin=>pin.Id is "discord.stream.2" or "discord.stream.3"),
                 "One playing stream does not expose the two unused slots in the tray menu");
@@ -140,8 +156,13 @@ internal static class MultiStreamTests
                 Nodes(Snapshot().Root).Any(node=>node.Id=="discord.streams.unpin")&&
                 Nodes(Snapshot().Root).Any(node=>node.Id=="discord.streams.stop"),
                 "A failed selected receiver retains the real stream card and Manage, Unpin, and Stop watching controls");
+            fake.FailReceivers=false;
+            await Act("discord.stream.30.view");
+            await Until(()=>Nodes(Snapshot().Root).Any(node=>node.Id=="discord.viewer.video"));
+            check(Video("discord.stream")==Nodes(Snapshot().Root).Single(node=>node.Id=="discord.viewer.video").WebBrowser?.HostedSession,
+                "Watch on a failed pin retries the connection and gives both surfaces the recovered receiver");
         }
-        finally {await WidgetTestHost.DestroyAsync(widget);}
+        finally {fake.ReceiverGate?.TrySetResult();await WidgetTestHost.DestroyAsync(widget);}
 
         ViewSnapshot Snapshot()=>widget.RenderSnapshot("multi-streams",100);
         void CheckNoDetachedCards(string description)=>check(!Nodes(Snapshot().Root)
@@ -162,6 +183,67 @@ internal static class MultiStreamTests
                 {PinnedLayoutId=layout,PinnedSelectionId=selection,IsPinnedLayoutSelected=selected});
         }
     }
+    private static async Task ViewerWithoutPinAsync(Action<bool,string> check)
+    {
+        var fake = new FakeSession();
+        fake.State = fake.State with { Streams = [new("guild:1:10:32", "32", "Third", Audio: new(true, false, 40))] };
+        var widget = WidgetTestHost.Attach(new DiscordWebViewWidget(fake, refreshInterval: TimeSpan.FromHours(1)),
+            new WidgetTestHostServicesBuilder().Build());
+        await WidgetTestHost.InitializeAsync(widget);
+        try
+        {
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            await widget.WaitForStateReadAsync();
+            await Act("discord.stream.32.view");
+            await Until(() => Nodes(Snapshot().Root).Any(node => node.Id == "discord.viewer.video"));
+            check(!Snapshot().PinnedLayouts.Any(pin => pin.Id.StartsWith("discord.stream", StringComparison.Ordinal)) &&
+                Nodes(Snapshot().Root).Any(node => node.Id == "discord.viewer.audio.mute"),
+                "Watch opens the incoming screen with audio controls and zero stream pins");
+            var receiver = fake.Receivers.Single();
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+            await Until(() => receiver.Disposed);
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
+            await Until(() => fake.Receivers.Count == 2 && Nodes(Snapshot().Root).Any(node => node.Id == "discord.viewer.video"));
+            var resumed = fake.Receivers.Last();
+            check(!resumed.Disposed && !Snapshot().PinnedLayouts.Any(pin => pin.Id.StartsWith("discord.stream", StringComparison.Ordinal)),
+                "A viewer-only stream releases its receiver in background and resumes without pinning");
+            await Act("discord.viewer.back");
+            await Until(() => resumed.Disposed);
+            check(Nodes(Snapshot().Root).Any(node => node.Id == "discord.stream.32.view"), "Back returns to the call and retires a viewer-only receiver");
+            fake.ReceiverGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await Act("discord.stream.32.view");
+            await Until(() => fake.ReceiverRequests == 3);
+            await Act("discord.viewer.back");
+            fake.ReceiverGate.SetResult();
+            await Until(() => fake.Receivers.Count == 3 && fake.Receivers.Last().Disposed);
+            check(!Nodes(Snapshot().Root).Any(node => node.Id == "discord.viewer.video"), "A receiver opening after Back cannot republish the retired viewer");
+            fake.ReceiverGate=new(TaskCreationOptions.RunContinuationsAsynchronously);
+            await Act("discord.stream.32.view");
+            await Until(()=>fake.ReceiverRequests==4);
+            fake.SetMainViewVisible(false);
+            fake.ReceiverGate.TrySetResult();
+            await Until(()=>fake.Receivers.Count==4 && fake.Receivers.Last().Disposed);
+            check(widget.IsActive && !Nodes(Snapshot().Root).Any(node=>node.Id=="discord.viewer.video"),
+                "Hiding the main view retires a delayed receiver even while the widget remains active");
+            fake.SetMainViewVisible(true);
+            await Until(()=>fake.Receivers.Count==5 && Nodes(Snapshot().Root).Any(node=>node.Id=="discord.viewer.video"));
+            fake.SetMainViewVisible(false);
+            await Until(()=>fake.Receivers.Last().Disposed);
+            await Act("discord.viewer.back");
+            fake.SetMainViewVisible(true);
+            check(fake.ReceiverRequests==5 && !Nodes(Snapshot().Root).Any(node=>node.Id=="discord.viewer.video"),
+                "Returning to the overlay after leaving the viewer does not resubscribe to a closed visit");
+        }
+        finally { fake.ReceiverGate?.TrySetResult(); await WidgetTestHost.DestroyAsync(widget); }
+
+        ViewSnapshot Snapshot() => widget.Render().CreateSnapshot("main.viewer", 1);
+        async Task Act(string id)
+        {
+            var frame = Snapshot(); var node = Nodes(frame.Root).Single(n => n.Id == id);
+            await widget.OnActionAsync(new(node.ActionId!, id, InputScopeId: frame.ActiveInputScopeId) { FocusedElementId = id });
+        }
+    }
+
     private static IEnumerable<ViewNode> Nodes(ViewNode root)=>new[]{root}.Concat(root.Children.SelectMany(Nodes));
     private static async Task Until(Func<bool> condition)
     {using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(5));while(!condition())await Task.Delay(10,timeout.Token);}

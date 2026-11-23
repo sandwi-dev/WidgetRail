@@ -124,6 +124,7 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
             }
             if (Environment.GetCommandLineArgs().Contains("--playnite-navigation-only"))
             {
+                CompositionTarget.Rendering += Rendering;
                 await CheckNavigationAsync();
                 return;
             }
@@ -269,13 +270,24 @@ internal sealed partial class PlaynitePerformanceValidationPage : Page
         var columns=(view.ItemsPanelRoot as ItemsWrapGrid)?.MaximumRowsOrColumns??1;
         var steps=Math.Min(40,(count-1)/columns);
         if(steps<1)throw new InvalidOperationException("Navigation checks require at least two rows.");
-        await NativeIndexedFocusProbe.RunAsync(view,_=>presenter.MoveFocus(FocusNavigationDirection.Down),
+        frames.Clear();
+        lastFrame = 0;
+        scrolling = true;
+        var down = await NativeIndexedFocusProbe.RunAsync(view,_=>presenter.MoveFocus(FocusNavigationDirection.Down),
             steps:steps,settleMilliseconds:35,cancellationToken:lifetime.Token);
         await Until(()=>FocusedIndex(view)==steps*columns);
+        scrolling = false;
+        Sample("navigation-deep");
         navigationChecks.Add("Rapid controller movement crosses materialization boundaries without lost steps");
-        await NativeIndexedFocusProbe.RunAsync(view,_=>presenter.MoveFocus(FocusNavigationDirection.Up),
+        lastFrame = 0;
+        scrolling = true;
+        var up = await NativeIndexedFocusProbe.RunAsync(view,_=>presenter.MoveFocus(FocusNavigationDirection.Up),
             startIndex:steps*columns,steps:steps,settleMilliseconds:35,cancellationToken:lifetime.Token,direction:NavigationDirection.Up);
         await Until(()=>FocusedIndex(view)==0);
+        scrolling = false;
+        Sample("navigation-return");
+        await File.WriteAllTextAsync(Path.Combine(output, "directional-samples.json"),
+            JsonSerializer.Serialize(new { frames, down, up }), lifetime.Token);
         navigationChecks.Add("Reversing controller movement returns to the original item");
         foreach(var query in new[]{"Fixture Game","Fixture Game 00001",""})
         {

@@ -34,6 +34,7 @@ public sealed class WidgetNotificationTests
         var content = new WidgetNotification("song", "First") { Retention = WidgetNotificationRetention.BannerOnly };
         var first = inbox.Add("music", "widget", "", "song", "First", "", new(), Callbacks, NotificationPresentation.BannerAndList, content)!;
         banner.Offer(first, 100);
+        banner.Advance(100, _ => true, _ => true);
         var second = inbox.Add("music", "widget", "", "song", "Second", "", new(), Callbacks, NotificationPresentation.BannerAndList, content)!;
         Assert.IsNull(inbox.Find(first.Id)); Assert.IsTrue(banner.Offer(second, 200)); Assert.AreEqual(4100, banner.ExpiresAt);
         inbox.WithdrawWidgetKey("other", "song"); Assert.IsNotNull(inbox.Find(second.Id));

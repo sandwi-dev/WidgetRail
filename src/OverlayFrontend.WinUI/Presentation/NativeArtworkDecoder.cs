@@ -2,6 +2,8 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml.Media.Imaging;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.RemoteMediaTransport;
+using WidgetRail.OverlayFrontend.WinUI.Media;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 
@@ -9,7 +11,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal readonly record struct ArtworkPixelSize(int Width, int Height);
 internal sealed record NativeArtworkPayload(ReadOnlyMemory<byte> Bytes, Uri? RemoteUri = null,
-    ArtworkFileReference? File = null, Func<CancellationToken, Task<NativeArtworkPayload?>>? Fallback = null);
+    ArtworkFileReference? File = null, Func<CancellationToken, Task<NativeArtworkPayload?>>? Fallback = null, bool IsPublicMedia = false);
 internal sealed record NativeArtworkDecode(BitmapImage Image, ArtworkPixelSize Source, ArtworkPixelSize Decoded);
 
 /// <summary>Native metadata validation and target-sized asynchronous decode. No pixel or encoded-data cache.</summary>
@@ -29,17 +31,32 @@ internal static class NativeArtworkDecoder
     }
 
     internal static async Task<NativeArtworkDecode?> DecodeAsync(NativeArtworkPayload? payload,
-        ArtworkPixelSize target, ImageFit? fit, CancellationToken token, bool naturalSize = false)
+        ArtworkPixelSize target, ImageFit? fit, CancellationToken token, bool naturalSize = false, bool autoPlay = true)
+    {
+        if (payload?.IsPublicMedia != true) return await DecodeCoreAsync(payload, target, fit, token, naturalSize, autoPlay);
+        using var admission = await NativePublicMediaTransport.AdmitDecodeAsync(token);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        try
+        {
+            return await DecodeCoreAsync(payload, target, fit, timeout.Token, naturalSize, autoPlay);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        { throw new PublicMediaException(PublicMediaFailure.Timeout); }
+    }
+
+    private static async Task<NativeArtworkDecode?> DecodeCoreAsync(NativeArtworkPayload? payload,
+        ArtworkPixelSize target, ImageFit? fit, CancellationToken token, bool naturalSize, bool autoPlay)
     {
         if (payload is null || payload.RemoteUri is null && payload.File is null && payload.Bytes.IsEmpty) return null;
         if (payload.File is not null && payload.Fallback is not null)
         {
-            try { return await DecodeAsync(payload with { Fallback = null }, target, fit, token, naturalSize); }
+            try { return await DecodeAsync(payload with { Fallback = null }, target, fit, token, naturalSize, autoPlay); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException ||
                 error is COMException && (unchecked((uint)error.HResult) & 0xffffff00u) == 0x88982f00u)
             {
                 token.ThrowIfCancellationRequested();
-                return await DecodeAsync(await payload.Fallback(token), target, fit, token, naturalSize);
+                return await DecodeAsync(await payload.Fallback(token), target, fit, token, naturalSize, autoPlay);
             }
         }
         token.ThrowIfCancellationRequested();
@@ -47,23 +64,47 @@ internal static class NativeArtworkDecoder
             throw new InvalidDataException("Artwork exceeds its encoded resource bound.");
         (IRandomAccessStream Stream, long? Length) opened;
         if (payload.File is { } file) opened = await NativeArtworkFile.OpenAsync(file, token);
-        else if (payload.RemoteUri is { } uri) opened = (await NativeArtworkStream.OpenAsync(uri, token), null);
+        else if (payload.RemoteUri is { } uri) opened = (await NativeArtworkStream.OpenAsync(uri, token, payload.IsPublicMedia), null);
         else opened = (OpenMemory(payload.Bytes), payload.Bytes.Length);
         using var stream = opened.Stream;
         var encodedLength = opened.Length ?? checked((long)stream.Size);
         if (encodedLength is <= 0 or > ProtocolConstants.MaximumEncodedArtworkBytes)
             throw new InvalidDataException("Artwork exceeds its encoded resource bound.");
         NativeArtworkCounters.Encoded(encodedLength);
+        if (payload.IsPublicMedia)
+        {
+            var prefix = new Windows.Storage.Streams.Buffer(16);
+            var header = await stream.ReadAsync(prefix, 16, InputStreamOptions.None).AsTask(token);
+            if (PublicMediaFormat.Identify(header.ToArray()) is not ("image/png" or "image/jpeg" or "image/gif" or "image/webp"))
+                throw new InvalidDataException("Unsupported public image container.");
+            stream.Seek(0);
+        }
         var metadata = await BitmapDecoder.CreateAsync(stream).AsTask(token);
         if (metadata.PixelWidth is 0 or > ProtocolConstants.MaximumEncodedArtworkDimension ||
             metadata.PixelHeight is 0 or > ProtocolConstants.MaximumEncodedArtworkDimension ||
             (ulong)metadata.PixelWidth * metadata.PixelHeight > ProtocolConstants.MaximumEncodedArtworkPixels)
             throw new InvalidDataException("Artwork exceeds its source pixel resource bound.");
         var source = new ArtworkPixelSize((int)metadata.OrientedPixelWidth, (int)metadata.OrientedPixelHeight);
+        if (metadata.DecoderInformation.CodecId == BitmapDecoder.GifDecoderId)
+        {
+            // First-frame dimensions cannot bound the logical composition canvas
+            // or later delta frames. Do not add a background hop to static images.
+            // This adapter borrows the already-owned stream; disposing it here
+            // would also close the stream needed by SetSourceAsync below.
+            var canvas = await Task.Run(() =>
+            {
+                stream.Seek(0);
+                return NativeGifBounds.Validate(stream.AsStreamForRead(), token);
+            }, token);
+            if (canvas is not { } size) throw new InvalidDataException("Invalid GIF signature.");
+            source = new(size.Width, size.Height);
+        }
         var decoded = SizeFor(source, target, fit, naturalSize);
         token.ThrowIfCancellationRequested();
         stream.Seek(0);
-        var bitmap = new BitmapImage { DecodePixelType = DecodePixelType.Physical,
+        // Presentation demands disable autoplay and own playback explicitly;
+        // other existing decoder consumers retain their original behavior.
+        var bitmap = new BitmapImage { AutoPlay = autoPlay, DecodePixelType = DecodePixelType.Physical,
             DecodePixelWidth = decoded.Width, DecodePixelHeight = decoded.Height };
         NativeArtworkCounters.Decoding(source, decoded);
         await bitmap.SetSourceAsync(stream).AsTask(token);
@@ -71,7 +112,7 @@ internal static class NativeArtworkDecoder
         return new(bitmap, source, decoded);
     }
 
-    private static IRandomAccessStream OpenMemory(ReadOnlyMemory<byte> bytes)
+    internal static IRandomAccessStream OpenMemory(ReadOnlyMemory<byte> bytes)
     {
         // The value-owned payload stays alive through SetSourceAsync. The adapter
         // is read-only and never exposes a writable stream to the native codec.

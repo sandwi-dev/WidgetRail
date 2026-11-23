@@ -5,6 +5,9 @@ namespace WidgetRail.WidgetPresentationSession;
 
 public sealed partial class WidgetPresentationSession
 {
+    public async Task DecideCaptureDestinationAsync(string id, bool approved, CancellationToken token) =>
+        _ = await RequestAsync(BridgeMessageTypes.DecideCaptureDestination, new BridgeCaptureDestinationDecision(id, approved),
+            BridgeMessageTypes.DecideCaptureDestination, token).ConfigureAwait(false);
     public async Task<bool> IsCaptureFolderCurrentAsync(string id,CancellationToken token=default) =>
         BridgeJson.FromElement<BridgeCaptureCurrent>((await RequestAsync(BridgeMessageTypes.CheckCaptureFolder,new BridgeCaptureReference(id),BridgeMessageTypes.CheckCaptureFolder,token).ConfigureAwait(false)).Payload).Current;
     public async Task CompleteCaptureFolderAsync(string id,bool opened,CancellationToken token=default) =>
@@ -20,7 +23,9 @@ public sealed partial class WidgetPresentationSession
     public async Task SetCaptureRecordingAsync(string id, CancellationToken token = default) =>
         _ = await RequestAsync(BridgeMessageTypes.RecordingCapture, new BridgeCaptureReference(id), BridgeMessageTypes.RecordingCapture, token).ConfigureAwait(false);
     public async Task<bool> CompleteCaptureAsync(HostCaptureCompletion completion, CancellationToken token = default) =>
-        BridgeJson.FromElement<BridgeCaptureCurrent>((await RequestAsync(BridgeMessageTypes.CompleteCapture, completion, BridgeMessageTypes.CompleteCapture, token).ConfigureAwait(false)).Payload).Current;
+        (await CompleteCaptureWithResultAsync(completion, token).ConfigureAwait(false)).Current;
+    public async Task<BridgeCaptureCurrent> CompleteCaptureWithResultAsync(HostCaptureCompletion completion, CancellationToken token = default) =>
+        BridgeJson.FromElement<BridgeCaptureCurrent>((await RequestAsync(BridgeMessageTypes.CompleteCapture, completion, BridgeMessageTypes.CompleteCapture, token).ConfigureAwait(false)).Payload);
     public async Task<HostCaptureAttachment> ResolveCaptureAttachmentAsync(WidgetPresentationFrame displayed, string elementId,
         WidgetPinnedSelection? selection = null, WidgetPinnedProjection? projection = null, CancellationToken token = default)
     {

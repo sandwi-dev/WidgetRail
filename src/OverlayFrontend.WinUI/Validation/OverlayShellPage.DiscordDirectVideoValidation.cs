@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Input;
 using WidgetRail.OverlayFrontend.WinUI.Browser;
+using WidgetRail.OverlayPlatformClient;
 using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
@@ -22,6 +23,10 @@ internal sealed partial class OverlayShellPage
         Loaded+=async (_,_)=>{
             if(started)return;started=true;
             var step="startup";string? error=null;int first=0,last=0,drops=0,secondFirst=0,secondLast=0,thirdFirst=0,thirdLast=0,thirdReplacements=0,pinChoiceChecks=0;
+            var volumeConfirmed = false;
+            var endedFocusRestored = false;
+            var survivingFrameDeltas = Array.Empty<int>();
+            bool? hiddenViewerSubscription = null;
             async Task ConfirmStreamChoices(params string[] expected)
             {
                 await WebAppUntil(()=>owner?.Session.GetState("widgetrail.samples.discord-controls")?.LastGood is { } frame&&
@@ -33,6 +38,86 @@ internal sealed partial class OverlayShellPage
             {
                 if(startup is not null)await startup;
                 await SelectAsync("widgetrail.samples.discord-controls",true);App.Window!.Activate();
+                async Task Activate(string id)
+                {
+                    await WebAppUntil(() => MainFocusEnabled && surface?.FocusHostTarget(id) == true);
+                    await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Pressed);
+                    await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
+                }
+                async Task Back()
+                {
+                    await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
+                    await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
+                }
+                step="Watch in widget without pinning";
+                await Activate("discord.stream.2.view");
+                await WebAppUntil(() => Slots(surface).Any(slot => slot.CanExpandVideo));
+                var inlineSlot = Slots(surface).Single(slot => slot.CanExpandVideo);
+                var inlineVideo = inlineSlot.Surface!;
+                const string frameCount = "document.querySelector('video').getVideoPlaybackQuality().totalVideoFrames";
+                await WebAppUntilScript(inlineVideo, frameCount + ">5");
+                if (pins.Count != 0) throw new InvalidOperationException("Watch opened a pin.");
+                step="viewer mute and volume affect only the selected incoming stream";
+                await Activate("discord.viewer.audio.mute");
+                await WebAppUntilScript(inlineVideo, "opener.fixtureAudio.muted && opener.fixtureAudio.writes===1");
+                await Activate("discord.viewer.audio.volume");
+                await WebAppUntil(() => FocusManager.GetFocusedElement(XamlRoot) is Microsoft.UI.Xaml.Controls.Slider { IsFocusEngaged: true });
+                var right = Sample(); right.DpadNavigation = new() { Direction = NavigationDirection.Right, Phase = NavigationPhase.Pressed };
+                Receive(right); Receive(Sample());
+                await WebAppUntilScript(inlineVideo, "Math.abs(opener.fixtureAudio.gain-100*Math.pow(.55,2.8))<.001 && opener.fixtureAudio.writes===2");
+                await Back(); // Disengage the slider.
+                await WebAppUntil(() => FocusManager.GetFocusedElement(XamlRoot) is Microsoft.UI.Xaml.Controls.Slider { IsFocusEngaged: false });
+                await WebAppUntil(() => ChoiceDescendants(surface!).OfType<Microsoft.UI.Xaml.Controls.TextBlock>().Any(text =>
+                    AutomationProperties.GetAutomationId(text) == "Widget.discord.viewer.audio.value" && text.Text == "55%"));
+                volumeConfirmed = true;
+                await CaptureSettingsListAsync(surface!, Path.Combine(directory, "viewer.png"));
+                if(Environment.GetCommandLineArgs().Contains("--discord-compact-stream-viewer"))
+                {
+                    var panel=surface!;
+                    if(Math.Abs(panel.ActualWidth-420)>1 || Math.Abs(panel.ActualHeight-360)>1)
+                        throw new InvalidOperationException($"Expected minimum viewer dimensions, got {panel.ActualWidth}×{panel.ActualHeight}.");
+                    var elements=ChoiceDescendants(panel).OfType<FrameworkElement>().ToArray();
+                    var fullscreen=elements.OfType<Microsoft.UI.Xaml.Controls.Button>().Single(button=>AutomationProperties.GetName(button)=="Fullscreen");
+                    var controls=new[]{"discord.viewer.back","discord.viewer.title","discord.viewer.audio.mute","discord.viewer.audio.volume","discord.viewer.audio.value"}
+                        .Select(id=>elements.Single(element=>AutomationProperties.GetAutomationId(element)=="Widget."+id)).Append(inlineSlot).Append(fullscreen);
+                    var layout=controls.Select(element=>new{id=AutomationProperties.GetAutomationId(element),bounds=element.TransformToVisual(panel)
+                        .TransformBounds(new Windows.Foundation.Rect(0,0,element.ActualWidth,element.ActualHeight))}).ToArray();
+                    await File.WriteAllTextAsync(Path.Combine(directory,"viewer-layout.json"),JsonSerializer.Serialize(layout));
+                    if(layout.Any(item=>item.bounds.Width<1 || item.bounds.Height<1 || item.bounds.Left<-.5 || item.bounds.Top<-.5 ||
+                        item.bounds.Right>panel.ActualWidth+.5 || item.bounds.Bottom>panel.ActualHeight+.5))
+                        throw new InvalidOperationException("A compact viewer control is empty or clipped by the widget.");
+                }
+                // RenderTargetBitmap captures XAML chrome. Capture the generated
+                // WebView separately to verify the actual composed video pixels.
+                using (var png = new Windows.Storage.Streams.InMemoryRandomAccessStream())
+                {
+                    await ((Microsoft.UI.Xaml.Controls.WebView2)inlineVideo.CompositionRoot).CoreWebView2.CapturePreviewAsync(
+                        Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png, png);
+                    png.Seek(0);
+                    using var input = png.AsStreamForRead();
+                    using var file = File.Create(Path.Combine(directory, "generated-video.png"));
+                    await input.CopyToAsync(file, lifetime.Token);
+                }
+                step="viewer controller fullscreen and return";
+                var countInWidget = int.Parse(await inlineVideo.EvaluateFixtureAsync(frameCount));
+                await Activate("discord.viewer.video");
+                await WebAppUntil(() => expandedBrowser?.Surface == inlineVideo);
+                await WebAppUntilScript(inlineVideo, frameCount + ">" + (countInWidget + 5));
+                await WebAppUntilScript(inlineVideo, "opener.fixtureAudio.muted && opener.fixtureAudio.writes===2");
+                await Back();
+                await WebAppUntil(() => expandedBrowser is null && inlineSlot.Surface == inlineVideo && ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), inlineSlot));
+                await Back();
+                await WebAppUntil(() => FocusManager.GetFocusedElement(XamlRoot) is DependencyObject returned &&
+                    AutomationProperties.GetAutomationId(returned) == "Widget.discord.stream.2.view");
+                await CaptureSettingsListAsync(surface!, Path.Combine(directory, "call.png"));
+                if(Environment.GetCommandLineArgs().Contains("--discord-compact-stream-viewer"))
+                {
+                    var title=ChoiceDescendants(surface!).OfType<Microsoft.UI.Xaml.Controls.TextBlock>()
+                        .Single(text=>AutomationProperties.GetAutomationId(text)=="Widget.discord.stream.2.compact-name");
+                    var bounds=title.TransformToVisual(surface).TransformBounds(new Windows.Foundation.Rect(0,0,title.ActualWidth,title.ActualHeight));
+                    if(title.Text!="Generated sender" || title.IsTextTrimmed || bounds.Height<1 || bounds.Top<0 || bounds.Bottom>surface!.ActualHeight)
+                        throw new InvalidOperationException("The sender's full display name must remain visible on return to the compact Watch action.");
+                }
                 step="focus Watch";
                 await WebAppUntil(()=>MainFocusEnabled&&surface?.FocusHostTarget("discord.stream.2")==true);
                 await WebAppUntil(()=>FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused &&
@@ -64,6 +149,35 @@ internal sealed partial class OverlayShellPage
                 var firstPin=pins.Single(pin=>pin.LayoutId=="discord.stream");
                 await ConfirmStreamChoices("discord.stream");
                 await WebAppUntil(()=>BrowserHostFillsSlot(Slots(firstPin.Presenter).Single(slot=>slot.Surface==view)));
+                step="existing pin lends receiver to main viewer";
+                await Activate("discord.stream.2.view");
+                await WebAppUntil(() => Slots(surface).Any(slot => slot.Surface == view && slot.CanExpandVideo));
+                SetVisible(false);
+                await WebAppUntil(() => Slots(firstPin.Presenter).Any(slot => slot.Surface == view));
+                var hiddenFrames = int.Parse(await view.EvaluateFixtureAsync(frameCount));
+                await WebAppUntilScript(view, frameCount + ">" + (hiddenFrames + 5));
+                SetVisible(true);
+                await WebAppUntil(() => Slots(surface).Any(slot => slot.Surface == view && slot.CanExpandVideo));
+                await Back();
+                await WebAppUntil(() => Slots(firstPin.Presenter).Any(slot => slot.Surface == view));
+                step="passive receiver expands and returns to its pin";
+                const string decodedFrames = "document.querySelector('video').getVideoPlaybackQuality().totalVideoFrames";
+                var beforeExpansion = int.Parse(await view.EvaluateFixtureAsync(decodedFrames));
+                var initialNavigations = view.NavigationCount;
+                if (view.CanCompleteSiteDecision || !await ExpandBackendVideoAsync(view, lifetime.Token,
+                    () => surface?.FocusHostTarget("discord.stream.2")))
+                    throw new InvalidOperationException("Current passive receiver did not enter the fullscreen host.");
+                await WebAppUntil(() => ReferenceEquals(expandedBrowser?.Surface, view));
+                await WebAppUntilScript(view, decodedFrames + ">" + (beforeExpansion + 5));
+                if (view.CanCompleteSiteDecision || view.CompositionRoot.IsHitTestVisible || view.NavigationCount != initialNavigations)
+                    throw new InvalidOperationException("Fullscreen changed receiver input, permission or document ownership.");
+                await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Pressed);
+                await RouteButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
+                await WebAppUntil(() => expandedBrowser is null && Slots(firstPin.Presenter).Any(slot => slot.Surface == view));
+                var afterCollapse = int.Parse(await view.EvaluateFixtureAsync(decodedFrames));
+                await WebAppUntilScript(view, decodedFrames + ">" + (afterCollapse + 5));
+                if (view.NavigationCount != initialNavigations || firstPin.Window.Interactive)
+                    throw new InvalidOperationException("Returning to the pin replaced the document or activated a passive pin.");
                 step="second independent screen";
                 await WebAppUntil(()=>surface?.FocusHostTarget("discord.stream.3")==true);
                 await RouteButtonAsync(ControllerButton.A,ControllerEventPhase.Pressed);
@@ -143,21 +257,46 @@ internal sealed partial class OverlayShellPage
                     App.Window!.Activate();
                     await WebAppUntil(()=>MainFocusEnabled);
                 }
-                step="provider stream end closes only its native pin";
+                step="sender ends the stream while the viewer is fullscreen";
+                await Back(); // Leave the provider's ordinary account page.
+                await Activate("discord.stream.2.view");
+                await WebAppUntil(() => Slots(surface).Any(slot => slot.Surface == view && slot.CanExpandVideo));
+                await Activate("discord.viewer.video");
+                await WebAppUntil(() => expandedBrowser?.Surface == view && !fullscreenLayer.IsTransitioning);
                 await source.EvaluateFixtureAsync("fixtureEndFirstStream();true");
-                await WebAppUntil(()=>!pins.Contains(firstPin));
+                await WebAppUntil(() => !pins.Contains(firstPin) && expandedBrowser is null && !fullscreenLayer.IsOpen &&
+                    !fullscreenLayer.IsTransitioning && surface is not null && ChoiceDescendants(surface).Any(element =>
+                        AutomationProperties.GetAutomationId(element) == "Widget.discord.viewer.ended"));
+                if (Slots(surface).Any(slot => slot.Surface?.IsBackendVideo == true))
+                    throw new InvalidOperationException("Ended viewer retained a retired video surface.");
+                step="ended viewer restores controller focus to Back";
+                await WebAppUntil(() => FocusManager.GetFocusedElement(XamlRoot) is FrameworkElement { IsLoaded: true } target &&
+                    AutomationProperties.GetAutomationId(target) == "Widget.discord.viewer.back");
+                endedFocusRestored = true;
+                await CaptureSettingsListAsync(surface!, Path.Combine(directory, "stream-ended.png"));
                 await ConfirmStreamChoices("discord.stream.2","discord.stream.3");
                 var surviving=int.Parse(await secondView.EvaluateFixtureAsync(quality+".totalVideoFrames"));
                 var thirdSurviving=int.Parse(await thirdView.EvaluateFixtureAsync(quality+".totalVideoFrames"));
-                await Task.Delay(500,lifetime.Token);
-                if(int.Parse(await secondView.EvaluateFixtureAsync(quality+".totalVideoFrames"))<=surviving || !secondPin.Window.IsVisible||
-                    int.Parse(await thirdView.EvaluateFixtureAsync(quality+".totalVideoFrames"))<=thirdSurviving||!thirdPin.Window.IsVisible)
-                    throw new InvalidOperationException("Ending the first stream stopped one of its sibling pins.");
+                // The synthetic sender now lives in a background WebView. Make
+                // both canvases change during this check independently of its JS
+                // timer cadence. A decoded frame must advance on each receiver.
+                for (var tick = 0; tick < 10; tick++)
+                {
+                    await source.EvaluateFixtureAsync("paint2();paint3();track2.requestFrame();track3.requestFrame();true");
+                    await Task.Delay(50, lifetime.Token);
+                }
+                var secondAfter = int.Parse(await secondView.EvaluateFixtureAsync(quality + ".totalVideoFrames"));
+                var thirdAfter = int.Parse(await thirdView.EvaluateFixtureAsync(quality + ".totalVideoFrames"));
+                survivingFrameDeltas = [secondAfter - surviving, thirdAfter - thirdSurviving];
+                if(secondAfter<=surviving || !secondPin.Window.IsVisible || thirdAfter<=thirdSurviving || !thirdPin.Window.IsVisible)
+                    throw new InvalidOperationException($"Sibling playback after source end: second {surviving}->{secondAfter} visible={secondPin.Window.IsVisible}, third {thirdSurviving}->{thirdAfter} visible={thirdPin.Window.IsVisible}.");
+                step="Back from ended viewer returns to a surviving call control";
+                await Back();
+                await WebAppUntil(() => MainFocusEnabled && FocusManager.GetFocusedElement(XamlRoot) is FrameworkElement { IsLoaded: true } focus &&
+                    AutomationProperties.GetAutomationId(focus) is { } id && id.StartsWith("Widget.discord.", StringComparison.Ordinal) &&
+                    !id.StartsWith("Widget.discord.viewer", StringComparison.Ordinal) && ChoiceDescendants(surface!).Contains(focus));
                 step="restart sender and Watch and pin again";
                 await source.EvaluateFixtureAsync("fixtureRestartFirstStream();true");
-                // Account page's ordinary Back route returns to the call surface.
-                await RouteButtonAsync(ControllerButton.B,ControllerEventPhase.Pressed);
-                await RouteButtonAsync(ControllerButton.B,ControllerEventPhase.Released);
                 await WebAppUntil(()=>MainFocusEnabled&&surface?.FocusHostTarget("discord.stream.2")==true);
                 await RouteButtonAsync(ControllerButton.A,ControllerEventPhase.Pressed);
                 await RouteButtonAsync(ControllerButton.A,ControllerEventPhase.Released);
@@ -206,6 +345,42 @@ internal sealed partial class OverlayShellPage
                     thirdReplacements++;
                 }
                 await UnpinAsync(save:false,watchedAgain);
+                step = "hide a viewer-only screen while two unrelated stream pins remain";
+                await WebAppUntilScript(source, "!fixtureWatched.has('guild:10:20:2')");
+                await Activate("discord.stream.2.view");
+                await WebAppUntil(() => Slots(surface).Any(slot => slot.CanExpandVideo));
+                await WebAppUntilScript(source, "fixtureWatched.size===3");
+                SetVisible(false);
+                await WebAppUntil(() => !visible && !MainFocusEnabled && Slots(surface).All(slot => !slot.CanDisplay) &&
+                    secondPin.IsCurrent && thirdPin.IsCurrent && secondPin.Window.IsVisible && thirdPin.Window.IsVisible);
+                await WebAppUntilScript(source, "!fixtureWatched.has('guild:10:20:2') && fixtureWatched.size===2");
+                hiddenViewerSubscription = await source.EvaluateFixtureAsync("fixtureWatched.has('guild:10:20:2')") == "true";
+                await WebAppUntilScript(source, "fixtureWatched.has('guild:10:20:3') && fixtureWatched.has('guild:10:20:4')");
+                SetVisible(true);
+                await WebAppUntil(() => MainFocusEnabled && Slots(surface).Any(slot => slot.CanExpandVideo));
+                await WebAppUntilScript(source, "fixtureWatched.has('guild:10:20:2') && fixtureWatched.size===3");
+                var resumedViewer=Slots(surface).Single(slot=>slot.CanExpandVideo).Surface!;
+                await WebAppUntilScript(resumedViewer,frameCount+">5");
+                step="hide fullscreen unpinned stream and return to the viewer";
+                await Activate("discord.viewer.video");
+                await WebAppUntil(()=>expandedBrowser?.Surface==resumedViewer);
+                SetVisible(false);
+                await WebAppUntilScript(source,"!fixtureWatched.has('guild:10:20:2') && fixtureWatched.size===2");
+                var beforeSecond=int.Parse(await secondView.EvaluateFixtureAsync(frameCount));
+                var beforeThird=int.Parse(await thirdView.EvaluateFixtureAsync(frameCount));
+                for(var tick=0;tick<6;tick++)
+                {
+                    await source.EvaluateFixtureAsync("paint2();paint3();track2.requestFrame();track3.requestFrame();true");
+                    await Task.Delay(50,lifetime.Token);
+                }
+                await WebAppUntilScript(secondView,frameCount+">"+beforeSecond);
+                await WebAppUntilScript(thirdView,frameCount+">"+beforeThird);
+                SetVisible(true);
+                await WebAppUntil(()=>expandedBrowser is null && MainFocusEnabled && Slots(surface).Any(slot=>slot.CanExpandVideo));
+                await WebAppUntilScript(source,"fixtureWatched.has('guild:10:20:2') && fixtureWatched.size===3");
+                await WebAppUntilScript(Slots(surface).Single(slot=>slot.CanExpandVideo).Surface!,frameCount+">5");
+                await Back();
+                await WebAppUntilScript(source, "!fixtureWatched.has('guild:10:20:2') && fixtureWatched.size===2");
                 await UnpinAsync(save:false,secondPin);
                 await UnpinAsync(save:false,thirdPin);
                 await WebAppUntil(()=>!source.HasActiveVideoOutput);
@@ -216,7 +391,7 @@ internal sealed partial class OverlayShellPage
             catch(Exception failure){error=failure.ToString();}
             finally{
                 BrowserSurface.FixturePage=null;
-                await File.WriteAllTextAsync(output+".tmp",JsonSerializer.Serialize(new{passed=error is null,step,first,last,drops,secondFirst,secondLast,thirdFirst,thirdLast,thirdReplacements,pinChoiceChecks,error}));
+                await File.WriteAllTextAsync(output+".tmp",JsonSerializer.Serialize(new{passed=error is null,step,first,last,drops,secondFirst,secondLast,thirdFirst,thirdLast,thirdReplacements,pinChoiceChecks,volumeConfirmed,endedFocusRestored,survivingFrameDeltas,hiddenViewerSubscription,error}));
                 File.Move(output+".tmp",output,true);
             }
         };
@@ -279,9 +454,20 @@ internal sealed partial class OverlayShellPage
           VoiceStateStore:{getVoiceStatesForChannel:()=>({peer:{userId:'2',selfStream:firstStreaming},second:{userId:'3',selfStream:true},third:{userId:'4',selfStream:true}})},
           ApplicationStreamingStore:{getViewerIds:key=>fixtureCachedViewers.has(key)?['1']:[],
             getActiveStreamForStreamKey:key=>fixtureWatched.has(key)?{guildId:'10',channelId:'20',ownerId:key.split(':').at(-1),state:'ACTIVE'}:null},StreamRTCConnectionStore:{getRTCConnection:key=>key==='guild:10:20:4'?rtc3:key==='guild:10:20:3'?rtc2:rtc},
-          MediaEngineStore:{getMediaEngine:()=>engine},RTCConnectionStore:{getState:()=>'RTC_CONNECTED',getChannelId:()=>'20'}};
+          MediaEngineStore:{getMediaEngine:()=>engine,
+            isLocalMute:(user,context)=>user==='2'&&context==='stream'&&fixtureAudio.muted,
+            getLocalVolume:(user,context)=>user==='2'&&context==='stream'?fixtureAudio.gain:100},
+          RTCConnectionStore:{getState:()=>'RTC_CONNECTED',getChannelId:()=>'20'}};
+        window.fixtureAudio={muted:false,gain:100*Math.pow(.50,2.8),writes:0};
         const modules={};for(const [name,store] of Object.entries(stores))modules[name]={exports:{...store,getName:()=>name}};
         modules.visibility={exports:{isIncomingVideoEnabled:()=>true,lastIncomingVideoEnabledChangeTime:()=>0}};
+        modules.audio={exports:{toggleLocalMute(user,context){
+          if(user!=='2'||context!=='stream')throw Error('Unexpected test audio target');
+          fixtureAudio.muted=!fixtureAudio.muted;fixtureAudio.writes++;
+        },setLocalVolume(user,gain,context){
+          if(user!=='2'||context!=='stream')throw Error('Unexpected test audio target');
+          fixtureAudio.gain=gain;fixtureAudio.writes++;
+        }}};
         modules.watch={exports:{startWatch,closeWatch}};
         window.webpackChunkdiscord_app=[];
         webpackChunkdiscord_app.push=function(entry){entry[2]({c:modules});return Array.prototype.push.call(this,entry);};

@@ -29,7 +29,7 @@ public sealed partial class MainWindow : Window
         Presentation.WidgetViewPresenter.SetSystemHighContrast(themeSettings.HighContrast);
         themeSettings.Changed += SystemThemeChanged;
         ExtendsContentIntoTitleBar = true;
-        SystemBackdrop = new WinUIEx.TransparentTintBackdrop();
+        SystemBackdrop = new Shell.TransparentWindowBackdrop();
         if (AppWindow.Presenter is OverlappedPresenter presenter)
         {
             presenter.IsResizable = false;
@@ -108,6 +108,7 @@ public sealed partial class MainWindow : Window
         };
         Closed += (_, _) =>
         {
+            ReleaseBackgroundHook();
             replayPowerMessages?.Dispose(); replayPowerMessages = null;
             systemTray?.Dispose(); systemTray = null;
             mouseSession?.Dispose(); mouseSession = null;
@@ -176,6 +177,8 @@ public sealed partial class MainWindow : Window
         // decorative exit motion. Guide, keyboard and gap dismissal animate.
         page.HideRequested += HideOverlay;
         page.HideForCaptureRequested = token => HideForCaptureAsync(page, token);
+        page.ForegroundBeforeOverlay = () => Volatile.Read(ref foregroundReturnTarget) is { } target
+            ? new(target.Handle.ToString("X"), target.ProcessId, target.ProcessCreated.ToString("X16"), target.ClassName) : null;
         page.ImmediateHideRequested += HideOverlayImmediately;
         page.MotionPolicyChanged += RefreshOverlayMotionPolicy;
         page.WindowActivationDiagnostic = message =>
@@ -212,9 +215,6 @@ public sealed partial class MainWindow : Window
             catch (Exception error) { Diagnostics.FrontendFailureLog.Current.Write("system-tray", error); }
         }
         page.ReturnFromPinnedRequested += () => { Activate(); input?.AcquireForeground(); page.QueueEntryFocus(); };
-        var taskActivation = new WidgetRail.WindowsWindowActivation.TaskWindowActivation(
-            new WidgetRail.WindowsWindowActivation.WindowsTaskWindowActivation());
-        page.TaskWindowActivationRequested += effect => _ = RunTaskHandoffAsync(page, effect, taskActivation);
         page.HostTaskActivationRequested = request => RunHostTaskHandoffAsync(page, request);
         page.SystemTaskViewRequested = () => OpenSystemTaskViewAsync(page);
         page.OpenExternalWebPageRequested = (uri, token) => OpenExternalWebPageAsync(page, uri, token);

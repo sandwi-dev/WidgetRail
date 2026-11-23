@@ -88,12 +88,13 @@ Copy-Item -LiteralPath (Join-Path $sampleRoot 'media\adapter.html') `
     -Destination (Join-Path $mediaRoot 'adapter.html') -Force
 Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\WidgetSdk\EmbeddedMediaAdapterRuntime.js') `
     -Destination (Join-Path $mediaRoot 'adapter-runtime.js') -Force
-Copy-Item -LiteralPath (Join-Path $sampleRoot 'assets\icons\youtube-red.svg') `
-    -Destination (Join-Path $stagingRoot 'assets\icons\youtube-red.svg') -Force
+Get-ChildItem -LiteralPath (Join-Path $sampleRoot 'assets\icons') -File |
+    Copy-Item -Destination (Join-Path $stagingRoot 'assets\icons') -Force
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'assets\icons\search.svg'), (Join-Path $sampleRoot 'assets\icons\Lucide-LICENSE.txt') `
     -Destination (Join-Path $stagingRoot 'assets\icons') -Force
 
 $requiredFiles = @(
+    'assets\icons\search.svg',
     'manifest.json',
     'assets\icons\youtube-red.svg',
     'assets\icons\search.svg',

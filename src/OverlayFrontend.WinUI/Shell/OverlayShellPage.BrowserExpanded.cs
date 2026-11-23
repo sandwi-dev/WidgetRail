@@ -70,15 +70,41 @@ internal sealed partial class OverlayShellPage
         finally { if (!ready) RestoreBrowserPickerPlacement(); }
     }
 
-    private async Task<bool> ExpandBrowserAsync(BrowserSurface browser, CancellationToken token, Action? restoreSource = null)
+    private Task<bool> ExpandBrowserAsync(BrowserSurface browser, CancellationToken token, Action? restoreSource = null) =>
+        ExpandBrowserSurfaceAsync(browser, token, restoreSource, passiveVideo: false);
+
+    private Task<bool> ExpandBackendVideoAsync(BrowserSurface browser, CancellationToken token, Action restoreSource) =>
+        ExpandBrowserSurfaceAsync(browser, token, restoreSource, passiveVideo: true);
+
+    private async Task ExpandVideoFromSlotAsync(BrowserSlot slot, BrowserSurface video)
     {
-        if (retired || !visible || browserOwner is null || !browser.CanCompleteSiteDecision) return false;
+        if (!slot.CanExpandVideo || slot.Surface != video || !foreground) return;
+        try
+        {
+            await ExpandBackendVideoAsync(video, lifetime.Token, () =>
+            {
+                if (slot.CanDisplay && slot.AcceptsInput && slot.Surface == video) slot.Focus(FocusState.Keyboard);
+                else QueueEntryFocus();
+            });
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception error) when (error is TimeoutException or ObjectDisposedException or System.Runtime.InteropServices.COMException)
+        {
+            Diagnostics.FrontendFailureLog.Current.Write("backend-video-fullscreen", error);
+        }
+    }
+
+    private async Task<bool> ExpandBrowserSurfaceAsync(BrowserSurface browser, CancellationToken token, Action? restoreSource, bool passiveVideo)
+    {
+        bool SourceAvailable() => passiveVideo ? browser.CanPresentBackendVideo : browser.CanCompleteSiteDecision;
+        if (retired || !visible || browserOwner is null || !SourceAvailable()) return false;
         if (expandedBrowser is { } existing)
             return !fullscreenLayer.IsTransitioning && existing.Surface?.Owns(browser) == true;
         if (fullscreenLayer.IsOpen) return false;
         var originPin = pinned is { } pin && ReferenceEquals(browser.XamlRoot, pin.Window.AutomationRoot.XamlRoot) ? pin : null;
         var previous = FocusManager.GetFocusedElement(browser.XamlRoot) as Control;
-        var slot = new BrowserSlot { Active = true, AcceptsInput = false, Expanded = true, Margin = new(12), IsTabStop = true };
+        var slot = new BrowserSlot { Active = true, AcceptsInput = false, Expanded = true, PassiveVideoExpansion = passiveVideo,
+            Margin = new(passiveVideo ? 0 : 12), IsTabStop = true };
         AutomationProperties.SetAutomationId(slot, "Browser.Expanded");
         AutomationProperties.SetName(slot, AutomationProperties.GetName(browser.CompositionRoot));
         var layout = new Grid { RowDefinitions = { new() { Height = new(1, GridUnitType.Star) }, new() { Height = GridLength.Auto } } };
@@ -125,7 +151,7 @@ internal sealed partial class OverlayShellPage
             token.ThrowIfCancellationRequested();
             RefreshExpandedBrowser();
             slot.Focus(FocusState.Keyboard); slot.Enter();
-            return ready = ReferenceEquals(expandedBrowser, slot) && browser.CanCompleteSiteDecision;
+            return ready = ReferenceEquals(expandedBrowser, slot) && SourceAvailable();
         }
         finally
         {

@@ -131,6 +131,8 @@ public static class PlatformCapabilities
     public const string TaskWindowsCloseV1 = "system.apps.windows.close.v1";
     public const string TaskWindowsList = "apps.windows.list";
     public const string TaskWindowsSwitch = "apps.windows.switch";
+    public const string LaunchHandoffBegin = "apps.windows.launch.begin";
+    public const string LaunchHandoffReady = "apps.windows.launch.ready";
     public const string TaskWindowsClose = "apps.windows.close";
     public const string AppRunningReadV1 = "system.apps.running.read.v1";
     public const string AppRunningRegisterV1 = "system.apps.running.register.v1";
@@ -277,19 +279,20 @@ public static class PlatformCapabilities
                 Set(ProviderDocumentCreate, ProviderDocumentDiscard), Set(), AllowsBackground: true,
                 BackgroundOperations: Set(ProviderDocumentCreate, ProviderDocumentDiscard)),
             [CaptureLibraryReadV1] = new(CaptureLibraryReadV1, 1, BrokerCapabilityKind.Read,
-                Set("capture-library.sources", "capture-library.list", "capture-library.query", "capture-library.query-continuity", "capture-library.get-metadata", "capture-library.contexts", "capture-library.applications", "capture-library.folders", "capture-library.groups", "capture-library.find", "capture-library.open", "capture-library.read", "capture-library.release", "capture-library.thumbnail", "capture.replay.get"), Set("capture-library.changed", "capture.replay.changed", "capture.replay.encoding-changed"), AllowsBackground: true),
+                Set("capture-library.sources", "capture-library.list", "capture-library.query", "capture-library.query-continuity", "capture-library.get-metadata", "capture-library.contexts", "capture-library.destinations", "capture-library.find-owned-links", "capture-library.applications", "capture-library.folders", "capture-library.groups", "capture-library.runs", "capture-library.find", "capture-library.open", "capture-library.read", "capture-library.release", "capture-library.thumbnail", "capture.replay.get"), Set("capture-library.changed", "capture.replay.changed", "capture.replay.encoding-changed"), AllowsBackground: true),
             [CaptureLibrarySaveV1] = new(CaptureLibrarySaveV1, 1, BrokerCapabilityKind.Control,
                 Set("capture-library.save", "capture-library.save-current", "capture-library.save-context", "capture-library.edit-copy"), Set(), AllowsDashboardGesture: false,
                 InFlightContinuationOperations: Set("capture-library.edit-copy")),
             [CaptureLibraryRecycleLinkedV1] = new(CaptureLibraryRecycleLinkedV1, 1, BrokerCapabilityKind.Control,
                 Set("capture-library.recycle-linked"), Set(), AllowsDashboardGesture: false),
             [CaptureLibraryManageV1] = new(CaptureLibraryManageV1, 1, BrokerCapabilityKind.Control,
-                Set("capture-library.choose-source", "capture-library.remove-source", "capture-library.link", "capture-library.remove-link", "capture-library.unhide", "capture-library.delete", "capture-library.export", "capture-library.open-folder", "capture-library.metadata", "capture-library.metadata-batch", "capture-library.remove-unavailable", "capture-library.recycle", "capture-library.reveal", "capture-library.copy", "capture-library.save-copy"), Set(), AllowsDashboardGesture: false,
-                InFlightContinuationOperations: Set("capture-library.choose-source", "capture-library.open-folder", "capture-library.reveal", "capture-library.copy", "capture-library.save-copy")),            [WindowCaptureV1] = new(WindowCaptureV1, 1, BrokerCapabilityKind.Control,
-                Set(WindowCaptureRequest, "capture.request-original", "capture.start", "capture.stop", "capture.capabilities", "capture.recording-capabilities", "capture.validate", WindowCaptureStatus, WindowCaptureCancel, WindowCaptureDiscard, WindowCaptureRead,
+                Set("capture-library.choose-source", "capture-library.remove-source", "capture-library.link", "capture-library.remove-link", "capture-library.unhide", "capture-library.delete", "capture-library.export", "capture-library.open-folder", "capture-library.metadata", "capture-library.metadata-batch", "capture-library.attach-context", "capture-library.ensure-subject", "capture-library.change-destination", "capture-library.set-context-linked", "capture-library.remove-unavailable", "capture-library.recycle", "capture-library.reveal", "capture-library.copy", "capture-library.save-copy"), Set(), AllowsDashboardGesture: false,
+                InFlightContinuationOperations: Set("capture-library.change-destination", "capture-library.choose-source", "capture-library.open-folder", "capture-library.reveal", "capture-library.copy", "capture-library.save-copy")),            [WindowCaptureV1] = new(WindowCaptureV1, 1, BrokerCapabilityKind.Control,
+                Set(WindowCaptureRequest, "capture.request-original", "capture.start", "capture.save-screenshot", "capture.record-clip", "capture.stop", "capture.capabilities", "capture.recording-capabilities", "capture.validate", WindowCaptureStatus, WindowCaptureCancel, WindowCaptureDiscard, WindowCaptureRead,
                     "capture.replay.configure", "capture.replay.start", "capture.replay.stop", "capture.replay.save",
+                    "capture.replay.approvals", "capture.replay.choose-approval", "capture.replay.remove-approval",
                     "capture.web-prepare","capture.web-prepare-constrained","capture.web-status","capture.web-stop"), Set(),
-                ReadOperations: Set(WindowCaptureStatus, WindowCaptureRead, "capture.capabilities", "capture.recording-capabilities", "capture.validate","capture.web-status"), AllowsBackground: true,
+                ReadOperations: Set(WindowCaptureStatus, WindowCaptureRead, "capture.capabilities", "capture.recording-capabilities", "capture.validate","capture.web-status", "capture.replay.approvals"), AllowsBackground: true,
                 InFlightContinuationOperations: Set("capture.web-prepare","capture.web-prepare-constrained", "capture.replay.configure", "capture.replay.start", "capture.replay.save"),
                 BackgroundOperations: Set(WindowCaptureStatus, WindowCaptureRead, WindowCaptureCancel, WindowCaptureDiscard, "capture.stop", "capture.capabilities", "capture.recording-capabilities", "capture.validate","capture.web-status","capture.web-stop")),
             [TaskWindowsPreviewV1] = new(TaskWindowsPreviewV1, 1, BrokerCapabilityKind.Read, Set(), Set()),
@@ -298,7 +301,7 @@ public static class PlatformCapabilities
             [TaskWindowsReadV1] = new(TaskWindowsReadV1, 1, BrokerCapabilityKind.Read,
                 Set(TaskWindowsList), Set()),
             [TaskWindowsSwitchV1] = new(TaskWindowsSwitchV1, 1, BrokerCapabilityKind.Control,
-                Set(TaskWindowsSwitch), Set(), AllowsDashboardGesture: false,
+                Set(TaskWindowsSwitch, LaunchHandoffBegin, LaunchHandoffReady), Set(), AllowsDashboardGesture: false,
                 InFlightContinuationOperations: Set(TaskWindowsSwitch)),
             [TaskWindowsCloseV1] = new(TaskWindowsCloseV1, 1, BrokerCapabilityKind.Control,
                 Set(TaskWindowsClose), Set(), AllowsDashboardGesture: false),
@@ -356,8 +359,9 @@ public static class PlatformCapabilities
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true,
                 BackgroundOperations: Set("permissions.check", "permissions.status", "permissions.cancel")),
             [WidgetMarketplaceV1] = new(WidgetMarketplaceV1,1,BrokerCapabilityKind.Control,
-                Set("marketplace.status","marketplace.refresh","marketplace.inventory","marketplace.download","marketplace.install","marketplace.cancel","marketplace.download-updates","marketplace.install-updates"),Set(),
-                ReadOperations: Set("marketplace.status","marketplace.refresh","marketplace.inventory"),
+                Set("marketplace.status","marketplace.refresh","marketplace.inventory","marketplace.download","marketplace.install","marketplace.cancel","marketplace.download-updates","marketplace.install-updates","marketplace.themes",
+                    "marketplace.theme-status","marketplace.theme-install","marketplace.theme-install-apply","marketplace.theme-apply"),Set(),
+                ReadOperations: Set("marketplace.status","marketplace.refresh","marketplace.inventory","marketplace.themes","marketplace.theme-status"),
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted),
         };
 

@@ -36,7 +36,12 @@ internal sealed partial class NativePopupTheme
             origin.Loaded += Loaded; origin.Unloaded += Unloaded;
             ToolTipService.SetToolTip(origin, tip);
         }
-        internal void Update(string text) { tip.Content = text; Find(origin)?.Apply(tip); }
+        internal void Update(string text)
+        {
+            if (Equals(tip.Content, text)) return;
+            tip.Content = text;
+            Find(origin)?.Apply(tip);
+        }
         private void Loaded(object sender, RoutedEventArgs args) => Find(origin)?.Apply(tip);
         private void Opened(object sender, RoutedEventArgs args)
         {

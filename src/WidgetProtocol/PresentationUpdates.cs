@@ -100,6 +100,11 @@ public enum PresentationProperty
     Disclosure,
     ModalDismissal,
     IsCommandMenu,
+    ImageIsPublicMedia,
+    OverlayModal,
+    UnavailableTrayActions,
+    NativeContextMenuOnly,
+    ForegroundBackgroundProcessKey,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationUpdateOperationKind>))]
@@ -173,7 +178,7 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction |
             PresentationPropertyImpact.Accessibility,
         PresentationProperty.CollectionResetGeneration => PresentationPropertyImpact.MeasureLayout | PresentationPropertyImpact.Paint | PresentationPropertyImpact.Interaction,
-        PresentationProperty.Intent or PresentationProperty.ContextMenuButton or PresentationProperty.ContextActions =>
+        PresentationProperty.Intent or PresentationProperty.NativeContextMenuOnly or PresentationProperty.ContextMenuButton or PresentationProperty.ContextActions =>
             PresentationPropertyImpact.Authority | PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Interaction | PresentationPropertyImpact.Accessibility,
         PresentationProperty.CollectionLoading => PresentationPropertyImpact.Paint,
@@ -184,6 +189,7 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Authority |
             PresentationPropertyImpact.Interaction |
             PresentationPropertyImpact.Accessibility,
+        PresentationProperty.UnavailableTrayActions => PresentationPropertyImpact.Accessibility,
         PresentationProperty.Surface =>
             PresentationPropertyImpact.SurfacePlacement |
             PresentationPropertyImpact.MeasureLayout |
@@ -217,7 +223,7 @@ public static class PresentationPropertyMetadata
         PresentationProperty.Value =>
             PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Accessibility,
-        PresentationProperty.ImageSource or PresentationProperty.ArtworkHandle =>
+        PresentationProperty.ImageSource or PresentationProperty.ArtworkHandle or PresentationProperty.ImageIsPublicMedia =>
             PresentationPropertyImpact.Resource |
             PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Accessibility,
@@ -226,6 +232,7 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Accessibility,
         PresentationProperty.FocusBackgroundArtworkHandle or
+        PresentationProperty.ForegroundBackgroundProcessKey or
         PresentationProperty.UsesFocusedDescendantArtwork =>
             PresentationPropertyImpact.Resource |
             PresentationPropertyImpact.Paint,
@@ -252,6 +259,7 @@ public static class PresentationPropertyMetadata
         PresentationProperty.Disclosure =>
             PresentationPropertyImpact.Authority | PresentationPropertyImpact.Interaction |
             PresentationPropertyImpact.Accessibility | PresentationPropertyImpact.MeasureLayout,
+        PresentationProperty.OverlayModal => PresentationPropertyImpact.MeasureLayout | PresentationPropertyImpact.Interaction,
         PresentationProperty.ActionId or
         PresentationProperty.ModalDismissal or
         PresentationProperty.ValueChangedActionId or
@@ -308,6 +316,7 @@ public static class PresentationPropertyMetadata
         PresentationProperty.ActiveInputScopeId or
         PresentationProperty.InitialFocusId or
         PresentationProperty.QuickActions or
+        PresentationProperty.UnavailableTrayActions or
         PresentationProperty.Surface;
 }
 

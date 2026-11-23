@@ -49,7 +49,12 @@ public sealed partial class CaptureLibraryStore
             using var ownership = Own();
             var page = QueryPage(request, token);
             if (request.Query.FavoritesOnly) return new(page, page.Revision);
-            using var command = Command("SELECT epoch || '-' || printf('%x',ordering.sequence) FROM library_revision,library_ordering ordering WHERE library_revision.id=1 AND ordering.id=1");
+            // Origin/reference filters and text searches can gain or lose rows when a link changes.
+            // Other gallery filters and all current sort orders depend only on the media rows.
+            var includesLinks = request.Query.OriginPackageId is not null || !string.IsNullOrWhiteSpace(request.Query.Search);
+            using var command = Command(includesLinks
+                ? "SELECT epoch || '-' || printf('%x',o.sequence) FROM library_revision JOIN library_ordering o USING(id) WHERE id=1"
+                : "SELECT epoch || '-c-' || printf('%x',o.sequence-a.sequence) FROM library_revision JOIN library_ordering o USING(id) JOIN association_ordering a USING(id) WHERE id=1");
             return new(page, (string)command.ExecuteScalar()!);
         }
         finally { gate.Release(); }
@@ -190,6 +195,7 @@ public sealed partial class CaptureLibraryStore
     private (string Where, (string Name, object Value)[] Parameters) QueryWhere(CaptureLibraryQuery query)
     {
         var conditions = new List<string>(); var parameters = new List<(string, object)>();
+        if (query.AvailableOnly) conditions.Add("available=1");
         if (query.HiddenOnly) DemandHiddenState();
         LoadSources();
         if (!hiddenStateAvailable) conditions.Add("json_extract(data,'$.Item.SourceId') IS NULL");
@@ -203,7 +209,7 @@ public sealed partial class CaptureLibraryStore
         }
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
-            conditions.Add("(instr(lower(coalesce(json_extract(data,'$.Item.Title'),'')),lower($search))>0 OR instr(lower(coalesce(name,'')),lower($search))>0 OR instr(lower(coalesce(json_extract(data,'$.Item.Media.SourceApplication.ApplicationName'),'')),lower($search))>0 OR EXISTS (SELECT 1 FROM capture_associations association JOIN capture_association_refs reference ON reference.key_hash=association.key_hash WHERE association.capture_id=captures.id AND instr(lower(coalesce(reference.label,'')),lower($search))>0))");
+            conditions.Add("(instr(lower(coalesce(json_extract(data,'$.Item.Title'),'')),lower($search))>0 OR instr(lower(coalesce(name,'')),lower($search))>0 OR instr(lower(coalesce(json_extract(data,'$.Item.Media.SourceApplication.ApplicationName'),'')),lower($search))>0 OR EXISTS (SELECT 1 FROM active_capture_associations association JOIN capture_association_refs reference ON reference.key_hash=association.key_hash WHERE association.capture_id=captures.id AND instr(lower(coalesce(reference.label,'')),lower($search))>0))");
             parameters.Add(("$search", query.Search.Trim()));
         }
         if (query.Application is { } application)
@@ -212,6 +218,24 @@ public sealed partial class CaptureLibraryStore
         { conditions.Add("coalesce(json_extract(data,'$.Item.SourceId'),'')=$source"); parameters.Add(("$source", source)); }
         if (query.MediaKind != CaptureLibraryMediaKind.All)
         { conditions.Add("json_extract(data,'$.Item.Media.ContentType')=$kind"); parameters.Add(("$kind", query.MediaKind == CaptureLibraryMediaKind.Screenshot ? "image/png" : "video/mp4")); }
+        if (query.SourceIntervals is { } intervals)
+        {
+            var matches = new List<string>(intervals.Count);
+            foreach (var interval in intervals)
+            {
+                var i = matches.Count;
+                matches.Add($"($instance{i},$from{i},$through{i})");
+                parameters.Add(($"$instance{i}", interval.Instance));
+                parameters.Add(($"$from{i}", interval.From));
+                parameters.Add(($"$through{i}", interval.Through));
+            }
+            // Drive the lookup from the bounded interval list, including when the ordinary gallery also filters by source.
+            conditions.Add("id IN (WITH windows(instance,start,finish) AS (VALUES " + string.Join(",", matches) +
+                ") SELECT matched.id FROM windows CROSS JOIN captures matched WHERE " +
+                "json_extract(matched.data,'$.Item.Media.SourceProcess.Instance')=windows.instance AND " +
+                "json_extract(matched.data,'$.Item.Media.SourceProcess.From')>=windows.start AND " +
+                "json_extract(matched.data,'$.Item.Media.SourceProcess.Through')<=windows.finish)");
+        }
         if (query.OriginPackageId is { } origin)
         {
             parameters.Add(("$origin", origin));
@@ -220,10 +244,13 @@ public sealed partial class CaptureLibraryStore
                 parameters.Add(("$referenceKind", reference.Kind)); parameters.Add(("$referenceId", reference.Id));
                 var role = reference.Role is { } requestedRole ? " AND reference.role=$referenceRole" : "";
                 if (reference.Role is { } value) parameters.Add(("$referenceRole", (int)value));
-                conditions.Add("EXISTS (SELECT 1 FROM capture_associations association JOIN capture_association_refs reference ON reference.key_hash=association.key_hash " +
+                var associations = query.ExcludeDetachedReference ? "capture_associations" : "active_capture_associations";
+                conditions.Add((query.ExcludeReference ? "NOT " : "") + $"EXISTS (SELECT 1 FROM {associations} association JOIN capture_association_refs reference ON reference.key_hash=association.key_hash " +
                     "WHERE association.capture_id=captures.id AND association.origin_package=$origin AND reference.kind=$referenceKind AND reference.reference_id=$referenceId" + role + ")");
+                if (query.ExcludeDetachedReference && hasDestinationMasks && hiddenStateAvailable)
+                    conditions.Add("NOT EXISTS (SELECT 1 FROM userstate.destination_masks m WHERE m.capture_id=captures.id AND m.package=$origin AND m.kind=$referenceKind AND m.destination=$referenceId)");
             }
-            else conditions.Add("(json_extract(data,'$.Item.Origin.PackageId')=$origin OR EXISTS (SELECT 1 FROM capture_associations association WHERE association.capture_id=captures.id AND association.origin_package=$origin))");
+            else conditions.Add("(json_extract(data,'$.Item.Origin.PackageId')=$origin OR EXISTS (SELECT 1 FROM active_capture_associations association WHERE association.capture_id=captures.id AND association.origin_package=$origin))");
         }
         if (query.FavoritesOnly) conditions.Add("json_extract(data,'$.Item.IsFavorite')=1");
         if (query.FromUnixMilliseconds is { } from) { conditions.Add("saved_at >= $from"); parameters.Add(("$from", from)); }

@@ -4,4 +4,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../PlatformSettings/PlatformSettings.csproj" />
+    <InternalsVisibleTo Include="wrail" />
+    <InternalsVisibleTo Include="WrailCli.Tests" />
+    <InternalsVisibleTo Include="WidgetBridge" />
+  </ItemGroup>
 </Project>

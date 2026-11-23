@@ -34,6 +34,9 @@ public sealed partial class WidgetPresentationSession
     public async Task<bool> IsReplayCommandCurrentAsync(string id, CancellationToken cancellationToken = default) =>
         BridgeJson.FromElement<BridgeCaptureCurrent>((await RequestAsync(BridgeMessageTypes.CheckReplayCommand,
             new BridgeCaptureReference(id), BridgeMessageTypes.CheckReplayCommand, cancellationToken).ConfigureAwait(false)).Payload).Current;
+    public async Task<bool> CompleteReplayApprovalAsync(string id, ReplayApprovedApplication? selected, CancellationToken token) =>
+        BridgeJson.FromElement<BridgeCaptureCurrent>((await RequestAsync(BridgeMessageTypes.CompleteReplayApproval,
+            new BridgeReplayApprovalChoice(id, selected), BridgeMessageTypes.CompleteReplayApproval, token).ConfigureAwait(false)).Payload).Current;
     public async Task SetReplayPowerStateAsync(long revision, bool suspended, CancellationToken cancellationToken = default) =>
         _ = await RequestAsync(BridgeMessageTypes.ReplayPowerState, new BridgeReplayPower(revision, suspended),
             BridgeMessageTypes.ReplayPowerState, cancellationToken).ConfigureAwait(false);
@@ -48,12 +51,15 @@ public sealed partial class WidgetPresentationSession
             request, BridgeMessageTypes.SaveReplay, cancellationToken).ConfigureAwait(false)).Payload);
         return result.IsWellFormed() && result.RequestId == request.RequestId ? result : throw new InvalidDataException("Invalid replay save result.");
     }
-    public async Task<CaptureReplayControlResult> StopReplayAsync(string? expectedSessionId, CancellationToken cancellationToken = default)
+    public Task<CaptureReplayControlResult> StopReplayAsync(string? expectedSessionId, CancellationToken cancellationToken = default) =>
+        StopReplayAsync(expectedSessionId, null, cancellationToken);
+
+    public async Task<CaptureReplayControlResult> StopReplayAsync(string? expectedSessionId, long? expectedRevision, CancellationToken cancellationToken)
     {
         var request = new CaptureReplaySessionRequest(expectedSessionId);
         if (!request.IsWellFormed()) throw new ArgumentException("Invalid replay session.", nameof(expectedSessionId));
         var result = BridgeJson.FromElement<CaptureReplayControlResult>((await RequestAsync(BridgeMessageTypes.StopReplay,
-            request, BridgeMessageTypes.StopReplay, cancellationToken).ConfigureAwait(false)).Payload);
+            new BridgeReplayStop(expectedSessionId, expectedRevision), BridgeMessageTypes.StopReplay, cancellationToken).ConfigureAwait(false)).Payload);
         if (!result.IsWellFormed()) throw new InvalidDataException("Invalid replay stop result.");
         ObserveReplayStatus(result.Status); return result;
     }

@@ -128,19 +128,23 @@ public sealed partial class CaptureLibraryStore : IDisposable
     public Task<CaptureLibraryItem> SaveAsync(HostCaptureAttachment source, CancellationToken token) => SaveAuthenticatedAsync(source, null, token);
     public Task<CaptureLibraryItem> SaveAsync(HostCaptureAttachment source, BrokerWidgetIdentity origin, CancellationToken token)
     { origin.Validate(); return SaveAuthenticatedAsync(source, OriginFor(origin), token); }
-    private async Task<CaptureLibraryItem> SaveAuthenticatedAsync(HostCaptureAttachment source, CaptureContextOrigin? origin, CancellationToken token)
+    internal Task<CaptureLibraryItem> SaveCaptureJobAsync(HostCaptureAttachment source, BrokerWidgetIdentity actor,
+        Func<bool> current, Func<CancellationToken, Task> reauthorize, CancellationToken token) =>
+        SaveAuthenticatedAsync(source, OriginFor(actor), token, current, reauthorize);
+    private async Task<CaptureLibraryItem> SaveAuthenticatedAsync(HostCaptureAttachment source, CaptureContextOrigin? origin,
+        CancellationToken token, Func<bool>? current = null, Func<CancellationToken, Task>? reauthorize = null)
     {
         if (!source.Attachment.IsWellFormed() || !CaptureContextLimits.Timestamp(source.CapturedAtUnixMilliseconds)) throw Error("invalid_payload");
         await gate.WaitAsync(token).ConfigureAwait(false);
         try
         {
             using var ownership = Own();
-            return ItemView(await SaveOwnedAsync(source, origin, token).ConfigureAwait(false));
+            return ItemView(await SaveOwnedAsync(source, origin, token, current: current, reauthorize: reauthorize).ConfigureAwait(false));
         }
         finally { gate.Release(); }
     }
     private async Task<Saved> SaveOwnedAsync(HostCaptureAttachment source, CaptureContextOrigin? origin, CancellationToken token,
-        Action<Saved>? prepareAssociation = null)
+        Action<Saved>? prepareAssociation = null, Func<bool>? current = null, Func<CancellationToken, Task>? reauthorize = null)
     {
         PlainPath(source.Path);
         await using var input = new FileStream(source.Path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.Asynchronous);
@@ -148,7 +152,10 @@ public sealed partial class CaptureLibraryStore : IDisposable
         var hash = Convert.ToHexString(await SHA256.HashDataAsync(input, token).ConfigureAwait(false)); input.Position = 0;
         // Repeated saves reuse original bytes. Event associations are independent
         // and may still be appended when this physical-media match is found.
-        var existing = IndexRows("WHERE hash=$hash AND available=1 AND json_extract(data,'$.Item.SourceId') IS NULL", ("$hash", hash)).FirstOrDefault(i => SameMedia(i.Item.Media, source.Attachment));
+        // Saving an attachment twice reuses its bytes. Two new screenshot commands
+        // each produce a capture, even if the application rendered identical pixels.
+        var existing = current is not null ? null : IndexRows("WHERE hash=$hash AND available=1 AND json_extract(data,'$.Item.SourceId') IS NULL", ("$hash", hash)).FirstOrDefault(i => SameMedia(i.Item.Media, source.Attachment));
+        if (current?.Invoke() == false) throw Error("capture_stale");
         if (existing is not null && File.Exists(MediaPath(existing))) { prepareAssociation?.Invoke(existing); return existing; }
         DemandFreeSpace(input.Length);
         var id = Guid.NewGuid().ToString("N");
@@ -166,6 +173,9 @@ public sealed partial class CaptureLibraryStore : IDisposable
             var stamp = File.GetLastWriteTimeUtc(path).Ticks;
             saved = saved with { MediaStamp = stamp, Item = saved.Item with { Revision = stamp } };
             await File.WriteAllTextAsync(partial, JsonSerializer.Serialize(saved), token).ConfigureAwait(false);
+            if (reauthorize is not null) await reauthorize(token).ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+            if (current?.Invoke() == false) throw Error("capture_stale");
             File.Move(partial, metadata); IndexPut(saved, input.Length);
             verified[item.Id] = (input.Length, saved.MediaStamp, hash);
             return saved;
@@ -296,7 +306,7 @@ public sealed partial class CaptureLibraryStore : IDisposable
         ? ResolveSourcePath(ReadSource(sourceId), saved.RelativePath ?? string.Empty)
         : saved.FileName is { } name && ValidName(name) ? Path.Combine(captureDirectory, name) : throw Error("capture_library_invalid_media");
     private static string Extension(CaptureAttachment media) => media.ContentType == "image/png" ? ".png" : ".mp4";
-    private static bool SameMedia(CaptureAttachment a, CaptureAttachment b) => a.ContentType == b.ContentType && a.Width == b.Width && a.Height == b.Height && a.ByteLength == b.ByteLength && a.DurationSeconds == b.DurationSeconds && a.SourceApplication == b.SourceApplication;
+    private static bool SameMedia(CaptureAttachment a, CaptureAttachment b) => a.ContentType == b.ContentType && a.Width == b.Width && a.Height == b.Height && a.ByteLength == b.ByteLength && a.DurationSeconds == b.DurationSeconds && a.SourceApplication == b.SourceApplication && a.SourceProcess == b.SourceProcess;
     private bool DeleteOwned(string path) { try { PlainPath(path); File.Delete(path); return true; } catch (IOException) { return false; } catch (UnauthorizedAccessException) { return false; } }
     internal static void PlainPath(string path)
     {

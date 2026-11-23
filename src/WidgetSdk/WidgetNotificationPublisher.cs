@@ -18,6 +18,7 @@ public sealed class WidgetNotificationPublisher
     private readonly WidgetOperationLifetime lifetime;
     private WidgetNotification? pending;
     private bool needsShow;
+    private bool withdrawn;
     private long eventRevision;
 
     internal WidgetNotificationPublisher(string operationKey, string notificationKey, string? categoryId,
@@ -53,18 +54,41 @@ public sealed class WidgetNotificationPublisher
             throw new ArgumentException("Notification must be valid and belong to this publisher's key and category.", nameof(notification));
         lock (gate)
         {
-            pending = notification;
-            if (!updateOnly) { needsShow = true; eventRevision++; }
+            // Late metadata must not undo an explicit withdrawal, including
+            // one still queued behind a delivery that ignores cancellation.
+            if (!updateOnly || !withdrawn) pending = notification;
+            if (!updateOnly) { withdrawn = false; needsShow = true; eventRevision++; }
         }
+        return Deliver();
+    }
+
+    /// <summary>Withdraw this publisher's notification, after any already-running delivery has completed.
+    /// Pending metadata cannot resurrect it; a subsequent new-event Publish may show it again.
+    /// Uses the publisher's existing lifetime and does not change host preferences.</summary>
+    public WidgetOperationHandle Dismiss()
+    {
+        lock (gate) { pending = null; withdrawn = true; needsShow = false; eventRevision++; }
+        return Deliver();
+    }
+
+    private WidgetOperationHandle Deliver()
+    {
         return operations.RunLatest(operationKey, async context =>
         {
             try
             {
-                await Task.Delay(debounce, clock, context.CancellationToken).ConfigureAwait(false);
-                WidgetNotification content; bool show; long sentRevision;
-                lock (gate) { content = pending!; show = needsShow; sentRevision = eventRevision; }
+                TimeSpan delay;
+                lock (gate) delay = withdrawn ? TimeSpan.Zero : debounce;
+                await Task.Delay(delay, clock, context.CancellationToken).ConfigureAwait(false);
+                context.CancellationToken.ThrowIfCancellationRequested();
+                WidgetNotification? content; bool show; long sentRevision;
+                lock (gate) { content = pending; show = needsShow; sentRevision = eventRevision; }
                 var notifications = service();
-                var result = show
+                // RunLatest serializes same-key delegates. Cancellation alone
+                // would not order Dismiss after a late external Show.
+                var result = content is null
+                    ? await notifications.DismissAsync(notificationKey, context.CancellationToken).ConfigureAwait(false)
+                    : show
                     ? await notifications.ShowAsync(content, context.CancellationToken).ConfigureAwait(false)
                     : await notifications.UpdateAsync(content, context.CancellationToken).ConfigureAwait(false);
                 if (result.Accepted)

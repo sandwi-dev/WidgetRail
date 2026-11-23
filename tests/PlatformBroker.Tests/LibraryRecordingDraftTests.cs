@@ -21,6 +21,87 @@ internal static class LibraryRecordingDraftTests
         registry.Complete(new(ticket.RequestId,1280,720,2){Properties=new(1280,720,15,30,0,CaptureEncoderMode.Software)});
         return registry.Status(owner,ticket.RequestId).Attachment??throw new Exception("Draft did not become ready");
     }
+    internal static async Task CompletionIncludesEachAcceptedHostTask()
+    {
+        var handoff = new HostActionCompletion();
+        var saving = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var companion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        handoff.Register(saving.Task);
+        handoff.Register(companion.Task);
+        companion.SetCanceled();
+        var rejected = TrayActionResult.Unavailable("The companion declined the action.");
+        var finished = handoff.WaitAsync(Task.FromResult(rejected));
+        Check(!finished.IsCompleted, "A later registration replaced the still-running save");
+        saving.SetResult();
+        Check(await finished.WaitAsync(TimeSpan.FromSeconds(2)) == rejected, "Host completion lost the exact worker result");
+    }
+
+    internal static async Task AcceptedRecordingSurvivesWorkerRetirement()
+    {
+        var folder = Directory.CreateTempSubdirectory("wrail-recording-handoff-").FullName;
+        var media = Path.Combine(folder, "media");
+        try
+        {
+            using var store = new CaptureLibraryStore(Path.Combine(folder, "library"), media, null, null,
+                (_, attachment, _) => Task.FromResult(attachment));
+            using var registry = new WindowCaptureRegistry();
+            var worker = new object();
+            var handoff = new HostActionCompletion();
+            var ticket = await registry.EnqueueSavedAsync(Identity, Options, Capabilities, store, 42, default, handoff);
+            var completion = handoff.WaitAsync(Task.FromResult(TrayActionResult.Success));
+            Check(!completion.IsCompleted, "The worker acknowledgement cleared progress before the host saved the clip");
+            var work = registry.Take()!;
+            Check(work.SaveToLibrary && work.TraySequence == 42, "Capture lost its admitted destination or origin");
+            registry.Recording(ticket.RequestId);
+            registry.Retire(worker);
+            Check(registry.IsCurrent(ticket.RequestId), "Worker retirement cancelled the host recording");
+            Write(work.OutputPath);
+            var result = new HostCaptureCompletion(ticket.RequestId, 1280, 720, 2)
+                { Properties = new(1280,720,15,30,0,CaptureEncoderMode.Software) };
+            Check(await registry.FinishAsync(result, default), "Host failed to commit the recording");
+            await completion.WaitAsync(TimeSpan.FromSeconds(2));
+            Check(!await registry.FinishAsync(result, default), "Duplicate completion was accepted");
+            Check(Directory.GetFiles(media, "*.mp4", SearchOption.AllDirectories).Length == 1, "Expected one saved clip");
+
+            ticket = await registry.EnqueueSavedAsync(Identity, Options, Capabilities, store, 42, default);
+            work = registry.Take()!;
+            registry.Recording(ticket.RequestId);
+            Write(work.OutputPath);
+            registry.RevokeSavedCaptures(Identity);
+            Check(!registry.IsCurrent(ticket.RequestId) && !File.Exists(work.OutputPath), "Revoked recording survived");
+            ticket = await registry.EnqueueLibraryAsync(worker, Identity, Options, Capabilities, store, default);
+            work = registry.Take()!;
+            registry.Retire(worker);
+            Check(!registry.IsCurrent(ticket.RequestId) && !work.SaveToLibrary, "Temporary worker draft survived retirement");
+        }
+        finally { Directory.Delete(folder, true); }
+    }
+
+    internal static async Task ScreenshotCommitChecksPermissionAndKeepsSeparatePresses()
+    {
+        var root = Directory.CreateTempSubdirectory("wrail-accepted-screenshot-").FullName;
+        try
+        {
+            var directory = Path.Combine(root, "media");
+            using var store = new CaptureLibraryStore(Path.Combine(root, "library"), directory);
+            using var registry = new WindowCaptureRegistry();
+            var options = new CaptureSessionRequest { Screenshot = new(), Preparation = new(0) };
+            for (var press = 0; press < 3; press++)
+            {
+                var ticket = await registry.EnqueueSavedAsync(Identity, options, Capabilities, store, press + 1, default);
+                var work = registry.Take()!;
+                File.WriteAllBytes(work.OutputPath, Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/iqkAAAAASUVORK5CYII="));
+                var completion = new HostCaptureCompletion(ticket.RequestId, 1, 1, 0) { Properties = new(1, 1) };
+                Task<bool> Finish() => registry.FinishAsync(completion, default, (_, _) => Task.FromResult(press < 2));
+                if (press < 2) Check(await Finish(), "Screenshot did not commit");
+                else await Reject(() => Finish());
+                Check(!await Finish(), "Duplicate screenshot completion was accepted");
+            }
+            Check(Directory.GetFiles(directory, "*.png").Length == 2, "Explicit identical captures or revoked publication were mishandled");
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     internal static async Task StorageAndRetirement()
     {
         var folder=Path.Combine(Path.GetTempPath(),"library-draft-test-"+Guid.NewGuid().ToString("N"));

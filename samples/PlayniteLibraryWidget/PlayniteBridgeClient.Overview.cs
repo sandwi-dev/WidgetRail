@@ -57,16 +57,9 @@ internal sealed partial class PlayniteBridgeClient
                 }
                 foreach (var row in events.EnumerateArray())
                 {
-                    if (row.ValueKind != JsonValueKind.Object) throw new PlayniteBridgeDataException("invalid_achievement_overview");
-                    if (OptionalString(row, "gameId", 36) is not { } game || !Guid.TryParseExact(game, "D", out _) ||
-                        OptionalString(row, "gameName", 256) is not { } name || OptionalString(row, "achievementId", 256) is not { Length: > 0 } achievement ||
-                        OptionalString(row, "name", 256) is not { } title || ParseOptionalDate(row, "unlockedAt") is not { } date)
-                        throw new PlayniteBridgeDataException("invalid_achievement_overview");
-                    double? rarity = row.TryGetProperty("percent", out var value) && value.ValueKind != JsonValueKind.Null ?
-                        value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number) && double.IsFinite(number) && number is >= 0 and <= 100 ? number :
-                        throw new PlayniteBridgeDataException("invalid_achievement_overview") : null;
-                    if (!recentIds.Add(game + ":" + achievement)) throw new PlayniteBridgeDataException("invalid_achievement_overview");
-                    recent.Add(new(game, name, achievement, title, date, rarity));
+                    var item = ParseRecentUnlock(row);
+                    if (!recentIds.Add(item.GameId + ":" + item.AchievementId)) throw new PlayniteBridgeDataException("invalid_achievement_overview");
+                    recent.Add(item);
                 }
                 if (games.Count > totalGames || !root.TryGetProperty("nextOffset", out var next)) throw new PlayniteBridgeDataException("invalid_achievement_overview");
                 if (next.ValueKind == JsonValueKind.Null)
@@ -82,5 +75,21 @@ internal sealed partial class PlayniteBridgeClient
             }
         }
         throw new PlayniteBridgeDataException("achievement_overview_changed");
+    }
+    private static PlayniteRecentAchievement ParseRecentUnlock(JsonElement row)
+    {
+        if (row.ValueKind != JsonValueKind.Object) throw new PlayniteBridgeDataException("invalid_achievement_overview");
+        if (OptionalString(row, "gameId", 36) is not { } game || !Guid.TryParseExact(game, "D", out _) ||
+            OptionalString(row, "gameName", 256) is not { } name || OptionalString(row, "achievementId", 256) is not { Length: > 0 } achievement ||
+            OptionalString(row, "name", 256) is not { } title || ParseOptionalDate(row, "unlockedAt") is not { } date)
+            throw new PlayniteBridgeDataException("invalid_achievement_overview");
+        double? rarity = row.TryGetProperty("percent", out var value) && value.ValueKind != JsonValueKind.Null ?
+            value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number) && double.IsFinite(number) && number is >= 0 and <= 100 ? number :
+            throw new PlayniteBridgeDataException("invalid_achievement_overview") : null;
+        return new(game, name, achievement, title, date, rarity)
+        {
+            Description = OptionalString(row, "description", 512),
+            Icon = AchievementIconSource(OptionalString(row, "icon", 2048)),
+        };
     }
 }

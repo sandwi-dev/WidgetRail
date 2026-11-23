@@ -41,15 +41,15 @@ internal sealed partial class WidgetStylesValidationPage
             Load(media); await Wait(() => media.IsPlaying); await Task.Delay(200);
             var native = media.PageVideo;
             var parent = native.Parent; var unloads = 0; native.Unloaded += (_, _) => ++unloads;
-            var plane = root.Children.OfType<MediaPresentationStage>().Single();
-            Check(Canvas.GetZIndex(plane) == (int)PresentationLayer.ContentMedia, "Inline native video uses the content-media band");
+            var plane = media.PageVideo;
+            Check(plane.Parent is not null && !root.Children.OfType<MediaPresentationStage>().Any(), "Native video remains in its content subtree without a relocated plane");
 
-            Render(true); await Wait(() => root.Children.OfType<PresentationPortal>().Any());
-            var portal = root.Children.OfType<PresentationPortal>().Single();
+            Render(true); await Wait(() => root.Children.OfType<PresentationPortal>().Any(value => value.Content is WidgetModalLayer));
+            var portal = root.Children.OfType<PresentationPortal>().Single(value => value.Content is WidgetModalLayer);
             var layer = (WidgetModalLayer)portal.Content;
             if (layer.OpeningMotion is { } opening) await opening;
             await Task.Delay(80);
-            Check(Canvas.GetZIndex(portal) > Canvas.GetZIndex(plane), "Dialog scrim and panel paint above background resident video");
+            Check(Canvas.GetZIndex(portal) > Canvas.GetZIndex(page), "Dialog scrim and panel paint above background resident video");
             Check(unloads == 0 && ReferenceEquals(native.Parent, parent) && media.IsPlaying, "Opening a dialog does not detach or restart background playback");
             Check(Find<Button>("Widget.layer.cancel", root)!.Focus(FocusState.Keyboard), "Portaled dialog accepts native focus");
             Check(NativeTextScaleScope.Find(Find<Button>("Widget.layer.cancel", root)!)?.Value == 1.5,
@@ -63,9 +63,9 @@ internal sealed partial class WidgetStylesValidationPage
                 AutomationProperties.GetAutomationId(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject) != "Widget.layer.open", "Inactive parent scope rejects focus while dialog is open");
             var modalMedia = Find<MediaPlayerView>("Widget.layer.modal-video", root)!;
             Load(modalMedia); await Wait(() => modalMedia.IsPlaying);
-            var dialogPlane = root.Children.OfType<MediaPresentationStage>().Single(stage => !ReferenceEquals(stage, plane));
-            Check(Canvas.GetZIndex(dialogPlane) > Canvas.GetZIndex(portal), "Video declared inside the dialog belongs above its dialog panel");
-            Check(Canvas.GetZIndex(shell) > Canvas.GetZIndex(dialogPlane), "Shell overlays remain above dialog-owned media");
+            var dialogPlane = modalMedia.PageVideo;
+            Check(Within(dialogPlane, portal), "Dialog video is a native descendant of its owning dialog panel");
+            Check(Canvas.GetZIndex(shell) > Canvas.GetZIndex(portal), "Shell overlays remain above dialog-owned media");
             shell.Visibility = Visibility.Visible;
             await Task.Delay(200); shell.Visibility = Visibility.Collapsed;
 
@@ -102,14 +102,14 @@ internal sealed partial class WidgetStylesValidationPage
             // Stop testing the dialog video before closing; closing must also
             // dispose it while retaining the underlying native decoder.
             Render(false);
-            Check(!page.HasClosingModal && !root.Children.OfType<PresentationPortal>().Any(),
+            Check(!page.HasClosingModal && !root.Children.OfType<PresentationPortal>().Any(value => value.Content is WidgetModalLayer),
                 "A native-bearing dialog retires safely without unsynchronized native opacity animation");
             Check(MediaPlayerView.ResidentPlayers == 1 && media.IsPlaying && unloads == 0, "Dialog teardown keeps only the background decoder and playback");
             Render(true, false); await Task.Delay(350); Render(false);
-            Check(page.HasClosingModal && root.Children.OfType<PresentationPortal>().Count() == 1,
+            Check(page.HasClosingModal && root.Children.OfType<PresentationPortal>().Count(value => value.Content is WidgetModalLayer) == 1,
                 "Closing animation retains the dialog in its ordered root layer");
             await Wait(() => !page.HasClosingModal);
-            Check(!root.Children.OfType<PresentationPortal>().Any(), "Closing retires the portal and its input registrations");
+            Check(!root.Children.OfType<PresentationPortal>().Any(value => value.Content is WidgetModalLayer), "Closing retires the portal and its input registrations");
             Render(true); await Task.Delay(100);
             await page.SetPresentationActiveAsync(false);
             await page.DisposeAsync(); await Task.Delay(50);
@@ -122,6 +122,12 @@ internal sealed partial class WidgetStylesValidationPage
         { await File.WriteAllTextAsync(Path.Combine(directory, "layers.json"), JsonSerializer.Serialize(new { passed = false, checks, error = error.ToString() })); throw; }
         finally { embedded?.Dispose(); browser?.Close(); await page.DisposeAsync(); host.Children.Remove(root); }
 
+        static bool Within(DependencyObject element, DependencyObject ancestor)
+        {
+            for (DependencyObject? item = element; item is not null; item = VisualTreeHelper.GetParent(item))
+                if (ReferenceEquals(item, ancestor)) return true;
+            return false;
+        }
         void Load(MediaPlayerView view) => view.Apply(_ => Task.FromResult(new HostMediaPlayerSource(definition, new Uri(path).AbsoluteUri)), definition, () => true);
         void Render(bool modal, bool containsMedia = true)
         {

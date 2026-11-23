@@ -8,6 +8,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetIndexedCollectionView
 {
+    internal bool ParkPagingFocusForValidation() => ParkCollectionFocus();
     internal object PerformanceStatistics()=>new
     {
         source?.Items.ResidentSlots,source?.Items.PeakResidentSlots,source?.Items.CompletedLoads,
@@ -16,6 +17,27 @@ internal sealed partial class WidgetIndexedCollectionView
         cacheLength=view?.ItemsPanelRoot switch{ItemsWrapGrid grid=>grid.CacheLength,ItemsStackPanel stack=>stack.CacheLength,_=>(double?)null}
     };
     internal bool HasPendingNativeNavigation => pendingIndex is not null;
+    internal bool HasPendingContinuityForValidation => pendingContinuity is not null || continuityPanel is not null;
+    internal IReadOnlyList<string>? PresentedOccurrenceKeysForValidation => source?.Declaration.IndexedOccurrenceKeys;
+    internal long? PresentedQueryForValidation => source?.Declaration.IndexedCollection?.QueryGeneration;
+    internal bool HasPendingWindowForValidation => pendingWindow is not null || windowPreparationRunning;
+    internal bool HasCurrentPresentedRowsForValidation => containers.Any(pair => pair.Key.IsLoaded && pair.Value.Slot.Value?.Lease.IsCurrent == true);
+    internal object ContinuityStateForValidation() => new
+    {
+        nativeMode=continuityPanel?.ItemsUpdatingScrollMode.ToString(),
+        pendingContinuity?.Viewport, pendingContinuity?.Focus, pendingContinuity?.AwaitingFocusLayout,
+        pendingContinuity?.FollowEnd, pendingContinuity?.Requested, pendingContinuity?.Offset,
+        settled=source?.Items.DemandIsSettled,
+        obsoleteContainers=containers.Count(pair=>pair.Key.IsLoaded && (pair.Value.Slot.Index<0 || !ReferenceEquals(view?.ContainerFromIndex(pair.Value.Slot.Index),pair.Key))),
+        unresolved=containers.Where(pair=>pair.Key.IsLoaded && source?.Items.IsDemanded(pair.Value.Slot.Index)==true &&
+                !pair.Value.Slot.Failed && (pair.Value.Slot.Value is not {Lease.IsCurrent:true} row || !HasCurrentRowLayout(pair.Key,row)))
+            .Select(pair=>new { pair.Value.Slot.Index,pair.Value.Slot.Key,current=pair.Value.Slot.Value?.Lease.IsCurrent,
+                height=pair.Key.ActualHeight, nativeIndex=view?.IndexFromContainer(pair.Key),
+                currentContainer=ReferenceEquals(view?.ContainerFromIndex(pair.Value.Slot.Index),pair.Key),
+                rendererLoaded=pair.Value.LayoutOwner?.IsLoaded, rendererHeight=pair.Value.LayoutOwner?.ActualHeight,
+                layout=pair.Value.Slot.Value is {} row && HasCurrentRowLayout(pair.Key,row) }).ToArray()
+    };
+    internal IDisposable RetainItemForValidation(int index) => source!.Items.Retain(index);
     internal WidgetRail.WidgetProtocol.IndexedCollectionFocusTarget? PendingExactEntryForValidation=>entering?pendingEntry:null;
     internal object NavigationDiagnosticState()
     {
@@ -27,6 +49,9 @@ internal sealed partial class WidgetIndexedCollectionView
             sourceIdentity = source is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(source),
             pendingIndex, entering, scrollOnly, navigationQueued, navigationNeedsScroll,navigationRequestExtent, CanReceiveInput,
             current = slot?.Value?.Lease.IsCurrent, key = slot?.Key, failed = slot?.Failed,
+            targetLayoutCurrent = native is not null && slot?.Value is { } targetRow && HasCurrentRowLayout(native, targetRow),
+            targetBounds = native is { IsLoaded: true } && scroll is not null ? LayoutBoundsInScroll(native,scroll) : (Windows.Foundation.Rect?)null,
+            revealRequested,revealPendingOffset,
             targetLoaded = pendingIndex is { } index && view?.ContainerFromIndex(index) is FrameworkElement { IsLoaded: true },
             offset = scroll?.VerticalOffset, extent = scroll?.ScrollableHeight, viewport = scroll?.ViewportHeight,
             horizontalOffset = scroll?.HorizontalOffset, horizontalExtent = scroll?.ScrollableWidth, viewportWidth = scroll?.ViewportWidth,
@@ -51,6 +76,7 @@ internal sealed partial class WidgetIndexedCollectionView
     }
     private static string Id(DependencyObject? element) => element is null ? "null" : AutomationProperties.GetAutomationId(element);
     internal Action<string>? NavigationTrace { get; set; }
+    partial void TraceHeldSelection(string phase)=>NavigationTrace?.Invoke("held-selection "+phase);
     partial void TraceNavigationRealization(int index,double previousExtent,double currentExtent)=>
         NavigationTrace?.Invoke($"realization-retarget index={index} previousExtent={previousExtent} currentExtent={currentExtent}");
     partial void TraceBoundaryDemand(WidgetRail.WidgetProtocol.IndexedCollectionBoundary direction)

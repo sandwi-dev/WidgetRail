@@ -19,8 +19,9 @@ internal static class Program
 {
     private static int result, checks;
     [STAThread]
-    private static int Main()
+    private static int Main(string[] args)
     {
+        if (args.SequenceEqual(new[] { "--capture-session-child" })) { Console.ReadLine(); return 0; }
         var ui = Dispatcher.CurrentDispatcher;
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(ui));
         ui.BeginInvoke(new Action(async () =>
@@ -45,6 +46,16 @@ internal static class Program
         {
             CaptureSettingsChecks.Run(Check, root);
             await CaptureCompanionChecks.RunAsync(Check, root);
+            var playerRoot = Path.Combine(root, "Game");
+            Directory.CreateDirectory(Path.Combine(playerRoot,"Player_Data"));
+            File.WriteAllBytes(Path.Combine(playerRoot,"UnityPlayer.dll"),Array.Empty<byte>());
+            var player = Path.Combine(playerRoot,"Player.exe");
+            var helper = Path.Combine(playerRoot,"UnityCrashHandler64.exe");
+            Check(CaptureLaunchProcess.IsPlayer(playerRoot,helper,player), "A colocated Unity player has exact game installation evidence");
+            Check(!CaptureLaunchProcess.IsPlayer(playerRoot + "2",helper,player) &&
+                !CaptureLaunchProcess.IsPlayer(playerRoot,helper,Path.Combine(playerRoot,"Launcher.exe")) &&
+                !CaptureLaunchProcess.IsPlayer(playerRoot,Path.Combine(root,"UnityCrashHandler64.exe"),player),
+                "Sibling roots, unrelated launchers and foreign helper paths cannot claim the capture");
             var game = new Game("Fixture A") { IsInstalled = true, Description = "Details", Playtime = 42 };
             var second = new Game("Fixture B") { IsInstalled = false, Hidden = true };
             var games = new List<Game> { game, second };
@@ -82,6 +93,26 @@ internal static class Program
             {
                 var connection = await dispatcher.DispatchAsync(Request("GET", "/v1/connection"), default);
                 Check(connection.Status == 200 && (string)Json(connection)["pluginId"] == IntegrationIdentity.PluginId, "Typed handshake works without optional providers");
+                dispatcher.CaptureGameStarting(game.Id);
+                using (var child = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    System.Reflection.Assembly.GetExecutingAssembly().Location, "--capture-session-child") {
+                        UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true }))
+                {
+                    try
+                    {
+                        dispatcher.CaptureGameStarted(game.Id, child.Id);
+                        var request = Request("GET","/v1/capture-integration",query: new NameValueCollection { ["gameId"] = game.Id.ToString("D") });
+                        var history = Json(await dispatcher.DispatchAsync(request,default));
+                        Check((string)history["sessionGameId"] == game.Id.ToString("D") &&
+                            ((System.Collections.IEnumerable)history["sessions"]).Cast<object>().Count() == 1,
+                            "The Playnite add-on identifies a real newly launched process without WidgetRail or an achievement provider");
+                        dispatcher.CaptureGameStopped(game.Id);
+                        var afterStop = Json(await dispatcher.DispatchAsync(request,default));
+                        Check(((System.Collections.IEnumerable)afterStop["sessions"]).Cast<object>().Count() == 1,
+                            "The stopped game's source interval is available to a later overlay connection");
+                    }
+                    finally { child.StandardInput.Close(); child.WaitForExit(5000); }
+                }
                 var captureSettings = await dispatcher.DispatchAsync(Request("GET", "/v1/capture-settings"), default);
                 Check(captureSettings.Status == 200 && (string)Json(captureSettings)["availability"] == "missing", "Capture settings route reports unavailable addon without breaking library");
                 Check((await dispatcher.DispatchAsync(Request("PATCH", "/v1/capture-settings", "{}"), default)).Status == 400,
@@ -109,6 +140,35 @@ internal static class Program
                 var launch = Request("POST", "/v1/games/" + game.Id + "/launch", command: Guid.NewGuid().ToString("D"));
                 await dispatcher.DispatchAsync(launch, default); await dispatcher.DispatchAsync(launch, default);
                 Check(launches == 1, "Launch replay preserves one external action");
+                var endedReturn = Request("POST", "/v1/games/" + game.Id + "/return", command: Guid.NewGuid().ToString("D"));
+                Check((await dispatcher.DispatchAsync(endedReturn, default)).Status == 404 && launches == 1,
+                    "Returning to a game that closed never starts a replacement process");
+                dispatcher.CaptureGameStarting(second.Id);
+                dispatcher.CaptureGameStarted(second.Id, 0);
+                var running = Request("GET", "/v1/events", query: new NameValueCollection { ["after"] = "now", ["wait"] = "0" });
+                Check(((System.Collections.IEnumerable)Json(await dispatcher.DispatchAsync(running, default))["runningGames"])
+                    .Cast<string>().Single() == second.Id.ToString("D"), "Opening after a launch recovers the running game");
+                Check(((Dictionary<string, object>)Json(await dispatcher.DispatchAsync(running, default))["runningProcesses"]).Count == 0,
+                    "A running game with no process evidence cannot reveal the foreground");
+                var guarded = Request("POST", launch.Path, command: Guid.NewGuid().ToString("D"),
+                    query: new NameValueCollection { ["running"] = "check" });
+                var conflict = Json(await dispatcher.DispatchAsync(guarded, default));
+                Check((string)conflict["name"] == second.Name && launches == 1, "A second game requires confirmation before StartGame");
+                var approved = Request("POST", launch.Path, command: Guid.NewGuid().ToString("D"),
+                    query: new NameValueCollection { ["running"] = (string)conflict["conflict"] });
+                await dispatcher.DispatchAsync(approved, default);
+                await dispatcher.DispatchAsync(approved, default);
+                Check(launches == 2, "Launch anyway starts the game exactly once");
+                dispatcher.CaptureGameStopped(second.Id);
+                dispatcher.CaptureGameStarting(second.Id);
+                using (var process = System.Diagnostics.Process.GetCurrentProcess())
+                    dispatcher.CaptureGameStarted(second.Id, process.Id);
+                var evidence = (Dictionary<string, object>)Json(await dispatcher.DispatchAsync(running, default))["runningProcesses"];
+                Check(evidence.TryGetValue(second.Id.ToString("D"), out var key) && key is string instance && instance.Length == 64,
+                    "The running snapshot carries a process-instance key scoped to the launched game");
+                dispatcher.CaptureGameStopped(second.Id);
+                Check(!((System.Collections.IEnumerable)Json(await dispatcher.DispatchAsync(running, default))["runningGames"])
+                    .Cast<object>().Any(), "Reopening after exit recovers an empty running set");
                 var activity = await dispatcher.DispatchAsync(Request("GET", "/v1/games/" + game.Id + "/activity"), default);
                 Check(activity.Status == 200 && !(bool)Json(activity)["installed"], "Absent GameActivity is unavailable without breaking library reads");
                 var overview = await dispatcher.DispatchAsync(Request("GET", "/v1/achievements/overview"), default);
@@ -138,6 +198,24 @@ internal static class Program
                     ((System.Collections.IEnumerable)Json(overview)["recent"]).Cast<object>().Count() == 0,
                     "Overview continuation neither duplicates recent unlocks nor changes its snapshot");
                 second.Hidden = true; dispatcher.LibraryChanged();
+                var activityFolder = Directory.CreateDirectory(Path.Combine(root, "afbb1a0d-04a1-4d0c-9afa-c6e42ca855b4", "GameActivity")).FullName;
+                var historyText = new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(new {
+                    Items = Enumerable.Range(1, 12).Select(day => new { DateSession = new DateTime(2026, 1, day, 12, 0, 0, DateTimeKind.Utc)
+                        .ToString("o"), ElapsedSeconds = 60 * day }).ToArray() });
+                File.WriteAllText(Path.Combine(activityFolder, game.Id.ToString("D") + ".json"), historyText);
+                File.WriteAllText(Path.Combine(activityFolder, second.Id.ToString("D") + ".json"), historyText);
+                var batchRequest = Request("GET", "/v1/activity/recent", query: new NameValueCollection {
+                    ["ids"] = game.Id + "," + second.Id + "," + game.Id });
+                var recentResponse = Json(await dispatcher.DispatchAsync(batchRequest, default));
+                var recentSessions = ((System.Collections.IEnumerable)recentResponse["sessions"]).Cast<Dictionary<string, object>>().ToArray();
+                var recentUnlock = ((System.Collections.IEnumerable)recentResponse["unlocks"]).Cast<Dictionary<string, object>>().Single();
+                Check(recentSessions.Length == 8 && recentSessions.All(row => (string)row["gameId"] == game.Id.ToString("D")) &&
+                    Convert.ToInt64(recentSessions[0]["seconds"]) == 720 && (string)recentUnlock["description"] == "Description" &&
+                    (string)recentUnlock["icon"] == @"C:\fixture\badge.png",
+                    "Home batches recent sessions and unlocks, selects newest sessions, and excludes duplicate and hidden games");
+                var excessive = Request("GET", "/v1/activity/recent", query: new NameValueCollection {
+                    ["ids"] = string.Join(",", Enumerable.Repeat(game.Id.ToString("D"), 13)) });
+                Check((await dispatcher.DispatchAsync(excessive, default)).Status == 400, "Recent activity enforces its batch limit");
                 var overviewReads = provider.AchievementDataService.OverviewReads;
                 var extra = Enumerable.Range(0, 500).Select(index => new Game("Overview " + index)).ToArray();
                 games.AddRange(extra); provider.AchievementDataService.Games = games.Select(value => value.Id.ToString("D")).ToArray();
@@ -322,6 +400,7 @@ internal static class Program
         public string ApiName => "fixture-achievement";
         public string DisplayName => "Fixture achievement";
         public string Description => "Description";
+        public string UnlockedIconPath => @"C:\fixture\badge.png";
         public bool Hidden => false;
         public bool Unlocked => true;
         public DateTime UnlockTimeUtc => new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);

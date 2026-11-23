@@ -83,6 +83,9 @@ public abstract record WidgetElement(string Id)
     public WidgetElement FocusBackground(WidgetArtworkHandle artwork) =>
         new FocusBackgroundElement(this, artwork);
 
+    public WidgetElement RevealForegroundOnFocus(string processInstanceKey) =>
+        new ForegroundBackgroundElement(this, processInstanceKey);
+
     /// <summary>
     /// Associates one bounded presentation fragment with this exact
     /// focusable element. Its nearest enclosing FocusPresentationSurface may
@@ -366,6 +369,14 @@ public sealed record ScrollElement : ContainerElement
     }
 
     public ScrollAxis Axis { get; init; }
+    public DirectionalScrollAnchor? DirectionalAnchor { get; private init; }
+    /// <summary>Aligns the focused descendant during directional navigation along this viewport's axis.</summary>
+    public ScrollElement WithDirectionalAnchor(FocusAnchorPoint itemPoint, int viewportPercent)
+    {
+        var anchor = new DirectionalScrollAnchor(itemPoint, viewportPercent);
+        if (!anchor.IsValid()) throw new ArgumentException("Specify a defined anchor point and a percentage from 0 to 100.");
+        return this with { DirectionalAnchor = anchor };
+    }
     /// <summary>Reserves a thin gutter and shows a non-interactive indicator when vertical content overflows. Defaults to true.</summary>
     public bool ShowScrollbar { get; init; } = true;
     public string? NearStartActionId { get; init; }
@@ -430,6 +441,7 @@ public sealed record ScrollElement : ContainerElement
     internal override ViewNode ToProtocolNode() => ToContainerProtocolNode(ViewNodeKind.Scroll) with
     {
         ScrollAxis = Axis,
+        DirectionalAnchor = DirectionalAnchor,
         ShowScrollbar = ShowScrollbar ? null : false,
         ScrollNearStartActionId = NearStartActionId,
         ScrollNearEndActionId = NearEndActionId,
@@ -697,11 +709,15 @@ public sealed record SelectElement : WidgetElement
 
     /// <summary>Hide a value select's repeated label when a setting row supplies it externally. Command menus always show their label.</summary>
     public bool ShowLabel { get; init; } = true;
+    /// <summary>Open this command menu with Menu/Options throughout its active input scope.</summary>
+    public bool UseMenuShortcut { get; init; }
 
     internal override ViewNode ToProtocolNode()
     {
         if (isCommandMenu && Options.Any(option => option.IsSelected))
             throw new ArgumentException("A command menu cannot have selected commands.", nameof(Options));
+        if (UseMenuShortcut && !isCommandMenu)
+            throw new InvalidOperationException("A scoped Menu shortcut requires a command menu.");
         var selected = isCommandMenu ? null : Options.Single(option => option.IsSelected);
         return new()
         {
@@ -711,6 +727,7 @@ public sealed record SelectElement : WidgetElement
             AccessibilityLabel = AccessibilityLabel ?? Label,
             AccessibilityValue = selected?.Label,
             IsCommandMenu = isCommandMenu ? true : null,
+            ContextMenuButton = UseMenuShortcut ? ControllerButton.Menu : null,
             SelectOptions = Options.Select(option => new WidgetSelectOption(
                 option.Id,
                 option.Label,
@@ -1017,12 +1034,14 @@ public sealed record ImageElement : WidgetElement
     public string AccessibilityLabel { get; init; }
     public ImageFit Fit { get; init; }
     public string? ArtworkHandle { get; init; }
+    public bool IsPublicMedia { get; init; }
 
     internal override ViewNode ToProtocolNode() => new()
     {
         Id = Id,
         Kind = ViewNodeKind.Image,
         ImageSource = Source.Length == 0 ? null : Source,
+        ImageIsPublicMedia = IsPublicMedia,
         ArtworkHandle = ArtworkHandle,
         ImageFit = Fit,
         AccessibilityLabel = AccessibilityLabel,

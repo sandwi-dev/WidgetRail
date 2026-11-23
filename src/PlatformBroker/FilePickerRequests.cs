@@ -1,7 +1,10 @@
 using WidgetRail.WidgetProtocol;
 namespace WidgetRail.PlatformBroker;
 
-public sealed record HostFilePickerRequest(string Id,BrokerWidgetIdentity Widget,string Title,bool Multiple);
+public sealed record HostFilePickerRequest(string Id,BrokerWidgetIdentity Widget,string Title,bool Multiple)
+{
+    public string? CommitLabel { get; init; }
+}
 
 /// <summary>Trusted host completion of a native picker; package payloads never supply selected paths.</summary>
 public static class FilePickerRequests
@@ -17,7 +20,8 @@ public static class FilePickerRequests
         {
             RetireStale();
             if(pending is not null)throw new BrokerException("file_picker_busy","A file picker is already open.");
-            pending=request=new(new(Guid.NewGuid().ToString("N"),widget,choice.Title,choice.Multiple),current,new(TaskCreationOptions.RunContinuationsAsynchronously));
+            pending=request=new(new HostFilePickerRequest(Guid.NewGuid().ToString("N"),widget,choice.Title,choice.Multiple) { CommitLabel = choice.CommitLabel },
+                current,new(TaskCreationOptions.RunContinuationsAsynchronously));
         }
         try{return await request.Completion.Task.WaitAsync(TimeSpan.FromMinutes(2),token).ConfigureAwait(false);}
         catch(TimeoutException){return [];}

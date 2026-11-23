@@ -9,7 +9,7 @@ internal sealed record SpotifyAuthorizedRequest(
     Uri Uri,
     string RequiredScope,
     string? AdditionalRequiredScope = null,
-    string? JsonBody = null);
+    string? JsonBody = null, string? ExpectedAccount = null);
 
 /// <summary>
 /// Narrow token-session boundary. Endpoint families can request only an exact
@@ -67,8 +67,8 @@ internal sealed class SpotifyPlaybackApi(ISpotifyAuthorizedRequestSender sender)
     {
         ArgumentNullException.ThrowIfNull(command);
         var (method, uri) = BuildControlRequest(command);
-        var response = await SendAsync(identity, method, uri,
-            WindowsSpotifyPlatformBackend.PlaybackControlScope, cancellationToken)
+        var response = await _sender.SendAsync(identity, new(method, uri,
+            WindowsSpotifyPlatformBackend.PlaybackControlScope, ExpectedAccount: command.ExpectedAccount), cancellationToken)
             .ConfigureAwait(false);
         SpotifyResponseParser.EnsureSuccess(response, allowNoContent: true);
     }
@@ -214,6 +214,11 @@ internal sealed class SpotifyPlaybackApi(ISpotifyAuthorizedRequestSender sender)
             _ => throw new SpotifyProviderException(
                 "invalid_request", "Spotify playback command is invalid."),
         };
+        if (command.DeviceId is { } device)
+        {
+            SpotifyApiValidation.ValidateOpaqueId(device, "device identifier");
+            path += (path.Contains('?') ? "&" : "?") + "device_id=" + Uri.EscapeDataString(device);
+        }
         return (method, new Uri("https://api.spotify.com" + path));
     }
 }

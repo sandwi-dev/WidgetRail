@@ -10,10 +10,16 @@ public sealed class WidgetIndexedGroup : IList, INotifyCollectionChanged, INotif
 {
     private readonly IndexedItemsSource<WidgetIndexedRow> source;
     private string header;
+    private bool showHeaderRule;
     private BridgeNodeRenderStyles? headerStyle;
     internal WidgetIndexedGroup(string key, string header, int startIndex, int count, IndexedItemsSource<WidgetIndexedRow> source)
     { Key = key; this.header = header; StartIndex = startIndex; Count = count; this.source = source; }
     public string Key { get; }
+    public bool ShowHeaderRule
+    {
+        get => showHeaderRule;
+        internal set { if (showHeaderRule == value) return; showHeaderRule = value; PropertyChanged?.Invoke(this, new(nameof(ShowHeaderRule))); }
+    }
     public string Header
     {
         get => header;

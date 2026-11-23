@@ -244,7 +244,14 @@ internal sealed partial class WidgetViewPresenter
             previewSource is { } retained)
             return RetainPreviewSource(retained);
         var target = previewPointerIntent ? previewPointerTarget : XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
-        return PreviewSourceFromTarget(target) is { } current ? RetainUnchangedPrefixPreview(current) : null;
+        if (PreviewSourceFromTarget(target) is { } current) return RetainUnchangedPrefixPreview(current);
+        // Content publication retires input authority before the row's new
+        // lease reaches the UI. The pointer/focus is still on this exact native
+        // occurrence: preserve its paint just as an entered preview does.
+        // Query replacement, recycling, hiding or a real target departure still
+        // fails RetainPreviewSource; no stale action lease is made current.
+        return previewSource is { Row: not null } refreshing && target is not null && IsWithin(target, refreshing.Anchor)
+            ? RetainPreviewSource(refreshing) : null;
     }
 
     private PreviewSource RetainUnchangedPrefixPreview(PreviewSource current) =>
@@ -444,6 +451,9 @@ internal sealed partial class WidgetViewPresenter
             LayoutUpdated += PreviewLayoutChanged;
         }
         if (!RetainPreviewLease(source)) return;
+        // Paint continuity is not permission to rebind retired content to the
+        // newer parent frame. Wait for the exact occurrence's replacement lease.
+        if (source.Row is { Lease.IsCurrent: false }) { PositionFocusPreview(); return; }
         previewTheme?.Apply();
         UpdatePreviewEnterHint(source);
         if (ReferenceEquals(previewPaintedContent, source.Content) && ReferenceEquals(previewPaintedPresentation, presentation))
@@ -479,7 +489,9 @@ internal sealed partial class WidgetViewPresenter
         fragment.ArtworkGeneration = source.ContentLease?.LeaseId ?? (row is null ? ArtworkGeneration : row.Lease.LeaseId + ":" + row.Item.Key.Length + ":" + row.Item.Key);
         fragment.ArtworkAuthorityCurrent = source.ContentLease is { } contentLease ? ()=>contentLease.IsCurrent : row is null ? ArtworkAuthorityCurrent : () => row.Lease.IsCurrent && previewSource?.Key.Equals(source.Key) == true;
         fragment.Failed = ReportFailure;
+#if ENABLE_WIDGET_VALIDATION
         fragment.FocusTrace = FocusTrace;
+#endif
         _ = fragment.SetPresentationActiveAsync(true);
         fragment.ApplyFragment(source.ContentLease is { } content ? presentation!.WithStyles(content.RenderStyles) : row is null ? presentation! : presentation!.WithStyles(row.Lease.RenderStyles), source.Content, source.Scope);
         PositionFocusPreview();

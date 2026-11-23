@@ -1,8 +1,5 @@
 #include "ViGEmOutputAdapter.h"
 
-#include <chrono>
-#include <cstdlib>
-#include <thread>
 
 namespace widgetrail::isolation {
 namespace {
@@ -62,11 +59,10 @@ bool ViGEmOutputAdapter::Open() noexcept {
         RemoveOwnedTarget();
         return false;
     }
-    feedbackGate_.store(0, std::memory_order_release);
+    consumedFeedbackSequence_ = feedbackSequence_.load(std::memory_order_acquire);
     rawError_ = api_.RegisterFeedback(
         client_, target_, Feedback, this);
     if (!Succeeded(rawError_)) {
-        feedbackGate_.store(FeedbackClosed, std::memory_order_release);
         status_ = ViGEmAdapterStatus::AddTargetFailed;
         RemoveOwnedTarget();
         return false;
@@ -100,20 +96,11 @@ void ViGEmOutputAdapter::Feedback(
     const std::uint8_t smallMotor) noexcept {
     auto* self = static_cast<ViGEmOutputAdapter*>(context);
     if (!self) return;
-    auto gate = self->feedbackGate_.load(std::memory_order_acquire);
-    for (;;) {
-        if ((gate & FeedbackClosed) != 0 ||
-            (gate & FeedbackCountMask) == FeedbackCountMask) return;
-        if (self->feedbackGate_.compare_exchange_weak(
-                gate, gate + 1, std::memory_order_acq_rel,
-                std::memory_order_acquire)) break;
-    }
     self->feedbackMotors_.store(
         static_cast<std::uint16_t>(largeMotor) |
             (static_cast<std::uint16_t>(smallMotor) << 8),
         std::memory_order_relaxed);
     self->feedbackSequence_.fetch_add(1, std::memory_order_release);
-    self->feedbackGate_.fetch_sub(1, std::memory_order_release);
 }
 
 bool ViGEmOutputAdapter::Submit(const GamepadState& state) noexcept {
@@ -132,17 +119,8 @@ void ViGEmOutputAdapter::RemoveOwnedTarget() noexcept {
     const auto priorStatus = status_;
     ViGEmAdapterStatus removalStatus = status_;
     if (target_) {
-        feedbackGate_.fetch_or(FeedbackClosed, std::memory_order_acq_rel);
         if (feedbackRegistered_) api_.UnregisterFeedback(target_);
         feedbackRegistered_ = false;
-        const auto callbackDeadline =
-            std::chrono::steady_clock::now() + std::chrono::seconds(1);
-        while ((feedbackGate_.load(std::memory_order_acquire) &
-                FeedbackCountMask) != 0) {
-            if (std::chrono::steady_clock::now() >= callbackDeadline)
-                std::abort();
-            std::this_thread::yield();
-        }
         if (targetAdded_ && client_) {
             rawError_ = api_.RemoveTarget(client_, target_);
             if (!Succeeded(rawError_))

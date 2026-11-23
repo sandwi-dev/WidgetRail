@@ -22,6 +22,7 @@
   --text-subdued: #5c7278;
   --accent: #075b73;
   --focus: var(--accent);
+  --focus-highlight: #69d8df;
   --controller-glyph-color: #365c66;
   --scrollbar-track: #e7eeef;
   --scrollbar-thumb: #425c63;

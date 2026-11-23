@@ -21,6 +21,8 @@ internal sealed partial class OverlayShellPage
         {
             if(!PinnedInputActive&&!PinnedInteractionRequested)pinManagementInteractionRequested=false;
             ManagePinsButton.Visibility=PinnedAdjustmentActive?Visibility.Collapsed:Visibility.Visible;
+            FavoriteMenuButton.Visibility = PinnedAdjustmentActive || PinnedInputActive || RadialOpen ? Visibility.Collapsed : Visibility.Visible;
+            FavoriteMenuButton.IsEnabled = visible && !retired && !HostChoiceActive && !LocalInstallActive && !SystemFilePickerOpen && !IsMediaFullscreen;
             var canReturn=!retired&&visible&&(PinnedInteractionRequested||returnPointerPending);
             ReturnFromPinButton.Visibility=canReturn&&!PinnedAdjustmentActive?Visibility.Visible:Visibility.Collapsed;
             ReturnFromPinButton.IsEnabled=canReturn;

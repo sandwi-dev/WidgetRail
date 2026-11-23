@@ -38,10 +38,21 @@ internal sealed partial class OverlayShellPage
     private void ReceiveCore(ControllerFrame frame, out bool delivered)
     {
         delivered = false;
+        var controllerAvailable=frame.Connected!=0&&frame.Primed==0;
+        var triggerReleasedWithoutEdge=frame.State.LeftTrigger==0&&frame.LeftTriggerReleased==0;
+        surface?.ReconcileHeldSelectionInput(controllerAvailable,triggerReleasedWithoutEdge);
+        if(!ReferenceEquals(pinned?.Presenter,surface))pinned?.Presenter?.ReconcileHeldSelectionInput(controllerAvailable,triggerReleasedWithoutEdge);
         // Recover lost release edges before tutorial or modal input can consume
         // the frame; a held tutorial shortcut must not leak into widget input.
         if (frame.Connected == 0) { trayHold.Reset(); shellGestures.Reset(); radialInput.Reset(); }
         else shellGestures.ReconcileReleasedState(frame);
+        if (favoriteHeld != 0)
+        {
+            var retained = (ushort)(favoriteHeld & frame.State.Buttons);
+            frame.ReleasedButtons &= (ushort)~favoriteHeld;
+            favoriteHeld = frame.Connected == 0 ? (ushort)0 : retained;
+            if (favoriteHeld != 0) frame.DpadNavigation = default;
+        }
         if (ReceiveIntroduction(frame)) return;
         if (ReceiveWebAppEditor(frame) || ReceiveSystemFilePicker(frame) || ReceiveLocalInstall(frame)) return;
         if (ReceiveHostChoice(frame)) return;
@@ -86,6 +97,19 @@ internal sealed partial class OverlayShellPage
         Presentation.WidgetControllerPrompts.Set(frame.LastInputFamily);
         if (pinned is not null && (frame.State.Buttons & 0x300) == 0x300 && (frame.PressedButtons & 0x4000) != 0)
         { shellGestures.Claim(ControllerButton.X); _ = PinnedInputActive?UnpinAsync(save:true,pinned):ChoosePinAsync("Unpin widget",pin=>UnpinAsync(save:true,pin),selectTarget:false); return; }
+        if (frame.DpadNavigation.Phase == NavigationPhase.Pressed && (frame.PressedButtons & 15) is 1 or 2 or 4 or 8 &&
+            !interactive && !reordering && !PinnedInputActive && !PinnedAdjustmentActive && !IsMediaFullscreen &&
+            trayMenu is null && !trayHold.Capturing && !UtilityIconFocused && !UtilityListFocused &&
+            foreground)
+        {
+            var slot = (frame.PressedButtons & 15) switch { 1 => TrayDirection.Up, 2 => TrayDirection.Down, 4 => TrayDirection.Left, _ => TrayDirection.Right };
+            if (RadialOpen)
+            {
+                favoriteHeld = (ushort)(frame.PressedButtons & 15);
+                _ = InvokeFavoriteAsync(slot, displayedFavorites[(int)slot], ControllerInputOrigin.PhysicalController);
+                return;
+            }
+        }
         var radialNavigation = ReceiveRadialNavigation(frame);
         var pointerPresenter = PinnedInputActive ? pinned!.Presenter : interactive ? surface : null;
         var activeBrowser = radialNavigation ? null : expandedBrowser?.Surface?.ActiveSurface ??

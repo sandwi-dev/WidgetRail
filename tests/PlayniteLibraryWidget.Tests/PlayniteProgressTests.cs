@@ -7,6 +7,84 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 
 public sealed partial class PlayniteLibraryTests
 {
+    [TestMethod, Timeout(30_000)]
+    public async Task TrackedChoicesSurviveRestartPerGameAndStayIndependentOfPinSelection()
+    {
+        var provider = new FakeHost(2);
+        var widget = Create(provider, out TestApplicationService app);
+        var first = new PlayniteAchievement("First", "", false, null, null, null, false) { Id = "first", Progress = new(2, 10) };
+        var second = first with { Id = "second", Name = "Second" };
+        first = first with { Progress = null };
+        var data = new PlayniteAchievements(true, 2, 0, [first, second]) { ConnectionId = "profile" };
+        async Task Start()
+        {
+            app.AchievementsHandler = (_, _) => ValueTask.FromResult(data);
+            await Interactive(widget);
+            await Ready(widget, provider);
+            await widget.WhenWarmStateIdleAsync();
+        }
+        async Task Open(int index)
+        {
+            var game = PageNodes(widget, Snapshot(widget, 262001).Root)
+                .Where(n => n.ActionId == PlayniteLibraryActions.DetailsOpen).ElementAt(index);
+            await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
+            await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
+            await Bounded(widget.WhenDetailsIdleAsync(), "achievements");
+        }
+        async Task Choose(int index, string label, Func<bool> applied)
+        {
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "achievement-options");
+            using var lease = await host.AcquireAsync(PlayniteAchievementBrowse.ListId, index, 1);
+            var row = lease.Range.Items.Single();
+            var action = row.Root.ContextActions.Single(a => a.Label == label);
+            Assert.AreEqual(WidgetOperationAdmission.Enqueued, lease.RouteAction(row.Key, ControllerButton.A,
+                contextActionOwnerId: row.Root.Id, contextActionId: action.ActionId));
+            await WaitFor(applied, label);
+        }
+        async Task Close() => await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsClose, "close"));
+        await Start();
+        await Open(0);
+        await Choose(0, "Track achievement", () => widget.RenderState.Value.DetailsExtras.TrackedAchievementId == first.Id);
+        Assert.IsEmpty(Snapshot(widget, 262002).PinnedLayouts);
+        await Close();
+        await Open(1);
+        Assert.IsNull(widget.RenderState.Value.DetailsExtras.TrackedAchievementId);
+        await Choose(1, "Track achievement", () => widget.Organization.TrackedAchievements.Count == 2);
+        await Background(widget);
+        await WidgetTestHost.DestroyAsync(widget);
+        widget = Create(provider, out app);
+        await Start();
+        await Open(0);
+        Assert.AreEqual(first.Id, widget.RenderState.Value.DetailsExtras.TrackedAchievementId);
+        await Choose(1, "Pin progress", () => widget.RenderState.Value.Progress.Target?.AchievementId == second.Id);
+        var pin = WidgetTestHost.CreatePinnedLayoutHost(widget, "track-with-pin", 262003);
+        Assert.IsTrue(await pin.SelectAsync("playnite.achievement-progress"));
+        Assert.AreEqual(first.Id, widget.RenderState.Value.DetailsExtras.TrackedAchievementId);
+        Assert.IsTrue(await pin.RevokeAsync());
+        Assert.AreEqual(first.Id, widget.RenderState.Value.DetailsExtras.TrackedAchievementId);
+        await Choose(1, "Track achievement", () => widget.RenderState.Value.DetailsExtras.TrackedAchievementId == second.Id);
+        await Choose(1, "Stop tracking", () => widget.RenderState.Value.DetailsExtras.TrackedAchievementId is null);
+        Assert.HasCount(1, widget.Organization.TrackedAchievements);
+        await Close();
+        await Open(1);
+        Assert.AreEqual(second.Id, widget.RenderState.Value.DetailsExtras.TrackedAchievementId);
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    [TestMethod]
+    public void ShelfResolvesSavedChoiceOnlyAgainstOneVisibleMatchingProviderRecord()
+    {
+        var item = new PlayniteAchievement("Counter", "", false, null, null, null, false) { Id = "same", Progress = new(4, 10) };
+        var data = new PlayniteAchievements(true, 1, 0, [item]) { ConnectionId = "one" };
+        var choice = new TrackedAchievement("game", "one", data.Provider, "same");
+        Assert.AreEqual(item, PlayingAwards.From("game", data, choice).Tracked?.Award);
+        Assert.IsNull(PlayingAwards.From("another", data, choice).Tracked);
+        Assert.IsNull(PlayingAwards.From("game", data with { ConnectionId = "two" }, choice).Tracked);
+        Assert.IsNull(PlayingAwards.From("game", data with { Provider = PlayniteAchievementProvider.PlayniteAchievements }, choice).Tracked);
+        Assert.IsNull(PlayingAwards.From("game", data with { Items = [item with { Hidden = true }] }, choice).Tracked);
+        Assert.IsNull(PlayingAwards.From("game", data with { Items = [item, item] }, choice).Tracked);
+    }
+
     [TestMethod]
     public async Task ProgressArtworkBelongsToTheExactCurrentTarget()
     {
@@ -32,13 +110,15 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod]
-    public void TrackingRequiresUnfinishedVisibleMeasuredProgress()
+    public void TrackingAcceptsUnmeasuredAchievementsWhileProgressPinsRequireACounter()
     {
         var item = new PlayniteAchievement("Target", "Description", false, null, null, null, false)
             { Id = "exact", Progress = new(2, 10) };
         Assert.IsTrue(PlayniteAchievementPresentation.CanTrack(item));
+        Assert.IsTrue(PlayniteAchievementPresentation.CanTrack(item with { Progress = null }));
+        Assert.IsFalse(PlayniteAchievementPresentation.CanPinProgress(item with { Progress = null }));
         foreach (var rejected in new[] { item with { Unlocked = true }, item with { Hidden = true },
-            item with { Id = null }, item with { Progress = null }, item with { Progress = new(0, 0) },
+            item with { Id = null }, item with { Progress = new(0, 0) },
             item with { Progress = new(-1, 10) }, item with { Progress = new(10, 10) }, item with { Progress = new(11, 10) } })
         {
             Assert.IsFalse(PlayniteAchievementPresentation.CanTrack(rejected));
@@ -95,7 +175,7 @@ public sealed partial class PlayniteLibraryTests
         await Bounded(widget.WhenDetailsIdleAsync(), "achievements");
         _ = Snapshot(widget, 202002);
         var query = PrivateField<PlayniteAchievementBrowse>(widget, "achievementBrowse");
-        var track = widget.GetType().GetMethod("TrackAchievementAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var track = widget.GetType().GetMethod("PinAchievementAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         for (var attempt = 0; attempt < 2; attempt++)
         {
             await (ValueTask)track.Invoke(widget, [query, query.All.Single(), CancellationToken.None])!;
@@ -162,7 +242,7 @@ public sealed partial class PlayniteLibraryTests
         await Bounded(widget.WhenDetailsIdleAsync(), "achievements");
         _ = Snapshot(widget, 204002);
         var query = PrivateField<PlayniteAchievementBrowse>(widget, "achievementBrowse");
-        var track = widget.GetType().GetMethod("TrackAchievementAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var track = widget.GetType().GetMethod("PinAchievementAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         await (ValueTask)track.Invoke(widget, [query, query.All.First(entry => entry.Item.Id == "first"), CancellationToken.None])!;
         var host = WidgetTestHost.CreatePinnedLayoutHost(widget, "launcher.test", 204003);
         Assert.IsTrue(await host.SelectAsync("playnite.achievement-progress"));

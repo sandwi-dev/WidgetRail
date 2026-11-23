@@ -8,8 +8,7 @@ public sealed partial class CaptureLibraryWidget
     private void EditCaptureCopy(State original)
     {
         var saved = original.SelectedId is { } id && selectedCapture?.Id == id ? selectedCapture : null;
-        if (original.SelectedId is not null && saved is null || saved?.Available == false ||
-            saved is null && (original.Preview is null || original.FromLibrary)) return;
+        if (saved is not { Available: true }) return;
         model.Update(state => state with { Busy = true, Message = null });
         Operations.RunLatest("capture-library.work", async context =>
         {
@@ -18,14 +17,12 @@ public sealed partial class CaptureLibraryWidget
             try
             {
                 // This consumer opens the saved result, so it needs read as well as save.
-                await RequirePermissionsAsync(saved is null
-                    ? [WidgetCaptureLibraryCapabilities.ReadPermission, WidgetCaptureLibraryCapabilities.SavePermission, WidgetCaptureCapabilities.Permission]
-                    : [WidgetCaptureLibraryCapabilities.ReadPermission, WidgetCaptureLibraryCapabilities.SavePermission], context.CancellationToken);
+                await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ReadPermission,
+                    WidgetCaptureLibraryCapabilities.SavePermission], context.CancellationToken);
                 context.CancellationToken.ThrowIfCancellationRequested();
                 if (!context.IsCurrent || !SamePreviewSource(original)) return;
-                var result = saved is not null
-                    ? await HostServices.CaptureLibrary.EditCopyAsync(new CaptureLibraryMutationReference(saved.Id, saved.Revision, saved.MetadataRevision), context.CancellationToken)
-                    : await HostServices.CaptureLibrary.EditCopyAsync(original.Preview!, context.CancellationToken);
+                var result = await HostServices.CaptureLibrary.EditCopyAsync(
+                    new CaptureLibraryMutationReference(saved.Id, saved.Revision, saved.MetadataRevision), context.CancellationToken);
                 if (result.Outcome == CaptureLibraryEditOutcome.Cancelled) return;
                 committed = true;
                 context.CancellationToken.ThrowIfCancellationRequested();
@@ -39,7 +36,7 @@ public sealed partial class CaptureLibraryWidget
                     if (!context.IsCurrent || !SamePreviewSource(original)) return;
                     selectedCapture = item;
                     contexts = null; contextError = null; showContexts = false;
-                    UpdateFeedback(state => state with { Preview = unclaimed, FromLibrary = true, SelectedId = item.Id,
+                    UpdateFeedback(state => state with { Preview = unclaimed, SelectedId = item.Id,
                         Detail = true, ConfirmDelete = false, Navigation = WidgetNavigationOperation.Replace, Message = "Edited copy saved." });
                 }
                 unclaimed = null;
@@ -70,7 +67,7 @@ public sealed partial class CaptureLibraryWidget
     {
         var current = model.Value;
         return current.SelectedId == original.SelectedId && current.Preview?.Id == original.Preview?.Id &&
-            current.FromLibrary == original.FromLibrary && current.Detail == original.Detail;
+            current.Detail == original.Detail;
     }
 
     private static string ExplainEdit(string code) => code switch

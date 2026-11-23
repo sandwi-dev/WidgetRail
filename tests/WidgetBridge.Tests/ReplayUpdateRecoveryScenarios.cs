@@ -20,7 +20,7 @@ internal static class ReplayUpdateRecoveryScenarios
             var replacement = old with { PublisherId = "new.publisher", InstanceId = "new.instance" };
             var preferences = new CaptureReplayPreferences { Revision = 5, OwnerPackageId = old.PackageId,
                 OwnerPublisherId = old.PublisherId, OwnerInstanceId = old.InstanceId,
-                Settings = new() { Enabled = true, AutoStart = true }, ApprovedApplication = new string('a', 64), ApplicationName = "Fixture" };
+                Settings = new() { Enabled = true, AutoStart = true }, Approvals = new([new(new string('a', 64), "Fixture")]) };
             var settings = new PlatformSettingsStore(new(root));
             await settings.UpdateAsync(document => document with { ReplayCapture = preferences });
             await consent.SetDecisionAsync(replacement, PlatformCapabilities.WindowCaptureV1, ConsentDecision.Grant);

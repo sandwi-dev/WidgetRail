@@ -32,6 +32,9 @@ public sealed partial class CaptureLibraryStore
                 WriteSourceMarker(marker);
             }
             using (var check = Command("SELECT id,legacy,snapshot FROM userstate.hidden LIMIT 0")) check.ExecuteNonQuery();
+            if (!hiddenMigrationComplete) CreateDestinationState();
+            using (var masks = Command("SELECT EXISTS(SELECT 1 FROM userstate.destination_masks)"))
+                hasDestinationMasks = (long)masks.ExecuteScalar()! != 0;
             hiddenStateAvailable = true;
             foreach (var legacy in hiddenMigrationComplete ? [] : Directory.EnumerateFiles(root, "*.unlinked"))
             {

@@ -8,7 +8,7 @@ using WidgetRail.WidgetBridge;
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 /// <summary>Resolved shell roles on ordinary native controls; no replacement item template or input policy.</summary>
-internal sealed class ShellChromeStyles : IDisposable
+internal sealed class ShellChromeStyles(bool appliesApplicationPolicy = true) : IDisposable
 {
     private readonly Dictionary<FrameworkElement, (string Role, NativeComputedStyleAdapter Style, bool TypographyOnly)> elements = [];
     private readonly Dictionary<SelectorItem, (NativeComputedStyleAdapter Style, long Selection)> items = [];
@@ -57,8 +57,11 @@ internal sealed class ShellChromeStyles : IDisposable
         textScale = NativeTextScaleScope.Normalize(settings.TextScale);
         foreach (var value in elements.Values) value.Style.SetOwnTextScale(textScale);
         foreach (var value in items.Values) value.Style.SetOwnTextScale(textScale);
-        NativeComputedStyleAdapter.SetAccessibilityPolicy(settings);
-        NativeComputedStyleAdapter.SetMotionPolicy(settings, animationsEnabled);
+        if (appliesApplicationPolicy)
+        {
+            NativeComputedStyleAdapter.SetAccessibilityPolicy(settings);
+            NativeComputedStyleAdapter.SetMotionPolicy(settings, animationsEnabled);
+        }
         if (ReferenceEquals(next, palette)) return;
         palette = next;
         foreach (var value in elements.Values) value.Style.Update(palette?.GetValueOrDefault(value.Role),typographyOnly:value.TypographyOnly);

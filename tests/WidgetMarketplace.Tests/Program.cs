@@ -38,6 +38,10 @@ if (args is ["--probe-live-review"])
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Theme feed: bounded pages, coalescing, conditional refresh and offline restart", ThemeFeedTests.BrowseAndRecover),
+    ("Catalogue rejects a corrupt first download and installs the verified remote package", ThemeFeedTests.RemoteThemeDownload),
+    ("Catalogue preview, exact install, and explicit apply preserve appearance independently", ThemeFeedTests.ThemeOperations),
+    ("Catalogue theme cancellation retires a pending download without an install", ThemeFeedTests.CancelInstall),
     ("Catalogue cache: freshness and conditional refresh", MarketplaceCacheTests.FreshnessAndValidators),
     ("Catalogue cache: bounded older release discovery", MarketplaceCacheTests.PaginationAndBound),
     ("Catalogue cache: removed pages invalidate old releases", MarketplaceCacheTests.PaginationShrinks),

@@ -11,6 +11,8 @@ var audioMode=args.Contains("--audio",StringComparer.Ordinal)||File.Exists(Path.
 var voicePinMode=File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-voice-pin.enabled"));
 var voiceControlsMode=File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-voice-controls.enabled"));
 var fixtureArgs=args.Where(arg=>arg!="--audio").ToArray();
+if(fixtureArgs is ["--calls-contract-check",var callCheckDirectory])
+{await SyntheticCallContractCheck.RunAsync(callCheckDirectory);return;}
 if(fixtureArgs is ["--messages-contract-check",var messageCheckDirectory])
 {
     await SyntheticMessagesContractCheck.RunAsync(messageCheckDirectory);
@@ -55,7 +57,8 @@ if(fixtureArgs is ["--snapshots",var destination])
     await WidgetTestHost.DestroyAsync(widget);
     return;
 }
-if(File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-messages.enabled")))
+if(File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-messages.enabled")) &&
+    !File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-private-calls.enabled")))
 {
     await SyntheticMessagesWorker.RunAsync(fixtureArgs);
     return;
@@ -71,6 +74,7 @@ internal sealed partial class SyntheticDiscordSession:IDiscordSession
 {
     private readonly bool audioMode;
     private readonly bool voiceControlsMode;
+    private readonly bool speakingMode = File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-participant-speaking.enabled"));
     private DiscordVoiceSettings voiceSettings=new(true,true,false,[new("input-a","Microphone A"),new("input-b","Microphone B")],
         [new("output-a","Speakers A"),new("output-b","Speakers B")],"input-a","output-a",null);
     private readonly ConcurrentDictionary<string,string> leases=new(StringComparer.Ordinal);
@@ -90,6 +94,7 @@ internal sealed partial class SyntheticDiscordSession:IDiscordSession
         this.audioMode=audioMode;
         this.voiceControlsMode=voiceControlsMode;
         InitializeMessagesFixture(messagesAuditPath);
+        InitializePrivateCalls();
         state=state with{Channels=[..state.Channels,..Enumerable.Range(40,20)
             .Select(id=>new DiscordChannel(id.ToString(),"300","Voice "+id,"After hours"))]};
         if(voiceControlsMode)state=state with{Participants=state.Participants.Select(person=>person.Id==state.Account?person:person with{Audio=new(true,false,50)}).ToArray()};
@@ -102,13 +107,22 @@ internal sealed partial class SyntheticDiscordSession:IDiscordSession
     // Navigation-only sentinel: deliberately never registered with the broker.
     // The account route can be entered/backed out without any page, network or login.
     public WebSessionReference? Reference=>new("00000000000000000000000000000000");
-    public ValueTask<DiscordState> ReadAsync(CancellationToken token){token.ThrowIfCancellationRequested();return ValueTask.FromResult(state);}
+    public ValueTask<DiscordState> ReadAsync(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        ApplyCallDockFixturePhase();
+        if(speakingMode)state=state with{Participants=state.Participants.Select(person=>person.Id=="2"?person with{Speaking=!person.Speaking}:person).ToArray()};
+        return ValueTask.FromResult(state);
+    }
     public ValueTask<WebSessionPermissionResult> RequestNotificationsAsync(CancellationToken token) =>
         ValueTask.FromResult(new WebSessionPermissionResult(WebSessionPermissionState.Unavailable));
-    public ValueTask<WebSessionMicrophoneResult> RequestMicrophoneAsync(CancellationToken token)=>ValueTask.FromResult(new WebSessionMicrophoneResult(WebSessionMicrophoneState.Granted));
+    public ValueTask<WebSessionMicrophoneResult> RequestMicrophoneAsync(CancellationToken token)
+    {token.ThrowIfCancellationRequested();ObserveMicrophoneRequest();return ValueTask.FromResult(new WebSessionMicrophoneResult(WebSessionMicrophoneState.Granted));}
     public ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token)
     {
         token.ThrowIfCancellationRequested();var value=JsonSerializer.SerializeToElement(args);
+        if(callsAuditPath is not null && method is "callStart" or "callAnswer" or "callDecline")
+            return ValueTask.FromResult(InvokePrivateCall(method,value));
         if (messageAuditPath is not null && method.StartsWith("message", StringComparison.Ordinal)) return InvokeMessagesFixtureAsync(method, value, token);
         if(method=="connectionDiagnostics")
         {
@@ -165,7 +179,9 @@ internal sealed partial class SyntheticDiscordSession:IDiscordSession
         if(method=="mute")state=state with{Muted=value.GetProperty("value").GetBoolean()};
         if(method=="deafen")state=state with{Deafened=value.GetProperty("value").GetBoolean()};
         if(method=="leave")state=state with{ChannelId=null,Participants=[],Streams=[],VoiceConnection="disconnected",Sharing=false,OutgoingViewers=null,
+            Calls=callsAuditPath is null?state.Calls:AvailableCalls(),
             Activities=state.Activities.Where(activity=>activity.CanJoinVoice).ToArray()};
+        if(method=="leave")PrivateCallLeft();
         if(method is "join" or "joinActivity")
         {
             var channel=state.Channels.Single(c=>c.Id==value.GetProperty("target").GetString());
@@ -180,7 +196,7 @@ internal sealed partial class SyntheticDiscordSession:IDiscordSession
         if(!audioMode)throw new NotSupportedException("Synthetic fixture has no media.");
         return ValueTask.FromResult<IDiscordReceiver>(new SyntheticAudioReceiver());
     }
-    public ValueTask DisposeAsync(){leases.Clear();return ValueTask.CompletedTask;}
+    public async ValueTask DisposeAsync(){leases.Clear();callLifetime.Cancel();await callSchedule;callLifetime.Dispose();}
 }
 
 // A protocol-shaped receiver only. This session is never registered with the

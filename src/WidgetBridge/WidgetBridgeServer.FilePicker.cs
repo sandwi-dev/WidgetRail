@@ -15,7 +15,7 @@ public sealed partial class WidgetBridgeServer
         if (!valid && pending is not null) FilePickerRequests.Complete(pending.Id, []);
         if (message.Type == BridgeMessageTypes.TakeFilePicker)
         {
-            var prompt = valid ? new BridgeFilePickerPrompt(pending!.Id, descriptor!.Id, pending.Title, pending.Multiple) : null;
+            var prompt = valid ? new BridgeFilePickerPrompt(pending!.Id, descriptor!.Id, pending.Title, pending.Multiple) { CommitLabel = pending.CommitLabel } : null;
             await ReplyAsync(message.Type, message.RequestId, new BridgeFilePickerTake(prompt), token).ConfigureAwait(false);
         }
         else if (message.Type == BridgeMessageTypes.CheckFilePicker)

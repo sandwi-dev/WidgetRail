@@ -24,6 +24,7 @@ internal sealed partial class WidgetViewPresenter
     private bool indexedRootStyleOnContainer;
     private string? fragmentRootId;
     private (bool Focused, bool Pressed)? indexedRootInteraction;
+    private HashSet<NativeComputedStyleAdapter>? indexedItemDecorations;
 
     internal static void SetHighContrastStyleOverride(bool? value) => NativeComputedStyleAdapter.SetHighContrastOverride(value);
     internal static void SetSystemHighContrast(bool value)
@@ -37,9 +38,13 @@ internal sealed partial class WidgetViewPresenter
         indexedRootInteraction = (focused, pressed);
         if (fragmentRootId is { } root && bindings.TryGetValue(root, out var binding) && declarations.TryGetValue(root, out var declaration))
             ApplyComputedStyles(binding, declaration.Node);
+        if (indexedItemDecorations is not null)
+            foreach (var decoration in indexedItemDecorations)
+                decoration.SetItemInteraction(focused, pressed);
     }
     internal void ResetPressedStyles()
     {
+        CancelHeldCollectionSelection();
         ResetSliderValues();
         SetSliderAdjustment(null);
         sliderBackPending = false;
@@ -61,7 +66,7 @@ internal sealed partial class WidgetViewPresenter
             _ => binding.Element,
         };
         if (nativeStyles.TryGetValue(binding, out var previous) && !ReferenceEquals(previous.Target, target))
-        { previous.Dispose(); nativeStyles.Remove(binding); }
+        { indexedItemDecorations?.Remove(previous); previous.Dispose(); nativeStyles.Remove(binding); }
         if (!nativeStyles.TryGetValue(binding, out var adapter))
             nativeStyles.Add(binding, adapter = new(target, node.IsFocusable || target is ScrollViewer or ListViewBase));
         adapter.SupportsBackgroundMaterial = node.Kind is ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Grid or
@@ -75,14 +80,32 @@ internal sealed partial class WidgetViewPresenter
         if (binding.Element is WidgetIndexedCollectionView indexed)
             indexed.ContextHintAdmitted = adapter.ContextHintAdmitted;
         adapter.SelectionSurface = binding.MotionHost?.SelectionSurface;
+        adapter.SetContrastBackdrop(node.UsesFocusedDescendantArtwork == true && binding.Element is WidgetPresentationSurface backdrop
+            ? backdrop.ContentPanel : null);
+        adapter.ActionContent = binding.Children as WidgetActionPanel;
         adapter.RoundedContent = binding.Children as WidgetPosterPanel;
         adapter.DepthSlotsFactory = (binding.Element is Panel or Border or WidgetPresentationSurface || binding.MotionHost?.SelectionSurface is not null) && binding.MotionHost is { } depthHost
             ? depthHost.EnsureDepthSlots : null;
         adapter.TextContent = node.Kind is ViewNodeKind.Button or ViewNodeKind.Select or ViewNodeKind.TextEntry && binding.Element is ButtonBase button
             ? (button is WidgetDisclosureButton disclosure ? disclosure.DisplayContent : button.Content) switch { TextBlock label => label, Grid panel => panel.Children.OfType<TextBlock>().SingleOrDefault(), _ => null } : null;
-        adapter.Update(presentation?.RenderStyles.GetValueOrDefault(node.Id),
+        var nodeStyles = presentation?.RenderStyles.GetValueOrDefault(node.Id);
+        if (node.Kind == ViewNodeKind.BackgroundSurface && binding.Element is WidgetPresentationSurface background)
+        {
+            adapter.BackgroundPaintLayer = background.ConfigureForegroundBackground(node.ForegroundBackgroundProcessKey,
+                WallpaperMotionStyle.Read(nodeStyles?.Base));
+            background.ConfigureEntrance(nodeStyles?.Base.GetValueOrDefault("surface-entrance")?.Text == "fade");
+            background.ArtworkMotion.Configure(WallpaperMotionStyle.Read(nodeStyles?.Base));
+            background.ArtworkMotion.SetSuspended(!presentationActive || IsModalBackdrop(node.Id));
+        }
+        if (adapter.ActionContent is { } repeatFace && nodeStyles?.Focused.GetValueOrDefault("focus-sheen-repeat-delay")?.Number > 0)
+            NativeMotionVisibility.Prepare(repeatFace);
+        var followsItem = indexedRootStyleOnContainer && node.Id != fragmentRootId && !node.IsFocusable &&
+            nodeStyles?.Base.GetValueOrDefault("interaction-state-source")?.Text == "indexed-item";
+        if (followsItem) (indexedItemDecorations ??= []).Add(adapter);
+        else indexedItemDecorations?.Remove(adapter);
+        adapter.Update(nodeStyles,
             typographyOnly: indexedRootStyleOnContainer && node.Id == fragmentRootId || binding.Element is HyperlinkButton,
-            interaction: indexedRootStyleOnContainer && node.Id == fragmentRootId ? indexedRootInteraction :
+            interaction: followsItem || indexedRootStyleOnContainer && node.Id == fragmentRootId ? indexedRootInteraction :
                 ReferenceEquals(binding,scrollFocusOutline)?(true,false):binding.Element is WidgetIndexedCollectionView?(false,false):null);
         if (binding.Identity.Scope != activeScope) adapter.SetControllerPressed(false);
     }
@@ -93,6 +116,7 @@ internal sealed partial class WidgetViewPresenter
     private void RetireComputedStyles(Binding binding)
     {
         if (!nativeStyles.Remove(binding, out var adapter)) return;
+        indexedItemDecorations?.Remove(adapter);
         if (ReferenceEquals(controllerPressedStyle, adapter)) controllerPressedStyle = null;
         adapter.Dispose();
     }
@@ -198,6 +222,24 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     { Volatile.Write(ref highContrastOverride, value is null ? -1 : value.Value ? 1 : 0); EnvironmentChanged?.Invoke(); }
     internal static NativeComputedStyleAdapter? For(FrameworkElement element) => owners.TryGetValue(element, out var adapter) ? adapter : null;
 
+    // Portalled content may be styled before it has its final logical ancestry.
+    // Establish inherited typography before a content-sized surface freezes its
+    // opening height, rather than waiting for Loaded to change the text metrics.
+    // Visit realized elements only; never request collection rows for measurement.
+    internal static bool PrepareMeasuredTypography(DependencyObject root)
+    {
+        var changed = false;
+        if (root is FrameworkElement element && For(element) is { disposed: false } adapter &&
+            !ReferenceEquals(adapter.textScaleScope, NativeTextScaleScope.Find(element)))
+        {
+            adapter.Apply();
+            changed = true;
+        }
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+            changed |= PrepareMeasuredTypography(VisualTreeHelper.GetChild(root, index));
+        return changed;
+    }
+
     private readonly FrameworkElement element;
     private readonly bool interactive;
     private readonly bool selectorInput;
@@ -211,6 +253,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     internal bool StretchComposedContent { get; set; }
     internal bool RequiresHitTestBackground { get; set; }
     internal bool SupportsBackgroundMaterial { get; set; }
+    internal Border? BackgroundPaintLayer { get; set; }
+    private ForegroundChrome? foregroundChrome;
     internal Func<bool>? ContextHintAdmitted { get; set; }
     internal Panel? ContextHintHost { get; set; }
     internal WidgetContextIndicator? ContextIndicator => contextIndicator;
@@ -219,6 +263,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private readonly Dictionary<string, (Color Color, SolidColorBrush Brush)> brushes = new(StringComparer.Ordinal);
     private (Color Color, double Amount, LinearGradientBrush Brush)? shadedBackground;
     private AcrylicBrush? surfaceAcrylic;
+    private ForegroundPaintObserver? acrylicBackdrop;
     private SolidColorBrush? acrylicFallback;
     private FontFamily? fontFamily;
     internal TextBlock? TextContent { get; set; }
@@ -239,6 +284,14 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         focusVisualTarget = target; focusVisualStyles = targetStyles;
     }
     internal Border? SelectionSurface { get; set; }
+    private Grid? contrastBackdrop;
+    internal void SetContrastBackdrop(Grid? panel)
+    {
+        if (ReferenceEquals(contrastBackdrop, panel)) return;
+        if (contrastBackdrop is not null) contrastBackdrop.Background = null;
+        contrastBackdrop = panel;
+    }
+    internal WidgetActionPanel? ActionContent { get; set; }
     internal WidgetPosterPanel? RoundedContent { get; set; }
     internal Func<(Grid Shadow, Grid Edges)>? DepthSlotsFactory { get; set; }
     private WidgetNativeDepth? depth;
@@ -307,6 +360,12 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     { styles = value; this.typographyOnly = typographyOnly; interactionOverride = interaction; Apply(); }
     internal void SetControllerPressed(bool value)
     { if (disposed) return; controllerPressed = value; Apply(); }
+    internal void SetItemInteraction(bool focused, bool pressed)
+    {
+        if (disposed || interactionOverride == (focused, pressed)) return;
+        interactionOverride = (focused, pressed);
+        Apply();
+    }
 
     private void Changed(object sender, RoutedEventArgs args) => Queue();
     private void ThemeChanged(FrameworkElement sender, object args) => Queue();
@@ -397,6 +456,34 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
                 ? new CornerRadius(authoredRadius) : new());
         var systemContrast = Volatile.Read(ref highContrastOverride) is var contrastOverride && (contrastOverride < 0 ? Volatile.Read(ref systemHighContrast) != 0 : contrastOverride != 0);
         var contrast = accessibility.HighContrast(systemContrast);
+        if ((ActionContent ?? RoundedContent) is { } face)
+        {
+            var sheen = styles?.Focused.GetValueOrDefault("focus-sheen")?.Text;
+            if (focused && enabled && !contrast && !motionOptions.Reduced && sheen is "sweep" or "reflection")
+            {
+                var reflection = sheen == "reflection";
+                var duration = Math.Clamp(Number(styles?.Focused, "focus-sheen-duration") ?? (reflection ? 1900 : 570), 0, 5000);
+                var delay = Math.Clamp(Number(styles?.Focused, "focus-sheen-delay") ?? (reflection ? 180 : 0), 0, 1500);
+                var peakOpacity = Math.Clamp(Number(styles?.Focused, "focus-sheen-opacity") ?? (reflection ? .30 : 44d / 255), 0, 1);
+                var repeatMs = Number(styles?.Focused, "focus-sheen-repeat-delay") ?? 0;
+                var rest = repeatMs > 0 ? TimeSpan.FromMilliseconds(Math.Clamp(repeatMs, 1000, 60000)) : TimeSpan.Zero;
+                face.UpdateSheen(true, motionOptions.Duration(duration), ShapeRadius(style) ?? 0,
+                    reflection, motionOptions.Duration(delay), (float)peakOpacity, rest);
+            }
+            else face.UpdateSheen(focused && enabled, TimeSpan.Zero, 0);
+        }
+        // Focus-driven wallpaper can put any color behind unboxed headings and date labels.
+        // Use the matching system canvas while leaving foreground media and fixed artwork visible.
+        if (contrastBackdrop is { } panel)
+        {
+            if (contrast)
+            {
+                var canvas = Shell.ShellChromePalette.WindowColors().Background;
+                if (panel.Background is not SolidColorBrush current || current.Color != canvas)
+                    panel.Background = new SolidColorBrush(canvas);
+            }
+            else if (panel.Background is not null) panel.Background = null;
+        }
         var fontSize = Number(style, "font-size", true) is { } font ? Math.Clamp(font, 1, 512) * textScale : (double?)null;
         if (element is TextBlock text)
         {
@@ -489,8 +576,16 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             focusDecoration ??= WidgetFocusDecoration.Create(focusControl, focusVisualTarget ?? focusControl);
             if (contrast && focusControl.FocusVisualPrimaryBrush is SolidColorBrush systemFocus) focusColor = systemFocus.Color;
             var shapeStyle = focusVisualStyles is null ? focusStyle : pressed ? focusVisualStyles.Pressed : focused ? focusVisualStyles.Focused : focusVisualStyles.Base;
+            var effect = focusStyle.GetValueOrDefault("focus-outline-effect")?.Text;
+            var settled = !contrast && enabled && !pressed && !motionOptions.Reduced && effect is "edge-glint" or "breathe"
+                ? new SettledOutlineStyle(effect, motionOptions.Duration(Number(focusStyle, "focus-outline-duration") ?? 2200),
+                    (float)(Number(focusStyle, "focus-outline-intensity") ?? .5),
+                    TimeSpan.FromMilliseconds(Number(focusStyle, "focus-outline-repeat-delay") ?? 0),
+                    focusStyle.GetValueOrDefault("focus-outline-highlight") is { } tint && TryColor(tint.Text, out var highlight)
+                        ? highlight : null) : default;
+            if (settled.Enabled) NativeMotionVisibility.Prepare(focusControl);
             focusDecoration?.Apply(focusColor, (float)outlineWidth, (float)(ShapeRadius(shapeStyle) ?? 0),
-                (float)(Number(focusStyle, "outline-offset") ?? 0), focused, motionOptions);
+                (float)(Number(focusStyle, "outline-offset") ?? 0), focused, motionOptions, settled);
         }
         else { focusDecoration?.Dispose(); focusDecoration = null; }
         if (element is Slider)
@@ -502,7 +597,17 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             Put(Control.FocusVisualSecondaryBrushProperty, engagedSlider && !contrast ? transparentSurface : null);
         }
         var opacity = Number(style, "opacity");
-        Put(UIElement.OpacityProperty, accessibility.Opacity(opacity, contrast));
+        var authoredOpacity = accessibility.Opacity(opacity, contrast);
+        if (styles?.Base.GetValueOrDefault("foreground-chrome")?.Text == "auto-hide")
+        {
+            foregroundChrome ??= new(element, value => Put(UIElement.OpacityProperty, value));
+            foregroundChrome.Apply(authoredOpacity);
+        }
+        else
+        {
+            foregroundChrome?.Dispose(); foregroundChrome = null;
+            Put(UIElement.OpacityProperty, authoredOpacity);
+        }
         var background = SurfaceBackground(Brush(style, "background", contrast, true), style, contrast);
         // An explicit primary preview opener owns its whole native rectangle,
         // including padding. Preserve authored paint; only fill an absent brush.
@@ -522,7 +627,7 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         {
             Color Edge(string property) => style?.GetValueOrDefault(property) is { } authored && TryColor(authored.Text, out var color)
                 ? color : border is SolidColorBrush fallback ? fallback.Color : Microsoft.UI.Colors.Transparent;
-            depth ??= new(element, DepthSlotsFactory?.Invoke());
+            depth ??= new(element, DepthSlotsFactory?.Invoke(), outerShadowOnly: element is WidgetModalPanel);
             depth.Apply(new(shadowColor, (float)Math.Clamp(Number(style, "shadow-blur", true) ?? 0, 0, 64),
                 new((float)Math.Clamp(Number(style, "shadow-offset-x") ?? 0, -256, 256),
                     (float)Math.Clamp(Number(style, "shadow-offset-y") ?? 0, -256, 256)),
@@ -553,6 +658,12 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
                 Put(Control.BorderThicknessProperty, thickness); Put(Control.CornerRadiusProperty, radius); Put(Control.PaddingProperty, padding);
                 break;
             case Grid:
+                if (BackgroundPaintLayer is { } paint)
+                {
+                    paint.Background = background;
+                    paint.CornerRadius = radius ?? new();
+                    background = null;
+                }
                 Put(Panel.BackgroundProperty, background); Put(Grid.BorderBrushProperty, border);
                 Put(Grid.BorderThicknessProperty, thickness); Put(Grid.CornerRadiusProperty, radius); Put(Grid.PaddingProperty, padding);
                 break;
@@ -646,8 +757,13 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     private double? BoxLength(string property)
     {
         if (styles?.Base.GetValueOrDefault(property) is not { Number: { } number } value || !double.IsFinite(number) || number < 0) return null;
-        var viewport = WidgetViewPresenter.ViewportFor(element);
-        return value.Unit switch { "px" or null => number, "vw" => viewport.Width * number / 100, "vh" => viewport.Height * number / 100, _ => null };
+        return value.Unit switch
+        {
+            "px" or null => number,
+            "vw" => WidgetViewPresenter.ViewportFor(element).Width * number / 100,
+            "vh" => WidgetViewPresenter.ViewportFor(element).Height * number / 100,
+            _ => null,
+        };
     }
 
     private void RestoreSurfaces()
@@ -724,6 +840,19 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         if (brushes.TryGetValue(property, out var previous) && previous.Color == color) return previous.Brush;
         var brush = new SolidColorBrush(color); brushes[property] = (color, brush); return brush;
     }
+    private void UpdateAcrylicBackdrop(bool revealed, TimeSpan _)
+    {
+        if (surfaceAcrylic is not { } brush) return;
+        // In-app acrylic can sample our wallpaper, but the game lives in another HWND.
+        // Use its tint over the dimmed game until this surface has wallpaper again.
+        var tintAlpha = 1 - (1 - brush.TintOpacity) * (1 - (brush.TintLuminosityOpacity ?? 0));
+        // Keep text legible over sharp game pixels while respecting stronger authored tints.
+        var alpha = revealed ? Math.Max(.85, tintAlpha) : 1;
+        var color = brush.TintColor with { A = (byte)Math.Round(255 * alpha) };
+        if (brush.FallbackColor != color) brush.FallbackColor = color;
+        if (brush.AlwaysUseFallback != revealed) brush.AlwaysUseFallback = revealed;
+    }
+
     private Brush? SurfaceBackground(SolidColorBrush? background, IReadOnlyDictionary<string, BridgeComputedStyleValue>? style, bool contrast)
     {
         if (SupportsBackgroundMaterial && background is not null && !contrast && accessibility.AcrylicEffects && !accessibility.ReducedTransparency &&
@@ -732,13 +861,16 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
             // In-app acrylic samples the content behind the opted-in panel. Native Windows
             // transparency policy can replace it with this opaque fallback.
             surfaceAcrylic ??= new AcrylicBrush { TintTransitionDuration = TimeSpan.Zero };
-            surfaceAcrylic.TintColor = surfaceAcrylic.FallbackColor = background.Color with { A = byte.MaxValue };
+            surfaceAcrylic.TintColor = background.Color with { A = byte.MaxValue };
             surfaceAcrylic.TintOpacity = Math.Clamp(Number(style, "background-tint-opacity") ?? .65, 0, 1);
             surfaceAcrylic.TintLuminosityOpacity = Number(style, "background-luminosity-opacity") is { } luminosity
                 ? Math.Clamp(luminosity, 0, 1) : null;
+            acrylicBackdrop ??= new(element, UpdateAcrylicBackdrop);
+            UpdateAcrylicBackdrop(acrylicBackdrop.Revealed, TimeSpan.Zero);
             shadedBackground = null;
             return surfaceAcrylic;
         }
+        acrylicBackdrop?.Dispose(); acrylicBackdrop = null;
         surfaceAcrylic = null;
         if (SupportsBackgroundMaterial && !accessibility.AcrylicEffects && background is not null &&
             style?.GetValueOrDefault("background-material")?.Text == "acrylic")
@@ -814,7 +946,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         for (var i = 0; i < parts.Length; ++i)
         {
             var text = parts[i].EndsWith("px", StringComparison.Ordinal) ? parts[i][..^2] : parts[i];
-            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out numbers[i]) || !double.IsFinite(numbers[i]) || numbers[i] < 0) return null;
+            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out numbers[i]) ||
+                !double.IsFinite(numbers[i]) || numbers[i] < (property == "margin" ? -256 : 0)) return null;
         }
         return parts.Length switch
         {
@@ -856,6 +989,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
     {
         if (disposed) return;
         BindRasterizationRoot(null);
+        foregroundChrome?.Dispose(); foregroundChrome = null;
+        (ActionContent ?? RoundedContent)?.UpdateSheen(false, TimeSpan.Zero, 0);
         if (selectorInput) element.RasterizationScale = originalRasterizationScale;
         BindTextScale(null);
         BindFocusRoot(null);
@@ -870,6 +1005,8 @@ internal sealed class NativeComputedStyleAdapter : IDisposable
         focusDecoration?.Dispose(); focusDecoration = null;
         foreach (var property in originals.Keys.ToArray()) Put(property, null);
         if (element is Media.MediaPlayerView media) media.ApplyFrameStyle(null, null, null, null, null);
+        SetContrastBackdrop(null);
+        acrylicBackdrop?.Dispose(); acrylicBackdrop = null;
         surfaceAcrylic = null; acrylicFallback = null;
         shadedBackground = null;
         RestoreResources();

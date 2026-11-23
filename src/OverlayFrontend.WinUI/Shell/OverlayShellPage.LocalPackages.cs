@@ -34,10 +34,8 @@ internal sealed partial class OverlayShellPage
         {
             SystemFilePickerOpen = true;
             PublishControllerGuide();
-            var picker = new FileOpenPicker(Win32Interop.GetWindowIdFromWindow((nint)hostWindow))
-            { SuggestedStartLocation = PickerLocationId.Downloads, CommitButtonText = "Select widget" };
-            picker.FileTypeFilter.Add(".wrwidget");
-            var file = await picker.PickSingleFileAsync().AsTask(cancellation.Token);
+            var file = await ChooseLocalPathAsync(XamlRoot,null,new(FileBrowserMode.Open,"Choose widget package","Review package",DownloadLocation(),".wrwidget"),
+                PickerLocationId.Downloads,cancellation.Token);
             SystemFilePickerOpen = false;
             if (file is null || cancellation.IsCancellationRequested || retired || !visible || !foreground || !ReferenceEquals(surface, originalSurface)) return;
             session.ValidateLocalWidgetInstall(request.Displayed, request.Action);
@@ -51,7 +49,7 @@ internal sealed partial class OverlayShellPage
             var showing = dialog.ShowAsync().AsTask();
             try
             {
-                var result = await session.InstallLocalWidgetAsync(request.Displayed, request.Action, file.Path,
+                var result = await session.InstallLocalWidgetAsync(request.Displayed, request.Action, file,
                     dialog.ReviewAsync, cancellation.Token);
                 if (!cancellation.IsCancellationRequested) dialog.Complete(result);
             }

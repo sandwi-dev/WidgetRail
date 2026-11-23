@@ -38,7 +38,7 @@ internal sealed partial class OverlayShellPage
         toolbar.Update(adjustment.Placement.Current,adjustment.Placement.Monitor,adjustment.Placement.OpacityPercent,
             appearance,ShellChromePalette.Resolve(ShellPalette,appearance),ShellPalette);
         OverlayWindowFrame.EnsureAbove(toolbar.Window.Handle,adjustment.Surface.Window.Handle);
-        if(notificationBanner?.IsVisible==true&&!PlaceNotificationBanner())HideNotificationBanner();
+        if(notificationBanner?.IsVisible==true)PumpNotificationBanners();
     }
 
     private void RetirePinnedAdjustmentToolbar(bool restoreFocus=true)

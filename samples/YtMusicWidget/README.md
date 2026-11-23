@@ -7,6 +7,11 @@ Search, your Library, a local Queue, and a compact pinned player.
 Collections scroll continuously as you browse.
 Your selected playback volume is remembered across widget and application restarts.
 
+From the tray menu, choose **Assign quick action**, pick a direction, then expand
+**YouTube Music**. Play or pause controls the current song. Previous song and
+Next song follow the playback queue. You can assign these shortcuts before
+opening YouTube Music. An assignment becomes available when it has a playback target.
+
 Switching tabs or Library filters remembers your highlighted item while the widget
 is running. Use **Refresh** to reload a collection from the beginning.
 **YTMDesktop is not required.**

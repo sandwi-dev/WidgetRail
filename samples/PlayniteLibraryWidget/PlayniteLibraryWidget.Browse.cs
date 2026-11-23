@@ -103,8 +103,7 @@ public sealed partial class PlayniteLibraryWidget
                     _model.Update(state => state with
                     {
                         IndexedBrowse = state.IndexedBrowse with { Publication = content, Selection = selection,
-                            Category = categoryId, Status = WidgetPagedResourceStatus.Ready,
-                            ModalReturn = sameQuery ? state.IndexedBrowse.ModalReturn : null },
+                            Category = categoryId, Status = WidgetPagedResourceStatus.Ready },
                         BrowseGameCount = new(authorityGeneration, projected.Count),
                         SourceObservations = PlayniteLibrarySourceCatalog.RetainObservations(state.SourceObservations, captured.Sources),
                         ActiveBrowseReload = null,
@@ -133,7 +132,6 @@ public sealed partial class PlayniteLibraryWidget
                             {
                                 Status = WidgetPagedResourceStatus.Error, Error = MapError(error),
                                 Publication = retirePriorQuery ? null : state.IndexedBrowse.Publication,
-                                ModalReturn = retirePriorQuery ? null : state.IndexedBrowse.ModalReturn,
                             } });
                     }
             }
@@ -151,7 +149,7 @@ public sealed partial class PlayniteLibraryWidget
     {
         var local = _model.Value;
         return new(query, !local.OrganizationBusy && local.ActiveBrowseReload is null,
-            local.LaunchingSavedId, _launchStates, owner);
+            local.LaunchingSavedId, EffectiveLaunchStates(), owner);
     }
 
     private void UpdateIndexedBrowsePresentation()
@@ -174,12 +172,10 @@ public sealed partial class PlayniteLibraryWidget
         var route = _navigation.Value;
         var target = new PlayniteLibraryGameTarget(item.Item, () =>
         {
-            lock (_gate) return !route.RouteCancellationToken.IsCancellationRequested &&
-                _navigation.Value.Route == PlayniteLibraryRoute.Browse &&
+            lock (_gate) return !route.RootRouteCancellationToken.IsCancellationRequested &&
+                _navigation.Value.RootRoute == PlayniteLibraryRoute.Browse &&
                 ReferenceEquals(BrowseState.Publication?.QueryOwner, content.QueryOwner);
         });
-        if (action.ActionId is (PlayniteLibraryActions.DetailsOpen or PlayniteLibraryActions.QuickPlay) && target.IsCurrent)
-            lock (_gate) UpdateBrowseState(state => state with { ModalReturn = action.FocusedCollectionItem, ModalReturnRequestId = 0 });
         return HandleCapturedGameActionAsync(target, action, token);
     }
 
@@ -192,7 +188,7 @@ public sealed partial class PlayniteLibraryWidget
         {
             if (BrowseState.Publication is not { } content ||
                 content.Query.Find(new(sourceElementId[prefix.Length..])) is not { } row) return null;
-            return new(row.Item, () => !route.RouteCancellationToken.IsCancellationRequested &&
+            return new(row.Item, () => !route.RootRouteCancellationToken.IsCancellationRequested &&
                 ReferenceEquals(BrowseState.Publication?.QueryOwner, content.QueryOwner));
         }
     }
@@ -209,7 +205,7 @@ public sealed partial class PlayniteLibraryWidget
             var next = CaptureBrowseContent(query, same ? previous.QueryOwner : new object());
             if (same) _indexedBrowse.UpdateContent(next);
             else _indexedBrowse.PublishQuery(next, query.Count);
-            UpdateBrowseState(state => state with { Publication = next, ModalReturn = same ? state.ModalReturn : null });
+            UpdateBrowseState(state => state with { Publication = next });
         }
     }
 

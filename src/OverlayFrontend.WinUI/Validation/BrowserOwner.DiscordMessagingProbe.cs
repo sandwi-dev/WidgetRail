@@ -40,7 +40,7 @@ internal sealed partial class BrowserSurface
         if(value.TryGetProperty("shape",out var shape)&&shape.ValueKind==JsonValueKind.Object)
         {
             var clean=new JsonObject();
-            foreach(var property in shape.EnumerateObject().Take(40))
+            foreach(var property in shape.EnumerateObject().Take(64))
             {
                 if(!DiscordMessagingShapeFields.Contains(property.Name,StringComparer.Ordinal))continue;
                 if(property.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)clean[property.Name]=property.Value.GetBoolean();
@@ -106,7 +106,10 @@ internal sealed partial class BrowserSurface
         "authorValid","contentString","contentNull","contentMissing","attachmentsArray","timestampValid","editedValid","attachmentIdValid",
         "attachmentNameString","attachmentSizeInteger","duplicateIds","httpSuccess","requestLimitInteger","attemptSeen","rejected","httpStatus",
         "channelKnown","channelIdMatches","privateType","guildAbsent","recipientsArray","recipientCount","recipientsValid","recipientIncludesSelf","recipientsUnique","dmRecipientCount",
-        "errorBodyObject","unknownChannelCode","unknownEndpointCode","missingAccessCode"];
+        "errorBodyObject","unknownChannelCode","unknownEndpointCode","missingAccessCode",
+        "klipyEmbeds","tenorEmbeds","gifvEmbeds","imageEmbeds","videoEmbeds","animatedEmbedImages",
+        "embedVideoDiscordProxy","embedImageDiscordProxy","embedVideoTenor","embedVideoOther",
+        "videoAttachments","attachmentProxyPresent","attachmentThumbnailPresent","animatedAttachments"];
     private const string DiscordMessagingProbeScript="""
         (async()=>{
           const adapter=globalThis.WidgetRailDiscordPrototype;
@@ -119,6 +122,34 @@ internal sealed partial class BrowserSurface
           const key='__widgetRailMessagingShapeProbe';
           globalThis[key]??={shape:null,registrations:[]};
           const diagnostic=globalThis[key];
+          // Count only fixed provider facts from responses the widget already
+          // requested. No media fetches, message text, identities, filenames,
+          // signed URLs or arbitrary hostnames leave the page through this probe.
+          const mediaFacts=rows=>{
+            const host=value=>{try{return new URL(value).hostname;}catch{return '';}};
+            const proxy=value=>['images-ext-1.discordapp.net','images-ext-2.discordapp.net'].includes(host(value));
+            const animated=value=>Number.isSafeInteger(value?.flags)&&value.flags>=0&&(value.flags&32)!==0;
+            const embeds=rows.flatMap(row=>Array.isArray(row?.embeds)?row.embeds.slice(0,2):[]).slice(0,100);
+            const attachments=rows.flatMap(row=>Array.isArray(row?.attachments)?row.attachments.slice(0,10):[]).slice(0,100);
+            const image=entry=>entry?.image??entry?.thumbnail;
+            const address=value=>value?.proxy_url??value?.proxyURL??value?.url;
+            return {
+              klipyEmbeds:embeds.filter(value=>host(value?.url)==='klipy.com').length,
+              tenorEmbeds:embeds.filter(value=>['tenor.com','www.tenor.com'].includes(host(value?.url))).length,
+              gifvEmbeds:embeds.filter(value=>value?.type==='gifv').length,
+              imageEmbeds:embeds.filter(value=>value?.type==='image').length,
+              videoEmbeds:embeds.filter(value=>value?.type==='video').length,
+              animatedEmbedImages:embeds.filter(value=>animated(image(value))).length,
+              embedVideoDiscordProxy:embeds.filter(value=>proxy(address(value?.video))).length,
+              embedImageDiscordProxy:embeds.filter(value=>proxy(address(image(value)))).length,
+              embedVideoTenor:embeds.filter(value=>host(address(value?.video))==='media.tenor.com').length,
+              embedVideoOther:embeds.filter(value=>{const name=host(address(value?.video));return name&&!proxy(address(value.video))&&!['media.tenor.com','cdn.discordapp.com','media.discordapp.net'].includes(name);}).length,
+              videoAttachments:attachments.filter(value=>typeof value?.content_type==='string'&&value.content_type.startsWith('video/')).length,
+              attachmentProxyPresent:attachments.filter(value=>typeof value?.proxy_url==='string').length,
+              attachmentThumbnailPresent:attachments.filter(value=>value?.thumbnail!=null||value?.poster!=null).length,
+              animatedAttachments:attachments.filter(animated).length
+            };
+          };
           if(!diagnostic.findOriginal&&typeof wp?.findByProps==='function'){
             diagnostic.findOriginal=wp.findByProps;
             const wrapper=function(...args){
@@ -284,7 +315,8 @@ internal sealed partial class BrowserSurface
                     attachmentsArray:count(row=>Array.isArray(row?.attachments)),timestampValid:count(row=>typeof row?.timestamp==='string'&&Number.isFinite(Date.parse(row.timestamp))),
                     editedValid:count(row=>row?.edited_timestamp==null||typeof row.edited_timestamp==='string'&&Number.isFinite(Date.parse(row.edited_timestamp))),
                     attachmentIdValid:attachments.every(item=>validId(item?.id)),attachmentNameString:attachments.every(item=>typeof item?.filename==='string'),
-                    attachmentSizeInteger:attachments.every(item=>Number.isSafeInteger(item?.size)&&item.size>=0),duplicateIds:new Set(rows.map(row=>row?.id)).size!==rows.length};
+                    attachmentSizeInteger:attachments.every(item=>Number.isSafeInteger(item?.size)&&item.size>=0),duplicateIds:new Set(rows.map(row=>row?.id)).size!==rows.length,
+                    ...mediaFacts(rows)};
                 }catch{probe.shape={...entry,hasBody:false};}
                 return response;
               },rejected);

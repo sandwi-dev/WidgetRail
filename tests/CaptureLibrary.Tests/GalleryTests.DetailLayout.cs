@@ -3,22 +3,25 @@ using WidgetRail.WidgetSdk;
 
 internal static partial class GalleryTests
 {
-    internal static async Task DetailUnsavedDoesNotReuseSavedIdentity()
+    internal static async Task CaptureKeepsGalleryAfterClosingSavedDetails()
     {
-        var temporary=new CaptureAttachment(new string('f',32),"image/png",321,123,12,0,long.MaxValue);
-        await using var fixture=new GalleryFixture((builder,_)=>builder
-            .WithResponse(WidgetCaptureCapabilities.Validate,new CaptureConfigurationValidation(true))
-            .WithResponse(WidgetCaptureCapabilities.Start,new WindowCaptureTicket(new string('e',32)))
-            .WithResponse(WidgetCaptureCapabilities.Status,new WindowCaptureStatus(new string('e',32),WindowCapturePhase.Ready,temporary)));
-        await fixture.Start();using var host=await OpenEditingSource(fixture);
-        await fixture.Action("capture-library.back");await fixture.Until(()=>fixture.Collection is not null&&!fixture.Busy);
-        await fixture.Action("capture-library.photo");await fixture.Until(()=>Preview(fixture)?.Id==temporary.Id&&!fixture.Busy);
-        Check(fixture.Node("capture-library.heading")?.Text=="Review capture"&&fixture.Node("capture-library.edit-title") is null&&
-            fixture.Node("capture-library.detail.date") is null&&fixture.Node("capture-library.metadata")?.Text?.Contains("321 × 123")==true,
-            "Unsaved review reused the previous saved capture's title/date/metadata");
-        Check(fixture.Node("capture-library.save") is not null&&fixture.Node("capture-library.delete") is null&&fixture.Released==1,
-            "Unsaved review retained saved mutations or leaked the departed saved lease");
+        var captures = 0;
+        await using var fixture = new GalleryFixture((builder, _) => builder
+            .WithHandler(WidgetCaptureCapabilities.SaveScreenshot, (_, _) =>
+            {
+                captures++;
+                return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+            }));
+        await fixture.Start();
+        using var host = await OpenEditingSource(fixture);
+        await fixture.Action("capture-library.back");
+        await fixture.Until(() => fixture.Collection is not null && !fixture.Busy);
+        await fixture.Action("capture-library.photo");
+        await fixture.Until(() => captures == 1 && !fixture.Busy);
+        Check(fixture.Collection is not null && fixture.Node("capture-library.edit-title") is null &&
+            fixture.Node("capture-library.detail.header") is null, "Taking a screenshot reopened the previous capture");
     }
+
 
     internal static async Task DetailActionsAndInlineBindings()
     {

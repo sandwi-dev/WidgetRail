@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices.WindowsRuntime;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.OverlayFrontend.WinUI.Media;
+using WidgetRail.RemoteMediaTransport;
 using Windows.Storage.Streams;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
@@ -7,8 +9,16 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 /// <summary>Bounded native HTTP acquisition, including responses without Content-Length.</summary>
 internal static class NativeArtworkStream
 {
-    internal static async Task<IRandomAccessStream> OpenAsync(Uri uri, CancellationToken token)
+    internal static async Task<IRandomAccessStream> OpenAsync(Uri uri, CancellationToken token, bool publicMedia = false)
     {
+        if (publicMedia)
+        {
+            if (ThemeCataloguePublication.PreviewFileDigest(uri) is { } digest)
+                return NativeArtworkDecoder.OpenMemory(await CataloguePreviewImageCache.ReadAsync(uri, digest, token).ConfigureAwait(false));
+            var content = await NativePublicMediaTransport.Client.DownloadAsync(uri, PublicMediaPolicy.SameOrigin(uri),
+                ProtocolConstants.MaximumEncodedArtworkBytes, token).ConfigureAwait(false);
+            return NativeArtworkDecoder.OpenMemory(content.Bytes);
+        }
         if (uri.Scheme != Uri.UriSchemeHttps) throw new InvalidDataException("Artwork requires an HTTPS source.");
         using var filter = new Windows.Web.Http.Filters.HttpBaseProtocolFilter { AllowUI = false };
         using var client = new Windows.Web.Http.HttpClient(filter);

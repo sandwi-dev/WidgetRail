@@ -19,6 +19,7 @@ public sealed partial class CaptureReplayService : IAsyncDisposable
     private ActiveSession? session;
     private PendingSave? save;
     private DateTimeOffset lastHostContact;
+    private static readonly TimeSpan AutomaticDiscoveryInterval = TimeSpan.FromSeconds(5);
     private DateTimeOffset nextAutomaticStart;
     private bool automaticStartBlocked;
     private bool hostSuspended;
@@ -43,6 +44,7 @@ public sealed partial class CaptureReplayService : IAsyncDisposable
         internal readonly CaptureReplaySettings Settings = settings;
         internal readonly NativeWindowPreviewTarget Target = target;
         internal readonly CaptureApplicationContext Application = application;
+        internal long StartedAt { get; init; }
         internal readonly CancellationTokenSource Lifetime = new();
         internal bool StopRequested, Ended;
         internal CaptureReplayIssue TerminalIssue;
@@ -74,8 +76,7 @@ public sealed partial class CaptureReplayService : IAsyncDisposable
         this.library = library; this.persist = persist; this.authorize = authorize; this.reload = reload; clock = time ?? TimeProvider.System;
         if (!configuration.IsWellFormed()) throw new ArgumentException("Invalid replay configuration.", nameof(configuration));
         configuration.Owner?.Validate(); this.configuration = configuration;
-        status = new(0, configuration.Revision, configuration.Settings, configuration.Settings.Enabled ? CaptureReplayPhase.Waiting : CaptureReplayPhase.Off)
-        { TargetName = configuration.ApplicationName };
+        status = new(0, configuration.Revision, configuration.Settings, configuration.Settings.Enabled ? CaptureReplayPhase.Waiting : CaptureReplayPhase.Off);
     }
 
     public CaptureReplayStatus Status { get { lock (gate) return status; } }
@@ -98,7 +99,7 @@ public sealed partial class CaptureReplayService : IAsyncDisposable
     {
         Phase = !configuration.Settings.Enabled ? CaptureReplayPhase.Off :
             issue is CaptureReplayIssue.None or CaptureReplayIssue.TargetUnavailable or CaptureReplayIssue.Cancelled ? CaptureReplayPhase.Waiting : CaptureReplayPhase.Error,
-        SessionId = null, Resolved = null, TargetName = configuration.ApplicationName, BufferedDurationSeconds = 0, ResidentBytes = 0,
+        SessionId = null, Resolved = null, TargetName = null, BufferedDurationSeconds = 0, ResidentBytes = 0,
         DroppedFrames = 0, Saving = false, Issue = issue,
     });
     private async Task SaveConfigurationAsync(CaptureReplayConfiguration next, CancellationToken token)
@@ -152,17 +153,33 @@ public sealed partial class CaptureReplayService : IAsyncDisposable
         return await AwaitControlAsync(pending!, token).ConfigureAwait(false);
     }
 
-    public async Task<CaptureReplayControlResult> StartAsync(object owner, BrokerWidgetIdentity actor, CancellationToken token = default)
+    public Task<CaptureReplayControlResult> StartAsync(object owner, BrokerWidgetIdentity actor, CancellationToken token = default) =>
+        StartCoreAsync(owner, actor, null, token);
+
+    public Task<CaptureReplayControlResult> StartFromTrayAsync(object owner, BrokerWidgetIdentity actor, long expectedRevision, CancellationToken token) =>
+        StartCoreAsync(owner, actor, expectedRevision, token);
+
+    private async Task<CaptureReplayControlResult> StartCoreAsync(object owner, BrokerWidgetIdentity actor, long? expectedRevision, CancellationToken token)
     {
         actor.Validate(); PendingControl pending;
         await mutations.WaitAsync(token).ConfigureAwait(false);
         try
         {
             DemandAlive();
-            if (control is not null || session is not null) return Result(CaptureReplayOutcome.Busy);
+            if (expectedRevision is { } revision)
+            {
+                if (Status.Revision != revision || !TrayReplayState.From(Status).CanStart)
+                    return Result(CaptureReplayOutcome.Conflict, CaptureReplayIssue.SessionChanged);
+                var permission = await authorize(actor, PlatformCapabilities.WindowCaptureV1, token).ConfigureAwait(false);
+                if (permission != CaptureReplayIssue.None) return Result(CaptureReplayOutcome.Unavailable, permission);
+            }
             if (!HostAvailable) return Result(CaptureReplayOutcome.Unavailable, CaptureReplayIssue.HostUnavailable);
+            // A manual start owns the choice while an automatic scan is still looking.
+            if (session is null && control is { Command.Automatic: true, Committing: false }) CancelPendingControl();
+            if (control is not null || session is not null) return Result(CaptureReplayOutcome.Busy);
             pending = new(owner, new(Guid.NewGuid().ToString("N"), HostReplayCommandKind.Start, actor,
-                Guid.NewGuid().ToString("N"), configuration.Settings with { Enabled = true }, configuration.Revision),
+                Guid.NewGuid().ToString("N"), configuration.Settings with { Enabled = true }, configuration.Revision) { RequestedFromTray = expectedRevision.HasValue,
+                    Approvals = SameFeature(configuration.Owner, actor) ? configuration.Approvals : ReplayApplicationApprovals.Empty },
                 token, clock.GetUtcNow().AddSeconds(120));
             lock (gate) control = pending;
             Publish(Status with { Phase = CaptureReplayPhase.Starting, SessionId = pending.Command.SessionId, Issue = CaptureReplayIssue.None });
@@ -179,6 +196,8 @@ public sealed partial class CaptureReplayService : IAsyncDisposable
     }
     public void CancelPending(object owner)
     {
+        var picker = Volatile.Read(ref approvalChoice);
+        if (picker is not null && ReferenceEquals(picker.Owner, owner)) picker.Completion.TrySetResult(null);
         PendingControl? pending;
         lock (gate)
         {
@@ -208,15 +227,18 @@ public sealed partial class CaptureReplayService : IAsyncDisposable
         }
     }
 
-    public async Task<CaptureReplayControlResult> StopAsync(string? expectedSessionId, CancellationToken token = default)
+    public Task<CaptureReplayControlResult> StopAsync(string? expectedSessionId, CancellationToken token = default) => StopAsync(expectedSessionId, null, token);
+
+    public async Task<CaptureReplayControlResult> StopAsync(string? expectedSessionId, long? expectedRevision, CancellationToken token)
     {
         if (!new CaptureReplaySessionRequest(expectedSessionId).IsWellFormed()) throw new BrokerException("invalid_payload", "Invalid replay session.");
         await mutations.WaitAsync(token).ConfigureAwait(false);
         try
         {
             DemandAlive();
-            var currentId = session?.Id ?? control?.Command.SessionId;
-            if (currentId != expectedSessionId) return Result(CaptureReplayOutcome.Conflict, CaptureReplayIssue.SessionChanged);
+            var currentId = session?.Id ?? (control?.Command.Automatic == false ? control.Command.SessionId : null);
+            if (currentId != expectedSessionId || expectedRevision is { } seen && Status.Revision != seen)
+                return Result(CaptureReplayOutcome.Conflict, CaptureReplayIssue.SessionChanged);
             return await DisableAsync(configuration.Settings with { Enabled = false }).ConfigureAwait(false);
         }
         finally { mutations.Release(); }

@@ -3,6 +3,8 @@ param(
     [Parameter(Mandatory)][string]$CandidateRoot,
     [Parameter(Mandatory)][string]$FrontendExecutable,
     [string]$BridgeExecutable,
+    [string]$CliPath,
+    [string]$CatalogFile,
     [Parameter(Mandatory)][string]$Workspace,
     [Parameter(Mandatory)][string]$RunName,
     [ValidateRange(1,20000)][int]$GameCount=2000,
@@ -26,7 +28,8 @@ $repository=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $candidate=(Resolve-Path -LiteralPath $CandidateRoot).Path
 $frontend=(Resolve-Path -LiteralPath $FrontendExecutable).Path
 $workspaceRoot=[IO.Path]::GetFullPath($Workspace)
-$cli=Join-Path $candidate 'supplemental/tools/wrail/wrail.dll'
+$cli=if($CliPath){(Resolve-Path -LiteralPath $CliPath).Path}else{Join-Path $candidate 'supplemental/tools/wrail/wrail.dll'}
+$builtInCatalog=if($CatalogFile){(Resolve-Path -LiteralPath $CatalogFile).Path}else{Join-Path $candidate 'build/widget-catalog.json'}
 $bridge=if($BridgeExecutable){(Resolve-Path -LiteralPath $BridgeExecutable).Path}else{Join-Path $candidate 'build/runtime/Bridge/WidgetBridge.exe'}
 $catalog=Join-Path $workspaceRoot 'catalog'
 $fixture=Join-Path $workspaceRoot 'fixture'
@@ -85,7 +88,7 @@ $recording=$null
 $measurements=[Collections.Generic.List[object]]::new()
 try {
     $env:WRAIL_PLAYNITE_PROCESS_FIXTURE_ROOT=$fixture
-    if(!$NativeGridBaseline){$bridgeProcess=Start-Process $bridge -ArgumentList @('--host-pipe',$pipe,'--catalog',"`"$candidate/build/widget-catalog.json`"",
+    if(!$NativeGridBaseline){$bridgeProcess=Start-Process $bridge -ArgumentList @('--host-pipe',$pipe,'--catalog',"`"$builtInCatalog`"",
         '--installed-catalog-root',"`"$catalog`"",'--settings-root',"`"$workspaceRoot/profile`"",'--accept-timeout-ms','60000',
         '--startup-widget','widgetrail.samples.playnite-library') -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput "$output/bridge.log" -RedirectStandardError "$output/bridge-error.log"}

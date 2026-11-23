@@ -1,9 +1,9 @@
 // Discord store identities and semantics stay in the provider. The host owns
 // delivery bounds and coalescing; these notifications contain no account data.
 function createWidgetRailDiscordObserver(discover, invalidate) {
-    const names = ['UserStore','SelectedChannelStore','VoiceStateStore','SpeakingStore',
+    const names = ['UserStore','AuthenticationStore','GatewayConnectionStore','SelectedChannelStore','VoiceStateStore','SpeakingStore',
         'MediaEngineStore','RTCConnectionStore','StreamRTCConnectionStore','ApplicationStreamingStore',
-        'RelationshipStore','PresenceStore','GuildStore','GuildChannelStore','ChannelStore','PermissionStore','NotificationSettingsStore'];
+        'RelationshipStore','PresenceStore','GuildStore','GuildChannelStore','ChannelStore','CallStore','PermissionStore','NotificationSettingsStore'];
     const subscriptions = new Map();
     let active = true, queued = false;
     const changed = () => {

@@ -3,6 +3,9 @@ using WidgetRail.WidgetProtocol;
 
 internal static partial class MessagingTests
 {
+    private static bool IsInitialHistoryRead((string Method,JsonElement Request) call) => call.Method=="messageHistory" &&
+        (!call.Request.TryGetProperty("before",out var before)||before.ValueKind==JsonValueKind.Null) &&
+        (!call.Request.TryGetProperty("after",out var after)||after.ValueKind==JsonValueKind.Null);
     private static WidgetIntentRequest NotificationRequest(MessagesSession session,string id="105") =>
         WidgetIntentRequest.Create(WidgetIntentContracts.WebNotification,JsonSerializer.SerializeToElement(new
         {sessionId=session.Reference!.Id,tag=id}));
@@ -14,7 +17,7 @@ internal static partial class MessagingTests
             await scenario.Act("discord.conversation.10");await scenario.WaitForHistory();
             await scenario.Act("discord.message.draft","Keep my draft");
             await scenario.Act("discord.message.attach");await Wait(()=>scenario.Find("discord.message.file.0") is not null);
-            var reads=scenario.Session.Calls.Count(call=>call.Method=="messageHistory");
+            var reads=scenario.Session.Calls.Count(IsInitialHistoryRead);
             check(await scenario.Widget.OnIntentAsync(NotificationRequest(scenario.Session))==WidgetIntentResult.Accepted,
                 "Exact notification association opens a native conversation");
             await scenario.WaitForHistory();
@@ -22,18 +25,18 @@ internal static partial class MessagingTests
                 scenario.Snapshot().ScrollRevealRequest?.IndexedItem is {ItemKey:"105",Index:5} &&
                 scenario.Find("discord.message.draft")?.TextEntryValue=="" && scenario.Find("discord.message.file.0") is null,
                 "Notification reveals the exact message and never carries another recipient's draft");
-            var calls=scenario.Session.Calls.Where(call=>call.Method=="messageHistory").ToArray();
+            var calls=scenario.Session.Calls.Where(IsInitialHistoryRead).ToArray();
             check(calls.Length==reads+1 && calls[^1].Request.GetProperty("around").GetString()=="105" && scenario.Session.Sends==0,
                 "Notification cold entry uses one bounded around read without sending or acknowledging");
             check(await scenario.Widget.OnIntentAsync(NotificationRequest(scenario.Session,"106"))==WidgetIntentResult.Accepted,
                 "Another notification in retained history is accepted");
-            check(scenario.Session.Calls.Count(call=>call.Method=="messageHistory")==reads+1 &&
+            check(scenario.Session.Calls.Count(IsInitialHistoryRead)==reads+1 &&
                 scenario.Snapshot().ScrollRevealRequest?.IndexedItem?.ItemKey=="106",
                 "Retained notification target is revealed without another history request");
             await scenario.Act("discord.message.latest");
-            await Wait(()=>scenario.Session.Calls.Count(call=>call.Method=="messageHistory")==reads+2);
+            await Wait(()=>scenario.Session.Calls.Count(IsInitialHistoryRead)==reads+2);
             await scenario.WaitForHistory();
-            check(scenario.Session.Calls.Last(call=>call.Method=="messageHistory").Request.GetProperty("around").ValueKind==JsonValueKind.Null &&
+            check(scenario.Session.Calls.Last(IsInitialHistoryRead).Request.GetProperty("around").ValueKind==JsonValueKind.Null &&
                 scenario.Snapshot().ScrollRevealRequest?.IndexedItem?.ItemKey=="111",
                 "Jump to latest leaves the notification anchor and explicitly reveals the current tail");
             await scenario.Act("discord.messages.back");await Wait(()=>scenario.Find("discord.conversation.10") is not null);
@@ -54,16 +57,20 @@ internal static partial class MessagingTests
             {
                 using var rows=WidgetRail.WidgetSdk.WidgetTestHost.CreateIndexedCollectionHost(scenario.Widget,"notification.boundary."+page);
                 rows.PublishSnapshot();
+                using var prior=await rows.AcquireAsync("discord.message.history",0,scenario.Find("discord.message.history")!.IndexedCollection!.Count);
+                var priorKeys=prior.Range.Items.Select(item=>item.Key).ToArray();
                 await rows.ObserveViewportAsync("discord.message.history",new(viewport,page+1,true,false)
                     {Boundary=direction=="older"?IndexedCollectionBoundary.Before:IndexedCollectionBoundary.After,PhysicalAtEnd=false});
-                var expected=page+2;
-                await Wait(()=>scenario.Session.HistoryReplies==expected && scenario.Find("discord.message.history")?.IndexedCollection is not null);
+                await Wait(()=>scenario.Find("discord.message.history")?.IndexedCollection?.Count==40);
+                rows.PublishSnapshot();using var current=await rows.AcquireAsync("discord.message.history",0,40);
+                check(!current.Range.Items.Select(item=>item.Key).SequenceEqual(priorKeys),"Boundary demand commits a different reading window: "+direction+" "+page);
             }
             check(scenario.Find("discord.message.history")?.IndexedCollection?.Count==40 &&
                 scenario.Snapshot().ScrollRevealRequest is null && scenario.Find("discord.message.status") is null,
                 "Explicit paging retires the notification reveal and missing-target notice when its row leaves the bounded window: "+direction);
-            check(scenario.Session.Calls.Count(call=>call.Method=="messageHistory")==3 && scenario.Session.Sends==0,
-                "Notification paging issues only its two requested cursor reads without an implicit refresh: "+direction);
+            check(scenario.Session.Calls.Count(IsInitialHistoryRead)==1 && scenario.Session.Sends==0 &&
+                scenario.Session.Calls.Count(call=>call.Method=="messageHistory")<=7,
+                "Notification paging uses bounded adjacent preparation without an implicit refresh: "+direction);
         }
         await using(var scenario=await Scenario.OpenAsync(new(){MissingNotificationTarget=true}))
         {

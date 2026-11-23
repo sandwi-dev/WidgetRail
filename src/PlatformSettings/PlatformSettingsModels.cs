@@ -99,6 +99,9 @@ public sealed record AppearanceSettings
     /// <summary>Disables acrylic blur without changing intentionally transparent surfaces or content opacity.</summary>
     public bool AcrylicEffects { get; init; } = true;
 
+    /// <summary>Enables the host's overlay entrance and exit animation.</summary>
+    public bool AnimateOverlayVisibility { get; init; } = true;
+
     /// <summary>
     /// Controls only host-owned transitions between tray-selected widgets.
     /// Existing settings that omit this value retain the legacy disabled behavior.
@@ -178,6 +181,7 @@ public sealed record BuiltInWidgetSettings
 public sealed record PlatformSettingsDocument
 {
     public const int CurrentSchemaVersion = 3;
+    public const string DefaultHomeWidgetId = "settings";
 
     [JsonRequired]
     public required int SchemaVersion { get; init; }
@@ -186,6 +190,7 @@ public sealed record PlatformSettingsDocument
     public required AppearanceSettings Appearance { get; init; }
 
     public ControllerSettings Controllers { get; init; } = new();
+    public string HomeWidgetId { get; init; } = DefaultHomeWidgetId;
     public BuiltInWidgetSettings BuiltInWidgets { get; init; } = new();
     public CaptureConfirmationSettings CaptureConfirmations { get; init; } = new();
     public CaptureReplayPreferences ReplayCapture { get; init; } = new();
@@ -255,6 +260,8 @@ public static class PlatformSettingsValidator
     {
         ArgumentNullException.ThrowIfNull(document);
         var errors = new List<PlatformSettingsValidationError>();
+        if (!ThemeIdentity.IsValid(document.HomeWidgetId))
+            Add("$.homeWidgetId", "invalid_home_widget_id", "Home widget must be a valid widget identifier.");
         if (document.ReplayCapture?.IsWellFormed() != true)
             Add("$.replayCapture", "invalid_replay_preferences", "Replay capture preferences or approved application are invalid.");
         if (document.BuiltInWidgets?.DisabledIds is not { } disabled || disabled.Count > 64 ||

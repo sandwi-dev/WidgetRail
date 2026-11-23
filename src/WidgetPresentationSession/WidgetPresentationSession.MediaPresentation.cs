@@ -19,6 +19,7 @@ public sealed class WidgetMediaPresentation
 public sealed partial class WidgetPresentationSession
 {
     public const string EnterMediaFullscreenAction = "host.embeddedMediaSession.enterFullscreen";
+    public const string PinMediaAction = "host.embeddedMediaSession.pin";
     public const string ExitMediaWidgetAction = "host.embeddedMediaSession.back";
     private sealed record MediaPresentationEpoch(string Scope);
     private readonly ConditionalWeakTable<WidgetPresentationFrame, MediaPresentationEpoch> _fullscreenOrigins = new();
@@ -86,6 +87,17 @@ public sealed partial class WidgetPresentationSession
         using (_gate.Enter()) _ = ValidateDisplayedMediaActionLocked(displayed, action, ExitMediaWidgetAction);
     }
 
+    public void ValidateEmbeddedMediaPin(WidgetPresentationFrame displayed, WidgetActionEvent action)
+    {
+        using (_gate.Enter())
+        {
+            var current = ValidateDisplayedMediaActionLocked(displayed, action, PinMediaAction);
+            if (!current.Descriptor.PinningSupported || !_compactOrigins.TryGetValue(displayed, out var origin) ||
+                !_compactOrigins.TryGetValue(current, out var latest) || !ReferenceEquals(origin, latest))
+                throw RetiredMedia(current.Authority.WidgetId);
+        }
+    }
+
     private WidgetPresentationFrame ValidateDisplayedMediaActionLocked(WidgetPresentationFrame displayed, WidgetActionEvent action, string expected)
     {
         var current = ValidateDisplayedOrdinaryFrameLocked(displayed, action.InputScopeId);
@@ -121,7 +133,7 @@ public sealed partial class WidgetPresentationSession
             var binding = ResolveDisplayedController(displayed.Snapshot, input);
             if (binding != ResolveDisplayedController(current.Snapshot, input))
                 throw OrdinaryInputStale("The displayed controller binding changed.");
-            return binding.ActionId is EnterMediaFullscreenAction or ExitMediaWidgetAction && input.Phase == ControllerEventPhase.Pressed
+            return binding.ActionId is EnterMediaFullscreenAction or ExitMediaWidgetAction or PinMediaAction && input.Phase == ControllerEventPhase.Pressed
                 ? new(binding.ActionId, binding.Owner.Id, input.Button, input.Phase, input.Sequence, input.MonotonicTimestampMicroseconds,
                     InputScopeId: input.ActiveInputScopeId) { FocusedElementId = input.FocusedElementId }
                 : null;

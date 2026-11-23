@@ -4,7 +4,9 @@ import {webcrypto} from 'node:crypto';
 import {runInNewContext} from 'node:vm';
 import test from 'node:test';
 
-const source=readFileSync(new URL('./messaging-provider.js',import.meta.url),'utf8');
+let source=readFileSync(new URL('./messaging-provider.js',import.meta.url),'utf8');
+if(process.env.WRAIL_MINIFIED_TESTS==='1')source=await(await import('../../../../tools/DiscordWebViewPrototype/Build-Backend.mjs')).minifySource(source);
+source=`(()=>{${source}\n})()`;
 const plain=value=>JSON.parse(JSON.stringify(value));
 const error=code=>value=>value.adapterCode===code;
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
@@ -52,6 +54,112 @@ function fixture(){
         me:()=>f.account?{id:f.account}:null,dispatcher:()=>f.dispatcher,invalidate:()=>++f.invalidations});
     return f;
 }
+
+function readFixture(){
+ const f=fixture();f.ack='90';f.head='100';f.acks=[];
+ f.stores.ReadStateStore.ackMessageId=()=>f.ack;
+ f.stores.ReadStateStore.lastMessageId=()=>f.head;
+ f.dispatcher.dispatch=event=>{f.acks.push(plain(event));f.ack=event.channels[0].messageId;f.unread.delete('10');};
+ f.provider.observe(historyArgs);
+ f.readArgs=()=>({...historyArgs,messageId:f.head,watchEpoch:f.provider.state().watchEpoch});
+ return f;
+}
+
+test('attachment posters preserve signed bytes and use bounded aspect-preserving static renditions',async()=>{
+    const f=fixture();
+    const file={id:'9000',filename:'clip.mp4',content_type:'video/mp4',size:1000,width:1920,height:1080,
+        url:'https://cdn.discordapp.com/attachments/10/9000/clip.mp4',
+        proxy_url:'https://media.discordapp.net/attachments/10/9000/clip.mp4?ex=abc&hm=a%2Bb%2fc&width=1920&FORMAT=webp&animated=true'};
+    async function poster(change={}){
+        f.messages=[message('100',{attachments:[{...file,...change}]})];
+        return (await f.provider.history(historyArgs)).items[0].attachments[0].posterUrl;
+    }
+    assert.equal(await poster(),'https://media.discordapp.net/attachments/10/9000/clip.mp4?ex=abc&hm=a%2Bb%2fc&format=jpeg&width=512&height=288');
+    assert.match(await poster({width:90,height:160}),/format=jpeg&width=90&height=160$/);
+    assert.match(await poster({width:1,height:65535}),/format=jpeg&width=1&height=512$/);
+    assert.match(await poster({proxy_url:undefined,proxyURL:file.proxy_url}),/width=512&height=288$/);
+    for(const change of [{width:null},{height:0},{width:65536},{width:NaN},{height:1.5},
+        {content_type:'application/pdf'},{proxy_url:null},{proxy_url:file.url},
+        {proxy_url:file.proxy_url.replace('/9000/','/9001/')},
+        {proxy_url:file.proxy_url.replace('media.discordapp.net','media.discordapp.net.evil.test')},
+        {proxy_url:file.proxy_url.replace('https:','http:')},
+        {proxy_url:file.proxy_url+'#frame'},
+        {proxy_url:file.proxy_url.replace('net/','net:444/')},
+        {proxy_url:file.proxy_url.replace('https://','https://user:pass@')},
+        {proxy_url:file.proxy_url+' &x=1'},
+        {proxy_url:file.proxy_url+'&%ZZ=1'},
+        {proxy_url:file.proxy_url+'&hm='+'x'.repeat(2048)}])assert.equal(await poster(change),null);
+    assert.equal(f.posts.length,0);
+});
+
+test('read acknowledgment uses the resident client dispatcher for exactly one known conversation',()=>{
+ const f=readFixture();assert.equal(f.provider.state().canMarkRead,true);
+ assert.equal(f.provider.state().hasUnreadConversations,true);
+ const result=f.provider.markRead(f.readArgs());
+ assert.equal(result.status,'applied');
+ assert.equal(f.provider.state().hasUnreadConversations,false);
+ assert.deepEqual(f.acks,[{type:'BULK_ACK',context:'APP',channels:[{channelId:'10',messageId:'100',readStateType:0}]}]);
+ assert.equal(f.posts.length,0);assert.equal(f.gets.length,0);
+ assert.equal(f.provider.markRead(f.readArgs()).status,'already-read');assert.equal(f.acks.length,1);
+});
+
+test('primary unread summary requires no history or inbox reads and excludes guild channels',()=>{
+ const f=fixture();
+ assert.equal(f.provider.state().hasUnreadConversations,true);
+ f.unread.clear();f.unread.add('30');
+ assert.equal(f.provider.state().hasUnreadConversations,false);
+ assert.equal(f.gets.length,0);assert.equal(f.posts.length,0);
+ delete f.stores.ReadStateStore.hasUnread;
+ assert.equal(f.provider.state().hasUnreadConversations,null);
+ f.stores.ChannelStore.getSortedPrivateChannels=()=>{throw new Error('Optional store unavailable');};
+ assert.equal(f.provider.state().hasUnreadConversations,null);
+});
+
+test('read acknowledgment rejects stale accounts visits and arbitrary message identities',async()=>{
+ const f=readFixture(),args=f.readArgs();
+ assert.throws(()=>f.provider.markRead({...args,account:'2'}),error('account_changed'));
+ assert.throws(()=>f.provider.markRead({...args,channelId:'30'}),error('conversation_unavailable'));
+ assert.throws(()=>f.provider.markRead({...args,messageId:'99'}),error('invalid_read_target'));
+ assert.throws(()=>f.provider.markRead({...args,messageId:'101'}),error('invalid_read_target'));
+ f.messages=[message('95')];await f.provider.history(historyArgs);
+ assert.equal(f.provider.markRead({...args,messageId:'95'}).status,'applied');
+ f.provider.observe({...historyArgs,active:false});
+ assert.throws(()=>f.provider.markRead(args),error('read_visit_changed'));
+ assert.equal(f.acks.length,1);
+});
+
+test('send confirmation and read acknowledgment can arrive before the read store head advances',async()=>{
+    const f=readFixture();
+    const sent=await f.provider.sendMessage(sendArgs);
+    assert.equal(sent.status,'sent');
+    const args={...f.readArgs(),messageId:sent.message.id};
+    assert.ok(BigInt(args.messageId)>BigInt(f.head));
+    // The read store still has an older head. A new write must wait for it.
+    assert.throws(()=>f.provider.markRead(args),error('invalid_read_target'));
+    f.ack=sent.message.id;
+    assert.equal(f.provider.markRead(args).status,'already-read');
+    // A covering read cursor alone cannot identify an unknown message.
+    assert.throws(()=>f.provider.markRead({...args,messageId:'899'}),error('invalid_read_target'));
+    assert.equal(f.acks.length,0);
+    assert.equal(f.posts.length,1);
+});
+
+test('read dispatch and local application are not claimed as server confirmation',()=>{
+ const f=readFixture();f.dispatcher.dispatch=e=>f.acks.push(plain(e));
+ assert.equal(f.provider.markRead(f.readArgs()).status,'requested');
+ delete f.stores.ReadStateStore.ackMessageId;
+ assert.equal(f.provider.state().canMarkRead,false);
+ assert.throws(()=>f.provider.markRead(f.readArgs()),error('read_ack_unavailable'));
+});
+
+test('a new arrival preserves the issued opening watermark without acknowledging the new message',()=>{
+ const f=readFixture(),args=f.readArgs();
+ f.provider.conversations({account:'1',offset:0,limit:40});
+ f.head='101';
+ assert.equal(f.provider.markRead(args).status,'applied');
+ assert.equal(f.acks[0].channels[0].messageId,'100');
+ assert.throws(()=>f.provider.markRead({...args,messageId:'99'}),error('invalid_read_target'));
+});
 
 test('live changes replay bounded full messages, partial edits and deletions without REST',async()=>{
     const f=fixture();f.provider.observe(historyArgs);const initial=f.provider.state();
@@ -114,6 +222,105 @@ test('rich message metadata is bounded, sanitizes media origins and preserves pa
     assert.equal(f.gets.length,1);
 });
 
+test('GIF video embeds preserve API and resident-store media without admitting arbitrary origins',async()=>{
+    const f=fixture();
+    f.messages=[message('101',{embeds:[
+        {type:'gifv',url:'https://tenor.com/view/test',video:{url:'https://media.tenor.com/fixture.mp4'},thumbnail:{proxyURL:'https://media.discordapp.net/fixture.png'}},
+        {type:'gifv',video:{proxy_url:'https://cdn.discordapp.com/fixture.mp4'},image:{proxy_url:'https://cdn.discordapp.com/fixture.png'}}]})];
+    let embeds=(await f.provider.history(historyArgs)).items[0].embeds;
+    assert.equal(embeds[0].videoUrl,'https://media.tenor.com/fixture.mp4');assert.equal(embeds[0].isAnimation,true);
+    assert.equal(embeds[0].imageUrl,'https://media.discordapp.net/fixture.png');assert.equal(embeds[1].isAnimation,true);
+    for(const url of ['http://media.tenor.com/gif.mp4','https://media.tenor.com.evil.test/gif.mp4',
+        'https://media.tenor.com:444/gif.mp4','https://name:password@media.tenor.com/gif.mp4','https://tracker.example/gif.mp4']){
+        f.messages=[message('101',{embeds:[{type:'gifv',video:{url},image:{url}}]})];
+        embeds=(await f.provider.history(historyArgs)).items[0].embeds;
+        assert.equal(embeds[0].videoUrl,null);assert.equal(embeds[0].imageUrl,null);assert.equal(embeds[0].isAnimation,false);
+    }
+    f.messages=[message('101',{attachments:[{id:'9000',filename:'track.gif',content_type:'image/gif',size:100,url:'https://media.tenor.com/fixture.gif'}]})];
+    assert.equal((await f.provider.history(historyArgs)).items[0].attachments[0].url,null,'Tenor admission does not widen attachment or avatar origins');
+    assert.equal(f.posts.length,0);
+});
+
+test('Discord external media proxies are exact embed origins and do not authorize provider pages or attachment URLs',async()=>{
+    const f=fixture();
+    for(const host of ['images-ext-1.discordapp.net','images-ext-2.discordapp.net']){
+        const video=`https://${host}/external/synthetic/https/static.klipy.com/clip.mp4?ex=1&hm=2`;
+        const poster=`https://${host}/external/synthetic/https/static.klipy.com/poster.webp`;
+        f.messages=[message('101',{content:'https://klipy.com/gifs/wednesday-193',embeds:[{
+            type:'gifv',url:'https://klipy.com/gifs/wednesday-193',
+            video:{url:'https://static.klipy.com/clip.mp4',proxy_url:video},
+            thumbnail:{url:'https://static.klipy.com/poster.webp',proxyURL:poster}
+        }],attachments:[{id:'9000',filename:'clip.mp4',content_type:'video/mp4',size:100,url:video}]})];
+        const row=(await f.provider.history(historyArgs)).items[0];
+        assert.equal(row.embeds[0].videoUrl,video);assert.equal(row.embeds[0].imageUrl,poster);
+        assert.equal(row.embeds[0].isAnimation,true);assert.equal(row.attachments[0].url,null);
+    }
+    for(const url of ['https://klipy.com/gifs/wednesday-193','https://static.klipy.com/clip.mp4',
+        'https://images-ext-3.discordapp.net/external/clip.mp4','https://images-ext-1.discordapp.net.evil.test/clip.mp4',
+        'http://images-ext-1.discordapp.net/external/clip.mp4','https://images-ext-1.discordapp.net:444/external/clip.mp4',
+        'https://name:password@images-ext-1.discordapp.net/external/clip.mp4','https://images-ext-1.discordapp.net/external/clip.mp4#frame']){
+        f.messages=[message('101',{embeds:[{type:'gifv',video:{proxy_url:url},thumbnail:{proxyURL:url}}]})];
+        const embed=(await f.provider.history(historyArgs)).items[0].embeds[0];
+        assert.equal(embed.videoUrl,null);assert.equal(embed.imageUrl,null);assert.equal(embed.isAnimation,false);
+    }
+    assert.equal(f.posts.length,0);
+});
+
+test('delayed GIF proxy enrichment and removal replace the same watched message without extra requests',async()=>{
+    const f=fixture();f.provider.observe(historyArgs);
+    const page='https://klipy.com/gifs/wednesday-193';
+    f.messages=[message('101',{content:page,embeds:[{type:'link',url:page,title:'GIF'}]})];
+    const before=(await f.provider.history(historyArgs)).items[0];
+    assert.equal(before.embeds[0].videoUrl,null);assert.equal(before.embeds[0].isAnimation,false);
+    let initial=f.provider.state();
+    const video='https://images-ext-2.discordapp.net/external/synthetic/https/static.klipy.com/clip.mp4';
+    f.emit('MESSAGE_UPDATE',{message:{id:'101',channel_id:'10',embeds:[{type:'gifv',url:page,
+        video:{proxyURL:video},thumbnail:{proxyURL:'https://images-ext-1.discordapp.net/external/synthetic/poster.png'}}]}});
+    let change=f.provider.readChanges({...historyArgs,watchEpoch:initial.watchEpoch,afterRevision:initial.messageRevision}).items[0];
+    assert.equal(change.id,'101');assert.equal(change.message.content,page);assert.equal(change.message.authorName,'Bob');
+    assert.equal(change.message.embeds[0].videoUrl,video);assert.equal(change.message.embeds[0].isAnimation,true);
+    initial=f.provider.state();
+    f.emit('MESSAGE_UPDATE',{message:{id:'101',channel_id:'10',embeds:[{type:'gifv',url:page,video:{url:'https://unapproved.example/clip.mp4'}}]}});
+    change=f.provider.readChanges({...historyArgs,watchEpoch:initial.watchEpoch,afterRevision:initial.messageRevision}).items[0];
+    assert.equal(change.message.embeds[0].videoUrl,null);assert.equal(change.message.embeds[0].imageUrl,null);
+    assert.equal(change.message.embeds[0].isAnimation,false);assert.equal(change.message.embeds[0].url,page);
+    assert.equal(f.gets.length,1);assert.equal(f.posts.length,0);
+});
+
+test('article and link artwork stays decorative while actual image GIF and video embeds retain media',async()=>{
+    const f=fixture(),page='https://example.test/article',poster='https://images-ext-1.discordapp.net/external/poster.png';
+    for(const type of ['article','link']){
+        f.messages=[message('100',{embeds:[{type,url:page,title:'Article title',description:'Article summary',image:{proxy_url:poster}}]})];
+        const embed=(await f.provider.history(historyArgs)).items[0].embeds[0];
+        assert.equal(embed.url,page);assert.equal(embed.title,'Article title');assert.equal(embed.description,'Article summary');
+        assert.equal(embed.imageUrl,null);assert.equal(embed.videoUrl,null);assert.equal(embed.isAnimation,false);
+    }
+    for(const type of ['image','gifv','video','rich',undefined]){
+        f.messages=[message('100',{embeds:[{type,url:page,image:{proxyURL:poster}}]})];
+        assert.equal((await f.provider.history(historyArgs)).items[0].embeds[0].imageUrl,poster);
+    }
+    f.messages=[message('100',{embeds:[{type:'article',url:page,video:{proxy_url:'https://media.discordapp.net/clip.mp4'},thumbnail:{proxy_url:poster}}]})];
+    let embed=(await f.provider.history(historyArgs)).items[0].embeds[0];
+    assert.equal(embed.videoUrl,'https://media.discordapp.net/clip.mp4');assert.equal(embed.imageUrl,poster);
+    f.messages=[message('100',{embeds:[{type:'image',url:page,image:{proxy_url:poster,flags:32}}]})];
+    embed=(await f.provider.history(historyArgs)).items[0].embeds[0];assert.equal(embed.isAnimation,true);assert.equal(embed.imageUrl,poster);
+    assert.equal(f.posts.length,0);
+});
+
+test('late embed-type updates add or retire media without losing the link destination',async()=>{
+    const f=fixture(),page='https://example.test/article',poster='https://images-ext-2.discordapp.net/external/poster.png';
+    f.provider.observe(historyArgs);f.messages=[message('100',{embeds:[{type:'article',url:page,image:{proxy_url:poster}}]})];
+    await f.provider.history(historyArgs);let before=f.provider.state();
+    f.emit('MESSAGE_UPDATE',{message:{id:'100',channel_id:'10',embeds:[{type:'image',url:page,image:{proxyURL:poster}}]}});
+    let changed=f.provider.readChanges({...historyArgs,watchEpoch:before.watchEpoch,afterRevision:before.messageRevision}).items[0].message;
+    assert.equal(changed.embeds[0].imageUrl,poster);assert.equal(changed.embeds[0].url,page);
+    before=f.provider.state();
+    f.emit('MESSAGE_UPDATE',{message:{id:'100',channel_id:'10',embeds:[{type:'link',url:page,thumbnail:{proxyURL:poster}}]}});
+    changed=f.provider.readChanges({...historyArgs,watchEpoch:before.watchEpoch,afterRevision:before.messageRevision}).items[0].message;
+    assert.equal(changed.embeds[0].imageUrl,null);assert.equal(changed.embeds[0].url,page);
+    assert.equal(f.gets.length,1);assert.equal(f.posts.length,0);
+});
+
 test('notification tags resolve only exact observed private messages within the current account',()=>{
     const f=fixture();f.provider.state();
     assert.equal(f.provider.notificationTarget({account:'1',tag:'101'}),null);
@@ -131,6 +338,31 @@ test('notification tags resolve only exact observed private messages within the 
     f.account='1';f.provider.state();assert.equal(f.provider.notificationTarget({account:'1',tag:'1259'}),null);
     f.provider.dispose();assert.equal(f.listeners.get('MESSAGE_CREATE').size,0);
     assert.equal(f.gets.length,0);assert.equal(f.posts.length,0);
+});
+
+test('animated image flags follow the selected image rather than its thumbnail or video',async()=>{
+    const f=fixture(),image='https://images-ext-1.discordapp.net/external/animation',thumbnail='https://media.discordapp.net/poster.png';
+    f.messages=[message('100',{embeds:[{type:'image',url:'https://klipy.com/gifs/example',image:{url:image,flags:32},thumbnail:{proxy_url:thumbnail}}]})];
+    let embed=(await f.provider.history(historyArgs)).items[0].embeds[0];
+    assert.equal(embed.imageUrl,image);assert.equal(embed.isAnimation,true);assert.equal(embed.videoUrl,null);
+    f.messages=[message('100',{embeds:[{type:'video',video:{url:'https://media.tenor.com/ordinary.mp4'},image:{proxyURL:image,flags:32}}]})];
+    embed=(await f.provider.history(historyArgs)).items[0].embeds[0];assert.equal(embed.isAnimation,false);
+    f.messages=[message('100',{embeds:[{image:{url:'https://untrusted.example/image',flags:32},thumbnail:{proxy_url:thumbnail}}]})];
+    embed=(await f.provider.history(historyArgs)).items[0].embeds[0];assert.equal(embed.imageUrl,thumbnail);assert.equal(embed.isAnimation,false);
+    f.messages=[message('100',{attachments:[{id:'555',filename:'loop.webp',size:12,content_type:'image/webp',flags:40,
+        url:'https://cdn.discordapp.com/attachments/10/555/loop.webp'}]})];
+    const file=(await f.provider.history(historyArgs)).items[0].attachments[0];
+    assert.equal(file.isAnimated,true);assert.equal(file.isSpoiler,true);
+});
+
+test('late image animation flags update supplied metadata without additional requests',async()=>{
+    const f=fixture(),image='https://images-ext-2.discordapp.net/external/animation';
+    f.provider.observe(historyArgs);f.messages=[message('100',{embeds:[{type:'image',image:{proxy_url:image}}]})];
+    await f.provider.history(historyArgs);const initial=f.provider.state();
+    f.emit('MESSAGE_UPDATE',{message:{id:'100',channel_id:'10',embeds:[{type:'image',image:{proxyURL:image,flags:32}}]}});
+    const changed=f.provider.readChanges({...historyArgs,watchEpoch:initial.watchEpoch,afterRevision:initial.messageRevision}).items[0].message;
+    assert.equal(changed.embeds[0].isAnimation,true);assert.equal(changed.embeds[0].imageUrl,image);
+    assert.equal(changed.content,'Hello');assert.equal(f.gets.length,1);assert.equal(f.posts.length,0);
 });
 
 test('reaction and poll events use settled local stores with no HTTP or duplicate increments',async()=>{
@@ -274,6 +506,166 @@ test('catalog is bounded, deduplicates friends, filters and rejects stale page v
     for(let i=100;i<1200;i++)f.channels.set(String(i),{id:String(i),type:1,recipients:['2']});
     const bounded=f.provider.conversations({account:'1'});assert.ok(bounded.totalCount<=1000);assert.equal(bounded.truncated,true);
 });
+test('conversation metadata keeps ordered membership while exact paging versions still retire',()=>{
+    const f=fixture(),first=f.provider.conversations({account:'1',limit:2});
+    f.unread.delete('10');
+    const changed=f.provider.conversations({account:'1',limit:2});
+    assert.notEqual(changed.version,first.version);
+    assert.equal(changed.orderVersion,first.orderVersion);
+    assert.throws(()=>f.provider.conversations({account:'1',offset:2,version:first.version}),error('conversation_catalog_changed'));
+    assert.equal(f.provider.conversations({account:'1',offset:2,version:changed.version}).orderVersion,changed.orderVersion);
+    f.stores.ChannelStore.getSortedPrivateChannels=()=>[...f.channels.values()].reverse();
+    const reordered=f.provider.conversations({account:'1',limit:2});
+    assert.notEqual(reordered.orderVersion,changed.orderVersion);
+    f.channels.delete('10');
+    assert.notEqual(f.provider.conversations({account:'1'}).orderVersion,reordered.orderVersion);
+    assert.equal(f.gets.length,0);
+});
+test('rich conversations use visible presence and exact cached last-message identity without network reads',()=>{
+    const f=fixture(),stamp=1794916800000n,last=String((stamp-1420070400000n)<<22n);
+    f.stores.ReadStateStore.lastMessageId=()=>last;
+    f.stores.PresenceStore={getStatus:key=>key==='2'?'idle':'invisible'};
+    f.stores.MessageStore={getMessage:(channel,key)=>message(key,{channel_id:channel,content:'**Hello** ||hidden||',author:{id:'1',username:'Me'}})};
+    const rows=f.provider.conversations({account:'1'}).items;
+    assert.equal(rows[0].presence,'idle');assert.equal(rows[1].presence,null);assert.equal(rows[2].presence,'offline');
+    assert.equal(rows[0].lastMessageTimestamp,Number(stamp));assert.equal(rows[0].lastMessagePreview,'**Hello** ||hidden||');
+    assert.equal(rows[0].lastMessageAuthorName,'Me');assert.equal(rows[0].lastMessageIsOwn,true);
+    assert.equal(f.gets.length,0);assert.equal(f.posts.length,0);
+    f.stores.MessageStore.getMessage=()=>message('999',{content:'Stale cached message'});
+    assert.equal(f.provider.conversations({account:'1'}).items[0].lastMessagePreview,null);
+});
+
+test('loaded native history enriches the exact conversation head once without inventing message mutations',async()=>{
+    const f=fixture();f.provider.observe(historyArgs);
+    f.stores.ReadStateStore.lastMessageId=channel=>channel==='10'?'102':null;
+    f.messages=[message('101',{content:'Earlier'}),message('102',{content:'Loaded latest',author:{id:'1',username:'Me'}})];
+    assert.equal(f.provider.conversations({account:'1'}).items[0].lastMessagePreview,null);
+    const before=f.provider.state();
+    await f.provider.history(historyArgs);
+    const row=f.provider.conversations({account:'1'}).items[0];
+    assert.equal(row.lastMessagePreview,'Loaded latest');assert.equal(row.lastMessageAuthorName,'Me');assert.equal(row.lastMessageIsOwn,true);
+    assert.equal(f.provider.state().catalogRevision,before.catalogRevision+1);assert.equal(f.provider.state().messageRevision,before.messageRevision);
+    assert.equal(f.invalidations,1);assert.equal(f.gets.length,1);assert.equal(f.posts.length,0);
+    await f.provider.history(historyArgs);
+    assert.equal(f.provider.state().catalogRevision,before.catalogRevision+1);assert.equal(f.invalidations,1);
+});
+
+test('native history snippets never substitute a nearby message or another channel account or retired visit',async()=>{
+    const f=fixture();f.provider.observe(historyArgs);f.stores.ReadStateStore.lastMessageId=()=> '102';
+    f.messages=[message('101',{content:'Not the head'})];const initial=f.provider.state();
+    await f.provider.history(historyArgs);
+    assert.equal(f.provider.conversations({account:'1'}).items[0].lastMessagePreview,null);
+    assert.equal(f.provider.state().catalogRevision,initial.catalogRevision);
+    f.messages=[message('102',{content:'Exact fetched head'})];await f.provider.history(historyArgs);
+    f.stores.MessageStore={getMessage:()=>message('102',{channel_id:'20',content:'Wrong channel'})};
+    assert.equal(f.provider.conversations({account:'1'}).items[0].lastMessagePreview,'Exact fetched head');
+    f.stores.MessageStore.getMessage=()=>message('102',{content:'Resident head'});
+    assert.equal(f.provider.conversations({account:'1'}).items[0].lastMessagePreview,'Resident head');
+    delete f.stores.MessageStore;
+    f.provider.observe({account:'1',channelId:'20'});
+    assert.equal(f.provider.conversations({account:'1'}).items[0].lastMessagePreview,null);
+    f.provider.observe(historyArgs);await f.provider.history(historyArgs);
+    f.account='9';f.provider.state();f.account='1';f.provider.observe(historyArgs);
+    assert.equal(f.provider.conversations({account:'1'}).items[0].lastMessagePreview,null);
+    const gate=deferred();f.get=()=>gate.promise;const pending=f.provider.history(historyArgs);
+    f.provider.observe({account:'1',channelId:'20'});const switched=f.provider.state();
+    gate.resolve({body:[message('102',{content:'Retired response'})]});await pending;
+    assert.equal(f.provider.state().catalogRevision,switched.catalogRevision);
+    assert.equal(f.provider.conversations({account:'1'}).items[0].lastMessagePreview,null);
+    assert.equal(f.posts.length,0);
+});
+
+test('native history head summaries use reconciled edits and retain existing cache eviction bounds',async()=>{
+    const f=fixture();f.provider.observe(historyArgs);f.stores.ReadStateStore.lastMessageId=()=> '250';
+    const gate=deferred();f.get=()=>gate.promise;const pending=f.provider.history(historyArgs);
+    f.emit('MESSAGE_UPDATE',{message:{id:'250',channel_id:'10',content:'Newer edit'}});
+    gate.resolve({body:[message('250',{content:'Stale network result'})]});await pending;
+    assert.equal(f.provider.conversations({account:'1'}).items[0].lastMessagePreview,'Newer edit');
+    delete f.get;f.messages=Array.from({length:249},(_,i)=>message(String(i+1)));
+    let before='250';
+    for(let page=0;page<4;page++)before=(await f.provider.history({...historyArgs,before,limit:50})).nextBefore;
+    assert.equal(f.provider.conversations({account:'1'}).items[0].lastMessagePreview,null,'The existing 200-message bound still evicts an old head');
+    assert.equal(f.gets.length,5);assert.equal(f.posts.length,0);
+});
+
+test('native history media summaries use normalized metadata without exposing spoiler filenames',async()=>{
+    const f=fixture();f.provider.observe(historyArgs);f.stores.ReadStateStore.lastMessageId=()=> '100';
+    for(const [extras,summary] of [
+        [{attachments:[{id:'900',filename:'SPOILER_secret.gif',content_type:'image/gif',size:12,url:'https://cdn.discordapp.com/attachments/10/900/secret.gif'}]},'Shared a GIF'],
+        [{embeds:[{type:'gifv',video:{proxy_url:'https://media.discordapp.net/clip.mp4'}}]},'Shared a GIF'],
+        [{sticker_items:[{id:'900',name:'Private sticker',format_type:1}]},'Shared a sticker']
+    ]){
+        f.messages=[message('100',{content:'',...extras})];await f.provider.history(historyArgs);
+        assert.equal(f.provider.conversations({account:'1'}).items[0].lastMessagePreview,summary);
+    }
+    assert.equal(f.gets.length,3);assert.equal(f.posts.length,0);
+});
+
+test('optional conversation metadata fails closed and stays bounded',()=>{
+    const f=fixture();f.stores.ReadStateStore.lastMessageId=()=> '9'.repeat(32);
+    f.stores.PresenceStore={getStatus:()=>{throw Error('not ready');}};
+    f.stores.MessageStore={getMessage:()=>{throw Error('not loaded');}};
+    let row=f.provider.conversations({account:'1'}).items[0];
+    assert.equal(row.presence,null);assert.equal(row.lastMessagePreview,null);assert.equal(row.lastMessageTimestamp,null);
+    f.stores.MessageStore.getMessage=(channel,key)=>message(key,{channel_id:channel,content:'x'.repeat(10000),author:{id:'2',username:'y'.repeat(1000)}});
+    row=f.provider.conversations({account:'1'}).items[0];
+    assert.equal(row.lastMessagePreview.length,240);assert.equal(row.lastMessageAuthorName.length,120);
+    assert.equal(f.gets.length,0);
+});
+
+test('presence updates invalidate only changed known users and detach on leaving messages',()=>{
+    const f=fixture(),listeners=new Set();let status='online';
+    f.stores.PresenceStore={getStatus:()=>status,addChangeListener:fn=>listeners.add(fn),removeChangeListener:fn=>listeners.delete(fn)};
+    f.provider.observe({account:'1',channelId:null,active:true});f.provider.conversations({account:'1'});
+    assert.equal(listeners.size,1);const revision=f.provider.state().catalogRevision;
+    for(const fn of listeners)fn();assert.equal(f.provider.state().catalogRevision,revision);
+    status='dnd';for(const fn of listeners)fn();assert.equal(f.provider.state().catalogRevision,revision+1);
+    assert.equal(f.provider.conversations({account:'1'}).items[0].presence,'dnd');
+    f.provider.observe({account:'1',active:false});assert.equal(listeners.size,0);
+    f.provider.dispose();assert.equal(listeners.size,0);assert.equal(f.gets.length,0);
+});
+
+test('editing or deleting a private latest message invalidates the sidebar even outside its history',()=>{
+    const f=fixture();f.provider.observe({account:'1',channelId:'20',active:true});
+    for(const name of ['MESSAGE_UPDATE','MESSAGE_DELETE','MESSAGE_DELETE_BULK']){
+        const before=f.provider.state().catalogRevision;
+        f.emit(name,{channelId:'10',id:'100',ids:['100']});
+        assert.equal(f.provider.state().catalogRevision,before+1);
+    }
+    assert.equal(f.gets.length,0);
+});
+
+test('replaced presence stores retire queued callbacks and publish the replacement status',()=>{
+    const f=fixture(),old=new Set(),next=new Set();let status='idle';
+    f.stores.PresenceStore={getStatus:()=> 'online',addChangeListener:fn=>old.add(fn),removeChangeListener:fn=>old.delete(fn)};
+    f.provider.observe({account:'1',active:true});f.provider.conversations({account:'1'});
+    const stale=[...old][0],before=f.provider.state().catalogRevision;
+    f.stores.PresenceStore={getStatus:()=>status,addChangeListener:fn=>next.add(fn),removeChangeListener:fn=>next.delete(fn)};
+    assert.equal(f.provider.state().catalogRevision,before+1);assert.equal(old.size,0);assert.equal(next.size,1);
+    status='dnd';stale();assert.equal(f.provider.state().catalogRevision,before+1);
+    [...next][0]();assert.equal(f.provider.state().catalogRevision,before+2);
+    f.account='2';f.provider.state();assert.equal(next.size,0);
+});
+
+test('cached attachment summaries do not expose spoiler filenames',()=>{
+    const f=fixture();f.stores.ReadStateStore.lastMessageId=()=> '100';
+    f.stores.MessageStore={getMessage:()=>message('100',{content:'',attachments:[{filename:'SPOILER_secret.gif',content_type:'image/gif'}]})};
+    assert.equal(f.provider.conversations({account:'1'}).items[0].lastMessagePreview,'Shared a GIF');
+    f.account='2';assert.throws(()=>f.provider.conversations({account:'1'}),error('account_changed'));
+});
+
+test('conversation lookup is query-bound, exact and does not fetch or open a conversation',()=>{
+    const f=fixture(),first=f.provider.conversations({account:'1',limit:1});
+    assert.deepEqual(plain(f.provider.locateConversation({account:'1',version:first.version,key:'friend.4'})),
+        {account:'1',version:first.version,totalCount:4,key:'friend.4',index:3});
+    assert.equal(f.provider.locateConversation({account:'1',version:first.version,query:'Bob',key:'friend.4'}).index,null);
+    assert.equal(f.provider.locateConversation({account:'1',version:first.version,key:'999'}).index,null);
+    assert.equal(f.gets.length,0);assert.equal(f.posts.length,0);
+    f.channels.delete('10');
+    assert.throws(()=>f.provider.locateConversation({account:'1',version:first.version,key:'friend.4'}),error('conversation_catalog_changed'));
+    assert.throws(()=>f.provider.locateConversation({account:'2',version:first.version,key:'friend.4'}),error('account_changed'));
+    assert.throws(()=>f.provider.locateConversation({account:'1',key:'friend.4'}),error('invalid_page'));
+});
 test('history preserves snowflakes and supports adjacent backward/forward reversals',async()=>{
     const f=fixture(), base=9007199254740993000n;
     f.messages=Array.from({length:9},(_,i)=>message(base+BigInt(i)));
@@ -301,6 +693,19 @@ test('history rejects wrong channels, duplicate IDs and cursor boundary violatio
     f.get=async()=>({body:[message('100')]});
     await assert.rejects(f.provider.history({...historyArgs,before:'100'}),error('invalid_message_response'));
     await assert.rejects(f.provider.history({...historyArgs,after:'100'}),error('invalid_message_response'));
+});
+test('attachment spoiler flags survive normalization independently of filename prefixes',async()=>{
+    const f=fixture();
+    const attachment={id:'555',filename:'private.gif',size:12,content_type:'image/gif',
+        url:'https://cdn.discordapp.com/attachments/10/555/private.gif',flags:8};
+    f.messages=[message('100',{attachments:[attachment]})];
+    assert.equal((await f.provider.history(historyArgs)).items[0].attachments[0].isSpoiler,true);
+    f.messages=[message('100',{attachments:[{...attachment,flags:0}]})];
+    assert.equal((await f.provider.history(historyArgs)).items[0].attachments[0].isSpoiler,false);
+    for(const flags of ['8',-1,8.5]){
+        f.messages=[message('100',{attachments:[{...attachment,flags}]})];
+        await assert.rejects(f.provider.history(historyArgs),error('invalid_message'));
+    }
 });
 test('late history cannot publish across account change, retirement, or removed channel',async()=>{
     for(const action of [f=>f.account='9',f=>f.provider.dispose(),f=>f.channels.delete('10')]){

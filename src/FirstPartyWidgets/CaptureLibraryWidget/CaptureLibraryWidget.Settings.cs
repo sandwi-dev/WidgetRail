@@ -8,21 +8,32 @@ public sealed partial class CaptureLibraryWidget
 {
     private bool preferencesLoaded;
     private sealed record CapturePreferences(int Schema = 1, ScreenshotOptions? Image = null,
-        RecordingOptions? Video = null, CapturePreparation? Preparation = null, bool IncludeCursor = false, bool ClipPreviews = true)
+        RecordingOptions? Video = null, CapturePreparation? Preparation = null, bool IncludeCursor = false, bool ClipPreviews = true,
+        int? ScreenshotDelaySeconds = null)
     {
         public bool IsValid() => Schema is 1 or 2 && (Image?.IsWellFormed() ?? true) &&
-            (Video?.IsWellFormed() ?? true) && (Preparation?.IsWellFormed() ?? true);
+            (Video?.IsWellFormed() ?? true) && (Preparation?.IsWellFormed() ?? true) && ScreenshotDelaySeconds is null or (>= 0 and <= 30);
+        public CapturePreparation PreparationFor(WindowCaptureKind kind)
+        {
+            var preparation = Preparation ?? new();
+            // Earlier profiles stored one explicit preparation delay for both kinds.
+            return kind == WindowCaptureKind.Screenshot
+                ? preparation with { DelaySeconds = ScreenshotDelaySeconds ?? Preparation?.DelaySeconds ?? 0 }
+                : preparation;
+        }
+        public CapturePreferences WithClipPreparation(CapturePreparation preparation) =>
+            this with { Preparation = preparation, ScreenshotDelaySeconds = PreparationFor(WindowCaptureKind.Screenshot).DelaySeconds };
         public CaptureSessionRequest Request(WindowCaptureKind kind) => new()
         {
             Screenshot = kind == WindowCaptureKind.Screenshot ? Image ?? new() : null,
             Recording = kind == WindowCaptureKind.Video ? Video ?? RecommendedVideo() : null,
-            Preparation = Preparation ?? new(), IncludeCursor = IncludeCursor,
+            Preparation = PreparationFor(kind), IncludeCursor = IncludeCursor,
             OutputPurpose = kind == WindowCaptureKind.Video ? CaptureOutputPurpose.LibraryRecording : CaptureOutputPurpose.TemporaryAttachment,
             MaximumBytes = kind == WindowCaptureKind.Video ? CaptureLimits.MaximumLibraryRecordingBytes : CaptureLimits.MaximumAttachmentBytes,
         };
     }
 
-    private async Task LoadPreferencesAsync(CancellationToken token)
+    private async Task LoadPreferencesAsync(CancellationToken token, bool showFailure = true)
     {
         if (preferencesLoaded) return;
         var saved = await HostServices.PrivateState.ReadJsonAsync(token);
@@ -36,7 +47,7 @@ public sealed partial class CaptureLibraryWidget
             Message = preferences is null ? Explain("capture_preferences_invalid") : s.Message,
             PermissionRequired = preferences is null ? false : s.PermissionRequired });
         preferencesLoaded = true;
-        if (preferences is null) PublishFeedback(Explain("capture_preferences_invalid"));
+        if (preferences is null && showFailure) PublishFeedback(Explain("capture_preferences_invalid"));
         ApplyClipPreviewPreference(preferences?.ClipPreviews == true);
     }
 
@@ -74,13 +85,15 @@ public sealed partial class CaptureLibraryWidget
             case "image.2160": next = next with { Image = image with { MaximumWidth = 3840, MaximumHeight = 2160 } }; break;
             case "cursor.on" when capabilities.CursorSupported: next = next with { IncludeCursor = true }; break;
             case "cursor.off": next = next with { IncludeCursor = false }; break;
-            case "countdown.on": next = next with { Preparation = prep with { ShowCountdown = true } }; break;
-            case "countdown.off": next = next with { Preparation = prep with { ShowCountdown = false } }; break;
+            case "countdown.on": next = next.WithClipPreparation(prep with { ShowCountdown = true }); break;
+            case "countdown.off": next = next.WithClipPreparation(prep with { ShowCountdown = false }); break;
             default:
                 if (value.StartsWith("duration.", StringComparison.Ordinal) && int.TryParse(value[9..], out var seconds) && Durations.Contains(seconds) && seconds <= capabilities.MaximumRecordingSeconds)
                     next = next with { Video = video with { MaximumDurationSeconds = seconds } };
                 else if (value.StartsWith("delay.", StringComparison.Ordinal) && int.TryParse(value[6..], out var delay) && Delays.Contains(delay))
-                    next = next with { Preparation = prep with { DelaySeconds = delay } };
+                    next = next.WithClipPreparation(prep with { DelaySeconds = delay });
+                else if (value.StartsWith("image.delay.", StringComparison.Ordinal) && int.TryParse(value[12..], out var imageDelay) && Delays.Contains(imageDelay))
+                    next = next with { ScreenshotDelaySeconds = imageDelay };
                 else if (value.StartsWith("audio.", StringComparison.Ordinal) && Enum.TryParse<CaptureAudioMode>(value[6..], out var audio) && capabilities.AudioModes.Contains(audio))
                     next = next with { Video = video with { Audio = audio } };
                 else if (value.StartsWith("format.", StringComparison.Ordinal) && Enum.TryParse<CaptureImageFormat>(value[7..], out var format) && capabilities.ImageFormats.Contains(format))
@@ -119,10 +132,17 @@ public sealed partial class CaptureLibraryWidget
         state=RecordingState(state);
         var pendingManual=CurrentRecordingDraft(false,state) is not null;
         var items = new List<WidgetElement> {
-            UI.Text("Capture settings", "capture-library.settings.title").Classes("capture-title"),
             UI.Button("Back to library", "capture-library.settings.back", "capture-library.settings.back"),
             UI.Button("Capture folders", "capture-library.sources.open", "capture-library.sources.open").Busy(state.Busy),
         };
+        var heading = new List<WidgetElement> { UI.Text("Capture settings", "capture-library.settings.title").Classes("capture-title") };
+        var pendingReplay = CurrentRecordingDraft(true, state) is not null;
+        if (pendingManual || pendingReplay)
+        {
+            var where = pendingManual && pendingReplay ? "Recording and Replay" : pendingReplay ? "Replay" : "Recording";
+            heading.Add(UI.Alert("Unsaved changes", $"Save or cancel your changes in {where}.",
+                AlertTone.Warning, "capture-library.settings.unsaved"));
+        }
         items.Add(ReplaySettings(state));
         if (state.Preferences is { } galleryPreferences)
             items.Add(UI.Stack("capture-library.settings.gallery",
@@ -169,7 +189,8 @@ public sealed partial class CaptureLibraryWidget
             items.Add(UI.Stack("capture-library.settings.video", fields.ToArray()).Classes("capture-settings-section"));
             var preparation = new List<WidgetElement> {
                 UI.Text("Preparation", "capture-library.settings.preparation.title").Classes("capture-heading"),
-                Field("delay", "Time to get ready", Delays.Select(d => Option("delay." + d, d == 0 ? "Immediately" : $"{d} seconds", prep.DelaySeconds == d))),
+                Field("image.delay", "Screenshot delay", Delays.Select(d => Option("image.delay." + d, d == 0 ? "Immediately" : $"{d} seconds", preferences.PreparationFor(WindowCaptureKind.Screenshot).DelaySeconds == d))),
+                Field("delay", "Clip delay", Delays.Select(d => Option("delay." + d, d == 0 ? "Immediately" : $"{d} seconds", prep.DelaySeconds == d))),
                 Field("countdown", "Show countdown", [Option("countdown.on", "On", prep.ShowCountdown), Option("countdown.off", "Off", !prep.ShowCountdown)]),
             };
             if (capabilities.CursorSupported) preparation.Add(Field("cursor", "Include mouse pointer", [Option("cursor.on", "On", preferences.IncludeCursor), Option("cursor.off", "Off", !preferences.IncludeCursor)]));
@@ -193,8 +214,11 @@ public sealed partial class CaptureLibraryWidget
             items.Add(UI.Text(message, "capture-library.settings.status").Classes("capture-help"));
             items.Add(PermissionsButton());
         }
-        return new(UI.VerticalScroll("capture-library.settings.page", items.ToArray()).InputScope("capture-library.settings.page")
-            .Shortcut(ControllerButton.B, "capture-library.settings.back", label: "Library").Classes("capture-library", "capture-library-base"), "capture-library.settings.back",
+        var root = UI.Grid("capture-library.settings.page", [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
+            UI.Stack("capture-library.settings.header", heading.ToArray()),
+            UI.VerticalScroll("capture-library.settings.scroll", items.ToArray()).InGrid(row:1)).InputScope("capture-library.settings.page")
+            .Shortcut(ControllerButton.B, "capture-library.settings.back", label: "Library").Classes("capture-library", "capture-library-base");
+        return new(ReplayShortcuts(root, state), "capture-library.settings.back",
             Surface: Surface(WidgetSurfaceAppearance.DesktopAcrylic));
     }
 

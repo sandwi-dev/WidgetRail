@@ -157,6 +157,8 @@ internal static class QueryTests
             item["SavedAtUnixMilliseconds"] = new DateTimeOffset(1990, 1, 15, 12, 0, 0, TimeSpan.Zero).AddMonths(index % 360).AddMinutes(index).ToUnixTimeMilliseconds();
             item["Media"]!["Id"] = id;
             item["Media"]!["SourceApplication"] = System.Text.Json.JsonSerializer.SerializeToNode(new CaptureApplicationContext("Game " + index % 50, "Window"));
+            item["Media"]!["SourceProcess"] = System.Text.Json.JsonSerializer.SerializeToNode(new CaptureProcessInterval(
+                CaptureProcessInterval.InstanceId(42,(ulong)(1 + index % 150)),1000,1010));
             value["FileName"] = name;
             var original = Path.Combine(f.Exports, name); File.WriteAllBytes(original, f.Bytes);
             var stamp = File.GetLastWriteTimeUtc(original).Ticks; value["MediaStamp"] = stamp; item["Revision"] = stamp;
@@ -188,6 +190,38 @@ internal static class QueryTests
         Check(store.MetadataReads == reads && store.Reconciliations == reconciliations, "Large-library queries do not rescan metadata or decode media");
         Check(watch.Elapsed < TimeSpan.FromSeconds(15), "Large-index queries exceeded the bounded smoke budget");
         Console.WriteLine($"Large index: {total + 1:N0} captures, 24 filtered queries in {watch.Elapsed.TotalMilliseconds:N0} ms; metadata reads unchanged.");
+        var sessionFilter = new CaptureLibraryQuery { AvailableOnly = true, SourceIntervals =
+            Enumerable.Range(1,64).Select(i => new CaptureProcessInterval(CaptureProcessInterval.InstanceId(42,(ulong)i),999,1011)).ToArray(),
+            OriginPackageId = "example.game", Reference = new("game","1"), ExcludeReference = true };
+        watch.Restart();
+        for (var i=0; i<24; i++)
+            Check((await store.QueryAsync(new(sessionFilter,Count:8),default)).TotalCount==1280,"Session query dropped some exact matches.");
+        watch.Stop();
+        Check(store.MetadataReads == reads && store.Reconciliations == reconciliations,"Session lookup rescanned sidecars.");
+        Console.WriteLine($"64 sessions across 3,001 captures: 24 warm lookups in {watch.Elapsed.TotalMilliseconds:N0} ms, no sidecar reads.");
+        var contextOwner = Fixture.Identity with { PackageId = "widgetrail.samples.playnite-library" };
+        var subject = new CaptureContextReference(CaptureContextReferenceRole.Subject, "playnite.game",
+            Guid.NewGuid().ToString("D") + "/" + Guid.NewGuid().ToString("D"), "Example game") { HasRelatedAction = true };
+        var db = Path.Combine(f.Library,"library.sqlite");
+        var originalDbBytes = new FileInfo(db).Length;
+        watch.Restart();
+        for (var offset = 0; offset < 128; offset += 64)
+        {
+            var batch = await store.QueryAsync(new(new(),Offset:offset,Count:64),default);
+            foreach (var item in batch.Items)
+                await store.AttachSavedContextAsync(new(item.Id,item.Revision,new("game-link."+item.Id,[subject])),contextOwner,default);
+        }
+        watch.Stop();
+        var receipts = Directory.GetFiles(f.Library,"association-*.json");
+        Check(receipts.Length == 128, "Backfill should publish exactly one association per matched capture.");
+        Console.WriteLine($"128 links: {watch.Elapsed.TotalMilliseconds:N0} ms; {receipts.Sum(path=>new FileInfo(path).Length):N0} receipt bytes, " +
+            $"{new FileInfo(db).Length-originalDbBytes:N0} additional SQLite bytes.");
+        store.Dispose();
+        using var reopened = new CaptureLibraryStore(f.Library, f.Exports);
+        watch.Restart();
+        var linked = await reopened.QueryAsync(new(new(){OriginPackageId=contextOwner.PackageId,Reference=new(subject.Kind,subject.Id)},Count:4),default);
+        Check(linked.TotalCount==128,"Reopening changed the link count.");
+        Console.WriteLine($"Reopening the indexed 3,001-capture library with 128 links and reading four matches took {watch.Elapsed.TotalMilliseconds:N0} ms.");
     }
 
     internal static async Task IndexRebuildPreservesMetadata()

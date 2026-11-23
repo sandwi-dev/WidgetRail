@@ -9,14 +9,36 @@ namespace WidgetRail.FirstPartyWidgets.Marketplace;
 
 public sealed partial class MarketplaceWidget : Widget
 {
-    private enum Section { Browse, Installed, Updates }
+    private enum Section { Browse, Installed, Updates, Themes }
     private sealed record State(MarketplaceSnapshot Snapshot, string? Selected = null, int Screenshot = 0,
-        string? ReviewToken = null, Section Section = Section.Browse, bool Busy = false, string? Error = null, string? LastSelected = null, string Search = "", long FocusRequest = 0, bool SearchFocusRequested = false);
+        string? ReviewToken = null, Section Section = Section.Browse, bool Busy = false, string? Error = null, string? LastSelected = null, string Search = "", long FocusRequest = 0, bool SearchFocusRequested = false,
+        string ThemeSearch = "", int ThemePage = 0, CatalogueTheme? SelectedTheme = null, string? ThemeReturnId = null, int ThemeImage = 0,
+        WidgetFocusRequest? ThemePageFocus = null);
     private readonly WidgetModel<State> model;
     private static readonly CompiledWidgetIntentContract open = CompiledWidgetIntentContract.Create(WidgetIntentContracts.Marketplace);
-    public MarketplaceWidget() => model = CreateModel(new State(MarketplaceSnapshot.Unavailable));
+    private readonly WidgetQueryResource<ThemeBrowseQuery, ThemeBrowsePage> themePages;
+    private readonly WidgetQueryResource<CatalogueThemeSelection, CatalogueThemeStatus> themeStatus;
+    public MarketplaceWidget()
+    {
+        model = CreateModel(new State(MarketplaceSnapshot.Unavailable));
+        themeStatus = CreateQueryResource<CatalogueThemeSelection, CatalogueThemeStatus>("marketplace.theme.status", new()
+        {
+            Load = async (theme, token) => (await HostServices.Marketplace.ExecuteAsync(new("theme-status", Theme: theme), token)).ThemeStatus
+                ?? throw new InvalidDataException("Missing theme status."),
+            MapError = _ => new("theme_status_failed", "Installation status is unavailable. Reopen the listing to check again."),
+        });
+        themePages = CreateQueryResource<ThemeBrowseQuery, ThemeBrowsePage>("marketplace.themes.pages", new()
+        {
+            Load = async (query, token) => (await HostServices.Marketplace.ExecuteAsync(new("themes", ThemeQuery: query), token)).Themes
+                ?? throw new InvalidDataException("Missing theme catalogue."),
+            MapError = _ => new("catalogue_unavailable", "Themes could not be loaded. Try again."),
+            CacheDuration = TimeSpan.FromSeconds(30),
+        });
+    }
     protected override ValueTask OnActivatedAsync(CancellationToken token)
     {
+        if (model.Value.Section == Section.Themes) LoadThemePage(model.Value);
+        if (model.Value.SelectedTheme is { } selectedTheme) themeStatus.EnsureLoaded(Selection(selectedTheme), forceRefresh: true);
         Work(async ct =>
         {
             await ReadAsync(new("status"),ct);
@@ -29,6 +51,15 @@ public sealed partial class MarketplaceWidget : Widget
             while (true)
             {
                 await Task.Delay(750,context.CancellationToken);
+                var current = model.Value;
+                if (current.Section == Section.Themes &&
+                    ThemePageFor(current) is { Value: { } page, Status: WidgetResourceStatus.Ready })
+                {
+                    // Observe an existing check promptly. While offline, let the
+                    // resource cache space out checks until the bridge reconnects.
+                    if (page.Refreshing) LoadThemePage(current, true);
+                    else if (page.Offline && current.SelectedTheme is null) LoadThemePage(current);
+                }
                 if (Operations.IsBusy("marketplace.work") || model.Value.Snapshot.Operation?.State != "running") continue;
                 try { await ReadAsync(new("status"),context.CancellationToken); }
                 catch (WidgetCapabilityException) { model.Update(s => s with { Error = "Status is unavailable. Check again before retrying an installation." }); }
@@ -36,22 +67,29 @@ public sealed partial class MarketplaceWidget : Widget
         });
         return ValueTask.CompletedTask;
     }
+    protected override ValueTask OnDeactivatedAsync(CancellationToken token)
+    {
+        model.Update(s => s.ThemePageFocus is null ? s : s with { ThemePageFocus = null });
+        return ValueTask.CompletedTask;
+    }
     public override ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request,CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!IsActive || !request.IsWellFormed() || request.ContractId != open.Id || request.Version != open.Version ||
             request.SchemaDigest != open.SchemaDigest || !open.Accepts(request.Payload)) return ValueTask.FromResult(WidgetIntentResult.Rejected);
-        model.Update(s => s with { Selected = null, ReviewToken = null, Section = Section.Browse, SearchFocusRequested = false });
+        model.Update(s => s with { Selected = null, SelectedTheme = null, ReviewToken = null, Section = Section.Browse,
+            SearchFocusRequested = false, ThemePageFocus = null });
         return ValueTask.FromResult(WidgetIntentResult.Accepted);
     }
     public override ValueTask OnActionAsync(WidgetActionEvent action,CancellationToken cancellationToken = default)
     {
         var state = model.Value;
         var operation = state.Snapshot.Operation;
+        if (state.Section == Section.Themes && HandleThemeAction(state, action)) return ValueTask.CompletedTask;
         if (action.ActionId == "marketplace.search.focus")
         {
             if (state.ReviewToken is null)
-                model.Update(s => s with { Selected = null, SearchFocusRequested = true, FocusRequest = CreateFocusRequest().Id });
+                model.Update(s => s with { Selected = null, SearchFocusRequested = true, FocusRequest = CreateFocusRequest().Id, ThemePageFocus = null });
             return ValueTask.CompletedTask;
         }
         if (state.SearchFocusRequested) model.Update(s => s with { SearchFocusRequested = false });
@@ -67,8 +105,12 @@ public sealed partial class MarketplaceWidget : Widget
         if (action.ActionId.StartsWith("marketplace.tab.", StringComparison.Ordinal))
         {
             var section = action.ActionId switch { "marketplace.tab.browse" => Section.Browse, "marketplace.tab.installed" => Section.Installed,
-                "marketplace.tab.updates" => Section.Updates, _ => (Section?)null };
-            if (section is not null && state.Selected is null && state.ReviewToken is null) model.Update(s => s with { Section = section.Value, Selected = null, ReviewToken = null });
+                "marketplace.tab.updates" => Section.Updates, "marketplace.tab.themes" => Section.Themes, _ => (Section?)null };
+            if (section is not null && state.Selected is null && state.SelectedTheme is null && state.ReviewToken is null)
+            {
+                model.Update(s => s with { Section = section.Value, Selected = null, ReviewToken = null, ThemePageFocus = null });
+                if (section == Section.Themes) LoadThemePage(model.Value);
+            }
             return ValueTask.CompletedTask;
         }
         if (action.ActionId.StartsWith("marketplace.select.",StringComparison.Ordinal))
@@ -129,6 +171,8 @@ public sealed partial class MarketplaceWidget : Widget
             catch (WidgetCapabilityException error) { if(context.IsCurrent) model.Update(s => s with { Error = error.ErrorCode switch {
                 "marketplace_review_required" => "The reviewed package changed or expired. Check status, then download and review it again.",
                 "marketplace_refresh_required" => "Check available releases before downloading.",
+                "theme_listing_changed" => "This theme listing changed. Return to Themes and reopen it.",
+                "marketplace_busy" => "Another catalogue operation is in progress.",
                 _ => "WidgetRail Catalogue is unavailable. Check status before retrying. You can still manage installed widgets in Settings." }, ReviewToken = null }); }
             catch (OperationCanceledException) when(context.CancellationToken.IsCancellationRequested) { }
             finally { if(context.IsCurrent) model.Update(s => s with { Busy = false }); }
@@ -136,11 +180,15 @@ public sealed partial class MarketplaceWidget : Widget
     }
     private async Task ReadAsync(MarketplaceCommand command,CancellationToken token)
     {
+        var previous = model.Value.Snapshot.Operation;
         var snapshot = await HostServices.Marketplace.ExecuteAsync(command,token);
         token.ThrowIfCancellationRequested();
         model.Update(s => snapshot.Revision < s.Snapshot.Revision ? s : s with { Snapshot = snapshot, Error = null,
             Selected = snapshot.Items.Any(item => item.Id == s.Selected) ? s.Selected : null,
             ReviewToken = snapshot.Operation?.Review?.Token == s.ReviewToken || snapshot.UpdateBatch?.ReviewToken == s.ReviewToken ? s.ReviewToken : null });
+        if (snapshot.Operation is { Kind: "theme-install" or "theme-install-apply" or "theme-apply", State: not "running" } finished &&
+            previous != finished && model.Value.SelectedTheme is { } theme && theme.Id == finished.PackageId)
+            themeStatus.EnsureLoaded(Selection(theme), forceRefresh: true);
     }
     private static string Key(string id) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id)));
     private static bool UpdateAvailable(MarketplaceItem item) => Version.TryParse(item.AvailableVersion,out var available) &&
@@ -156,7 +204,7 @@ public sealed partial class MarketplaceWidget : Widget
         var state = model.Value; var operation = state.Snapshot.Operation; var running = operation?.State == "running";
         var busy = state.Busy || running || operation?.State == "review";
         var selected = state.Snapshot.Items.FirstOrDefault(i => i.Id == state.Selected);
-        var browse = BrowseContextFor(state);
+        var browse = state.Section == Section.Themes ? null : BrowseContextFor(state);
         var header = new List<WidgetElement> { UI.Text(selected?.Name ?? "WidgetRail Catalogue","marketplace.title").Classes("page-heading") };
         var items = new List<WidgetElement>();
         var commands = new List<WidgetElement>();
@@ -164,19 +212,21 @@ public sealed partial class MarketplaceWidget : Widget
         if (selected is null)
         {
             var updates = state.Snapshot.Items.Count(UpdateAvailable);
-            header.Add(UI.Row("marketplace.section.navigation",
+            if (state.SelectedTheme is null) header.Add(UI.Row("marketplace.section.navigation",
                 UI.ControllerGlyph(ControllerButton.LeftBumper, "marketplace.section.previous.hint", "Previous section").Classes("marketplace-bumper-key"),
                 UI.SegmentedTabs("marketplace.tabs", "marketplace.tab." + state.Section.ToString().ToLowerInvariant(),
                 new SegmentedTab("marketplace.tab.browse", "Browse", "marketplace.tab.browse"),
                 new SegmentedTab("marketplace.tab.installed", "Installed", "marketplace.tab.installed"),
-                new SegmentedTab("marketplace.tab.updates", $"Updates ({updates})", "marketplace.tab.updates")),
+                new SegmentedTab("marketplace.tab.updates", $"Updates ({updates})", "marketplace.tab.updates"),
+                new SegmentedTab("marketplace.tab.themes", "Themes", "marketplace.tab.themes")),
                 UI.ControllerGlyph(ControllerButton.RightBumper, "marketplace.section.next.hint", "Next section").Classes("marketplace-bumper-key"))
                 .Classes("marketplace-section-navigation"));
+            if (state.Section == Section.Themes) return RenderThemes(state, header);
             if (state.Section == Section.Updates && updates > 0)
                 commands.Add(UI.Button(updates > 16 ? "Update next 16" : $"Update all ({updates})", "marketplace.update-all", "marketplace.update-all").Busy(busy).Classes("primary-button"));
             header.Add(UI.Grid("marketplace.search.row", [GridTrack.Auto()], [GridTrack.Star(), GridTrack.Auto(), GridTrack.Auto()],
                 UI.Stack("marketplace.search.group",
-                    UI.TextEntry(state.Search, "Search widgets", "marketplace.search", "marketplace.search", 128).Suggest(browse.SourceKey))
+                    UI.TextEntry(state.Search, "Search widgets", "marketplace.search", "marketplace.search", 128).Suggest(browse!.SourceKey))
                     .RememberChildFocus("marketplace.search").InGrid(column: 0),
                 UI.Button("Clear", "marketplace.search.clear", "marketplace.search.clear").InGrid(column: 1),
                 UI.Button("Check for updates", "marketplace.refresh", "marketplace.refresh").Busy(busy).InGrid(column: 2)).Spacing(0, 8));
@@ -285,8 +335,8 @@ public sealed partial class MarketplaceWidget : Widget
         root = root.Shortcut(ControllerButton.Y,"marketplace.refresh",label: "Check updates");
         if (selected is null && state.ReviewToken is null)
         {
-            var previous = state.Section switch { Section.Browse => "updates", Section.Installed => "browse", _ => "installed" };
-            var next = state.Section switch { Section.Browse => "installed", Section.Installed => "updates", _ => "browse" };
+            var previous = state.Section switch { Section.Browse => "themes", Section.Installed => "browse", _ => "installed" };
+            var next = state.Section switch { Section.Browse => "installed", Section.Installed => "updates", _ => "themes" };
             root = root.Shortcut(ControllerButton.LeftBumper, "marketplace.tab." + previous, label: "Previous section")
                 .Shortcut(ControllerButton.RightBumper, "marketplace.tab." + next, label: "Next section");
         }

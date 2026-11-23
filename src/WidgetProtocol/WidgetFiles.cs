@@ -17,7 +17,10 @@ public sealed record WidgetFileMetadata(string Name,string ContentType,long Byte
 }
 public sealed record WidgetFileChoiceRequest(string Title="Choose files",bool Multiple=true)
 {
-    public bool IsWellFormed()=>Title is {Length:>0 and <=120}&&!Title.Any(char.IsControl);
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? CommitLabel { get; init; }
+    public bool IsWellFormed()=>Title is {Length:>0 and <=120}&&!Title.Any(char.IsControl) &&
+        (CommitLabel is null || !string.IsNullOrWhiteSpace(CommitLabel) && CommitLabel.Length <= 32 && !CommitLabel.Any(char.IsControl));
 }
 public sealed record WidgetFileSelection(IReadOnlyList<WidgetFileReference> Files);
 public sealed record WidgetFileIdReference(string Id);

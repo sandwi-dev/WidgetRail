@@ -11,7 +11,7 @@ public sealed partial class DiscordWebViewWidget
     {
         var selected=slot.State.Value;
         return
-        slot.Pin.IsSelected && selected.Receiver is { } receiver && data is { Ready:true } &&
+        ReceiverWanted(slot) && selected.Receiver is { } receiver && data is { Ready:true } &&
         data.Account==selected.Account && data.ChannelId==selected.Channel && session==selected.StreamSession &&
         receiver.Account==data.Account && receiver.Channel==data.ChannelId
             ?data.Streams.FirstOrDefault(stream=>stream.Key==selected.StreamKey):null;

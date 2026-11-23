@@ -6,6 +6,32 @@ namespace WidgetRail.WidgetPresentationSession.Tests;
 public sealed partial class IndexedRangeSessionTests
 {
     [TestMethod]
+    public async Task RepeatedRowReadinessIsCheapAndAnUpdatedQueryRetiresTheLease()
+    {
+        await RunAsync(async channel =>
+        {
+            await LeaseReplyAsync(channel, await ReadAsync(channel));
+            var refresh = await ReadAsync(channel);
+            await SnapshotReplyAsync(channel, refresh.RequestId, 2, Source with { ContentRevision = 1 });
+            await ReleaseReplyAsync(channel, await ReadAsync(channel));
+        }, async (session, displayed) =>
+        {
+            await using var lease = await session.AcquireIndexedRangeAsync(displayed.Authority, "list", Source, 0, 1);
+            Assert.IsTrue(lease.IsCurrent);
+            var start = GC.GetAllocatedBytesForCurrentThread();
+            var current = true;
+            for (var i = 0; i < 128; ++i) current &= lease.IsCurrent;
+            var bytes = GC.GetAllocatedBytesForCurrentThread() - start;
+            Assert.IsTrue(current);
+            Assert.IsTrue(bytes < 16 * 1024, $"Repeated readiness checks allocated {bytes} bytes.");
+
+            await session.RefreshAsync(displayed.Authority);
+            Assert.IsFalse(lease.IsCurrent);
+            Assert.ThrowsExactly<WidgetPresentationSessionException>(() => lease.Retain());
+        });
+    }
+
+    [TestMethod]
     public async Task SemanticRetentionIsBoundedAndLastOperationReleasesExactlyOnce()
     {
         await RunAsync(async channel =>

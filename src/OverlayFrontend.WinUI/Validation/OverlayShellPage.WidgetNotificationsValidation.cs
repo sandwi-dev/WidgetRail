@@ -10,11 +10,6 @@ internal sealed partial class OverlayShellPage
         var center = notificationCenter!;
         await center.Preferences.SetAsync("webapp-a", NotificationPresentation.BannerAndList, lifetime.Token);
         center.Inbox.Clear();
-        // The existing quiet interval is a deliberate policy, not fixture flakiness.
-        // A just-opened startup notice can be dismissed before its original
-        // expiry; quiet time still runs from that expiry by design.
-        await Task.Delay(TimeSpan.FromMilliseconds(Math.Max(0, notificationBannerState.ExpiresAt - Environment.TickCount64)) +
-            NotificationBannerState.QuietInterval + TimeSpan.FromSeconds(1));
         await Trigger("notify");
         try { await WebAppUntil(() => notificationBanner?.IsVisible == true && notificationCard?.TitleText.Text == "Synthetic track"); }
         catch (TimeoutException error)
@@ -37,7 +32,6 @@ internal sealed partial class OverlayShellPage
         await WebAppUntil(() => notificationBanner?.IsVisible != true);
         await Trigger("notify-update"); await Task.Delay(600);
         check(notificationBanner?.IsVisible != true && center.Inbox.Entries.Count == 0, "Late metadata cannot resurrect an expired banner");
-        await Task.Delay(NotificationBannerState.QuietInterval + TimeSpan.FromSeconds(1));
         await Trigger("notify"); SetVisible(false);
         await WebAppUntil(() => notificationBanner?.IsVisible == true);
         check(center.Inbox.Entries.Count == 0, "Background widget notification uses the same passive banner path");

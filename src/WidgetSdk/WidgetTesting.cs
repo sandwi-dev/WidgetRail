@@ -335,6 +335,12 @@ public sealed class WidgetTestPrivateState
 /// </summary>
 public static class WidgetTestHost
 {
+    /// <summary>Exercises worker-side tray admission against an exact previously rendered snapshot.
+    /// Platform consent and physical gesture authority require a real broker.</summary>
+    public static ValueTask<TrayActionResult> InvokeTrayActionAsync(Widget widget, ViewSnapshot snapshot, WidgetQuickAction action, CancellationToken token = default) =>
+        widget.DispatchTrayActionAsync(new(action.Button, ControllerEventPhase.Pressed, ControllerInputContext.TrayQuickAction,
+            Sequence: 1, SnapshotSequence: snapshot.Sequence) { TrayOffer = action.TrayOffer }, token);
+
     /// <summary>
     /// Validates protocol shape and WinUI declaration support before a native run.
     /// Lazy row templates must also be checked after acquisition using
@@ -396,6 +402,17 @@ public static class WidgetTestHost
     {
         ArgumentNullException.ThrowIfNull(widget);
         return widget.DestroyAsync(cancellationToken);
+    }
+
+    /// <summary>Waits for currently admitted serial actions to leave the queue in a test. Does not wait for unrelated background resources.
+    /// Use a cancellation token for a deliberately blocked action; an omitted deadline is bounded to 30 seconds.</summary>
+    public static async Task WaitForActionsAsync(Widget widget,CancellationToken cancellationToken=default)
+    {
+        ArgumentNullException.ThrowIfNull(widget);
+        using var timeout=CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        while(!widget.IsActionQueueIdle)await Task.Delay(10,timeout.Token).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     /// <summary>

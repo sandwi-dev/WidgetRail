@@ -52,10 +52,13 @@ whole MP4 in RAM. `ReadContentAsync` still rejects files above 128 MiB; use
 `CopyContentToAsync` for bounded streaming. Draft presentation requires protocol
 124; unsupported hosts are not silently used as temporary-output fallbacks.
 
-The host asks for confirmation, completes its release-aware hide transition,
-shows the requested preparation countdown (zero to thirty seconds), then resolves the foreground application
-once and captures that window. It does not activate or restore a selected target.
-Game Help uses this flow and has no application picker or window-list permission.
+With a screenshot delay of zero, the host keeps WidgetRail open and captures the
+eligible application window that had focus immediately before the overlay opened.
+The confirmation names the application. If the window closes or becomes unavailable,
+the request fails. The widget receives the normal capture result.
+For delayed screenshots and one-off recordings, the host hides after confirmation,
+waits for the configured delay and captures the application in front at that point.
+Game Help requests five seconds of preparation.
 The desktop, shell and WidgetRail's own windows are not foreground capture targets.
 Screenshot dimensions/format and recording dimensions, frame rate, bitrate,
 encoder and maximum duration are separate typed options. Query the host's actual

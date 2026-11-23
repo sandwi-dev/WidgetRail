@@ -343,4 +343,19 @@ background/resume and refresh, and optional providers remain on-demand.
 
 ## Development candidate completeness
 
+For a widget-only update, `Build-CommunityPackage.ps1` accepts
+`-IntegrationBundleDirectory <trusted-prior-payload/integration>`. This explicitly
+reuses the prior integration archive after validating the integration source
+digest, version, identity, archive checksum and all six entry checksums. It avoids
+requiring a Playnite restart merely because a fresh integration build includes
+different repository/build provenance. Runtime verification still compares exact
+installed binary hashes; no source-digest shortcut is used at runtime.
+
+Only use a known trusted previous bundle, after reviewing shared build inputs and
+dependencies for compatibility. The source digest covers `integrations/Playnite`,
+not every external SDK/build input, and is not a signature or trust mechanism.
+Omit this parameter when integration sources or relevant build inputs change;
+the default remains a fresh integration build. The builder rejects mismatched
+source or archive checksums rather than silently falling back to a new bundle.
+
 Run `Test-CommunityPackage.ps1 -PackagePath <wrwidget>` on the exact archive before updating a development candidate. `Build-CommunityPackage.ps1` runs it after packing. The archive must include `payload/integration/integration-package.json` and the matching `WidgetRail.Playnite.pext`, including all six hashed plugin files. Copying only the application publish output is insufficient: setup checks the bundled integration even when Playnite is already installed. A missing bundle now reports a widget packaging problem instead of suggesting that the user's Playnite folders are wrong.

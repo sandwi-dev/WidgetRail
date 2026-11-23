@@ -201,15 +201,8 @@ internal sealed partial class OverlayShellPage
         ResetInputPresentation(); PublishControllerGuide();
         try
         {
-            var window = root.ContentIslandEnvironment.AppWindowId;
-            if (folder)
-            {
-                var picker = new FolderPicker(window) { CommitButtonText = "Select extension", SuggestedStartLocation = PickerLocationId.Downloads };
-                return (await NativeFilePickerLifetime.RunAsync(window, () => picker.PickSingleFolderAsync().AsTask(), token))?.Path;
-            }
-            var filePicker = new FileOpenPicker(window) { CommitButtonText = "Select extension", SuggestedStartLocation = PickerLocationId.Downloads };
-            filePicker.FileTypeFilter.Add(".zip");
-            return (await NativeFilePickerLifetime.RunAsync(window, () => filePicker.PickSingleFileAsync().AsTask(), token))?.Path;
+            return await ChooseLocalPathAsync(root,pin,new(folder ? FileBrowserMode.Folder : FileBrowserMode.Open,"Choose extension","Select extension",
+                DownloadLocation(),folder ? null : ".zip"),PickerLocationId.Downloads,token);
         }
         finally
         {

@@ -7,7 +7,8 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     private static bool SameGridLayoutMode(ViewNode previous, ViewNode next) =>
-        next.Kind != ViewNodeKind.Grid || (previous.GridLayout is null) == (next.GridLayout is null);
+        next.Kind != ViewNodeKind.Grid || (previous.GridLayout is null) == (next.GridLayout is null) &&
+            previous.GridLayout?.RevealBodyOnFocus == next.GridLayout?.RevealBodyOnFocus;
 
     private void UpdateExplicitGrid(Grid grid, ViewNode node, GridLayoutDefinition layout)
     {

@@ -23,6 +23,10 @@ internal sealed partial class DialogInputValidationPage : Page
         Content = panel;
         theme.Attach(panel);
         theme.Update(null, WidgetRail.PlatformSettings.AppearanceSettings.Default);
+        if (FrontendArguments.Value(Environment.GetCommandLineArgs(),"--file-picker-check") is { } output)
+            Loaded += async (_, _) => await FileBrowserDialog.ValidateAsync(panel,output);
+        else if (FrontendArguments.Value(Environment.GetCommandLineArgs(),"--file-picker-interaction") is { } run)
+            Loaded += async (_, _) => await FileBrowserDialog.DesktopCheckAsync(panel,run);
         AutomationProperties.SetAutomationId(status, "DialogInput.Status");
         panel.Children.Add(status);
         foreach (var kind in new[] { "choices", "grouped", "library", "decision" })

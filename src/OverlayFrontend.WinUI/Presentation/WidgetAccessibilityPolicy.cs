@@ -16,7 +16,8 @@ internal readonly record struct WidgetAccessibilityPolicy(ContrastPreference Con
     };
 
     internal ushort? FontWeight(ushort? authored) => BoldText ? (ushort)Math.Max(600, (int)(authored ?? 400)) : authored;
-    internal double? Opacity(double? authored, bool highContrast) => authored is null ? null :
+    // A zero-opacity subtree can reserve layout space without painting it.
+    internal double? Opacity(double? authored, bool highContrast) => authored is null or 0 ? authored :
         ReducedTransparency || highContrast ? 1 : Math.Clamp(authored.Value, 0, 1);
 
     // A zero-alpha background is an intentionally absent fill, not a translucent

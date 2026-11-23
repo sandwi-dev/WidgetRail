@@ -54,7 +54,7 @@ internal sealed class NativeDialogPresentation : IDisposable
     {
         if (disposed || updating || !dialog.IsLoaded || dialog.XamlRoot is not { } root || !origin.IsLoaded || !ReferenceEquals(origin.XamlRoot, root)) return;
         // Floating keyboards and notification inboxes own their native placement.
-        if (dialog is WidgetTextEntryDialog { IsFloating: true }) return;
+        if (dialog is FrameworkDialog { PositionsOwnPopup: true }) return;
         panel ??= FindPart<FrameworkElement>(dialog, "BackgroundElement");
         if (panel is null || root.Size.Width <= 0 || root.Size.Height <= 0) return;
         updating = true;
@@ -65,7 +65,7 @@ internal sealed class NativeDialogPresentation : IDisposable
             // Keep normal native sizing; only restrict it to the current window.
             var maxWidth = dialog.Resources.TryGetValue("ContentDialogMaxWidth", out var limit) && limit is double width ? width : 548;
             panel.MaxWidth = Math.Min(maxWidth, availableWidth);
-            panel.MinWidth = Math.Min(320, panel.MaxWidth);
+            panel.MinWidth = Math.Min(dialog is Shell.HostChoiceDialog { ShowsChoiceList: true } ? 432 : 320, panel.MaxWidth);
             panel.MinHeight = 0;
             var bounds = origin.TransformToVisual(root.Content).TransformBounds(new(0, 0, origin.ActualWidth, origin.ActualHeight));
             panel.MaxHeight = availableHeight;

@@ -190,6 +190,14 @@ internal static class RunningAppScenarios
         Assert.Equal(bound, eligible.Visited);
         Assert.Equal(bound, eligible.ProcessOpenAttempts);
 
+        var truncated = new WindowReader(bound + 1, eligible: true);
+        Assert.Equal(0, new WindowsRunningAppObserver(truncated).ObserveComplete(CancellationToken.None).Count);
+        Assert.Equal(bound + 1, truncated.Visited);
+        Assert.Equal(bound, truncated.ProcessOpenAttempts);
+        var behindHiddenWindows = new WindowReader(bound + 2, true, candidateWindow: bound + 2, firstVisible: bound + 1);
+        Assert.Equal(1, new WindowsRunningAppObserver(behindHiddenWindows).ObserveComplete(CancellationToken.None).Count);
+        Assert.Equal(2, behindHiddenWindows.ProcessOpenAttempts);
+
         var lateCandidate = new WindowReader(bound + 1, eligible: true,
             candidateWindow: bound + 1);
         var late = new WindowsRunningAppObserver(lateCandidate)
@@ -253,10 +261,11 @@ internal static class RunningAppScenarios
     private sealed class WindowReader(
         int count,
         bool eligible,
-        int? candidateWindow = null) : IWindowsRunningWindowReader
+        int? candidateWindow = null, int firstVisible = 1) : IWindowsRunningWindowReader
     {
         internal int Visited { get; private set; }
         internal int ProcessOpenAttempts { get; private set; }
+        public bool IsVisible(IntPtr window) => (int)window >= firstVisible;
 
         public void Enumerate(Func<IntPtr, bool> visitor)
         {

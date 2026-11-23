@@ -125,7 +125,7 @@ internal sealed partial class OverlayShellPage
         }
         if (descriptor.PinningSupported && mediaOwner?.CanPin(descriptor.Id) == true &&
             frame.Snapshot.EmbeddedMediaSession?.SupportedPresentations.Contains(MediaPresentationKind.CompactPinned) == true)
-            choices.Add(new("Pin media", "Pin.Media", CompactMediaLayout, Media: true));
+            choices.Add(new("Pin video", "Pin.Media", CompactMediaLayout, Media: true));
         if (descriptor.PinningSupported)
             foreach (var layout in frame.Snapshot.PinnedLayouts)
                 choices.Add(new("Pin " + layout.Name, "Pin." + layout.Id, layout.Id));
@@ -672,6 +672,7 @@ internal sealed partial class OverlayShellPage
     private void ApplyPinnedAppearance(PinnedSurface current)
     {
         if (!pins.Contains(current)) return;
+        mediaAudioPreferences?.Attach(current.Window.AutomationRoot);
         var appearance = AppearanceForDisplay(current.DisplayId);
         if (current.Window.InterfaceScale != appearance.InterfaceScale)
         {

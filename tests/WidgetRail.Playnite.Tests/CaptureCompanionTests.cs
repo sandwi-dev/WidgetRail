@@ -8,6 +8,34 @@ namespace WidgetRail.Playnite.Tests;
 public sealed class CaptureCompanionTests
 {
     [TestMethod]
+    public void CaptureSessionEvidenceSurvivesStopAndRejectsSharedOrReusedProcesses()
+    {
+        var directory = Directory.CreateTempSubdirectory();
+        try
+        {
+            var sessions = new GameCaptureSessions(directory.FullName);
+            var first = Guid.NewGuid(); var second = Guid.NewGuid();
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var created = (ulong)DateTimeOffset.FromUnixTimeMilliseconds(now).UtcDateTime.ToFileTimeUtc();
+            sessions.Start(first, 123, created, now+1, now+10);
+            Assert.IsEmpty(sessions.Snapshot(first,now+20), "A pre-existing launcher cannot claim a game.");
+            sessions.Start(first, 123, created, now-5, now+10);
+            var original = sessions.Snapshot(first,now+20).Single();
+            Assert.AreEqual(now+20, original.Through);
+            Assert.AreEqual(now+10,new GameCaptureSessions(directory.FullName).Snapshot(first,now+50).Single().Through,
+                "With the overlay absent, the add-on persists the observed launch without inventing a future end time.");
+            sessions.Start(second, 123, created, now+25, now+30);
+            Assert.IsEmpty(sessions.Snapshot(second,now+50));
+            Assert.AreEqual(now+24,new GameCaptureSessions(directory.FullName).Snapshot(first,now+50).Single().Through);
+            sessions.Start(second,123,created+1000000,now+90,now+120);
+            sessions.Stop(second,now+150);
+            var later = new GameCaptureSessions(directory.FullName).Snapshot(second,now+500).Single();
+            Assert.AreNotEqual(original.Instance,later.Instance);
+            Assert.AreEqual(now+150,later.Through);
+        }
+        finally { directory.Delete(true); }
+    }
+    [TestMethod]
     public void RelatedIdentityIsProfileScopedAndOrdinal()
     {
         var profile=Guid.NewGuid().ToString("D"); var game=Guid.NewGuid();

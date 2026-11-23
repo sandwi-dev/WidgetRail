@@ -7,7 +7,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetViewPresenter
 {
-    private sealed record NativeEntryRestore(DependencyObject? NativeFallback);
+    private sealed record NativeEntryRestore(DependencyObject? NativeFallback, WidgetElementIdentity? Replacement = null);
     private NativeEntryRestore? pendingEntryRestore;
 
     internal WidgetPresentationAuthority? KeyboardFocusAuthority => frame?.Authority;
@@ -16,6 +16,10 @@ internal sealed partial class WidgetViewPresenter
 
     private Binding? EntryTarget()
     {
+        // A loading control can keep its semantic ID when replaced by a different
+        // native control. WinUI's interim focus recovery must not become its destination.
+        if (pendingEntryRestore?.Replacement is { } replacement && bindings.TryGetValue(replacement.Id, out var ready) &&
+            ready.Identity == replacement && Navigable(ready)) return ready;
         if (remembered.TryGetValue(activeScope, out var identity) && bindings.TryGetValue(identity.Id, out var rememberedBinding) &&
             rememberedBinding.Identity == identity && Navigable(rememberedBinding)) return rememberedBinding;
         if (effectiveView?.InitialFocusId is { } initial && bindings.TryGetValue(initial, out var initialBinding) && Navigable(initialBinding)) return initialBinding;

@@ -1,0 +1,39 @@
+:root {
+  --canvas: #15131c;
+  --canvas-veil: rgba(17, 14, 24, 0.74);
+  --surface: #23202d;
+  --surface-raised: #302b39;
+  --modal-surface: #292531;
+  --surface-subtle: #2b3540;
+  --surface-muted: #2b3540;
+  --surface-active: #244c55;
+  --border: #55515e;
+  --border-strong: #827b89;
+  --text: #faf2e7;
+  --text-muted: #cec5c6;
+  --text-subdued: #aaa4b1;
+  --accent: #ffbb8c;
+  --focus: #a1efe1;
+  --focus-highlight: #cee5ff;
+  --controller-glyph-color: #d5dbd5;
+  --scrollbar-track: #36323f;
+  --scrollbar-thumb: #b4acb9;
+  --scrim: rgba(12, 10, 18, 0.74);
+  --poster-scrim: rgba(19, 17, 28, 0.94);
+  --success: #b1d98a;
+  --warning: #f8d16c;
+  --danger: #ff9baf;
+  --error: var(--danger);
+  --info: #aaccff;
+  --data-blue: #aaccff;
+  --data-green: #b1d98a;
+  --data-gold: #ead195;
+  --data-purple: #d6b7eb;
+  --data-orange: #ffbb8c;
+  --data-red: #f7a1b3;
+}
+.wrail-navigation-shell__item--selected, .wrail-segmented-tabs__tab--selected {
+  background: var(--surface-active);
+  border-bottom-color: var(--accent);
+  border-bottom-width: 2px;
+}

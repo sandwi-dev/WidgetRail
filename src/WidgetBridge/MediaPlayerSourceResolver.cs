@@ -9,6 +9,7 @@ internal static class MediaPlayerSourceResolver
         if (!media.IsWellFormed()) throw new BridgeProtocolException("Invalid media source.");
         var source = media.Source;
         if (source.Kind == MediaPlayerSourceKind.WebUrl) return new(media, source.Location!);
+        if (source.Kind == MediaPlayerSourceKind.WebImage) return new(media, source.Location!, IsImage: true);
         if (source.Kind == MediaPlayerSourceKind.LocalFile)
         {
             if (widget.ExecutionTrust != WidgetExecutionTrust.FullTrustCurrentUser)

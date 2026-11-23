@@ -8,6 +8,26 @@ the installed native frontend is not being switched by these instructions.
 
 ## Authoring
 
+Use `.WithDirectionalAnchor(FocusAnchorPoint.Center, 50)` to center the focused
+poster in a horizontal rail. On a vertical feed,
+`.WithDirectionalAnchor(FocusAnchorPoint.Leading, 25)` places the start of
+the focused entry one quarter of the way down its viewport. The percentage
+accepts integers from 0 through 100. Leading, Center and Trailing select the
+point on the item. The host clamps to content boundaries and keeps short rows
+visible. The first and last rows can therefore move away from the anchor.
+
+This opt-in requires protocol 143. It applies to directional travel along the
+scroll axis. Ordinary entry, modal return, endpoint keys and free scrolling
+keep their existing policies. A media gallery with public thumbnails can
+configure its horizontal strip with `.WithThumbnailAnchor(FocusAnchorPoint.Center, 50)`.
+
+From protocol 145, ordinary `UI.HorizontalScroll` and `UI.VerticalScroll` containers
+also accept `WithDirectionalAnchor`. For example, use
+`UI.HorizontalScroll("cards", row).WithDirectionalAnchor(FocusAnchorPoint.Leading, 10)`
+for a short row of mixed-width action surfaces. Directional moves between descendants
+of that viewport use the anchor. Entry from another section and free scrolling keep
+their usual behavior.
+
 Register one `WidgetIndexedCollection<TQuery,TItem>` with
 `CreateIndexedCollection(sourceId, initialQuery, count, options)` during widget
 construction. Render its shell with the indexed overload of `UI.CollectionList`
@@ -29,10 +49,39 @@ measurement of realized content. The grid's minimum width and optional maximum
 columns describe adaptive layout. Authors do not compute monitor pixels, visible
 rows, scroll offsets or cache margins.
 
+For an adaptive grid, WinUI paints a static tile in each realized position
+while its row data is pending. The tile has no input or accessibility action
+and is released when the row arrives or the range fails. Supply the ordinary
+item extent and artwork fallback. No second collection or placeholder records
+are needed in the widget.
+
 The production Playnite examples are
 [Home](../../samples/PlayniteLibraryWidget/PlayniteLibraryIndexedHome.cs) and
 [Library](../../samples/PlayniteLibraryWidget/PlayniteLibraryIndexedBrowse.cs).
 Their query objects freeze filtering/order before exposing the count.
+
+## Reading groups with attachment actions
+
+`UI.ReadingGroup` lets an indexed message contain explicit child buttons or action
+surfaces without turning the whole message into a command. The host owns child
+focus and the exact indexed occurrence used for modal return. Protocol 132 is
+required. A group permits at most 32 child actions and 128 layout descendants;
+rich-text spans retain their separate bounded allowance. Layout is at most four
+levels deep within the group and within each admitted child action surface.
+Ordinary action surfaces keep their 32-descendant limit. Child actions cannot
+contain another interactive control, input scope, menu or preview.
+
+On directional entry, WinUI focuses an available inline action directly. Entering
+the row does not invoke it. Text-only messages remain readable as a single stop.
+Selection mode keeps focus on the row. Back can return from an inline action to
+the message when its text or row commands are useful.
+
+Use a single action for a shared destination. For individually actionable
+thumbnails, protocol 139 also permits a plain horizontal scroll viewport as a
+direct child of a reading group. Each thumbnail can own a separate action,
+accessible name and artwork handle. The viewport cannot paginate or run a
+second collection inside the indexed row. A group consisting solely of this
+strip does not add a Back stop around the thumbnails.
 
 ## Publishing data
 
@@ -393,6 +442,15 @@ paint and exact anchor when a rolling window evicts the newly chosen reader.
 It asks the source to recover that key, using the existing cancellable range lane.
 No controller action is synthesized and ordinary immutable `Locate` is unchanged.
 
+`ObservedEndItemKey` captures the tail occurrence in the exact revision observed
+by all active viewports at their physical end. It is null during recovery, for an
+empty collection, while any reader is away from the end, or after an unobserved
+publication. Use this captured key when a domain action depends on what was shown;
+combining old `IsAtEnd` feedback with the latest collection data could include an
+unseen arrival. This does not prove the loaded page is the provider's newest page
+or authorize an external effect: the consumer must still validate account, route,
+provider pagination and its operation lifetime before acting.
+
 The callback prepares provider data outside locks, then uses
 `request.TryCommit(() => ...)` for one bounded synchronous domain commit. Do not
 perform IO or await inside the commit. For a cursor resource:
@@ -437,17 +495,38 @@ automatic following in multiple pinned readers has no shipping adopter yet.
 ## Optional multi-selection
 
 Set `WidgetIndexedCollectionOptions.EnableSelection` for a finite indexed source.
-Ordinary activation is unchanged until `BeginSelection()`. In selection mode the
+Ordinary activation is unchanged until `BeginSelection()` or the user starts a
+held selection gesture. With protocol v128, holding L2/LT selects the focused item
+and adds each item reached by directional navigation. Release keeps the selection;
+revisiting a selected item does not remove it. This selects visited items, not the
+intervening range in a grid. Passive scrolling does not add items. The host owns
+trigger arbitration, delayed row admission, release and cancellation on departure;
+widgets must not implement another trigger loop. Before selection starts, explicit
+widget shortcuts keep precedence. While collection selection is active, L2/LT
+owns the selection gesture and replaces any conflicting widget shortcut hint.
+Media/browser/keyboard controls still retain ownership when focus is inside them.
+
+In selection mode the
 host supplies row checkboxes and selected accessibility status; click, Space and
 controller A toggle selection, Shift-click extends the anchor range, and Ctrl+A
 selects the complete query only when it fits the 256-item bound. A gesture that
 would exceed the bound is rejected in full with an accessible explanation; it
 never means only visible or loaded rows.
 
+For an explicit, bounded menu command such as **Select first 256 matches**, call
+`SelectFirst(count)` after entering selection mode. It replaces the selection in
+the current query order without fetching any rows. The allowed count is 1–256.
+
 `Selection` is an immutable snapshot with `IsActive`, `Indices`, `Count`, and
 `LimitReached`. `ClearSelection()` keeps the mode active; `EndSelection()` clears
 and leaves it. `PublishQuery` clears selection and its anchor while retaining the
 active mode. `UpdateContent` preserves positions in the unchanged query.
+
+`SelectionChanged` fires after explicit selection mutations, outside the source
+lock. Read `Selection` in the handler to reconcile domain presentation such as
+turning off item previews while selecting. Repeated add-only input for an already
+selected item does not publish an unchanged selection. Query publication still
+owns its normal invalidation and mode-preserving reset.
 
 Before a domain operation, call `ReadSelectedAsync` to capture at most 256 current
 items in bounded provider reads without rendering row templates. A selection or
@@ -458,10 +537,41 @@ operation, authorization and per-item revision checks. Selection is not permissi
 to mutate a file or an external account. Larger query-wide bulk operations are not
 implied by this API.
 
-Selection is opt-in protocol v112. Existing lists, grids, previews and discovered
-sources keep their existing activation and input behavior.
+Selection was introduced in protocol v112; current SDK selection declarations
+also advertise `SupportsHeldSelection`, requiring v128. The new host retains the
+existing controls for older declarations and never sends held-selection gestures
+without this capability. Lists that do not opt into selection, previews and
+discovered sources keep their existing activation and input behavior.
+
+## Authored collection exits
+
+`CollectionList` and `CollectionGrid` support `FocusUp`, `FocusDown`, `FocusLeft`
+and `FocusRight`, using the same declared-target contract as buttons. A focused
+row's explicit neighbor wins for that direction; otherwise navigation moves
+between collection items first and applies the collection's neighbor only at
+its boundary. The host still finishes scrolling within that axis before
+exiting and rejects hidden or unavailable targets. Declare a shared panel exit
+on the collection instead of repeating it in every lazily loaded row.
 
 ## Key lookup for large-query continuity
+
+### Preferred entry
+
+`UI.CollectionList(...).PreferredEntry(new WidgetCollectionItemKey(selectedId))`
+opts into protocol130 preferred occurrence entry. It also works for indexed grids.
+The finite source must supply `FindIndex`. The host uses the key when entering
+the collection by default or directional navigation, locates it within the exact
+query, and realizes only the needed range. A missing key falls back to ordinary
+remembered/default entry. Explicit keyed focus, reveal and navigation-return
+requests retain their existing authority and are not overridden.
+
+This is a presentation preference, not a focus request on every snapshot. User
+departure, navigation, scrolling, hide, changed preference or query replacement
+retires pending lookup work. Existing sources without `PreferredEntry` are
+unchanged. `PreferredEntry(null)` clears the preference; choosing `DirectionalEntry`
+also clears it, so visible-edge and preferred-key semantics cannot conflict.
+Use the preference for master/detail lists such as a selected conversation, not
+automatically for every highlighted or currently playing item.
 
 A finite indexed source may provide `FindIndex(query, key, cancellationToken)`.
 It returns the occurrence's position in that exact immutable query, or null when
@@ -477,3 +587,15 @@ Focus is restored only when the collection owned it before replacement.
 
 The complete `OccurrenceKeys` path remains available for bounded local collections.
 Providers without `FindIndex` retain their existing query replacement behavior.
+
+For an ungrouped bounded occurrence map (at most 512 entries), ordered
+insertions/removals now retain the native items source and surviving row slots.
+This covers prepending chat history and trimming its opposite edge without
+clearing the visible list. Payload leases and pending reads still retire at the
+query boundary; retained paint is not permission to invoke an old action.
+Retention follows occurrence identity, not the index that a different item may
+occupy later. Reorders, unrelated queries, groups and large lazy collections keep
+the existing replacement/lookup path. Timeline windows use native WinUI
+`KeepLastItemInView` anchoring so prepending at offset zero does not discard the
+visible message. Explicit page-edge requests wait for current row layout, as
+automatic boundary observations already do.

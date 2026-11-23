@@ -10,7 +10,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Motion;
 /// Host-only focus outline in a dedicated child visual. Its motion transforms
 /// no XAML content and inherits the control's independent authored scale.
 /// </summary>
-internal sealed class WidgetFocusDecoration : IDisposable
+internal sealed partial class WidgetFocusDecoration : IDisposable
 {
     private readonly Control control;
     private readonly FrameworkElement outlineElement;
@@ -65,7 +65,7 @@ internal sealed class WidgetFocusDecoration : IDisposable
         outlineElement.SizeChanged += Resized; outlineElement.Loaded += Loaded; outlineElement.Unloaded += Unloaded;
     }
     internal void Apply(Color color, float thickness, float cornerRadius, float outlineOffset,
-        bool isFocused, WidgetMotionOptions policy)
+        bool isFocused, WidgetMotionOptions policy, SettledOutlineStyle settled = default)
     {
         if (disposed) return;
         brush.Color = color;
@@ -75,15 +75,19 @@ internal sealed class WidgetFocusDecoration : IDisposable
         var initial = !applied;
         var policyChanged = options != policy;
         var focusChanged = focused != isFocused;
+        var effectChanged = settledStyle != settled;
+        settledStyle = settled;
         options = policy; focused = isFocused; applied = true;
         var rebuilt = UpdateGeometry();
         if (target is null || motion is null) return;
         if (initial || policyChanged || rebuilt)
         {
-            motion.Cancel(); target.Set(WidgetMotionPose.Identity with { Opacity = focused ? 1 : 0 });
+            motion.Cancel(); Playback = null; target.Set(WidgetMotionPose.Identity with { Opacity = focused ? 1 : 0 });
         }
         else if (focusChanged)
             Playback = motion.PlayAsync((WidgetMotionPlayback[])[new(target, WidgetMotionPolicy.Focus(options, size, focused))]);
+        if (initial || policyChanged || rebuilt || focusChanged || effectChanged) ArmSettledEffect();
+        else settledVisibility?.Refresh();
     }
     private bool UpdateGeometry()
     {
@@ -112,11 +116,11 @@ internal sealed class WidgetFocusDecoration : IDisposable
         return rebuilt;
     }
     private void Loaded(object sender, RoutedEventArgs args)
-    { if (UpdateGeometry()) target?.Set(WidgetMotionPose.Identity with { Opacity = focused ? 1 : 0 }); }
+    { if (UpdateGeometry()) { target?.Set(WidgetMotionPose.Identity with { Opacity = focused ? 1 : 0 }); ArmSettledEffect(); } }
     private void Resized(object sender, SizeChangedEventArgs args) => Loaded(sender, args);
     private void Unloaded(object sender, RoutedEventArgs args) { if (!disposed && !outlineElement.IsLoaded) RetireTargets(); }
     private void RetireTargets()
-    { motion?.Dispose(); motion = null; target?.Dispose(); target = null; }
+    { DisarmSettledEffect(); motion?.Dispose(); motion = null; Playback = null; target?.Dispose(); target = null; }
     public void Dispose()
     {
         if (disposed) return;

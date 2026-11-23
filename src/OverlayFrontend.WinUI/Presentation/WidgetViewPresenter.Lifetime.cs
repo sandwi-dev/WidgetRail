@@ -22,8 +22,9 @@ internal sealed partial class WidgetViewPresenter
         if (active && !suspension.IsCompleted) throw new InvalidOperationException("Await presentation suspension before resuming.");
         if (active && !suspension.IsCompletedSuccessfully) throw new InvalidOperationException("Presentation suspension failed.", suspension.Exception);
         var pendingReturn = !active ? CapturePendingCollectionReturn() : null;
-        if (!active) { RememberFocus(); ClearFocusPreview(); ClearDeferredPreviews(); }
+        if (!active) { readingGroupBackPressed = false; RememberFocus(); ClearFocusPreview(); ClearDeferredPreviews(); }
         presentationActive = active;
+        RefreshArtworkPlayback();
         RefreshReadingFocus();
         RefreshMediaPlayers();
         RefreshContextIndicators();
@@ -53,6 +54,9 @@ internal sealed partial class WidgetViewPresenter
         }
         foreach (var binding in bindings.Values)
         {
+            if (nativeStyles.TryGetValue(binding, out var adapter)) adapter.FocusDecoration?.RefreshSettledVisibility();
+            if (!active && binding.Children is WidgetActionPanel face) face.EndLighting();
+            if (!active && binding.Element is WidgetPresentationSurface surface) surface.ArtworkMotion.SetSuspended(true);
             if (binding.Element is WidgetIndexedCollectionView collection) work.Add(collection.SetPresentationActiveAsync(active));
             if (!active && binding.Element is WidgetPresentationSurface { Fragment: { } fragment }) work.Add(fragment.SetPresentationActiveAsync(false));
             if (!active)

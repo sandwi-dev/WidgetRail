@@ -116,7 +116,7 @@ static void CheckCaptureOutputSize(const wchar_t* path,uint64_t maximumBytes) {
 
 static int32_t RunConfiguredCapture(const WrailPreviewTarget* target,const wchar_t* path,const WrailCaptureOptions* options,
     WrailPreviewAuthority authority,void* context,WrailCaptureResult* result,const WrailCaptureEncodingSelection* selection=nullptr,
-    uint32_t expectedSourceWidth=0,uint32_t expectedSourceHeight=0,uint64_t maximumOutputBytes=WrailCaptureTemporaryMaximumBytes) noexcept {
+    uint32_t expectedSourceWidth=0,uint32_t expectedSourceHeight=0,uint64_t maximumOutputBytes=WrailCaptureTemporaryMaximumBytes, HWND screenshotOverlay=nullptr) noexcept {
     if(!target || target->size!=sizeof(*target) || target->version!=1 || !path || !*path || !authority || !result ||
         result->size!=sizeof(*result) || result->version!=3 || !options || options->size!=sizeof(*options) || options->version!=3 ||
         options->audioMode>1 || options->reserved || (options->kind!=2 && options->audioMode!=0) ||
@@ -144,8 +144,17 @@ static int32_t RunConfiguredCapture(const WrailPreviewTarget* target,const wchar
         if(!dpi.previous)throw winrt::hresult_error(HRESULT_FROM_WIN32(GetLastError()));
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
         struct Apartment { ~Apartment(){winrt::uninit_apartment();} } apartment;
-        if(!Current(*target,authority,context) || GetAncestor(GetForegroundWindow(), GA_ROOT)!=reinterpret_cast<HWND>(target->window))
+        const auto sourceWindow = reinterpret_cast<HWND>(target->window);
+        const auto foreground = GetAncestor(GetForegroundWindow(), GA_ROOT);
+        if (!Current(*target, authority, context) || foreground != (screenshotOverlay ? screenshotOverlay : sourceWindow))
             throw winrt::hresult_error(E_ACCESSDENIED);
+        if (screenshotOverlay) {
+            DWORD overlayPid{};
+            if (kind != 1 || !GetWindowThreadProcessId(screenshotOverlay, &overlayPid) ||
+                overlayPid != GetCurrentProcessId() || target->processId == overlayPid ||
+                sourceWindow != GetAncestor(sourceWindow, GA_ROOT) || sourceWindow == GetDesktopWindow() || sourceWindow == GetShellWindow())
+                throw winrt::hresult_error(E_ACCESSDENIED);
+        }
         if(!GraphicsCaptureSession::IsSupported()) throw winrt::hresult_error(E_NOTIMPL);
         ComPtr<ID3D11Device> device; ComPtr<ID3D11DeviceContext> immediate;
         if(selection){device=widgetrail::capture::CreateEncodingDevice(selection->adapterLuid);device->GetImmediateContext(&immediate);}
@@ -202,7 +211,9 @@ static int32_t RunConfiguredCapture(const WrailPreviewTarget* target,const wchar
                 }
             }
             if(haveFrame && Clock::now()<started+std::chrono::milliseconds(1000*nextSlot/fps)) {WaitForSingleObject(signal->value,10);continue;}
-            if(!Current(*target,authority,context)) throw winrt::hresult_error(E_ABORT);
+            if(!Current(*target,authority,context) ||
+                (screenshotOverlay && GetAncestor(GetForegroundWindow(), GA_ROOT) != screenshotOverlay))
+                throw winrt::hresult_error(E_ABORT);
             auto frame=capture.pool.TryGetNextFrame();
             // WGC may produce faster than the requested recording rate. Reading
             // only one buffered frame per slot preserves an old frame and adds
@@ -298,6 +309,11 @@ static int32_t RunConfiguredCapture(const WrailPreviewTarget* target,const wchar
       catch(...){result->error=E_FAIL;return E_FAIL;}
 }
 
+extern "C" int32_t __stdcall WrailCaptureOverlayScreenshot(const WrailPreviewTarget* target, void* overlay, const wchar_t* path,
+    const WrailCaptureOptions* options, WrailPreviewAuthority authority, void* context, WrailCaptureResult* result) noexcept {
+    if (!overlay || !options || options->kind != 1) return E_INVALIDARG;
+    return RunConfiguredCapture(target, path, options, authority, context, result, nullptr, 0, 0, WrailCaptureTemporaryMaximumBytes, static_cast<HWND>(overlay));
+}
 extern "C" int32_t __stdcall WrailCaptureWindowConfigured(const WrailPreviewTarget* target,const wchar_t* path,const WrailCaptureOptions* options,
     WrailPreviewAuthority authority,void* context,WrailCaptureResult* result) noexcept {
     return RunConfiguredCapture(target,path,options,authority,context,result);

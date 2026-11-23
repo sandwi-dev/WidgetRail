@@ -30,13 +30,20 @@ internal sealed partial class ShellChromeValidationPage
         {
             var count = guide.FadeCount;
             Present("motion-after", "After"); Host.UpdateLayout();
-            Check(guide.IsFading && guide.FadeCount == count + 1 && guide.LastFadeDuration.TotalMilliseconds == 280,
-                "committed whole guide starts one compositor crossfade at shared animation speed");
+            Check(guide.IsFading && guide.FadeCount == count + 1 && guide.LastFadeDuration.TotalMilliseconds == 480,
+                "committed whole guide starts one compositor fade-through at shared animation speed");
+            var recipe = WidgetMotionPolicy.GuideFadeThrough(appearance, true, false);
+            Check(recipe.Incoming.Delay >= recipe.Outgoing.Delay + recipe.Outgoing.Duration,
+                "incoming guide labels remain hidden until outgoing labels finish fading");
             Check(guide.OutgoingIsPassive && guide.HelpText.Contains("After") && Math.Abs(height - guide.ActualHeight) < .1,
                 "outgoing guide is input/accessibility passive while current labels keep a stable height");
             oldInvoke.Invoke();
             Check(invoked == 0, "retired guide control cannot invoke the newly published action");
             var firstPlayback = guide.FadePlayback!;
+            Present("motion-intermediate", "Intermediate"); Host.UpdateLayout();
+            Check(ReferenceEquals(firstPlayback,guide.FadePlayback) && guide.FadeCount == count+1 &&
+                guide.HelpText.Contains("Intermediate"), "a change during fade-out reuses the still-hidden destination");
+            await Task.Delay(recipe.Incoming.Delay+TimeSpan.FromMilliseconds(20));
             Present("motion-latest", "Latest"); Host.UpdateLayout();
             Check(await firstPlayback == WidgetMotionOutcome.Superseded && guide.IsFading && guide.HelpText.Contains("Latest"),
                 "interrupted fade replaces its destination immediately without queued intermediate guides");

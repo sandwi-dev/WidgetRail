@@ -14,6 +14,14 @@ public sealed partial class WindowsAppLibraryProvider
     private Dictionary<string, WindowsRunningAppObservation> _taskWindowTargets = new(StringComparer.Ordinal);
     internal IWindowsTaskWindowControl TaskWindowControl { get; init; } = new WindowsTaskWindowControl();
 
+    public Task<NativeWindowPreviewTarget?> InspectLaunchWindowAsync(long handle, CancellationToken token) =>
+        _shellSta.RunAsync(cancellation =>
+        {
+            cancellation.ThrowIfCancellationRequested();
+            var observation = WindowsRunningAppObserver.InspectWindow((nint)handle);
+            return observation is null ? null : WindowsRunningAppObserver.PreviewTarget(observation);
+        }, token);
+
     public async Task<IReadOnlyList<TaskWindowSummary>> GetTaskWindowsAsync(CancellationToken cancellationToken)
     {
         await GetAppsAsync(cancellationToken).ConfigureAwait(false);

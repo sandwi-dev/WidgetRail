@@ -46,6 +46,8 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
     {
         // Resolve once per broker generation, before creating any saved IDs or
         // launch registrations. Permission checks remain on the current broker.
+        if (operation is PlatformCapabilities.LaunchHandoffBegin or PlatformCapabilities.LaunchHandoffReady)
+            return await LaunchHandoffAsync(operation, payload, cancellationToken).ConfigureAwait(false);
         if (operation is not (PlatformCapabilities.TaskWindowsList or PlatformCapabilities.TaskWindowsSwitch or PlatformCapabilities.TaskWindowsClose) &&
             _continuity is not null && !Volatile.Read(ref _scopeResolved))
         {
@@ -672,6 +674,8 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
 
     public void Dispose()
     {
+        CancelLaunchHandoff();
+        WindowPreviewRegistry.Retire(_launchOwner);
         WindowPreviewRegistry.Retire(this);
         _artwork?.Dispose();
     }

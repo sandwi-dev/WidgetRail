@@ -36,6 +36,8 @@ public interface IMusicService : IAsyncDisposable
     Task RadioAsync(MusicItem song, CancellationToken token);
     Task<PlayNextResult> PlayNextAsync(MusicItem item, CancellationToken token);
     Task CommandAsync(string command, double? value, CancellationToken token);
+    WidgetRail.WidgetProtocol.TrayActionOffer? GetTrayOffer(MusicState snapshot, string id) => null;
+    ValueTask<bool> InvokeTrayAsync(WidgetRail.WidgetProtocol.TrayActionOffer offer, CancellationToken token) => ValueTask.FromResult(false);
 }
 
 // Queue movement is independent of page navigation and never wraps unless repeat permits it.

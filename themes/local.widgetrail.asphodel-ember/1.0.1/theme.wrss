@@ -1,0 +1,70 @@
+/* Asphodel Ember | Hades-inspired bronze, laurel red and spectral mint. */
+:root {
+  --acrylic-tint-opacity: .35;
+  --acrylic-luminosity-opacity: .25;
+  --panel-shading: .02;
+  --control-shading: .025;
+  --focus-shading: .035;
+  --inset-shading: -.025;
+  --focus-width: 2px;
+  --focus-offset: -2px;
+  --focus-filled-offset: 2px;
+  --canvas: #101a19;
+  --canvas-veil: rgba(10, 18, 19, .76);
+  --surface: #192b29;
+  --surface-raised: #233633;
+  --modal-surface: #1c2c2b;
+  --surface-subtle: #2c3c37;
+  --surface-muted: #273731;
+  --surface-active: #673733;
+  --border: #67776a;
+  --border-strong: #b89c70;
+  --text: #fff3dd;
+  --text-muted: #e4d9bf;
+  --text-subdued: #cbbda6;
+  --accent: #f4c37c;
+  --focus: #a4ffe0;
+  --focus-highlight: #ffcf80;
+  --controller-glyph-color: #ffe1ac;
+  --scrollbar-track: #263832;
+  --scrollbar-thumb: #bdac8a;
+  --scrim: rgba(8, 16, 16, .76);
+  --poster-scrim: rgba(12, 23, 22, .94);
+  --success: #bae59f;
+  --info: #9edbef;
+  --warning: #ffe29b;
+  --danger: #ffa69e;
+  --error: var(--danger);
+  --data-red: #ffaaa3;
+  --data-blue: #a6dbea;
+  --data-green: #b7dda2;
+  --data-gold: #f5d38b;
+  --data-purple: #d9bcf2;
+  --data-orange: #ffbd8e;
+  --depth-shadow: rgba(6, 15, 14, .38);
+  --depth-lowlight: rgba(7, 14, 13, .23);
+  --depth-highlight: rgba(255, 224, 173, .10);
+  --font-text: Segoe UI Variable Text, Segoe UI;
+  --font-display: Georgia, Times New Roman, Segoe UI;
+}
+
+/* Keep artwork prominent. Reserve the enamel fill and bronze edge for selection. */
+tray-item:selected,
+.wrail-navigation-shell__item--selected,
+.wrail-segmented-tabs__tab--selected {
+  background: var(--surface-active);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.wrail-navigation-shell__item--selected,
+.wrail-segmented-tabs__tab--selected {
+  border-bottom-color: var(--accent);
+  border-bottom-width: 2px;
+}
+tray-item:selected:focused,
+.wrail-navigation-shell__item--selected:focused,
+.wrail-segmented-tabs__tab--selected:focused {
+  outline-color: var(--focus);
+  outline-width: var(--focus-width);
+  outline-offset: var(--focus-offset);
+}

@@ -8,9 +8,9 @@ internal static partial class GalleryTests
         foreach(var recycle in new[]{false,true})
         {
             var calls=0;CaptureLibraryRecycleRequest? request=null;
-            await using var fixture=new GalleryFixture((builder,owner)=>builder
-                .WithHandler(WidgetCaptureLibraryCapabilities.RecycleLinked,(value,_)=>
-                {calls++;request=value;owner.Items.RemoveAll(item=>item.Id==value.Items[0].Id);owner.Notify();return ValueTask.FromResult(new CaptureLibraryBatchResult([new(value.Items[0].Id)]));}));
+            await using var fixture=new GalleryFixture();
+            fixture.RecycleLinkedOverride=(value,_)=>
+                {calls++;request=value;fixture.Items.RemoveAll(item=>item.Id==value.Items[0].Id);fixture.Notify();return ValueTask.FromResult(new CaptureLibraryBatchResult([new(value.Items[0].Id)]));};
             fixture.Items[0]=fixture.Items[0] with{SourceId=new string('b',32),Revision=7,MetadataRevision=9};
             var original=fixture.Items[0];await fixture.Start();using var host=await OpenEditingSource(fixture);
             Check(fixture.Node("capture-library.delete")?.Text=="Hide from library"&&
@@ -36,9 +36,9 @@ internal static partial class GalleryTests
         foreach(var permission in new[]{WidgetPermissionOutcome.Denied,WidgetPermissionOutcome.Granted})
         {
             var attempts=0;
-            await using var fixture=new GalleryFixture((builder,_)=>builder
-                .WithHandler(WidgetCaptureLibraryCapabilities.RecycleLinked,(request,_)=>
-                {attempts++;return ValueTask.FromResult(new CaptureLibraryBatchResult([new(request.Items[0].Id,ErrorCode:"capture_library_recycle_unavailable")]));}));
+            await using var fixture=new GalleryFixture();
+            fixture.RecycleLinkedOverride=(request,_)=>
+                {attempts++;return ValueTask.FromResult(new CaptureLibraryBatchResult([new(request.Items[0].Id,ErrorCode:"capture_library_recycle_unavailable")]));};
             fixture.Items[0]=fixture.Items[0] with{SourceId=new string('b',32)};
             await fixture.Start();using var host=await OpenEditingSource(fixture);var original=Preview(fixture);
             fixture.PermissionOutcome=permission;

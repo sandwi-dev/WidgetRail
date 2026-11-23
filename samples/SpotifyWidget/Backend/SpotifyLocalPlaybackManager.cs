@@ -179,7 +179,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 track.Name, artists.Length == 0 ? "Spotify" : artists, track.AlbumName, track.ArtworkUrl, track.Uri),
             new(blocked.Pausing, blocked.Resuming, blocked.Seeking, blocked.SkippingNext,
                 blocked.SkippingPrevious, blocked.TogglingRepeatContext, blocked.TogglingRepeatTrack,
-                blocked.TogglingShuffle), "Spotify"));
+                blocked.TogglingShuffle), "Spotify") { DeviceId = _spotifyDeviceId });
     }
 
     internal SpotifyLocalPlaybackSummary GetSummary(SpotifyIntegrationIdentity identity)
@@ -436,7 +436,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
     {
         ISpotifyPlaybackHostClient? client;
         lock (_stateGate)
-            client = _owner == identity && _routingEligible &&
+            client = _owner == identity && _routingEligible && (command.DeviceId is null || command.DeviceId == _spotifyDeviceId) &&
                 _state is SpotifyLocalPlaybackState.Active or
                     SpotifyLocalPlaybackState.AutoplayBlocked ? _client : null;
         if (client?.IsRunning != true) return false;

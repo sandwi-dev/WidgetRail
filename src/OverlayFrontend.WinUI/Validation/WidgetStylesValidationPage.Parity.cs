@@ -13,12 +13,32 @@ internal sealed partial class WidgetStylesValidationPage
 {
     private async Task NativeStyleParityAsync()
     {
-        NativeComputedStyleAdapter.SetAccessibilityPolicy(WidgetRail.PlatformSettings.AppearanceSettings.Default with
-            { BoldText = false, Contrast = WidgetRail.PlatformSettings.ContrastPreference.Standard });
+        var standard = WidgetRail.PlatformSettings.AppearanceSettings.Default with
+            { BoldText = false, Contrast = WidgetRail.PlatformSettings.ContrastPreference.Standard };
+        var measureOnly = new Grid();
+        using (var reservationStyle = new NativeComputedStyleAdapter(measureOnly))
+        {
+            var zero = Compute("#measure { opacity: 0; }", "measure", "grid");
+            var translucent = Compute("#measure { opacity: .5; }", "measure", "grid");
+            try
+            {
+                foreach (var preference in new[] { standard with { Contrast = WidgetRail.PlatformSettings.ContrastPreference.High },
+                    standard with { Transparency = WidgetRail.PlatformSettings.TransparencyPreference.Reduced } })
+                {
+                    NativeComputedStyleAdapter.SetAccessibilityPolicy(preference);
+                    reservationStyle.Update(zero);
+                    Check(measureOnly.Opacity == 0, "layout reservation stays unpainted");
+                    reservationStyle.Update(translucent);
+                    Check(measureOnly.Opacity == 1, "translucent content becomes opaque");
+                }
+            }
+            finally { NativeComputedStyleAdapter.SetAccessibilityPolicy(standard); }
+        }
         var groupHeader = new WidgetGroupHeader { Text = "Recommended albums", HeaderStyle =
             Compute("#header { color: #4abbee; font-size: 21px; font-weight: 500; }", "header", "text") };
         host.Children.Add(groupHeader);
-        var headerText = (TextBlock)groupHeader.Content;
+        await Wait(() => Descendants(groupHeader).OfType<TextBlock>().Any());
+        var headerText = Descendants(groupHeader).OfType<TextBlock>().Single();
         await Wait(() => NativeComputedStyleAdapter.For(headerText) is not null);
         Check(headerText.FontSize == 21 && headerText.FontWeight.Weight == 500 && ColorOf(headerText.Foreground) == Windows.UI.Color.FromArgb(255, 0x4a, 0xbb, 0xee),
             $"collection group header uses shared resolved typography and theme color [size={headerText.FontSize}, weight={headerText.FontWeight.Weight}, color={ColorOf(headerText.Foreground)}]");

@@ -52,13 +52,15 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
 
     private async ValueTask<PlayniteSetupPlan> InspectCoreAsync(PlayniteSetupInstallation installation, CancellationToken token, bool verifyLibrary)
     {
+        var missingAddons = PlayniteOptionalAddon.None;
+        var uncheckedAddons = PlayniteOptionalAddon.GameActivity | PlayniteOptionalAddon.Achievements;
         var validated = PlayniteSetupDiscoveryService.Candidate(installation.ProgramDirectory, installation.DataDirectory, installation.Running, installation.Fullscreen);
         if (validated.Id != installation.Id) throw new PlayniteSetupException("The selected installation changed. Find Playnite again.");
         var processes = await platform.ProcessesAsync(token).ConfigureAwait(false);
         if (processes.Any(process => !PlayniteSetupPlatform.Matches(process, installation)))
             return Plan(PlayniteSetupAction.Manual, "Another Playnite profile is running", "Close the other Playnite instance before setting up this profile.", null, null, null);
         installation = installation with { Running = processes.Count != 0, Fullscreen = processes.FirstOrDefault()?.Fullscreen ?? installation.Fullscreen };
-        var extension = FindExtension(installation);
+        var extension = FindExtension(installation, out missingAddons, out uncheckedAddons);
         var recovery = RecoveryTarget(installation);
         if (recovery is not null) return Plan(PlayniteSetupAction.Repair, "Finish interrupted setup",
             "Playnite will close briefly while its previous integration is restored and setup is retried.", null, null, recovery);
@@ -113,7 +115,21 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
             : Plan(PlayniteSetupAction.Start, "Start and connect Playnite", "Start the selected Playnite profile, check the integration, and save its connection securely.", version, digest, extension);
 
         PlayniteSetupPlan Plan(PlayniteSetupAction action, string title, string message, string? version, string? digest, string? path) =>
-            new(installation, action, title, message, version, digest, path);
+            new(installation, action, title, message, version, digest, path) { MissingAddons = missingAddons, UncheckedAddons = uncheckedAddons };
+    }
+
+    public async ValueTask OpenAddonInstallerAsync(PlayniteSetupInstallation installation, PlayniteOptionalAddon addon, CancellationToken token)
+    {
+        var binding = connections.Read();
+        var running = await platform.ProcessesAsync(token).ConfigureAwait(false);
+        if (binding is null || !string.Equals(binding.ProgramDirectory, installation.ProgramDirectory, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(binding.DataDirectory, installation.DataDirectory, StringComparison.OrdinalIgnoreCase) ||
+            running.Count != 1 || !PlayniteSetupPlatform.Matches(running[0], installation))
+            throw new PlayniteSetupException("Open the connected Playnite profile and try again.");
+        _ = FindExtension(installation, out var missing, out var uncheckedAddons);
+        if ((uncheckedAddons & addon) != 0) throw new PlayniteSetupException("Could not check this add-on in the connected Playnite profile.");
+        if ((missing & addon) == 0) throw new PlayniteSetupException("This add-on is installed. Check that it is enabled in Playnite.");
+        await platform.OpenAddonInstallerAsync(running[0], installation, addon, token).ConfigureAwait(false);
     }
 
     public ValueTask<PlayniteSetupResult> ApplyAsync(PlayniteSetupPlan plan, Action<string> progress, CancellationToken token) =>
@@ -289,26 +305,49 @@ internal sealed class PlayniteSetupService : IPlayniteSetupService
             disabled.Any(value => value?.GetValue<string>() is PlayniteSetupFiles.ExtensionId or PlayniteSetupFiles.PluginId) ||
             File.Exists(plugin) && PlayniteSetupFiles.ReadObject(plugin)["Enabled"]?.GetValue<bool>() == false;
     }
-    internal static string? FindExtension(PlayniteSetupInstallation installation)
+    private static string? FindExtension(PlayniteSetupInstallation installation, out PlayniteOptionalAddon missing, out PlayniteOptionalAddon uncheckedAddons)
     {
         // Match Playnite's user-before-program lookup, and refuse duplicates within
         // a root instead of guessing which version its loader would choose.
+        missing = PlayniteOptionalAddon.GameActivity | PlayniteOptionalAddon.Achievements;
+        uncheckedAddons = PlayniteOptionalAddon.None;
+        string? integration = null;
         foreach (var root in new[] { Path.Combine(installation.DataDirectory, "Extensions"), Path.Combine(installation.ProgramDirectory, "Extensions") }.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            PlayniteSetupFiles.NoLinks(root);
-            if (!Directory.Exists(root)) continue;
-            var matches = new List<string>();
-            var options = new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 4, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = false };
-            int inspected = 0;
-            foreach (var path in Directory.EnumerateFiles(root, "extension.yaml", options))
+            if (integration is not null && missing == PlayniteOptionalAddon.None) break;
+            string? localIntegration = null;
+            try
             {
-                if (++inspected > 1024) throw new PlayniteSetupException("There are too many extension manifests to identify the integration reliably. Use manual setup.");
-                if (PlayniteSetupFiles.ReadManifest(path).GetValueOrDefault("Id") == PlayniteSetupFiles.ExtensionId) matches.Add(Path.GetDirectoryName(path)!);
+                PlayniteSetupFiles.NoLinks(root);
+                if (!Directory.Exists(root)) continue;
+                var options = new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 4,
+                    AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = false };
+                int inspected = 0;
+                foreach (var path in Directory.EnumerateFiles(root, "extension.yaml", options))
+                {
+                    if (++inspected > 1024) throw new PlayniteSetupException("There are too many extension manifests to identify the integration reliably. Use manual setup.");
+                    switch (PlayniteSetupFiles.ReadManifest(path).GetValueOrDefault("Id"))
+                    {
+                        case "playnite-gameactivity-plugin": missing &= ~PlayniteOptionalAddon.GameActivity; break;
+                        case "PlayniteAchievements": missing &= ~PlayniteOptionalAddon.Achievements; break;
+                        case PlayniteSetupFiles.ExtensionId when integration is null:
+                            if (localIntegration is not null) throw new PlayniteSetupException("Multiple WidgetRail integration copies were found. Remove the duplicate in Playnite before using automatic setup.");
+                            localIntegration = Path.GetDirectoryName(path);
+                            break;
+                    }
+                }
             }
-            if (matches.Count > 1) throw new PlayniteSetupException("Multiple WidgetRail integration copies were found. Remove the duplicate in Playnite before using automatic setup.");
-            if (matches.Count == 1) return matches[0];
+            catch (Exception error) when (integration is not null && error is IOException or UnauthorizedAccessException or PlayniteSetupException)
+            {
+                // The higher-priority core integration is already identified. An unreadable
+                // secondary root makes an optional install offer inconclusive.
+                uncheckedAddons = missing;
+                missing = PlayniteOptionalAddon.None;
+                break;
+            }
+            integration ??= localIntegration;
         }
-        return null;
+        return integration;
     }
     private static string? RecoveryTarget(PlayniteSetupInstallation installation)
     {

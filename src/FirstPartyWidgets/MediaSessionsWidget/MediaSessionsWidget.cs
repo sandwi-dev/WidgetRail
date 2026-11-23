@@ -269,17 +269,43 @@ public sealed partial class MediaSessionsWidget : Widget
         if (selected.CanPrevious)
             quickActions.Add(new(
                 ControllerButton.LeftBumper, "media.previous", "Previous track",
-                DashboardMediaControl));
+                DashboardMediaControl) { TrayOffer = Offer("previous") });
         if (toggleEnabled)
             quickActions.Add(new(
                 ControllerButton.X, "media.toggle", toggleLabel,
-                DashboardMediaControl));
+                DashboardMediaControl) { TrayOffer = Offer("play-pause") });
         if (selected.CanNext)
             quickActions.Add(new(
                 ControllerButton.RightBumper, "media.next", "Next track",
-                DashboardMediaControl));
+                DashboardMediaControl) { TrayOffer = Offer("next") });
+        TrayActionOffer? Offer(string id)
+        {
+            var command = TrayCommand(id, selected);
+            return pending is null && command is { } exact && Supports(selected, exact)
+                ? new(id, selected.SessionId) { MediaCommand = new(selected.SessionId, exact.ToString()) } : null;
+        }
         return new WidgetView(root, "media.play-toggle", QuickActions: quickActions,
-            Surface: CompactSurface);
+            Surface: CompactSurface).WithUnavailableTrayActions(pending is null
+                ? "The selected player does not support this control." : "Wait for the current playback command to finish.",
+                "play-pause", "previous", "next");
+    }
+
+    private static WidgetMediaSessionCommand? TrayCommand(string id, WidgetMediaSession session) => id switch
+        {
+            "previous" => WidgetMediaSessionCommand.Previous, "next" => WidgetMediaSessionCommand.Next,
+            "play-pause" when session.PlaybackStatus == WidgetMediaPlaybackStatus.Playing => WidgetMediaSessionCommand.Pause,
+            "play-pause" => WidgetMediaSessionCommand.Play, _ => (WidgetMediaSessionCommand?)null
+        };
+
+    protected override async ValueTask<TrayActionResult> OnTrayActionAsync(TrayActionOffer offer, CancellationToken token)
+    {
+        var state = _model.Value;
+        if (state.PendingCommand is not null || Selected(state) is not { } session || session.SessionId != offer.TargetKey ||
+            TrayCommand(offer.Id, session) is not { } exact || !Supports(session, exact) ||
+            offer.MediaCommand != new TrayMediaCommand(session.SessionId, exact.ToString()))
+            return TrayActionResult.Unavailable("The selected media session changed or stopped supporting this control.");
+        await HostServices.Media.ControlAsync(session.SessionId, exact, token).ConfigureAwait(false);
+        return TrayActionResult.Success;
     }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
@@ -750,7 +776,8 @@ public sealed partial class MediaSessionsWidget : Widget
                     .Classes("media-state-card"))
             .InputScope("media-sessions")
             .Classes("media-sessions-widget", "has-state");
-        return new WidgetView(root, "media.retry", Surface: CompactSurface);
+        return new WidgetView(root, "media.retry", Surface: CompactSurface)
+            .WithUnavailableTrayActions(state == MediaSessionsViewState.Empty ? help : title, "play-pause", "previous", "next");
     }
 
     private void SetLoadFailure(

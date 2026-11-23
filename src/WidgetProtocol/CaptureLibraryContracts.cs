@@ -59,10 +59,21 @@ public sealed record CaptureLibraryQuery
     public CaptureLibrarySort Sort { get; init; }
     public string? OriginPackageId { get; init; }
     public CaptureLibraryReferenceFilter? Reference { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<CaptureProcessInterval>? SourceIntervals { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ExcludeReference { get; init; }
+    /// <summary>For automatic reconciliation, skip captures with a previously detached matching reference too.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ExcludeDetachedReference { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool AvailableOnly { get; init; }
     public bool IsWellFormed() => Enum.IsDefined(MediaKind) && Enum.IsDefined(Sort) &&
         (SourceId is null or "" || CaptureLimits.ValidToken(SourceId)) &&
         (OriginPackageId is null || CaptureContextLimits.Identity(OriginPackageId)) &&
         (Reference is null || OriginPackageId is not null && Reference.IsWellFormed()) &&
+        (!ExcludeReference || Reference is not null) && (!ExcludeDetachedReference || ExcludeReference) &&
+        (SourceIntervals is null || SourceIntervals is { Count: > 0 and <= 64 } && SourceIntervals.All(interval => interval?.IsWellFormed() == true)) &&
         CaptureLibraryLimits.ValidText(Search, 160) && CaptureLibraryLimits.ValidText(Application, 120) &&
         FromUnixMilliseconds is null or >= 0 and <= 253402300799999 && ToUnixMilliseconds is null or >= 0 and <= 253402300799999 &&
         !(FromUnixMilliseconds > ToUnixMilliseconds);
@@ -70,7 +81,7 @@ public sealed record CaptureLibraryQuery
 /// <summary>Revision pins every range to one library ordering; mismatch requires a fresh query.</summary>
 public sealed record CaptureLibraryQueryRequest(CaptureLibraryQuery Query, int Offset = 0, int Count = 40, string? Revision = null);
 public sealed record CaptureLibraryQueryPage(IReadOnlyList<CaptureLibraryItem> Items, int Offset, int TotalCount, long StoredBytes, string Revision);
-/// <summary>Ordering proof for the same query: only favorite-only metadata edits may retain it. FavoritesOnly uses the full query revision.</summary>
+/// <summary>Ordering proof for identical filters. Favorite and association edits may retain it when neither ordering nor membership depends on the change.</summary>
 public sealed record CaptureLibraryContinuityPage(CaptureLibraryQueryPage Page, string OrderingRevision);
 public sealed record CaptureLibraryApplicationsRequest(CaptureLibraryQuery Query, string? Search = null, int Limit = 128);
 /// <summary>An empty name means a capture has no known source application.</summary>
@@ -84,6 +95,19 @@ public sealed record CaptureLibraryGroupsRequest(CaptureLibraryQuery Query, stri
 /// <summary>Local-calendar month key (yyyy-MM), or older/newer for a bounded remainder. Labels belong to the widget.</summary>
 public sealed record CaptureLibraryGroup(string Key, int Count);
 public sealed record CaptureLibraryGroups(IReadOnlyList<CaptureLibraryGroup> Items, int TotalCount, string Revision);
+/// <summary>Page whole source-process runs after applying the gallery filter. Preference hints influence ordering only.</summary>
+public sealed record CaptureLibraryRunsRequest(CaptureLibraryQuery Query, int Offset = 0, int Count = 12,
+    IReadOnlyList<string>? SourceTerms = null, string? PreferredProcessName = null, string? Revision = null)
+{
+    public bool IsWellFormed() => Query?.IsWellFormed() == true && Query.Sort == CaptureLibrarySort.Newest &&
+        Offset >= 0 && Count is > 0 and <= CaptureContextLimits.MaximumPageItems &&
+        (SourceTerms is null || SourceTerms.Count <= 8 && SourceTerms.All(term => CaptureContextLimits.RequiredText(term, 80))) &&
+        (PreferredProcessName is null || CaptureContextLimits.RequiredText(PreferredProcessName, 120)) &&
+        (Revision is null || CaptureLibraryLimits.ValidRevision(Revision));
+}
+public sealed record CaptureLibraryRun(CaptureLibraryItem Latest, string? ProcessInstance, long From, long Through,
+    int Screenshots, int Videos, bool MatchesSource, bool MatchesPreferredProcess);
+public sealed record CaptureLibraryRunsPage(IReadOnlyList<CaptureLibraryRun> Items, int Offset, bool HasMore, string Revision);
 public sealed record CaptureLibraryFindRequest(CaptureLibraryQuery Query, string Id, string? Revision = null);
 public sealed record CaptureLibraryPosition(int? Index, int TotalCount, string Revision);
 public sealed record CaptureLibraryMetadataRequest(string Id, long ExpectedRevision, string? Title, bool IsFavorite);

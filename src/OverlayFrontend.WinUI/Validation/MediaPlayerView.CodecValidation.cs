@@ -17,16 +17,16 @@ internal sealed partial class MediaPlayerView
         SetActive(true,true);
         Apply(_=>Task.FromResult(new HostMediaPlayerSource(description,new Uri(file).AbsoluteUri,
             Width:width,Height:height,ExpiresAtUnixMilliseconds:long.MaxValue)),description,()=>true,new object());
-        await Wait(()=>IsPlaying&&player?.PlaybackSession.NaturalDuration.TotalSeconds>0&&videoStage is not null);
+        await Wait(()=>IsPlaying&&player?.PlaybackSession.NaturalDuration.TotalSeconds>0&&video.IsLoaded);
         var current=player!;
         Check(current.PlaybackSession.NaturalVideoWidth==width&&current.PlaybackSession.NaturalVideoHeight==height,
             "Native player reports the exact visible recording dimensions");
         Check(ResidentPlayers==baseline+1,"Playback acquires one native decoder");
         video.Focus(FocusState.Keyboard);videoChrome.Hide();
         await Pixels("playing");
-        videoStage!.SetCovered(true);
+        video.Visibility = Visibility.Collapsed;
         await Pixels("covered");
-        videoStage.SetCovered(false);
+        video.Visibility = Visibility.Visible;
         await Pixels("restored");
         var fullscreen=ToggleExpandedAsync();
         await Wait(()=>IsExpanded&&!changingPlacement&&expandedHost is {IsTransitioning:false});
@@ -52,7 +52,7 @@ internal sealed partial class MediaPlayerView
         async Task Pixels(string phase)
         {
             await Frame();await Frame();
-            if(videoStage is null)throw new InvalidOperationException("Codec video plane is missing.");
+            if(!video.IsLoaded)throw new InvalidOperationException("In-tree codec video is missing.");
             var bounds=PreviewVideoBoundsForValidation;
             var factor=XamlRoot.RasterizationScale;
             var ancestry=new List<object>();

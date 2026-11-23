@@ -7,22 +7,23 @@ namespace WidgetRail.Samples.DiscordWebView;
 
 public sealed partial class DiscordWebViewWidget : Widget
 {
-    private enum Route { Home, Channels, Account, VoiceSettings, ConnectionDetails, Friends, Messages, Conversation }
+    private enum Route { Home, Channels, Account, VoiceSettings, ConnectionDetails, Friends, Messages, Conversation, MessageMedia, StreamViewer }
     private sealed record ViewState(string Query="",string Notice="",SharePreparation? PreparingShare=null,OutgoingCapture? Outgoing=null,
-        CaptureInterruption? InterruptedCapture=null,ChannelSuggestions? Suggestions=null);
+        CaptureInterruption? InterruptedCapture=null,ChannelSuggestions? Suggestions=null,int? ViewerSlot=null,long ViewerVisit=0);
     private sealed record WatchState(string? Account=null,string? Channel=null,string? StreamKey=null,string? StreamName=null,
         Relay? Receiver=null,string? StreamActivityUserId=null,ReceiverProblem? ReceiverFailure=null,WebSessionReference? StreamSession=null)
     {
         public string Revision { get; init; }=Guid.NewGuid().ToString("N");
         public bool Closed { get; init; }
         public bool Ended { get; init; }
+        public bool OfferPin { get; init; } = true;
     }
     private sealed record WatchSlot(int Number,PinnedLayoutHandle Pin,WidgetModel<WatchState> State)
     {
         public string ControlSuffix => Number==1?"":"."+Number;
     }
     private readonly WatchSlot[] watches;
-    private sealed record Relay(string Account,string Channel,string Lease,IDiscordReceiver Receiver);
+    private sealed record Relay(string Account,string Channel,string Lease,IDiscordReceiver Receiver,string StreamKey);
     private sealed record ReceiverProblem(string Message);
     private sealed record ParticipantContext(string Account,string? Channel,WebSessionReference? Session=null,
         string Members="",string Epoch="",string? NoticeUser=null,string Notice="");
@@ -45,12 +46,15 @@ public sealed partial class DiscordWebViewWidget : Widget
         this.client=client;this.time=time??TimeProvider.System;this.refreshInterval=refreshInterval??TimeSpan.FromSeconds(2);
         this.uploadAttachment=uploadAttachment??((target,stream,progress,token)=>DiscordAttachmentUpload.PutAsync(target,stream,token,progress:progress));
         view=CreateModel(new ViewState());
+        feedback=CreateNotificationPublisher("discord.feedback","discord-action-result",debounce:TimeSpan.Zero,lifetime:WidgetOperationLifetime.Active);
+        callNotifications=CreateNotificationPublisher("discord.calls.notification","discord-incoming-call","calls",debounce:TimeSpan.Zero);
+        callUi=CreateModel(new CallUi());
         navigation=CreateNavigatorWithOptions("discord.navigation",Route.Home,new()
-        {SharedRootScopeId="discord.root",RootRoutes=[Route.Home],RouteScopeIds=new Dictionary<Route,string>{{Route.Account,"discord.account.scope"},{Route.Channels,"discord.channels.scope"},
+        {SharedRootScopeId="discord.root",RootRoutes=[Route.Home,Route.Messages],RouteScopeIds=new Dictionary<Route,string>{{Route.Account,"discord.account.scope"},{Route.Channels,"discord.channels.scope"},
             {Route.VoiceSettings,"discord.voice-settings-dialog.scope"},{Route.ConnectionDetails,"discord.connection-dialog.scope"},
-            {Route.Friends,"discord.friends.scope"},{Route.Messages,"discord.messages.scope"},{Route.Conversation,"discord.conversation.scope"}}});
+            {Route.Friends,"discord.friends.scope"},{Route.Conversation,"discord.conversation.scope"},{Route.MessageMedia,"discord.message.gallery.scope"},{Route.StreamViewer,"discord.viewer.scope"}}});
         state=CreateResource("discord.state",new WidgetResourceOptions<DiscordState>
-        {Load=ReadAsync,MapError=_=>new("discord.unavailable","Discord is unavailable. Open Discord to check the connection, then Refresh."),
+        {Load=ReadAsync,MapError=_=>{ReconcileCallAlert(null);return new("discord.unavailable","Discord is unavailable. Open Discord to check the connection, then Refresh.");},
             RetainLastGoodValue=false,Lifetime=WidgetOperationLifetime.Widget,CacheDuration=TimeSpan.FromSeconds(1)});
         InitializePicker();
         InitializeMessages();
@@ -82,6 +86,7 @@ public sealed partial class DiscordWebViewWidget : Widget
     {
         client??=new DiscordWebSessionClient(HostServices.WebSessions);
         client.Invalidated+=ProviderInvalidated;
+        client.MainViewVisibilityChanged+=MainViewVisibilityChanged;
         Operations.RunSingleFlight("discord.poll",async context=>
         {
             while(!context.CancellationToken.IsCancellationRequested)
@@ -89,7 +94,7 @@ public sealed partial class DiscordWebViewWidget : Widget
                 await state.Refresh().Completion;
                 var current=view.Value;
                 foreach(var slot in watches)
-                if(slot.State.Value.Receiver is { } relay && slot.Pin.IsSelected)
+                if(slot.State.Value.Receiver is { } relay && ReceiverWanted(slot))
                     try{await client.InvokeAsync("keep",new{account=relay.Account,lease=relay.Lease},context.CancellationToken);}
                     catch(Exception) when(!context.CancellationToken.IsCancellationRequested){ }
                 var delay=LifecycleState==WidgetLifecycleState.Background && !HasVisiblePin &&
@@ -99,9 +104,11 @@ public sealed partial class DiscordWebViewWidget : Widget
         },WidgetOperationLifetime.Widget);
         return ValueTask.CompletedTask;
     }
-    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime){state.EnsureLoaded();ResumeVoiceControls();ResumeConnectionDetails();ResumeMessages();return ValueTask.CompletedTask;}
+    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime){state.EnsureLoaded();ResumeVoiceControls();ResumeConnectionDetails();ResumeMessages();ResumeViewer();return ValueTask.CompletedTask;}
     protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
+        if (ViewerSlot is { } slot && !slot.Pin.IsSelected) RestartReceiver(slot);
+        callUi.Update(_=>new());
         ResetMessageUpdates(freshLoadExpected:false);
         if(messages.Value.Query is not {} query || client is null)return;
         using var cleanup=CancellationTokenSource.CreateLinkedTokenSource(transitionToken);
@@ -111,9 +118,10 @@ public sealed partial class DiscordWebViewWidget : Widget
 
     private void ProviderInvalidated(WebSessionReference session)
     {
-        var current=view.Value;
-        if(LifecycleState==WidgetLifecycleState.Background && !HasVisiblePin &&
-            current.Outgoing is null && current.PreparingShare is null)return;
+        // The host already coalesces backend invalidations and permits only one
+        // outstanding event until a read. Calls need these events while hidden;
+        // use the same bounded resource lane instead of adding a notification poll.
+        if(client?.Reference!=session)return;
         Operations.RunLatest("discord.provider-change",async context =>
         {
             // A change observed during a read must cause a subsequent read, rather
@@ -126,13 +134,16 @@ public sealed partial class DiscordWebViewWidget : Widget
     private async ValueTask<DiscordState> ReadAsync(CancellationToken token)
     {
         var readStarted=time.GetTimestamp();
+        var readSession=client?.Reference;
         var observedWatches=watches.Select(slot=>(Slot:slot,State:slot.State.Value)).ToArray();
         var next=await client!.ReadAsync(token);next.Validate();token.ThrowIfCancellationRequested();
+        if(readSession is not null&&client.Reference!=readSession)throw new InvalidOperationException("Discord session changed during the read.");
         await ReconcileOutgoingAsync(next,readStarted,token);
         ReconcileParticipantContext(next);
         ReconcileVoiceDialog(next);
         ReconcileConnectionDetails(next);
         ReconcileMessages(next);
+        ReconcileCallAlert(next);
         foreach(var observed in observedWatches)
         {
             var slot=observed.Slot;
@@ -149,18 +160,22 @@ public sealed partial class DiscordWebViewWidget : Widget
 
     public override ValueTask OnActionAsync(WidgetActionEvent action,CancellationToken cancellationToken=default)
     {
+        if(TryPrivateCallAction(action,cancellationToken))return ValueTask.CompletedTask;
         if(TryConnectionDetailsAction(action,cancellationToken,out var connectionAction))return connectionAction;
         if(TryVoiceControlAction(action,cancellationToken,out var voiceAction))return voiceAction;
         var leavingRecipientPicker=navigation.Value.Route==Route.Messages;
+        var leavingMessageMedia=navigation.Value.Route==Route.MessageMedia;
         if(navigation.TryHandleBack(action,action.FocusedElementId))
         {
             if(leavingRecipientPicker)CancelIncomingShare(messages.Value);
+            if(leavingMessageMedia)messages.Update(current=>current with {Media=null});
             ResumeMessages();return ValueTask.CompletedTask;
         }
         if(TryMessageAction(action,cancellationToken,out var messageAction))return messageAction;
         if(TryPickerAction(action,cancellationToken,out var pickerAction))return pickerAction;
         switch(action.ActionId)
         {
+            case "discord.section.call":OpenCallSection();return ValueTask.CompletedTask;
             case "refresh":state.Refresh();return ValueTask.CompletedTask;
             case "friends":
                 if(navigation.Value.Route==Route.Home&&CurrentState() is {ChannelId:null})
@@ -206,6 +221,14 @@ public sealed partial class DiscordWebViewWidget : Widget
             if(peoplePin.Selection is null && action.ActionId==CallAction("pin-people",data,session))return RequestPinAsync(peoplePin,cancellationToken);
         }
         if(Operations.IsBusy("discord.command"))return ValueTask.CompletedTask;
+        if (action.ActionId.StartsWith("view-stream.", StringComparison.Ordinal) && navigation.Value.Route == Route.Home)
+        {
+            var stream = data.Streams.FirstOrDefault(item => ViewStreamAction(data, item, session) == action.ActionId);
+            if (stream is not null && data.Capabilities.Watch && data.ChannelId is not null) OpenStreamViewer(data, stream, action);
+            return ValueTask.CompletedTask;
+        }
+        if (ViewerSlot is { } retry && ViewerWanted(retry) && retry.State.Value.ReceiverFailure is not null && action.ActionId == RetryViewerAction(retry))
+        { RestartReceiver(retry); return ValueTask.CompletedTask; }
         if(action.ActionId.StartsWith("watch.",StringComparison.Ordinal))
         {
             var stream=data.Streams.FirstOrDefault(item=>WatchAction(data,item,session)==action.ActionId);
@@ -214,11 +237,11 @@ public sealed partial class DiscordWebViewWidget : Widget
         }
         if(data.ChannelId is null)return ValueTask.CompletedTask;
         if(action.ActionId==CallAction("mute",data,session)&&data.Capabilities.Mute)
-            Command("mute",new{account=data.Account,channelId=data.ChannelId,value=!data.Muted},session);
+            _ = CommandAsync("mute",new{account=data.Account,channelId=data.ChannelId,value=!data.Muted},session);
         else if(action.ActionId==CallAction("deafen",data,session)&&data.Capabilities.Deafen)
-            Command("deafen",new{account=data.Account,channelId=data.ChannelId,value=!data.Deafened},session);
+            _ = CommandAsync("deafen",new{account=data.Account,channelId=data.ChannelId,value=!data.Deafened},session);
         else if(action.ActionId==CallAction("leave",data,session))
-            Command("leave",new{account=data.Account,channelId=data.ChannelId},session);
+            _ = CommandAsync("leave",new{account=data.Account,channelId=data.ChannelId},session);
         return ValueTask.CompletedTask;
     }
     // Ordinary actions are opaque IDs, so bind domain intent into that ID. A
@@ -250,9 +273,7 @@ public sealed partial class DiscordWebViewWidget : Widget
     }
     private ValueTask WatchAsync(DiscordState data,DiscordStream stream,string? activityUser,CancellationToken token)
     {
-        var slot=watches.FirstOrDefault(item=>!item.State.Value.Closed && item.State.Value.StreamKey==stream.Key) ??
-            watches.FirstOrDefault(item=>item.State.Value.Closed || item.State.Value.StreamKey is null) ??
-            watches.FirstOrDefault(item=>!item.Pin.IsSelected);
+        var slot = AvailableWatchSlot(stream, forPin: true);
         if(slot is null)
         {
             view.Update(current=>current with{Notice="All three screen slots are in use. Unpin a screen to watch another."});
@@ -270,6 +291,8 @@ public sealed partial class DiscordWebViewWidget : Widget
         "discord.participants"=>participants.Descriptor,
         "discord.activities" or "discord.activities.compact"=>activities.Descriptor,
         "discord.channels"=>pickerItems.Descriptor,
+        "discord.messages.list"=>conversationRows.Descriptor,
+        "discord.message.history"=>messageRows.Descriptor,
         _=>null
     };
     private void PushRoute(Route destination,WidgetActionEvent action)
@@ -294,23 +317,26 @@ public sealed partial class DiscordWebViewWidget : Widget
             :UI.Spacer(id);
     private async ValueTask ManagePinAsync(WidgetPinCloseRequest target,CancellationToken token)
     {
+        var origin=(client?.Reference,CurrentState()?.Account);
         try{await HostServices.Pinning.RequestManageAsync(target,token);}
         catch(Exception error) when(error is WidgetCapabilityException or WidgetCapabilityUnavailableException)
-        {view.Update(current=>current with{Notice="Pin management requires a supporting WidgetRail host."});}
+        {if(!token.IsCancellationRequested&&origin==(client?.Reference,CurrentState()?.Account))PublishFeedback("Pin management requires a supporting WidgetRail host.");}
     }
 
     private async ValueTask ClosePinAsync(WidgetPinCloseRequest target,CancellationToken token)
     {
+        var origin=(client?.Reference,CurrentState()?.Account);
         try{await HostServices.Pinning.RequestCloseAsync(target,token);}
         catch(Exception error) when(error is WidgetCapabilityException or WidgetCapabilityUnavailableException)
-        {view.Update(current=>current with{Notice="This host could not close the pin."});}
+        {if(!token.IsCancellationRequested&&origin==(client?.Reference,CurrentState()?.Account))PublishFeedback("This host could not close the pin.");}
     }
 
     private async ValueTask RequestPinAsync(PinnedLayoutHandle layout,CancellationToken token)
     {
+        var origin=(client?.Reference,CurrentState()?.Account);
         try{await HostServices.Pinning.RequestOpenAsync(layout,token);}
         catch(Exception error) when(error is WidgetCapabilityException or WidgetCapabilityUnavailableException)
-        {view.Update(current=>current with{Notice="This host could not accept the pin request."});}
+        {if(!token.IsCancellationRequested&&origin==(client?.Reference,CurrentState()?.Account))PublishFeedback("This host could not accept the pin request.");}
     }
 
     private void EnableNotifications(string account, WebSessionReference session)
@@ -343,7 +369,9 @@ public sealed partial class DiscordWebViewWidget : Widget
                     { /* Permission alone is not sufficient. Keep the concrete manual setup instruction. */ }
                 }
                 if(!Current())return;
-                view.Update(current => current with { Notice = notice });
+                if(notice=="Discord desktop notifications enabled.")
+                {view.Update(current=>current with{Notice=""});PublishFeedback(notice);}
+                else view.Update(current => current with { Notice = notice });
             }
             catch (Exception error) when (error is not OutOfMemoryException && !context.CancellationToken.IsCancellationRequested)
             {
@@ -387,17 +415,32 @@ public sealed partial class DiscordWebViewWidget : Widget
         },WidgetOperationLifetime.Widget);
         return ValueTask.CompletedTask;
     }
-    private void Command(string method,object args,WebSessionReference? session)
+    private async ValueTask<TrayActionResult> CommandAsync(string method, object args, WebSessionReference? session,
+        bool notifyInWidget = true, CancellationToken token = default)
     {
-        Operations.RunSingleFlight("discord.command",async context=>
+        const string unconfirmed = "Discord could not confirm the action. Check its current state before trying again.";
+        var confirmed = false;
+        var work = Operations.RunSingleFlight("discord.command", async context =>
         {
-            if(client?.Reference!=session)return;
-            view.Update(current=>current with{Notice=""});
-            try{await client!.InvokeAsync(method,args,context.CancellationToken);}
-            catch(Exception) when(!context.CancellationToken.IsCancellationRequested)
-            {if(context.IsCurrent)view.Update(current=>current with{Notice="Discord could not confirm the action. Check its current state before trying again."});}
-            finally{state.Refresh();}
-        },WidgetOperationLifetime.Widget);
+            if (client is null || client.Reference != session) return;
+            view.Update(current => current with { Notice = "" });
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(token, context.CancellationToken);
+            try
+            {
+                await client.InvokeAsync(method, args, lifetime.Token);
+                confirmed = true;
+            }
+            catch (Exception error) when (error is not OutOfMemoryException && !lifetime.IsCancellationRequested)
+            {
+                if (notifyInWidget && context.IsCurrent) view.Update(current => current with { Notice = unconfirmed });
+            }
+            finally { state.Refresh(); }
+        }, WidgetOperationLifetime.Widget);
+        if (work.Admission != WidgetOperationAdmission.Started)
+            return TrayActionResult.Unavailable("Another Discord voice command is in progress, or the call is no longer available.");
+        var result = await work.Completion;
+        return confirmed && result.Status == WidgetOperationStatus.Succeeded
+            ? TrayActionResult.Success : TrayActionResult.Unavailable(unconfirmed);
     }
 
     public override ValueTask OnPinnedLayoutSelectionChangedAsync(string? layoutId,CancellationToken cancellationToken=default)
@@ -409,6 +452,12 @@ public sealed partial class DiscordWebViewWidget : Widget
     {
         if(watches.FirstOrDefault(item=>item.Pin.Id==layoutId) is { } slot)
         {
+            if (ViewerSelected(slot))
+            {
+                slot.State.Update(current => current with { OfferPin = selected });
+                if (!ReceiverWanted(slot) || slot.State.Value.Receiver is null) RestartReceiver(slot);
+                return ValueTask.CompletedTask;
+            }
             // Retain history for Reconnect, while making the observed closed slot available.
             slot.State.Update(current=>selected
                 ?current.Closed?new WatchState(Receiver:current.Receiver):current
@@ -422,8 +471,9 @@ public sealed partial class DiscordWebViewWidget : Widget
         await CloseReceiverAsync(slot);
         if(context.IsCurrent)slot.State.Update(current=>current with{ReceiverFailure=null});
         var current=slot.State.Value;var data=CurrentState();
-        if(!context.IsCurrent||!slot.Pin.IsSelected||current.StreamKey is null||data is null||data.Account!=current.Account||data.ChannelId!=current.Channel||client?.Reference!=current.StreamSession)return;
-        using var selected=CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken,slot.Pin.SelectionCancellationToken);
+        if(!context.IsCurrent||!ReceiverWanted(slot)||current.StreamKey is null||data is null||data.Account!=current.Account||data.ChannelId!=current.Channel||client?.Reference!=current.StreamSession)return;
+        var demandLifetime = slot.Pin.IsSelected ? slot.Pin.SelectionCancellationToken : navigation.Value.RouteCancellationToken;
+        using var selected=CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken,demandLifetime);
         var token=selected.Token;var lease=Guid.NewGuid().ToString("N");IDiscordReceiver? receiver=null;
         try
         {
@@ -437,8 +487,8 @@ public sealed partial class DiscordWebViewWidget : Widget
             if(attached.GetProperty("lease").GetString()!=lease || attached.GetProperty("videoView").GetString()!=receiver.Reference.Id)
                 throw new InvalidDataException("Video attachment belongs to another selection.");
             receiver.Bind(lease);
-            var readyRelay=new Relay(data.Account,data.ChannelId!,lease,receiver);
-            var published=slot.State.Update(p=>context.IsCurrent&&slot.Pin.IsSelected&&!token.IsCancellationRequested&&client.Reference==current.StreamSession&&p.StreamSession==current.StreamSession&&p.Account==current.Account&&p.Channel==current.Channel&&p.StreamKey==current.StreamKey
+            var readyRelay=new Relay(data.Account,data.ChannelId!,lease,receiver,current.StreamKey);
+            var published=slot.State.Update(p=>context.IsCurrent&&ReceiverWanted(slot)&&!token.IsCancellationRequested&&p.Revision==current.Revision&&client.Reference==current.StreamSession&&p.StreamSession==current.StreamSession&&p.Account==current.Account&&p.Channel==current.Channel&&p.StreamKey==current.StreamKey
                 ?(p with{Receiver=readyRelay},true):(p,false)).Result;
             if(published){receiver=null;MonitorReceiver(slot,readyRelay);}
         }
@@ -473,7 +523,11 @@ public sealed partial class DiscordWebViewWidget : Widget
     {try{using var cleanup=new CancellationTokenSource(TimeSpan.FromSeconds(3));await client!.InvokeAsync("unwatch",new{account,lease},cleanup.Token);}catch(Exception){/* Provider expiry also bounds abandoned relays. */}}
     protected override async ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
-        if(client is not null)client.Invalidated-=ProviderInvalidated;
+        if(client is not null)
+        {
+            client.Invalidated-=ProviderInvalidated;
+            client.MainViewVisibilityChanged-=MainViewVisibilityChanged;
+        }
         try{foreach(var slot in watches)await CloseReceiverAsync(slot);if(view.Value.Outgoing is { } outgoing)await StopCaptureAsync(outgoing);}
         finally{if(client is not null)await client.DisposeAsync();}
     }

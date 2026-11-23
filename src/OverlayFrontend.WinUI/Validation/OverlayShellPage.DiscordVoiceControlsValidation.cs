@@ -36,10 +36,8 @@ internal sealed partial class OverlayShellPage
                 await Until(()=>FocusId()=="Widget.discord.voice.pin");
                 await Move(NavigationDirection.Left);
                 Check(FocusId()=="Widget.discord.main.connected"&&VisibleFocus(),"One Left from pin voice controls reaches the visible connection info button");
-                await Button(ControllerButton.A);
-                await Until(()=>Node("discord.connection-dialog") is not null);
-                await Button(ControllerButton.B);
-                await Until(()=>Node("discord.connection-dialog") is null&&FocusId()=="Widget.discord.main.connected");
+                await ChangeDialog("Opening connection details",ControllerButton.A,()=>Node("discord.connection-dialog") is not null);
+                await ChangeDialog("Dismissing connection details",ControllerButton.B,()=>Node("discord.connection-dialog") is null&&FocusId()=="Widget.discord.main.connected");
                 Check(VisibleFocus(),"Closing connection details restores the info button focus");
                 step="participants";
                 Check(surface!.FocusHostTarget("discord.main.mute"),"Participant entry starts on a native main call control");
@@ -49,35 +47,29 @@ internal sealed partial class OverlayShellPage
                 await Move(NavigationDirection.Right);
                 Check(FocusId()=="Widget.discord.participants.Item.1","Controller navigation selects the first other participant without pointer priming");
                 var participantOrigin=FocusId();
-                await Button(ControllerButton.A);
-                await Until(()=>Node("discord.participant-dialog") is not null&&FocusId()=="Widget.discord.voice-dialog.mute");
-                Check(surface.CurrentBinding!.Frame.Authority.ActiveInputScopeId=="discord.participant-dialog.scope",
-                    "Participant selection enters the host modal's matching SDK navigation scope");
-                Check(Node("discord.participant-dialog.title")?.Text=="Avery","Participant modal names the captured occurrence");
-                Check(VisibleFocus(),"Initial participant mute focus is visible inside the dialog");
+                // Participant controls use the reached row's rich preview.
+                await Until(()=>surface.IsFocusPreviewOpen);
+                var preview=surface.FocusPreviewChrome!;
+                var mute=ChoiceDescendants(preview).OfType<Button>().Single();
+                var slider=ChoiceDescendants(preview).OfType<Slider>().Single();
+                await Button(ControllerButton.X);
+                await Until(()=>ReferenceEquals(FocusManager.GetFocusedElement(surface.XamlRoot),mute));
                 var selfMuted=Node("discord.main.mute")!.IsSelected;
                 await Button(ControllerButton.A);
-                await Until(()=>Node("discord.voice-dialog.mute")?.Text=="Unmute for me");
-                Check(FocusId()=="Widget.discord.voice-dialog.mute"&&Node("discord.main.mute")!.IsSelected==selfMuted,
-                    "Local participant mute updates without changing self microphone or losing focus");
-                step="participant slider";
-                await MoveUntil(NavigationDirection.Down,()=>FocusId()=="Widget.discord.voice-dialog.volume");
-                Check(Node("discord.voice-dialog.volume")?.Value==50&&VisibleFocus(),"Cold controller entry reaches the voice slider without changing its value");
-                // Widget modals live in the host's separate overlay subtree,
-                // so searching the background presenter's children cannot find
-                // their controls. Inspect the actual natively focused control.
-                var slider=FocusManager.GetFocusedElement(surface.XamlRoot) as Slider
-                    ??throw new InvalidOperationException("The focused participant volume control is not the native Slider.");
-                await Button(ControllerButton.A);await Until(()=>slider.IsFocusEngaged);
+                await Until(()=>AutomationProperties.GetName(mute).Contains("Unmute",StringComparison.OrdinalIgnoreCase));
+                Check(Node("discord.main.mute")!.IsSelected==selfMuted,"Participant mute leaves the self microphone unchanged");
+                await Move(NavigationDirection.Down);
+                await Until(()=>ReferenceEquals(FocusManager.GetFocusedElement(surface.XamlRoot),slider));
+                Check(slider.Value==50,"Cold participant preview entry preserves volume");
+                await Button(ControllerButton.A);
+                await Until(()=>slider.IsFocusEngaged);
                 await Move(NavigationDirection.Right);
                 await Button(ControllerButton.B);
-                await Until(()=>!slider.IsFocusEngaged&&Node("discord.voice-dialog.volume")?.Value==55);
-                Check(Node("discord.participant-dialog") is not null&&FocusId()=="Widget.discord.voice-dialog.volume",
-                    "First B ends slider adjustment without closing the participant modal");
-                Check(Node("discord.voice-dialog.mute")?.Text=="Unmute for me","Voice volume adjustment preserves participant local mute");
+                await Until(()=>!slider.IsFocusEngaged && slider.Value==55);
+                Check(surface.IsFocusPreviewOpen,"First B ends slider adjustment inside the preview");
                 await Button(ControllerButton.B);
-                await Until(()=>Node("discord.participant-dialog") is null&&FocusId()==participantOrigin);
-                Check(VisibleFocus()&&OwnsMain(),"Second B restores the exact indexed participant, viewport and main foreground");
+                await Until(()=>FocusId()==participantOrigin);
+                Check(VisibleFocus()&&OwnsMain(),"Second B restores the indexed participant and main foreground");
 
                 step="voice settings menu";
                 Check(surface.FocusHostTarget("discord.main.mute"),"Voice settings menu starts on the native call control");
@@ -85,8 +77,7 @@ internal sealed partial class OverlayShellPage
                 await Until(()=>surface.HasTransientControl&&FocusId().Contains(".Context.",StringComparison.Ordinal));
                 await MoveUntil(NavigationDirection.Down,()=>FocusId().Contains(".Context.voice-settings.",StringComparison.Ordinal));
                 Check(true,"The actual native context menu exposes Voice settings");
-                await Button(ControllerButton.A);
-                await Until(()=>Node("discord.voice-settings-dialog") is not null&&Node("discord.voice-dialog.input") is not null);
+                await ChangeDialog("Opening voice settings",ControllerButton.A,()=>Node("discord.voice-settings-dialog") is not null&&Node("discord.voice-dialog.input") is not null);
                 trace.Add(new{step,phase="settings declaration ready",focus=FocusId(),native=surface.FocusDiagnostics()});
                 Check(surface.CurrentBinding!.Frame.Authority.ActiveInputScopeId=="discord.voice-settings-dialog.scope",
                     "Voice settings enters a distinct matching modal/navigation scope");
@@ -128,8 +119,7 @@ internal sealed partial class OverlayShellPage
                 await Button(ControllerButton.A);await Until(()=>surface.CurrentBinding!.View.Sequence>beforeRefresh&&Node("discord.voice-dialog.refresh")?.IsBusy!=true);
                 Check(Selected("discord.voice-dialog.input")=="Microphone B"&&Selected("discord.voice-dialog.output")=="Speakers B",
                     "Refreshing device inventory retains provider-confirmed selections");
-                await Button(ControllerButton.B);
-                await Until(()=>Node("discord.voice-settings-dialog") is null&&FocusId()=="Widget.discord.main.mute");
+                await ChangeDialog("Dismissing voice settings",ControllerButton.B,()=>Node("discord.voice-settings-dialog") is null&&FocusId()=="Widget.discord.main.mute");
                 Check(OwnsMain()&&VisibleFocus(),"Closing voice settings restores the native context-menu origin");
 
                 step="favorite channel continuity";
@@ -191,6 +181,42 @@ internal sealed partial class OverlayShellPage
                 File.WriteAllText(path+".tmp",JsonSerializer.Serialize(new{passed=error is null,step,checks,trace,error,
                     scope="Synthetic provider and actual WinUI controller routes, modals, sliders and dropdowns; no physical controller, account, audio device or capture."}));
                 File.Move(path+".tmp",path,true);
+            }
+            async Task ChangeDialog(string label,ControllerButton button,Func<bool> done)
+            {
+                var page=surface!;
+                var section=Find<FrameworkElement>(page,"discord.section.content")??throw new InvalidOperationException("Call section missing.");
+                var playback=page.TransitionPlayback;
+                var origin=section.TransformToVisual(page).TransformPoint(new(0,0));
+                var frames=0;
+                var stable=true;
+                void SampleFrame(object? sender,object args)
+                {
+                    ++frames;
+                    if(!section.IsLoaded || page.OutgoingTransitionCount!=0 || page.TransitionPlayback!=playback){stable=false;return;}
+                    var position=section.TransformToVisual(page).TransformPoint(new(0,0));
+                    if(Math.Abs(position.X-origin.X)>1 || Math.Abs(position.Y-origin.Y)>1)stable=false;
+                }
+                CompositionTarget.Rendering+=SampleFrame;
+                try
+                {
+                    await Button(button);
+                    await Until(done);
+                    var settled=frames;
+                    await Until(()=>frames>=settled+3);
+                    Check(stable && ReferenceEquals(section,Find<FrameworkElement>(page,"discord.section.content")),
+                        label+" keeps the call section in place without page or section playback");
+                    trace.Add(new{phase=label,frames,stable});
+                    if(button==ControllerButton.A)
+                    {
+                        var snapshot=page.CurrentBinding!.View;
+                        var dialog=Nodes(snapshot.Root).Single(node=>node.InputScopeId==snapshot.ActiveInputScopeId).Id;
+                        await Until(()=>NativeControlReady(dialog));
+                        var content=Find<FrameworkElement>(page.XamlRoot!.Content,dialog)!;
+                        await CaptureSettingsListAsync(content,Path.Combine(Path.GetDirectoryName(path)!,label+".png"));
+                    }
+                }
+                finally {CompositionTarget.Rendering-=SampleFrame;}
             }
             async Task Button(ControllerButton button)
             {await Until(()=>MainFocusEnabled);await RouteButtonAsync(button,ControllerEventPhase.Pressed);await RouteButtonAsync(button,ControllerEventPhase.Released);}

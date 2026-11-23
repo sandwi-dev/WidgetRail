@@ -37,7 +37,7 @@ internal static class CaptureReplayPreferencesAdapter
         BrokerWidgetIdentity? owner = value.OwnerPackageId is null ? null :
             new(value.OwnerPackageId, value.OwnerPublisherId!, value.OwnerInstanceId!);
         owner?.Validate();
-        return new(value.Revision, value.Settings.Normalize(), owner, value.ApprovedApplication, value.ApplicationName);
+        return new(value.Revision, value.Settings.Normalize(), owner) { Approvals = value.Approvals };
     }
     internal static async Task<CaptureReplayConfiguration> SaveAsync(PlatformSettingsStore store,
         CaptureReplayConfiguration next, long expectedRevision, CancellationToken token)
@@ -52,7 +52,7 @@ internal static class CaptureReplayPreferencesAdapter
             {
                 Revision = next.Revision, Settings = next.Settings, OwnerPackageId = next.Owner?.PackageId,
                 OwnerPublisherId = next.Owner?.PublisherId, OwnerInstanceId = next.Owner?.InstanceId,
-                ApprovedApplication = next.ApprovedApplication, ApplicationName = next.ApplicationName,
+                Approvals = next.Approvals,
             } };
         }, token).ConfigureAwait(false);
         return Read(saved.ReplayCapture);

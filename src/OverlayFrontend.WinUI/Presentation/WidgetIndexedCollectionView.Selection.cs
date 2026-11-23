@@ -125,13 +125,14 @@ internal sealed partial class WidgetIndexedCollectionView
     }
     private void RefreshSelectionState()
     {
+        RefreshHeldSelection();
         if (extendAfterNavigation is { } pending && (!ReferenceEquals(source, pending.Source) ||
             source?.Declaration.IndexedSelection is not { IsActive: true } current || current.Epoch != pending.Epoch)) extendAfterNavigation = null;
         if (view is null) return;
         var declared = source?.Declaration.IndexedSelection is not null;
         if (!declared && !selectionWasDeclared) return;
         selectionWasDeclared = declared;
-        foreach (var row in WalkSelectionRows(view)) row.RefreshSelection();
+        foreach (var row in WalkSelectionRows(view)) { row.RefreshSelection(); row.RefreshReadingInteraction(); }
         foreach (var (container, item) in containers) UpdateSelectionAccessibility(container, item.Slot);
         if (source?.Declaration.IndexedCollection?.Discovery is not null || selectionStatus is null) return;
         var limited = source?.Declaration.IndexedSelection is { IsActive: true, LimitReached: true };

@@ -39,11 +39,18 @@ internal sealed record PlayniteLibraryQueryResult(
 
 internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
 {
+    ValueTask<SteamAnnouncements> GetAnnouncementsAsync(uint appId, CancellationToken token) =>
+        ValueTask.FromResult(new SteamAnnouncements(appId, []));
+    ValueTask<PlayniteWidgetLaunchResult> ReturnToGameAsync(string appId, WidgetHostServices host, Func<bool> current, CancellationToken token) =>
+        ValueTask.FromResult(new PlayniteWidgetLaunchResult(new(WidgetAppLaunchObservationState.Ended, false, true), "The game is no longer available."));
+
+    ValueTask<SteamStoreMedia> GetStoreMediaAsync(PlayniteStoreLookup lookup, CancellationToken token) =>
+        ValueTask.FromResult(SteamStoreMedia.Empty with { PublisherTrailerId = lookup.LinkedTrailer });
     ValueTask<PlayniteCaptureSettings> GetCaptureSettingsAsync(CancellationToken token) => ValueTask.FromResult(PlayniteCaptureSettings.Unavailable);
     async ValueTask<PlayniteCaptureSettings> GetCaptureSettingsForConnectionAsync(string connectionId,CancellationToken token)
     {var value=await GetCaptureSettingsAsync(token);return value.ConnectionId==connectionId?value:throw new PlayniteBridgeDataException("capture_connection_changed");}
     ValueTask<PlayniteCaptureSettings> UpdateCaptureSettingsAsync(PlayniteCaptureSettings current, IReadOnlyDictionary<string, System.Text.Json.JsonElement> patch, CancellationToken token) => ValueTask.FromException<PlayniteCaptureSettings>(new NotSupportedException());
-    ValueTask<PlayniteCaptureIntegration?> GetCaptureIntegrationAsync(CancellationToken token) => ValueTask.FromResult<PlayniteCaptureIntegration?>(null);
+    ValueTask<PlayniteCaptureIntegration?> GetCaptureIntegrationAsync(CancellationToken token, string? gameId = null) => ValueTask.FromResult<PlayniteCaptureIntegration?>(null);
     ValueTask<PlayniteCaptureIntegration> ConfigureCaptureIntegrationAsync(PlayniteCaptureIntegration current, string path, bool enabled, CancellationToken token) => ValueTask.FromException<PlayniteCaptureIntegration>(new NotSupportedException());
     ValueTask<PlayniteProviderRefreshResult> RefreshAchievementsAsync(string gameId, CancellationToken token) =>
         ValueTask.FromResult(PlayniteProviderRefreshResult.Unavailable);
@@ -64,6 +71,8 @@ internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
     ValueTask<PlayniteAchievementOverview> GetAchievementOverviewAsync(CancellationToken token) => ValueTask.FromResult(PlayniteAchievementOverview.Unavailable);
     ValueTask<PlayniteAchievements> GetAchievementsAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteAchievements.Unavailable);
     ValueTask<PlayniteActivity> GetActivityAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteActivity.Unavailable);
+    ValueTask<PlayniteRecentActivity> GetRecentActivityAsync(CancellationToken token) =>
+        ValueTask.FromResult(PlayniteRecentActivity.Empty);
     ValueTask<bool> ChangeInstallationAsync(string gameId, bool install, CancellationToken token) => ValueTask.FromResult(false);
 
     ValueTask<WidgetAppLibraryPage> QueryAsync(
@@ -102,6 +111,10 @@ internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
         string appId,
         WidgetAppLaunchOverlayBehavior overlayBehavior,
         CancellationToken cancellationToken);
+
+    async ValueTask<PlayniteWidgetLaunchResult> LaunchFromWidgetAsync(string appId, WidgetHostServices host, Func<bool> current, CancellationToken token,
+        string? approval, Action admitted) =>
+        new(await LaunchObservedAsync(appId, WidgetAppLaunchOverlayBehavior.CloseOnConfirmedSuccess, token).ConfigureAwait(false));
 
     ValueTask<WidgetEncodedArtwork?> ResolveArtworkAsync(
         WidgetArtworkHandle handle,

@@ -24,6 +24,24 @@ public sealed record WidgetView(
     /// </summary>
     public EmbeddedMediaSession? EmbeddedMediaSession { get; init; }
 
+    public IReadOnlyDictionary<string, string>? UnavailableTrayActions { get; init; }
+
+    /// <summary>Explain missing offers. Executable commands take precedence, including eligible fallbacks.</summary>
+    public WidgetView WithUnavailableTrayActions(string reason, params string[] actionIds)
+    {
+        ArgumentNullException.ThrowIfNull(actionIds);
+        if (!TrayActionContract.ValidReason(reason)) throw new ArgumentException("Invalid tray action explanation.", nameof(reason));
+        Dictionary<string, string>? reasons = null;
+        foreach (var id in actionIds)
+        {
+            if (!TrayActionContract.ValidId(id)) throw new ArgumentException("Invalid tray action ID.", nameof(actionIds));
+            if (QuickActions?.Any(action => action.TrayOffer?.Id == id) == true) continue;
+            reasons ??= UnavailableTrayActions is null ? new(StringComparer.Ordinal) : new(UnavailableTrayActions, StringComparer.Ordinal);
+            reasons[id] = reason;
+        }
+        return reasons is null ? this : this with { UnavailableTrayActions = reasons };
+    }
+
     /// <summary>
     /// Optional one-shot host request to enter an authored remembered-child
     /// focus group. Create an intent with Widget.CreateFocusRequest once per event
@@ -88,22 +106,27 @@ public sealed record WidgetView(
         if (Root is ModalLayerElement || EmbeddedMediaSession is not null)
             throw new InvalidOperationException("A modal requires an ordinary widget view without embedded media.");
         var scope = StableIdentifier.Child(modal.Id, "scope");
-        var dialog = UI.Stack(modal.Id,
-            UI.Row(StableIdentifier.Child(modal.Id, "header"),
+        var contents = new List<WidgetElement>();
+        if (modal.ShowHeader)
+            contents.Add(UI.Row(StableIdentifier.Child(modal.Id, "header"),
                 UI.Text(modal.Title, StableIdentifier.Child(modal.Id, "title")).Classes("wrail-modal__title"),
                 modal.HeaderActions ?? UI.Button("Close", modal.DismissActionId, StableIdentifier.Child(modal.Id, "close")))
-                .Classes("wrail-modal__header"),
-            modal.ScrollContent
+                .Classes("wrail-modal__header"));
+        contents.Add(modal.ScrollContent
                 ? (UI.VerticalScroll(StableIdentifier.Child(modal.Id, "scroll"), modal.Content) with
                     { ShowScrollbar = modal.ShowScrollbar }).Classes("wrail-modal__scroll")
-                : modal.Content)
+                : modal.Content);
+        var dialog = UI.Stack(modal.Id, contents.ToArray())
             .InputScope(scope)
             .Shortcut(ControllerButton.B, modal.DismissActionId, "Close")
             .Classes("wrail-modal");
+        if (modal.OverlayPresentation is not null) dialog = dialog.AddClasses("wrail-modal-overlay");
+        if (modal.StyleClass is { } styleClass) dialog = dialog.AddClasses(styleClass);
         return this with
         {
             Root = new ModalLayerElement(StableIdentifier.Child(modal.Id, "layer"), Root,
-                RootScopeId(Root), dialog, new(modal.DismissActionId, modal.DismissOnBackdrop), modal.AnchoredPresentation),
+                RootScopeId(Root), dialog, new(modal.DismissActionId, modal.DismissOnBackdrop), modal.AnchoredPresentation,
+                modal.ShowHeader ? null : modal.Title, modal.OverlayPresentation),
             ActiveInputScopeId = scope,
             InitialFocusId = modal.InitialFocusId,
             QuickActions = [],
@@ -127,6 +150,7 @@ public sealed record WidgetView(
             FocusGroupEntryRequest = FocusGroupEntryRequest,
             ScrollRevealRequest = ScrollRevealRequest,
             QuickActions = QuickActions?.ToArray() ?? [],
+            UnavailableTrayActions = UnavailableTrayActions is { Count: > 0 } reasons ? new Dictionary<string, string>(reasons, StringComparer.Ordinal) : null,
             Surface = Surface,
             PinnedLayouts = PinnedLayouts?.ToArray() ?? [],
             EmbeddedMediaSession = EmbeddedMediaSession,
@@ -207,6 +231,7 @@ public enum ControllerInputContext
     OpenWidget,
     PinnedLayoutSelection,
     PinnedSurface,
+    TrayQuickAction,
 }
 
 /// <summary>
@@ -244,6 +269,12 @@ public sealed record ControllerInputEvent(
     public string? PinnedLayoutId { get; init; }
     public bool? IsPinnedLayoutSelected { get; init; }
     public string? PinnedSelectionId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TrayActionOffer? TrayOffer { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TrayFallbackFor { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool TrackTrayWork { get; init; }
 }
 
 public sealed record WidgetInvalidatedEventArgs(long Revision);
@@ -343,6 +374,53 @@ public abstract partial class Widget
         Volatile.Read(ref _activeLifetime)?.Token ?? InactiveCancellationToken;
 
     public abstract WidgetView Render();
+
+    /// <summary>Runs one explicitly declared tray command. Recheck its target against current
+    /// provider state before making any change. Background invocation does not activate the widget.</summary>
+    protected virtual ValueTask<TrayActionResult> OnTrayActionAsync(TrayActionOffer offer, CancellationToken token) =>
+        ValueTask.FromResult(default(TrayActionResult));
+
+    /// <summary>Refresh the state needed to offer one wake-enabled action after an explicit press.</summary>
+    protected internal virtual ValueTask PrepareTrayActionAsync(string actionId, CancellationToken token) => ValueTask.CompletedTask;
+
+    private readonly HashSet<string> _trackedTrayActions = new(StringComparer.Ordinal);
+    private bool _residentTrayActionRunning;
+    internal async ValueTask<TrayActionResult> DispatchTrayActionAsync(ControllerInputEvent input, CancellationToken token)
+    {
+        if (input.Context != ControllerInputContext.TrayQuickAction || input.Phase != ControllerEventPhase.Pressed || input.TrayOffer is not { } offer ||
+            !TrayActionContract.ValidOffer(offer)) return default;
+        lock (_trackedTrayActions)
+        {
+            if (_residentTrayActionRunning) return default;
+            if (input.TrackTrayWork)
+            {
+                if (_trackedTrayActions.Count >= TrayActionContract.MaximumDefinitions || !_trackedTrayActions.Add(offer.Id)) return default;
+            }
+            else
+            {
+                if (_trackedTrayActions.Count != 0) return default;
+                _residentTrayActionRunning = true;
+            }
+        }
+        try
+        {
+            var snapshot = Volatile.Read(ref _latestSnapshot);
+            if (snapshot is null || snapshot.Sequence != input.SnapshotSequence ||
+                !snapshot.QuickActions.Any(action => action.Button == input.Button && action.TrayOffer == offer) ||
+                !TrayActionContract.AllowsFallback(snapshot.QuickActions, offer, input.TrayFallbackFor)) return default;
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, input.TrackTrayWork ? WidgetLifetimeToken : StateLifetimeToken);
+            linked.Token.ThrowIfCancellationRequested();
+            return await OnTrayActionAsync(offer, linked.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_trackedTrayActions)
+            {
+                if (input.TrackTrayWork) _trackedTrayActions.Remove(offer.Id);
+                else _residentTrayActionRunning = false;
+            }
+        }
+    }
 
     /// <summary>
     /// Creates and uniquely registers one optional widget-instance handle for a
@@ -912,7 +990,7 @@ public abstract partial class Widget
         {
             if (input.SnapshotSequence != snapshot.Sequence)
                 return ValueTask.FromResult(false);
-            var quickAction = snapshot.QuickActions.FirstOrDefault(action => action.Button == input.Button);
+            var quickAction = snapshot.QuickActions.FirstOrDefault(action => action.OnDashboard && action.Button == input.Button);
             if (quickAction is null ||
                 (input.Phase == ControllerEventPhase.Repeated &&
                  quickAction.RepeatPolicy != ControllerActionRepeatPolicy.WhileHeld) ||

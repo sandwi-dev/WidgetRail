@@ -29,9 +29,9 @@ internal static class FilePickerScenarios
             long sequence = 0;
             Task<JsonElement> Call(string operation, object payload, CancellationToken token = default) => broker.ExecuteAsync(new(1, ++sequence,
                 identity, PlatformCapabilities.FilesReadV1, operation, BrokerJson.ToElement(payload)), token);
-            var choosing = Call("files.choose", new WidgetFileChoiceRequest("Attach files", false), deadline.Token);
+            var choosing = Call("files.choose", new WidgetFileChoiceRequest("Attach files", false) { CommitLabel = "Attach" }, deadline.Token);
             var prompt = await Pending(session, deadline.Token);
-            if (prompt.WidgetId != widget.Id || prompt.Title != "Attach files" || prompt.Multiple ||
+            if (prompt.WidgetId != widget.Id || prompt.Title != "Attach files" || prompt.Multiple || prompt.CommitLabel != "Attach" ||
                 !await session.IsFilePickerCurrentAsync(prompt.RequestId, deadline.Token)) throw new Exception("Picker owner/choice lost in host pipe.");
             // Native selection can finish after the host's input handoff; a new
             // request from Background must still be denied by the broker.

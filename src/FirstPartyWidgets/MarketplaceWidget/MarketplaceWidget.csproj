@@ -3,4 +3,8 @@
   <ItemGroup><ProjectReference Include="../../WidgetSdk/WidgetSdk.csproj" /><ProjectReference Include="../../PlatformBroker/PlatformBroker.csproj" /></ItemGroup>
   <ItemGroup><Compile Include="../../Shared/MarketplaceReviewPresentation.cs" Link="MarketplaceReviewPresentation.cs" /></ItemGroup>
   <ItemGroup><None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" /><None Include="styles/default.wrss" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../WidgetBridge/Marketplace/themes/index.json" LogicalName="ThemeSeeds.json" />
+    <None Update="assets/themes/**/*.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

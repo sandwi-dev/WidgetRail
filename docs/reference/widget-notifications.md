@@ -31,7 +31,7 @@ await HostServices.Notifications.DismissAsync(notice.Key, cancellationToken);
 Use `WidgetOperationLifetime.Widget` for intentional background notification work.
 Keep optional notification failures separate from the feature doing useful work.
 `Accepted` means the request was admitted and sent to the host; it is not proof of
-banner display. Preferences, rate limits, quiet intervals and occupied screen
+banner display. Preferences, rate limits, queue limits and occupied screen
 space can suppress presentation. Calls are bounded to one in flight and at most
 five new/update publications per second per worker. Dismiss remains available.
 
@@ -39,19 +39,22 @@ five new/update publications per second per worker. Dismiss remains available.
 
 | Option | Default | Behavior |
 |---|---|---|
-| Retention | Pending | Kept in the notification panel until opened, dismissed or withdrawn. BannerOnly never enters the panel or bell count. |
+| Retention | Pending | The bell retains the newest 128 pending entries across widgets, evicting the oldest first. Opening, dismissing or withdrawing an entry removes it. BannerOnly entries are transient. |
 | Interaction | OpenWidget | A opens the owning widget normally. Informational has no open action and does not steal focus. |
 | Visibility | OverlayHidden | Always allows banners with the overlay open. SourceHidden admits a new notice only while neither the main widget nor a visible pin shows its owner. |
 | ShowWidgetIcon | true | May be hidden when thumbnail artwork is the meaningful visual. |
-| DurationMilliseconds | 4000 | Requested duration, from 2000 to 10000 ms. Quiet host policy still applies. |
+| DurationMilliseconds | 4000 | Requested duration, from 2000 to 10000 ms. Timing starts when the card appears. |
 | BackgroundOpacityPercent | 100 | Background only, from 40 to 100. Text and artwork retain full opacity; high contrast uses an opaque system surface. |
 
 Keys are scoped to the authenticated widget. `ShowAsync` replaces a previous
 notification with the same key. `UpdateAsync` only changes an existing current
 entry, preserving its ID, selection and receipt time; it cannot recreate an
 expired banner or change retention or category. Updating a visible banner does not extend
-its deadline. Burst replacement also keeps the current deadline. After a banner,
-the existing eight-second quiet interval prevents another immediate interruption.
+its deadline. The host can show three distinct cards and queue eight more for
+up to 15 seconds each. Two consecutive events from the same widget can appear
+together. Further bursts can share a count, leaving room for other sources.
+At queue capacity an event that cannot be grouped skips the banner. Pending
+items still enter the bell. The next eligible banner can appear immediately after expiry.
 Pending means retained for the current WidgetRail session, not stored across restarts.
 
 Titles are bounded to 256 characters, body to 2048, metadata to 256 and artwork
@@ -63,11 +66,12 @@ content is not written to diagnostic logs.
 ## Presentation and user control
 
 Both sources use the same host cards, passive banner window, notification panel,
-focus/layering infrastructure and placement policy. Corners avoid visible pins.
-When the overlay is open, placement also avoids the widget, rail, Guide and open
-popup surfaces. If no corner fits, the banner is suppressed. Fullscreen and system
-pickers do not receive overlaid notifications. Banners never take controller focus
-or use Windows notification UI.
+focus/layering infrastructure and placement policy. Placement prefers free space
+outside the widget, visible pins, rail, Guide and popups. If the widget fills the
+available space, the banner can appear over its content. If other surfaces also
+fill the work area, the banner can overlap them. Eligible banners use a passive
+window so they can remain visible through overlay close with the same expiry.
+Controller and pointer input stay with the underlying application.
 
 All banner content shares one themed surface: a subtle vertical shade, rounded
 edge lighting and an outer-only native shadow. A transparent gutter is included
@@ -219,3 +223,13 @@ content remain widget-owned; delivery preferences remain host-owned. Failed or
 rejected delivery retries only after a later explicit publication. The default
 lifetime is Widget so background events can be delivered; choose Active for
 visible-only UI. This does not create background polling or bypass permissions.
+
+Call `publisher.Dismiss()` when its event is no longer current. Withdrawal skips
+the debounce delay and uses the same operation lane: an already-running Show
+finishes before the Dismiss is sent, even if that Show ignores cancellation.
+Late update-only metadata cannot undo withdrawal. A subsequent explicit
+`Publish(notification)` represents a new event and may show the key again.
+The returned handle tracks the delivery attempt; host acceptance/preferences
+remain authoritative, and failed attempts do not create an automatic retry loop.
+Use this operation rather than independently cancelling the publisher and
+calling `HostServices.Notifications.DismissAsync`, which would bypass its ordering.

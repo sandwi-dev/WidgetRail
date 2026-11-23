@@ -5,6 +5,18 @@ Status: implemented and qualified within the documented scope; normal candidate 
 
 This is the authoritative active plan. The [archived plan and evidence](archive/capture-library-improvements-2026-11-17.md) preserve prior decisions, failures, test artifacts and the previous candidate checkpoint. Archived completion statements do not apply to this follow-up. Keep this file concise: current decisions, tasks, ownership, evidence pointers and unresolved issues only.
 
+## November 20 follow-up on bulk operations and capture feedback
+
+| Consumer | Change and qualification |
+| --- | --- |
+| Capture Library gallery | A destructive batch consumes its confirmation once. It processes owned and linked files separately in groups of up to 16, preserves confirmed receipts, stops on an uncertain reply and refreshes the gallery. Stop continues to use the cancellable, serialized work lane. A proposed wait for an in-flight reply before dismissing Stop was rejected because it blocked cancellation and the next confirmation. |
+| SDK indexed selection | Capture Library adopts `SelectFirst(256)` for an oversized finite query. Strict Select All and range-selection behavior remain available to host keyboard input and existing SDK consumers. No other shipping widget or template needs prefix selection. |
+| Broker transport | Capture Library's owned recycle, linked recycle and batch metadata requests receive a bounded two-minute deadline on both ends. Individual reads and unrelated capabilities retain their deadlines. The gallery detail action also uses the recycle operations and retains its single-file revision and permission checks. |
+| Capture notifications | The WinUI screenshot and clip paths use the exact-target application name returned by the bridge, with the confirmed application as a fallback for instant screenshots. Gallery, tray and host replay saves use the saved item's source. Game Help continues using the existing Boolean completion and temporary-attachment flow. |
+| Replay buttons | The widget's controller glyphs use their intrinsic dimensions. The native replay fixture measures both Xbox and PlayStation prompts and captures gallery and settings output at 100% and 125% text size. |
+
+Fixture evidence is under `artifacts/capture-bulk-01`. The large gallery scenarios cover 150, 256 and 305 matches, repeated confirmation, cancellation and a lost receipt after the store committed. The slow-recycler fixture uses generated files and a real broker pipe. A separate check exercises Windows recycling with one generated file. The screenshot and clip fixture reads the displayed banner body. Native replay checks cover save, navigation back to the gallery row, and stop.
+
 ## Authorization and working rules
 
 - Implement the agreed changes; parallelize independent work where ownership is clear.

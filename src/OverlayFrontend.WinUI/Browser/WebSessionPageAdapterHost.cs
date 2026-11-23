@@ -186,6 +186,13 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
         // batch envelope. Match the ordinary web-session JSON depth budget.
         using var data=JsonDocument.Parse(text,new(){MaxDepth=WebSessionContract.MaximumMessageDepth});
         if(AllowsBackgroundRequests && data.RootElement.ValueKind==JsonValueKind.Object &&
+            data.RootElement.EnumerateObject().Count()==1 && data.RootElement.TryGetProperty("observeMainView",out var observe) &&
+            observe.ValueKind==JsonValueKind.True)
+        {
+            if(!observesMainView){observesMainView=true;PublishMainViewVisibility();}
+            return;
+        }
+        if(AllowsBackgroundRequests && data.RootElement.ValueKind==JsonValueKind.Object &&
             data.RootElement.EnumerateObject().Count()==1 && data.RootElement.TryGetProperty("invalidate",out var changed) &&
             changed.ValueKind==JsonValueKind.Number && changed.TryGetInt32(out var invalidationVersion) && invalidationVersion==1)
         {InvalidateBackend();return;}
@@ -346,6 +353,7 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
         const host=Object.freeze({
           onRequest(callback){requestHandler=callback;},
           setVideoTrack, videoPlayback,
+          observeMainView(){deliver('{"observeMainView":true}');},
           invalidate(){deliver('{"invalidate":1}');},
           batchResult(context,items){return{[batchResultKey]:true,context,items};}
         });

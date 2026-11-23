@@ -255,14 +255,24 @@ internal sealed partial class WidgetStylesValidationPage
             return false;
         }
     }
-    private static async Task CaptureEditorBitmapAsync(FrameworkElement element, string path)
+    private static async Task CaptureEditorBitmapAsync(FrameworkElement element, string path, int width = 0, int height = 0)
     {
         await Task.Delay(200);
-        var bitmap = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap(); await bitmap.RenderAsync(element);
+        var bitmap = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
+        if (width > 0) await bitmap.RenderAsync(element, width, height);
+        else await bitmap.RenderAsync(element);
         using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
         var encoder = await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId, stream);
         encoder.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,
             (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, (await bitmap.GetPixelsAsync()).ToArray());
+        if (width > 0 && (bitmap.PixelWidth != width || bitmap.PixelHeight != height))
+        {
+            // RenderTargetBitmap scales logical dimensions by the current display DPI.
+            // Published preview variants have an exact physical pixel contract.
+            encoder.BitmapTransform.ScaledWidth = (uint)width;
+            encoder.BitmapTransform.ScaledHeight = (uint)height;
+            encoder.BitmapTransform.InterpolationMode = Windows.Graphics.Imaging.BitmapInterpolationMode.Fant;
+        }
         await encoder.FlushAsync(); stream.Seek(0);
         using var output = File.Create(path); await stream.AsStreamForRead().CopyToAsync(output);
     }

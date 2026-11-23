@@ -34,6 +34,36 @@ test('opt-in messaging probe reports shapes without exposing identities text or 
     for(const secret of ['987654321','123456789','999999999','private-person-name','private-message-text','private-file-name','private.example'])assert.equal(json.includes(secret),false);
     assert.equal(calls,1);assert.equal(f.calls.every(method=>method==='diagnostics'),true);
 });
+test('media probe counts bounded provider facts without returning signed URLs or message metadata',async()=>{
+    let reads=0;
+    const response={status:200,body:[{id:'987654321',channel_id:'123456789',content:'private-caption',
+        embeds:[{type:'gifv',url:'https://klipy.com/gifs/private-title',
+            video:{proxy_url:'https://images-ext-1.discordapp.net/external/private-path?hm=secret'},
+            thumbnail:{proxy_url:'https://images-ext-2.discordapp.net/private-image',flags:32}}],
+        attachments:[{content_type:'video/mp4',filename:'private-file',proxy_url:'https://media.discordapp.net/private-clip?hm=secret',flags:32}]},
+        {embeds:[null,{type:'video',url:'https://unknown.private/path',video:{url:'https://unknown.private/secret'}}]}]};
+    const f=fixture(()=>{reads++;return Promise.resolve(response);});
+    await f.read();assert.equal(reads,0);
+    assert.equal(await f.api.get({url:'/channels/123456789/messages'}),response);
+    const result=await f.read(),shape=result.shape;
+    assert.equal(shape.klipyEmbeds,1);assert.equal(shape.gifvEmbeds,1);
+    assert.equal(shape.embedVideoDiscordProxy,1);assert.equal(shape.embedImageDiscordProxy,1);
+    assert.equal(shape.animatedEmbedImages,1);assert.equal(shape.embedVideoOther,1);
+    assert.equal(shape.videoAttachments,1);assert.equal(shape.attachmentProxyPresent,1);
+    assert.equal(shape.attachmentThumbnailPresent,0);assert.equal(shape.animatedAttachments,1);
+    const encoded=JSON.stringify(result);
+    for(const secret of ['987654321','123456789','private-caption','private-title','private-path','secret','private-file','unknown.private'])
+        assert.equal(encoded.includes(secret),false);
+    assert.equal(reads,1);
+});
+test('media probe bounds work even for oversized attachment and embed arrays',async()=>{
+    const response={body:Array.from({length:70},()=>({embeds:Array.from({length:100},()=>({type:'gifv'})),
+        attachments:Array.from({length:100},()=>({content_type:'video/mp4',flags:32}))}))};
+    const f=fixture(()=>Promise.resolve(response));await f.read();
+    await f.api.get({url:'/channels/123456789/messages'});
+    const {shape}=await f.read();assert.equal(shape.gifvEmbeds,100);assert.equal(shape.videoAttachments,100);
+    assert.equal(shape.animatedAttachments,100);assert.equal(shape.overLimit,true);
+});
 test('probe preserves provider rejection and removes its wrapper on bounded expiry',async()=>{
     const failure=Object.assign(new Error('private transport detail'),{status:404}),original=()=>Promise.reject(failure);
     const f=fixture(original);await f.read();assert.notEqual(f.api.get,original);

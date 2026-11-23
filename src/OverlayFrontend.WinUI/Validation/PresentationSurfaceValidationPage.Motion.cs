@@ -10,12 +10,41 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 internal sealed partial class PresentationSurfaceValidationPage
 {
+    private async Task NestedScopeArtworkMotionAsync()
+    {
+        presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Full }, true);
+        var state = new Dictionary<string, WidgetRail.WidgetBridge.BridgeComputedStyleValue>
+        {
+            ["artwork-motion"] = new() { Kind = WidgetRail.WidgetStyling.WrssValueKind.Keyword, Text = "pan-zoom" },
+            ["artwork-transition"] = new() { Kind = WidgetRail.WidgetStyling.WrssValueKind.Keyword, Text = "directional-fade" }
+        };
+        ViewNode Button(string id) => new() { Id = id, Kind = ViewNodeKind.Button, Text = id, ActionId = id, FocusBackgroundArtworkHandle = id };
+        Present(new ViewSnapshot
+        {
+            WidgetInstanceId = "surface.instance", Sequence = ++sequence, ActiveInputScopeId = "navigation", InitialFocusId = "a",
+            Root = new() { Id = "background", Kind = ViewNodeKind.BackgroundSurface, UsesFocusedDescendantArtwork = true,
+                Children = (ViewNode[])[new() { Id = "navigation", InputScopeId = "navigation", Kind = ViewNodeKind.Row,
+                    Children = (ViewNode[])[Button("a"), Button("b")] }] }
+        }, styles: new Dictionary<string, WidgetRail.WidgetBridge.BridgeNodeRenderStyles>
+        {
+            ["background"] = new() { Base = state, Focused = state, Pressed = state }
+        });
+        await Focus("a");
+        var motion = BackgroundSurface()!.ArtworkMotion;
+        await Until(() => motion.HasDrift);
+        presenter.MoveFocus(Microsoft.UI.Xaml.Input.FocusNavigationDirection.Right);
+        await Until(() => motion.LastTravel.X > 0);
+        Check(true, "a shared wallpaper outside the active navigation scope follows the actual directional focus move");
+    }
+
     private async Task ArtworkMotionAsync()
     {
-        var settings = AppearanceSettings.Default with { Motion = MotionPreference.Full, WidgetAnimationSpeed = 2, Contrast = ContrastPreference.Standard };
+        var settings = AppearanceSettings.Default with { Motion = MotionPreference.Full, PageAnimation = WidgetPageAnimation.None,
+            WidgetAnimationSpeed = 2, Contrast = ContrastPreference.Standard };
         WidgetPresentationSurface.SetMotionAppearance(settings, true);
         var panel = (StackPanel)Content;
         var surface = new WidgetPresentationSurface(ViewNodeKind.BackgroundSurface) { Width = 320, Height = 140 };
+        surface.ConfigureEntrance(true);
         var label = new TextBlock { Text = "Content remains independent" };
         surface.ContentPanel.Children.Add(label);
         panel.Children.Add(surface);
@@ -28,6 +57,12 @@ internal sealed partial class PresentationSurfaceValidationPage
         try
         {
             await Until(() => surface.IsLoaded && surface.ActualWidth == 320);
+            await Until(() => surface.EntranceForValidation?.Starts == 1);
+            var entrance = surface.EntranceForValidation!.Playback!;
+            surface.ConfigureEntrance(true);
+            Check(ReferenceEquals(surface.EntranceForValidation.Playback, entrance), "Refreshing a mounted surface does not restart its entrance");
+            await entrance;
+            Check(surface.EntranceForValidation.Starts == 1, "A surface entrance is independent of page navigation animation");
             surface.SetArtwork(red, ImageFit.Cover);
             Check(ReferenceEquals(surface.ArtworkSource, red) && motion.RetainedImageCount == 1,
                 "first decoded artwork uses its existing source without an entrance buffer");
@@ -94,6 +129,27 @@ internal sealed partial class PresentationSurfaceValidationPage
             await Until(() => motion.StartedCount == resizingStarts + 1 && motion.IncomingSource is null);
             Check(motion.RetainedImageCount == 1 && ReferenceEquals(surface.ArtworkSource, green) && motion.Failure is null,
                 "pending artwork blends after resize and releases both older decoded images");
+            WidgetPresentationSurface.SetMotionAppearance(settings, true);
+            motion.Configure(WidgetRail.OverlayFrontend.WinUI.Motion.WallpaperMotionStyle.Default with
+            {
+                Transition = "directional-fade", FadeMs = 300, PanZoom = true
+            });
+            motion.SetSource(last, Microsoft.UI.Xaml.Media.Stretch.UniformToFill, Microsoft.UI.Xaml.Input.FocusNavigationDirection.Right, "game-a");
+            await Until(() => motion.IncomingSource == last);
+            Check(motion.LastTravel.X > 0 && motion.LastTravel.Y == 0 && motion.HasDrift,
+                "rightward navigation starts the incoming artwork on the right with independent camera movement");
+            await Until(() => motion.IncomingSource is null);
+            var priorBlends = motion.StartedCount;
+            motion.SetSource(blue, Microsoft.UI.Xaml.Media.Stretch.UniformToFill, Microsoft.UI.Xaml.Input.FocusNavigationDirection.Left, "game-a");
+            await Task.Delay(250);
+            Check(motion.StartedCount == priorBlends && motion.HasDrift && motion.Source == blue,
+                "refreshing the decoded pixels of the same artwork retains the current motion");
+            motion.SetSource(red, Microsoft.UI.Xaml.Media.Stretch.UniformToFill, Microsoft.UI.Xaml.Input.FocusNavigationDirection.Left, "game-b");
+            await Until(() => motion.IncomingSource == red);
+            Check(motion.LastTravel.X < 0, "return navigation mirrors the incoming artwork direction");
+            WidgetPresentationSurface.SetMotionAppearance(settings with { Motion = MotionPreference.Reduced }, true);
+            Check(!motion.HasDrift && motion.IncomingSource is null, "reducing motion during a directional blend retires both effects");
+            motion.Configure(WidgetRail.OverlayFrontend.WinUI.Motion.WallpaperMotionStyle.Default);
             WidgetPresentationSurface.SetMotionAppearance(settings, true);
             surface.SetArtwork(blue, ImageFit.Cover);
             await Until(() => motion.IncomingSource is not null);

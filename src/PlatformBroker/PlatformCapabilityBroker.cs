@@ -227,6 +227,7 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
             if (_lifecycle == BrokerLifecycleState.Destroying)
                 throw new BrokerException("invalid_lifecycle", "Destroying broker cannot transition.");
             if (_lifecycle != lifecycle) ClearDashboardGestureAuthoritiesLocked();
+            if (_lifecycle != lifecycle) _appLibraryDomain.CancelLaunchHandoff();
             _lifecycle = lifecycle;
             _permissionDomain.SetLifecycle(lifecycle);
             foreach (var subscription in _subscriptions) subscription.SetLifecycle(lifecycle);
@@ -252,12 +253,27 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
         string operationId,
         long inputSequence,
         long snapshotSequence,
-        TimeSpan validFor)
+        TimeSpan validFor) => GrantDashboardGestureAuthority(capabilityId, operationId, inputSequence, snapshotSequence, validFor, null);
+
+    public void GrantDashboardGestureAuthority(string capabilityId, string operationId, long inputSequence,
+        long snapshotSequence, TimeSpan validFor, WidgetRail.WidgetProtocol.TrayMediaCommand? trayCommand) => GrantDashboardGestureAuthority(
+            capabilityId, operationId, inputSequence, snapshotSequence, validFor, trayCommand, null);
+
+    public void GrantDashboardGestureAuthority(string capabilityId, string operationId, long inputSequence,
+        long snapshotSequence, TimeSpan validFor, WidgetRail.WidgetProtocol.TrayMediaCommand? trayCommand,
+        WidgetRail.WidgetProtocol.TrayCaptureCommand? captureCommand) => GrantDashboardGestureAuthority(
+            capabilityId, operationId, inputSequence, snapshotSequence, validFor, trayCommand, captureCommand, null);
+
+    internal void GrantDashboardGestureAuthority(string capabilityId, string operationId, long inputSequence,
+        long snapshotSequence, TimeSpan validFor, WidgetRail.WidgetProtocol.TrayMediaCommand? trayCommand,
+        WidgetRail.WidgetProtocol.TrayCaptureCommand? captureCommand, HostActionCompletion? hostCompletion)
     {
         if (!PlatformCapabilities.TryGet(capabilityId, out var capability) ||
             capability.KindForOperation(operationId) != BrokerCapabilityKind.Control ||
             !capability.Operations.Contains(operationId) ||
-            !capability.AllowsDashboardGestureForOperation(operationId))
+            !(captureCommand is null ? capability.AllowsDashboardGestureForOperation(operationId) :
+                captureCommand.IsWellFormed() && trayCommand is null && capability.Id == PlatformCapabilities.WindowCaptureV1 &&
+                operationId == captureCommand.Operation))
             throw new BrokerException(
                 "unsupported_capability", "Dashboard authority requires a supported control operation.");
         if (!_declaredCapabilities.Contains(capabilityId))
@@ -271,7 +287,9 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
         lock (_gate)
         {
             ThrowIfDisposed();
-            if (_lifecycle != BrokerLifecycleState.Visible)
+            if (trayCommand is not null && capabilityId != PlatformCapabilities.MediaSessionsControlV1)
+                throw new BrokerException("unsupported_capability", "This operation does not support tray gestures.");
+            if (_lifecycle != BrokerLifecycleState.Visible && !((trayCommand is not null || captureCommand is not null) && _lifecycle == BrokerLifecycleState.Background))
                 throw new BrokerException(
                     "lifecycle_denied", "Dashboard authority is available only while Visible.");
             if (inputSequence <= _lastDashboardGestureSequence)
@@ -285,7 +303,7 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
                 (long)Math.Ceiling(validFor.TotalSeconds * System.Diagnostics.Stopwatch.Frequency);
             var key = new DashboardGestureKey(inputSequence, snapshotSequence);
             var authority = new DashboardGestureAuthority(
-                capabilityId, operationId, expiresAt);
+                capabilityId, operationId, expiresAt) { TrayCommand = trayCommand, CaptureCommand = captureCommand, HostCompletion = hostCompletion };
             authority.ExpiryTimer = new Timer(
                 _ => ExpireDashboardGestureAuthority(key), null,
                 validFor, Timeout.InfiniteTimeSpan);
@@ -376,7 +394,7 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
             BrokerCapabilityDomain.Marketplace => await _marketplaceDomain.ExecuteAsync(request.Operation,request.Payload,requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Performance => await _performanceDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.ProviderDocuments => _documentDomain.Execute(request.Operation, request.Payload, requestToken),
-            BrokerCapabilityDomain.WindowCapture => await ExecuteCaptureDomainAsync(request, requestToken).ConfigureAwait(false),
+            BrokerCapabilityDomain.WindowCapture => await ExecuteCaptureDomainAsync(request, lease).ConfigureAwait(false),
             BrokerCapabilityDomain.Displays =>
                 await _displayProfilesDomain.ExecuteAsync(request.Operation, request.Payload, _identity, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Power =>
@@ -564,7 +582,7 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
                 BrokerLifecycleState.Visible or BrokerLifecycleState.Interactive
             : lease.Kind == BrokerCapabilityKind.Control
             ? lifecycle == BrokerLifecycleState.Interactive ||
-                lease.DashboardGestureAuthorized && lifecycle == BrokerLifecycleState.Visible
+                lease.DashboardGestureAuthorized && (lifecycle == BrokerLifecycleState.Visible || lease.TrayGestureAuthorized && lifecycle == BrokerLifecycleState.Background)
             : lifecycle is BrokerLifecycleState.Visible or BrokerLifecycleState.Interactive;
 
     private RequestLease CreateRequestLease(
@@ -580,9 +598,13 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
                 throw new BrokerException("capability_revoked", "Capability permission was revoked.");
             var dashboardGestureAuthorized = false;
             var operationKind = capability.KindForOperation(request.Operation);
-            if (operationKind == BrokerCapabilityKind.Control &&
+            WidgetRail.WidgetProtocol.TrayCaptureCommand? captureCommand = null;
+            HostActionCompletion? hostCompletion = null;
+            var captureGesture = capability.Id == PlatformCapabilities.WindowCaptureV1 && request.GestureInputSequence.HasValue;
+            if (captureGesture || operationKind == BrokerCapabilityKind.Control &&
                 capability.AllowsDashboardGestureForOperation(request.Operation) &&
-                _lifecycle == BrokerLifecycleState.Visible)
+                (_lifecycle == BrokerLifecycleState.Visible || _lifecycle == BrokerLifecycleState.Background &&
+                    capability.Id == PlatformCapabilities.MediaSessionsControlV1 && request.GestureInputSequence.HasValue))
             {
                 if (request.GestureInputSequence is not { } inputSequence ||
                     request.GestureSnapshotSequence is not { } snapshotSequence)
@@ -599,8 +621,18 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
                     throw new BrokerException(
                         "lifecycle_denied", "Capability is unavailable in this lifecycle.");
                 }
+                captureCommand = authority.CaptureCommand;
+                hostCompletion = authority.HostCompletion;
+                if (captureGesture && (captureCommand is null || _lifecycle is not (BrokerLifecycleState.Background or BrokerLifecycleState.Visible)))
+                    throw new BrokerException("lifecycle_denied", "The capture gesture is no longer current.");
                 dashboardGestureAuthorized = true;
                 RemoveDashboardGestureAuthorityLocked(key);
+                if (authority.TrayCommand is { } expected)
+                {
+                    var actual = BrokerJson.ParsePayload<ControlMediaSessionRequest>(request.Payload);
+                    if (actual.SessionId != expected.SessionId || actual.Command.ToString() != expected.Command)
+                        throw new BrokerException("lifecycle_denied", "Media session or command changed after the tray gesture.");
+                }
             }
             else
             {
@@ -611,6 +643,9 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
                 continueAdmittedOperation || capability.AllowsInFlightContinuationForOperation(request.Operation),
                 dashboardGestureAuthorized,
                 callerCancellation);
+            lease.CaptureCommand = captureCommand;
+            lease.HostCompletion = hostCompletion;
+            lease.TrayGestureAuthorized = dashboardGestureAuthorized && _lifecycle == BrokerLifecycleState.Background;
             _requestLeases.Add(lease);
             return lease;
         }
@@ -653,6 +688,9 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
         internal bool AllowsBackground { get; }
         internal bool AllowsLifecycleContinuation { get; }
         internal bool DashboardGestureAuthorized { get; }
+        internal bool TrayGestureAuthorized { get; set; }
+        internal WidgetRail.WidgetProtocol.TrayCaptureCommand? CaptureCommand { get; set; }
+        internal HostActionCompletion? HostCompletion { get; set; }
         internal CancellationToken Token => _linkedCancellation.Token;
         internal string? CancellationCode => Volatile.Read(ref _cancellationCode);
 
@@ -734,6 +772,9 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
     {
         internal string CapabilityId { get; } = capabilityId;
         internal string OperationId { get; } = operationId;
+        internal WidgetRail.WidgetProtocol.TrayMediaCommand? TrayCommand { get; init; }
+        internal WidgetRail.WidgetProtocol.TrayCaptureCommand? CaptureCommand { get; init; }
+        internal HostActionCompletion? HostCompletion { get; init; }
         internal long ExpiresAtTimestamp { get; } = expiresAtTimestamp;
         internal Timer? ExpiryTimer { get; set; }
         internal bool IsExpired =>

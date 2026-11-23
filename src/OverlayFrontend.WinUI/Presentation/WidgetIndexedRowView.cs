@@ -24,6 +24,7 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
     private WidgetIndexedCollectionView? selectionCollection;
     private readonly HashSet<Task> retiring = [];
     private bool disposed;
+    private bool readingGroup;
     private NativeComputedStyleAdapter? containerStyle;
     private SelectorItem? styleContainer;
     private WidgetPresentationIndexedLease? styledLease;
@@ -32,8 +33,13 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
     private object? appliedStyles;
     internal int ContentApplyCount { get; private set; }
     internal int SkippedContentApplyCount { get; private set; }
+    internal IReadOnlyList<WidgetStaticArtworkPaint>? CaptureStaticArtworkPaint(WidgetIndexedRow row) =>
+        !disposed && ReferenceEquals(Row, row) && ReferenceEquals(appliedRow, row) ? presenter?.CaptureStaticArtworkPaint() : null;
+    internal void ApplyAppearance(WidgetRail.PlatformSettings.AppearanceSettings value, bool animationsEnabled) =>
+        presenter?.ApplyInheritedAppearance(value, animationsEnabled);
     internal Task SetPresentationActiveAsync(bool active)
     {
+        RefreshReadingInteraction();
         containerStyle?.RefreshContextIndicator();
         return active && Row is WidgetIndexedRow { Lease.IsCurrent: false } ? Task.CompletedTask :
             presenter?.SetPresentationActiveAsync(active) ?? Task.CompletedTask;
@@ -62,6 +68,8 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
         TraceReviewRow("apply");
         if (disposed) return;
         if (Row is not WidgetIndexedRow row) { Retire(); return; }
+        if (presenter is not null && readingGroup != row.Item.Root.IsReadingGroup) Retire();
+        readingGroup=row.Item.Root.IsReadingGroup;
         if (!ReferenceEquals(styledLease, row.Lease))
         {
             if (styledLease is not null) styledLease.RenderStylesChanged -= StylesChanged;
@@ -78,13 +86,23 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
         else
         {
             laidOutRow = null;
-            presenter ??= new(presentationOnly: true);
+            if(presenter is null)
+            {
+                presenter=new(presentationOnly: !readingGroup);
+                if(readingGroup)presenter.ControllerGuideChanged+=ReadingGuideChanged;
+            }
+            if(readingGroup)
+            {
+                presenter.IndexedActionDispatch=(displayed,action)=>!disposed && ReferenceEquals(Row,row) && selectionCollection is {} owner
+                    ? owner.DispatchReadingActionAsync(row,displayed,action):Task.CompletedTask;
+            }
             _ = presenter.SetPresentationActiveAsync(row.Owner.IsPresentationActive);
             presenter.Session = row.Owner.Session;
             presenter.UseIndexedContainerStyles();
             presenter.Failed = row.Owner.Failed;
             presenter.ArtworkGeneration = row.Lease.LeaseId;
             presenter.ArtworkAuthorityCurrent = () => row.Lease.IsCurrent && row.Owner.IsPresentationActive;
+            presenter.SetIndexedBodyMedia(row.Lease, row.Item.Key, () => row.Lease.IsCurrent && row.Owner.IsPresentationActive);
             presenter.ResolveArtworkFallbackAsync = async (handle, token) =>
                 await row.Owner.ResolveArtworkAsync(row, handle, token, allowFileSource: false) as WidgetEncodedArtwork;
             presenter.ResolveArtworkAsync = async (handle, token) =>
@@ -92,7 +110,12 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
                 try { return await row.Owner.ResolveArtworkAsync(row, handle, token); }
                 catch (WidgetPresentationSessionException) when (!row.Lease.IsCurrent) { return null; }
             };
+            if (readingGroup && appliedRow is { } previous && previous.Item.Key == row.Item.Key &&
+                previous.Lease.Range.Source.SourceId == row.Lease.Range.Source.SourceId &&
+                previous.Lease.Range.Source.QueryGeneration == row.Lease.Range.Source.QueryGeneration)
+                presenter.PreserveReadingFocusBeforePatch(row.Item.Root);
             presenter.ApplyFragment(presentation.WithStyles(styles), row.Item.Root, row.Lease.Range.ScopeId);
+            presenter.SeedStaticArtworkPaint(row.RetainedArtwork);
             appliedRow = row; appliedPresentation = presentation; appliedStyles = styles;
             ++ContentApplyCount;
         }
@@ -119,6 +142,7 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
                 containerStyle = new(container);
                 containerStyle.PointerPressAllowed = origin =>
                 {
+                    if(readingGroup && presenter?.IsReadingActionOrigin(origin)==true)return false;
                     // A small nested toggle must stay under the pointer. Scaling
                     // the whole row around its centre can move that hit target
                     // beyond the original press before the button is released.
@@ -148,7 +172,9 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
         if (containerStyle is not null)
             presenter!.SetIndexedRootInteraction(containerStyle.Interaction.Focused, containerStyle.Interaction.Pressed);
         selectionCollection = collection;
+        if (presenter is not null) collection?.ApplyRowAppearance(presenter);
         RefreshSelection();
+        RefreshReadingInteraction();
         if (container is not null && collection is not null && HasCurrentLayout(row, container))
             collection.ReportRowLayout(container, this, row);
         else AwaitRowLayout();
@@ -214,6 +240,7 @@ public sealed partial class WidgetIndexedRowView : ContentControl, IAsyncDisposa
         styledLease = null;
         containerStyle?.Dispose(); containerStyle = null; styleContainer = null;
         var previous = presenter;
+        if(previous is not null)previous.ControllerGuideChanged-=ReadingGuideChanged;
         presenter = null;
         Content = null;
         contentRoot = null; selectionCheck = null; selectionImageResources = null; selectionCollection = null;

@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>WidgetRail.Playnite.Core</AssemblyName>
     <RootNamespace>WidgetRail.Playnite</RootNamespace>
-    <Version>1.2.0</Version>
+    <Version>1.3.9</Version>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net462'">
@@ -13,5 +13,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../WidgetRail.Playnite.Contracts/WidgetRail.Playnite.Contracts.csproj" />
+    <Compile Include="../../../src/Shared/CaptureProcessKey.cs" Link="Internal/CaptureProcessKey.cs" />
   </ItemGroup>
 </Project>

@@ -109,38 +109,6 @@ internal static partial class GalleryTests
         finally { release.TrySetResult(); }
     }
 
-    internal static async Task EditUnsavedUsesOwnedAttachment()
-    {
-        var temporary = new CaptureAttachment(new string('f', 32), "image/png", 100, 100, 12, 0, long.MaxValue);
-        CaptureLibraryEditRequest? request = null; var discarded = 0; var unpublished = false;
-        await using var fixture = new GalleryFixture((builder, owner) => builder
-            .WithResponse(WidgetCaptureCapabilities.Validate, new CaptureConfigurationValidation(true))
-            .WithResponse(WidgetCaptureCapabilities.Start, new WindowCaptureTicket(new string('e', 32)))
-            .WithResponse(WidgetCaptureCapabilities.Status, new WindowCaptureStatus(new string('e', 32), WindowCapturePhase.Ready, temporary))
-            .WithHandler(WidgetCaptureCapabilities.Discard, (value, _) =>
-            { discarded++; unpublished = Preview(owner)?.Id != value.AttachmentId; return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true)); })
-            .WithHandler(WidgetCaptureLibraryCapabilities.EditCopy, (value, _) =>
-            {
-                request = value; var copy = EditedItem(owner.Items[0]); owner.Items.Add(copy); owner.Notify();
-                return ValueTask.FromResult(new CaptureLibraryEditResult(CaptureLibraryEditOutcome.Saved, copy));
-            }));
-        await fixture.Start(); await fixture.Action("capture-library.photo");
-        await fixture.Until(() => Preview(fixture)?.Id == temporary.Id && !fixture.Busy);
-        Check(fixture.Node("capture-library.edit-copy") is not null, "Unsaved preview has no Edit copy entry");
-        Check(fixture.Node("capture-library.save") is {Kind:ViewNodeKind.Button,IsDisabled:not true}&&
-            fixture.Node("capture-library.back")?.ActionId=="capture-library.back"&&fixture.Node("capture-library.share")?.Intent?.PreparationKey is not null&&
-            fixture.Node("capture-library.favorite") is null&&fixture.Node("capture-library.delete") is null&&fixture.Node("capture-library.copy") is null,
-            "Unsaved review lost Save/Discard or acquired saved-media mutations");
-        CheckInlineBinding(fixture,"capture-library.back",ControllerPrompt.B,ControllerButton.B,"capture-library.back");
-        Check(!fixture.View().Root.Shortcuts.Any(shortcut=>shortcut.Button is ControllerButton.Y or ControllerButton.LeftBumper or ControllerButton.RightBumper),
-            "Saved-detail shortcuts leaked into unsaved review");
-        await fixture.Action("capture-library.edit-copy"); await fixture.Until(() => Preview(fixture)?.Width == 80 && !fixture.Busy);
-        Check(request?.Saved is null && request?.Attachment == temporary && discarded == 1 && unpublished && fixture.Released == 0,
-            "Unsaved editing must use its owned attachment and discard only the old temporary view after replacement");
-        Check(fixture.Node("capture-library.save") is null && fixture.Node("capture-library.copy")?.ActionId=="capture-library.copy",
-            "Saved edited copy retained unsaved capture actions");
-    }
-
     private static CaptureAttachment? Preview(GalleryFixture fixture) => fixture.Node("capture-library.preview")?.MediaPlayer?.Source.Attachment;
     private static CaptureLibraryItem EditedItem(CaptureLibraryItem original) => new(4.ToString("x32"),
         original.Media with { Id = new string('d', 32), Width = 80, Height = 60, Origin = CaptureAttachmentOrigin.SavedLibrary }, 4)

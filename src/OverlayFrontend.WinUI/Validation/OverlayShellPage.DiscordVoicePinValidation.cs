@@ -66,6 +66,7 @@ internal sealed partial class OverlayShellPage
                     Check(true,"D-pad Right moves from microphone to deafen at "+width+" DIPs");
                     await Toggle("deafen");
                     CheckGeometry(presenter,width);
+                    await CapturePin(pin.Window.AutomationRoot,"voice-"+width+".png");
                     await Move(NavigationDirection.Right);
                     await Until(()=>FocusId()=="Widget.discord.pin.leave");
                     Check(true,"D-pad Right reaches Leave without focusing decorative avatars at "+width+" DIPs");
@@ -91,7 +92,10 @@ internal sealed partial class OverlayShellPage
                 await Button(ControllerButton.A);
                 await Until(()=>pins.Any(item=>item.LayoutId=="discord.people"&&item.Presenter?.CurrentBinding is not null));
                 var peoplePin=pins.Single(item=>item.LayoutId=="discord.people");
-                Check(peoplePin.Window.SurfaceBackground.Background is SolidColorBrush {Color.A:0},
+                var highContrast=Appearance.Contrast==WidgetRail.PlatformSettings.ContrastPreference.High;
+                var expectedFill=highContrast?ShellChromePalette.WindowColors().Background:Microsoft.UI.Colors.Transparent;
+                Check(peoplePin.Window.SurfaceBackground.Background is SolidColorBrush peopleBrush&&peopleBrush.Color==expectedFill,
+                    highContrast?"High-contrast participant overlay uses the opaque system background":
                     "Transparent participant overlay has no host background fill");
                 Check(peoplePin.Appearance==WidgetSurfaceAppearance.Transparent &&
                     peoplePin.Presenter!.CurrentBinding!.Frame.Snapshot.PinnedLayouts.Single(item=>item.Id=="discord.people").Root!.StyleClasses.Contains("discord-people-overlay"),
@@ -101,6 +105,7 @@ internal sealed partial class OverlayShellPage
                 Check(peoplePin.Presenter!.CurrentBinding!.Projection!.Interaction==PinnedInteractionMode.Passive,
                     "Participant input policy comes from the explicit SDK declaration");
                 await Until(()=>peoplePin.Presenter!.ActualHeight>0);
+                await CapturePin(peoplePin.Window.AutomationRoot,"participants.png");
                 if(Find<TextBlock>(peoplePin.Presenter!,"discord.people.more") is { } morePeople)
                     Check(Inside(morePeople,peoplePin.Presenter!),"Participant overflow count fits the declared minimum pin height");
                 step="widget requests exact passive pin management";
@@ -126,6 +131,18 @@ internal sealed partial class OverlayShellPage
                 await Button(ControllerButton.B);
                 await Until(()=>!PinnedAdjustmentActive&&MainFocusEnabled);
                 Check(peoplePin.Window.OpacityPercent==managedOpacity,"Cancelling opacity preserves the original preference");
+                step="keyboard Escape from the participant adjustment toolbar";
+                Check(surface.FocusHostTarget("discord.people.manage"),"The widget can reopen participant adjustments");
+                await Button(ControllerButton.A);
+                await Until(()=>pinAdjustmentToolbar is {} toolbar && PinnedNativeForeground()==toolbar.Window.Handle);
+                Check(pinAdjustmentToolbar!.Opacity.Focus(FocusState.Keyboard),"The toolbar's opacity slider accepts keyboard focus");
+                pinAdjustmentToolbar.Opacity.Value=managedOpacity==50?55:50;
+                await Until(()=>peoplePin.Window.OpacityPercent!=managedOpacity);
+                Validation.NativeContextProbeInput.Escape();
+                await Until(()=>!PinnedAdjustmentActive&&MainFocusEnabled&&OwnsMain());
+                Check(peoplePin.Window.OpacityPercent==managedOpacity,"Escape cancels the opacity preview from the focused toolbar window");
+                await Until(()=>FocusId()=="Widget.discord.people.manage");
+                Check(true,"Escape returns keyboard focus to the participant Manage control");
                 Check(surface.FocusHostTarget("discord.voice.manage"),"Interactive voice controls expose exact Manage pin");
                 await Button(ControllerButton.A);
                 await Until(()=>PinnedAdjustmentActive&&ReferenceEquals(managedPin,pin));
@@ -181,8 +198,8 @@ internal sealed partial class OverlayShellPage
                 AddPinnedCommands(owner!.Session.GetState(peoplePin.WidgetId)!.LastGood!.Descriptor,(label,id,action)=>commands.Add(id));
                 Check(!commands.Contains("Pin.Interact")&&commands.Contains("Pin.Adjust"),"All-passive menus omit Interact and retain placement");
                 peoplePin.Window.SetOpacity(50);
-                Check(peoplePin.Window.OpacityPercent==50 && peoplePin.Window.SurfaceBackground.Background is SolidColorBrush {Color.A:0},
-                    "Whole-window opacity remains independent from the transparent background");
+                Check(peoplePin.Window.OpacityPercent==50 && peoplePin.Window.SurfaceBackground.Background is SolidColorBrush opacityBrush&&opacityBrush.Color==expectedFill,
+                    "Whole-window opacity remains independent from the effective background policy");
                 Check(validationFailure is null,"Voice-pin interactions never enter host recovery");
             }
             catch(Exception failure){error=failure.ToString();}
@@ -196,6 +213,20 @@ internal sealed partial class OverlayShellPage
                 File.Move(path+".tmp",path,true);
             }
 
+            async Task CapturePin(UIElement element,string name)
+            {
+                var bitmap=new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
+                await bitmap.RenderAsync(element);
+                using var stream=new Windows.Storage.Streams.InMemoryRandomAccessStream();
+                var encoder=await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId,stream);
+                encoder.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied,
+                    (uint)bitmap.PixelWidth,(uint)bitmap.PixelHeight,96,96,
+                    System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(await bitmap.GetPixelsAsync()));
+                await encoder.FlushAsync();stream.Seek(0);
+                using var reader=new Windows.Storage.Streams.DataReader(stream.GetInputStreamAt(0));
+                await reader.LoadAsync((uint)stream.Size);var bytes=new byte[(int)stream.Size];reader.ReadBytes(bytes);
+                await File.WriteAllBytesAsync(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!,name),bytes);
+            }
             async Task Toggle(string action)
             {
                 var presenter=pinned!.Presenter!;var id="discord.pin."+action;
@@ -231,6 +262,14 @@ internal sealed partial class OverlayShellPage
                 }
                 var buttons=new[]{"mute","deafen","leave"}.Select(name=>Find<Button>(presenter,"discord.pin."+name)??throw new InvalidOperationException("Missing voice action "+name)).ToArray();
                 var rectangles=buttons.Select(button=>BoundsIn(button,presenter)).ToArray();
+                foreach(var button in buttons)
+                {
+                    var actionId=AutomationProperties.GetAutomationId(button)["Widget.".Length..];
+                    var label=Walk(button).OfType<TextBlock>().Single(text=>text.IsLoaded&&text.Text==Node(presenter,actionId)!.Text);
+                    var labelBounds=BoundsIn(label,button);
+                    Check(!label.IsTextTrimmed&&labelBounds.Left>=0&&labelBounds.Right<=button.ActualWidth+.5,
+                        step+": complete "+label.Text+" label fits inside its native action");
+                }
                 Check(Inside(heading,presenter)&&Inside(people,presenter)&&buttons.All(button=>Inside(button,presenter)),
                     step+": title, people and all action bounds fit inside the pin");
                 Check(BoundsIn(heading,presenter).Top<=16&&BoundsIn(heading,presenter).Top>=8,

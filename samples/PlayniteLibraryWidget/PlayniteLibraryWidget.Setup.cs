@@ -83,7 +83,7 @@ public sealed partial class PlayniteLibraryWidget
                     if (_playniteClient is PlayniteBridgeClient client) client.ResetConnection();
                     _playniteConnection.Reset();
                     _model.Update(state => state with { PlayniteKind = PlayniteBridgeConnectionKind.Connected, PlayniteCode = "connected",
-                        DetailsItem = null, DetailsCapturedTarget = null, DetailsExtras = new(), DetailsLoading = false, DetailsError = null });
+                        DetailsItem = null, DetailsParent = null, DetailsCapturedTarget = null, DetailsExtras = new(), DetailsLoading = false, DetailsError = null });
                 }
                 _model.Update(state => state with { Setup = state.Setup with { Busy = false, Progress = null,
                     Message = result.Message, Connected = result.Connected }, SetupRequired = !result.Connected,
@@ -122,6 +122,10 @@ public sealed partial class PlayniteLibraryWidget
         Operations.Cancel(CaptureWork);
         captureSetup.Reset();
         CancelDetailsOperations();
+        lock (_gate) playingAuthority = null;
+        ResetPlayingResources();
+        homeRecentActivity.Reset(); homeCaptures.Reset();
+        homePosts.Publish("closed", new(new(null, null), []), []);
         achievementHub.Reset(); _hiddenRows.Reset(); progressData.Reset();
         lock (_gate)
         {
@@ -137,10 +141,11 @@ public sealed partial class PlayniteLibraryWidget
             {
                 IndexedHome = new() { Attempt = state.IndexedHome.Attempt + 1 },
                 IndexedBrowse = new() { Attempt = state.IndexedBrowse.Attempt + 1 },
+                LaunchPrompt = null, LaunchSplash = null, RunningGames = null, RunningSince = null, RunningNames = null, RunningProcesses = null, PlayingGame = null, NewsReader = null,
                 FixedRows = PlayniteLibraryFixedRows.Empty, FixedRowsRevision = state.FixedRowsRevision + 1,
                 HomeGameCount = null, BrowseGameCount = null, SourceObservations = [], ActiveCategoryId = null,
                 HeroSavedId = null, HeroIndex = 0, BrowseHeroSavedId = null, BrowseHeroIndex = 0,
-                DetailsItem = null, DetailsCapturedTarget = null, DetailsExtras = new(), DetailsLoading = false,
+                DetailsItem = null, DetailsParent = null, DetailsCapturedTarget = null, DetailsExtras = new(), DetailsLoading = false,
                 CaptureSettings = new(false, new Dictionary<string, System.Text.Json.JsonElement>()),
                 DetailsError = null, DetailsGeneration = state.DetailsGeneration + 1, Progress = new(),
                 ActiveBrowseReload = null, BrowseInitialFocusId = null, FilterDraft = null,
@@ -152,7 +157,7 @@ public sealed partial class PlayniteLibraryWidget
     private static string SetupError(Exception error) => error is PlayniteSetupException
         ? error.Message : "Playnite setup could not be completed. Check the selected folders or use Advanced connection settings.";
 
-    private ValueTask<bool> TryHandleSetupActionAsync(WidgetActionEvent action)
+    private ValueTask<bool> TryHandleSetupActionAsync(WidgetActionEvent action, CancellationToken token)
     {
         if (!action.ActionId.StartsWith(SetupPrefix, StringComparison.Ordinal)) return ValueTask.FromResult(false);
         if (action.ActionId == SetupPrefix + "dismiss" && LifecycleState == WidgetLifecycleState.Interactive)
@@ -168,6 +173,8 @@ public sealed partial class PlayniteLibraryWidget
         if (_setupService is null || LifecycleState != WidgetLifecycleState.Interactive || _model.Value.Setup.Busy) return ValueTask.FromResult(true);
         switch (action.ActionId[SetupPrefix.Length..])
         {
+            case "install-gameactivity": return OpenOptionalAddonAsync(PlayniteOptionalAddon.GameActivity, token);
+            case "install-achievements": return OpenOptionalAddonAsync(PlayniteOptionalAddon.Achievements, token);
             case "start": ApplySetup(true); break;
             case "apply": ApplySetup(false); break;
             case "scan": RefreshSetup(); break;

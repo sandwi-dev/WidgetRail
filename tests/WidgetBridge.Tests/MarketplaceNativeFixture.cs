@@ -12,8 +12,10 @@ using WidgetRail.WidgetProtocol;
 // monitoring, consent, intents and installation are real; HTTP and clock are local.
 internal static class MarketplaceNativeFixture
 {
-    private sealed record Configuration(string ReleaseRoot,string ProfileRoot,string PackagesDirectory,string ControlPath,string RequestLog);
-    private sealed record Control(string Version="1.0.0",string? FailPackage=null,int AdvanceSeconds=0,int DownloadDelayMs=0);
+    private sealed record Configuration(string ReleaseRoot,string ProfileRoot,string PackagesDirectory,string ControlPath,string RequestLog,
+        string? ThemeIndexDirectory = null, string? ThemePackagePath = null);
+    private sealed record Control(string Version="1.0.0",string? FailPackage=null,int AdvanceSeconds=0,int DownloadDelayMs=0,
+        bool ThemeFeedOffline = false);
     private sealed record Package(string Path,WidgetManifest Manifest);
     private static readonly JsonSerializerOptions Json=new(){PropertyNameCaseInsensitive=true};
 
@@ -78,6 +80,19 @@ internal static class MarketplaceNativeFixture
         {
             var state=ReadControl(config.ControlPath);var uri=request.RequestUri!;
             lock(logGate)File.AppendAllText(config.RequestLog,JsonSerializer.Serialize(new{utc=DateTimeOffset.UtcNow,path=uri.AbsolutePath,version=state.Version})+Environment.NewLine);
+            if (config.ThemeIndexDirectory is { } themeIndexes && uri.AbsoluteUri == ThemeCataloguePublication.Origin + "index.json")
+            {
+                if (state.ThemeFeedOffline) return new(HttpStatusCode.ServiceUnavailable);
+                var indexBytes = await File.ReadAllBytesAsync(Path.Combine(themeIndexes, state.Version + ".json"), token);
+                return new(HttpStatusCode.OK) { Content = new ByteArrayContent(indexBytes), Headers = { ETag = new($"\"{state.Version}\"") } };
+            }
+            if (config.ThemePackagePath is { } themePackage &&
+                uri.AbsoluteUri == ThemeCataloguePublication.Origin + "packages/" + Path.GetFileName(themePackage))
+            {
+                await Task.Delay(state.DownloadDelayMs, token);
+                var themeBytes = await File.ReadAllBytesAsync(themePackage, token);
+                return new(HttpStatusCode.OK) { Content = new ByteArrayContent(themeBytes) };
+            }
             if(uri.Host=="api.github.com")
             {
                 if(!uri.AbsolutePath.Contains("/releases",StringComparison.Ordinal))throw new InvalidOperationException("Unexpected metadata request.");

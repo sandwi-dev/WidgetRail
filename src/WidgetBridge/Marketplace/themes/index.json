@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "featured": "local.widgetrail.afterglow-fm",
+  "collections": [
+    {
+      "name": "Game worlds",
+      "themes": [
+        "local.widgetrail.asphodel-ember",
+        "local.widgetrail.afterglow-fm"
+      ]
+    }
+  ],
+  "themes": [
+    {
+      "id": "local.widgetrail.afterglow-fm",
+      "version": "1.0.2",
+      "name": "Afterglow FM",
+      "publisher": "local.widgetrail",
+      "creator": "WidgetRail",
+      "description": "Sunset pink and peach highlights over deep violet panels.",
+      "tags": [
+        "GTA VI",
+        "Vice City",
+        "Neon",
+        "Dark"
+      ],
+      "released": "2026-11-22",
+      "sha256": "4d9efa612e78b633d789d3b7126370525f7975451c8d2a7ea3afabac74f91a5a",
+      "bytes": 1062,
+      "previewKey": "d01e8396dbdd8716d51e44fc33883970aaae0919d5209187a19a725cd3e62fb3",
+      "previewHashes": {
+        "tray-480.png": "8816babf05b0223683975babfcf0848eaf56668bdfb3f7062d660334979ce767",
+        "tray-960.png": "5641872decfe85c3203b3c59969cbee615d76d009af6ff6dfad408a99300b2ef",
+        "tray.png": "6b442b34e6124d0fb65299a278f198277ba6d251f392aeba7149f137e15577de",
+        "posters.png": "14da864841ddc614251fcfc2409fac325319ae579ad7f6912acc0bd19ca10a39",
+        "notification.png": "55940d5af851153df299bfff026d97985e67eabe910912b13e447ef70066b1aa"
+      }
+    },
+    {
+      "id": "local.widgetrail.asphodel-ember",
+      "version": "1.0.1",
+      "name": "Asphodel Ember",
+      "publisher": "local.widgetrail",
+      "creator": "WidgetRail",
+      "description": "Bronze surfaces, laurel red and spectral mint, inspired by Hades.",
+      "tags": [
+        "Hades",
+        "Bronze",
+        "Dark"
+      ],
+      "released": "2026-11-22",
+      "sha256": "be38c2a2e005bcfacdfc0a6387f0f23822168e4ec91ddb35081710fde99505a5",
+      "bytes": 1203,
+      "previewKey": "d01e8396dbdd8716d51e44fc33883970aaae0919d5209187a19a725cd3e62fb3",
+      "previewHashes": {
+        "tray-480.png": "3abdc8bcf7ffdcf25d4bcd6dfe046d5055ee175e4f57ebb24b0b42293fae7907",
+        "tray-960.png": "1a88c9469c44d5039dc9d38fb8d0b957658486e928d369273a697de932b38905",
+        "tray.png": "3a77aa0d973a567393aa239cb01c63e3b33634f154b936a29fc22a7c3da11770",
+        "posters.png": "c067691f457f8970b7b4faed65a74e7d8a3a063a9bc81062f17eb2d53751fd0c",
+        "notification.png": "31f00b81ada1544b60608106ef4a6410e3f9a63efe932b67aa636fdca4411c2a"
+      }
+    },
+    {
+      "id": "local.widgetrail.tidepool",
+      "version": "1.0.1",
+      "name": "Tidepool",
+      "publisher": "local.widgetrail",
+      "creator": "WidgetRail",
+      "description": "Sea-glass focus rings and warm lettering against charcoal and deep teal.",
+      "tags": [
+        "Coastal",
+        "Teal",
+        "Dark"
+      ],
+      "released": "2026-11-22",
+      "sha256": "951836ecb0756367891daad68ef2cd9eecd0fee1dbf79e4bae4b5a34cba2d69d",
+      "bytes": 826,
+      "previewKey": "d01e8396dbdd8716d51e44fc33883970aaae0919d5209187a19a725cd3e62fb3",
+      "previewHashes": {
+        "tray-480.png": "c65811839d2b57697b42981a8ab370e8b37e169deed8449b9625cf709e05e723",
+        "tray-960.png": "03efec68b520d11b51ea8a706a815912458768afebbb48266b0cfea610292778",
+        "tray.png": "9aab3fa7bb338511b02f32525cdf8d09bd05f9122499b4fdfbec5a96131bed74",
+        "posters.png": "47fa5627d17c4a5f01a28025e6b9685826265010cc5b972041b2d669d31fb212",
+        "notification.png": "1c278da95305fe426c1b94c3af054f7427797e8114d1aff22ba90ddae82b8ffc"
+      }
+    }
+  ]
+}

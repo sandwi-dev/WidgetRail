@@ -20,7 +20,32 @@ internal sealed partial class OverlayShellPage
                 ? ChooseAutomaticReplayAsync(windows, work.Command, token)
                 : ChooseReplayOnDispatcherAsync(work, token),
             error => Diagnostics.FrontendFailureLog.Current.Write("replay-coordinator", error));
+        replayCoordinator.RecordingStarted += (widgetId, sessionId, application) => DispatcherQueue.TryEnqueue(() =>
+            _ = ShowReplayNoticeAsync(application, "replay-start." + sessionId, "Replay recording started", WidgetNotificationRetention.Pending, widgetId));
+        session.ReplayStatusChanged += ReplayHintChanged;
         replayCoordinator.Start();
+    }
+    private readonly object replayHintGate = new();
+    private (TrayReplayState Commands, CaptureReplayPhase Phase, CaptureReplayIssue Issue, bool Saving) lastReplayHints;
+    private long lastReplayHintRevision = -1;
+    private bool replayHintRefreshQueued;
+    private void ReplayHintChanged(CaptureReplayStatus status)
+    {
+        lock (replayHintGate)
+        {
+            if (status.Revision <= lastReplayHintRevision) return;
+            lastReplayHintRevision = status.Revision;
+            var current = (TrayReplayState.From(status), status.Phase, status.Issue, status.Saving);
+            if (current == lastReplayHints) return;
+            lastReplayHints = current;
+            if (replayHintRefreshQueued) return;
+            replayHintRefreshQueued = true;
+        }
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            lock (replayHintGate) replayHintRefreshQueued = false;
+            if (!retired && (RadialOpen || favoriteFlyout is not null)) RefreshFavoriteHints();
+        });
     }
     internal void SetReplaySuspended(bool suspended) => replayCoordinator?.SetSuspended(suspended);
 
@@ -41,15 +66,10 @@ internal sealed partial class OverlayShellPage
         try
         {
             token.ThrowIfCancellationRequested();
-            var observed = NativeWindowCapture.ForegroundTarget().ToTarget(command.Id);
-            var foreground = new NativeWindowPreviewTarget(observed.Handle.ToString("X"), observed.ProcessId,
-                observed.ProcessCreated.ToString("X16"), observed.ClassName);
-            var windows = await catalog.GetWindowsAsync(token).ConfigureAwait(false);
-            var window = windows.FirstOrDefault(item => !item.IsMinimized && item.PreviewTarget == foreground &&
-                string.Equals(item.ApplicationIdentity, command.ApprovedApplication, StringComparison.OrdinalIgnoreCase));
-            var choice = WebCaptureSourcePolicy.Candidates(windows, (uint)Environment.ProcessId).FirstOrDefault(item => item.Target == window?.PreviewTarget);
-            return window?.ApplicationIdentity is { } identity && choice is not null
-                ? new(true, choice.Target, identity, choice.ApplicationName) : new(false, Issue: CaptureReplayIssue.TargetUnavailable);
+            if (command.Approvals?.IsWellFormed() != true || command.Approvals.Applications.Count == 0) return new(false, Issue: CaptureReplayIssue.TargetUnavailable);
+            var windows = await catalog.GetWindowsAsync(token, requireComplete: true).ConfigureAwait(false);
+            var choice = WebCaptureSourcePolicy.AutomaticReplayTarget(windows, (uint)Environment.ProcessId, command.Approvals);
+            return choice is not null ? new(true, choice.Target, choice.ApplicationIdentity, choice.ApplicationName) : new(false, Issue: CaptureReplayIssue.TargetUnavailable);
         }
         catch (Exception error) when (error is not (OutOfMemoryException or StackOverflowException or AccessViolationException) && !token.IsCancellationRequested)
         { return new(false, Issue: CaptureReplayIssue.TargetUnavailable); }
@@ -65,13 +85,60 @@ internal sealed partial class OverlayShellPage
         })) completion.TrySetResult(new(false));
         return completion.Task.WaitAsync(token);
     }
+    private async Task ChooseReplayApprovalAsync(HostReplayApprovalPicker picker, string? widgetId)
+    {
+        activeApprovalPicker = picker.Id;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        approvalPickerLifetime = cancellation;
+        var token = cancellation.Token;
+        var selection = selectionVersion;
+        var session = owner!.Session;
+        bool Current() => !token.IsCancellationRequested && !retired && visible && foreground && interactive &&
+            widgetId is not null && widgetId == activeWidget && selectionVersion == selection;
+        ReplayApprovedApplication? selected = null;
+        try
+        {
+            if (!Current() || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen) return;
+            var windows = await TaskWindows.GetWindowsAsync(token);
+            if (!Current()) return;
+            var choices = WebCaptureSourcePolicy.Candidates(windows, (uint)Environment.ProcessId)
+                .Where(item => item.ApplicationIdentity is not null && !picker.Approved.Contains(item.ApplicationIdentity) && !OwnsBrowserUiProcess(item.Target.ProcessId))
+                .DistinctBy(item => item.ApplicationIdentity, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(item => item.ApplicationName, StringComparer.CurrentCultureIgnoreCase).ToArray();
+            if (choices.Length == 0)
+            {
+                await ShowHostChoiceAsync("Add approved application", "Open an application you want to approve, then try again.",
+                    (HostDialogChoice[])[new("close", "Close")], token, directDecisionButtons: true);
+                return;
+            }
+            var id = await ShowHostChoiceAsync("Add approved application", "Allow replay to start automatically for this application.",
+                choices.Select(item => new HostDialogChoice(item.Id, item.ApplicationName)).ToArray(), token,
+                configure: dialog => dialog.ConfigurePreferenceList(closeLabel: "Cancel"));
+            if (Current() && choices.FirstOrDefault(item => item.Id == id) is { } chosen)
+                selected = new(chosen.ApplicationIdentity!, chosen.ApplicationName);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("replay-approval-picker", error); }
+        finally
+        {
+            try { if (!retired) await session.CompleteReplayApprovalAsync(picker.Id, Current() ? selected : null, lifetime.Token); }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("replay-approval-completion", error); }
+            approvalPickerLifetime = null;
+            activeApprovalPicker = null;
+        }
+    }
     private async Task<ReplayCaptureDecision> ChooseReplayAsync(HostReplayWork work, CancellationToken token)
     {
-        if (work.Command is not { } command || work.WidgetId is null || retired || !visible || !foreground || !interactive ||
-            activeWidget != work.WidgetId || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen || owner is null) return new(false);
+        if (work.Command is not { } command || work.WidgetId is null || retired || !visible || !foreground ||
+            HostChoiceActive || LocalInstallActive || SystemFilePickerOpen || owner is null) return new(false);
+        bool OwnsSource() => command.RequestedFromTray ? !interactive && !PinnedInputActive :
+            interactive && activeWidget == work.WidgetId;
+        if (!OwnsSource()) return new(false);
         var selection = selectionVersion;
         var requestOwner = owner;
-        bool Current() => !retired && visible && foreground && interactive && activeWidget == work.WidgetId &&
+        bool Current() => !retired && visible && foreground && OwnsSource() &&
             selectionVersion == selection && ReferenceEquals(owner, requestOwner) && !token.IsCancellationRequested;
         if (!await requestOwner.Session.IsReplayCommandCurrentAsync(command.Id, token) || !Current()) return new(false);
         var recording = command.Settings.Recording;
@@ -86,16 +153,25 @@ internal sealed partial class OverlayShellPage
         }
         var windows = await TaskWindows.GetWindowsAsync(token);
         if (!Current()) return new(false);
-        var identities = windows.Where(window => window.ApplicationIdentity is not null && window.PreviewTarget is not null)
-            .ToDictionary(window => window.PreviewTarget!, window => window.ApplicationIdentity!);
         var choices = WebCaptureSourcePolicy.Candidates(windows, (uint)Environment.ProcessId)
-            .Where(item => identities.ContainsKey(item.Target) && !OwnsBrowserUiProcess(item.Target.ProcessId)).ToArray();
+            .Where(item => item.ApplicationIdentity is not null && !OwnsBrowserUiProcess(item.Target.ProcessId)).ToArray();
         if (choices.Length == 0) return new(false, Issue: CaptureReplayIssue.TargetUnavailable);
-        var result = await ShowHostChoiceAsync("Record an application", details,
-            choices.Select(item => new HostDialogChoice(item.Id, item.Label)).ToArray(), token,
-            configure: dialog => dialog.ConfigurePreferenceList(closeLabel: "Cancel"));
+        var approved = command.Approvals;
+        var focused = WebCaptureSourcePolicy.FocusedApprovedTarget(choices, approved, ForegroundBeforeOverlay?.Invoke());
+        if (focused is not null) return new(true, focused.Target, focused.ApplicationIdentity, focused.ApplicationName);
+        HostChoiceDialog? chooser = null;
+        var rows = choices.Select(item => new HostDialogChoice(item.Id, item.Label,
+            Value: approved.Contains(item.ApplicationIdentity) ? "Approved" : null)).ToArray();
+        var result = await ShowHostChoiceAsync("Record an application", details, rows, token, configure: dialog =>
+        {
+            chooser = dialog;
+            dialog.ConfigureChoiceActions("Record", "Record and add to approved", id =>
+                approved.Applications.Count < ReplayApplicationApprovals.MaximumApplications &&
+                choices.Any(item => item.Id == id && !approved.Contains(item.ApplicationIdentity)));
+        });
         if (!Current() || !await requestOwner.Session.IsReplayCommandCurrentAsync(command.Id, token)) return new(false);
         var chosen = choices.FirstOrDefault(item => item.Id == result);
-        return chosen is null ? new(false) : new(true, chosen.Target, identities[chosen.Target], chosen.ApplicationName);
+        return chosen is null ? new(false) : new(true, chosen.Target, chosen.ApplicationIdentity, chosen.ApplicationName,
+            AddToApproved: chooser?.UsedSecondaryChoiceAction == true);
     }
 }

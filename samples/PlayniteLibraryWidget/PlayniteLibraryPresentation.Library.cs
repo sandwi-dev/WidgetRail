@@ -5,28 +5,7 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal static partial class PlayniteLibraryPresentation
 {
-    internal static WidgetElement FavoriteCard(PlayniteLibraryHomeContent content, PlayniteLibraryHomeItem item)
-    {
-        var id = "playnite-library.item.favorite." + item.Key.Value;
-        var current = item.Row.Current;
-        var surface = UI.ActionSurface(PlayniteLibraryActions.DetailsOpen, id, item.Row.Display.DisplayName,
-            ActionSurfaceOrientation.Horizontal, UI.Icon(FavoriteIcon(true), id + ".heart", "Favorite").Classes("playnite-library-favorite-icon"),
-            UI.Stack(id + ".copy",
-                UI.Text(item.Row.Display.DisplayName, id + ".title").Classes("playnite-library-favorite-title"),
-                UI.Text(item.Row.Display.SourceAttribution, id + ".source").Classes("playnite-library-summary-meta")))
-            .Disabled(!content.ActionsEnabled || current is null)
-            .Classes("playnite-library-favorite-card");
-        if (current is not null)
-            surface = surface with { ContextMenuButton = ControllerButton.X,
-                ContextActions = PlayniteLibraryGameOptions.Create(current, true, content.Query.Categories, !content.ActionsEnabled) };
-        WidgetElement card = surface.Shortcut(ControllerButton.Y, actionId: PlayniteLibraryActions.QuickPlay, label: "Play");
-        if (current is not null)
-            card = card.PresentOnFocus(FocusedGameSummary(item.Row.Display.SavedId, item.Row.Display.DisplayName,
-                item.Row.Display.SourceAttribution, "Play", true, null, current));
-        if (current?.Presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Hero) is { Handle.Length: > 0 } background)
-            card = card.FocusBackground(new WidgetArtworkHandle(background.Handle));
-        return card.CollectionItem(item.Key);
-    }
+
     internal static WidgetIcon FavoriteIcon(bool selected) => WidgetIcon.PackageSvg(
         selected ? "playnite.favorite.filled" : "playnite.favorite.outline", WidgetPackageIconColorMode.ThemeTint, WidgetGlyph.Like);
 

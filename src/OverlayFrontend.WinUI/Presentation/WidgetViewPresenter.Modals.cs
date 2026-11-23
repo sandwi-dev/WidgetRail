@@ -139,8 +139,10 @@ internal sealed partial class WidgetViewPresenter
             // dialog has that contract, keep it stable instead of fading a live
             // swap chain or moving a WebView on a different clock.
             layer.ApplyAppearance(HasDialogSurface(dialog) ? appearance with { AnimateWidgetModals = false } : appearance, systemAnimationsEnabled);
+            layer.OverlayPresentation = node.OverlayModal;
             layer.Configure(bindings[node.Children[0].Id].LayoutElement, bindings[dialog.Id].LayoutElement,
-                Length(dialog, "width") ?? 760, Length(dialog, "height") ?? 640,
+                Length(dialog, "width") ?? 760,
+                ComputedStyle(dialog, "height")?.Text == "auto" ? double.NaN : Length(dialog, "height") ?? 640,
                 Length(dialog, "max-width") ?? double.PositiveInfinity,
                 Length(dialog, "max-height") ?? double.PositiveInfinity, bindings[dialog.Id].Element,
                 node.AnchoredPresentation, () => ResolvePresentationAnchor(node.AnchoredPresentation?.Anchor, this));
@@ -152,6 +154,19 @@ internal sealed partial class WidgetViewPresenter
     private bool IsModalDialog(Declaration declaration, IReadOnlyDictionary<string, Declaration> plan) =>
         declaration.ParentId is { } parent && plan.TryGetValue(parent, out var owner) &&
         owner.Node.Kind == ViewNodeKind.ModalLayer && owner.Node.Children[1].Id == declaration.Node.Id;
+
+    private bool IsModalBackdrop(string id)
+    {
+        // A background can own a nested navigation scope and remain visible on every tab.
+        // Only the background branch of an actual modal loses its artwork timeline.
+        for (var child = declarations.GetValueOrDefault(id); child?.ParentId is { } parentId;)
+        {
+            var parent = declarations[parentId];
+            if (parent.Node.Kind == ViewNodeKind.ModalLayer && parent.Node.Children[0].Id == child.Node.Id) return true;
+            child = parent;
+        }
+        return false;
+    }
 
     private bool RejectInactiveFocus(Microsoft.UI.Xaml.Input.GettingFocusEventArgs args)
     {

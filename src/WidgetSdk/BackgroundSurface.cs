@@ -80,6 +80,7 @@ public sealed record BackgroundSurfaceElement : WidgetElement
     public WidgetElement Content { get; init; }
     public BackgroundSurfaceArtwork? Artwork { get; init; }
     public bool UsesFocusedDescendantArtwork { get; init; }
+    public string? ForegroundBackgroundProcessKey { get; init; }
     /// <summary>Retains a valid focused artwork source when focus leaves it. Defaults to true.</summary>
     public bool RetainLastPresentation { get; init; } = true;
 
@@ -102,6 +103,7 @@ public sealed record BackgroundSurfaceElement : WidgetElement
         ArtworkHandle = Artwork?.ArtworkHandle?.Value,
         ImageFit = Artwork?.Fit,
         UsesFocusedDescendantArtwork = UsesFocusedDescendantArtwork ? true : null,
+        ForegroundBackgroundProcessKey = ForegroundBackgroundProcessKey,
         RetainLastPresentation = RetainLastPresentation ? null : false,
         StyleClasses = StyleClasses,
         Children = [Content.ToProtocolNode()],

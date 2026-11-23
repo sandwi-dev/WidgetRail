@@ -13,12 +13,9 @@ request and exact worker owner; a path embedded in a widget payload never grants
 access. Selection is limited to 16 files, each at most 64 GiB. A provider can impose
 smaller limits before upload.
 
-The native widget picker shares browser uploads' shell input/focus handoff and
-the existing Windows common-dialog cancellation lifetime. The frontend binds it
-to the requesting widget view or active pin, rechecks broker authority while it
-is open, and closes and joins the actual dialog on cancellation or teardown.
-Late completion cannot select files for a newer request. Selecting more than
-16 files shows a limit message and cancels; files are never silently dropped.
+The host opens its themed file browser for the requesting widget or pin. A checks a file and holding LT/L2 extends a selection while navigating. Checked files stay selected across folders and filters. From the file list, X confirms the selection, Y searches, LB goes to the parent folder, B goes back, and Menu cancels the picker. The picker shows the corresponding glyphs for the active controller. Keyboard users can press Ctrl+Enter to confirm, Ctrl+F to search this folder, and Ctrl+L to paste a location.
+
+The SDK request can supply an optional `CommitLabel`, such as “Attach”. The picker enforces the request limit, and the broker rechecks the caller's authority at completion. **Windows picker…** opens the Windows picker for shell-specific locations.
 
 `FromCaptureAsync` retains a reference from an existing, owned `CaptureAttachment`.
 Keep that capture alive until a share is accepted or canceled. Before acceptance,

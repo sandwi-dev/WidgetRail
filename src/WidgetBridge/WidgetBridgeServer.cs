@@ -417,10 +417,12 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         case BridgeMessageTypes.CompleteCaptureEdit:
         case BridgeMessageTypes.CancelCaptureEdit:
         case BridgeMessageTypes.CompleteCaptureSource:
+        case BridgeMessageTypes.CompleteReplayApproval:
         case BridgeMessageTypes.CheckCaptureSource:
         case BridgeMessageTypes.CompleteCaptureCopy:
         case BridgeMessageTypes.CheckCaptureCopy:
         case BridgeMessageTypes.CompleteCaptureFolder:
+        case BridgeMessageTypes.DecideCaptureDestination:
         case BridgeMessageTypes.CheckCaptureFolder:
         case BridgeMessageTypes.ResolveCaptureAttachment:
             await HandleCaptureAsync(request, cancellationToken).ConfigureAwait(false);
@@ -460,7 +462,9 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
         case BridgeMessageTypes.ListWidgets:
             var (listCatalog, listRevision) = _registry.CatalogSnapshot();
             await ReplyAsync(BridgeMessageTypes.Widgets, request.RequestId,
-                    new { revision = listRevision, isComplete = listCatalog.IsComplete, widgets = listCatalog.Widgets }, cancellationToken)
+                    request.Payload.TryGetProperty("includeIntentHandlers", out var include) && include.ValueKind == JsonValueKind.True
+                        ? (object)new { revision = listRevision, isComplete = listCatalog.IsComplete, widgets = listCatalog.Widgets, intentHandlers = listCatalog.RegisteredIntentHandlers }
+                        : new { revision = listRevision, isComplete = listCatalog.IsComplete, widgets = listCatalog.Widgets }, cancellationToken)
                 .ConfigureAwait(false);
             break;
         case BridgeMessageTypes.GetPlatformAppearance:
@@ -474,6 +478,28 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 _appearance.CreatePayload(),
                 cancellationToken).ConfigureAwait(false);
             break;
+        case BridgeMessageTypes.PreviewCatalogueTheme:
+        {
+            var preview = BridgeJson.FromElement<BridgeCatalogueThemePreviewRequest>(request.Payload);
+            var (catalog, revision) = _registry.CatalogSnapshot();
+            var configured = catalog.GetConfigured(preview.WidgetId);
+            if (_marketplace is null || !IsTrustedMarketplace(configured) ||
+                !string.Equals(preview.RuntimeGeneration, configured.WorkerFingerprint[..32], StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(preview.PresentationGeneration, configured.CatalogFingerprint[..32], StringComparison.OrdinalIgnoreCase) ||
+                preview.Key is not { Length: 64 } || !preview.Key.All(char.IsAsciiHexDigit))
+                throw new BridgeProtocolException("Theme preview authority is unavailable.");
+            Dictionary<string, BridgeNodeRenderStyles> styles;
+            try { styles = await _marketplace.PreviewThemeAsync(preview.Key, cancellationToken).ConfigureAwait(false); }
+            catch (Exception error) when (error is not OperationCanceledException and not OutOfMemoryException)
+            {
+                throw new BridgeProtocolException("The catalogue preview could not be verified.");
+            }
+            var (latest, latestRevision) = _registry.CatalogSnapshot();
+            if (latestRevision != revision || !ReferenceEquals(latest, catalog))
+                throw new BridgeProtocolException("The catalogue changed during preview.");
+            await ReplyAsync(BridgeMessageTypes.CatalogueThemeStyles, request.RequestId, styles, cancellationToken).ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.ReadIndexedRange:
         {
             var rangeRequest = BridgeJson.FromElement<BridgeIndexedRangeRequest>(request.Payload);
@@ -571,7 +597,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 snapshotRequest.BaseSequence,
                 snapshotRequest.RecoveryOriginSequence,
                     _sessionCancellation,
-                    cancellationToken)
+                    cancellationToken, snapshotRequest.TrayPreparation)
                 .ConfigureAwait(false);
             await ReplyPresentationAsync(
                 request.RequestId,
@@ -959,6 +985,9 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                      controllerRequest.ExpectedSelectOptionActionId)))
                 throw new BridgeProtocolException(
                     "Expected Select option action authority is invalid.");
+            if (controllerRequest.ObserveTrayCompletion && (controllerRequest.Input.Context != ControllerInputContext.TrayQuickAction || controllerRequest.WorkerRun is null))
+                throw new BridgeProtocolException("Only tray actions expose completion.");
+            Task<TrayActionResult>? trayCompletion = null;
             using var controllerPublication = await _registry.SendControllerInputAsync(
                     controllerRequest.WidgetId,
                     controllerRequest.Input,
@@ -967,11 +996,15 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                     cancellationToken,
                     controllerRequest.ExpectedActionId,
                     controllerRequest.ExpectedSelectOptionActionId,
-                    controllerRequest.WorkerRun)
+                    controllerRequest.WorkerRun,
+                    controllerRequest.ObserveTrayCompletion ? work => trayCompletion = work : null)
                 .ConfigureAwait(false);
             var handled = controllerPublication.Value;
             await ReplyAsync(BridgeMessageTypes.ControllerInputResult, request.RequestId,
                     new { handled }, cancellationToken).ConfigureAwait(false);
+            if (controllerRequest.ObserveTrayCompletion && controllerRequest.WorkerRun is { } trayRun)
+                _ = PublishTrayCompletionAsync(trayCompletion ?? Task.FromResult(new TrayActionResult(handled)),
+                    controllerRequest.WidgetId, controllerRequest.Input.Sequence, trayRun, _sessionCancellation);
             break;
         }
         case BridgeMessageTypes.ConnectProtectedWifi:
@@ -1288,7 +1321,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                     exclusiveControllerControl: _supportsExclusiveControllerControl,
                     heldDpadScroll: _supportsHeldDpadScroll,
                     startupRegistration: _supportsStartupRegistration,
-                    marketplace: _marketplace is null ? null : _marketplace.HandleAsync,
+                    marketplace: _marketplace is null ? null : HandleSettingsMarketplaceAsync,
                     appUpdates: _appUpdates.HandleAsync)
                 : _consentStore is null || _platformBackend is null
                     ? null
@@ -1468,6 +1501,13 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             marketplace: IsTrustedMarketplace(configured) && _marketplace is not null ? HandleMarketplaceWidgetAsync : null);
     }
 
+    private ValueTask<MarketplaceSnapshot> HandleSettingsMarketplaceAsync(MarketplaceCommand command, CancellationToken token)
+    {
+        if (command.Action is "themes" or "theme-status" or "theme-install" or "theme-install-apply" or "theme-apply")
+            throw new PlatformDiagnosticsException("invalid_marketplace_command");
+        return _marketplace!.HandleAsync(command, token);
+    }
+
     private async ValueTask<MarketplaceSnapshot> HandleMarketplaceWidgetAsync(MarketplaceCommand command,CancellationToken token)
     {
         try { return _marketplace is null ? MarketplaceSnapshot.Unavailable : await _marketplace.HandleAsync(command,token).ConfigureAwait(false); }
@@ -1514,7 +1554,15 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 sequence, effect.InitiatedAtMilliseconds,
                 effect.Kind == BrokerHostEffectKind.ActivateTaskWindow && effect.WindowId is { } id && effect.WindowTarget is { } target
                     ? new Dictionary<string, NativeWindowPreviewTarget> { [id] = target } : null,
-                effect.PinnedLayoutId,effect.PinnedSelectionId)).ConfigureAwait(false);
+                effect.PinnedLayoutId,effect.PinnedSelectionId,effect.LaunchStartedAtMilliseconds)).ConfigureAwait(false);
+    }
+
+    private async Task PublishTrayCompletionAsync(Task<TrayActionResult> work, string widgetId, long sequence, BridgeWorkerRun worker, CancellationToken session)
+    {
+        TrayActionResult result;
+        try { result = await work.WaitAsync(session).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (session.IsCancellationRequested) { return; }
+        await SendEventAsync(BridgeMessageTypes.TrayActionFinished, new BridgeTrayActionFinished(widgetId, sequence, worker, result), session).ConfigureAwait(false);
     }
 
     private async Task SendEventAsync<T>(string type, T payload)
@@ -1635,6 +1683,11 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             throw new BridgeProtocolException("Requested controller value must be finite.");
         if (!Enum.IsDefined(input.Origin))
             throw new BridgeProtocolException("Controller input origin is invalid.");
+        if (input.Context == ControllerInputContext.TrayQuickAction &&
+            (!TrayActionContract.ValidOffer(input.TrayOffer) || input.Sequence <= 0 || input.SnapshotSequence <= 0 ||
+             input.Phase != ControllerEventPhase.Pressed || input.RequestedValue is not null || input.FocusedElementId is not null ||
+             input.PinnedLayoutId is not null || input.IsPinnedLayoutSelected is not null))
+            throw new BridgeProtocolException("Invalid tray invocation.");
         if (input.Context == ControllerInputContext.DashboardQuickAction &&
             (input.Sequence <= 0 || input.SnapshotSequence <= 0))
             throw new BridgeProtocolException(

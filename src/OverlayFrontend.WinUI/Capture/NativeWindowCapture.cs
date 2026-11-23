@@ -100,7 +100,9 @@ internal static partial class NativeWindowCapture
         internal CaptureMediaProperties? Properties { get; init; }
         internal CaptureRecordingConfiguration? ResolvedRecording { get; init; }
     }
-    internal static async Task<CapturedResult> RunAsync(HostWindowCapture request, CancellationToken token, CancellationToken stop = default)
+    internal sealed record OverlayScreenshot(NativeWindowPreviewTarget Target, nint Overlay);
+    internal static async Task<CapturedResult> RunAsync(HostWindowCapture request, CancellationToken token, CancellationToken stop = default,
+        OverlayScreenshot? screenshot = null)
     {
         if (request.Options is { } options)
         {
@@ -108,12 +110,29 @@ internal static partial class NativeWindowCapture
             var validation = available.Validate(options);
             if (!validation.Supported) throw new BrokerException(validation.ErrorCode!, "The requested capture settings are unavailable.");
         }
-        return await Task.Run(() => Run(request, token, stop), token).ConfigureAwait(false);
+        return await Task.Run(() => Run(request, token, stop, screenshot), token).ConfigureAwait(false);
     }
-    private static unsafe CapturedResult Run(HostWindowCapture request, CancellationToken token, CancellationToken stop)
+    private static NativePreviewTarget SelectCaptureTarget(OverlayScreenshot? screenshot)
+    {
+#if ENABLE_WIDGET_VALIDATION
+        if (TryGetFixtureCaptureTarget(out var fixture, screenshot)) return fixture;
+#endif
+        return screenshot is null ? ForegroundTarget() : ToNative(screenshot.Target);
+    }
+
+    private static NativePreviewTarget ToNative(NativeWindowPreviewTarget target)
+    {
+        return NativePreviewTarget.From(new("", Convert.ToUInt64(target.Handle, 16), target.ProcessId,
+            Convert.ToUInt64(target.ProcessCreated, 16), target.ClassName));
+    }
+
+    private static unsafe CapturedResult Run(HostWindowCapture request, CancellationToken token, CancellationToken stop, OverlayScreenshot? screenshot)
     {
         token.ThrowIfCancellationRequested();
-        var target = ForegroundTarget();
+        if (screenshot is not null && (request.Kind != WindowCaptureKind.Screenshot ||
+            request.Options?.Preparation.DelaySeconds != 0 || screenshot.Overlay == 0))
+            throw new InvalidOperationException("Invalid immediate screenshot request.");
+        var target = SelectCaptureTarget(screenshot);
         var root = GCHandle.Alloc(new Control(token, stop));
         try
         {
@@ -144,7 +163,10 @@ internal static partial class NativeWindowCapture
                     AudioMode = (uint)(video?.Audio ?? CaptureAudioMode.None) };
                 var output = new ConfiguredResult { Size = (uint)sizeof(ConfiguredResult), Version = 3 };
                 int code;
-                if(resolved is null)
+                if (screenshot is not null)
+                    code = CaptureOverlayScreenshot(in target, screenshot.Overlay, request.OutputPath, in options,
+                        (nint)(delegate* unmanaged[Stdcall]<nint, int>)&Current, GCHandle.ToIntPtr(root), ref output);
+                else if(resolved is null)
                     code = settings.OutputPurpose == CaptureOutputPurpose.LibraryRecording
                         ? CaptureLibraryRecording(in target, request.OutputPath, in options, 0, 0, 0,
                             (nint)(delegate* unmanaged[Stdcall]<nint, int>)&Current, GCHandle.ToIntPtr(root), ref output)
@@ -189,6 +211,9 @@ internal static partial class NativeWindowCapture
     }
     [LibraryImport("WinUiWindowPreviewNative.dll", EntryPoint = "WrailCaptureWindow", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int Capture(in NativePreviewTarget target, string path, uint kind, nint authority, nint context, ref Result result);
+    [LibraryImport("WinUiWindowPreviewNative.dll", EntryPoint = "WrailCaptureOverlayScreenshot", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int CaptureOverlayScreenshot(in NativePreviewTarget target, nint overlay, string path, in Options options,
+        nint authority, nint context, ref ConfiguredResult result);
     [LibraryImport("WinUiWindowPreviewNative.dll", EntryPoint = "WrailCaptureWindowConfigured", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int CaptureConfigured(in NativePreviewTarget target, string path, in Options options, nint authority, nint context, ref ConfiguredResult result);
     [LibraryImport("WinUiWindowPreviewNative.dll", EntryPoint = "WrailCaptureWindowLibraryV1", StringMarshalling = StringMarshalling.Utf16)]

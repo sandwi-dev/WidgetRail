@@ -1,5 +1,6 @@
 .capture-library { padding: 16px; gap: 12px; background: var(--surface); color: var(--text); }
 .capture-library-base { background: transparent; }
+.capture-selection-actions { width: 100%; min-width: 0px; flex-grow: 0; gap: 8px; padding: 0px; }
 .capture-title { font-size: 24px; font-weight: 600; }
 .capture-heading { font-size: 17px; font-weight: 600; text-align: start; max-lines: 2; text-overflow: ellipsis; }
 .capture-help { font-size: 13px; color: var(--text-muted); text-align: start; }
@@ -16,6 +17,7 @@
 .capture-confirm-summary { padding: 12px; gap: 4px; background: var(--surface-raised); corner-radius: 8px; }
 .capture-confirm-warning { text-align: start; }
 .capture-confirm-actions { justify: end; gap: 12px; }
+.capture-approval-list { gap: 8px; }
 .capture-confirm-button { min-width: 96px; }
 .capture-delete { color: var(--danger, #c98181); border-color: var(--danger, #c98181); border-width: 1px; }
 .capture-delete:focused { color: var(--danger, #c98181); outline-color: var(--focus); }
@@ -100,7 +102,7 @@ preview-footer.capture-gallery-preview { padding: 8px 12px 12px; }
 .capture-hint-button { min-height: 44px; min-width: 0px; padding: 10px 12px; gap: 10px; align: center; corner-radius: 8px; border-width: 1px; border-color: alpha(var(--text-muted), .3); background: alpha(var(--surface-raised), .5); }
 .capture-action-icon { width: 20px; height: 20px; font-size: 20px; }
 .capture-action-label { flex-grow: 1; min-width: 0px; text-align: start; }
-.capture-action-badge { width: 24px; height: 20px; font-size: 20px; flex-grow: 0; color: var(--text-muted); }
+.capture-action-badge { font-size: 20px; flex-grow: 0; color: var(--text-muted); }
 .capture-share-action { background: alpha(var(--accent), .2); color: var(--text); border-color: alpha(var(--accent), .6); }
 .capture-share-action:focused { background: alpha(var(--accent), .3); color: var(--text); outline-color: var(--focus); }
 

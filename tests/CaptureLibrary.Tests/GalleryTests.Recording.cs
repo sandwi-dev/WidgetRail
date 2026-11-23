@@ -29,6 +29,7 @@ internal static partial class GalleryTests
         f.EncodingOverride=async(query,token)=>{entered.TrySetResult();await release.Task.WaitAsync(token);return RecordingCapabilities(query);};
         await f.Action(f.Node("capture-library.recording.manual.fps")!.SelectOptions.Single(value=>value.Label=="60 fps").ActionId);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Check(f.Node("capture-library.settings.unsaved") is not null,"Unvalidated recording changes need a warning");
         Check(f.Node("capture-library.recording.manual.save")?.IsDisabled==true,"Unqualified draft could be saved");
         release.SetResult();await f.Until(()=>f.Node("capture-library.recording.manual.save") is {} save&&save.IsDisabled!=true);
         await f.Action(f.Node("capture-library.recording.manual.save")!.ActionId!);

@@ -34,6 +34,28 @@ public sealed class PresentationPipelineTraceTests
         Assert.AreEqual(0L, log.Begin().Id);
     }
 
+    [TestMethod]
+    public void ScrollTraceRequiresVerboseAndContainsOnlyNumericGeometry()
+    {
+        var log = PresentationPipelineTrace.Log;
+        Assert.IsFalse(log.ScrollEnabled);
+        using var listener = new PipelineListener();
+        log.Scroll(1, (int)ScrollTracePhase.Request, 0, 120, 0, 90, 0, 1000, 3);
+        Assert.IsEmpty(listener.Events);
+        listener.EnableEvents(log, EventLevel.Verbose);
+        Assert.IsTrue(log.ScrollEnabled);
+        log.Scroll(1, (int)ScrollTracePhase.Request, 0, 120, 0, 90, 0, 1000, 3);
+        log.Scroll(1, (int)ScrollTracePhase.NativeViewChanged, 0, 120, 0, 120, 0, 1000, 4);
+        Assert.HasCount(2, listener.Events);
+        Assert.IsTrue(listener.Events.All(value => value.EventId == 2 && value.Values.Length == 9));
+        Assert.IsTrue(listener.Events.All(value => value.Values.All(field => field is long or int or double)));
+        Assert.AreEqual(90d, listener.Events[0].Values[5]);
+        Assert.AreEqual(120d, listener.Events[1].Values[5]);
+        listener.DisableEvents(log);
+        log.Scroll(1, (int)ScrollTracePhase.Request, 0, 150, 0, 120, 0, 1000, 3);
+        Assert.HasCount(2, listener.Events);
+    }
+
     private sealed class PipelineListener : EventListener
     {
         private List<(int EventId, object?[] Values)>? events;

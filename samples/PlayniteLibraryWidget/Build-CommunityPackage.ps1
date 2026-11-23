@@ -4,6 +4,7 @@ param(
     [string]$Configuration = 'Release',
     [string]$OutputDirectory,
     [string]$Catalog,
+    [string]$IntegrationBundleDirectory,
     [switch]$Install
 )
 
@@ -27,7 +28,7 @@ $buildLogRoot = Join-Path $repositoryRoot 'logs\playnite-package'
 $manifestPath = Join-Path $widgetRoot 'manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $bridgeOutput = Join-Path $artifactsRoot 'integration-bundle'
-& (Join-Path $widgetRoot 'Build-IntegrationPackage.ps1') -OutputDirectory $bridgeOutput
+& (Join-Path $widgetRoot 'Build-IntegrationPackage.ps1') -OutputDirectory $bridgeOutput -ReuseBundleDirectory $IntegrationBundleDirectory
 $packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).wrwidget"
 $applicationProject = Join-Path $widgetRoot 'Application\PlayniteLibraryApplication.csproj'
 $cliProject = Join-Path $repositoryRoot 'tools\WrailCli\WrailCli.csproj'
@@ -133,6 +134,10 @@ $required = @(
     'payload\integration\WidgetRail.Playnite.pext',
     'payload\integration\integration-package.json',
     'payload\WidgetRail.Playnite.Contracts.dll',
+    'payload\RemoteMediaTransport.dll',
+    'payload\HtmlAgilityPack.dll',
+    'payload\media\trailer.html',
+    'payload\media\adapter-runtime.js',
     'styles\default.wrss'
 )
 $missing = @($required | Where-Object { $_ -notin $stagedFiles })

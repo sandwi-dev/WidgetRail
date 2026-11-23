@@ -10,6 +10,17 @@ internal static class PlaybackRecoveryTests
         await using var service = new MusicService(AppContext.BaseDirectory, 0,
             (_, _) => backend, _ => Task.FromResult<IMusicProcess>(player));
         var tracks = Enumerable.Range(0, 6).Select(i => new MusicItem($"{i:00000000000}", "song", "Song " + i)).ToArray();
+        Check(service.GetTrayOffer(service.State, "play-pause") is null, "No transport before playback");
+        await service.PlayAsync(tracks, 0, default);
+        Check(service.GetTrayOffer(service.State, "previous") is null, "No previous song at the start");
+        var nextOffer = service.GetTrayOffer(service.State, "next")!;
+        Check(await service.InvokeTrayAsync(nextOffer, default) && service.State.Index == 1, "Tray next selects the offered occurrence");
+        Check(!await service.InvokeTrayAsync(nextOffer, default) && service.State.Index == 1, "A repeated stale next cannot skip again");
+        player.Emit(new { @event = "state", generation = player.Generation, state = new PlayerState(tracks[1].Id, Playing:true) });
+        var pauseOffer = service.GetTrayOffer(service.State, "play-pause")!;
+        Check(await service.InvokeTrayAsync(pauseOffer, default), "Tray pause addresses the current player generation");
+        player.Emit(new { @event = "state", generation = player.Generation, state = new PlayerState(tracks[1].Id) });
+        Check(!await service.InvokeTrayAsync(pauseOffer, default), "Stale pause does not become play");
         await service.PlayAsync(tracks, 0, default);
         var first = player.Generation;
         player.Fail(first);
@@ -112,6 +123,8 @@ internal static class PlaybackRecoveryTests
             token.ThrowIfCancellationRequested();
             var value = JsonSerializer.SerializeToElement(args, JsonProcess.Json);
             if (method == "load") Generation = value.GetProperty("generation").GetInt64();
+            if (method is "pause" or "play" && value.ValueKind == JsonValueKind.Object && value.TryGetProperty("expectedGeneration", out var expected))
+                return Task.FromResult(JsonSerializer.SerializeToElement(new { applied = expected.GetInt64() == Generation }));
             if (method == "resolve" && HelperFailed) throw new IOException("Fixture helper unavailable");
             if (method == "resolve" && value.GetProperty("videoId").GetString() == UnavailableId) throw new MusicStreamUnavailableException();
             if (method == "resolve" && value.GetProperty("refresh").GetBoolean())

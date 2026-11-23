@@ -39,8 +39,11 @@ internal sealed class BrokerWidgetCapabilityClient :
         ArgumentNullException.ThrowIfNull(request);
         var actionContext = WidgetActionInvocationContext.Current;
         var pinning = operation.CapabilityId==WidgetPinningCapabilities.Service && operation.OperationId is "pin.open" or "pin.close" or "pin.manage";
-        if(pinning && actionContext is null)throw CapabilityFailure("action_context_required");
-        var tracksHostEffect = IsCloseOnLaunch(operation, request) || pinning;
+        var launchHandoff = operation.CapabilityId == WidgetTaskSwitcherCapabilities.Switch.CapabilityId &&
+            (operation.OperationId == WidgetTaskSwitcherCapabilities.BeginLaunch.OperationId ||
+             operation.OperationId == WidgetTaskSwitcherCapabilities.CompleteLaunch.OperationId);
+        if((pinning || launchHandoff) && actionContext is null)throw CapabilityFailure("action_context_required");
+        var tracksHostEffect = IsCloseOnLaunch(operation, request) || pinning || launchHandoff;
         if (tracksHostEffect && actionContext is { IsActive: false })
             throw CapabilityFailure("stale_action_context");
         using var effectRequest = tracksHostEffect

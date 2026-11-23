@@ -57,6 +57,8 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
 
     public Task<IReadOnlyList<TaskWindowSummary>> GetTaskWindowsAsync(CancellationToken cancellationToken) =>
         _appLibrary.GetTaskWindowsAsync(cancellationToken);
+    public Task<NativeWindowPreviewTarget?> InspectLaunchWindowAsync(long handle, CancellationToken cancellationToken) =>
+        _appLibrary.InspectLaunchWindowAsync(handle, cancellationToken);
 
     public Task<PerformanceSnapshot> GetPerformanceAsync(string? targetId, CancellationToken token) =>
         _performance?.GetPerformanceAsync(targetId, token) ?? Task.FromException<PerformanceSnapshot>(

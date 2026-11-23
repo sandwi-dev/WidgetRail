@@ -30,6 +30,34 @@ internal static class CoordinatorTests
         PolicyTests.Check(errors.IsEmpty && factory.Starts == 1, "Graceful save generated errors or new worker");
     }
 
+    internal static async Task StartNotices()
+    {
+        foreach (var automatic in new[] { false, true })
+        {
+            await using var f = new ReplayFixture(enabled: automatic, automatic: automatic);
+            var host = new Host(f.Service);
+            var factory = new Factory();
+            factory.Backend.Phase = CaptureReplayPhase.Starting;
+            var notices = new ConcurrentQueue<(string Session, string App)>();
+            await using var coordinator = new ReplayCaptureCoordinator(host, factory, (_, _) => Task.FromResult(Decision()));
+            coordinator.RecordingStarted += (_, session, name) => notices.Enqueue((session, name));
+            coordinator.Start();
+            await Wait(() => host.Polls > 0);
+            if (!automatic) await f.Service.StartAsync(new object(), ReplayFixture.Actor).WaitAsync(TimeSpan.FromSeconds(5));
+            await Wait(() => factory.Backend.Renewals >= 2);
+            PolicyTests.Check(notices.IsEmpty, "A pending recorder announced a start.");
+            factory.Backend.Phase = CaptureReplayPhase.Recording;
+            await Wait(() => notices.Count == 1);
+            var id = f.Service.Status.SessionId!;
+            factory.Backend.Phase = CaptureReplayPhase.Paused;
+            await Wait(() => f.Service.Status.Phase == CaptureReplayPhase.Paused);
+            factory.Backend.Phase = CaptureReplayPhase.Recording;
+            await Wait(() => f.Service.Status.Phase == CaptureReplayPhase.Recording);
+            PolicyTests.Check(notices.ToArray() is [var started] && started == (id, "Fixture game"),
+                "The notification lost its application or repeated on resume.");
+        }
+    }
+
     internal static async Task CancelAndSuspend()
     {
         await using var f = new ReplayFixture(); var factory = new Factory();
@@ -153,10 +181,11 @@ internal static class CoordinatorTests
     private sealed class Backend : IReplayCaptureBackend
     {
         internal string? SavePath; internal volatile bool Stopped, Disposed, Ended;
+        internal volatile CaptureReplayPhase Phase = CaptureReplayPhase.Recording;
         internal int Renewals; internal readonly ConcurrentQueue<string> Events = new();
         private readonly TaskCompletionSource<ReplayBackendSaveResult> saved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<ReplayBackendState> ReadStateAsync(CancellationToken token) => Task.FromResult(new ReplayBackendState(
-            Stopped ? CaptureReplayPhase.Stopping : CaptureReplayPhase.Recording, 2, 1024, 0, Ended: Ended));
+            Stopped ? CaptureReplayPhase.Stopping : Phase, 2, 1024, 0, Ended: Ended));
         public void RenewAuthority() { if (Disposed) throw new ObjectDisposedException(nameof(Backend)); Interlocked.Increment(ref Renewals); }
         public Task<ReplayBackendSaveResult> SaveAsync(string path, int seconds, CancellationToken token)
         { Events.Enqueue("save"); SavePath = path; return saved.Task.WaitAsync(token); }

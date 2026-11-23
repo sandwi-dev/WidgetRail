@@ -38,7 +38,7 @@ internal sealed partial class OverlayShellPage
     private void PaintNotificationBell()
     {
         var palette = ShellChromePalette.Resolve(ShellPalette, Appearance);
-        foreach (var icon in new[] { notificationBell, taskSwitcherButton, ManagePinsButton, ReturnFromPinButton })
+        foreach (var icon in new[] { notificationBell, taskSwitcherButton, ManagePinsButton, FavoriteMenuButton, ReturnFromPinButton })
         {
             palette.PaintButton(icon);
         }

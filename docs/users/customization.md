@@ -6,6 +6,11 @@ actions live in the Power widget.
 
 ## General
 
+Use **Home widget** to choose which widget opens when WidgetRail starts. Settings
+is the default and the startup fallback if your choice is unavailable. Closing
+and reopening the overlay resumes the widget you were using. A new choice in
+Settings takes effect the next time WidgetRail starts.
+
 Choose the overlay position and use **Start WidgetRail when I sign in** to manage
 startup from an installed copy. WidgetRail starts quietly; your opening shortcut
 shows the overlay. If Windows has disabled the registered entry, enable it in
@@ -13,6 +18,10 @@ shows the overlay. If Windows has disabled the registered entry, enable it in
 after preview.37; on that release, use the installer or Windows Startup Apps.
 
 ## Appearance
+
+The overlay fades in and out at a fixed size by default. For instant opening and
+closing, turn off **Animations → Animate overlay opening and closing**.
+Reduced motion in Accessibility also makes opening and closing instant.
 
 **Settings → Appearance → Acrylic effects** controls WidgetRail's desktop and
 in-app acrylic blur. Turn it off to use plain material fills while preserving
@@ -117,7 +126,7 @@ widget, install packages, and manage versions. **All**, **Built-in**, and
 are built-in; Production preinstalls ordinary optional packages. Back from details
 returns to the selected widget and restores it into view.
 
-- **Install:** choose a `.wrwidget` file in the Windows file picker (mouse/keyboard). The overlay shows controller-accessible full-access approval when needed and completion dialogs. Fresh installs start enabled and ask for permissions when features need them.
+- **Install** opens the overlay file chooser for a `.wrwidget` package. Use the controller, keyboard or mouse to choose a file and review its permissions before installation. Fresh installs start enabled and ask for permissions when features need them.
 - **Update:** use **Catalogue → Updates** for catalogue add-ons, or **Update from file** in widget details for a local package. Updates preserve enabled/disabled and stopped state, permissions and saved data; new permissions are not granted automatically.
 - **Revert:** disable the widget, open **Technical details**, and choose **Revert to previous version**. Ordinary updates keep one backup and clean older versions automatically. Use the normal update action to return to the newer version.
 - **Uninstall:** remove an optional widget from its details, including one preinstalled by Production. If it is enabled, confirm **Disable and uninstall**. Its host-owned saved state, configuration and browser data are removed as part of that confirmation.
@@ -149,6 +158,28 @@ than a sandboxed widget. Review its source and publisher before enabling it.
 An integrity checksum detects changed bytes; it does not establish who wrote them.
 
 ## Controller options
+
+### Tray quick actions
+
+Open the radial tray menu and choose **Assign quick action…**. Pick a direction, then
+choose an action under its widget name. **Settings → Controllers → Tray quick
+actions** opens the same editor. Assigned actions show their directions. When
+you select one for another direction, choose whether to move it or keep both
+shortcuts. Choose **Clear assignment** to free a direction.
+
+On the radial tray, press the D-pad direction shown beside the wheel to run
+its action. The wheel shows the highlighted widget's name in its center.
+An empty direction opens the chooser. The left stick and keyboard
+arrows navigate widgets. With mouse or keyboard, open **Quick actions** beside
+**Manage pins**. Select a favorite to run it, an empty direction to assign it,
+or **Edit assignments…** to change existing bindings. A moving border marks
+an action still in progress. Reduced motion uses a stationary outline.
+
+All four directions start empty. Press an empty direction to choose an action. The chooser groups actions by installed widget. A saved assignment stays visible if its provider or target becomes unavailable. YouTube Music offers Play or pause, Previous song and Next song when its player and queue support them.
+
+With Capture Library installed, expand **Capture Library** to assign a screenshot, clip or replay command. If you assign **Save replay** with **Start replay** as its fallback, the hint reads **Start replay** while replay is off. It reads **Save replay** once buffering starts and enables saving when video is available. The capture shortcut keeps your selected widget in place and uses your saved capture settings. Reopen the overlay to finish a clip early. Successful captures save automatically.
+
+### Widget navigation
 
 D-pad and left stick normally move focus. If there are no more controls in that
 direction but the container can still scroll, navigation scrolls the remaining

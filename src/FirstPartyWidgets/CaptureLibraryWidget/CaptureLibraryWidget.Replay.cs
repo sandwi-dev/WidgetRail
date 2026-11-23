@@ -28,8 +28,13 @@ public sealed partial class CaptureLibraryWidget
         }
     },WidgetOperationLifetime.Active);
 
-    private void ApplyReplay(CaptureReplayStatus status)=>model.Update(state=>state.Replay is {} current&&current.Revision>status.Revision?state:
-        state with{Replay=status,ReplaySavedSeconds=state.Replay?.SessionId==status.SessionId?state.ReplaySavedSeconds:null});
+    private void ApplyReplay(CaptureReplayStatus status)
+    {
+        var change = model.Update(state=>state.Replay is {} current&&current.Revision>status.Revision?state:
+            state with{Replay=status,ReplaySavedSeconds=state.Replay?.SessionId==status.SessionId?state.ReplaySavedSeconds:null});
+        if (showApprovals && change.Current.Replay?.SettingsRevision is { } revision && revision != change.Previous.Replay?.SettingsRevision)
+            approvedApplications.EnsureLoaded(revision);
+    }
     private static string ReplayAction(string command,CaptureReplayStatus? status)=>"capture-library.replay."+command+"."+(status?.SessionId??"none");
     private static string ReplaySettingAction(CaptureReplayStatus status,string value)=>"capture-library.replay.setting."+
         status.SettingsRevision.ToString(CultureInfo.InvariantCulture)+"."+value;
@@ -73,7 +78,7 @@ public sealed partial class CaptureLibraryWidget
                     ReplaySavedSeconds=result.Outcome==CaptureReplayOutcome.Accepted&&value.Replay?.SessionId==session?
                         result.ActualDurationSeconds:value.ReplaySavedSeconds});
                 if(result.Outcome==CaptureReplayOutcome.Accepted)
-                { PublishFeedback($"Saved {result.ActualDurationSeconds:0.#} seconds to Capture Library."); QueueGalleryRefresh(); }
+                { PublishFeedback(WidgetRail.Internal.CaptureReplayFeedback.Saved(result)); QueueGalleryRefresh(); }
                 else PublishFeedback(ReplayIssue(result.Issue));
             });return true;
         }
@@ -117,8 +122,22 @@ public sealed partial class CaptureLibraryWidget
             {if(context.IsCurrent)model.Update(state=>state with{ReplayNotice=Explain(error.ErrorCode)});}
         },WidgetOperationLifetime.Widget);
     }
-    private static bool CanSaveReplay(CaptureReplayStatus status)=>status.SessionId is not null&&!status.Saving&&status.BufferedDurationSeconds>0&&
-        status.Phase is CaptureReplayPhase.Recording or CaptureReplayPhase.Paused;
+    private static bool CanSaveReplay(CaptureReplayStatus status) => TrayReplayState.From(status).CanSave;
+    private ContainerElement ReplayShortcuts(ContainerElement root, State state)
+    {
+        if (state.Busy || Operations.IsBusy(ReplayOperation)) return root;
+        var status = state.Replay;
+        if (status is not null && CanSaveReplay(status))
+            root = root.Shortcut(ControllerButton.LeftBumper, ReplayAction("save", status), label: "Save replay");
+        if (status is not null && (status.Settings.Enabled || ReplaySettingsLocked(status)))
+        {
+            if (status.Phase != CaptureReplayPhase.Stopping)
+                root = root.Shortcut(ControllerButton.RightBumper, ReplayAction("stop", status), label: "Stop recording");
+        }
+        else if (CurrentRecordingDraft(true, RecordingState(state)) is null)
+            root = root.Shortcut(ControllerButton.RightBumper, "capture-library.replay.start", label: "Start recording");
+        return root;
+    }
     private static bool ReplaySettingsLocked(CaptureReplayStatus status)=>status.Saving||status.Phase is CaptureReplayPhase.Starting or CaptureReplayPhase.Recording or CaptureReplayPhase.Paused or CaptureReplayPhase.Stopping;
     private static readonly int[] ReplayDurations=[15,30,60,120];
     private static readonly int[] ReplayBudgets=[32,64,128,256];
@@ -148,7 +167,7 @@ public sealed partial class CaptureLibraryWidget
         {
             CaptureReplayPhase.Recording=>$"Recording · {status.TargetName??"Application"}",
             CaptureReplayPhase.Paused=>$"Paused · {status.TargetName??"Application"}",
-            CaptureReplayPhase.Waiting=>status.Settings.AutoStart?"Waiting for the approved application":"Recording is waiting for you to start it",CaptureReplayPhase.Starting=>"Starting recording…",
+            CaptureReplayPhase.Waiting=>status.Settings.AutoStart?"Waiting for a single approved application":"Recording is waiting for you to start it",CaptureReplayPhase.Starting=>"Starting recording…",
             CaptureReplayPhase.Stopping=>"Stopping recording…",CaptureReplayPhase.Error=>ReplaySettingsIssue(status.Issue),_=>"Replay recording is off",
         };
         var live=status?.Phase==CaptureReplayPhase.Recording;
@@ -165,15 +184,24 @@ public sealed partial class CaptureLibraryWidget
         if(status is not null && (status.Settings.Enabled || ReplaySettingsLocked(status)))
         {
             if(status.Phase is CaptureReplayPhase.Error or CaptureReplayPhase.Waiting)controls.Add(UI.Button(status.Phase==CaptureReplayPhase.Error?"Try again":"Start now","capture-library.replay.start","capture-library.replay.start").Disabled(busy||draft));
-            controls.Add(UI.Button("Stop",ReplayAction("stop",status),"capture-library.replay.stop")
-                .Disabled(busy||status.Phase==CaptureReplayPhase.Stopping).Classes("capture-replay-command"));
+            var hints = !state.Busy && (state.Settings || gallery.Selection?.IsActive != true);
+            var canStop = !busy && status.Phase != CaptureReplayPhase.Stopping;
+            controls.Add(HintedAction("Stop", ReplayAction("stop", status), canStop && hints ? ControllerButton.RightBumper : null,
+                busy, id: "capture-library.replay.stop").Disabled(!canStop).AddClasses("capture-replay-command"));
             if(status.Saving||status.Phase is CaptureReplayPhase.Recording or CaptureReplayPhase.Paused)
-                controls.Add(UI.Button(status.Saving?"Saving…":"Save replay",ReplayAction("save",status),"capture-library.replay.save")
-                    .Disabled(!CanSaveReplay(status)||busy).Classes("capture-primary","capture-replay-command"));
+            {
+                var canSave = !busy && CanSaveReplay(status);
+                controls.Add(HintedAction(status.Saving ? "Saving…" : "Save replay", ReplayAction("save", status),
+                    canSave && hints ? ControllerButton.LeftBumper : null, busy, id: "capture-library.replay.save")
+                    .Disabled(!canSave).AddClasses("capture-primary", "capture-replay-command"));
+            }
         }
         else controls.Add(UI.Button("Start recording","capture-library.replay.start","capture-library.replay.start").Disabled(busy||draft).Classes("capture-primary"));
         var row=UI.Row("capture-library.replay.controls",controls.ToArray()).Classes("capture-replay-controls");
         var content=new List<WidgetElement>{row};
+        if (status is { Issue: CaptureReplayIssue.AudioUnavailable, Phase: CaptureReplayPhase.Recording or CaptureReplayPhase.Paused })
+            content.Add(UI.Text("Reconnecting application audio. Replay is still recording video.",
+                "capture-library.replay.audio-warning").Classes("capture-replay-warning"));
         if(state.ReplayNotice is {} notice)content.Add(UI.Text(notice,"capture-library.replay.notice").Classes("capture-help","capture-replay-warning"));
         return UI.Stack("capture-library.replay.panel",content.ToArray()).Classes("capture-replay-deck");
     }
@@ -198,8 +226,10 @@ public sealed partial class CaptureLibraryWidget
             var memory=ReplayBudgets.Select(mib=>Choice("memory."+mib,mib+" MiB",settings.MemoryBudgetBytes==mib*1048576L)).ToList();
             if(!memory.Any(option=>option.IsSelected))memory.Insert(0,new("current",$"{settings.MemoryBudgetBytes/1048576d:0.#} MiB","capture-library.replay.current",true,IsDisabled:true));
             items.Add(Field("memory","Buffer memory",memory.ToArray(),"Limit for recorded video and audio, including a save in progress. Capture and encoding use additional memory."));
-            items.Add(Field("auto","Start automatically",[Choice("auto.off","Off",!settings.AutoStart),Choice("auto.on","Approved application only",settings.AutoStart)],
-                "Start recording once to approve an application. Other applications and the desktop are never selected automatically."));
+            items.Add(Field("auto","Start automatically",[Choice("auto.off","Off",!settings.AutoStart),Choice("auto.on","Approved applications",settings.AutoStart)],
+                "Replay starts automatically when one approved application has a single eligible window. Use Start now to choose a window."));
+            items.Add(UI.Button("Approved applications", "capture-library.approvals.open", "capture-library.approvals.open")
+                .Disabled(state.Busy || CurrentRecordingDraft(true, state) is not null));
             if(state.Capabilities is not null)items.Add(RecordingFields("replay",state,settings.Recording,locked));
             var applicationAudio=state.Capabilities?.AudioModes.Contains(CaptureAudioMode.Application)!=false;
             items.Add(Field("audio","Audio",[Choice("audio.on",applicationAudio?"Application audio":"Application audio (unavailable)",settings.Recording.Audio==CaptureAudioMode.Application) with{IsDisabled=!applicationAudio},

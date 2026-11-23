@@ -34,7 +34,7 @@ internal sealed partial class NotificationCard : ContentControl
         layout.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         layout.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
         icon = new(resolve) { ShowLabel = false, IconSize = 28, Width = 32, VerticalAlignment = VerticalAlignment.Top, Margin = new(0, 4, 0, 0) };
-        var text = new StackPanel { Spacing = 4 };
+        var text = new StackPanel { Spacing = 1 };
         var metadata = new Grid { ColumnSpacing = 12 };
         metadata.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
         metadata.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
@@ -81,9 +81,23 @@ internal sealed partial class NotificationCard : ContentControl
         TitleText.Text = entry.Title; body.Text = entry.Body;
         body.Visibility = string.IsNullOrWhiteSpace(entry.Body) ? Visibility.Collapsed : Visibility.Visible;
         stale.Visibility = entry.Available ? Visibility.Collapsed : Visibility.Visible;
-        source.FontSize = time.FontSize = stale.FontSize = 12 * textScale;
+        SizeText(source, 12 * textScale);
+        SizeText(time, 12 * textScale);
+        SizeText(stale, 12 * textScale);
         time.MaxWidth = 140 * textScale;
-        TitleText.FontSize = 17 * textScale; body.FontSize = 14 * textScale;
+        SizeText(TitleText, 17 * textScale);
+        SizeText(body, 14 * textScale);
+    }
+    internal void SetAdditionalCount(int count)
+    {
+        if (count > 0) time.Text = $"+{count} more";
+    }
+    private static void SizeText(TextBlock label, double size)
+    {
+        label.FontSize = size;
+        // Fractional host zoom can clip the last line's descent at the TextBlock's
+        // own paint bounds. Outer card padding does not extend those bounds.
+        label.Padding = new(0, 0, 0, Math.Ceiling(size * .25));
     }
     private async void LoadArtwork()
     {

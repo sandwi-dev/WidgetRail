@@ -5,7 +5,7 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.OverlayFrontend.WinUI.Capture;
 
 internal sealed record ReplayCaptureDecision(bool Approved, NativeWindowPreviewTarget? Target = null,
-    string? ApplicationIdentity = null, string? ApplicationName = null, CaptureReplayIssue Issue = CaptureReplayIssue.Cancelled);
+    string? ApplicationIdentity = null, string? ApplicationName = null, CaptureReplayIssue Issue = CaptureReplayIssue.Cancelled, bool AddToApproved = false);
 
 internal sealed class ReplayHostBusyException(Exception? inner = null) : Exception("The replay work queue is temporarily full.", inner);
 
@@ -33,13 +33,15 @@ internal sealed class ReplayCaptureCoordinator(IReplayCaptureHost host, IReplayC
     private long powerRevision, sentPowerRevision;
     private bool reportedHostFailure;
 
-    private sealed class Hosted(string id, IReplayCaptureBackend backend, CancellationToken parent, long admittedAt)
+    private sealed class Hosted(string id, string widgetId, IReplayCaptureBackend backend, CancellationToken parent, long admittedAt)
     {
         internal readonly string Id = id;
+        internal readonly string WidgetId = widgetId;
         internal readonly IReplayCaptureBackend Backend = backend;
         internal readonly CancellationTokenSource Lifetime = CancellationTokenSource.CreateLinkedTokenSource(parent);
         internal Task? Stop;
         internal bool StopRequested;
+        internal bool StartAnnounced;
         internal CaptureReplayIssue Failure;
         internal long AuthorityAcknowledgedAt = admittedAt;
     }
@@ -49,6 +51,8 @@ internal sealed class ReplayCaptureCoordinator(IReplayCaptureHost host, IReplayC
         internal readonly CancellationTokenSource Lifetime = CancellationTokenSource.CreateLinkedTokenSource(parent);
         internal Task Work = Task.CompletedTask;
     }
+    internal event Action<string, string, string>? RecordingStarted;
+
     internal void Start()
     {
         lock (gate) running ??= Task.Run(RunAsync);
@@ -125,6 +129,13 @@ internal sealed class ReplayCaptureCoordinator(IReplayCaptureHost host, IReplayC
             try { active.Backend.RenewAuthority(); Interlocked.Exchange(ref active.AuthorityAcknowledgedAt, clock.GetTimestamp()); }
             catch (ReplayBackendException error) { active.Failure = error.Issue; }
 
+        if (active is { StartAnnounced: false } && work.Status is { Phase: CaptureReplayPhase.Recording, TargetName: { Length: > 0 } app } &&
+            work.Status.SessionId == active.Id)
+        {
+            active.StartAnnounced = true;
+            RecordingStarted?.Invoke(active.WidgetId, active.Id, app);
+        }
+
         if (pending is not null && pending.Work.IsCompleted)
         {
             // A native result can be acknowledged before inspection/index commit
@@ -177,15 +188,15 @@ internal sealed class ReplayCaptureCoordinator(IReplayCaptureHost host, IReplayC
             if (command.Kind == HostReplayCommandKind.ApproveSettings)
             { await CompleteAsync(new(command.Id, CaptureReplayOutcome.Accepted)).ConfigureAwait(false); return; }
             if (decision.Target is null || decision.ApplicationIdentity is null || decision.ApplicationName is null ||
-                command.Automatic && !string.Equals(decision.ApplicationIdentity, command.ApprovedApplication, StringComparison.OrdinalIgnoreCase))
+                command.Automatic && (!command.Approvals.Contains(decision.ApplicationIdentity) || decision.AddToApproved))
                 throw new ReplayBackendException(CaptureReplayIssue.TargetUnavailable);
             backend = await factory.StartAsync(decision.Target, command.Settings, token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             if (!await host.IsCurrentAsync(command.Id, token).ConfigureAwait(false)) return;
             if (!await CompleteAsync(new(command.Id, CaptureReplayOutcome.Accepted) { SessionId = command.SessionId,
-                Target = decision.Target, ApprovedApplication = decision.ApplicationIdentity, ApplicationName = decision.ApplicationName,
+                Target = decision.Target, ApplicationIdentity = decision.ApplicationIdentity, AddToApproved = decision.AddToApproved, ApplicationName = decision.ApplicationName,
                 Resolved = backend.ResolvedConfiguration }).ConfigureAwait(false)) return;
-            var admitted = new Hosted(command.SessionId!, backend, lifetime.Token, clock.GetTimestamp());
+            var admitted = new Hosted(command.SessionId!, work.WidgetId ?? command.Widget.PackageId, backend, lifetime.Token, clock.GetTimestamp());
             lock (gate)
             {
                 if (current is not null || Volatile.Read(ref suspended) != 0 || lifetime.IsCancellationRequested) { admitted.Lifetime.Dispose(); return; }

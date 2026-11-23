@@ -18,7 +18,11 @@ internal sealed partial class WidgetViewPresenter
         CancellationToken cancellationToken = default)
     {
         if (!DispatcherQueue.HasThreadAccess) throw new InvalidOperationException("Route widget input on its WinUI dispatcher.");
+        if(button==ControllerButton.LeftTrigger && phase==ControllerEventPhase.Released && heldSelectionPressed && heldSelectionOwner is not null)
+        {heldSelectionPressed=false;heldSelectionOwner.ReleaseHeldSelection();return true;}
         if (!presentationInputEnabled || !presentationActive || disposed || applying || presentationOnly || frame is null) return false;
+        if(previewEntered || HasTransientControl || textEntryPopup is not null ||
+            button is ControllerButton.B or ControllerButton.Menu)CancelHeldCollectionSelection();
         if (pendingPrimaryPreview is not null && button == ControllerButton.B)
         {
             if (phase == ControllerEventPhase.Pressed)
@@ -55,6 +59,8 @@ internal sealed partial class WidgetViewPresenter
         if (textEntryPopup is { } edit) { edit.Dialog.Handle(button, phase); return true; }
         if (FocusedBrowser is { } browser && browser.HandleButton(button, phase)) return true;
         if (FocusedMediaPlayer?.Handle(button, phase) == true) return true;
+        if (FocusedBinding() is { Element: WidgetIndexedCollectionView reading } readingBinding && Eligible(readingBinding) &&
+            reading.HandleReadingMedia(button,phase)) return true;
         if (button == ControllerButton.A) UpdateControllerPressedStyle(phase);
         if (HasTransientControl)
         {
@@ -68,6 +74,8 @@ internal sealed partial class WidgetViewPresenter
             return true;
         }
         if (HandleSliderButton(button, phase)) return true;
+        if (ReturnStaticReadingGroup(button,phase)) return true;
+        if(TryHeldCollectionSelection(button,phase))return true;
         if (TryEnterFocusPreview(button, phase)) return true;
         if (phase == ControllerEventPhase.Pressed && OpenContextMenu(button)) return true;
         if (button == ControllerButton.A)

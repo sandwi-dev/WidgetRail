@@ -11,6 +11,15 @@ internal sealed partial class PlayniteBridgeClient
         TryNonNegativeLong(root, name, out var value) ? value : null;
     private static int? OptionalScore(JsonElement root, string name) =>
         TryNonNegativeInteger(root, name, out var value) && value <= 100 ? value : null;
+    internal static uint? ParseSteamAppId(JsonElement root)
+    {
+        if (root.TryGetProperty("steamAppId", out var identity))
+            return identity.ValueKind == JsonValueKind.Number && identity.TryGetUInt32(out var id) && id > 0 ? id : null;
+        // Older add-ons projected at most sixteen links. At the cap we cannot exclude a conflicting link.
+        if (!root.TryGetProperty("links", out var links) || links.ValueKind != JsonValueKind.Array ||
+            links.GetArrayLength() >= 16) return null;
+        return WidgetRail.Playnite.SteamGameIdentity.Resolve(Guid.Empty, null, ParseLinks(root).Select(link => link.Url));
+    }
     private static IReadOnlyList<PlayniteGameLink> ParseLinks(JsonElement root)
     {
         if (!root.TryGetProperty("links", out var links) || links.ValueKind != JsonValueKind.Array) return [];
@@ -108,6 +117,32 @@ internal sealed partial class PlayniteBridgeClient
     private static DateTimeOffset? ParseOptionalDate(JsonElement item, string property) =>
         OptionalString(item, property, 64) is { } text && DateTimeOffset.TryParse(text,
             CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var date) ? date : null;
+    public async ValueTask<PlayniteRecentActivity> GetRecentActivityAsync(IReadOnlyList<string> games, CancellationToken token)
+    {
+        if (!UsesLocalConnection || games.Count == 0) return PlayniteRecentActivity.Empty;
+        var response = await SendRequiredAsync(new(PlayniteBridgeCommandKind.RecentActivity) { ActivityGameIds = games }, token).ConfigureAwait(false);
+        if (response.StatusCode == 404) return PlayniteRecentActivity.Empty;
+        EnsureSuccess(response);
+        using var document = ParseJson(response, PlayniteBridgeHttpTransport.MaximumDetailBytes);
+        if (document.RootElement.ValueKind != JsonValueKind.Object || !document.RootElement.TryGetProperty("sessions", out var sessions) || sessions.ValueKind != JsonValueKind.Array ||
+            sessions.GetArrayLength() > 32) throw new PlayniteBridgeDataException("invalid_recent_activity");
+        var result = new List<PlayniteRecentSession>();
+        foreach (var row in sessions.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Object || OptionalString(row, "gameId", 36) is not { } id ||
+                !games.Contains(id, StringComparer.Ordinal) || OptionalString(row, "gameName", 256) is not { Length: > 0 } name ||
+                ParseOptionalDate(row, "startedAt") is not { } when || !TryNonNegativeLong(row, "seconds", out var seconds))
+                throw new PlayniteBridgeDataException("invalid_recent_activity");
+            result.Add(new(id, name, when, seconds));
+        }
+        if (!document.RootElement.TryGetProperty("unlocks", out var unlocks) || unlocks.ValueKind != JsonValueKind.Array ||
+            unlocks.GetArrayLength() > 32) throw new PlayniteBridgeDataException("invalid_recent_activity");
+        var earned = unlocks.EnumerateArray().Select(ParseRecentUnlock).ToArray();
+        if (earned.Any(item => !games.Contains(item.GameId, StringComparer.Ordinal)) ||
+            earned.DistinctBy(item => (item.GameId, item.AchievementId)).Count() != earned.Length)
+            throw new PlayniteBridgeDataException("invalid_recent_activity");
+        return new(result, earned);
+    }
     public async ValueTask<bool> ChangeInstallationAsync(string gameId, bool install, CancellationToken token)
     {
         var response = await SendRequiredAsync(new(install ? PlayniteBridgeCommandKind.Install : PlayniteBridgeCommandKind.Uninstall,

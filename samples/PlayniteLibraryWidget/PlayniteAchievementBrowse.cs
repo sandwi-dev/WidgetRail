@@ -8,8 +8,12 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal sealed record PlayniteAchievementEntry(string Key, PlayniteAchievement Item, bool Secret)
 {
+    internal bool UniqueId { get; init; }
+    internal static string IdentityFor(PlayniteAchievement item) => string.IsNullOrWhiteSpace(item.Id) ? item.Name + "\n" + item.Description : item.Id;
     internal static string KeyFor(PlayniteAchievement item) => Convert.ToHexString(SHA256.HashData(
-        Encoding.UTF8.GetBytes(string.IsNullOrWhiteSpace(item.Id) ? item.Name + "\n" + item.Description : item.Id))).ToLowerInvariant();
+        Encoding.UTF8.GetBytes(IdentityFor(item)))).ToLowerInvariant();
+    internal static string OccurrenceKey(string key, int occurrence) =>
+        occurrence == 0 ? key : key + "." + occurrence.ToString(CultureInfo.InvariantCulture);
     internal string Name => Secret ? "Secret achievement" : Item.Name;
 }
 
@@ -31,8 +35,14 @@ internal sealed class PlayniteAchievementBrowse
             var key = PlayniteAchievementEntry.KeyFor(item);
             var count = occurrences.GetValueOrDefault(key);
             occurrences[key] = count + 1;
-            if (count > 0) key += "." + count.ToString(CultureInfo.InvariantCulture);
+            key = PlayniteAchievementEntry.OccurrenceKey(key, count);
             entries.Add(new(key, item, item.Hidden && !item.Unlocked && !state.RevealedAchievements.Contains(key)));
+        }
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            if (entry.Item.Id is { Length: > 0 } && occurrences.GetValueOrDefault(entry.Key) == 1)
+                entries[i] = entry with { UniqueId = true };
         }
         All = entries;
         ByKey = entries.ToDictionary(entry => entry.Key, StringComparer.Ordinal);
@@ -54,7 +64,7 @@ internal sealed class PlayniteAchievementBrowse
         if (search.Length > 0) filtered = filtered.Where(entry => entry.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
             entry.Item.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
             entry.Item.Description.Contains(search, StringComparison.OrdinalIgnoreCase));
-        Rows = (state.AchievementSort switch
+        var rows = (state.AchievementSort switch
         {
             AchievementSort.Name => filtered.OrderBy(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase),
             AchievementSort.Rarity => filtered.OrderBy(entry => entry.Item.Percent ?? double.MaxValue).ThenBy(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase),
@@ -62,17 +72,22 @@ internal sealed class PlayniteAchievementBrowse
                 ? (double)progress.Current / progress.Maximum : -1).ThenBy(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase),
             _ => filtered.OrderByDescending(entry => entry.Item.Unlocked).ThenByDescending(entry => entry.Item.UnlockedAt),
         }).ToArray();
+        Rows = rows;
+        if (state.ShelfAchievement is { } target)
+            ShelfEntryIndex = Array.FindIndex(rows, entry => !entry.Secret && entry.Key == target.RowKey);
     }
     internal long Generation { get; }
     internal PlayniteDetailsExtras State { get; }
     internal IReadOnlyList<PlayniteAchievementEntry> All { get; }
     internal IReadOnlyDictionary<string, PlayniteAchievementEntry> ByKey { get; }
     internal IReadOnlyList<PlayniteAchievementEntry> Rows { get; }
+    internal int ShelfEntryIndex { get; } = -1;
     internal string SuggestionSource { get; } = "playnite.achievements." + Guid.NewGuid().ToString("N");
     internal TextSuggestionCatalog Suggestions { get; }
     internal bool SameInputs(long generation, PlayniteDetailsExtras state) => Generation == generation &&
         ReferenceEquals(State.Achievements, state.Achievements) && ReferenceEquals(State.RevealedAchievements, state.RevealedAchievements) &&
         State.AchievementFilter == state.AchievementFilter && State.AchievementSort == state.AchievementSort &&
-        State.AchievementSearch == state.AchievementSearch;
+        State.AchievementSearch == state.AchievementSearch && State.TrackedAchievementId == state.TrackedAchievementId &&
+        State.ShelfAchievement?.RowKey == state.ShelfAchievement?.RowKey;
     internal static WidgetArtworkHandle IconHandle(string key) => new("achievement-icon." + key);
 }

@@ -49,7 +49,7 @@ public sealed partial class StandaloneMusicWidget
 
             var pinned = PlaybackShortcuts(UI.Stack("music.pinned", Player(state, "pinned"))
                 .InputScope("music.pinned").Classes("music-root", "music-pinned-root"));
-            return new(root, InitialFocusId: _tab == "queue" && panel is null ? NavigationFocusId : entry, Surface: new()
+            var view = new WidgetView(root, InitialFocusId: _tab == "queue" && panel is null ? NavigationFocusId : entry, Surface: new()
             {
                 Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
                 Mode = WidgetSurfaceMode.Adaptive, PreferredWidth = compact ? 760 : 840,
@@ -60,13 +60,28 @@ public sealed partial class StandaloneMusicWidget
                 ScrollRevealRequest = _tab == "queue" && panel is null && _queueReveal?.IndexedItem?.QueryGeneration == _browse.Collection.Descriptor.QueryGeneration
                     ? _queueReveal : null,
                 QuickActions = state.Current is null ? [] :
-                    [new(ControllerButton.X, "player.toggle", "Play or pause"), new(ControllerButton.LeftBumper, "player.previous", "Previous song"), new(ControllerButton.RightBumper, "player.next", "Next song")],
+                    [new(ControllerButton.X, "player.toggle", state.Player.Playing ? "Pause" : "Play") { TrayOffer = _service.GetTrayOffer(state, "play-pause") },
+                     new(ControllerButton.LeftBumper, "player.previous", "Previous song") { TrayOffer = _service.GetTrayOffer(state, "previous") },
+                     new(ControllerButton.RightBumper, "player.next", "Next song") { TrayOffer = _service.GetTrayOffer(state, "next") }],
                 PinnedLayouts = state.Current is null ? [] : [WidgetView.PinnedLayout("music.compact", "Compact now playing",
                     new() { Appearance = WidgetSurfaceAppearance.DesktopAcrylic, Mode = WidgetSurfaceMode.Compact, PreferredWidth = 360, PreferredHeight = 440, MinimumWidth = 320, MinimumHeight = 300 },
                     pinned, initialFocusId: "player.pinned.toggle")],
             };
+            if (!state.Connected || state.Current is null)
+                return view.WithUnavailableTrayActions(state.Connected ? "Play a song in YouTube Music first." :
+                    "Connect to YouTube Music to use playback controls.", "play-pause", "previous", "next");
+            return view.WithUnavailableTrayActions(state.Player.Buffering ? "The song is buffering." :
+                    "Open YouTube Music to check the player.", "play-pause")
+                .WithUnavailableTrayActions(state.Index == 0 ? "This is the first song in the queue." :
+                    "The previous song is unavailable.", "previous")
+                .WithUnavailableTrayActions(MusicQueue.Next(state.Queue.Count, state.Index, state.Repeat, ended: false) < 0 ?
+                    "There is no next song in the queue." : "The next song is unavailable.", "next");
         }
     }
+
+    protected override async ValueTask<TrayActionResult> OnTrayActionAsync(TrayActionOffer offer, CancellationToken token) =>
+        await _service.InvokeTrayAsync(offer, token).ConfigureAwait(false) ? TrayActionResult.Success :
+            TrayActionResult.Unavailable("The song or queue changed. Try again with the current song.");
 
     private static StackElement PlaybackShortcuts(StackElement root) =>
         root.Shortcut(ControllerButton.X, "player.toggle", label: "Play or pause")

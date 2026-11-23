@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "featured": "local.widgetrail.afterglow-fm",
+  "themes": [
+    {
+      "id": "local.widgetrail.afterglow-fm",
+      "version": "1.0.2",
+      "creator": "WidgetRail",
+      "description": "Sunset pink and peach highlights over deep violet panels.",
+      "tags": ["GTA VI", "Vice City", "Neon", "Dark"],
+      "released": "2026-11-22"
+    },
+    {
+      "id": "local.widgetrail.asphodel-ember",
+      "version": "1.0.1",
+      "creator": "WidgetRail",
+      "description": "Bronze surfaces, laurel red and spectral mint, inspired by Hades.",
+      "tags": ["Hades", "Bronze", "Dark"],
+      "released": "2026-11-22"
+    },
+    {
+      "id": "local.widgetrail.tidepool",
+      "version": "1.0.1",
+      "creator": "WidgetRail",
+      "description": "Sea-glass focus rings and warm lettering against charcoal and deep teal.",
+      "tags": ["Coastal", "Teal", "Dark"],
+      "released": "2026-11-22"
+    }
+  ],
+  "collections": [
+    {
+      "name": "Game worlds",
+      "themes": ["local.widgetrail.asphodel-ember", "local.widgetrail.afterglow-fm"]
+    }
+  ]
+}

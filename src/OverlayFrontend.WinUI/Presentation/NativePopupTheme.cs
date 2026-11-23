@@ -198,6 +198,7 @@ internal sealed partial class NativePopupTheme
         if (font is not null) dialog.FontFamily = font;
         else dialog.ClearValue(Control.FontFamilyProperty);
         SetDialogResource(dialog, "ControlContentThemeFontSize", size);
+        if (dialog is HostChoiceDialog hostChoices) hostChoices.ApplyListTypography(size);
         if (dialog is WidgetTextEntryDialog textEntry) textEntry.ApplyPopupMetrics(zoom, size, fontWeight, font);
         SetDialogResource(dialog, "TextControlSelectionHighlightColor", dialogSelected);
         SetDialogResource(dialog, "TextControlHeaderForeground", dialogText);

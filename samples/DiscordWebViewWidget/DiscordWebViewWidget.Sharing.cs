@@ -23,10 +23,10 @@ public sealed partial class DiscordWebViewWidget
     private bool CanStartSharing(DiscordState? data,ViewState current)=>data is {Ready:true,ChannelId:not null,Capabilities.Share:true,Sharing:false,SharePending:false}&&
         data.ShareQualities.Length>0&&current.Outgoing is null&&current.PreparingShare is null;
 
-    private WidgetElement ShareButton(DiscordState? data)
+    private ButtonElement ShareButton(DiscordState? data,string id="discord.share.start",string startLabel="Share game")
     {
         var current=view.Value;var canStop=CanStopSharing(current,data);
-        return UI.Button(canStop?(IsPreparingSharing||data?.SharePending==true?"Cancel sharing":"Stop sharing"):"Share game",SharingAction(canStop,data,current,client?.Reference),"discord.share.start")
+        return UI.Button(canStop?(IsPreparingSharing||data?.SharePending==true?"Cancel sharing":"Stop sharing"):startLabel,SharingAction(canStop,data,current,client?.Reference),id)
             .Icon(canStop?DiscordIcons.Leave:DiscordIcons.Share).Disabled(!canStop&&!CanStartSharing(data,current)).Classes("discord-control","discord-primary");
     }
 
@@ -97,9 +97,10 @@ public sealed partial class DiscordWebViewWidget
                 var permission=await HostServices.Permissions.RequestAsync([WidgetCaptureCapabilities.Permission],context.CancellationToken);
                 if(permission!=WidgetPermissionOutcome.Granted)
                 {
-                    if(context.IsCurrent)view.Update(current=>current with{Notice=permission switch
+                    if(context.IsCurrent && OwnsCall(intent) && permission==WidgetPermissionOutcome.Cancelled)
+                        PublishFeedback("Sharing cancelled. Nothing was shared.");
+                    else if(context.IsCurrent && OwnsCall(intent))view.Update(current=>current with{Notice=permission switch
                     {WidgetPermissionOutcome.Unavailable=>"Application capture access is unavailable on this host.",
-                     WidgetPermissionOutcome.Cancelled=>"Sharing cancelled. Nothing was shared.",
                      _=>"Application capture access was not granted. Nothing was shared."}});
                     return;
                 }
@@ -122,8 +123,9 @@ public sealed partial class DiscordWebViewWidget
                 // neither proves that Discord has begun broadcasting.
                 if(prepared.Phase is not (WebCaptureStreamPhase.Prepared or WebCaptureStreamPhase.Capturing))
                 {
-                    if(context.IsCurrent)view.Update(current=>current with{Notice=prepared.Phase==WebCaptureStreamPhase.Cancelled?
-                        "Sharing cancelled. Nothing was shared.":"Application sharing is unavailable on this host."});
+                    if(context.IsCurrent && OwnsCall(intent) && prepared.Phase==WebCaptureStreamPhase.Cancelled)
+                        PublishFeedback("Sharing cancelled. Nothing was shared.");
+                    else if(context.IsCurrent && OwnsCall(intent))view.Update(current=>current with{Notice="Application sharing is unavailable on this host."});
                     return;
                 }
                 capture??=new(intent,prepared.Ticket!,prepared.Quality!,prepared.ApplicationName!,prepared.ApplicationAudio);

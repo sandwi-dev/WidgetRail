@@ -75,6 +75,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Opening the widget never starts OAuth", OpeningNeverConnects),
     ("Disconnected copy and paired actions remain bounded and centered", DisconnectedLayoutContract),
     ("Primary actions keep theme-safe fill and focus contrast", PrimaryActionContrast),
+    ("Tray playback pins the account and device and rejects a changed device", TrayDevice),
     ("Unconfigured state provides safe exact setup guidance", UnconfiguredSetup),
     ("Setup is a nested B-dismissible input scope", NestedSetupBack),
     ("Setup uses a bounded controller-native scroll surface", SetupUsesVerticalScroll),
@@ -254,6 +255,28 @@ static async Task DisconnectedLayoutContract()
     await StopAsync(widget);
 }
 
+static async Task TrayDevice()
+{
+    var harness = new SpotifyHarness { AccountPartition = Guid.NewGuid().ToString("N") };
+    harness.Playback = harness.Playback with { DeviceId = "device-one" };
+    var widget = await StartAsync(harness);
+    try
+    {
+        await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+        var frame = widget.RenderSnapshot("spotify.tray", 1);
+        var next = frame.QuickActions.Single(action => action.TrayOffer?.Id == "next");
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+        harness.Playback = harness.Playback with { DeviceId = "device-two" };
+        Assert.True(!(await WidgetTestHost.InvokeTrayActionAsync(widget, frame, next)).Handled, "A changed Spotify device accepted a tray action.");
+        Assert.Equal(0, harness.Commands.Count);
+        harness.Playback = harness.Playback with { DeviceId = "device-one" };
+        Assert.True((await WidgetTestHost.InvokeTrayActionAsync(widget, frame, next)).Handled, "The selected Spotify device rejected its tray action.");
+        Assert.Equal("device-one", harness.Commands.Single().DeviceId);
+        Assert.Equal(harness.AccountPartition, harness.Commands.Single().ExpectedAccount);
+    }
+    finally { await StopAsync(widget); }
+}
+
 static async Task PrimaryActionContrast()
 {
     var harness = new SpotifyHarness { Configured = true, Connected = false };
@@ -287,10 +310,8 @@ static async Task PrimaryActionContrast()
         new HashSet<WrssPseudoState> { WrssPseudoState.Focused }))!;
     Assert.Equal("#8f80ff", normal.Get("background")?.Text);
     Assert.Equal("#090908", normal.Get("color")?.Text);
-    Assert.Equal("#090908", focused.Get("outline-color")?.Text);
-    Assert.True(normal.Get("background")?.Text != focused.Get("outline-color")?.Text,
-        "Primary focus must retain contrasting foreground ink against its accent fill.");
-    Assert.Equal("-1.5px", focused.Get("outline-offset")?.Text);
+    Assert.Equal("#ff7898", focused.Get("outline-color")?.Text);
+    Assert.Equal("2px", focused.Get("outline-offset")?.Text);
     await StopAsync(widget);
 }
 
@@ -2913,6 +2934,7 @@ internal sealed class SpotifyHarness : ISpotifyApplicationService, ISpotifyLocal
     }
     public bool Configured { get; set; } = true;
     public bool Connected { get; set; } = true;
+    public string? AccountPartition { get; set; }
     public Exception? ConfigurationError { get; set; }
     public Exception? ControlError { get; set; }
     public Exception? StartPlaybackError { get; set; }
@@ -3019,7 +3041,7 @@ internal sealed class SpotifyHarness : ISpotifyApplicationService, ISpotifyLocal
         return ValueTask.FromResult(new SpotifyAuthorizationSummary(
             state, [], Connected ?
             [SpotifyAuthorizationScope.PlaybackStateRead,
-             SpotifyAuthorizationScope.PlaybackStateControl] : [], null));
+             SpotifyAuthorizationScope.PlaybackStateControl] : [], null, AccountPartition));
     }
 
     public ValueTask<SpotifyAuthorizationSummary> DisconnectAsync(

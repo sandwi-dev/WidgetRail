@@ -28,6 +28,7 @@ internal sealed partial class ModalValidationPage : Page, IAsyncDisposable
     private string? modal;
     private string detailText = "Details";
     private bool dismissOnBackdrop = true;
+    private bool overlayPresentation;
     private Task? running;
     private Exception? failure;
 
@@ -69,6 +70,12 @@ internal sealed partial class ModalValidationPage : Page, IAsyncDisposable
             var modalLayer = AncestorLayer(panel);
             Check(((Border)modalLayer.Chrome).Background is SolidColorBrush { Color.A: 163, Color.R: 12, Color.G: 24, Color.B: 36 } &&
                 modalLayer.Background is null, "authored modal veil paints the scrim above the parent instead of beneath it");
+            var authoredFill = panel.Background;
+            panel.Background = new AcrylicBrush();
+            Check(modalLayer.BackdropLayer.Opacity is > 0 and < 1 && panel.Opacity == 1,
+                "acrylic samples a lighter veil without fading modal content");
+            panel.Background = authoredFill;
+            Check(modalLayer.BackdropLayer.Opacity == 1, "ordinary modal fill restores the authored veil");
             await Until(() => modalLayer.OpeningMotion is not null);
             var opening = modalLayer.OpeningMotion!;
             Check(await opening.WaitAsync(TimeSpan.FromSeconds(2)) == WidgetMotionOutcome.Completed,
@@ -182,6 +189,7 @@ internal sealed partial class ModalValidationPage : Page, IAsyncDisposable
             Check(reducedLayer.OpeningMotion!.IsCompletedSuccessfully && await reducedLayer.OpeningMotion == WidgetMotionOutcome.Completed,
                 "global reduced-motion settings settle a fresh dialog without an animation timer");
             presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Full }, true);
+            await CheckOverlayPlacementAsync();
             if (Environment.GetCommandLineArgs().Contains("--native-modal-dismissal"))
                 await CheckDismissalInputAsync();
             modal = null; Apply();
@@ -211,7 +219,7 @@ internal sealed partial class ModalValidationPage : Page, IAsyncDisposable
                 UI.Select("Completion", (SelectOption[])[new("none", "None", "none", true), new("done", "Done", "done")], "picker"),
                 UI.Stack("long.description", Enumerable.Range(0, 60).Select(index =>
                     (WidgetElement)UI.Text($"Description line {index}", "line." + index)).ToArray())), "play", "dismiss")
-            { DismissOnBackdrop = dismissOnBackdrop });
+            { DismissOnBackdrop = dismissOnBackdrop, OverlayPresentation = overlayPresentation ? new() : null });
         var snapshot = view.CreateSnapshot("modal.instance", ++sequence);
         var descriptor = new BridgeWidgetDescriptor { Id = "modal", Name = "Modal validation", InstanceId = snapshot.WidgetInstanceId,
             RuntimeGeneration = $"runtime-{owner}", PresentationGeneration = "presentation", Icon = WidgetGlyph.Connection, PackageContentDigest = "" };

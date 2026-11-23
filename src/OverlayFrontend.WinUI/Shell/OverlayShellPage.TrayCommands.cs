@@ -229,14 +229,14 @@ internal sealed partial class OverlayShellPage
             Add(descriptor.IsStopped ? "Start widget" : "Restart widget", "Restart", () => RestartWidgetAsync(descriptor, selection), group: widgetGroup);
             var quickActionStart = menu.Flyout.Items.Count;
             if (DashboardFrame(descriptor) is { } displayed)
-                foreach (var action in displayed.Snapshot.QuickActions)
+                foreach (var action in displayed.Snapshot.QuickActions.Where(action => action.OnDashboard))
                     Add(action.Label, "Dashboard." + action.Button,
                         () => InvokeDashboardButtonAsync(descriptor, action.Button, ControllerInputOrigin.AccessibilityAutomation),
                         TrayShortcutAvailable(action.Button) ? action.Button : null);
             foreach (var action in descriptor.IsStopped ? [] : descriptor.QuickActions)
                 Add(action.Label, "Quick." + action.Id, () => InvokeTrayQuickActionAsync(descriptor, action, selection),
                     action.ControllerButton is { } button && TrayShortcutAvailable(button) &&
-                    DashboardFrame(descriptor)?.Snapshot.QuickActions.Any(item => item.Button == button) != true
+                    DashboardFrame(descriptor)?.Snapshot.QuickActions.Any(item => item.OnDashboard && item.Button == button) != true
                         ? button : null);
             if (menu.Flyout.Items.Count > quickActionStart)
                 menu.Flyout.Items.Insert(quickActionStart, new MenuFlyoutSeparator());
@@ -248,6 +248,7 @@ internal sealed partial class OverlayShellPage
             }
             Add("Task Switcher", "Shell.TaskSwitcher", () => { FocusUtility(ShellUtility.Tasks); return Task.CompletedTask; },
                 HasPendingNotifications ? null : ControllerButton.Y, hold: true);
+            if (RadialOpen) Add("Assign quick action…", "Shell.AssignFavorite", EditFavoriteSlotsAsync);
             if(ReplayStatusForHost is {} replay && (replay.Settings.Enabled || replay.SessionId is not null || replay.Saving))
             {
                 if(replay.SessionId is {} replaySession&&!replay.Saving&&replay.BufferedDurationSeconds>0&&replay.Phase is CaptureReplayPhase.Recording or CaptureReplayPhase.Paused)

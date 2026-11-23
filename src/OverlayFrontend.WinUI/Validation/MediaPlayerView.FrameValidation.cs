@@ -54,11 +54,11 @@ internal sealed partial class MediaPlayerView
             NativeComputedStyleAdapter.SetHighContrastOverride(null); Theme(false); adapter.Update(Frame(0, 0, 0));
             var clip = AttachmentFor(mp4, "video/mp4", 5);
             Apply(_ => Task.FromResult(new HostCaptureAttachment(clip, mp4)), clip, () => true);
-            await Until(() => player?.PlaybackSession.NaturalDuration.TotalSeconds > 0 && videoStage is not null);
+            await Until(() => player?.PlaybackSession.NaturalDuration.TotalSeconds > 0 && video.IsLoaded);
             var decoder = player;
             expansion = ToggleExpandedAsync(); await Until(() => IsExpanded && !changingPlacement);
             Check(ReferenceEquals(decoder, player) && card.Padding == new Thickness(0) && card.BorderThickness == new Thickness(0),
-                "Borderless video expands with its existing decoder and shared stage");
+                "Borderless video expands with its existing decoder in-tree element");
             expandedHost!.Close(); await expansion; await Until(() => !IsExpanded && !changingPlacement);
             Check(ReferenceEquals(decoder, player) && card.Padding == new Thickness(0) && card.BorderThickness == new Thickness(0),
                 "Video return retains both decoder identity and authored frame");

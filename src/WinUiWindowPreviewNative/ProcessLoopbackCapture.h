@@ -57,7 +57,9 @@ struct CapturedAudioPacket {
 // Fixed PCM is deliberately small: 48 kHz stereo, 16 bit; at most one second
 // (192,000 bytes) queued. This captures only the chosen process tree. It never
 // falls back to endpoint/system loopback when process capture is unavailable.
+enum class ProcessLoopbackMode { Strict, Replay };
 class ProcessLoopbackCapture {
+    const ProcessLoopbackMode mode;
     CaptureEvent stop{true};
     std::mutex gate;
     std::deque<CapturedAudioPacket> packets;
@@ -68,6 +70,7 @@ class ProcessLoopbackCapture {
 
     void Run(DWORD processId, std::promise<void> ready) noexcept {
         bool initialized = false, announced = false, started = false;
+        HRESULT result = S_OK;
         ComPtr<IAudioClient> client;
         try {
             winrt::init_apartment(winrt::apartment_type::multi_threaded); initialized = true;
@@ -84,7 +87,11 @@ class ProcessLoopbackCapture {
             ComPtr<IActivateAudioInterfaceAsyncOperation> operation;
             winrt::check_hresult(ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
                 __uuidof(IAudioClient), &parameters, completion.Get(), &operation));
-            if (WaitForSingleObject(completion->done.Get(), 5000) != WAIT_OBJECT_0)
+            const HANDLE activationEvents[] = { stop.Get(), completion->done.Get() };
+            const auto activationWait = WaitForMultipleObjects(2, activationEvents, FALSE, 5000);
+            if (activationWait == WAIT_OBJECT_0) throw winrt::hresult_canceled();
+            if (activationWait == WAIT_FAILED) winrt::throw_last_error();
+            if (activationWait != WAIT_OBJECT_0 + 1)
                 throw winrt::hresult_error(HRESULT_FROM_WIN32(WAIT_TIMEOUT));
             winrt::check_hresult(completion->result); client = completion->client;
             auto format = Format();
@@ -102,8 +109,10 @@ class ProcessLoopbackCapture {
             while (true) {
                 const auto wait = WaitForMultipleObjects(2, events, FALSE, 2000);
                 if (wait == WAIT_OBJECT_0) break;
-                if (wait == WAIT_TIMEOUT) continue; // Silent processes need not emit packets.
-                if (wait != WAIT_OBJECT_0 + 1) winrt::throw_last_error();
+                if (wait == WAIT_TIMEOUT && mode == ProcessLoopbackMode::Strict) continue;
+                if (wait != WAIT_OBJECT_0 + 1 && wait != WAIT_TIMEOUT) winrt::throw_last_error();
+                // A quiet app can have zero packets. Replay also polls on timeout
+                // so a device that stops signalling can report invalidation.
                 UINT32 frames{};
                 winrt::check_hresult(capture->GetNextPacketSize(&frames));
                 while (frames) {
@@ -111,7 +120,15 @@ class ProcessLoopbackCapture {
                     winrt::check_hresult(capture->GetBuffer(&bytes, &frames, &flags, &position, &qpc));
                     if (!frames) break;
                     struct Release { IAudioCaptureClient* client; UINT32 frames; ~Release() { if (frames) client->ReleaseBuffer(frames); } } release{capture.Get(), frames};
-                    if ((flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) || (!first && (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY)))
+                    // Replay fills gaps against the video clock. A packet with no reliable
+                    // timestamp cannot be placed on that clock, so discard just that packet.
+                    if (mode == ProcessLoopbackMode::Replay && (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR)) {
+                        const auto released = capture->ReleaseBuffer(frames); release.frames = 0;
+                        winrt::check_hresult(released);
+                        winrt::check_hresult(capture->GetNextPacketSize(&frames));
+                        continue;
+                    }
+                    if (mode == ProcessLoopbackMode::Strict && ((flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) || (!first && (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY))))
                         throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_INVALID_DATA));
                     first = false;
                     const auto count = size_t(frames) * Channels;
@@ -133,12 +150,15 @@ class ProcessLoopbackCapture {
                 }
             }
         } catch (...) {
-            failure.store(winrt::to_hresult());
+            result = winrt::to_hresult();
             if (!announced) ready.set_exception(std::current_exception());
         }
         if (started) client->Stop();
         client.Reset();
         if (initialized) winrt::uninit_apartment();
+        // Drain may retire this reader as soon as it sees failure. Finish WASAPI
+        // teardown here first so the video thread does not wait on the device.
+        failure.store(result);
     }
 public:
     static constexpr UINT32 Rate = 48000, Channels = 2;
@@ -149,10 +169,13 @@ public:
         format.wBitsPerSample = 16; format.nBlockAlign = Channels * 2; format.nAvgBytesPerSec = Rate * format.nBlockAlign;
         return format;
     }
-    explicit ProcessLoopbackCapture(DWORD processId) {
+    explicit ProcessLoopbackCapture(DWORD processId, ProcessLoopbackMode requestedMode = ProcessLoopbackMode::Strict) : mode(requestedMode) {
         if (!processId) throw winrt::hresult_error(E_INVALIDARG);
         std::promise<void> ready; auto initialized = ready.get_future();
         worker = std::thread([this, processId, promise = std::move(ready)]() mutable { Run(processId, std::move(promise)); });
+        // Replay polls Drain on its video thread. Activation and its failures
+        // stay on the audio thread, including when a device takes seconds to open.
+        if (mode == ProcessLoopbackMode::Replay) return;
         try { initialized.get(); }
         catch (...) { Stop(); throw; }
     }

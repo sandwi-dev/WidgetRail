@@ -94,7 +94,7 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
             island.Content = automationRoot;
             // Rounded XAML leaves uncovered client pixels. Preserve the transparent
             // native backdrop used by the former Window host on this explicit island.
-            island.SystemBackdrop = new TransparentTintBackdrop();
+            island.SystemBackdrop = new TransparentWindowBackdrop();
             window.IsShownInSwitchers = false;
             var presenter = (OverlappedPresenter)window.Presenter;
             presenter.IsResizable = presenter.IsMaximizable = presenter.IsMinimizable = false;

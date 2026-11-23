@@ -20,6 +20,7 @@ public sealed record BridgePlatformAppearance
     public required ContrastPreference Contrast { get; init; }
     public required bool BoldText { get; init; }
     public required TransparencyPreference Transparency { get; init; }
+    public bool AnimateOverlayVisibility { get; init; } = true;
     public required bool AnimateWidgetSwitching { get; init; }
     public string FocusAnimation { get; init; } = "fade";
     public string SectionAnimation { get; init; } = "slide";
@@ -142,6 +143,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             Contrast = appearance.Contrast,
             BoldText = appearance.BoldText,
             Transparency = appearance.Transparency,
+            AnimateOverlayVisibility = appearance.AnimateOverlayVisibility,
             AnimateWidgetSwitching = appearance.AnimateWidgetSwitching,
             FocusAnimation = appearance.FocusAnimation.ToString().ToLowerInvariant(),
             SectionAnimation = appearance.SectionAnimation.ToString().ToLowerInvariant(),
@@ -253,7 +255,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
         }
     }
 
-    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, BridgeComputedStyleValue>>
+    internal static IReadOnlyDictionary<string, IReadOnlyDictionary<string, BridgeComputedStyleValue>>
         ResolveShellStyles(WrssTheme theme)
     {
         var definitions = new (string Key, string Role, IReadOnlySet<WrssPseudoState> States)[]

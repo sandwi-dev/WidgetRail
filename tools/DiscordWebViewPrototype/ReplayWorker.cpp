@@ -136,8 +136,24 @@ struct Worker {
 };
 thread_local Worker* active;
 int32_t __stdcall Current(){try{return active&&active->Current()?1:0;}catch(const winrt::hresult_error& e){active->Fail(e.code());return 0;}catch(...){active->Fail(E_FAIL);return 0;}}
+void __stdcall AudioUnavailable(int32_t error) {
+    if(active->state.flags&AudioLost)return;
+    active->state.flags |= AudioLost;
+    wchar_t message[96]{};
+    swprintf_s(message, L"WidgetRail replay: application audio unavailable (0x%08X). Video continues.\n", static_cast<unsigned>(error));
+    OutputDebugStringW(message);
+    active->Publish(true);
+}
 void __stdcall Audio(uint32_t kind,uint32_t,uint32_t,int64_t time,const void* bytes,uint32_t count){
-    try{active->recorder.Audio(kind,time,bytes,count);}catch(const winrt::hresult_error& e){active->Fail(e.code(),Issue::Audio);}catch(...){active->Fail(E_FAIL,Issue::Audio);}}
+    try{
+        if(active->recorder.Audio(kind,time,bytes,count) && (active->state.flags&AudioLost)){
+            active->state.flags &= ~AudioLost;
+            active->Publish(true);
+        }
+    }catch(const winrt::hresult_error& e){
+        if(kind==2 && e.code()==HRESULT_FROM_WIN32(ERROR_BUFFER_OVERFLOW))AudioUnavailable(e.code());
+        else active->Fail(e.code(),Issue::Audio);
+    }catch(...){active->Fail(E_FAIL,Issue::Audio);}}
 void __stdcall Texture(uint32_t w,uint32_t h,uint32_t sw,uint32_t sh,int64_t time,ID3D11Texture2D* texture){
     try{
         if(!active->sourceVerified){
@@ -187,8 +203,8 @@ int wmain(int argc,wchar_t** argv){
 #ifdef CAPTURE_WORKER_VALIDATION
         if(c.flags==1)result=Synthetic(worker);else
 #endif
-        result=c.codec?WrailLiveCaptureRunTextureV4(c.window,c.processId,c.created,c.className,c.audioMode,c.maximumWidth,c.maximumHeight,c.framesPerSecond,c.includeCursor,c.adapterLuid,Current,Audio,Texture,&failureStage):
-            WrailLiveCaptureRunTextureV3(c.window,c.processId,c.created,c.className,c.audioMode,c.maximumWidth,c.maximumHeight,c.framesPerSecond,c.includeCursor,0,Current,Audio,Texture,&failureStage);
+        result=WrailLiveCaptureRunReplay(c.window,c.processId,c.created,c.className,c.audioMode,c.maximumWidth,c.maximumHeight,
+            c.framesPerSecond,c.includeCursor,c.codec?c.adapterLuid:0,c.codec?1u:0u,Current,Audio,Texture,&failureStage,AudioUnavailable);
         }catch(const winrt::hresult_error& error){worker.Fail(error.code());result=error.code();}
         catch(...){worker.Fail(E_FAIL);result=E_FAIL;}
         worker.Finish(result,failureStage);active=nullptr;CloseHandle(ready);return FAILED(result)?1:0;

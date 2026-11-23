@@ -26,7 +26,7 @@ internal static partial class GalleryTests
             "Compact date/time metadata or long recording duration badge is missing");
         Check(Flatten(unavailable).Any(node => node.StyleClasses.Contains("capture-thumbnail-placeholder") && node.StyleClasses.Contains("capture-density-1")),
             "Unavailable media must occupy the same thumbnail extent");
-        Check(lease.Range.Items.All(item => item.Root.ActionId == "capture-library.open-item" && item.Root.ContextMenuButton == ControllerButton.Menu &&
+        Check(lease.Range.Items.All(item => item.Root.ActionId == "capture-library.open-item" && item.Root.NativeContextMenuOnly == true && item.Root.ContextMenuButton is null &&
             item.Root.ContextActions.Count == 1 && item.Root.ContextActions[0].ActionId == "capture-library.item.favorite"),
             "Card primary action or native context-menu ownership changed");
         Check(fixture.View().Root.Shortcuts.Any(shortcut => shortcut.Button == ControllerButton.X && shortcut.ActionId == "capture-library.video"),

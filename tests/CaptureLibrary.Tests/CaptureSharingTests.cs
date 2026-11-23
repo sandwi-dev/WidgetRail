@@ -5,6 +5,23 @@ using WidgetRail.WidgetSdk;
 
 internal static partial class GalleryTests
 {
+    internal static async Task AssociationOfferKeepsExactSelection()
+    {
+        await using var fixture = new GalleryFixture();
+        await fixture.Start();
+        await fixture.Action("capture-library.selection.toggle");
+        await fixture.Action("capture-library.selection.all");
+        var declaration = fixture.Node("capture-library.batch.link")!.Intent!;
+        var payload = await fixture.Widget.OnPrepareIntentAsync(declaration.PreparationKey!, declaration);
+        Check(payload.HasValue && CompiledWidgetIntentContract.Create(WidgetIntentContracts.CaptureAssociation).Accepts(payload.Value),
+            "Prepared capture association did not match its declared contract");
+        var offered = payload!.Value.GetProperty("captures").EnumerateArray().ToArray();
+        Check(offered.Length == 3 && offered.All(entry => fixture.Items.Any(item => item.Id == entry.GetProperty("id").GetString() &&
+            item.Revision == entry.GetProperty("revision").GetInt64())), "Link preparation lost capture identity or revision");
+        Check(fixture.Opened == 0 && fixture.Collection!.IndexedSelection!.Count == 3, "Preparing links opened original media or cleared selection");
+        await fixture.Action("capture-library.selection.clear");
+        Check(await fixture.Widget.OnPrepareIntentAsync(declaration.PreparationKey!, declaration) is null, "Superseded selection reached a receiver");
+    }
     internal static async Task SharingPreviewUsesExactSavedIdentity()
     {
         var files = new ShareFilesFake();

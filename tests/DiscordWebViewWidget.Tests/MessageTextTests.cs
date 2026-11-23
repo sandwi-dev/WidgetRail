@@ -31,5 +31,25 @@ internal static class MessageTextTests
         check(DiscordMessageText.Parse("***both***").Single() is {Text:"both"} combined&&combined.Style==(DiscordTextStyle.Bold|DiscordTextStyle.Italic)&&
             DiscordMessageText.Parse("**bold *italic***").Any(part=>part.Text=="italic"&&part.Style.HasFlag(DiscordTextStyle.Bold|DiscordTextStyle.Italic)),
             "Combined and nested emphasis preserve both native styles");
+        const string article="https://example.test/article";
+        const string selection=article+"#:~:text=selected%20words";
+        check(DiscordMessageLinks.EmbedTarget(article,[selection])==selection,
+            "Canonical article card retains its unique authored text-selection destination");
+        check(DiscordMessageLinks.EmbedTarget(article,[selection,article])==article,
+            "Exact authored article takes precedence without consuming a separate text selection");
+        check(DiscordMessageLinks.EmbedTarget(article,[selection,selection])==selection &&
+            DiscordMessageLinks.EmbedTarget(article,[selection,article+"#:~:text=other"]) is null,
+            "Repeated selections coalesce but ambiguous selections do not invent a third canonical action");
+        check(DiscordMessageLinks.EmbedTarget(article+"#section",[article+"#section:~:text=words"])==article+"#section:~:text=words",
+            "Text selection matching preserves an element anchor");
+        foreach(var distinct in new[]{article+"?page=2#:~:text=words",article+"#section",article+"#section:~:text=words",
+            article+"#%3A~%3Atext=words",article+"#:~:text=",article+"#:~:other=words",
+            "https://other.test/article#:~:text=words",article+"/other#:~:text=words","https://example.test:8443/article#:~:text=words"})
+            check(DiscordMessageLinks.EmbedTarget(article,[distinct])==article,
+                "Article matching leaves distinct destination unchanged: "+distinct);
+        check(DiscordMessageLinks.EmbedTarget("javascript:alert(1)",[selection]) is null &&
+            DiscordMessageLinks.EmbedTarget("https://user:password@example.test/article",[selection]) is null &&
+            DiscordMessageLinks.EmbedTarget(article,["https://user:password@example.test/article#:~:text=words"])==article,
+            "Embed association rejects script targets and URL credentials");
     }
 }

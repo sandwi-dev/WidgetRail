@@ -35,7 +35,10 @@ internal static class VoiceControlTests
     private static async Task DeviceControls(Action<bool,string> check)
     {
         await using var test=await Harness.Create();
+        var homeSection=test.Node("discord.section.content").Transition;
         await test.OpenSettings();var snapshot=test.Snapshot();
+        check(homeSection is not null && test.Node("discord.section.content").Transition==homeSection,
+            "Opening voice settings preserves the underlying call section transition");
         check(snapshot.Root.Kind==ViewNodeKind.ModalLayer&&snapshot.ActiveInputScopeId=="discord.voice-settings-dialog.scope"&&
             WidgetTestHost.ValidateWinUiPresentation(snapshot).Count==0,"Menu Voice settings uses a native modal and existing host controls");
         check(test.Node(Dialog+".input").SelectOptions!.Count==2&&test.Node(Dialog+".output").SelectOptions!.Count==2&&

@@ -48,7 +48,10 @@ internal static class ConnectionDetailsTests
     {
         await using var test=await Harness.Create();
         check(test.Session.Reads==0,"Call rendering does not read diagnostics before details are opened");
+        var homeSection=test.Node("discord.section.content").Transition;
         await test.Open();
+        check(homeSection is not null && test.Node("discord.section.content").Transition==homeSection,
+            "Opening connection details preserves the underlying call section transition");
         check(test.Node(Dialog+".ping").Text=="Ping: 42 ms","Connection details presents current measured voice ping");
         check(test.Snapshot().Root.Kind==ViewNodeKind.ModalLayer&&test.Snapshot().InitialFocusId==Dialog+".summary"&&
             WidgetTestHost.ValidateWinUiPresentation(test.Snapshot()).Count==0,"Connection details uses a valid scoped native modal and reading focus");

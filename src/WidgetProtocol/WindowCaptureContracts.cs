@@ -25,7 +25,11 @@ public sealed record WindowCaptureStatus(string RequestId, WindowCapturePhase Ph
 /// <summary>Display metadata for the exact captured window; never a target selector.</summary>
 public sealed record CaptureApplicationContext(string ApplicationName, string WindowTitle)
 {
+    /// <summary>Windows executable basename when verified against the exact captured process.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ProcessName { get; init; }
     public bool IsWellFormed() => !string.IsNullOrWhiteSpace(ApplicationName) && ApplicationName.Length <= 120 &&
+        (ProcessName is null || CaptureContextLimits.RequiredText(ProcessName, 120) && ProcessName.IndexOfAny(['/', '\\', ':']) < 0) &&
         !ApplicationName.Any(char.IsControl) && WindowTitle is not null && WindowTitle.Length <= 240 && !WindowTitle.Any(char.IsControl);
 }
 [JsonConverter(typeof(JsonStringEnumConverter<CaptureAttachmentOrigin>))]
@@ -39,8 +43,11 @@ public sealed record CaptureAttachment(string Id, string ContentType, int Width,
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public CaptureApplicationContext? SourceApplication { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public CaptureProcessInterval? SourceProcess { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public CaptureMediaProperties? Properties { get; init; }
-    public bool IsWellFormed() => Enum.IsDefined(Origin) && (SourceApplication is null || SourceApplication.IsWellFormed()) && CaptureLimits.ValidToken(Id) && ContentType is "image/png" or "video/mp4" &&
+    public bool IsWellFormed() => Enum.IsDefined(Origin) && (SourceApplication is null || SourceApplication.IsWellFormed()) &&
+        (SourceProcess is null || SourceProcess.IsWellFormed()) && CaptureLimits.ValidToken(Id) && ContentType is "image/png" or "video/mp4" &&
         Width is > 0 and <= CaptureLimits.MaximumWidth && Height is > 0 and <= CaptureLimits.MaximumHeight &&
         ((long)Width * Height <= CaptureLimits.MaximumPixels) &&
         (Origin != CaptureAttachmentOrigin.LibraryRecordingDraft || ContentType == "video/mp4" && Properties is not null) &&

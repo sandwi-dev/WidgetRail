@@ -7,6 +7,76 @@ namespace WinUiShell.Tests;
 public sealed class ShellPreferencesTests
 {
     [TestMethod]
+    public async Task NewProfilesHaveFourEmptySlotsAndExplicitAssignmentsPersist()
+    {
+        var root = Directory.CreateTempSubdirectory("wrail-tray-favorites-").FullName;
+        try
+        {
+            var store = new ShellPreferencesStore(root);
+            var fresh = await store.LoadAsync();
+            Assert.AreEqual(new TrayActionSlots(), fresh.TrayActions);
+            var favorite = new TrayActionBinding("spotify", "play-pause", "publisher", Package: "widgetrail.samples.spotify", Label: "Play or pause");
+            await store.SaveAsync(fresh with { TrayActions = fresh.TrayActions.Assign(TrayDirection.Up, null).Assign(TrayDirection.Right, favorite) });
+            var restored = await new ShellPreferencesStore(root).LoadAsync();
+            var path = Path.Combine(root, "winui-shell-state.json");
+            var legacy = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+            legacy["RadialDpadActions"] = false;
+            await File.WriteAllTextAsync(path, legacy.ToJsonString());
+            Assert.AreEqual(restored.TrayActions, (await store.LoadAsync()).TrayActions);
+            Assert.IsNull(restored.TrayActions.Up);
+            Assert.AreEqual(favorite, restored.Reconcile([], true).TrayActions.Right);
+            await File.WriteAllTextAsync(Path.Combine(root,"winui-shell-state.json"), """{"Order":["spotify"],"ReopenWidget":false}""");
+            var existing = await store.LoadAsync();
+            Assert.IsNull(existing.TrayActions.Up);
+            CollectionAssert.AreEqual(new[] { "spotify" }, existing.Order.ToArray());
+        }
+        finally { Directory.Delete(root, recursive:true); }
+    }
+
+    [TestMethod]
+    public void AudioChoicesAreWidgetScopedAndSurviveCatalogReconciliation()
+    {
+        Assert.IsTrue(new MediaAudioPreference().Muted);
+        var saved = ShellPreferences.Empty.RememberAudio("discord", new(false, .35));
+        saved = saved.RememberAudio("capture", new(true, .8));
+        var reconciled = saved.Reconcile(["discord", "capture"], true).Move("capture", -1);
+        Assert.AreEqual(new MediaAudioPreference(false, .35), reconciled.MediaAudio["discord"]);
+        Assert.AreEqual(new MediaAudioPreference(true, .8), reconciled.MediaAudio["capture"]);
+        Assert.AreEqual(0, ShellPreferences.Empty.MediaAudio.Count);
+        Assert.IsFalse(new MediaAudioPreference(Volume: double.NaN).IsValid);
+        Assert.IsFalse(new MediaAudioPreference(Volume: 1.01).IsValid);
+    }
+
+    [TestMethod]
+    public async Task AudioChoicesSurviveRestartAndRemainWithinTheStateFileBound()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "wrail-audio-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var ids = Enumerable.Range(0, ShellPreferences.MaximumWidgets)
+                .Select(index => new string('a', 120) + index.ToString("D8")).ToArray();
+            var value = new ShellPreferences(ids, ids[0], true);
+            foreach (var direction in Enum.GetValues<TrayDirection>())
+                value = value with { TrayActions = value.TrayActions.Assign(direction, new(ids[0], ids[1], ids[2], ids[3], ids[4], new string('z',80))) };
+            for (var i = 0; i < ShellPreferences.MaximumAudioWidgets; i++)
+                value = value.RememberAudio(ids[i], new(i % 2 == 0, .1234567890123456));
+            Assert.AreSame(value, value.RememberAudio("another.widget", new()));
+            await new ShellPreferencesStore(root).SaveAsync(value);
+            Assert.IsLessThanOrEqualTo(65536L, new FileInfo(Path.Combine(root, "winui-shell-state.json")).Length);
+            var restored = await new ShellPreferencesStore(root).LoadAsync();
+            Assert.AreEqual(ShellPreferences.MaximumAudioWidgets, restored.MediaAudio.Count);
+            Assert.AreEqual(value.MediaAudio[ids[1]], restored.MediaAudio[ids[1]]);
+            CollectionAssert.AreEqual(ids, restored.Order.ToArray());
+            Assert.AreEqual(0, (await new ShellPreferencesStore(Path.Combine(root, "other-profile")).LoadAsync()).MediaAudio.Count);
+            await File.WriteAllTextAsync(Path.Combine(root, "winui-shell-state.json"),
+                "{\"Order\":[],\"ReopenWidget\":false,\"MediaAudio\":{\"discord\":{\"Muted\":false,\"Volume\":999}}}");
+            Assert.AreEqual(ShellPreferences.Empty, await new ShellPreferencesStore(root).LoadAsync());
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [TestMethod]
     public void PartialCatalogDoesNotEraseUndiscoveredPreferences()
     {
         var saved = new ShellPreferences(["a", "b", "c"], "c", true);

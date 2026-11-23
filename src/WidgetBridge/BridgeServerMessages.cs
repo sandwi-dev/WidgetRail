@@ -13,7 +13,9 @@ internal sealed record BridgeHostEffect(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? PinnedLayoutId = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    string? PinnedSelectionId = null);
+    string? PinnedSelectionId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    long? LaunchStartedAtMilliseconds = null);
 
 internal sealed class BridgeStaleControllerInputAuthorityException(string message)
     : Exception(message);

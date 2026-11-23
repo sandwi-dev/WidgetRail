@@ -120,9 +120,11 @@ internal sealed partial class EmbeddedMediaValidationPage
             Check(declaration.PendingCommand!.Sequence == sequence, "host fullscreen playback controls leave the widget command lineage untouched");
             fullscreen.Width = 420;
             await Until(() => fullscreen.ActualWidth < 421 && fullscreen.SurfaceHost.ActualWidth <= 420);
+            Check(!fullscreen.ControlsVisible, "Playback and resize keep the fullscreen controls hidden before focus entry");
             fullscreen.Enter();
             var guideButtons = Descendants(fullscreen).OfType<Button>()
                 .Where(button => !Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button).EndsWith(".VideoFocus", StringComparison.Ordinal)).ToArray();
+            await Until(() => guideButtons.All(button => button.ActualHeight > 0 && button.ActualWidth > 0));
             Check(guideButtons.Length == 4 && guideButtons.All(button =>
             {
                 var point = button.TransformToVisual(fullscreen).TransformPoint(new(0, 0));

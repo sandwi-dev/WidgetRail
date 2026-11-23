@@ -7,6 +7,7 @@ using WidgetRail.OverlayFrontend.WinUI.Presentation;
 using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetPresentationSession;
+using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
@@ -52,7 +53,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private bool retainingExitPresentation;
     private bool PresentationVisible => visible || retainingExitPresentation;
     internal Action<string>? WindowActivationDiagnostic { get; set; }
-    internal event Action<WidgetPresentationHostEffect>? TaskWindowActivationRequested;
+
     internal event Action<AppearanceSettings>? AppearanceLoaded;
     internal event Action<ControllerSettings>? ControllerSettingsLoaded;
     internal event Action? BridgeReady;
@@ -69,6 +70,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         preferencesStore = new(options.SettingsRoot);
         interactionAdmission = new(transitions);
         InitializeComponent();
+        InitializeMediaAudioPreferences();
         InitializePinReturnBoundary();
         ProductionRoot.PointerReleased+=PinPointerReleased;
         ProductionRoot.PointerCanceled+=PinPointerCanceled;
@@ -120,6 +122,10 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     }
 
     private readonly bool serviceEnabled;
+    private Task? initialAppearance;
+
+    internal Task EnsureInitialAppearanceAsync() =>
+        serviceEnabled ? initialAppearance ??= LoadAppearanceAsync() : Task.CompletedTask;
 
     private void EnsureStarted()
     {
@@ -138,14 +144,14 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             preferences = await preferencesStore.LoadAsync(lifetime.Token);
             preferencesLoaded = true;
             await LoadPinnedPreferencesAsync();
-            await LoadAppearanceAsync();
+            await EnsureInitialAppearanceAsync();
             Phase("preferences-ready");
             await InitializePreviewCapturesAsync();
             Phase("preview-capability-ready");
             owner = await OwnedBridgeProcess.StartAsync(new(options.InstallationRoot,
                 options.SettingsRoot, options.InstalledCatalogRoot)
             {
-                StartupWidgetId = options.InitialWidgetId,
+                StartupWidgetId = options.InitialWidgetId ?? homeWidgetId,
                 WindowPreviews = previewCaptures is not null,
                 ExclusiveControllerControl = ControllerControlStatusRequested is not null,
                 StartupRegistration = true,
@@ -194,7 +200,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             {
                 catalog = await startupOwner.Session.ListWidgetsAsync(deadline.Token);
                 if (firstResponse) { Phase(catalog.IsComplete ? "first-catalog-complete" : "first-catalog-pending"); firstResponse = false; }
-                if (StartupCatalogPolicy.CanOpenInitial(catalog.IsComplete, options.InitialWidgetId,
+                if (StartupCatalogPolicy.CanOpenInitial(catalog.IsComplete, options.InitialWidgetId ?? homeWidgetId,
                     catalog.Widgets.Select(widget => widget.Id))) break;
                 await Task.Delay(50, deadline.Token);
             } while (true);
@@ -205,16 +211,14 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         var explicitInitial = catalog.Widgets.FirstOrDefault(widget => widget.Id == options.InitialWidgetId);
         if (options.Development is { } development && (explicitInitial is null || explicitInitial.InstanceId != development.InstanceId))
             throw new InvalidDataException("The development catalog does not contain the requested widget instance.");
-        // A fresh host launch mirrors native OpenWidgetWithTrayFocus(settings).
-        // Session hide/reopen is handled separately and retains its current widget.
-        var startupSettings = catalogItems.FirstOrDefault(widget => widget.Id == "settings");
-        var initial = explicitInitial ?? startupSettings
+        var savedHome = ResolveHomeWidget(options.InitialWidgetId is null ? homeWidgetId : SettingsWidgetId);
+        var initial = explicitInitial ?? savedHome
             ?? catalogItems.FirstOrDefault(widget => widget.Id == preferences.LastWidget)
             ?? catalogItems.FirstOrDefault();
         if (startupSelection == selectionVersion)
         {
-            if (initial is not null) await SelectAsync(initial.Id,
-                enterWidget: explicitInitial is not null || startupSettings is null && preferences.ReopenWidget);
+            if (explicitInitial is not null) await SelectAsync(explicitInitial.Id);
+            else if (initial is not null) await SelectStartupHomeAsync(initial.Id);
             else ShowRecovery("No installed widgets are available.", false);
         }
         Phase("initial-widget-ready");
@@ -238,8 +242,14 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         }
     }
 
+    private long observedIntentHandlerRevision;
     private void SetCatalog(WidgetPresentationCatalog catalog)
     {
+        if (owner?.Session is { } session && session.IntentHandlerRevision != observedIntentHandlerRevision)
+        {
+            observedIntentHandlerRevision = session.IntentHandlerRevision;
+            foreach (var retained in retainedSurfaces.Values) retained.Presenter.RefreshIntentVisibility();
+        }
         if (catalog.IsComplete) webAppIcons?.Prune(catalog.Widgets.Where(widget => widget.IsUserWebApp).Select(widget => widget.Id).ToHashSet(StringComparer.Ordinal));
         ReconcilePresentationMemory(catalog);
         var selected = requestedWidget;
@@ -263,6 +273,12 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             }
         }
         while (catalogItems.Count > ordered.Length) catalogItems.RemoveAt(catalogItems.Count - 1);
+        favoriteProviders.Clear();
+        foreach (var provider in catalogItems)
+            if (provider.TrayActions is { Count: > 0 } &&
+                ShellPreferences.ValidId(provider.PublisherId) && ShellPreferences.ValidId(provider.PackageId))
+                favoriteProviders[provider.Id] = provider;
+        RefreshFavoriteHints();
         Tray.SelectedItem = catalogItems.FirstOrDefault(widget => widget.Id == selected);
         ReconcilePinnedCatalog(catalog);
         if (catalog.IsComplete) failedStatusWidgets.RemoveWhere(id => !byId.ContainsKey(id));
@@ -296,6 +312,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private void ApplyState(WidgetPresentationState state)
     {
         if (retired || !visible) return;
+        if ((radialShowing || favoriteFlyout is not null) && favoriteProviders.ContainsKey(state.WidgetId))
+            RefreshFavoriteHints(state.WidgetId);
         if (switching)
         {
             if (preparingSurface is { } preparing && state.WidgetId == requestedWidget &&
@@ -429,11 +447,13 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private async Task LoadAppearanceAsync()
     {
         var version = ++settingsReadVersion;
+        var homeRevision = homePreferenceRevision;
         try
         {
             var settings = await new PlatformSettingsStore(new(options.SettingsRoot)).LoadAsync(lifetime.Token);
             if (retired || version != settingsReadVersion) return;
             savedAppearance = settings.Appearance;
+            if (homeRevision == homePreferenceRevision) homeWidgetId = settings.HomeWidgetId;
             introductionControllers = settings.Controllers;
             ControllerSettingsLoaded?.Invoke(settings.Controllers);
             ApplyEffectiveAppearance();
@@ -455,7 +475,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if(effect.Kind is WidgetHostEffectKind.OpenPinnedLayout or WidgetHostEffectKind.ClosePinnedLayout or WidgetHostEffectKind.ManagePinnedSurface)
         { _=RequestWidgetPinAsync(effect);return; }
         var rejection = retired ? "retired" : !visible ? "hidden" : effect.Authority.WidgetId != activeWidget ? "widget-changed" :
-            effect.InitiatedAtMilliseconds < visibleSince ? "old-visible-session" :
+            (effect.LaunchStartedAtMilliseconds ?? effect.InitiatedAtMilliseconds) < visibleSince ? "old-visible-session" :
             owner?.Session.IsHostEffectAuthorityCurrent(effect.Authority) != true ? "stale-authority" : null;
         if (rejection is not null)
         {
@@ -463,54 +483,26 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             return;
         }
         if (effect.Kind == WidgetHostEffectKind.CloseOverlayAfterAppLaunch) ImmediateHideRequested?.Invoke();
-        else if (effect.Kind == WidgetHostEffectKind.ActivateTaskWindow) TaskWindowActivationRequested?.Invoke(effect);
+        else if (effect.Kind == WidgetHostEffectKind.ActivateTaskWindow) _ = RequestWidgetTaskActivationAsync(effect);
     });
 
-    internal async Task ActivateTaskWindowAsync(WidgetPresentationHostEffect effect,
-        WidgetRail.WindowsWindowActivation.TaskWindowActivation activation, Action hide, Func<Task<bool>>? prepareHandoff = null,
-        CancellationToken handoffCancellation = default)
+    private async Task RequestWidgetTaskActivationAsync(WidgetPresentationHostEffect effect)
     {
-        if (retired || !visible || effect.Kind != WidgetHostEffectKind.ActivateTaskWindow || effect.WindowTarget is not { } target)
-        { TraceTaskActivation(effect, "host-rejected retired=" + retired + " visible=" + visible + " kind=" + effect.Kind); return; }
+        if (effect.WindowTarget is not { } target || HostTaskActivationRequested is null) return;
         bool Current() => !retired && effect.Authority.WidgetId == activeWidget &&
             owner?.Session.IsHostEffectAuthorityCurrent(effect.Authority) == true;
         try
         {
-            var result = await activation.ExecuteAsync(new(target.Handle, target.ProcessId, target.ProcessCreated, target.ClassName),
-                effect.InitiatedAtMilliseconds, visibleSince, Current, () =>
-                {
-                    owner!.RefreshForegroundPermissionForHandoff();
-                    hide();
-                }, async () =>
-                {
-                    var completed = await owner!.Session.CompleteTaskActivationAsync(effect, lifetime.Token);
-                    TraceTaskActivation(effect, $"brokerPid={completed.ProcessId} code={completed.Code} {completed.NativeTrace}");
-                    return completed.Result switch
-                    {
-                        "Requested" => WidgetRail.WindowsWindowActivation.TaskWindowActivationResult.Requested,
-                        "Denied" => WidgetRail.WindowsWindowActivation.TaskWindowActivationResult.Denied,
-                        _ => WidgetRail.WindowsWindowActivation.TaskWindowActivationResult.Rejected,
-                    };
-                }, message => TraceTaskActivation(effect, message), prepareHandoff);
-            TraceTaskActivation(effect, "result=" + result);
-            _ = ObserveTaskActivationAsync(effect);
+            var result = await HostTaskActivationRequested(new(new(target.Handle, target.ProcessId, target.ProcessCreated, target.ClassName),
+                effect.InitiatedAtMilliseconds, visibleSince, Current) { WidgetEffect = effect });
+            TraceTaskActivation(effect, $"result={result.Activation} taskViewFallback={result.Fallback?.ToString() ?? "none"}");
         }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested || handoffCancellation.IsCancellationRequested) { }
+        catch (OperationCanceledException) { }
         catch (Exception error) { Diagnostics.FrontendFailureLog.Current.Write("task-activation", error); }
     }
 
     private void TraceTaskActivation(WidgetPresentationHostEffect effect, string message) =>
         WindowActivationDiagnostic?.Invoke($"Task activation widget={effect.Authority.WidgetId} targetHwnd={effect.WindowTarget?.Handle} targetPid={effect.WindowTarget?.ProcessId} initiated={effect.InitiatedAtMilliseconds} visibleSince={visibleSince} {message}");
-
-    private async Task ObserveTaskActivationAsync(WidgetPresentationHostEffect effect)
-    {
-        try
-        {
-            await Task.Delay(150, lifetime.Token);
-            if (!retired) TraceTaskActivation(effect, "phase=foreground-observed-after-150ms");
-        }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-    }
 
     internal void SetVisible(bool value, bool retainExitPresentation = false)
     {
@@ -520,18 +512,21 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (!value)
         {
             if (retainExitPresentation) SuspendUtilityPanel(); else CloseUtilityPanel(cancelSwitch: false);
+            fileBrowserLifetime?.Cancel();
             localInstallCancellation?.Cancel(); webAppEditor?.Close();
+            cataloguePreviewCancellation?.Cancel();
         }
         if (!value) intentCancellation?.Cancel();
         if (!value) CancelPinnedAdjustment(restoreFocus: false);
         if (!value) ExitPinnedInteraction(restoreMain: false);
         interactionAdmission.Invalidate();
         visible = value;
+        if (!value) favoriteFlyout?.Hide();
+        RefreshFavoriteProgress();
         if(!value){pointerPressedPin=null;adjustmentReturnPointer=null;returnPointerPending=false;ProductionRoot.ReleasePointerCaptures();}
         RefreshPinPointerAdmission();
         ScheduleIntroduction();
-        if (value && notificationBannerState.EntryId is { } bannerId &&
-            (notificationCenter?.Inbox.Find(bannerId) is not { } bannerEntry || !NotificationBannerEligible(bannerEntry) || !PlaceNotificationBanner())) HideNotificationBanner();
+        if (notificationBanner is not null) PumpNotificationBanners();
         RefreshStartupPresentation();
         // Reopen can await worker/lifecycle admission. Keep the last committed
         // pixels visible during that wait; its inactive presenter still rejects
@@ -592,11 +587,14 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     internal void SetForeground(bool value)
     {
         if (foreground == value || retired) return;
+        if (!value && fileBrowser is not null && fileBrowserPin is null) fileBrowserLifetime?.Cancel();
         if(!value&&pinned is {BorrowedBrowserFocus:not null})ExitPinnedInteraction(restoreMain:false);
         if (!value) { intentCancellation?.Cancel(); webAppEditor?.Close(); }
         if (!value) CancelPinnedAdjustment(restoreFocus: false);
         interactionAdmission.Invalidate();
         foreground = value;
+        if (!value) favoriteFlyout?.Hide();
+        RefreshFavoriteProgress();
         ScheduleIntroduction();
         RefreshExpandedBrowser();
         if (value) intentForegroundAcquired?.TrySetResult();
@@ -737,6 +735,11 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                     else await ManageUserWebAppsAsync();
                 }
                 else if (request.IndexedLease is not null) await InvokeIntentAsync(request);
+                else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EditTrayFavoritesAction)
+                {
+                    owner.Session.ValidateKeyboardShortcutCommand(request.Displayed, request.Action);
+                    await EditFavoriteSlotsAsync();
+                }
                 else if (request.Action.ActionId is WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EditKeyboardShortcutAction or WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EditReplayShortcutAction)
                     await EditKeyboardShortcutAsync(request);
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.ReplayIntroductionAction)
@@ -748,6 +751,10 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                     RequestApplicationControl(owner.Session.ResolveApplicationControl(request.Displayed, request.Action));
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.InstallLocalWidgetAction)
                     await InstallLocalWidgetAsync(request);
+                else if (request.Action.ActionId.StartsWith(ThemeCataloguePublication.PreviewActionPrefix, StringComparison.Ordinal))
+                    await TryCatalogueThemeAsync(request);
+                else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.ChooseHomeWidgetAction)
+                    await ChooseHomeWidgetAsync(request);
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.ManageBrowserExtensionsAction)
                 {
                     owner.Session.ValidateBrowserExtensionManagement(request.Displayed, request.Action);
@@ -756,6 +763,14 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 }
                 else if (WidgetRail.WidgetPresentationSession.WidgetPresentationSession.IsBrowserExtensionCommand(request.Action.ActionId))
                     await HandleExtensionCommandAsync(request);
+                else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.PinMediaAction)
+                {
+                    owner.Session.ValidateEmbeddedMediaPin(request.Displayed, request.Action);
+                    if (pins.FirstOrDefault(pin => pin.WidgetId == request.Authority.WidgetId && pin.Media is not null && pin.IsCurrent) is { } existing)
+                        await ManagePinAsync(existing, failureCurrent);
+                    else
+                        await PinMediaAsync(request.Authority.WidgetId, displayed: request.Displayed);
+                }
                 else if (request.Action.ActionId == WidgetRail.WidgetPresentationSession.WidgetPresentationSession.EnterMediaFullscreenAction)
                 {
                     if (pins.FirstOrDefault(pin=>pin.Media is not null && pin.WidgetId==request.Authority.WidgetId) is { } mediaPin)
@@ -912,11 +927,14 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         retired = true;
         // Replay owns an independent lifetime and must stop renewing authority
         // before unrelated UI, persistence, or browser cleanup can suspend.
+        if (owner is not null) owner.Session.ReplayStatusChanged -= ReplayHintChanged;
         var stoppingReplay = replayCoordinator?.DisposeAsync().AsTask() ?? Task.CompletedTask;
         CloseUtilityPanel();
         await utilityRefresh;
         DisposeNotificationBanner();
         if (owner is not null) owner.Session.NotificationReceived -= ReceiveWidgetNotification;
+        favoriteFlyout?.Hide();
+        desktopFavoriteFeedback?.Dispose();
         if (owner is not null) owner.Session.ActivityReceived -= ReceiveWidgetActivity;
         reportedActivities.Clear(); nativeAudioSources.Clear(); statusTiles.Clear();
         if (owner is not null) owner.Session.AppUpdateChanged -= ReceiveAppUpdate;

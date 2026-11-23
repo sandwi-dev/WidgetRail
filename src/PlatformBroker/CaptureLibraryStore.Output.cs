@@ -48,7 +48,7 @@ public sealed partial class CaptureLibraryStore
     }
 
     internal async Task<CaptureLibraryItem> CommitOutputAsync(CaptureLibraryOutputSession session, CaptureAttachment media,
-        long capturedAt, Func<bool> isAuthorized, CancellationToken token)
+        long capturedAt, Func<bool> isAuthorized, CancellationToken token, Func<CancellationToken, Task>? reauthorize = null)
     {
         ArgumentNullException.ThrowIfNull(isAuthorized);
         void Current()
@@ -88,6 +88,7 @@ public sealed partial class CaptureLibraryStore
             saved = new(2, item, hash, PublicName(item), stamp);
             var pending = MetadataPath(item.Id) + ".pending";
             File.WriteAllText(pending, JsonSerializer.Serialize(saved));
+            if (reauthorize is not null) await reauthorize(token).ConfigureAwait(false);
             Current();
             File.Move(session.Path, MediaPath(saved), overwrite: false);
             session.RecoveryRequired=true;

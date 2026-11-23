@@ -49,7 +49,8 @@ internal sealed partial class WindowCaptureRegistry
                 DemandEntryCapacity(owner,reservation);
                 if(entries.Values.Any(entry=>entry.Phase is WindowCapturePhase.Queued or WindowCapturePhase.Preparing or WindowCapturePhase.Recording))throw Error("capture_busy");
                 var id=Guid.NewGuid().ToString("N");
-                var request=new HostWindowCapture(id,widget,WindowCaptureKind.Video,output.Path){Options=options with{MaximumBytes=budget}};
+                var request=new HostWindowCapture(id,widget,WindowCaptureKind.Video,output.Path){ Options = options with { MaximumBytes = budget },
+                    SaveToLibrary = owner is LibraryJob, TraySequence = (owner as LibraryJob)?.TraySequence };
                 entries.Add(id,new(owner,request,clock.GetUtcNow().AddSeconds(120+options.Preparation.DelaySeconds+options.Recording.MaximumDurationSeconds)){OutputSession=output});
                 output=null;
                 sweeper??=clock.CreateTimer(_=>{lock(gate){if(!disposed)Sweep();}},null,TimeSpan.FromSeconds(30),TimeSpan.FromSeconds(30));
@@ -59,7 +60,8 @@ internal sealed partial class WindowCaptureRegistry
         finally{lock(gate)pendingLibraryOutputs.Remove(reservation);output?.Dispose();}
     }
 
-    internal async Task<CaptureLibraryItem> SaveLibraryDraftAsync(object owner,CaptureAttachment expected,CancellationToken token)
+    internal async Task<CaptureLibraryItem> SaveLibraryDraftAsync(object owner,CaptureAttachment expected,CancellationToken token,
+        Func<CancellationToken, Task>? reauthorize = null)
     {
         Entry entry;CaptureLibraryOutputSession output;long captured;
         lock(gate)
@@ -73,7 +75,7 @@ internal sealed partial class WindowCaptureRegistry
         try
         {
             return await output.CommitDraftAsync(expected with{Id=output.Id,Origin=CaptureAttachmentOrigin.SavedLibrary,ExpiresAtUnixMilliseconds=long.MaxValue},
-                captured,Current,token).ConfigureAwait(false);
+                captured,Current,token,reauthorize).ConfigureAwait(false);
         }
         finally
         {

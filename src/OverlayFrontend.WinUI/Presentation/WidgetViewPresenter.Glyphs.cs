@@ -37,5 +37,7 @@ internal sealed partial class WidgetViewPresenter
         foreach (var binding in bindings.Values)
             if (binding.Element is FontIcon icon && binding.Identity.Kind == ViewNodeKind.ControllerGlyph)
                 WidgetGlyphs.Apply(icon, declarations[binding.Identity.Id].Node, next);
+            else if (binding.Element is WidgetValueButton { IsCommandMenu: true } menu)
+                menu.SetMenuHint(declarations[binding.Identity.Id].Node.ContextMenuButton == ControllerButton.Menu, next);
     }
 }

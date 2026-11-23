@@ -6,6 +6,22 @@ namespace WidgetRail.PlatformBroker;
 /// <summary>Match capture identity, never foreground order, to the Task Switcher naming source.</summary>
 public static class CaptureApplicationMetadata
 {
+    public static string? ResolveProcessName(NativeWindowPreviewTarget captured)
+    {
+        if (captured.ProcessId is 0 or > int.MaxValue || !Hex(captured.ProcessCreated, out var created) || created == 0) return null;
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById((int)captured.ProcessId);
+            if ((ulong)process.StartTime.ToUniversalTime().ToFileTimeUtc() != created) return null;
+            var name = process.ProcessName;
+            return CaptureContextLimits.RequiredText(name,120) && name.IndexOfAny(['/', '\\', ':']) < 0 ? name : null;
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception or UnauthorizedAccessException)
+        { return null; }
+    }
+    internal static CaptureProcessInterval? Interval(NativeWindowPreviewTarget? target, long? from, long through) =>
+        target is { ProcessId: > 0 } && Hex(target.ProcessCreated, out var created) && created > 0 &&
+        from is > 0 && through >= from ? new(CaptureProcessInterval.InstanceId(target.ProcessId, created), from.Value, through) : null;
     public static CaptureApplicationContext? Resolve(NativeWindowPreviewTarget captured, IReadOnlyList<TaskWindowSummary> windows)
     {
         if (windows.Count > 64 || captured.ProcessId == 0 || !Hex(captured.Handle, out var handle) || handle == 0 ||

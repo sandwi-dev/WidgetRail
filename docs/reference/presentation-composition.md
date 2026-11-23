@@ -80,6 +80,7 @@ to enter from navigation. If a loading or empty view has no such target, use
 An optional expanded pane sits between the rail and content in expanded mode.
 Its entry target can be supplied separately. Compact leading/trailing adornments
 are input-inert decorations, such as controller hints, not extra buttons.
+Set `NavigationShellDestination.CompactSeparatorBefore` to insert a vertical rule before a horizontal tab. The first tab has no leading separator. The rule takes no focus and preserves the tab's directional neighbors.
 
 ## Custom headers
 

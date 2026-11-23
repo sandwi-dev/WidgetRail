@@ -34,6 +34,8 @@ SOFTWARE.
 #include <winioctl.h>
 #include <climits>
 #include <mutex>
+#include <new>
+#include "X360FeedbackReader.h"
 
 #define VIGEM_TARGETS_MAX   USHRT_MAX
 
@@ -69,6 +71,7 @@ typedef struct _VIGEM_TARGET_T
     USHORT ProductId;
     VIGEM_TARGET_TYPE Type;
     DWORD_PTR Notification;
+    X360FeedbackReader* x360Reader;
 
 } VIGEM_TARGET;
 
@@ -80,6 +83,7 @@ PVIGEM_TARGET FORCEINLINE VIGEM_TARGET_ALLOC_INIT(
 )
 {
     auto target = static_cast<PVIGEM_TARGET>(malloc(sizeof(VIGEM_TARGET)));
+    if (!target) return nullptr;
     RtlZeroMemory(target, sizeof(VIGEM_TARGET));
 
     target->Size = sizeof(VIGEM_TARGET);
@@ -133,6 +137,8 @@ VIGEM_ERROR vigem_connect(PVIGEM_CLIENT vigem)
         DIGCF_PRESENT | DIGCF_DEVICEINTERFACE
     );
 
+    if (deviceInfoSet == INVALID_HANDLE_VALUE) return error;
+
     // enumerate device instances
     while (SetupDiEnumDeviceInterfaces(
         deviceInfoSet,
@@ -143,10 +149,14 @@ VIGEM_ERROR vigem_connect(PVIGEM_CLIENT vigem)
     ))
     {
         // get required target buffer size
+        requiredSize = 0;
         SetupDiGetDeviceInterfaceDetail(deviceInfoSet, &deviceInterfaceData, nullptr, 0, &requiredSize, nullptr);
+        if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || requiredSize < sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA))
+            continue;
 
         // allocate target buffer
         const auto detailDataBuffer = static_cast<PSP_DEVICE_INTERFACE_DETAIL_DATA>(malloc(requiredSize));
+        if (!detailDataBuffer) break;
         detailDataBuffer->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
 
         // get detail buffer
@@ -159,7 +169,6 @@ VIGEM_ERROR vigem_connect(PVIGEM_CLIENT vigem)
             nullptr
         ))
         {
-            SetupDiDestroyDeviceInfoList(deviceInfoSet);
             free(detailDataBuffer);
             error = VIGEM_ERROR_BUS_NOT_FOUND;
             continue;
@@ -192,7 +201,7 @@ VIGEM_ERROR vigem_connect(PVIGEM_CLIENT vigem)
         VIGEM_CHECK_VERSION_INIT(&version, VIGEM_COMMON_VERSION);
 
         // send compiled library version to driver to check compatibility
-        DeviceIoControl(
+        const BOOL submitted = lOverlapped.hEvent && DeviceIoControl(
             vigem->hBusDevice,
             IOCTL_VIGEM_CHECK_VERSION,
             &version,
@@ -204,7 +213,8 @@ VIGEM_ERROR vigem_connect(PVIGEM_CLIENT vigem)
         );
 
         // wait for result
-        if (GetOverlappedResult(vigem->hBusDevice, &lOverlapped, &transfered, TRUE) != 0)
+        if (submitted || (lOverlapped.hEvent && GetLastError() == ERROR_IO_PENDING &&
+                          GetOverlappedResult(vigem->hBusDevice, &lOverlapped, &transfered, TRUE)))
         {
             error = VIGEM_ERROR_NONE;
             free(detailDataBuffer);
@@ -213,8 +223,9 @@ VIGEM_ERROR vigem_connect(PVIGEM_CLIENT vigem)
         }
 
         error = VIGEM_ERROR_BUS_VERSION_MISMATCH;
-
-        CloseHandle(lOverlapped.hEvent);
+        CloseHandle(vigem->hBusDevice);
+        vigem->hBusDevice = INVALID_HANDLE_VALUE;
+        if (lOverlapped.hEvent) CloseHandle(lOverlapped.hEvent);
         free(detailDataBuffer);
     }
 
@@ -265,8 +276,10 @@ PVIGEM_TARGET vigem_target_ds4_alloc(void)
 
 void vigem_target_free(PVIGEM_TARGET target)
 {
-    if (target)
+    if (target) {
+        vigem_target_x360_unregister_notification(target);
         free(target);
+    }
 }
 
 VIGEM_ERROR vigem_target_add(PVIGEM_CLIENT vigem, PVIGEM_TARGET target)
@@ -449,61 +462,26 @@ VIGEM_ERROR vigem_target_x360_register_notification(
     if (target->SerialNo == 0 || notification == nullptr)
         return VIGEM_ERROR_INVALID_TARGET;
 
-    if (target->Notification == reinterpret_cast<DWORD_PTR>(notification))
-        return VIGEM_ERROR_CALLBACK_ALREADY_REGISTERED;
+    if (target->x360Reader) return VIGEM_ERROR_CALLBACK_ALREADY_REGISTERED;
+    auto reader = new (std::nothrow) X360FeedbackReader();
+    if (!reader) return VIGEM_ERROR_BUS_ACCESS_FAILED;
 
-    target->Notification = reinterpret_cast<DWORD_PTR>(notification);
-
-    std::thread _async{ [](
-        PVIGEM_TARGET _Target,
-        PVIGEM_CLIENT _Client)
+    XUSB_REQUEST_NOTIFICATION report;
+    XUSB_REQUEST_NOTIFICATION_INIT(&report, target->SerialNo);
+    const auto device = vigem->hBusDevice;
+    if (!reader->Start(device, report,
+        [device](XUSB_REQUEST_NOTIFICATION& value, DWORD& bytes, OVERLAPPED& operation) {
+            return DeviceIoControl(device, IOCTL_XUSB_REQUEST_NOTIFICATION,
+                &value, value.Size, &value, value.Size, &bytes, &operation);
+        },
+        [vigem, target, notification](const XUSB_REQUEST_NOTIFICATION& value) {
+            notification(vigem, target, value.LargeMotor, value.SmallMotor, value.LedNumber);
+        }))
     {
-        DWORD error = ERROR_SUCCESS;
-        DWORD transfered = 0;
-        OVERLAPPED lOverlapped = { 0 };
-        lOverlapped.hEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-
-        XUSB_REQUEST_NOTIFICATION notify;
-        XUSB_REQUEST_NOTIFICATION_INIT(&notify, _Target->SerialNo);
-
-        do
-        {
-            DeviceIoControl(_Client->hBusDevice,
-                IOCTL_XUSB_REQUEST_NOTIFICATION,
-                &notify,
-                notify.Size,
-                &notify,
-                notify.Size,
-                &transfered,
-                &lOverlapped);
-
-            if (GetOverlappedResult(_Client->hBusDevice, &lOverlapped, &transfered, TRUE) != 0)
-            {
-                if (_Target->Notification == NULL)
-                {
-                    CloseHandle(lOverlapped.hEvent);
-                    return;
-                }
-
-                reinterpret_cast<PFN_VIGEM_X360_NOTIFICATION>(_Target->Notification)(
-                    _Client,
-                    _Target,
-                    notify.LargeMotor,
-                    notify.SmallMotor,
-                    notify.LedNumber);
-            }
-            else
-            {
-                error = GetLastError();
-            }
-        } while (error != ERROR_OPERATION_ABORTED && error != ERROR_ACCESS_DENIED);
-
-        CloseHandle(lOverlapped.hEvent);
-
-    }, target, vigem };
-
-    _async.detach();
-
+        delete reader;
+        return VIGEM_ERROR_BUS_ACCESS_FAILED;
+    }
+    target->x360Reader = reader;
     return VIGEM_ERROR_NONE;
 }
 
@@ -585,7 +563,9 @@ VIGEM_ERROR vigem_target_ds4_register_notification(
 
 void vigem_target_x360_unregister_notification(PVIGEM_TARGET target)
 {
-    target->Notification = NULL;
+    if (!target) return;
+    delete target->x360Reader;
+    target->x360Reader = nullptr;
 }
 
 void vigem_target_ds4_unregister_notification(PVIGEM_TARGET target)

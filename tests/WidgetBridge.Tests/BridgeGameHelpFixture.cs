@@ -43,6 +43,9 @@ internal static class BridgeGameHelpFixture
         public Task DeleteKeyAsync(CancellationToken token) => Task.CompletedTask;
         public async Task<GameHelpAnswer> AskAsync(GameHelpRequest request, CancellationToken cancellationToken)
         {
+            if (request.Attachment is null && File.Exists(Path.Combine(AppContext.BaseDirectory, "game-help-transcript.marker")))
+                return new("Synthetic answer: look beyond the bridge for the next checkpoint.", [], "",
+                    [new("Another hint", "Give me one more hint.")], [], []);
             var bytes = request.Attachment is null ? null : await services().Capture.ReadContentAsync(request.Attachment, cancellationToken);
             if (bytes is not { Length: > 12 }) throw new InvalidOperationException("Capture bytes did not reach the application provider.");
             var answer = new GameHelpAnswer("Synthetic answer: take the green path.", ["Red and green fixture"], "Synthetic test content", [new("What is on the green path?", "Tell me what is on the green path.")], [],

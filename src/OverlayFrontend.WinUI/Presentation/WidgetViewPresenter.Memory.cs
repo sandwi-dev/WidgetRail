@@ -214,7 +214,14 @@ internal sealed partial class WidgetViewPresenter
     private void ReleaseViewport(PendingViewport pending)
     {
         pending.Retention?.Dispose();
-        if (pending.Collection is { } collection) collection.NavigationSettled -= QueueMemoryRestoration;
+        var collection=pending.Collection ?? (Matches(pending.Memory.Element)?bindings[pending.Memory.Element.Id].Element as WidgetIndexedCollectionView:null);
+        if (collection is not null)
+        {
+            collection.NavigationSettled -= QueueMemoryRestoration;
+            // The pending entry is removed by the caller. Publish the resulting
+            // settled edge state afterward, including unchanged geometry.
+            DispatcherQueue.TryEnqueue(()=>{if(!disposed)collection.RefreshReaderOwnership();});
+        }
     }
 
     private void QueueMemoryRestoration()

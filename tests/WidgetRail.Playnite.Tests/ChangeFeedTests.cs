@@ -28,6 +28,7 @@ public sealed class ChangeFeedTests
         var first = feed.PollAsync(1, 25000, default);
         var second = feed.PollAsync(1, 25000, default);
         await Assert.ThrowsAsync<EventWaitCapacityException>(() => feed.PollAsync(1, 25000, default));
+        Assert.IsTrue((await feed.PollAsync(-1, 0, default)).ResetRequired);
         feed.Dispose();
         await Assert.ThrowsAsync<OperationCanceledException>(async () => await first);
         await Assert.ThrowsAsync<OperationCanceledException>(async () => await second);

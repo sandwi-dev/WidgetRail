@@ -13,14 +13,15 @@ public sealed partial class GameHelpWidget : Widget
         internal bool LibraryOpen, LibraryBusy;
         internal CaptureLibraryQueryPage? LibraryPage;
         internal CaptureLibraryQuery LibraryQuery = new();
-        internal bool HasKey, KeyReady, Settings, Busy, Capturing, OfferContext, PreviewReadOnly, CaptureOptions, ConfirmNew, ConfirmDelete;
+        internal bool HasKey, KeyReady, Settings, Busy, Capturing, OfferContext, ReviewingDraft, PreviewReadOnly, CaptureOptions, ConfirmNew, ConfirmDelete;
         internal string? FocusGroup;
         internal long FocusRequest;
-        internal ScrollRevealRequest? Reveal;
+        internal (WidgetFocusRequest Request, long MessageId)? Reveal;
         internal string Draft = "", Spoilers = "Hints first";
         internal bool Grounding;
         internal long AnswerEpoch, CaptureEpoch;
-        internal string? Error, PendingQuestion;
+        internal string? Error, PendingQuestion, RequestedGame;
+        internal bool SkipPriorCapture;
         internal IReadOnlyList<Message> Messages = [];
         internal WindowCaptureTicket? Ticket;
         internal CaptureAttachment? Preview, Context;
@@ -74,27 +75,41 @@ public sealed partial class GameHelpWidget : Widget
             case "context.open": model.Update(s=>s with {CaptureOptions=true, Settings=false, Error=null}); break;
             case "context.close": model.Update(s=>s with {CaptureOptions=false}); break;
             case "compose.focus": RequestFocus("help.compose-focus"); break;
+            case "answer.latest":
+                model.Update(s => s.Messages.LastOrDefault(message => message.Answer is not null) is { } latest
+                    ? s with { Reveal = (CreateFocusRequest(), latest.Id) } : s);
+                break;
             case "settings.close": model.Update(s=>s with {Settings=false}); break;
-            case "preview.close": model.Update(s=>s with {PreviewReadOnly=true}); break;
+            case "preview.close": model.Update(s=>s with {PreviewReadOnly=true, ReviewingDraft=false}); break;
             case "preview.open": model.Update(s=>s with {PreviewReadOnly=false}); break;
             case "preview.question.focus": RequestFocus("help.preview-question-group"); break;
             case "preview.question" when !state.Busy && !state.Capturing && state.Preview is not null && action.CommittedText is { Length: <= 2048 } question:
-                var pending = state.Messages.LastOrDefault(message => message.Role == "user")?.Id;
-                model.Update(s => s with { PendingQuestion = question.Trim(), Messages = s.Messages.Select(message => message.Id == pending
-                    ? message with { Text = question.Trim() } : message).ToArray() });
+                EditPendingQuestion(question);
                 break;
             case "key.save" when !state.Busy && !state.Capturing && action.CommittedText is { } key: ConfigureKey(key); break;
             case "key.delete" when !state.Busy && !state.Capturing: model.Update(s => s with { ConfirmDelete = true }); break;
             case "key.delete.cancel": model.Update(s => s with { ConfirmDelete = false }); break;
             case "key.delete.confirm": ConfigureKey(null); break;
-            case "ask" when !state.Busy && !state.Capturing && !string.IsNullOrWhiteSpace(state.Draft): AddQuestion(state.Draft,false); break;
+            case "ask" when state.HasKey && !state.Busy && !state.Capturing:
+                if (state.Preview is not null && !state.SkipPriorCapture)
+                {
+                    if (!string.IsNullOrWhiteSpace(state.Draft)) EditPendingQuestion(state.Draft);
+                    model.Update(s => s with { PreviewReadOnly=false, Draft="", FocusGroup=null });
+                }
+                else model.Update(s => s with { ReviewingDraft=true, FocusGroup=null });
+                break;
+            case "review.question" when state.ReviewingDraft && !state.Busy && action.CommittedText is { Length: <= 2048 } draft:
+                model.Update(s => s with { Draft=draft }); break;
+            case "review.send" when state.ReviewingDraft && !state.Busy && !state.Capturing && !string.IsNullOrWhiteSpace(state.Draft):
+                model.Update(s => s with { ReviewingDraft=false });
+                AddQuestion(state.Draft.Trim(), false); break;
             case "ask.plain" when !state.Busy && !state.Capturing: Answer(null); break;
             case "answer.retry" when !state.Busy && !state.Capturing: model.Update(s => s with { Settings = false }); Answer(state.Context); break;
             case "answer.cancel": Operations.Cancel("answer"); model.Update(s=>s with {Busy=false,AnswerEpoch=Interlocked.Increment(ref nextOperation)}); break;
             case "capture.image" when !state.Busy && !state.Capturing: Capture(WindowCaptureKind.Screenshot); break;
             case "capture.video" when !state.Busy && !state.Capturing: Capture(WindowCaptureKind.Video); break;
             case "capture.cancel": Operations.Cancel("capture"); model.Update(s=>s with {Capturing=false,Ticket=null,CaptureEpoch=Interlocked.Increment(ref nextOperation)}); break;
-            case "preview.send" when !state.Busy && !string.IsNullOrWhiteSpace(state.PendingQuestion): Answer(state.Preview); break;
+            case "preview.send" when state.Preview is not null && !state.PreviewReadOnly && !state.ReviewingDraft && !state.Busy && !string.IsNullOrWhiteSpace(state.PendingQuestion): Answer(state.Preview); break;
             case "preview.discard" when !state.Busy: DiscardPreview(); break;
             case "preview.retry" when !state.Busy: Capture(state.Preview?.ContentType=="video/mp4" ? WindowCaptureKind.Video : WindowCaptureKind.Screenshot); break;
             case "grounding.on": SetPreferences(grounding: true); break;
@@ -125,14 +140,21 @@ public sealed partial class GameHelpWidget : Widget
         }
         return ValueTask.CompletedTask;
     }
+    private void EditPendingQuestion(string text)
+    {
+        var question = text.Trim();
+        model.Update(s => s with { PendingQuestion = question, Messages = s.Messages.LastOrDefault() is { Role: "user" } last
+            ? s.Messages.Select(m => m.Id == last.Id ? m with { Text=question } : m).ToArray() : s.Messages });
+    }
+
     private void RequestFocus(string group) => model.Update(s => s with { FocusGroup = group, FocusRequest = CreateFocusRequest().Id });
     private void AddQuestion(string question,bool offerContext)
     {
         var id=Interlocked.Increment(ref nextMessage);
         model.Update(s=>s with {Messages=s.Messages.Append(new Message(id,"user",question)).TakeLast(20).ToArray(),Draft="",PendingQuestion=question,OfferContext=offerContext,Error=null,
-            Reveal = new(CreateFocusRequest().Id, "help.transcript", "help.message." + id),
+            Reveal = (CreateFocusRequest(), id),
             FocusGroup = offerContext ? "help.context-choice" : "help.compose-focus", FocusRequest = CreateFocusRequest().Id});
-        if(!offerContext) Answer(model.Value.Context);
+        if(!offerContext) Answer(model.Value.SkipPriorCapture ? null : model.Value.Context);
     }
     private void ConfigureKey(string? key)
     {
@@ -185,7 +207,7 @@ public sealed partial class GameHelpWidget : Widget
                     await Task.Delay(300,context.CancellationToken);
                     var result=await HostServices.Capture.GetStatusAsync(ticket,context.CancellationToken);
                     if(result.Phase==WindowCapturePhase.Ready)
-                    {complete=true;if(context.IsCurrent)model.Update(s=>s with {Capturing=false,Preview=result.Attachment,OfferContext=false,Ticket=null});break;}
+                    {complete=true;if(context.IsCurrent)model.Update(s=>s with {Capturing=false,Preview=result.Attachment,SkipPriorCapture=false,OfferContext=false,Ticket=null});break;}
                     if(result.Phase is WindowCapturePhase.Failed or WindowCapturePhase.Cancelled)
                         throw new GameHelpException(result.ErrorCode??"capture_failed",result.Phase==WindowCapturePhase.Cancelled?"Capture cancelled.":"Capture could not finish. Bring your game to the foreground before the countdown ends and keep its window visible during recording, then retry.");
                 }
@@ -210,7 +232,7 @@ public sealed partial class GameHelpWidget : Widget
         var epoch=Interlocked.Increment(ref nextOperation);
         model.Update(s=>s with {Busy=true,OfferContext=false,PreviewReadOnly=true,Error=null,AnswerEpoch=epoch,Context=contextAttachment,
             Reveal = s.Messages.LastOrDefault(message => message.Role == "user") is { } latest
-                ? new(CreateFocusRequest().Id, "help.transcript", "help.message." + latest.Id) : null });
+                ? (CreateFocusRequest(), latest.Id) : null });
         Operations.RunLatest("answer",async context=>
         {
             var phase = "conversation-preparation";
@@ -229,7 +251,7 @@ public sealed partial class GameHelpWidget : Widget
                 history.Reverse();
                 if(state.Context is { } old && old!=contextAttachment) {try{await HostServices.Capture.DiscardAsync(old,context.CancellationToken);}catch(WidgetCapabilityException){}}
                 phase = "provider-service";
-                var answer=await service.AskAsync(new(contextAttachment?.SourceApplication?.ApplicationName ?? "Unknown application",
+                var answer=await service.AskAsync(new(contextAttachment?.SourceApplication?.ApplicationName ?? state.RequestedGame ?? "Unknown application",
                     contextAttachment?.SourceApplication?.WindowTitle ?? "",state.Spoilers,history,state.Grounding,contextAttachment),context.CancellationToken);
                 phase = "answer-presentation";
                 if(context.IsCurrent)
@@ -237,7 +259,7 @@ public sealed partial class GameHelpWidget : Widget
                     if(!context.IsCurrent)return;
                     var resultId = Interlocked.Increment(ref nextMessage);
                     model.Update(s=>s with {Messages=s.Messages.Append(new Message(resultId,"assistant",answer.Answer,answer)).TakeLast(20).ToArray(),
-                        Context=contextAttachment,Preview=null,Busy=false,Error=null});
+                        Context=contextAttachment,SkipPriorCapture=false,Preview=null,Busy=false,Error=null});
                     await NotifyResultAsync(resultId, context.CancellationToken);
                     var retained = model.Value.Messages.Select(message => message.Answer?.Attribution).OfType<ProviderDocumentReference>().ToHashSet();
                     foreach (var reference in state.Messages.Select(message => message.Answer?.Attribution).OfType<ProviderDocumentReference>().Where(reference => !retained.Contains(reference)))

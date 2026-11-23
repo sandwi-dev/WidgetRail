@@ -1,0 +1,11 @@
+<Project Sdk="MSTest.Sdk/4.3.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/RemoteMediaTransport/RemoteMediaTransport.csproj" />
+    <Compile Include="../../src/OverlayFrontend.WinUI/Media/NativePublicMediaTransport.cs" Link="Host/NativePublicMediaTransport.cs" />
+  </ItemGroup>
+</Project>

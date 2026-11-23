@@ -6,6 +6,77 @@ namespace WidgetRail.WidgetPresentationSession;
 
 public sealed partial class WidgetPresentationSession
 {
+    public async Task<WidgetPresentationFrame> PrepareTrayActionAsync(WidgetPresentationTarget target,
+        string actionId, CancellationToken token)
+    {
+        var generation = ValidateTarget(target);
+        var descriptor = target.Descriptor;
+        if (descriptor.IsStopped || !descriptor.AvailableTrayActions.Any(action => action.Id == actionId && action.WakeOnInvoke))
+            throw OrdinaryInputStale("The selected action does not support background preparation.");
+        var request = new BridgePresentationRequest(descriptor.Id)
+        {
+            TrayPreparation = new(actionId, descriptor.RuntimeGeneration, descriptor.PresentationGeneration)
+        };
+        var response = await RequestAsync(BridgeMessageTypes.GetSnapshot, request, BridgeMessageTypes.Snapshot, token).ConfigureAwait(false);
+        return PublishSnapshot(descriptor, generation, response.Payload);
+    }
+
+    private readonly Dictionary<(string WidgetId, long Sequence, BridgeWorkerRun WorkerRun), TaskCompletionSource<TrayActionResult>> trayCompletions = [];
+
+    public async Task<bool> SendTrayActionAsync(WidgetPresentationFrame displayed, WidgetQuickAction command,
+        long sequence, ControllerInputOrigin origin, CancellationToken token = default, string? fallbackFor = null) =>
+        (await DispatchTrayAsync(displayed, command, sequence, origin, token, fallbackFor, false).ConfigureAwait(false)).Handled;
+
+    public Task<TrayActionResult> RunTrayActionAsync(WidgetPresentationFrame displayed, WidgetQuickAction command,
+        long sequence, ControllerInputOrigin origin, CancellationToken token, string? fallbackFor) =>
+        DispatchTrayAsync(displayed, command, sequence, origin, token, fallbackFor, true);
+
+    private async Task<TrayActionResult> DispatchTrayAsync(WidgetPresentationFrame displayed, WidgetQuickAction command,
+        long sequence, ControllerInputOrigin origin, CancellationToken token, string? fallbackFor, bool waitForCompletion)
+    {
+        if (!TrayActionContract.ValidOffer(command.TrayOffer)) return default;
+        using (_gate.Enter())
+        {
+            if (!_publishedInputFrames.TryGetValue(displayed, out _) ||
+                _states.GetValueOrDefault(displayed.Authority.WidgetId)?.LastGood is not { } current ||
+                !SameIndexedOwner(displayed.Authority, current.Authority) ||
+                !displayed.Snapshot.QuickActions.Contains(command) || !current.Snapshot.QuickActions.Contains(command) ||
+                !TrayActionContract.AllowsFallback(current.Snapshot.QuickActions, command.TrayOffer!, fallbackFor)) return default;
+        }
+        var input = new ControllerInputEvent(command.Button, ControllerEventPhase.Pressed, ControllerInputContext.TrayQuickAction,
+            Sequence: sequence, MonotonicTimestampMicroseconds: Environment.TickCount64 * 1000,
+            SnapshotSequence: displayed.Authority.SnapshotSequence, Origin: origin) { TrayOffer = command.TrayOffer, TrayFallbackFor = fallbackFor };
+        if (displayed.Authority.WorkerRun is not { } workerRun) return default;
+        var key = (displayed.Authority.WidgetId, Sequence: sequence, WorkerRun: workerRun);
+        TaskCompletionSource<TrayActionResult>? completion = null;
+        if (waitForCompletion)
+        {
+            using (_gate.Enter())
+            {
+                ThrowIfTerminalLocked();
+                completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                if (trayCompletions.Count >= 16 || !trayCompletions.TryAdd(key, completion)) return default;
+            }
+        }
+        try
+        {
+            var request = new BridgeControllerInputRequest(key.WidgetId, input, displayed.Authority.RuntimeGeneration,
+                WorkerRun: key.WorkerRun) { ObserveTrayCompletion = waitForCompletion };
+            var reply = await RequestAsync(BridgeMessageTypes.ControllerInput, request, BridgeMessageTypes.ControllerInputResult, token).ConfigureAwait(false);
+            RequireObjectProperties(reply.Payload, "handled");
+            var handled = reply.Payload.GetProperty("handled").GetBoolean();
+            if (completion is null) return new(handled);
+            var result = await completion.Task.WaitAsync(token).ConfigureAwait(false);
+            if (!handled && result.Handled) throw new BridgeProtocolException("Rejected tray input cannot complete successfully.");
+            return result;
+        }
+        finally
+        {
+            if (completion is not null)
+                using (_gate.Enter()) trayCompletions.Remove(key);
+        }
+    }
+
     public async Task<bool> SendDashboardInputAsync(WidgetPresentationFrame displayed, ControllerInputEvent input,
         CancellationToken cancellationToken = default)
     {
@@ -20,8 +91,8 @@ public sealed partial class WidgetPresentationSession
         using (_gate.Enter())
         {
             var current = ValidateDisplayedOrdinaryFrameLocked(displayed, input.ActiveInputScopeId);
-            var original = displayed.Snapshot.QuickActions.SingleOrDefault(action => action.Button == input.Button);
-            var latest = current.Snapshot.QuickActions.SingleOrDefault(action => action.Button == input.Button);
+            var original = displayed.Snapshot.QuickActions.SingleOrDefault(action => action.OnDashboard && action.Button == input.Button);
+            var latest = current.Snapshot.QuickActions.SingleOrDefault(action => action.OnDashboard && action.Button == input.Button);
             if (original is null || latest is null || original.ActionId != latest.ActionId || original.Capability != latest.Capability ||
                 original.RepeatPolicy != latest.RepeatPolicy || input.Phase == ControllerEventPhase.Repeated && latest.RepeatPolicy != ControllerActionRepeatPolicy.WhileHeld)
                 throw OrdinaryInputStale("Dashboard command changed after presentation.");

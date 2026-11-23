@@ -49,8 +49,7 @@ internal sealed partial class OverlayShellPage
             var initialContent=options.ContentPreference==WebCaptureContentPreference.Motion?"motion":"detail";
             Func<string> selectedContent = () => initialContent;
             var choice = await ShowHostChoiceAsync("Share application",
-                candidates.Count == 0 ? "No available application windows. Open or restore an application and try again." :
-                    "Choose an application to start sharing. Application audio can include other windows of the same app.",
+                candidates.Count == 0 ? "No available application windows. Open or restore an application and try again." : "",
                 candidates.Select(candidate => new HostDialogChoice(candidate.Id, candidate.Label)).ToArray(),
                 document.Token, pinnedOwner: sourcePin, configure: dialog =>
                 {

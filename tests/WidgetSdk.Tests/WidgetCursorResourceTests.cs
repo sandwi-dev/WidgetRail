@@ -5,6 +5,14 @@ internal static partial class WidgetCursorResourceTests
 {
     public static async Task Run()
     {
+        await PreparedPagesStaySeparateAndBounded();
+        await PreparedDemandJoinsAndRejectsStaleResults();
+        await PreparedFailuresStayQuietAndDemandRetries();
+        await PreparedPagesRespectVisibilityAndProtectedEviction();
+        await PreparedDeferralRetainsBothDirections();
+        await PreparedDeferralStillValidatesIncomingWindow();
+        await PreparedLiveChangesAndReversal();
+        await PreparedMalformedAndHiddenResults();
         await LiveMutations();
         await ViewportRecovery();
         await CommittedGenerationDistinguishesIdenticalRefreshedWindows();

@@ -12,7 +12,8 @@ internal sealed partial class BridgeClientRegistry
             if (!_clients.TryGetValue(request.WidgetId, out var client) || !IsCurrentLocked(client) ||
                 !client.HasCurrentSnapshotWorker || client.CachedWorkerRun != request.WorkerRun ||
                 client.FindInputOriginSnapshot(request.SnapshotSequence) is not { } origin || client.CachedSnapshot is not { } current ||
-                request.Media?.IsWellFormed() != true) throw new BridgeProtocolException("The media source retired.");
+                request.Media?.IsWellFormed() != true || !request.Media.DeclaresGalleryItem(request.GalleryItemId))
+                throw new BridgeProtocolException("The media source retired.");
             if (request.PinnedLayoutId is { } layout)
             {
                 if (!client.Configured.PinningSupported || layout == PinnedSurfaceContract.FullWidgetLayoutId && !client.Configured.FullWidgetPinningSupported)

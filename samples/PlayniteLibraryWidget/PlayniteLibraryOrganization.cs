@@ -14,6 +14,12 @@ internal sealed record PlayniteLibraryCategory(
     IReadOnlyList<string> SavedIds);
 
 internal sealed record PlayniteLibraryTitleOverride(string SavedId, string Title);
+internal sealed record PlayniteCaptureProcess(string Game, string Process);
+internal sealed record TrackedAchievement(string Game, string Connection, PlayniteAchievementProvider Provider, string Id)
+{
+    internal bool Matches(string game, PlayniteAchievements? data) =>
+        data is not null && Game == game && data.ConnectionId == Connection && data.Provider == Provider;
+}
 
 internal sealed record PlayniteLibraryPrivateState(
     int Version,
@@ -37,6 +43,11 @@ internal sealed record PlayniteLibraryPrivateState(
     internal const int MaximumSourceNameLength = 64;
     internal static readonly PlayniteLibraryPrivateState Empty = new(CurrentVersion, []);
 
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public PlayingCardKind HiddenPlayingCards { get; init; }
+    public IReadOnlyList<TrackedAchievement> TrackedAchievements { get; init; } = [];
+    internal TrackedAchievement? TrackedFor(string game, PlayniteAchievements? data) =>
+        TrackedAchievements.FirstOrDefault(track => track.Matches(game, data));
     public IReadOnlyList<string> FavoriteSavedIds { get; init; } = [];
     public IReadOnlyList<PlayniteLibraryVariantGroup> VariantGroups { get; init; } = [];
     public IReadOnlyList<string> RecentSavedIds { get; init; } = [];
@@ -45,6 +56,7 @@ internal sealed record PlayniteLibraryPrivateState(
     public IReadOnlyList<PlayniteLibraryCategory> Categories { get; init; } = [];
     public IReadOnlyList<PlayniteLibraryTitleOverride> TitleOverrides { get; init; } = [];
     public IReadOnlyList<string> ProvenSources { get; init; } = [];
+    public IReadOnlyList<PlayniteCaptureProcess> CaptureProcesses { get; init; } = [];
 }
 
 internal sealed record PlayniteLibraryStateMutation(
@@ -120,6 +132,10 @@ internal static class PlayniteLibraryOrganizationPolicy
         var normalized = state with
         {
             Items = state.Items.ToArray(),
+            HiddenPlayingCards = state.HiddenPlayingCards & PlayingCardKind.All,
+            TrackedAchievements = (state.TrackedAchievements ?? []).Where(track =>
+                track is { Connection.Length: > 0, Id.Length: > 0 and <= 256 } && ValidSavedId(track.Game) && Enum.IsDefined(track.Provider))
+                .DistinctBy(track => (track.Game, track.Connection)).ToArray(),
             FavoriteSavedIds = state.FavoriteSavedIds.ToArray(),
             VariantGroups = state.VariantGroups.Select(group => group with
             {
@@ -131,7 +147,15 @@ internal static class PlayniteLibraryOrganizationPolicy
             Categories = categories,
             TitleOverrides = titleOverrides,
             ProvenSources = provenSources,
+            CaptureProcesses = (state.CaptureProcesses ?? []).Where(entry => entry?.Game is { Length: 73 } &&
+                entry.Game[36] == '/' && Guid.TryParseExact(entry.Game[..36], "D", out _) &&
+                Guid.TryParseExact(entry.Game[37..], "D", out _) && entry.Process is { Length: > 0 and <= 120 } &&
+                !entry.Process.Any(char.IsControl) && entry.Process.IndexOfAny(['/', '\\', ':']) < 0)
+                .DistinctBy(entry => entry.Game).Take(64).ToArray(),
         };
+        if (normalized.CaptureProcesses.Count > 0 && JsonSerializer.SerializeToUtf8Bytes(normalized).Length >
+            WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes)
+            normalized = normalized with { CaptureProcesses = [] };
         if (JsonSerializer.SerializeToUtf8Bytes(normalized).Length >
             WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes)
             normalized = normalized with { TitleOverrides = [] };

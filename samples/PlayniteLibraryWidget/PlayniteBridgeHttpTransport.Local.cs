@@ -137,7 +137,8 @@ internal sealed partial class PlayniteBridgeHttpTransport
         {
             PlayniteBridgeCommandKind.CaptureSettings => (HttpMethod.Get, "v1/capture-settings", MaximumJsonBytes),
             PlayniteBridgeCommandKind.UpdateCaptureSettings => (HttpMethod.Patch, "v1/capture-settings", MaximumJsonBytes),
-            PlayniteBridgeCommandKind.CaptureIntegration => (HttpMethod.Get, "v1/capture-integration", MaximumJsonBytes),
+            PlayniteBridgeCommandKind.CaptureIntegration => (HttpMethod.Get, "v1/capture-integration" +
+                (command.GameId is null ? "" : "?gameId=" + PlayniteBridgeClient.CanonicalGameId(command.GameId)), MaximumJsonBytes),
             PlayniteBridgeCommandKind.ConfigureCaptureIntegration => (HttpMethod.Put, "v1/capture-integration", MaximumJsonBytes),
             PlayniteBridgeCommandKind.AchievementOverview when command.OverviewOffset is >= 0 and <= 10000 && command.Revision?.Length is not > 80 =>
                 (HttpMethod.Get, "v1/achievements/overview?limit=200&offset=" + command.OverviewOffset.ToString(System.Globalization.CultureInfo.InvariantCulture) +
@@ -147,10 +148,15 @@ internal sealed partial class PlayniteBridgeHttpTransport
             PlayniteBridgeCommandKind.ResolveGame => (HttpMethod.Get, Game(), MaximumDetailBytes),
             PlayniteBridgeCommandKind.Achievements => (HttpMethod.Get, Game() + "/achievements", MaximumDetailBytes),
             PlayniteBridgeCommandKind.Activity => (HttpMethod.Get, Game() + "/activity", MaximumDetailBytes),
+            PlayniteBridgeCommandKind.RecentActivity when command.ActivityGameIds.Count is > 0 and <= 12 =>
+                (HttpMethod.Get, "v1/activity/recent?ids=" + string.Join(",", command.ActivityGameIds.Select(PlayniteBridgeClient.CanonicalGameId)), MaximumDetailBytes),
             PlayniteBridgeCommandKind.ResolveArtwork => (HttpMethod.Get, Game() + "/artwork/" + (command.ArtworkKind ?? PlayniteBridgeArtworkKind.Cover).ToString().ToLowerInvariant(), MaximumArtworkBytes),
             PlayniteBridgeCommandKind.ResolveArtworkPaths => (HttpMethod.Get,
                 $"v1/artwork?offset={command.ArtworkOffset}&limit={command.ArtworkLimit}" + (command.Revision is null ? "" : "&revision=" + Uri.EscapeDataString(command.Revision)), MaximumDetailBytes),
-            PlayniteBridgeCommandKind.Launch => (HttpMethod.Post, Game() + "/launch", MaximumJsonBytes),
+            PlayniteBridgeCommandKind.Launch => (HttpMethod.Post, Game() + (command.ReturnOnly ? "/return" : "/launch") +
+                (command.RunningApproval is { } approval ? "?running=" + Uri.EscapeDataString(approval) : ""), MaximumJsonBytes),
+            PlayniteBridgeCommandKind.LaunchStatus when Guid.TryParseExact(command.OperationId, "N", out var observation) =>
+                (HttpMethod.Get, Game() + "/launch-status/" + observation.ToString("N"), MaximumJsonBytes),
             PlayniteBridgeCommandKind.Install => (HttpMethod.Post, Game() + "/install", MaximumJsonBytes),
             PlayniteBridgeCommandKind.Uninstall => (HttpMethod.Post, Game() + "/uninstall", MaximumJsonBytes),
             PlayniteBridgeCommandKind.SetFavorite or PlayniteBridgeCommandKind.SetHidden => (HttpMethod.Patch, Game(), MaximumDetailBytes),

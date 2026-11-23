@@ -1,0 +1,8 @@
+{
+  "id": "local.widgetrail.tidepool",
+  "publisher": "local.widgetrail",
+  "entryFile": "theme.wrss",
+  "schemaVersion": 2,
+  "name": "Tidepool",
+  "version": "1.0.1"
+}

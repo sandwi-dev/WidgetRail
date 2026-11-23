@@ -11,7 +11,7 @@ internal sealed partial class OverlayShellPage
     private static readonly WidgetSurfaceHints CompactMediaHints = new()
     { PreferredWidth = 480, PreferredHeight = 270, MinimumWidth = 320, MinimumHeight = 180 };
 
-    private async Task PinMediaAsync(string widgetId, PinnedSurface? expected = null)
+    private async Task PinMediaAsync(string widgetId, PinnedSurface? expected = null, WidgetPresentationFrame? displayed = null)
     {
         if (retired || owner is null || mediaOwner is null || expected is not null && !pins.Contains(expected)) return;
         var intent = pinIntent;
@@ -28,7 +28,8 @@ internal sealed partial class OverlayShellPage
                     owner.Session.GetState(widgetId)?.LastGood is not { } frame || !mediaOwner.IsReady(widgetId) ||
                     !mediaOwner.CanPin(widgetId) || !frame.Descriptor.PinningSupported ||
                     frame.Snapshot.EmbeddedMediaSession?.SupportedPresentations.Contains(MediaPresentationKind.CompactPinned) != true) return;
-                if(expected is null && pins.Count>=MaximumPinnedSurfaces){ReportPinCapacity(target=>PinMediaAsync(widgetId,target));return;}
+                displayed ??= frame;
+                if(expected is null && pins.Count>=MaximumPinnedSurfaces){ReportPinCapacity(target=>PinMediaAsync(widgetId,target,displayed));return;}
                 if(expected is not null)await RemovePinnedCoreAsync(target:expected,forgetRemembered:true);
                 var saved = pinnedPreferences.Find(widgetId, CompactMediaLayout);
                 var window = new PinnedWidgetWindow(frame.Descriptor.Name, (nint)hostWindow);
@@ -54,7 +55,7 @@ internal sealed partial class OverlayShellPage
                         if (retired || intent != pinIntent || Environment.TickCount64 > deadline) return;
                         await Task.Delay(16, lifetime.Token);
                     }
-                    receipt = mediaOwner.EnterCompact(frame, view.SurfaceHost);
+                    receipt = mediaOwner.EnterCompact(displayed, view.SurfaceHost);
                     if (receipt is null) return;
                     await mediaOwner.WaitForCompactPlacementAsync(receipt);
                     if (!owner.Session.IsMediaPresentationCurrent(receipt) || !ReferenceEquals(mediaOwner.GetCompact(widgetId), receipt)) return;

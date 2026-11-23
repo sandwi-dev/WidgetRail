@@ -25,7 +25,7 @@ internal sealed partial class OverlayShellPage
         if (PinnedInputActive) return pinned?.Presenter?.CaptureHeldAction(button);
         if (interactive) return RecoveryVisible ? null : surface?.CaptureHeldAction(button);
         if (!reordering && FocusedTrayWidget() is { } widget && DashboardFrame(widget) is { } frame &&
-            frame.Snapshot.QuickActions.FirstOrDefault(action => action.Button == button && action.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld) is { } action)
+            frame.Snapshot.QuickActions.FirstOrDefault(action => action.OnDashboard && action.Button == button && action.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld) is { } action)
             return ((widget.Id, widget.InstanceId, widget.RuntimeGeneration, widget.PresentationGeneration,
                 selectionVersion, frame.Authority.SessionGeneration, frame.Authority.ActiveInputScopeId, action.ActionId, button), true);
         return null;

@@ -9,6 +9,52 @@ internal static class WidgetNotificationPublisherTests
         await OlderReceiptCannotClearNewEventAsync();
         await MetadataDuringDeliveryDoesNotBecomeANewEventAsync();
         await FailureAndDestructionAreBoundedAsync();
+        await WithdrawalOrdersExternalDeliveryAsync();
+        await WithdrawalBeforeDebounceAsync();
+    }
+
+    private static async Task WithdrawalOrdersExternalDeliveryAsync()
+    {
+        var started=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var commands=new List<WidgetNotificationCommand>();WidgetNotification? visible=null;
+        var widget=await CreateAsync(TimeProvider.System,TimeSpan.Zero,async(command,_)=>
+        {
+            lock(commands)commands.Add(command);
+            if(command.Notification?.Title=="Old call"){started.SetResult();await release.Task;} // Ignore cancellation on purpose.
+            if(command.Notification is null || !command.UpdateOnly || visible is not null)visible=command.Notification;
+            return new(true);
+        });
+        try
+        {
+            widget.Publisher.Publish(Notice("Old call"));await started.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            widget.Publisher.Dismiss();
+            var late=widget.Publisher.Publish(Notice("Late caller metadata"),updateOnly:true);
+            lock(commands)Check(commands.Count==1,"Withdrawal overlapped the unsettled Show.");
+            release.SetResult();await late.Completion.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(visible is null && commands.Count==2 && commands[^1].Notification is null,
+                "Late Show or metadata resurrected a withdrawn event.");
+            await widget.Publisher.Publish(Notice("New call")).Completion;
+            Check(visible?.Title=="New call"&&!commands[^1].UpdateOnly,"Withdrawal suppressed a genuinely new event.");
+        }
+        finally{release.TrySetResult();await WidgetTestHost.DestroyAsync(widget);}
+        Check(!widget.Publisher.Dismiss().IsAccepted,"Destroyed publisher admitted withdrawal.");
+    }
+
+    private static async Task WithdrawalBeforeDebounceAsync()
+    {
+        var clock=new WidgetOperationTests.ManualTimeProvider();var commands=new List<WidgetNotificationCommand>();
+        var widget=await CreateAsync(clock,TimeSpan.FromSeconds(1),(command,_)=>{commands.Add(command);return ValueTask.FromResult(new WidgetNotificationReceipt(true));});
+        try
+        {
+            widget.Publisher.Publish(Notice("Cancelled invitation"));
+            await Until(()=>clock.CreatedTimerCount>0);
+            await widget.Publisher.Dismiss().Completion.WaitAsync(TimeSpan.FromSeconds(3));
+            Check(commands.Count==1&&commands[0].Notification is null,"Withdrawal waited for debounce or allowed an unshown event to appear.");
+            clock.Advance(TimeSpan.FromSeconds(2));
+            Check(commands.Count==1,"Retired debounce delivered after withdrawal.");
+        }
+        finally{await WidgetTestHost.DestroyAsync(widget);}
     }
 
     private static WidgetNotification Notice(string title) => new("track", title) { CategoryId = "music" };

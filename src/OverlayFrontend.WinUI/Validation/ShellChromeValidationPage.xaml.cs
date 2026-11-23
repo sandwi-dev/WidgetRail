@@ -133,8 +133,12 @@ internal sealed partial class ShellChromeValidationPage : Page, IAsyncDisposable
             var invoked = new List<ControllerGuideHint>();
             guide.Invoked += invoked.Add;
             var nativeGuideButton = ((Panel)guide.BackgroundSurface).Children.OfType<Button>().First(button => button.IsHitTestVisible);
+            var expectedGuideFill = Value(neon, "tray-item:selected", "background");
+            // Standard full-transparency guide chips retain their authored RGB
+            // with the guide's translucent fill; high contrast was checked above.
+            expectedGuideFill.A = 216;
             Check(nativeGuideButton.CornerRadius.TopLeft == 8 && nativeGuideButton.BorderThickness.Left == 1 &&
-                ColorOf(nativeGuideButton.Background) == Value(neon, "tray-item:selected", "background") &&
+                ColorOf(nativeGuideButton.Background) == expectedGuideFill &&
                 ColorOf(nativeGuideButton.Foreground) == Value(neon, "tray-item:selected", "color"),
                 "primary controller hint restores the authored selected chip fill, ink and rounded border");
             var peer = Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(nativeGuideButton);

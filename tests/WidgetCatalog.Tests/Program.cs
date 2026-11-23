@@ -431,7 +431,7 @@ static async Task ReviewedReplayContinuity()
         var initial = new CaptureReplayPreferences { Revision = 7, OwnerPackageId = owner.PackageId,
             OwnerPublisherId = owner.PublisherId, OwnerInstanceId = owner.InstanceId,
             Settings = new() { Enabled = scenario != "stopped", AutoStart = true },
-            ApprovedApplication = new string('a', 64), ApplicationName = "Fixture game" };
+            Approvals = new([new(new string('a', 64), "Fixture game")]) };
         await settings.UpdateAsync(document => document with { ReplayCapture = initial });
         await consent.SetDecisionAsync(owner, capture, scenario == "source-denied" ? ConsentDecision.Deny : ConsentDecision.Grant);
         var archive = CreatePackage(temp.Path, id, "dev.test", "2.0.0", permissions: scenario == "removed-capability" ? [] : [capture]);
@@ -821,7 +821,7 @@ static async Task ReplayUninstallLifecycle()
     var store = new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path));
     var enabled = new CaptureReplayPreferences { Revision = 7, Settings = new() { Enabled = true, AutoStart = true },
         OwnerPackageId = id, OwnerPublisherId = InstalledWidgetAuthority.PublisherId(installed),
-        OwnerInstanceId = InstalledWidgetAuthority.InstanceId(id, "2.0.0"), ApprovedApplication = new string('a', 64), ApplicationName = "Fixture app" };
+        OwnerInstanceId = InstalledWidgetAuthority.InstanceId(id, "2.0.0"), Approvals = new([new(new string('a', 64), "Fixture app")]) };
     await store.UpdateAsync(current => current with { ReplayCapture = enabled });
     await catalog.RemoveInactiveVersionAsync(id, new Version(1, 0, 0));
     Assert.Equal(enabled, (await store.LoadAsync()).ReplayCapture);
@@ -834,7 +834,7 @@ static async Task ReplayUninstallLifecycle()
     { OwnerPublisherId = InstalledWidgetAuthority.PublisherId(previous), OwnerInstanceId = InstalledWidgetAuthority.InstanceId(id, "1.0.0") } });
     await catalog.UninstallAsync(id);
     var removed = (await store.LoadAsync()).ReplayCapture;
-    Assert.True(!removed.Settings.Enabled && !removed.Settings.AutoStart && removed.OwnerPackageId is null && removed.ApprovedApplication is null,
+    Assert.True(!removed.Settings.Enabled && !removed.Settings.AutoStart && removed.OwnerPackageId is null && removed.Approvals.Applications.Count == 0,
         "Full package uninstall retained automatic recording authority.");
     Assert.Equal(enabled.Revision + 1, removed.Revision);
     await catalog.InstallAsync(archive);
@@ -1621,7 +1621,7 @@ static async Task VerificationReturnsHashedManifest()
 static async Task LaunchLeasePinsVerifiedBytes()
 {
     using var temp = new TemporaryDirectory();
-    var root = Path.Combine(temp.Path, "catalog");
+    var root = Path.Combine(temp.Path, new string('a', 80), new string('b', 80), new string('c', 60), "catalog");
     var catalog = new WidgetCatalog(root);
     await catalog.InstallAsync(CreatePackage(
         temp.Path,

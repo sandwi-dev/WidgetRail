@@ -31,7 +31,7 @@ public sealed partial class MainWindow
                 var other = otherJson.RootElement.GetProperty("target").Deserialize<TaskWindowTarget>()!;
                 var native = new WindowsTaskWindowActivation();
                 await page.WaitForNativeStartupAsync().WaitAsync(TimeSpan.FromSeconds(45));
-                foreach (var scenario in new[] { "timeout", "denied", "late-success", "reopen", "keyboard-busy", "input-rejected", "stale-target" })
+                foreach (var scenario in new[] { "timeout", "denied", "widget-denied", "late-success", "reopen", "keyboard-busy", "input-rejected", "stale-target" })
                 {
                     if (onlyCase is not null && scenario != onlyCase) continue;
                     ShowOverlay();
@@ -54,7 +54,7 @@ public sealed partial class MainWindow
                         Check(native.RequestActivation(other), scenario + ": controlled non-target foreground selected");
                         if (scenario is "late-success" or "reopen") lateAction = ChangeDuringConfirmationAsync();
                         activationCompletedAt = Environment.TickCount64;
-                        return Task.FromResult(new WidgetTaskActivationResult(scenario == "denied" ? "Denied" : "Requested", "fixture", 0, "controlled activation result"));
+                        return Task.FromResult(new WidgetTaskActivationResult(scenario is "denied" or "widget-denied" ? "Denied" : "Requested", "fixture", 0, "controlled activation result"));
                     };
                     systemTaskViewLauncher = () =>
                     {
@@ -66,7 +66,9 @@ public sealed partial class MainWindow
                             events => scenario == "input-rejected" ? 0u : (uint)events.Length);
                     };
                     var requestedTarget = scenario == "stale-target" ? target with { ProcessCreated = target.ProcessCreated + 1 } : target;
-                    var result = await RunHostTaskHandoffAsync(page, new(requestedTarget, Environment.TickCount64, 0, () => true));
+                    var result = scenario == "widget-denied"
+                        ? await page.VerifyWidgetTaskHandoffAsync(requestedTarget)
+                        : await RunHostTaskHandoffAsync(page, new(requestedTarget, Environment.TickCount64, 0, () => true));
                     await lateAction;
                     outcomes.Add(new { scenario, activation = result.Activation.ToString(), fallback = result.Fallback?.ToString(), requests,
                         observed = WindowsTaskWindowActivation.Observe((nint)(nuint)target.Handle) });

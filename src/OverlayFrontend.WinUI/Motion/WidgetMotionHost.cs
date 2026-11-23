@@ -37,6 +37,13 @@ internal sealed partial class WidgetMotionHost : Grid
         return (depthSlots = (shadow, edges)).Value;
     }
     internal Border? SelectionSurface { get; }
+    protected override AutomationPeer OnCreateAutomationPeer() => new ContentPeer(this);
+    private sealed partial class ContentPeer(WidgetMotionHost owner) : FrameworkElementAutomationPeer(owner)
+    {
+        protected override bool IsControlElementCore() => false;
+        protected override bool IsContentElementCore() => false;
+        protected override IList<AutomationPeer> GetChildrenCore() => NativeTextAutomationPeer.ProtectChildren(base.GetChildrenCore());
+    }
     internal WidgetMotionHost(FrameworkElement content, bool selection = false, bool animated = true)
     {
         Layer = animated ? new Grid() : this;

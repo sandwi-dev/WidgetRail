@@ -10,9 +10,11 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
     const prepared=new Map();
     const openingChannels=new Map();
     let pendingPreparations=0;
-    let disposed=false, catalogVersion=0, catalogFingerprint='';
+    let disposed=false, catalogVersion=0, catalogFingerprint='', catalogOrderVersion=0, catalogOrderFingerprint='';
     let observed=null, attachedDispatcher=null, messageRevision=0, catalogRevision=0, readState=null, readFingerprint='';
     const knownChannels=new Set();
+    const conversationUsers=new Set(), metadataObservers=new Map();
+    let conversationUserSignature='';
     // One watched conversation, bounded independently of its lifetime. Reads
     // acknowledge by revision rather than consuming events, so retries are safe.
     const changes=[], messageCache=new Map();
@@ -22,6 +24,8 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
         'MESSAGE_REACTION_ADD','MESSAGE_REACTION_REMOVE','MESSAGE_REACTION_REMOVE_ALL','MESSAGE_REACTION_REMOVE_EMOJI','MESSAGE_POLL_VOTE_ADD','MESSAGE_POLL_VOTE_REMOVE'];
     const subscriptions=new Map(messageEvents.map(name=>[name,event=>changed(event,name)]));
     const notificationMessages=new Map();
+    const issuedReadHeads=new Map();
+    let readRequestActive=false;
     let notificationDispatcher=null,notificationAccount=null;
     // Discord's current NotificationStore uses the MESSAGE_CREATE message ID
     // as the native Notification.tag. Preserve only this exact association;
@@ -72,7 +76,45 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
         if(attachedDispatcher)for(const[name,callback]of subscriptions)try{attachedDispatcher.unsubscribe(name,callback);}catch{}
         if(readState)try{readState.removeChangeListener(readChanged);}catch{}
         readState=null;readFingerprint='';knownChannels.clear();
+        for(const [source,listener] of metadataObservers)try{source.removeChangeListener(listener);}catch{}
+        metadataObservers.clear();conversationUsers.clear();conversationUserSignature='';
         attachedDispatcher=null;
+    }
+    function presence(userId){
+        if(!id(userId))return null;
+        try{
+            const value=store('PresenceStore')?.getStatus?.(userId);
+            return ['online','idle','dnd','offline'].includes(value)?value:value==='invisible'?'offline':null;
+        }catch{return null;}
+    }
+    function userMetadataSignature(){
+        return JSON.stringify([...conversationUsers].map(key=>{
+            let user;try{user=store('UserStore')?.getUser?.(key);}catch{}
+            return [key,presence(key),text(user?.globalName||user?.username,120),avatar(user)];
+        }));
+    }
+    function syncMetadataObservers(){
+        const sources=new Set();
+        let replaced=false;
+        if(observed)for(const name of ['PresenceStore','UserStore']){
+            let source;try{source=store(name);}catch{}
+            if(typeof source?.addChangeListener==='function'&&typeof source?.removeChangeListener==='function')sources.add(source);
+        }
+        for(const [source,listener] of metadataObservers)if(!sources.has(source)){
+            try{source.removeChangeListener(listener);}catch{}metadataObservers.delete(source);replaced=true;
+        }
+        for(const source of sources)if(!metadataObservers.has(source)){
+            const listener=()=>{
+                if(disposed||metadataObservers.get(source)!==listener||!observed||me()?.id!==observed.account)return;
+                const next=userMetadataSignature();if(next===conversationUserSignature)return;
+                conversationUserSignature=next;++catalogRevision;invalidate();
+            };
+            try{source.addChangeListener(listener);metadataObservers.set(source,listener);replaced=true;}catch{}
+        }
+        if(replaced&&observed&&me()?.id===observed.account){
+            const next=userMetadataSignature();
+            if(next!==conversationUserSignature){conversationUserSignature=next;++catalogRevision;}
+        }
     }
     function readSignature(){
         return JSON.stringify([...knownChannels].map(key=>[key,readState?.lastMessageId?.(key),readState?.hasUnread?.(key),oldestUnread(readState,key)]));
@@ -92,7 +134,7 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
         const record=event?.channel??store('ChannelStore')?.getChannel?.(channel);
         const isPrivate=id(channel)&&(knownChannels.has(channel)||record?.guild_id==null&&[1,3].includes(record?.type));
         let dirty=false;
-        if(isPrivate&&(name==='MESSAGE_CREATE'||name.startsWith('CHANNEL_'))){
+        if(isPrivate&&(['MESSAGE_CREATE','MESSAGE_UPDATE','MESSAGE_DELETE','MESSAGE_DELETE_BULK'].includes(name)||name.startsWith('CHANNEL_'))){
             if(name==='CHANNEL_DELETE')knownChannels.delete(channel);
             else{
                 if(knownChannels.size>=CATALOG_LIMIT&&!knownChannels.has(channel))knownChannels.delete(knownChannels.values().next().value);
@@ -177,13 +219,71 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
     function state(){
         syncNotificationObserver();
         const current=me()?.id;
-        if(observed&&current!==observed.account){detachObserver();observed=null;++catalogRevision;++watchEpoch;changes.length=0;messageCache.clear();changeFloor=messageRevision;}
+        if(observed&&current!==observed.account){detachObserver();observed=null;++catalogRevision;++watchEpoch;changes.length=0;messageCache.clear();issuedReadHeads.clear();changeFloor=messageRevision;}
         const connected=!disposed&&id(current), ready=connected&&available();
+        syncMetadataObservers();
         return {account:connected?current:null,availability:!connected?'disconnected':ready?'ready':'unavailable',
-            canRead:ready,canSend:ready&&relationships()!==null,
+            canRead:ready,canSend:ready&&relationships()!==null,canMarkRead:ready&&readAcknowledgmentAvailable(),
+            hasUnreadConversations:ready?unreadConversations(current):null,
             canOpenDm:ready&&typeof relationships()?.isFriend==='function',maximumContentLength:SEND_LIMIT,maximumPageSize:PAGE_SIZE,
             maximumAttachmentBytes:connected?uploadLimit():null,messageRevision,catalogRevision,observedChannelId:observed?.channelId??null,
             observedSinceRevision:observed?.sinceRevision??messageRevision,watchEpoch};
+    }
+    function unreadConversations(expected){
+        try{
+            const reads=store('ReadStateStore'),channels=store('ChannelStore')?.getSortedPrivateChannels?.();
+            if(typeof reads?.hasUnread!=='function'||!Array.isArray(channels))return null;
+            // Project only the read store's boolean. Do not load inbox pages,
+            // profiles or history just to decorate the primary destination.
+            for(const value of channels.slice(0,CATALOG_LIMIT)){
+                let channel;
+                try{channel=privateChannel(expected,value?.id);}
+                catch(error){if(error.adapterCode==='account_changed'||error.adapterCode==='messaging_retired')return null;continue;}
+                if(reads.hasUnread(channel.id)===true)return true;
+            }
+            // Beyond the supported catalog bound absence cannot prove all-read.
+            return channels.length>CATALOG_LIMIT?null:false;
+        }catch{return null;} // Optional read-summary discovery cannot break voice.
+    }
+    function readAcknowledgmentAvailable(){
+        const reads=store('ReadStateStore');
+        return typeof dispatcher()?.dispatch==='function' && typeof reads?.ackMessageId==='function' &&
+            typeof reads?.lastMessageId==='function' && typeof reads?.hasUnread==='function';
+    }
+    function markRead(args){
+        const channel=privateChannel(args?.account,args?.channelId);
+        if(args.watchEpoch!==watchEpoch || observed?.account!==args.account || observed.channelId!==channel.id)
+            fail('read_visit_changed');
+        if(!id(args.messageId))fail('invalid_read_target');
+        if(!readAcknowledgmentAvailable())fail('read_ack_unavailable');
+        const reads=store('ReadStateStore'),dispatch=dispatcher();
+        const latest=reads.lastMessageId(channel.id),cached=messageCache.get(args.messageId);
+        // Accept only a message projected from this conversation, or the exact
+        // current provider head. No arbitrary cross-channel snowflake writes.
+        if(args.messageId!==latest && issuedReadHeads.get(channel.id+':'+args.messageId)!==args.account &&
+            (cached?.channelId!==channel.id || observed?.account!==args.account || observed.channelId!==channel.id))
+            fail('invalid_read_target');
+        const before=reads.ackMessageId(channel.id);
+        if(id(before)&&BigInt(before)>=BigInt(args.messageId))
+            return {account:args.account,channelId:channel.id,messageId:args.messageId,status:'already-read'};
+        // Discord can apply its own-send acknowledgment before publishing the
+        // new channel head. The head bounds writes, including after a send.
+        if(id(latest)&&BigInt(args.messageId)>BigInt(latest))fail('invalid_read_target');
+        if(readRequestActive)fail('read_ack_busy');
+        account(args.account);
+        if(store('ReadStateStore')!==reads || dispatcher()!==dispatch)fail('read_ack_unavailable');
+        readRequestActive=true;
+        try{
+            // Same resident-client path used by Vencord's read-all action,
+            // restricted here to the one explicitly presented conversation.
+            // Discord owns batching/network delivery. Local store application
+            // is optimistic and is deliberately not called server confirmation.
+            dispatch.dispatch({type:'BULK_ACK',context:'APP',channels:[{channelId:channel.id,messageId:args.messageId,readStateType:0}]});
+            account(args.account);
+            const after=store('ReadStateStore')===reads?reads.ackMessageId(channel.id):null;
+            return {account:args.account,channelId:channel.id,messageId:args.messageId,
+                status:id(after)&&BigInt(after)>=BigInt(args.messageId)?'applied':'requested'};
+        }finally{readRequestActive=false;}
     }
     function privateChannel(expected,channelId,send=false){
         account(expected);
@@ -212,7 +312,7 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
         let canSend=false;
         try{privateChannel(expected,value.id,true);canSend=true;}catch{}
         const reads=store('ReadStateStore');
-        const last=reads?.lastMessageId?.(value.id)??value.lastMessageId??value.last_message_id;
+        const last=conversationLastMessageId(value);
         const unread=reads?.hasUnread?.(value.id)===true;
         // Discord's read store supplies the oldest known unread identity. An
         // unread boolean alone cannot identify a boundary; never synthesize one.
@@ -220,14 +320,48 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
         return {id:value.id,channelId:value.id,userId:recipient,kind:value.type===1?'dm':'group',
             name:text(value.type===1?(user?.globalName||user?.username):value.name||names.join(', '),120)||'Direct message',
             avatarUrl:avatar(user),lastMessageId:id(last)?last:null,
-            unread,oldestUnreadMessageId:unreadTarget,canSend};
+            unread,oldestUnreadMessageId:unreadTarget,canSend,presence:presence(recipient),...lastMessageMetadata(value.id,last,expected)};
+    }
+    function conversationLastMessageId(value){
+        let last;try{last=store('ReadStateStore')?.lastMessageId?.(value.id);}catch{}
+        return last??value.lastMessageId??value.last_message_id;
+    }
+    function lastMessageMetadata(channelId,last,expected){
+        let timestamp=null, preview=null, authorName=null, own=false;
+        if(!id(last))return {lastMessageTimestamp:timestamp,lastMessagePreview:preview,lastMessageAuthorName:authorName,lastMessageIsOwn:own};
+        // Snowflakes are exact integers; do not convert them to Number before shifting.
+        const milliseconds=(BigInt(last)>>22n)+1420070400000n;
+        if(milliseconds<=253402300799999n)timestamp=Number(milliseconds);
+        let cached;try{cached=store('MessageStore')?.getMessage?.(channelId,last);}catch{}
+        if((cached?.id!==last||(cached.channel_id??cached.channelId)!==channelId)&&
+            observed?.account===expected&&observed.channelId===channelId)cached=messageCache.get(last);
+        if(cached?.id===last&&(cached.channel_id??cached.channelId)===channelId){
+            // Reuse only this exact head from resident data or an already-fetched
+            // current-watch history page. No per-row fetch or additional cache;
+            // the history cache keeps its existing account/visit/eviction bounds.
+            const content=text(cached.content,240,true).trim();
+            if(content)preview=content;
+            else if(Array.isArray(cached.attachments)&&cached.attachments.length){
+                const files=cached.attachments.slice(0,10);
+                preview=files.some(file=>file.content_type==='image/gif'||file.contentType==='image/gif')?'Shared a GIF':
+                    files.length===1?'Shared an attachment':'Shared '+Math.min(files.length,10)+' attachments';
+            }
+            else if(Array.isArray(cached.embeds)&&cached.embeds.slice(0,10).some(embed=>embed.type==='gifv'||embed.isAnimation===true))preview='Shared a GIF';
+            else if(cached.poll)preview='Shared a poll';
+            else if((cached.sticker_items??cached.stickerItems??cached.stickers)?.length)preview='Shared a sticker';
+            if(preview){
+                own=(cached.author?.id??cached.authorId)===expected;
+                authorName=text(cached.author?.globalName||cached.author?.global_name||cached.author?.username||cached.authorName,120)||null;
+            }
+        }
+        return {lastMessageTimestamp:timestamp,lastMessagePreview:preview,lastMessageAuthorName:authorName,lastMessageIsOwn:own};
     }
     function pageLimit(value){if(value===undefined)return PAGE_SIZE;if(!Number.isSafeInteger(value)||value<1||value>PAGE_SIZE)fail('invalid_page');return value;}
-    function conversations(args){
+    function conversationCatalog(args){
         account(args?.account);
         if(!available())fail('messaging_unavailable');
-        const limit=pageLimit(args.limit), offset=args.offset??0, query=args.query??'';
-        if(!Number.isSafeInteger(offset)||offset<0||offset>CATALOG_LIMIT||typeof query!=='string'||query.length>120)fail('invalid_page');
+        const query=args.query??'';
+        if(typeof query!=='string'||query.length>120)fail('invalid_page');
         const channels=store('ChannelStore').getSortedPrivateChannels();
         if(!Array.isArray(channels))fail('messaging_unavailable');
         const rows=[], seen=new Set(), recipients=new Set();
@@ -250,23 +384,51 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
                 const user=users?.getUser?.(key);if(user?.id!==key)continue;
                 recipients.add(key);
                 additions.push({id:'friend.'+key,channelId:null,userId:key,kind:'friend',name:text(user.globalName||user.username,120)||'Friend',
-                    avatarUrl:avatar(user),lastMessageId:null,unread:false,canSend:true});
+                    avatarUrl:avatar(user),lastMessageId:null,unread:false,canSend:true,presence:presence(key)});
             }
             additions.sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
             truncated||=rows.length+additions.length>CATALOG_LIMIT;
             rows.push(...additions.slice(0,CATALOG_LIMIT-rows.length));
         }
         account(args.account);
+        conversationUsers.clear();
+        for(const row of rows)if(id(row.userId))conversationUsers.add(row.userId);
+        conversationUserSignature=userMetadataSignature();
         const fingerprint=JSON.stringify([args.account,rows]);
         if(fingerprint!==catalogFingerprint){catalogFingerprint=fingerprint;++catalogVersion;}
         const version='catalog-'+catalogVersion;
         if(args.version!=null&&args.version!==version)fail('conversation_catalog_changed');
         const needle=query.trim().toLocaleLowerCase(), matches=needle?rows.filter(row=>row.name.toLocaleLowerCase().includes(needle)):rows;
+        // Paging still uses the exact full snapshot version above. Separately
+        // describe ordered membership so metadata changes do not replace the
+        // native list/query merely to repaint presence, snippets or unread state.
+        const ordering=JSON.stringify([args.account,needle,matches.map(row=>row.id)]);
+        if(ordering!==catalogOrderFingerprint){catalogOrderFingerprint=ordering;++catalogOrderVersion;}
+        return {matches,version,truncated,orderVersion:'order-'+catalogOrderVersion};
+    }
+    function locateConversation(args){
+        if(typeof args?.key!=='string'||!/^([0-9]{1,32}|friend\.[0-9]{1,32})$/.test(args.key)||typeof args.version!=='string')fail('invalid_page');
+        const {matches,version}=conversationCatalog(args);
+        const index=matches.findIndex(item=>item.id===args.key);
+        return {account:args.account,version,totalCount:matches.length,key:args.key,index:index<0?null:index};
+    }
+    function conversations(args){
+        const limit=pageLimit(args?.limit), offset=args?.offset??0;
+        if(!Number.isSafeInteger(offset)||offset<0||offset>CATALOG_LIMIT)fail('invalid_page');
+        const {matches,version,truncated,orderVersion}=conversationCatalog(args);
         const items=matches.slice(offset,offset+limit);
-        return {account:args.account,version,totalCount:matches.length,offset,hasMore:offset+items.length<matches.length,truncated,items};
+        // Retain provenance only for bounded pages actually handed to the
+        // widget. A new arrival must not invalidate the earlier opening mark.
+        for(const item of items)if(id(item.channelId)&&id(item.lastMessageId)){
+            const key=item.channelId+':'+item.lastMessageId;
+            issuedReadHeads.delete(key);issuedReadHeads.set(key,args.account);
+            if(issuedReadHeads.size>256)issuedReadHeads.delete(issuedReadHeads.keys().next().value);
+        }
+        return {account:args.account,version,orderVersion,totalCount:matches.length,offset,hasMore:offset+items.length<matches.length,truncated,items};
     }
     function attachment(value){
         if(!id(value?.id)||typeof value.filename!=='string'||!Number.isSafeInteger(value.size)||value.size<0)fail('invalid_message');
+        if(value.flags!=null&&(!Number.isSafeInteger(value.flags)||value.flags<0))fail('invalid_message');
         let url=null;
         try{
             const parsed=new URL(value.url);
@@ -276,7 +438,30 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
         }catch{}
         const dimension=value=>Number.isSafeInteger(value)&&value>0&&value<=65535?value:null;
         return {id:value.id,fileName:text(value.filename,256)||'Attachment',contentType:typeof value.content_type==='string'?text(value.content_type,120):null,
-            byteLength:value.size,url,width:dimension(value.width),height:dimension(value.height)};
+            byteLength:value.size,url,width:dimension(value.width),height:dimension(value.height),posterUrl:attachmentPoster(value),
+            isSpoiler:!!((value.flags??0)&8),isAnimated:!!((value.flags??0)&32)};
+    }
+    function attachmentPoster(file){
+        if(!['image/png','image/jpeg','image/gif','image/webp','video/mp4','video/webm'].includes(file.content_type)||
+            !Number.isSafeInteger(file.width)||!Number.isSafeInteger(file.height)||file.width<1||file.height<1||
+            file.width>65535||file.height>65535)return null;
+        const value=file.proxy_url??file.proxyURL;
+        if(typeof value!=='string'||value.length>2048||/[\s\\\u0000-\u001f\u007f-\u009f]/.test(value)||
+            !value.startsWith('https://media.discordapp.net/attachments/'))return null;
+        try{
+            const uri=new URL(value),path=uri.pathname.split('/');
+            if(uri.origin!=='https://media.discordapp.net'||uri.username||uri.password||uri.port||uri.hash||
+                path.length!==5||!id(path[2])||path[3]!==file.id||!path[4])return null;
+            // The live native probe qualified JPEG conversion on the supplied
+            // Discord media proxy. Retain signing fields byte-for-byte; replace
+            // only rendition fields and preserve the declared aspect ratio.
+            const at=value.indexOf('?'),base=at<0?value:value.slice(0,at);
+            const fields=at<0?[]:value.slice(at+1).split('&').filter(field=>
+                !['format','width','height','size','quality','animated','fit'].includes(decodeURIComponent(field.split('=',1)[0]).toLowerCase()));
+            const scale=Math.min(1,512/file.width,512/file.height);
+            fields.push('format=jpeg','width='+Math.max(1,Math.round(file.width*scale)),'height='+Math.max(1,Math.round(file.height*scale)));
+            const result=base+'?'+fields.join('&');return result.length<=2048?result:null;
+        }catch{return null;}
     }
     function mentions(value){
         if(!Array.isArray(value))return [];
@@ -288,13 +473,14 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
         }
         return items;
     }
-    function webUrl(value,media=false){
+    function webUrl(value,media=false,embedMedia=false){
         if(typeof value!=='string'||value.length>2048||/[\u0000-\u001f\u007f-\u009f]/.test(value))return null;
         try{
             const url=new URL(value);
             if(!['https:','http:'].includes(url.protocol)||url.username||url.password)return null;
             if(media&&(url.protocol!=='https:'||url.port&&url.port!=='443'||url.hash||
-                !['cdn.discordapp.com','media.discordapp.net'].includes(url.hostname)))return null;
+                !['cdn.discordapp.com','media.discordapp.net'].includes(url.hostname)&&!(embedMedia&&
+                    ['media.tenor.com','images-ext-1.discordapp.net','images-ext-2.discordapp.net'].includes(url.hostname))))return null;
             return url.href;
         }catch{return null;}
     }
@@ -307,10 +493,27 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
     }
     function embeds(value){
         if(!Array.isArray(value))return [];
-        return value.slice(0,2).filter(item=>item&&typeof item==='object').map(item=>({
-            title:text(item.title||item.author?.name||item.provider?.name,256),description:text(item.description,600,true),url:webUrl(item.url),
-            // Only Discord's image/proxy domains are fetched by the native view.
-            imageUrl:webUrl(item.image?.proxy_url??item.thumbnail?.proxy_url??item.image?.url??item.thumbnail?.url,true)}));
+        const media=(...values)=>values.map(value=>webUrl(value,true,true)).find(Boolean)??null;
+        const imageMedia=value=>{
+            const url=media(value?.proxy_url,value?.proxyURL,value?.url);
+            return url?{url,animated:Number.isSafeInteger(value.flags)&&value.flags>=0&&(value.flags&32)!==0}:null;
+        };
+        return value.slice(0,2).filter(item=>item&&typeof item==='object').map(item=>{
+            // API payloads use proxy_url; resident store embeds use proxyURL.
+            // Prefer Discord's supplied media proxy, including its two external
+            // image hosts. Neither provider page URLs nor arbitrary subdomains
+            // authorize media requests; attachment/avatar admission stays separate.
+            const videoUrl=media(item.video?.proxy_url,item.video?.proxyURL,item.video?.url);
+            const url=webUrl(item.url);
+            // Article/link artwork decorates its destination card; it is not a
+            // separately attached image. Preserve real image/GIF/video embeds,
+            // including supplied posters for a playable video.
+            const decorative=url!==null&&videoUrl===null&&['article','link'].includes(item.type);
+            const image=decorative?null:imageMedia(item.image)??imageMedia(item.thumbnail);
+            return {title:text(item.title||item.author?.name||item.provider?.name,256),description:text(item.description,600,true),url,
+                imageUrl:image?.url??null,
+                videoUrl,isAnimation:videoUrl!==null?item.type==='gifv':image?.animated===true};
+        });
     }
     function reactions(value){
         if(!Array.isArray(value))return [];
@@ -499,7 +702,7 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
         let values;
         try{values=body(await api.get({url:'/channels/'+args.channelId+'/messages',query,retries:0}));}
         catch(error){account(args.account);fail(error.adapterCode??errorCode(error));}
-        privateChannel(args.account,args.channelId);
+        const currentChannel=privateChannel(args.account,args.channelId);
         if(!Array.isArray(values)||values.length>limit)fail('invalid_message_response');
         let items=values.map(value=>message(value,args.account,args.channelId));
         if(new Set(items.map(item=>item.id)).size!==items.length||before&&items.some(item=>BigInt(item.id)>=BigInt(before))||
@@ -509,9 +712,12 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
         const nextAfter=items.length?items.reduce((a,b)=>BigInt(a.id)>BigInt(b.id)?a:b).id:null;
         if(observed?.account===args.account&&observed.channelId===args.channelId&&epoch===watchEpoch){
             if(startedRevision<changeFloor)fail('message_history_changed');
+            const last=conversationLastMessageId(currentChannel);
+            const previousSummary=JSON.stringify(lastMessageMetadata(args.channelId,last,args.account));
             const newer=new Map(changes.filter(value=>value.revision>startedRevision).map(value=>[value.id,value]));
             items=items.flatMap(value=>{const change=newer.get(value.id);return change?.kind==='remove'?[]:
                 [cacheMessage(change?.kind==='upsert'?change.message:change?.kind==='patch'?{...value,...change.patch}:value)];});
+            if(JSON.stringify(lastMessageMetadata(args.channelId,last,args.account))!==previousSummary){++catalogRevision;invalidate();}
         }
         items.sort((a,b)=>BigInt(a.id)<BigInt(b.id)?-1:BigInt(a.id)>BigInt(b.id)?1:0);
         return {account:args.account,channelId:args.channelId,before,after,around,nextBefore,
@@ -663,6 +869,6 @@ globalThis.createWidgetRailDiscordMessaging = ({store,props,me,dispatcher=()=>nu
         if(entry){entry.outcome=outcome;releaseSettledBatch(entry);}
         return outcome;
     }
-    return Object.freeze({state,observe,readChanges,recoverMessages,notificationTarget,conversations,history,openDm,prepareAttachments,sendMessage,reconcileSend,
-        dispose(){disposed=true;detachObserver();detachNotificationObserver();observed=null;changes.length=0;messageCache.clear();catalogFingerprint='';ledger.clear();prepared.clear();openingChannels.clear();}});
+    return Object.freeze({state,observe,readChanges,recoverMessages,notificationTarget,markRead,conversations,locateConversation,history,openDm,prepareAttachments,sendMessage,reconcileSend,
+        dispose(){disposed=true;detachObserver();detachNotificationObserver();observed=null;changes.length=0;messageCache.clear();issuedReadHeads.clear();catalogFingerprint='';ledger.clear();prepared.clear();openingChannels.clear();}});
 };

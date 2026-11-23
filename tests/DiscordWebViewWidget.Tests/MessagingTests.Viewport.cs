@@ -4,6 +4,26 @@ using WidgetRail.WidgetSdk;
 
 internal static partial class MessagingTests
 {
+    private static async Task InitialHistoryIndicatorAsync(Action<bool,string> check)
+    {
+        foreach(var incoming in new[]{false,true})
+        {
+            var session=new MessagesSession{LiveUpdates=true,HistoryCount=20,LastMessage="119",HistoryGate=new(TaskCreationOptions.RunContinuationsAsynchronously)};
+            await using var scenario=await Scenario.OpenAsync(session);
+            await scenario.Act("discord.conversation.10");
+            await Wait(()=>session.ObservedChannel=="10"&&session.Calls.Any(call=>call.Method=="messageHistory"));
+            var message=new DiscordMessage(incoming?"120":"110","10","2","Friend",null,incoming?"New arrival":"Edited old message",2,null,null,[],false);
+            session.Changes.Enqueue(new(++session.MessageRevision,"upsert",message.Id,message));
+            await scenario.Widget.OnActionAsync(new("refresh","test"));await scenario.Widget.WaitForStateReadAsync();
+            await scenario.Widget.WaitForMessageUpdatesAsync();
+            session.HistoryGate.SetResult();
+            await Wait(()=>scenario.Find("discord.message.history")?.IndexedCollection?.Count==(incoming?21:20));
+            check(incoming?scenario.Find("discord.message.latest")?.Text=="New messages":scenario.Find("discord.message.latest") is null,
+                incoming?"A genuinely new message arriving during initial history loading retains its indicator":
+                    "An existing-message update during initial history loading does not invent a new-message indicator");
+        }
+    }
+
     private static async Task LiveTailViewportAsync(Action<bool,string> check)
     {
         await using var scenario=await Scenario.OpenAsync(new MessagesSession{LiveUpdates=true,HistoryCount=20});

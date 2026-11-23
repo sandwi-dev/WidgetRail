@@ -12,7 +12,12 @@ public sealed record WidgetDashboardGestureAuthority(
     string OperationId,
     long InputSequence,
     long SnapshotSequence,
-    TimeSpan ValidFor);
+    TimeSpan ValidFor)
+{
+    public WidgetRail.WidgetProtocol.TrayMediaCommand? TrayCommand { get; init; }
+    public WidgetRail.WidgetProtocol.TrayCaptureCommand? CaptureCommand { get; init; }
+    internal WidgetRail.PlatformBroker.HostActionCompletion? HostCompletion { get; init; }
+}
 
 /// <summary>
 /// A host-owned service channel that is created afresh for each worker process.

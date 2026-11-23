@@ -45,7 +45,8 @@ internal sealed partial class WidgetIndexedCollectionView
             var offset = 0;
             foreach (var declaration in declarations)
             {
-                groups.Add(new(declaration.Key, declaration.Header, offset, declaration.Count, source.Items));
+                groups.Add(new(declaration.Key, declaration.Header, offset, declaration.Count, source.Items)
+                    { ShowHeaderRule = declaration.ShowHeaderRule });
                 offset = checked(offset + declaration.Count);
             }
             if (offset != source.Items.Count) throw new InvalidDataException("Groups do not partition the indexed query.");
@@ -53,7 +54,11 @@ internal sealed partial class WidgetIndexedCollectionView
             groupedView = new(groupedSource.View, source.Items);
         }
         else
-            for (var index = 0; index < groups.Count; ++index) groups[index].Header = declarations[index].Header;
+            for (var index = 0; index < groups.Count; ++index)
+            {
+                groups[index].Header = declarations[index].Header;
+                groups[index].ShowHeaderRule = declarations[index].ShowHeaderRule;
+            }
         RefreshGroupHeaderStyles();
         if (view.GroupStyle.Count == 0)
             view.GroupStyle.Add(new GroupStyle

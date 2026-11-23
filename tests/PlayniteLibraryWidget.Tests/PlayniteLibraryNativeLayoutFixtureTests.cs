@@ -23,6 +23,10 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(0, stage.Children[1].Children.Count, "Reserving geometry must not eagerly publish row trees.");
         var poster = captured.Ranges.SelectMany(range => range.Items).Single().Root;
         var theme = CompileStyles();
+        var shelf = Nodes(snapshot.Root).Single(node => node.Id == "playnite-library.home.focus-summary");
+        var shelfStyle = theme.Resolve(new("focus-presentation-surface", shelf.Id, shelf.StyleClasses.ToHashSet(StringComparer.Ordinal)));
+        Assert.IsNull(shelfStyle.Get("height"), "A viewport-height shelf clips the poster rail when the game summary grows.");
+        Assert.IsNull(shelfStyle.Get("max-height"), "Large text and wrapped game titles must participate in the shelf's measured height.");
         var sizeStyle = theme.Resolve(new("spacer", sizing.Id, sizing.StyleClasses.ToHashSet(StringComparer.Ordinal)));
         var posterStyle = theme.Resolve(new("actionSurface", poster.Id, poster.StyleClasses.ToHashSet(StringComparer.Ordinal)));
         foreach (var property in new[] { "width", "min-width", "max-width", "aspect-ratio", "margin", "padding", "border-width" })
@@ -35,7 +39,6 @@ public sealed partial class PlayniteLibraryLayoutTests
     public void NativeDetailsNavigationFixtureCoversOptionalTransitions()
     {
         var game = PlayniteLibraryItem.From(Item("navigation", "saved-navigation", "Navigation game", "Steam"));
-        var parent = new WidgetView(UI.Stack("native.parent", UI.Button("Game", "open", "game")));
         PlayniteDetailsExtras[] states =
         [
             new() { Tab = PlayniteDetailsTab.Description },
@@ -53,8 +56,8 @@ public sealed partial class PlayniteLibraryLayoutTests
         var names = new List<string>();
         for (var index = 0; index < states.Length; index++)
         {
-            var modal = PlayniteLibraryDetailsPresentation.Create(game, true, null, "Ready", null, extras: states[index]);
-            var snapshot = new PresentationWidget(parent.WithModal(modal)).RenderSnapshot("native.details.navigation", index + 1);
+            var modal = PlayniteLibraryDetailsPresentation.Create(new WidgetView(UI.Stack("fixture.parent")), game, true, null, "Ready", null, extras: states[index]);
+            var snapshot = new PresentationWidget(modal).RenderSnapshot("native.details.navigation", index + 1);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
             var name = "Native-Details-Navigation-" + index;
             ExportFixture(name, snapshot);
@@ -80,10 +83,9 @@ public sealed partial class PlayniteLibraryLayoutTests
         var metadata = new PlayniteBridgeGame(game.Value.SavedId, "Native layout game", "Steam", true, true, false,
             "Playing", [], ["Adventure"], ["Windows"], 180, 1)
         { Developers = ["Test developer"], Publishers = ["Test publisher"], Features = ["Controller support"] };
-        var parent = new WidgetView(UI.Stack("native.parent", UI.Button("Game", "open", "game")));
-        var modal = PlayniteLibraryDetailsPresentation.Create(game, true, null, "Ready", null,
-            extras: new() { Full = new(game.Value, metadata), Tab = PlayniteDetailsTab.Description });
-        var snapshot = new PresentationWidget(parent.WithModal(modal)).RenderSnapshot("native.details.geometry", 1);
+        var modal = PlayniteLibraryDetailsPresentation.Create(new WidgetView(UI.Stack("fixture.parent")), game, true, null, "Ready", null,
+            extras: new() { Full = new(game.Value, metadata), Tab = PlayniteDetailsTab.Information });
+        var snapshot = new PresentationWidget(modal).RenderSnapshot("native.details.geometry", 1);
         Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
         ExportFixture("Native-Details-Geometry", snapshot);
     }

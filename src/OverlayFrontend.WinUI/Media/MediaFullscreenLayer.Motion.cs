@@ -53,7 +53,8 @@ internal sealed partial class MediaFullscreenLayer
     {
         var width = Math.Max(1, presentation.Content.ActualWidth);
         var height = Math.Max(1, presentation.Content.ActualHeight);
-        if (presentation.Origin is not { Width: > 0, Height: > 0 } rect)
+        var origin = closing ? presentation.ReturnOrigin?.Invoke() ?? presentation.Origin : presentation.Origin;
+        if (origin is not { Width: > 0, Height: > 0 } rect)
             return WidgetMotionPose.Identity with { Scale = new(.9f, .9f, 1), Translation = new((float)width * .05f, (float)height * .05f, 0), Opacity = 0 };
         // Map the rendered media, not the letterboxed outer fullscreen layer.
         var media = presentation.MediaBounds?.Invoke() is { Width: > 0, Height: > 0 } bounds

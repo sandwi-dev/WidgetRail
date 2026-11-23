@@ -5,8 +5,15 @@ using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetStyling;
 
 if (args is ["--export-native", var output]) { await ExportNative(output); return 0; }
+if (args is ["--verify-theme-reconnect"])
+{
+    await ThemeReconnect();
+    return 0;
+}
 var tests = new (string Name,Func<Task> Run)[] {
     ("Catalogue bumpers cycle sections locally and stay out of details and reviews", SectionShortcuts),
+    ("Theme discovery loads on entry and restores the same gallery card", ThemeNavigation),
+    ("Theme pagination enters the first new card and retires focus on tab changes", ThemePageFocus),
     ("Catalogue L3 returns to the search field without editing or losing context", SearchShortcut),
     ("Catalogue local search retains filters and rejects stale suggestions", Search),
     ("Catalogue previews are deferred read-only metadata and retire on navigation", Previews),
@@ -255,17 +262,96 @@ static async Task Search()
     catch (OperationCanceledException) { }
 }
 
+static async Task ThemeNavigation()
+{
+    await using var f = new Fixture();
+    await f.Start();
+    Check(!f.Commands.Any(c => c.Action == "themes"), "Theme feed was requested on activation");
+    await f.Act("marketplace.tab.themes");
+    await Until(() => Walk(f.View().Root).Count(n => n.Kind == ViewNodeKind.ActionSurface) == 2);
+    var card = Walk(f.View().Root).Last(n => n.Kind == ViewNodeKind.ActionSurface);
+    await f.Act(card.ActionId!);
+    await f.Act("theme.scene.2");
+    Check(Node(f, "theme.detail.art")?.AccessibilityLabel == "Tidepool, Notification", "Scene selection lost its theme");
+    Check(WinUiPresentationContract.Validate(f.View()).Count == 0, "Theme gallery violates WinUI contract");
+    await f.Act("theme.back");
+    Check(f.View().InitialFocusId == card.Id, "Back lost the originating card");
+    await f.Act("theme.search", "empty");
+    await Until(() => Node(f, "theme.empty") is not null);
+    Check(Node(f,"marketplace.tab.themes")?.IsSelected == true, "Search left Themes");
+}
+
+static async Task ThemeReconnect()
+{
+    await using var fixture = new Fixture();
+    await fixture.Start();
+    await fixture.Act("marketplace.tab.themes");
+    await Until(() => Node(fixture, "theme.offline") is not null);
+    await fixture.Act("theme.search", "coastal");
+    await Until(() => fixture.Commands.Any(command => command is { Action: "themes", ThemeQuery.Search: "coastal" }) &&
+        Node(fixture, "theme.offline") is not null);
+    var count = fixture.Commands.Count(command => command.Action == "themes");
+    fixture.ThemeOnline = true;
+    // Use the shipping cache duration for this opt-in integration check.
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(38));
+    while (Node(fixture, "theme.offline") is not null) await Task.Delay(50, deadline.Token);
+    Check(Node(fixture, "theme.search")?.TextEntryValue == "coastal" &&
+        Walk(fixture.View().Root).Any(node => node.Text == "Afterglow reconnected"), "Reconnect discarded the search or failed to render new results");
+    Check(fixture.Commands.Count(command => command.Action == "themes") == count + 1, "Offline polling bypassed the resource cache");
+    Console.WriteLine("PASS An open Themes tab reconnects in place and preserves its search.");
+}
+
+static async Task ThemePageFocus()
+{
+    await using var fixture = new Fixture { ThemeFixtureCount = 10 };
+    await fixture.Start();
+    await fixture.Act("marketplace.tab.themes");
+    await Until(() => Node(fixture, "theme.next") is not null);
+
+    await fixture.Act("theme.next");
+    await Until(() => Node(fixture, "theme.pages")?.Text == "Page 2 of 2");
+    var page = fixture.View();
+    var firstCard = Walk(page.Root).First(node => node.Kind == ViewNodeKind.ActionSurface);
+    var focus = page.FocusGroupEntryRequest;
+    Check(focus?.GroupId == "theme.browse" && focus.TargetId == firstCard.Id, "Next did not target the first card on the new page");
+    Check(WinUiPresentationContract.Validate(page).Count == 0, "The page focus target violates the WinUI contract");
+    Check(fixture.View().FocusGroupEntryRequest == focus, "A routine render reissued page focus");
+
+    await fixture.Act("theme.previous");
+    await Until(() => Node(fixture, "theme.pages")?.Text == "Page 1 of 2");
+    Check(fixture.View().FocusGroupEntryRequest is { } previous && previous.RequestId > focus!.RequestId,
+        "Previous did not request fresh focus for the new page");
+
+    await fixture.Act("marketplace.tab.browse");
+    await fixture.Act("marketplace.tab.themes");
+    Check(fixture.View().FocusGroupEntryRequest is null, "Reentering Themes replayed a page focus request");
+
+    var delayedPage = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    await using var delayed = new Fixture { ThemeFixtureCount = 10, ThemeNextGate = delayedPage };
+    await delayed.Start();
+    await delayed.Act("marketplace.tab.themes");
+    await Until(() => Node(delayed, "theme.next") is not null);
+    await delayed.Act("theme.next");
+    await Until(() => delayed.Commands.Any(command => command.ThemeQuery is { Page: 1 }));
+    Check(delayed.View().FocusGroupEntryRequest is null, "A loading page requested focus before the target was present");
+    await delayed.Act("marketplace.tab.browse");
+    delayedPage.TrySetResult();
+    await delayed.Act("marketplace.tab.themes");
+    await Until(() => Node(delayed, "theme.pages")?.Text == "Page 2 of 2");
+    Check(delayed.View().FocusGroupEntryRequest is null, "An interrupted page moved focus after switching sections");
+}
+
 static async Task SectionShortcuts()
 {
     await using var f = new Fixture { RefreshGate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
     await f.Start();
     var before = f.Commands.Count;
     await f.Act("marketplace.search", "First");
-    foreach (var section in new[] { "installed", "updates", "browse" })
+    foreach (var section in new[] { "installed", "updates", "themes", "browse" })
         await Move(ControllerButton.RightBumper, section);
-    foreach (var section in new[] { "updates", "installed", "browse" })
+    foreach (var section in new[] { "themes", "updates", "installed", "browse" })
         await Move(ControllerButton.LeftBumper, section);
-    Check(f.Commands.Count == before && !f.RefreshGate.Task.IsCompleted, "Section changes issued requests or waited for refresh");
+    Check(f.Commands.Count(c => c.Action != "themes") == before && !f.RefreshGate.Task.IsCompleted, "Section changes issued widget requests or waited for refresh");
     var card = Walk(f.View().Root).Single(n => n.Kind == ViewNodeKind.ActionSurface);
     await f.Act(card.ActionId!);
     Check(!f.View().Root.Shortcuts.Any(s => s.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper),
@@ -281,7 +367,8 @@ static async Task SectionShortcuts()
         var shortcut = f.View().Root.Shortcuts.Single(s => s.Button == button);
         Check(shortcut.ActionId == "marketplace.tab." + section, "Bumper chose the wrong adjacent section");
         await f.Act(shortcut.ActionId);
-        Check(Node(f, "marketplace.tab." + section)?.IsSelected == true && Node(f, "marketplace.search")?.TextEntryValue == "First",
+        Check(Node(f, "marketplace.tab." + section)?.IsSelected == true && (section == "themes" ?
+            Node(f, "theme.search")?.TextEntryValue == "" : Node(f, "marketplace.search")?.TextEntryValue == "First"),
             "Bumper lost the selected tab or search query");
         Check(Node(f, "marketplace.section.previous.hint") is not null && Node(f, "marketplace.section.next.hint") is not null,
             "Section bumper hints missing");
@@ -587,10 +674,35 @@ sealed class Fixture : IAsyncDisposable
     internal System.Collections.Concurrent.ConcurrentQueue<MarketplaceCommand> Commands=new();
     internal TaskCompletionSource? RefreshGate;
     internal TaskCompletionSource? StatusGate;
+    internal TaskCompletionSource? ThemeNextGate;
+    internal volatile bool ThemeOnline;
+    internal int ThemeFixtureCount = 2;
     internal MarketplaceWidget Widget;
     internal Fixture()
     {
         var builder=new WidgetTestHostServicesBuilder();
+        builder.WithHandler(WidgetMarketplaceCapabilities.Command("themes"), async (command, token) =>
+        {
+            Commands.Enqueue(command);
+            var online = ThemeOnline;
+            var seed = new CatalogueTheme("dev.test.afterglow", "1.0.0", online ? "Afterglow reconnected" : "Afterglow", "dev.test",
+                "Creator", "Pink and violet.", ["Dark"], new DateOnly(2026,11,22), new string('a',64), 1234, new string('c',64));
+            var query = command.ThemeQuery!;
+            if (query.Page > 0 && ThemeNextGate is { } nextGate) await nextGate.Task.WaitAsync(token);
+            var items = new List<CatalogueTheme>();
+            if (query.Search != "empty")
+            {
+                items.Add(seed);
+                items.Add(seed with { Id = "dev.test.tidepool", Name = "Tidepool", Sha256 = new string('b',64) });
+                items.AddRange(Enumerable.Range(2, ThemeFixtureCount - 2)
+                    .Select(index => seed with { Id = $"dev.test.theme-{index}", Name = $"Test theme {index}", Sha256 = index.ToString("x64") }));
+            }
+            var page = items.Skip(query.Page * 8).Take(8).ToArray();
+            return MarketplaceSnapshot.Unavailable with
+            {
+                Themes = new(query.Page, items.Count, page, query is { Page: 0, Search.Length: 0 } ? page.FirstOrDefault() : null, [], false, !online),
+            };
+        });
         foreach(var action in new[]{"status","refresh","inventory","download","install","cancel","download-updates","install-updates"})
             builder.WithHandler(WidgetMarketplaceCapabilities.Command(action),async (command,token)=>{
                 Commands.Enqueue(command);

@@ -33,13 +33,18 @@ public sealed partial class PlayniteLibraryWidget
                     {
                         PreserveOccurrences = true,
                         ItemKey = entry => new(entry.Key),
-                        RenderItem = (query, entry, ids) => PlayniteAchievementPresentation.Row(entry, ids.Id("row"), query.State.Achievements?.ProviderKey is { Length: > 0 }),
+                        RenderItem = (query, entry, ids) => PlayniteAchievementPresentation.Row(entry, ids.Id("row"),
+                            query.State.Achievements?.ProviderKey is { Length: > 0 }, query.State.Achievements?.ConnectionId is { Length: > 0 },
+                            entry.UniqueId && !entry.Secret && query.State.TrackedAchievementId == entry.Item.Id),
                         OnAction = async (query, entry, action, token) =>
                         {
                             token.ThrowIfCancellationRequested();
                             if (query.Generation != _model.Value.DetailsGeneration) return;
-                            if (action.ActionId == PlayniteAchievementBrowse.Prefix + "achievement.track." + entry.Key)
-                            { await TrackAchievementAsync(query, entry, token); return; }
+                            var prefix = PlayniteAchievementBrowse.Prefix + "achievement.";
+                            if (action.ActionId == prefix + "pin." + entry.Key)
+                            { await PinAchievementAsync(query, entry, token); return; }
+                            if (action.ActionId == prefix + "track." + entry.Key || action.ActionId == prefix + "untrack." + entry.Key)
+                            { await SetTrackedAchievementAsync(query, entry, action.ActionId == prefix + "track." + entry.Key, token); return; }
                             if (action.ActionId == PlayniteAchievementBrowse.Prefix + "achievement.captures." + entry.Key && !entry.Secret)
                             {
                                 UpdateDetails(query.Generation, value => value with { Tab = PlayniteDetailsTab.Captures,
@@ -58,6 +63,7 @@ public sealed partial class PlayniteLibraryWidget
             achievementBrowse = next;
         }
         return UI.CollectionList(PlayniteAchievementBrowse.ListId, achievementRows!, 104, "Achievements")
+            .WithDirectionalAnchor(FocusAnchorPoint.Leading, 20)
             .Classes("playnite-library-achievement-list");
     }
 
@@ -67,7 +73,7 @@ public sealed partial class PlayniteLibraryWidget
 
     private WidgetView ApplyAchievementSearch(WidgetView page, PlayniteDetailsExtras state) =>
         state.AchievementSearchRequest > 0 && LifecycleState == WidgetLifecycleState.Interactive &&
-        !state.ConfirmUninstall && state.Tab == PlayniteDetailsTab.Achievements && state.Achievements is { Available: true }
+        !state.ConfirmUninstall && !state.ChoosingCompletion && state.Tab == PlayniteDetailsTab.Achievements && state.Achievements is { Available: true }
             ? page with { FocusGroupEntryRequest = new() { RequestId = state.AchievementSearchRequest, GroupId = PlayniteAchievementBrowse.SearchGroupId } }
             : page;
 

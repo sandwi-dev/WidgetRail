@@ -5,14 +5,25 @@ namespace WidgetRail.PlatformBroker;
 
 public sealed partial class PlatformCapabilityBroker
 {
-    private async Task<JsonElement> ExecuteCaptureDomainAsync(BrokerRequestEnvelope request, CancellationToken token)
+    private async Task<JsonElement> ExecuteCaptureDomainAsync(BrokerRequestEnvelope request, RequestLease primary)
     {
+        var token = primary.Token;
+        if (primary.CaptureCommand is { } command)
+        {
+            if (request.Operation is "capture.save-screenshot" or "capture.record-clip" or "capture.replay.save")
+            {
+                var savePermission = await AuthorizeAsync(PlatformCapabilities.CaptureLibrarySaveV1, "capture-library.save", token).ConfigureAwait(false);
+                using var saving = RetainSaveGrant(primary, savePermission);
+                return await _captureDomain.ExecuteAsync(request.Operation, request.Payload, saving.Token, command, request.GestureInputSequence, primary.HostCompletion).ConfigureAwait(false);
+            }
+            return await _captureDomain.ExecuteAsync(request.Operation, request.Payload, token, command).ConfigureAwait(false);
+        }
         var libraryRecording=request.Operation=="capture.start" && BrokerJson.ParsePayload<CaptureSessionRequest>(request.Payload).OutputPurpose==CaptureOutputPurpose.LibraryRecording;
         var savingDraft=request.Operation=="capture-library.save-current" && BrokerJson.ParsePayload<CaptureLibrarySaveRequest>(request.Payload).Attachment?.Origin==CaptureAttachmentOrigin.LibraryRecordingDraft;
-        if(libraryRecording || savingDraft)
+        if(libraryRecording || savingDraft || request.Operation is "capture.save-screenshot" or "capture.record-clip")
         {
-            var required=libraryRecording?PlatformCapabilities.CaptureLibrarySaveV1:PlatformCapabilities.WindowCaptureV1;
-            var secondaryOperation=libraryRecording?"capture-library.save":PlatformCapabilities.WindowCaptureRead;
+            var required=savingDraft?PlatformCapabilities.WindowCaptureV1:PlatformCapabilities.CaptureLibrarySaveV1;
+            var secondaryOperation=savingDraft?PlatformCapabilities.WindowCaptureRead:"capture-library.save";
             var permission=await AuthorizeAsync(required,secondaryOperation,token).ConfigureAwait(false);
             using var secondary=CreateRequestLease(permission,request with{CapabilityId=required,Operation=secondaryOperation},token);
             try
@@ -56,5 +67,20 @@ public sealed partial class PlatformCapabilityBroker
         }
         catch (OperationCanceledException) when (lease.CancellationCode is { })
         { throw new BrokerException(lease.CancellationCode!, "Source permission was revoked while editing."); }
+    }
+
+    // The primary lease admits the exact capture operation. This second lease
+    // observes save-consent revocation without granting a second background command.
+    private RequestLease RetainSaveGrant(RequestLease primary, BrokerCapabilityDefinition permission)
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            primary.ThrowIfBrokerCanceled();
+            if (_revokedCapabilities.Contains(permission.Id)) throw new BrokerException("capability_revoked", "Save permission was revoked.");
+            var lease = new RequestLease(this, permission.Id, BrokerCapabilityKind.Control, false, true, false, primary.Token);
+            _requestLeases.Add(lease);
+            return lease;
+        }
     }
 }

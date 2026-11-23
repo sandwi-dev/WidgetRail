@@ -28,7 +28,9 @@ internal sealed partial class MediaPlayerView
         await Until(() => image.Source is BitmapImage bitmap && bitmap.PixelWidth > 0);
         Check(image.Visibility == Visibility.Visible && player is null, "Screenshot preview decodes generated PNG without a player");
         SetActive(true, true);
-        Check(CanControl && imageTools.Visibility == Visibility.Visible && imageViewport.Focus(FocusState.Keyboard), "Image viewer exposes focused controller controls");
+        Check(CanControl && imageTools.Visibility == Visibility.Collapsed && imageViewport.Focus(FocusState.Keyboard),
+            "Image tools stay hidden until the keyboard enters the viewer");
+        await Until(() => imageTools.Visibility == Visibility.Visible);
         await Task.Delay(100);
         var imageCenter = image.TransformToVisual(imageCanvas).TransformPoint(new(image.ActualWidth / 2, image.ActualHeight / 2));
         Check(Math.Abs(imageCenter.X - imageCanvas.ActualWidth / 2) < 1 && Math.Abs(imageCenter.Y - imageCanvas.ActualHeight / 2) < 1,

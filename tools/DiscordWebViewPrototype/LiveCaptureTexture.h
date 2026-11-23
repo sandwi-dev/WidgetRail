@@ -24,3 +24,8 @@ extern "C" __declspec(dllimport) int32_t __stdcall WrailLiveCaptureRunTextureV3(
 extern "C" __declspec(dllimport) int32_t __stdcall WrailLiveCaptureRunTextureV4(uint64_t window,uint32_t processId,uint64_t created,
     const wchar_t* className,uint32_t includeAudio,uint32_t width,uint32_t height,uint32_t framesPerSecond,uint32_t includeCursor,uint64_t adapterLuid,
     WrailTextureCaptureContinue current,WrailTextureCaptureAudio audioAndState,WrailTextureCaptureFrame texture,uint32_t* failureStage) noexcept;
+
+extern "C" __declspec(dllimport) int32_t __stdcall WrailLiveCaptureRunReplay(uint64_t window,uint32_t processId,uint64_t created,
+    const wchar_t* className,uint32_t includeAudio,uint32_t width,uint32_t height,uint32_t framesPerSecond,uint32_t includeCursor,uint64_t adapterLuid,
+    uint32_t exactCanvas,WrailTextureCaptureContinue current,WrailTextureCaptureAudio audioAndState,WrailTextureCaptureFrame texture,uint32_t* failureStage,
+    void(__stdcall *audioUnavailable)(int32_t)) noexcept;

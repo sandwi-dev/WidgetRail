@@ -90,15 +90,26 @@ internal sealed partial class MediaFullscreenView : Grid
         aspectRatio = definition.AspectRatio;
         AutomationProperties.SetName(this, definition.AccessibleName + (compact ? " pinned media" : " fullscreen"));
         Visibility = Visibility.Visible;
-        if (changed) { Fit(); if (!compact) RevealControls(); }
+        if (changed) Fit();
     }
-    internal void Enter() { RevealControls(); FocusControls(); }
+    internal void Enter()
+    {
+        if (!controlsInteractive || Visibility != Visibility.Visible) return;
+        controlsVisibility.Enter();
+        title.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        FocusControls();
+        videoFocus.IsTabStop = false;
+    }
     internal void SetInteraction(bool enabled)
     {
         if (!compact) return;
         controlsInteractive = enabled;
         title.Visibility = Visibility.Collapsed;
-        if (enabled) RevealControls(); else HideControls();
+        if (!enabled)
+        {
+            videoFocus.IsTabStop = false;
+            controlsVisibility.ResetEntry();
+        }
     }
     internal void UpdatePlayback(EmbeddedMediaPlaybackEvent? playback)
     {
@@ -113,7 +124,7 @@ internal sealed partial class MediaFullscreenView : Grid
         RevealControls();
         if (focused.IsEnabled) actions[focused]();
     }
-    internal void Hide() { controlsVisibility.Stop(); Visibility = Visibility.Collapsed; }
+    internal void Hide() { controlsVisibility.ResetEntry(); Visibility = Visibility.Collapsed; }
     internal void RegisterChrome(ShellChromeStyles styles)
     {
         // This surface lives outside the widget declaration, but remains inside

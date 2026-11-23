@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.OverlayFrontend.WinUI.Motion;
@@ -15,6 +16,31 @@ internal sealed partial class WidgetPresentationSurface : ContentControl, IAsync
     // Opacity here applies once to this surface subtree.
     internal Grid StylePanel { get; } = new();
     private readonly Grid root = new();
+    private bool entranceConfigured;
+    private WidgetArtworkReveal? entrance;
+#if ENABLE_WIDGET_VALIDATION
+    internal WidgetArtworkReveal? EntranceForValidation => entrance;
+#endif
+    internal void ConfigureEntrance(bool fade)
+    {
+        if (entranceConfigured) return;
+        entranceConfigured = true;
+        if (!fade) return;
+        if (root.IsLoaded) PlayEntrance();
+        else root.Loaded += RevealOnLoad;
+    }
+    private void RevealOnLoad(object sender, RoutedEventArgs args)
+    {
+        root.Loaded -= RevealOnLoad;
+        PlayEntrance();
+    }
+    private void PlayEntrance()
+    {
+        var duration = WidgetArtworkCrossfade.Duration(360);
+        if (duration == TimeSpan.Zero) return;
+        entrance = new(root);
+        entrance.Play(duration);
+    }
     private readonly WidgetArtworkCrossfade artwork = new();
     // Separate paint layers keep overlays out of the image cache and underneath
     // authored foreground content. Native star rows express the original scrim.
@@ -27,6 +53,7 @@ internal sealed partial class WidgetPresentationSurface : ContentControl, IAsync
     internal void ConfigurePreview(bool enabled)
     {
         if (Fragment is null || previewMode == enabled) return;
+        if (enabled) ConfigureReadingPane(false);
         previewMode = enabled;
         if (enabled) root.Children.Remove(Fragment);
         else if (!root.Children.Contains(Fragment)) root.Children.Insert(0, Fragment);
@@ -44,7 +71,15 @@ internal sealed partial class WidgetPresentationSurface : ContentControl, IAsync
         UpdateArtworkOverlays();
     }
     private void UpdateArtworkOverlays() => artworkOverlays.Update(artworkStyle, artwork.Source is not null);
-    internal void PublishArtwork(ImageSource? image) => SetArtworkCore(image, requestedFit);
+    internal void PublishArtwork(ImageSource? image, FocusNavigationDirection direction, string? key)
+    {
+        if (foregroundPaint != null && requestedArtKey != key) return;
+        publishedArtKey = key;
+        if (paintHidden && !wantsForeground && image is not null)
+            artwork.SnapSource(image, requestedFit, key);
+        SetArtworkCore(image, requestedFit, direction, key);
+        if (!wantsForeground) ShowPaint(true);
+    }
     internal void RetainArtwork(WidgetPresentationSurface outgoing)
     { paintedFit = outgoing.paintedFit; artwork.SetSource(outgoing.ArtworkSource, paintedFit); UpdateArtworkOverlays(); }
     internal void SetArtworkRetention(bool retain)
@@ -58,6 +93,7 @@ internal sealed partial class WidgetPresentationSurface : ContentControl, IAsync
     internal static void SetSystemHighContrast(bool value) => WidgetArtworkCrossfade.SetHighContrast(value);
     internal WidgetPresentationSurface(ViewNodeKind kind, bool interactivePreview = false)
     {
+        NativeMotionVisibility.Prepare(this);
         IsTabStop = false;
         HorizontalContentAlignment = HorizontalAlignment.Stretch;
         VerticalContentAlignment = VerticalAlignment.Stretch;
@@ -80,12 +116,51 @@ internal sealed partial class WidgetPresentationSurface : ContentControl, IAsync
         StylePanel.Children.Add(root);
         Content = StylePanel;
     }
+    internal ScrollViewer? ReadingPane { get; private set; }
+    private string? readingItem;
+    internal void ResetReadingPosition(string item)
+    {
+        if (ReadingPane is null || readingItem == item) return;
+        readingItem = item;
+        ReadingPane.ChangeView(null, 0, null, true);
+    }
+    internal void ConfigureReadingPane(bool enabled)
+    {
+        if (Fragment is null || previewMode || enabled == (ReadingPane is not null)) return;
+        if (enabled)
+        {
+            root.Children.Remove(Fragment);
+            ReadingPane = new ScrollViewer { Content = Fragment, IsTabStop = false,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            root.Children.Add(ReadingPane);
+        }
+        else
+        {
+            ReadingPane!.Content = null;
+            root.Children.Remove(ReadingPane);
+            ReadingPane = null;
+            root.Children.Add(Fragment);
+        }
+    }
     internal void ConfigureFocusLayout(bool horizontal, string? justify, string? align, double gap, bool contentGrows)
     {
         if (Fragment is null) return;
         // Presentation fragments are an implicit first child of the declared
         // surface. Honor its layout just like ordinary WRSS rows/columns; a
         // bounded poster rail must not consume all remaining vertical space.
+        if (ReadingPane is { } reader)
+        {
+            if (root.ColumnDefinitions.Count != 3 || root.RowDefinitions.Count != 0)
+            {
+                root.RowDefinitions.Clear(); root.ColumnDefinitions.Clear();
+                root.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+                root.ColumnDefinitions.Add(new() { Width = new(gap) });
+                root.ColumnDefinitions.Add(new() { Width = new(2, GridUnitType.Star) });
+            }
+            Grid.SetRow(ContentPanel, 0); Grid.SetColumn(ContentPanel, 0); Grid.SetColumn(reader, 2);
+            return;
+        }
         var fragmentVisible = !previewMode && Fragment.Visibility == Visibility.Visible;
         var contentVisible = ContentPanel.Visibility == Visibility.Visible;
         var grows = new List<double>();
@@ -111,17 +186,20 @@ internal sealed partial class WidgetPresentationSurface : ContentControl, IAsync
     }
     internal void SetArtwork(ImageSource? source, ImageFit? fit)
         => SetArtworkCore(source, NativeArtworkStyle.Resolve(null, fit, ImageFit.Cover).Stretch);
-    private void SetArtworkCore(ImageSource? source, Stretch fit)
+    private void SetArtworkCore(ImageSource? source, Stretch fit, FocusNavigationDirection direction = FocusNavigationDirection.None, string? key = null)
     {
         latestArtwork = source; latestFit = fit;
         if (source is null && retainArtwork) return;
         paintedFit = fit;
-        artwork.SetSource(source, fit);
+        artwork.SetSource(source, fit, direction, key);
         UpdateArtworkOverlays();
     }
     public async ValueTask DisposeAsync()
     {
+        DetachForegroundBackground();
         artwork.Dispose();
+        root.Loaded -= RevealOnLoad;
+        entrance?.Dispose();
         latestArtwork = null;
         ContentPanel.Children.Clear();
         if (Fragment is not null) await Fragment.DisposeAsync();

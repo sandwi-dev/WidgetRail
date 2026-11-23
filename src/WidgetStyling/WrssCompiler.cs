@@ -94,8 +94,13 @@ public static class WrssThemeCompiler
             }
         }
 
+        WrssComputedValue? focusHighlight = null;
+        if (resolvedVariables.TryGetValue("--focus-highlight", out var highlight) && highlight != "auto" &&
+            !WrssPropertyCatalog.TryCompute("focus-outline-highlight", highlight, out focusHighlight, out _, out var highlightError))
+            Add(variables["--focus-highlight"].Location, "invalid_value", $"--focus-highlight: {highlightError}");
+
         var hasErrors = diagnostics.Any(item => item.Severity == WrssDiagnosticSeverity.Error);
-        return new WrssCompileResult(hasErrors ? null : new WrssTheme(compiledRules), diagnostics);
+        return new WrssCompileResult(hasErrors ? null : new WrssTheme(compiledRules, focusHighlight), diagnostics);
 
         string? ResolveVariable(string name)
         {

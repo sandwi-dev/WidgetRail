@@ -7,6 +7,16 @@ namespace WinUiShell.Tests;
 public sealed class IntroductionProgressTests
 {
     [TestMethod]
+    public void TourUsesTheAvailableDestinationsAndAcceptsAnOlderAppearanceStep()
+    {
+        var bare = IntroductionProgress.VisibleSteps(catalogue: false, appearance: false);
+        CollectionAssert.AreEqual(new[] { "guide", "commands", "utilities" }, bare);
+        Assert.AreEqual("complete", new IntroductionProgress(1, "utilities").NextVisible(bare));
+        var settings = IntroductionProgress.VisibleSteps(catalogue: false, appearance: true);
+        Assert.AreEqual("appearance-details", new IntroductionProgress(1, "utilities").NextVisible(settings));
+        Assert.AreEqual("appearance-details", new IntroductionProgress(1, "appearance").NextVisible(settings));
+    }
+    [TestMethod]
     public async Task MissingFileStartsWelcomeAndAllStepsRoundTrip()
     {
         await InProfile(async store =>

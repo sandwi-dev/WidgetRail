@@ -32,6 +32,16 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
     private readonly Dictionary<BrowserSlot, Binding> slots = [];
     private readonly Dictionary<(string Widget, string Document), Entry> entries = [];
     private readonly HashSet<(string Widget, string Document)> retiringEntries = [];
+    private string? mainViewWidget;
+    internal void SetMainViewWidget(string? widget)
+    {
+        if(mainViewWidget==widget)return;
+        var previous=mainViewWidget;
+        mainViewWidget=widget;
+        foreach(var (key,entry) in entries)
+            if(entry.Hosted is not null && (key.Widget==widget || key.Widget==previous))
+                entry.Surface.SetOwnerMainViewVisible(key.Widget==widget);
+    }
     private readonly Dictionary<Task, string> retirements = [];
     internal Web.HostedWebViewEnvironment Runtime { get; }
     internal Extensions.BrowserExtensionManager Extensions { get; }
@@ -68,6 +78,8 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         notificationPreferencesLoading = NotificationCenter.Ready;
         session.PresentationChanged += Changed; session.CatalogChanged += CatalogChanged;
     }
+    internal Func<BrowserSlot, BrowserSurface, Task>? ExpandVideo { get; set; }
+
     internal void Bind(WidgetPresentationFrame frame, string elementId, BrowserSlot slot,
         WidgetPinnedSelection? selection, WidgetPinnedProjection? projection)
     {
@@ -76,7 +88,7 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
         {
             var document = session.ResolveWebBrowserDocument(frame, elementId, selection, projection);
             slots[slot] = new(frame.Authority, document, slot);
-            slot.Pinned = selection is not null; slot.PlacementChanged = Refresh;
+            slot.Pinned = selection is not null; slot.PlacementChanged = Refresh; slot.ExpandVideo = ExpandVideo;
             Refresh();
         }
         catch (WidgetPresentationSessionException)
@@ -153,7 +165,12 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
                     // A pin owns the durable page until it is removed/hidden.
                     // Input readiness changes while entering a widget and must
                     // never shuttle that page between XAML roots.
-                    var chosen = group.OrderByDescending(binding => binding.Slot.Expanded).ThenByDescending(binding => binding.Slot.Pinned).ThenByDescending(binding => binding.Slot.AcceptsInput).First();
+                    // A passive video has one live WebView. A visible main viewer
+                    // borrows it while open; hiding that viewer returns it to its pin.
+                    var video = entries.TryGetValue(group.Key, out var output) && output.Surface.IsBackendVideo;
+                    var chosen = group.OrderByDescending(binding => binding.Slot.Expanded)
+                        .ThenByDescending(binding => video ? !binding.Slot.Pinned : binding.Slot.Pinned)
+                        .ThenByDescending(binding => binding.Slot.AcceptsInput).First();
                     if (entries.TryGetValue(group.Key, out var hosted) && hosted.Hosted is { } reference)
                     {
                         if (chosen.Document.HostedSession != reference ||

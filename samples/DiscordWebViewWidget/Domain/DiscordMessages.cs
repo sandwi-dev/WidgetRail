@@ -2,7 +2,7 @@ namespace WidgetRail.Samples.DiscordWebView.Domain;
 
 internal sealed record DiscordMessagingState(string? Account,string Availability,bool CanRead,bool CanSend,bool CanOpenDm,
     int MaximumContentLength,int MaximumPageSize,long MessageRevision=0,string? ObservedChannelId=null,long? MaximumAttachmentBytes=null,long CatalogRevision=0,
-    long ObservedSinceRevision=0,long WatchEpoch=0)
+    long ObservedSinceRevision=0,long WatchEpoch=0,bool CanMarkRead=false,bool? HasUnreadConversations=null)
 {
     internal void Validate(string account)
     {
@@ -49,32 +49,53 @@ internal sealed record DiscordConversation(string Id,string? ChannelId,string? U
     string? LastMessageId,bool Unread,bool CanSend)
 {
     public string? OldestUnreadMessageId { get; init; }
+    public string? Presence { get; init; }
+    public long? LastMessageTimestamp { get; init; }
+    public string? LastMessagePreview { get; init; }
+    public string? LastMessageAuthorName { get; init; }
+    public bool LastMessageIsOwn { get; init; }
     internal bool IsValid => Id is {Length:>0 and <=128} && !Id.Any(char.IsControl) &&
         Kind is "dm" or "group" or "friend" && DiscordMessageValues.Label(Name,120) &&
         (Kind=="friend" ? DiscordMessageValues.Id(UserId) : DiscordMessageValues.Id(ChannelId)) &&
         (ChannelId is null || DiscordMessageValues.Id(ChannelId)) && (UserId is null || DiscordMessageValues.Id(UserId)) &&
         (LastMessageId is null || DiscordMessageValues.Id(LastMessageId)) &&
-        (OldestUnreadMessageId is null || Unread && DiscordMessageValues.Id(OldestUnreadMessageId)) && DiscordMessageValues.MediaUrl(AvatarUrl);
+        (OldestUnreadMessageId is null || Unread && DiscordMessageValues.Id(OldestUnreadMessageId)) && DiscordMessageValues.MediaUrl(AvatarUrl) &&
+        Presence is null or "online" or "idle" or "dnd" or "offline" && (Presence is null || UserId is not null) &&
+        (LastMessageTimestamp is null || LastMessageId is not null && LastMessageTimestamp is >=0 and <=253402300799999) &&
+        (LastMessagePreview is null || LastMessageId is not null && LastMessagePreview.Length>0 && DiscordMessageValues.Body(LastMessagePreview,240)) &&
+        (LastMessageAuthorName is null || LastMessagePreview is not null && DiscordMessageValues.Label(LastMessageAuthorName,120)) &&
+        (!LastMessageIsOwn || LastMessagePreview is not null);
 }
 
-internal sealed record DiscordConversationPageContext(string Account,string Version,int TotalCount,int Offset,bool HasMore,bool Truncated=false);
+internal sealed record DiscordConversationPageContext(string Account,string Version,int TotalCount,int Offset,bool HasMore,bool Truncated=false)
+{
+    public string? OrderVersion { get; init; }
+}
 internal sealed record DiscordConversationPage(DiscordConversationPageContext Context,DiscordConversation[] Items)
 {
     internal void Validate(string account,int offset,int limit)
     {
         if(Context is null || Context.Account!=account || Context.Version is not {Length:>0 and <=128} ||
-            Context.Offset!=offset || Context.TotalCount<0 || Items is null || Items.Length>limit ||
+            Context.OrderVersion is not null && (Context.OrderVersion.Length is <1 or >128 || Context.OrderVersion.Any(char.IsControl)) ||
+            Context.Offset!=offset || Context.TotalCount is <0 or >1000 || offset<0 || offset>Context.TotalCount || Items is null || Items.Length!=Math.Min(limit,Context.TotalCount-offset) ||
             Items.Any(item=>item is null || !item.IsValid) || Items.Select(item=>item.Id).Distinct().Count()!=Items.Length ||
-            (long)offset+Items.Length>Context.TotalCount || Context.HasMore && Items.Length==0)
+            Context.HasMore!=(offset+Items.Length<Context.TotalCount))
             throw DiscordMessageValues.Invalid();
     }
 }
 
 internal sealed record DiscordMessageAttachment(string Id,string FileName,string? ContentType,long ByteLength,string? Url,int? Width=null,int? Height=null)
 {
+    public string? PosterUrl { get; init; }
+    public bool IsSpoiler { get; init; }
+    public bool IsAnimated { get; init; }
+    internal bool HasAnimation => ContentType == "image/gif" || IsAnimated &&
+        ContentType is "image/png" or "image/webp" or "video/mp4" or "video/webm";
+    internal bool HasSpoiler => IsSpoiler || FileName.StartsWith("SPOILER_", StringComparison.OrdinalIgnoreCase);
     internal bool IsValid => DiscordMessageValues.Id(Id) && DiscordMessageValues.Label(FileName,256) && ByteLength>=0 &&
         ContentType is not {Length:>128} && (ContentType is null || !ContentType.Any(char.IsControl)) &&
-        DiscordMessageValues.MediaUrl(Url) &&
+        DiscordMessageValues.MediaUrl(Url) && DiscordMessageValues.AttachmentPosterUrl(PosterUrl,Id) &&
+        (PosterUrl is null || ContentType is "image/png" or "image/jpeg" or "image/gif" or "image/webp" or "video/mp4" or "video/webm") &&
         Width is not <1 && Height is not <1 && Width is not >65536 && Height is not >65536;
 }
 
@@ -85,8 +106,11 @@ internal sealed record DiscordMessageReply(string Id,string Author,string Conten
 }
 internal sealed record DiscordMessageEmbed(string Title,string Description,string? Url,string? ImageUrl)
 {
+    public string? VideoUrl { get; init; }
+    public bool IsAnimation { get; init; }
     internal bool IsValid=>DiscordMessageValues.Body(Title,256)&&DiscordMessageValues.Body(Description,600)&&
-        DiscordMessageValues.WebUrl(Url)&&DiscordMessageValues.MediaUrl(ImageUrl);
+        DiscordMessageValues.WebUrl(Url)&&DiscordMessageValues.EmbedMediaUrl(ImageUrl)&&DiscordMessageValues.EmbedMediaUrl(VideoUrl)&&
+        (!IsAnimation || VideoUrl is not null || ImageUrl is not null);
 }
 internal sealed record DiscordMessageReaction(string Name,string? EmojiId,int Count,bool IsOwn)
 {
@@ -160,8 +184,38 @@ internal static class DiscordMessageValues
         !value.Any(c=>char.IsControl(c)&&c is not ('\r' or '\n' or '\t'));
     internal static bool WebUrl(string? value)=>value is null||value.Length<=2048&&!value.Any(char.IsControl)&&
         Uri.TryCreate(value,UriKind.Absolute,out var uri)&&uri.Scheme is "http" or "https"&&uri.UserInfo.Length==0;
-    internal static bool MediaUrl(string? value)=>value is null || value.Length<=2048 && Uri.TryCreate(value,UriKind.Absolute,out var uri) &&
+    internal static bool MediaUrl(string? value)=>value is null || value.Length<=2048 && !value.Any(char.IsControl) && Uri.TryCreate(value,UriKind.Absolute,out var uri) &&
         uri.Scheme==Uri.UriSchemeHttps && uri.IsDefaultPort && uri.UserInfo.Length==0 && uri.Fragment.Length==0 &&
         uri.Host is "cdn.discordapp.com" or "media.discordapp.net";
+    internal static bool EmbedMediaUrl(string? value) => MediaUrl(value) || value is { Length: <= 2048 } &&
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && uri.IsDefaultPort &&
+        uri.UserInfo.Length == 0 && uri.Fragment.Length == 0 &&
+        uri.Host is "media.tenor.com" or "images-ext-1.discordapp.net" or "images-ext-2.discordapp.net" && !value.Any(char.IsControl);
+    internal static bool AttachmentPosterUrl(string? value,string attachmentId)
+    {
+        if(value is null)return true;
+        if(!value.StartsWith("https://media.discordapp.net/attachments/",StringComparison.Ordinal)||
+            !MediaUrl(value)||value.Any(character=>char.IsWhiteSpace(character)||character=='\\')||
+            !Uri.TryCreate(value,UriKind.Absolute,out var uri)||uri.Host!="media.discordapp.net")return false;
+        var path=uri.AbsolutePath.Split('/');
+        if(path.Length!=5||path[1]!="attachments"||!Id(path[2])||path[3]!=attachmentId||path[4].Length==0)return false;
+        var fields=new Dictionary<string,string>(StringComparer.Ordinal);
+        try
+        {
+            foreach(var item in uri.Query.TrimStart('?').Split('&'))
+            {
+                var pair=item.Split('=',2);var key=Uri.UnescapeDataString(pair[0]);var lower=key.ToLowerInvariant();
+                if(lower is "size" or "quality" or "animated" or "fit")return false;
+                if(lower is not ("format" or "width" or "height"))continue;
+                if(key!=lower)return false;
+                if(pair.Length!=2||!fields.TryAdd(key,Uri.UnescapeDataString(pair[1])))return false;
+            }
+        }
+        catch(UriFormatException){return false;}
+        return fields.GetValueOrDefault("format")=="jpeg"&&fields.Count==3&&
+            fields["width"].All(char.IsAsciiDigit)&&fields["height"].All(char.IsAsciiDigit)&&
+            int.TryParse(fields.GetValueOrDefault("width"),out var width)&&width is >0 and <=512&&
+            int.TryParse(fields.GetValueOrDefault("height"),out var height)&&height is >0 and <=512;
+    }
     internal static InvalidDataException Invalid()=>new("Discord returned an invalid message response.");
 }

@@ -23,6 +23,11 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
     internal PlayniteApiDispatcher(IPlayniteAPI api, ConnectionDescriptor connection)
     {
         this.api = api; this.connection = connection;
+        foreach (var game in api.Database.Games.Where(game => game.IsRunning || game.IsLaunching))
+        {
+            launchTracker.Starting(game.Id, game.Name);
+            if (game.IsRunning) launchTracker.Started(game.Id, 0, 0);
+        }
         achievements = new AchievementAdapter(api, changes);
         optionalData = new OptionalPluginData(api.Paths.ExtensionsDataPath);
         api.Database.Games.ItemUpdated += GamesUpdated;
@@ -54,7 +59,7 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
                     paths = new { application = api.Paths.ApplicationPath, configuration = api.Paths.ConfigurationPath },
                     commandRetentionSeconds = CommandRegistry<LocalApiResponse>.RetentionSeconds,
                     providers = new { playniteAchievements = provider },
-                    capabilities = IntegrationIdentity.RequiredCapabilities.Concat(new[] { "events.v1", "achievements.v1", "achievements.overview.v1", "achievements.capture-settings.v1", "achievements.capture-integration.v1", "activity.v1", "diagnostics.v1" }).ToArray(),
+                    capabilities = IntegrationIdentity.RequiredCapabilities.Concat(new[] { "events.v1", "achievements.v1", "achievements.overview.v1", "achievements.capture-settings.v1", "achievements.capture-integration.v1", "activity.v1", "activity.recent.v1", "diagnostics.v1" }).ToArray(),
                 });
             }
             if (request.Method == "GET" && request.Path == "/v1/diagnostics")
@@ -73,10 +78,12 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
             if (request.Method == "PATCH" && request.Path == "/v1/capture-settings")
                 return await RunMutationAsync(request, () => achievements.UpdateCaptureSettings(WireJson.Body(request)), linked.Token).ConfigureAwait(false);
             if (request.Method == "GET" && request.Path == "/v1/capture-integration")
-                return WireJson.Response(await OnUiAsync(CaptureIntegration, linked.Token).ConfigureAwait(false));
+                return WireJson.Response(await OnUiAsync(() => CaptureIntegration(request.Query["gameId"]), linked.Token).ConfigureAwait(false));
             if (request.Method == "PUT" && request.Path == "/v1/capture-integration")
                 return await RunMutationAsync(request, () => ConfigureCaptureIntegration(WireJson.Body(request)), linked.Token).ConfigureAwait(false);
             if (request.Method == "GET" && request.Path == "/v1/achievements/overview") return await GetAchievementOverviewAsync(request, linked.Token).ConfigureAwait(false);
+            if (request.Method == "GET" && request.Path == "/v1/activity/recent")
+                return await GetRecentActivityAsync(request, linked.Token).ConfigureAwait(false);
             if (request.Method == "GET" && request.Path == "/v1/games") return await GetGamesAsync(request, linked.Token).ConfigureAwait(false);
             if (request.Method == "GET" && request.Path == "/v1/artwork") return await GetArtworkManifestAsync(request, linked.Token).ConfigureAwait(false);
             if (request.Method == "POST" && request.Path == "/v1/artwork/resolve") return await ResolveArtworkAsync(request, linked.Token).ConfigureAwait(false);
@@ -85,7 +92,13 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
                 var after = -1L;
                 if (request.Query["after"] != "now" && (!long.TryParse(request.Query["after"] ?? "0", out after) || after < 0)) throw new ApiException(400, "invalid_cursor");
                 var batch = await changes.PollAsync(after, WireJson.Integer(request.Query["wait"], 25000, 25000), linked.Token).ConfigureAwait(false);
-                return WireJson.Response(new { instanceId = connection.InstanceId, resetRequired = batch.ResetRequired,
+                var running = launchTracker.RunningSessions();
+                return WireJson.Response(new { instanceId = connection.InstanceId, runningGames = running.Keys.ToArray(),
+                    runningProcesses = running.Where(pair => pair.Value.ProcessId > 0 && pair.Value.CreatedFileTime > 0)
+                        .ToDictionary(pair => pair.Key.ToString("D"), pair => pair.Value.ProcessKey),
+                    runningNames = running.Where(pair => !string.IsNullOrWhiteSpace(pair.Value.Name)).ToDictionary(pair => pair.Key.ToString("D"), pair => WireJson.Text(pair.Value.Name, 256)),
+                    runningSince = running.Where(pair => pair.Value.CreatedFileTime > 0).ToDictionary(pair => pair.Key.ToString("D"),
+                        pair => new DateTimeOffset(DateTime.FromFileTimeUtc(pair.Value.CreatedFileTime)).ToUnixTimeMilliseconds()), resetRequired = batch.ResetRequired,
                     nextSequence = batch.NextSequence, events = batch.Events.Select(item => new { sequence = item.Sequence,
                         kind = item.Kind, gameId = item.GameId, provider = item.Provider, achievementId = item.AchievementId, observedAt = item.ObservedAt }).ToArray() });
             }
@@ -109,6 +122,12 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
                 if (parts.Length == 0 || !Guid.TryParseExact(parts[0], "D", out var id)) throw new ApiException(400, "invalid_game_id");
                 if (parts.Length == 1 && request.Method == "GET")
                     return WireJson.Response(await OnUiAsync(() => ProjectGame(RequireGame(id), true), linked.Token).ConfigureAwait(false));
+                if (parts.Length == 3 && parts[1] == "launch-status" && request.Method == "GET")
+                {
+                    var result = launchTracker.Read(id, parts[2]);
+                    return result is null ? LocalApiResponse.Error(404, "unknown_launch") :
+                        WireJson.Response(new { state = result.State, processId = result.ProcessId, createdFileTime = result.CreatedFileTime });
+                }
                 if (parts.Length == 3 && parts[1] == "artwork" && request.Method == "GET")
                     return await ReadArtworkAsync(id, parts[2], linked.Token).ConfigureAwait(false);
                 if (parts.Length == 2 && request.Method == "GET" && (parts[1] == "achievements" || parts[1] == "activity"))
@@ -117,8 +136,8 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
                     return StartAchievementRefresh(request, id, linked.Token);
                 if (parts.Length == 1 && (request.Method == "PATCH" || request.Method == "PUT"))
                     return await RunMutationAsync(request, () => UpdateGame(id, WireJson.Body(request)), linked.Token).ConfigureAwait(false);
-                if (parts.Length == 2 && request.Method == "POST" && (parts[1] == "launch" || parts[1] == "install" || parts[1] == "uninstall"))
-                    return await RunMutationAsync(request, () => RequestGameAction(id, parts[1]), linked.Token).ConfigureAwait(false);
+                if (parts.Length == 2 && request.Method == "POST" && (parts[1] == "launch" || parts[1] == "return" || parts[1] == "install" || parts[1] == "uninstall"))
+                    return await RunMutationAsync(request, () => RequestGameAction(id, parts[1], request.Query["running"]), linked.Token).ConfigureAwait(false);
                 if (parts.Length == 2 && request.Method == "PUT" && (parts[1] == "categories" || parts[1] == "status"))
                     return await RunMutationAsync(request, () => SetOrganization(id, parts[1], WireJson.Body(request)), linked.Token).ConfigureAwait(false);
             }
@@ -155,6 +174,9 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
     public void Dispose()
     {
         if (disposed) return; disposed = true; lifetime.Cancel(); captureCompanions?.Dispose(); achievements.Dispose(); changes.Dispose();
+        try { sessions.Close(UtcNow); }
+        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException or System.Runtime.Serialization.SerializationException)
+        { global::Playnite.SDK.LogManager.GetLogger().Warn("Capture session could not be saved during shutdown."); }
         api.Database.Games.ItemUpdated -= GamesUpdated;
         api.Database.Games.ItemCollectionChanged -= GamesChanged;
     }

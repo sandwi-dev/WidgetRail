@@ -3,7 +3,14 @@
   "id": "widgetrail.firstparty.capture-library",
   "publisher": "widgetrail.firstparty",
   "name": "Capture Library",
-  "version": "0.2.0",
+  "version": "0.2.10",
+  "trayActions": [
+    { "id": "screenshot", "label": "Take screenshot", "wakeOnInvoke": true },
+    { "id": "record-clip", "label": "Record clip", "wakeOnInvoke": true },
+    { "id": "save-replay", "label": "Save replay", "wakeOnInvoke": true, "statusOperation": "capture.replay.save", "fallbackId": "start-replay" },
+    { "id": "start-replay", "label": "Start replay", "wakeOnInvoke": true, "statusOperation": "capture.replay.start" },
+    { "id": "stop-replay", "label": "Stop replay", "wakeOnInvoke": true, "statusOperation": "capture.replay.stop" }
+  ],
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
@@ -57,6 +64,44 @@
   ],
   "intents": {
     "requests": [
+      {
+        "id": "widgetrail.captures.associate",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "captures": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 32,
+                    "maxLength": 32
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9223372036854775807
+                  }
+                },
+                "required": [
+                  "id",
+                  "revision"
+                ]
+              }
+            }
+          },
+          "required": [
+            "captures"
+          ]
+        }
+      },
       {
         "id": "widgetrail.settings.permissions.open",
         "version": 1,

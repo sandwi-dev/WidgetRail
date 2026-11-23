@@ -22,6 +22,14 @@ if (args is ["--export-gallery-scroll", var galleryDirectory, var galleryStylePa
 
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
+if (args is ["--serve-animation-validation", var animationPipe])
+{ await AnimationPresentationFixture.ServeAsync(animationPipe); return 0; }
+if (args is ["--serve-inline-video-validation", var inlineVideoPipe])
+{ await AnimationPresentationFixture.ServeAsync(inlineVideoPipe,inlineVideo:true); return 0; }
+if (args is ["--serve-animation-reading-validation", var animationReadingPipe])
+{ await AnimationPresentationFixture.ServeAsync(animationReadingPipe, readingGroup: true); return 0; }
+if (args is ["--serve-reading-group-validation", var readingPipe])
+{ await ReadingGroupPresentationFixture.ServeAsync(readingPipe); return 0; }
 if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "replay-ui-fixture.marker")))
 {
     await ReplayUiFixture.ServeAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
@@ -159,6 +167,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Permission prompts cross host pipe and approval unlocks the same broker", PermissionScenarios.HostPipe),
     ("File picker host pipe scopes selection cancellation and stale completion", FilePickerScenarios.HostPipe),
     ("Media preview resolves only its exact indexed lease and declaration", BridgeIndexedLeaseRegistryScenarios.PreviewMediaUsesExactLease),
+    ("Media animation resolves only its exact passive indexed declaration", BridgeIndexedLeaseRegistryScenarios.AnimationUsesExactLease),
+    ("Media inline video preserves exact row input authority", BridgeIndexedLeaseRegistryScenarios.InlineVideoUsesExactLease),
     ("Capture startup preferences cannot discard the acknowledged refresh", CaptureLibraryStartupScenarios.StartupPreferencesCannotDiscardAcknowledgedRefresh),
     ("Capture startup cancelled and failed preferences retry on reactivation", CaptureLibraryStartupScenarios.StartupPreferencesRetryAfterCancellationAndFailure),
     ("Media preview retains originals and retires playback custody", HostMediaPlaybackScenarios.RetainedOriginalAndRetirement),
@@ -195,6 +205,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Intent bridge cancellation is exact and cannot replay", BridgeIntentScenarios.Cancellation),
     ("Intent bridge receiver rejection offers only explicit browser fallback", BridgeIntentScenarios.FailureOffersFallback),
     ("Dashboard input tolerates compatible publications without changing command", BridgeClientRegistryScenarios.DashboardRevalidatesCompatiblePublication),
+    ("Tray work completion and opening use the correct unload deadline", BridgeClientRegistryScenarios.TrayWakeRespectsWorkAndForegroundResidency),
+    ("Tray preparation wakes only the opted-in action", BridgeClientRegistryScenarios.TrayPreparationRequiresPerActionOptIn),
+    ("Tray actions require a resident worker, current target and fresh gesture", BridgeClientRegistryScenarios.TrayUsesOnlyTheDisplayedResidentTarget),
     ("Task activation tickets are single-use bounded and owner-scoped", TaskActivationScenarios.TicketsAndWire),
     ("Task activation host pipe rejects expiry replay and stale identity", TaskActivationScenarios.HostRejectionsThroughPipe),
     ("Task activation completion survives hiding but rejects retired workers", BridgeClientRegistryScenarios.TaskActivationSurvivesHideButNotWorkerReplacement),
@@ -217,6 +230,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Indexed styles refresh retained semantics without provider reload", BridgeIndexedLeaseRegistryScenarios.StyleRefreshUsesRetainedSemanticsAndRejectsRetirement),
     ("Indexed lease wire contracts and strict classification", BridgeIndexedLeaseWireScenarios.ContractsAndClassification),
     ("Indexed lease session through bridge to real worker", BridgeIndexedEndToEndScenarios.SessionToRealWorker),
+    ("Reading group session through bridge to real worker", ReadingGroupPresentationFixture.ContractAsync),
     ("Indexed modal data lifetime and input scopes through real worker", BridgeIndexedEndToEndScenarios.RealWorkerModalDataAndInputScopes),
     ("Indexed lease registry real worker semantic round trip", BridgeIndexedLeaseRegistryScenarios.RealWorkerLeaseRoundTrip),
     ("Indexed lease registry separates data lifetime and input authority", BridgeIndexedLeaseRegistryScenarios.DataLifetimeAndInputAuthorityAreSeparate),
@@ -543,6 +557,10 @@ static async Task<int> RunWorkerAsync(string[] arguments)
         arguments,
         services => instance == "game-help.instance" ? new WidgetRail.Samples.GameHelp.GameHelpWidget(new BridgeGameHelpFixture.FakeGemini(() => services))
             : instance == "media-player.instance" ? new MediaPlayerScenarios.Probe()
+            : instance == "animation-fixture.instance" ? new AnimationPresentationFixture.Probe()
+            : instance == "animation-reading-fixture.instance" ? new AnimationPresentationFixture.Probe(readingGroup: true)
+            : instance == "inline-video-fixture.instance" ? new AnimationPresentationFixture.Probe(inlineVideo: true)
+            : instance == "reading-fixture.instance" ? new ReadingGroupPresentationFixture.Probe()
             : instance == "media-preview.instance" ? new MediaPreviewPipeScenarios.Probe()
             : instance == "browser.instance" ? new WidgetRail.Samples.Browser.BrowserWidget()
             : instance == "browser-modes.instance" ? new ActivationBrowserFixture()
@@ -5110,7 +5128,7 @@ static async Task PlatformAppearanceIsLazy()
     var response = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     Assert.Equal(BridgeMessageTypes.PlatformAppearance, response.Type);
     Assert.SequenceEqual(
-        ["activeDisplayId", "animateWidgetModals", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "focusAnimation", "interfaceScale", "modalAnimation", "motion", "overlayPosition", "pageAnimation", "revision", "sectionAnimation", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetAnimationSpeed", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides"],
+        ["activeDisplayId", "animateOverlayVisibility", "animateWidgetModals", "animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "displayScales", "focusAnimation", "interfaceScale", "modalAnimation", "motion", "overlayPosition", "pageAnimation", "revision", "sectionAnimation", "shellStyles", "textScale", "themeId", "themeVersion", "transparency", "widgetAnimationSpeed", "widgetSurfaceAppearance", "widgetSurfaceAppearanceOverrides"],
         response.Payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("dev.example.bridge", response.Payload.GetProperty("themeId").GetString());
     Assert.Equal("1.0.0", response.Payload.GetProperty("themeVersion").GetString());
@@ -5122,6 +5140,7 @@ static async Task PlatformAppearanceIsLazy()
     Assert.Equal("high", response.Payload.GetProperty("contrast").GetString());
     Assert.Equal(true, response.Payload.GetProperty("boldText").GetBoolean());
     Assert.Equal("reduced", response.Payload.GetProperty("transparency").GetString());
+    Assert.Equal(true, response.Payload.GetProperty("animateOverlayVisibility").GetBoolean());
     Assert.Equal(true, response.Payload.GetProperty("animateWidgetSwitching").GetBoolean());
     Assert.Equal("none", response.Payload.GetProperty("focusAnimation").GetString());
     Assert.Equal("slide", response.Payload.GetProperty("sectionAnimation").GetString());
@@ -5129,7 +5148,7 @@ static async Task PlatformAppearanceIsLazy()
     Assert.Equal(1.5d, response.Payload.GetProperty("widgetAnimationSpeed").GetDouble());
     Assert.Equal(false, response.Payload.GetProperty("animateWidgetModals").GetBoolean());
     var shellStyles = response.Payload.GetProperty("shellStyles");
-    Assert.SequenceEqual(new[] { "canvas", "backdrop", "panel", "preview", "tray", "tray-item", "tray-item:selected",
+    Assert.SequenceEqual(new[] { "canvas", "backdrop", "panel", "preview", "preview-footer", "tray", "tray-item", "tray-item:selected",
         "tray-item:focused", "tray-item:selected:focused", "title", "body", "hint", "controller-glyph",
         "status", "tray-clock", "tray-date", "tray-status-icon", "dialog", "dialog-title", "dialog-description", "dialog-footer",
         "dialog-choice", "dialog-choice:selected", "dialog-choice:focused", "dialog-button", "dialog-button:focused",
@@ -8385,6 +8404,7 @@ file sealed class TemporaryAppearance : IAsyncDisposable
                 Contrast = ContrastPreference.High,
                 BoldText = true,
                 Transparency = TransparencyPreference.Reduced,
+                AnimateOverlayVisibility = true,
                 AnimateWidgetSwitching = true,
                 FocusAnimation = WidgetFocusAnimation.None,
                 SectionAnimation = WidgetSectionAnimation.Slide,

@@ -38,6 +38,14 @@ public sealed partial class MainWindow
         var policy = OverlayAppearancePolicy.Resolve(page.Appearance, page.SurfaceAppearanceWidgetId,
             page.SurfaceHints?.Appearance ?? WidgetSurfaceAppearance.Theme, themeSettings.HighContrast, backdropAvailable);
         page.RefreshShellChrome();
+        var allow = policy.Effective == WidgetSurfaceAppearance.Transparent;
+        if (allow != ForegroundBackgroundAllowed)
+        {
+            ForegroundBackgroundAllowed = allow;
+            ForegroundBackgroundChanged?.Invoke();
+        }
+        if (backgroundHook != 0 && foregroundReturnTarget is { } target && !BackgroundWindowVisible(target))
+            EndForegroundBackground();
         OverlaySurfacePaint.Apply(page.SurfaceBackground, policy, page.ShellPalette);
         var color = OverlaySurfacePaint.Background(page.ShellPalette, "backdrop", Microsoft.UI.Colors.Black);
         var display = OverlayDisplayArea.Resolve(AppWindow.Id, AppWindow.Id);

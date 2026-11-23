@@ -17,9 +17,7 @@ selection. Settings and Catalogue update with WidgetRail; optional packages have
 their own versions, permissions and update files. The ordinary list has no pagination;
 catalog-recovery pages keep their bounded paging.
 
-Install and Update from file use a Windows file picker followed by themed
-overlay dialogs for full-trust approval, progress and completion. The picker
-requires mouse/keyboard; the overlay dialogs support controller navigation.
+Install and Update from file open the overlay file chooser filtered to `.wrwidget` packages. Controller, keyboard and mouse can browse, search the current folder or enter a location. Choosing a package opens the existing review, full-trust approval, progress and completion dialogs.
 Completion refreshes the widget and permission lists. Fresh installations through
 Settings and Catalogue start enabled and request permissions when needed.
 Updates validate the new package before replacing the selection and preserve

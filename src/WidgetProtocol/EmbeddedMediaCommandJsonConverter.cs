@@ -18,6 +18,7 @@ internal sealed class EmbeddedMediaCommandJsonConverter : JsonConverter<Embedded
                 "togglePlayback" => EmbeddedMediaCommand.TogglePlayback,
                 "seekBackward" => EmbeddedMediaCommand.SeekBackward,
                 "seekForward" => EmbeddedMediaCommand.SeekForward,
+                "toggleMute" => EmbeddedMediaCommand.ToggleMute,
                 _ => throw new JsonException("The embedded media command is not supported."),
             }
             : throw new JsonException("An embedded media command must be a string.");
@@ -34,6 +35,7 @@ internal sealed class EmbeddedMediaCommandJsonConverter : JsonConverter<Embedded
             EmbeddedMediaCommand.TogglePlayback => "togglePlayback",
             EmbeddedMediaCommand.SeekBackward => "seekBackward",
             EmbeddedMediaCommand.SeekForward => "seekForward",
+            EmbeddedMediaCommand.ToggleMute => "toggleMute",
             _ => throw new JsonException("The embedded media command is not supported."),
         });
 }

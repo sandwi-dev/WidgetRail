@@ -58,6 +58,7 @@ internal sealed record SpotifyPresentationState(
     ToastElement? ActionToast = null)
 {
     internal SpotifySavedPresentation? SavedSong { get; init; }
+    internal string? PlaybackAccount { get; init; }
     internal IndexedCollectionElement? IndexedQueue { get; init; }
     internal FocusGroupEntryRequest? CollectionEntry { get; init; }
 }

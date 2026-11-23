@@ -41,3 +41,5 @@
 .help-library-filters { width: 100%; min-width: 0px; gap: 8px; align: center; }
 .help-library-search { min-width: 0px; flex-grow: 1; }
 .help-library-kind { width: 180px; }
+
+.wrail-modal.help-question-dialog { width:600px; height:auto; max-height:500px; }

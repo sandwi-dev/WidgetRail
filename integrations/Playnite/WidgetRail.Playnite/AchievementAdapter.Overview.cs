@@ -34,7 +34,13 @@ internal sealed partial class AchievementAdapter
     internal bool OverviewIsCurrent(long expected)
     { EnsureBinding(); return Interlocked.Read(ref revision) == expected; }
 
-    internal AchievementOverviewGame? OverviewGame(Guid id, long expected)
+    internal AchievementOverviewUnlock[] RecentUnlocks(Guid game)
+    {
+        EnsureBinding();
+        return OverviewGame(game, Interlocked.Read(ref revision), includeEventDetails: true)?.Recent ?? Array.Empty<AchievementOverviewUnlock>();
+    }
+
+    internal AchievementOverviewGame? OverviewGame(Guid id, long expected, bool includeEventDetails = false)
     {
         if (!OverviewIsCurrent(expected)) throw new ApiException(409, "achievements_changed");
         var game = api.Database.Games.Get(id);
@@ -71,18 +77,27 @@ internal sealed partial class AchievementAdapter
             var achievementId = WireJson.Text(Value(item, "ApiName"));
             if (achievementId.Length == 0) continue;
             var rarity = Value(item, "GlobalPercentUnlocked") as double?;
-            recent.Add(new AchievementOverviewUnlock
-            {
-                gameId = result.id, gameName = result.name, achievementId = achievementId,
-                name = WireJson.Text(Value(item, "DisplayName")), unlockedAt = date,
-                percent = rarity.HasValue && !double.IsNaN(rarity.Value) && rarity >= 0 && rarity <= 100 ? rarity : null,
-            });
+            var row = includeEventDetails ? new AchievementFeedUnlock { Source = item } : new AchievementOverviewUnlock();
+            row.gameId = result.id;
+            row.gameName = result.name;
+            row.achievementId = achievementId;
+            row.name = WireJson.Text(Value(item, "DisplayName"));
+            row.unlockedAt = date;
+            row.percent = rarity.HasValue && !double.IsNaN(rarity.Value) && rarity >= 0 && rarity <= 100 ? rarity : null;
+            recent.Add(row);
             // Keep bounded candidates, never whole hydrated achievement arrays.
-            if (recent.Count > 16) recent = recent.OrderByDescending(row => row.unlockedAt, StringComparer.Ordinal)
-                .ThenBy(row => row.achievementId, StringComparer.Ordinal).Take(8).ToList();
+            if (recent.Count > 16) recent = recent.OrderByDescending(entry => entry.unlockedAt, StringComparer.Ordinal)
+                .ThenBy(entry => entry.achievementId, StringComparer.Ordinal).Take(8).ToList();
         }
-        result.Recent = recent.OrderByDescending(row => row.unlockedAt, StringComparer.Ordinal)
-            .ThenBy(row => row.achievementId, StringComparer.Ordinal).Take(8).ToArray();
+        result.Recent = recent.OrderByDescending(entry => entry.unlockedAt, StringComparer.Ordinal)
+            .ThenBy(entry => entry.achievementId, StringComparer.Ordinal).Take(8).ToArray();
+        foreach (var entry in result.Recent.OfType<AchievementFeedUnlock>())
+            if (entry.Source is { } sourceItem)
+            {
+                entry.description = WireJson.Text(Value(sourceItem, "Description"), 512);
+                entry.icon = WireJson.Text(Value(sourceItem, "UnlockedIconPath"), 2048);
+                entry.Source = null;
+            }
         return result.total == 0 ? null : result;
     }
 }
@@ -95,10 +110,15 @@ internal sealed class AchievementOverviewGame
     public string? lastUnlockedAt, lastPlayedAt;
     internal AchievementOverviewUnlock[] Recent = Array.Empty<AchievementOverviewUnlock>();
 }
-internal sealed class AchievementOverviewUnlock
+internal class AchievementOverviewUnlock
 {
     public string gameId = "", gameName = "", achievementId = "", name = "", unlockedAt = "";
     public double? percent;
+}
+internal sealed class AchievementFeedUnlock : AchievementOverviewUnlock
+{
+    internal object? Source;
+    public string? description, icon;
 }
 
 internal sealed class AchievementOverviewCatalog

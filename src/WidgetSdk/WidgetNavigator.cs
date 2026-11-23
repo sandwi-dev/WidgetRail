@@ -260,6 +260,32 @@ public sealed class WidgetNavigator<TRoute> : IDisposable where TRoute : notnull
     public WidgetNavigationResult Push(TRoute route, string? sourceFocusId = null)
         => PushCore(route, sourceFocusId, null);
 
+    /// <summary>
+    /// Replaces the current visit atomically, preserving its parent and Back
+    /// destination. Even the same route starts a fresh route lifetime. This is
+    /// useful when selecting another detail item without visiting the list first.
+    /// </summary>
+    public WidgetNavigationResult ReplaceCurrent(TRoute route)
+    {
+        ArgumentNullException.ThrowIfNull(route);
+        RetiredLifetimes retired;
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            var rootFrame = _stack.Count == 1;
+            if (!TryGetOrCreateScopeId(route, rootFrame, out var scopeId))
+                return WidgetNavigationResult.RejectedCapacity;
+            if (_usesAuthoredScopePolicy && _stack.Take(_stack.Count - 1).Any(frame =>
+                string.Equals(frame.InputScopeId, scopeId, StringComparison.Ordinal)))
+                return WidgetNavigationResult.RejectedConflict;
+            var previous = _stack[^1];
+            _stack[^1] = previous with { Route = route, InputScopeId = scopeId };
+            retired = Advance(null, rootFrame, null);
+        }
+        Publish(retired);
+        return WidgetNavigationResult.Changed;
+    }
+
     private WidgetNavigationResult PushCore(TRoute route, string? sourceFocusId,
         IndexedCollectionFocusTarget? returnItem, string? expectedScope = null)
     {

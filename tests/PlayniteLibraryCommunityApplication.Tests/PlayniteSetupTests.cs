@@ -12,6 +12,35 @@ namespace WidgetRail.Tests.PlayniteLibraryCommunityApplication;
 public sealed class PlayniteSetupTests
 {
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task MissingAddonOpensOnlyItsCatalogueInstallerInTheConnectedProfile(bool achievements)
+    {
+        using var fixture = new Fixture();
+        var addon = achievements ? PlayniteOptionalAddon.Achievements : PlayniteOptionalAddon.GameActivity;
+        var id = achievements ? "PlayniteAchievements" : "playnite-gameactivity-plugin";
+        fixture.Platform.Running = true;
+        new PlayniteLocalConnectionStore(fixture.State).Save(new(1, Guid.NewGuid().ToString("D"), Fixture.Profile,
+            fixture.Program, fixture.Data));
+        await fixture.Service.OpenAddonInstallerAsync(fixture.RunningInstallation, addon, default);
+        var launch = fixture.Platform.AddonLaunch!;
+        Assert.AreEqual(Path.Combine(fixture.Program, "Playnite.DesktopApp.exe"), launch.FileName);
+        CollectionAssert.AreEqual(new[] { "--uridata", "playnite://playnite/installaddon/" + id, "--userdatadir", fixture.Data },
+            launch.ArgumentList.ToArray());
+        var installed = Directory.CreateDirectory(Path.Combine(fixture.Data, "Extensions", "custom-folder"));
+        File.WriteAllText(Path.Combine(installed.FullName, "extension.yaml"), $"Id: {id}\nName: Optional provider\n",
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: !achievements));
+        var inspected = await fixture.Service.InspectAsync(fixture.RunningInstallation, default);
+        Assert.AreEqual(PlayniteOptionalAddon.None, inspected.MissingAddons & addon);
+        Assert.AreEqual(PlayniteOptionalAddon.None, inspected.UncheckedAddons & addon);
+        await Assert.ThrowsExactlyAsync<PlayniteSetupException>(async () =>
+            await fixture.Service.OpenAddonInstallerAsync(fixture.RunningInstallation, addon, default));
+        fixture.Platform.Running = false;
+        await Assert.ThrowsExactlyAsync<PlayniteSetupException>(async () =>
+            await fixture.Service.OpenAddonInstallerAsync(fixture.RunningInstallation, addon, default));
+        Assert.AreEqual(0, fixture.Platform.Starts + fixture.Platform.Stops);
+    }
+    [TestMethod]
     [DataRow("integration-package.json")]
     [DataRow("WidgetRail.Playnite.pext")]
     public async Task MissingCandidateBundleReportsWidgetPackagingFailureWithoutChangingPlaynite(string missing)
@@ -521,6 +550,12 @@ public sealed class PlayniteSetupTests
     }
     private sealed class FakePlatform(string program, string data) : IPlayniteSetupPlatform
     {
+        internal System.Diagnostics.ProcessStartInfo? AddonLaunch;
+        public ValueTask OpenAddonInstallerAsync(PlayniteSetupProcess process, PlayniteSetupInstallation installation, PlayniteOptionalAddon addon, CancellationToken token)
+        {
+            AddonLaunch = PlayniteSetupPlatform.AddonInstallInfo(process, installation, addon);
+            return ValueTask.CompletedTask;
+        }
         internal bool Running;
         internal bool HideArguments;
         internal bool RefuseShutdown;

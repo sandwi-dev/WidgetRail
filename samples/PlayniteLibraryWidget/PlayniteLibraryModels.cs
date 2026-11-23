@@ -51,8 +51,6 @@ internal sealed record PlayniteLibraryIndexedBrowseState
     internal long Attempt { get; init; }
     internal PlayniteLibraryCollectionState? Selection { get; init; }
     internal string? Category { get; init; }
-    internal IndexedCollectionFocusTarget? ModalReturn { get; init; }
-    internal long ModalReturnRequestId { get; init; }
 }
 
 internal sealed record PlayniteLibraryIndexedHomeState
@@ -62,8 +60,6 @@ internal sealed record PlayniteLibraryIndexedHomeState
     internal WidgetResourceError? Error { get; init; }
     internal long Attempt { get; init; }
     internal PlayniteLibraryCollectionState? Selection { get; init; }
-    internal IndexedCollectionFocusTarget? ModalReturn { get; init; }
-    internal long ModalReturnRequestId { get; init; }
 }
 
 internal sealed class PlayniteLibraryActionFeedback(
@@ -80,6 +76,7 @@ internal sealed class PlayniteLibraryActionFeedback(
 
 internal sealed record PlayniteLibraryRenderState
 {
+    internal CaptureGameChooser? GameChooser { get; init; }
     internal PlayniteCaptureDraft CaptureSettings { get; init; } = new(false, new Dictionary<string, System.Text.Json.JsonElement>());
     internal PlayniteProgressState Progress { get; init; } = new();
     internal bool SetupDialogOpen { get; init; }
@@ -105,6 +102,7 @@ internal sealed record PlayniteLibraryRenderState
     internal PlayniteDetailsExtras DetailsExtras { get; init; } = new();
     internal long DetailsGeneration { get; init; }
     internal long DetailsOpening { get; init; }
+    internal WidgetNavigationSnapshot<PlayniteLibraryRoute>? DetailsParent { get; init; }
     internal string DetailsScopePrefix { get; init; } = "playnite-library.details." + Guid.NewGuid().ToString("N");
     internal bool DetailsLoading { get; init; }
     internal string? DetailsError { get; init; }
@@ -124,6 +122,17 @@ internal sealed record PlayniteLibraryRenderState
     internal PlayniteLibraryActionFeedback? ActionFeedback { get; init; }
     internal string Status { get; init; } = "Playnite Library loads when visible";
     internal string? LaunchingSavedId { get; init; }
+    internal PlayniteLaunchPrompt? LaunchPrompt { get; init; }
+    internal PlayniteLibraryItem? LaunchSplash { get; init; }
+    internal IReadOnlyDictionary<string, long>? RunningSince { get; init; }
+    internal IReadOnlyDictionary<string, string>? RunningNames { get; init; }
+    internal bool ManagingPlayingCards { get; init; }
+    internal string? HiddenCardFocusOrigin { get; init; }
+    internal WidgetFocusRequest? PlayingEntry { get; init; }
+    internal string? PlayingGame { get; init; }
+    internal PlayingReader? NewsReader { get; init; }
+    internal IReadOnlySet<string>? RunningGames { get; init; }
+    internal IReadOnlyDictionary<string, string>? RunningProcesses { get; init; }
     internal PlayniteBridgeConnectionKind PlayniteKind { get; init; } =
         PlayniteBridgeConnectionKind.NotConfigured;
     internal string PlayniteCode { get; init; } = "credential_missing";
@@ -152,6 +161,8 @@ internal enum PlayniteLibraryRoute
     Hidden,
     Categories,
     PlayniteConnection,
+    GameDetails,
+    Settings,
 }
 
 internal enum PlayniteLibraryLaunchState

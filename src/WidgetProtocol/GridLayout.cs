@@ -39,6 +39,8 @@ public sealed record GridLayoutDefinition
     }
     public double RowSpacing { get; init; }
     public double ColumnSpacing { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool RevealBodyOnFocus { get; init; }
 }
 
 /// <summary>Attached placement on a direct child of an explicit Grid. Overlap is allowed.</summary>
@@ -72,6 +74,11 @@ internal static class GridLayoutValidation
             Tracks(layout.Columns, path + ".gridLayout.columns");
             Dip(layout.RowSpacing, path + ".gridLayout.rowSpacing");
             Dip(layout.ColumnSpacing, path + ".gridLayout.columnSpacing");
+            if (layout.RevealBodyOnFocus && (layout.Rows is not { Count: >= 2 } ||
+                layout.Rows[0]?.Sizing != GridTrackSizing.Auto ||
+                node.Children.Any(child => (child.GridCell?.Row ?? 0) == 0 && child.GridCell?.RowSpan > 1)))
+                add(path + ".gridLayout.revealBodyOnFocus", "invalid_reveal_header",
+                    "Focus reveal requires an Auto header row and separate body rows. Header cells must not span into the body.");
         }
         if (node.GridCell is { } cell)
         {

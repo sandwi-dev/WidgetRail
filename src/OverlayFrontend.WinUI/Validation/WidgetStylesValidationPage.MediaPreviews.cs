@@ -116,22 +116,23 @@ internal sealed partial class WidgetStylesValidationPage
             // discovery. Establish the real fitted slot before the input action.
             await Wait(() => SameBounds(media.ExpectedPreviewVideoBoundsForValidation, media.PreviewVideoBoundsForValidation));
             var passiveBounds = media.PreviewVideoBoundsForValidation;
-            var mediaPlane = root.Children.OfType<MediaPresentationStage>().Single();
+            var mediaPlane = media.PreviewVideoForValidation;
             var previewLayer = root.Children.OfType<PresentationPortal>().Single(portal => portal.Layer is PresentationLayer.ContentPreview or PresentationLayer.WidgetDialogPreview);
             var mediaBand = dialogPreview ? PresentationLayer.WidgetDialogPreviewMedia : PresentationLayer.ContentPreviewMedia;
-            Check(Canvas.GetZIndex(mediaPlane) == (int)mediaBand && Canvas.GetZIndex(mediaPlane) > Canvas.GetZIndex(previewLayer) &&
-                Canvas.GetZIndex(mediaPlane) < (int)(dialogPreview ? PresentationLayer.FullscreenBackdrop : PresentationLayer.WidgetDialog),
-                "Preview-owned native video paints above its frame and below the next modal/fullscreen boundary");
+            Check(mediaPlane.Parent is not null && !ReferenceEquals(mediaPlane.Parent, root) &&
+                !root.Children.OfType<MediaPresentationStage>().Any(),
+                "Preview native video remains in its owning XAML subtree, below the next modal/fullscreen boundary");
             await CapturePixels("passive-video", media);
             if (Environment.GetCommandLineArgs().Contains("--media-preview-pixel-ack"))
             {
                 // Negative control uses the existing cover lifetime while the
                 // same player advances; the resolver now repairs old bands on
                 // layout, so the fixture must not fight that ownership policy.
-                mediaPlane.SetCovered(true);
+                mediaPlane.Visibility = Visibility.Collapsed;
                 try { await CapturePixels("covered-video", media); }
-                finally { mediaPlane.SetCovered(false); }
+                finally { mediaPlane.Visibility = Visibility.Visible; }
             }
+            Check(!media.PreviewChromeVisibleForValidation, "Autoplay keeps transport hidden while focus is on the preview source");
             await page.HandleControllerButtonAsync(ControllerButton.RightStick);
             await page.HandleControllerButtonAsync(ControllerButton.RightStick, ControllerEventPhase.Released);
             await Wait(() => page.IsPreviewEnteredForValidation);
@@ -139,7 +140,10 @@ internal sealed partial class WidgetStylesValidationPage
             await Wait(() => SameBounds(passiveBounds, media.PreviewVideoBoundsForValidation));
             Check(ReferenceEquals(media.PlaybackPlayerForValidation, originalPlayer),
                 "Entering preview controls preserves the video rectangle and native player");
-            media.PreviewOptionsControlForValidation.Focus(FocusState.Keyboard);
+            await Wait(() => media.PreviewChromeVisibleForValidation &&
+                ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), media.PreviewPlayControlForValidation));
+            Check(media.PreviewOptionsControlForValidation.Focus(FocusState.Keyboard),
+                "One controller entry reveals the playing preview and makes its options focusable");
             await page.HandleControllerButtonAsync(ControllerButton.A);
             await page.HandleControllerButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
             await Wait(() => media.PreviewOptionsLoadedForValidation);
@@ -216,8 +220,8 @@ internal sealed partial class WidgetStylesValidationPage
             Check(page.IsPreviewEnteredForValidation && page.IsFocusPreviewOpen, "Fullscreen B collapses into the same entered preview");
             Check(ReferenceEquals(media.PlaybackPlayerForValidation, originalPlayer), "Fullscreen handoff returns the exact same native player instance");
             await CapturePixels("returned-video", media);
-            Check(Canvas.GetZIndex(mediaPlane) == (int)mediaBand,
-                $"Collapse restores the same preview-owned media band (actual={Canvas.GetZIndex(mediaPlane)}, attached={ReferenceEquals(mediaPlane.Parent, root)})");
+            Check(mediaPlane.Parent is not null && !ReferenceEquals(mediaPlane.Parent, root),
+                "Collapse restores the native video inside its preview subtree");
             await page.HandleControllerButtonAsync(ControllerButton.B);
             await page.HandleControllerButtonAsync(ControllerButton.B, ControllerEventPhase.Released);
             Check(!page.IsPreviewEnteredForValidation, "Following B exits preview interaction normally");

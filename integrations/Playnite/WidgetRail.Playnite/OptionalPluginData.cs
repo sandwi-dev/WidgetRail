@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Web.Script.Serialization;
 
 namespace WidgetRail.Playnite;
@@ -69,5 +70,39 @@ internal sealed class OptionalPluginData
         var rows = source.OfType<Dictionary<string, object>>().Select(item => new { date = Date(Get(item, "DateSession")),
             elapsedSeconds = Number(Get(item, "ElapsedSeconds")), action = WireJson.Text(Get(item, "GameActionName"), 128) }).ToArray();
         return new { gameId = game.ToString("D"), installed = true, totalSeconds = Number(Get(data, "SessionPlaytime")), sessions = rows };
+    }
+
+    internal object RecentActivity(IReadOnlyDictionary<Guid, string> games, CancellationToken token)
+    {
+        var recent = new List<ActivityEntry>();
+        foreach (var game in games)
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                var data = Read("afbb1a0d-04a1-4d0c-9afa-c6e42ca855b4", "GameActivity", game.Key);
+                if (data == null || !(Get(data, "Items") is object[] sessions) || sessions.Length > 10000) continue;
+                var gameRows = new List<ActivityEntry>();
+                foreach (var item in sessions.OfType<Dictionary<string, object>>())
+                {
+                    if (DateTimeOffset.TryParse(Date(Get(item, "DateSession")), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var date))
+                        gameRows.Add(new ActivityEntry { Id = game.Key, Name = game.Value, Date = date, Seconds = Number(Get(item, "ElapsedSeconds")) });
+                }
+                recent.AddRange(gameRows.OrderByDescending(row => row.Date).Take(8));
+            }
+            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException ||
+                error is InvalidOperationException || error is ArgumentException)
+            { /* A missing or mid-write optional file must not hide activity for the other games. */ }
+        }
+        return recent.OrderByDescending(row => row.Date).ThenBy(row => row.Id).Take(32)
+            .Select(row => new { gameId = row.Id.ToString("D"), gameName = row.Name,
+                startedAt = row.Date.ToString("o", CultureInfo.InvariantCulture), seconds = row.Seconds }).ToArray();
+    }
+    private sealed class ActivityEntry
+    {
+        internal Guid Id;
+        internal string Name = "";
+        internal DateTimeOffset Date;
+        internal long Seconds;
     }
 }

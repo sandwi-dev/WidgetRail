@@ -38,6 +38,7 @@
 
   /* The accent edge reinforces the raised focused surface. */
   --focus: var(--accent);
+  --focus-highlight: #ffd6ff;
 
   /* Electric cyan is the single interactive accent: progress, sliders, primary
      icon buttons, and tile state. Secondary labels stay neutral so they do not

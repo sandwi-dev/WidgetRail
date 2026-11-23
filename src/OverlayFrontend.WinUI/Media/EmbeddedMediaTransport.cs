@@ -93,6 +93,8 @@ internal sealed class EmbeddedMediaTransport(string sessionId)
     public string? Dispatch(EmbeddedMediaCommand command)
     {
         if (!Ready || Busy) return null;
+        if (command == EmbeddedMediaCommand.ToggleMute)
+            return MediaKey.Length == 0 ? null : Encode("muted", null, MediaKey, hostMuted: !muted);
         return Encode(command switch
         {
             EmbeddedMediaCommand.Previous => "previous",
@@ -104,6 +106,13 @@ internal sealed class EmbeddedMediaTransport(string sessionId)
             EmbeddedMediaCommand.SeekForward => "seek-forward",
             _ => throw new ArgumentOutOfRangeException(nameof(command)),
         }, null);
+    }
+
+    internal string? OpenGalleryItem(MediaPlayerDefinition item)
+    {
+        if (!Ready || Busy || item.Source.Kind != MediaPlayerSourceKind.EmbeddedSession ||
+            item.Source.Location != sessionId || item.Source.EmbeddedMediaKey is not { } key) return null;
+        return Encode(item.Options.AutoPlay ? "load" : "cue", null, key, hostMuted: item.Options.Muted);
     }
 
     internal string? DispatchHost(EmbeddedMediaHostCommand command, EmbeddedMediaPlaybackEvent current, double step)
@@ -121,7 +130,7 @@ internal sealed class EmbeddedMediaTransport(string sessionId)
         return Encode(name, null, current.MediaKey, position);
     }
 
-    private string Encode(string command, EmbeddedMediaPlaybackCommand? playback, string? hostMediaKey = null, double? hostPosition = null)
+    private string Encode(string command, EmbeddedMediaPlaybackCommand? playback, string? hostMediaKey = null, double? hostPosition = null, bool? hostMuted = null)
     {
         pending = new(++nextCommand, command, playback) { HostMediaKey = hostMediaKey };
         var body = new JsonObject
@@ -148,6 +157,7 @@ internal sealed class EmbeddedMediaTransport(string sessionId)
         {
             body["mediaKey"] = hostMediaKey;
             if (hostPosition is { } position) body["positionSeconds"] = position;
+            if (hostMuted is { } muted) body["muted"] = muted;
         }
         return body.ToJsonString();
     }

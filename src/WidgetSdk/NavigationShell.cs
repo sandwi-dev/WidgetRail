@@ -15,6 +15,12 @@ public sealed record NavigationShellDestination(
     bool IsDisabled = false)
 {
     public WidgetIcon? Icon { get; init; }
+    /// <summary>Draw an input-inert separator before this horizontal tab when another destination precedes it.</summary>
+    public bool CompactSeparatorBefore { get; init; }
+    /// <summary>Optional compact-tab neighbors; unspecified directions retain shell defaults.</summary>
+    public FocusNeighbors? CompactFocus { get; init; }
+    /// <summary>Optional expanded-rail neighbors; unspecified directions retain shell defaults.</summary>
+    public FocusNeighbors? RailFocus { get; init; }
 }
 
 /// <summary>
@@ -50,6 +56,13 @@ public sealed record NavigationShellParts(
     WidgetElement Body)
 {
     internal WidgetTransition? SectionTransition { get; init; }
+    internal IReadOnlyDictionary<string, string> CompactFocusTargets { get; init; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>Returns the compact control's focus ID without relying on generated ID formatting.</summary>
+    public string CompactFocusId(string destinationId) =>
+        CompactFocusTargets.TryGetValue(destinationId, out var id) ? id :
+            throw new ArgumentException("Unknown navigation destination.", nameof(destinationId));
 
     /// <summary>Composes these parts into the standard themed navigation shell.</summary>
     public StackElement Compose()
@@ -355,9 +368,10 @@ public static partial class UI
                 IsDisabled = destination.IsDisabled ? true : null,
                 FocusPersistenceId = focusPersistenceIds[index],
                 FocusNeighbors = new FocusNeighbors(
-                    Down: contentEntryFocusId,
-                    Left: compactIds[(index - 1 + destinations.Count) % destinations.Count],
-                    Right: compactIds[(index + 1) % destinations.Count]),
+                    Up: destination.CompactFocus?.Up,
+                    Down: destination.CompactFocus?.Down ?? contentEntryFocusId,
+                    Left: destination.CompactFocus?.Left ?? compactIds[(index - 1 + destinations.Count) % destinations.Count],
+                    Right: destination.CompactFocus?.Right ?? compactIds[(index + 1) % destinations.Count]),
                 RequiredStyleClasses =
                 [
                     "wrail-navigation-shell__compact-item",
@@ -378,9 +392,10 @@ public static partial class UI
                 IsDisabled = destination.IsDisabled ? true : null,
                 FocusPersistenceId = focusPersistenceIds[index],
                 FocusNeighbors = new FocusNeighbors(
-                    Up: railIds[(index - 1 + destinations.Count) % destinations.Count],
-                    Down: railIds[(index + 1) % destinations.Count],
-                    Right: expandedEntry),
+                    Up: destination.RailFocus?.Up ?? railIds[(index - 1 + destinations.Count) % destinations.Count],
+                    Down: destination.RailFocus?.Down ?? railIds[(index + 1) % destinations.Count],
+                    Left: destination.RailFocus?.Left,
+                    Right: destination.RailFocus?.Right ?? expandedEntry),
                 RequiredStyleClasses =
                 [
                     "wrail-navigation-shell__rail-item",
@@ -395,7 +410,12 @@ public static partial class UI
         if (compactLeadingAdornment is not null)
             compactChildren.Add(compactLeadingAdornment);
         var selectedOrder = destinations.ToList().FindIndex(destination => destination.Id == selectedDestinationId);
-        compactChildren.AddRange(compactButtons);
+        for (var index = 0; index < compactButtons.Length; index++)
+        {
+            if (index > 0 && destinations[index].CompactSeparatorBefore)
+                compactChildren.Add(UI.Spacer(ids.Id("separator-" + index)).Classes("wrail-navigation-shell__separator"));
+            compactChildren.Add(compactButtons[index]);
+        }
         if (compactTrailingAdornment is not null)
             compactChildren.Add(compactTrailingAdornment);
 
@@ -428,6 +448,8 @@ public static partial class UI
         return new NavigationShellParts(compact, body)
         {
             SectionTransition = new(id, selectedDestinationId, selectedOrder),
+            CompactFocusTargets = destinations.Select((destination, index) => (destination.Id, Focus: compactIds[index]))
+                .ToDictionary(item => item.Id, item => item.Focus, StringComparer.Ordinal),
         };
     }
 

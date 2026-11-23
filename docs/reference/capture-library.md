@@ -1,8 +1,7 @@
 # Capture Library
 
 Capture Library is preinstalled in Production and available through Catalogue in
-Bare. It keeps screenshots and
-configurable clips only when you explicitly save them. Optional replay recording
+Bare. It automatically saves screenshots and clips taken with its capture controls. Optional replay recording
 keeps a bounded recent buffer after you explicitly start it. Saving a replay
 creates a library clip; neither browsing nor recording uploads or evicts saved media.
 
@@ -15,29 +14,41 @@ not need to initialize every quality/audio combination before confirmation.
 ## Controller flow
 
 - **Y / Take screenshot** uses the saved image settings (original resolution by default).
+- **Menu / Options** opens the gallery toolbar menu from a capture. Close it with **B** to
+  return to the card. Right-click a card to favorite it, or use Favorite in its details.
 - **X / Record clip** uses the saved recording settings and shared library-output
   mode. It is independent of continuous replay's Enabled switch. One-off clips
   retain Windows' yellow capture border.
+- On the main library, **LB / Save replay** saves the current buffer when ready;
+  **RB / Start recording** or **Stop recording** controls continuous replay.
+  These shortcuts are inactive during selection. Capture details keep LB/RB for
+  previous/next capture, and dialogs and media controls retain their own input.
+- In **Assign quick action**, choose a direction and expand **Capture Library**. Its five actions are **Take screenshot**, **Record clip**, **Start replay**, **Save replay** and **Stop replay**. Pressing an assigned direction can wake the widget in the background. When access is needed, the tray offers to open the widget.
 - **Capture settings** groups screenshot resolution/format, recording quality,
   bitrate, maximum duration, audio, preparation delay/countdown and cursor.
   Settings persist privately across restarts. Unavailable saved settings remain
   intact and fail with an explanation; recording never silently downgrades.
-- Confirm the host dialog, let WidgetRail hide, and bring your application forward.
-  The configured countdown precedes capture (five seconds by default). Reopen the
-  overlay to finish a recording early and review it. Reopening during preparation cancels.
-- Preview uses the shared native media player and grows with the available viewport.
-  Images support controller zoom/pan and an expanded viewer. Choose **Save to library** or
-  **Discard**. Save writes the original directly to **Pictures → WidgetRail → Captures**.
-  Leaving an unsaved capture does not retain it across worker restarts.
-- Library clip drafts use disk-backed staging, with a 2 GiB completed-file ceiling
-  independent of the 128 MiB temporary attachment limit. Save publishes the staged
-  original by move; discard and permission retirement clean it up. Recording
-  settings remain bounded by the host's duration and encoding capabilities.
+- Screenshots default to **Immediately** and capture the application that had
+  focus before WidgetRail opened. The overlay stays open. **Screenshot delay**
+  and **Clip delay** can be set separately. Clips default to five seconds.
+  With a preparation delay, WidgetRail hides and gives
+  you time to bring the application forward. Recordings also hide the overlay. Reopen the
+  overlay to finish a recording early. Reopening during preparation cancels.
+- Successful captures appear in **Pictures → WidgetRail → Captures**. Screenshot, clip and saved-replay banners name the captured application when its identity is available. Open an item in the gallery to preview, edit, share or delete it later.
+- The host owns accepted one-off recordings through the file commit. Clip staging is disk-backed and supports up to 2 GiB. Temporary attachments requested by widgets such as Game Help keep their existing save/discard flow.
 - Browse a virtualized thumbnail grid with search, folder/application/type/date filters,
   favorites, sorting and date groups. Titles and favorites do not alter originals.
-  Selected captures can be updated together, copied to a chosen folder, or removed.
-  Removal starts on Cancel: owned files go to the Recycle Bin; linked provider
-  files remain untouched; unavailable entries lose only their stale metadata.
+  Selected captures can be updated together, copied to a chosen folder, hidden,
+  or deleted. **Hide…** preserves linked-folder originals; use **Type → Hidden**
+  to restore them. Owned WidgetRail captures cannot currently be hidden and are
+  explicitly kept if included in a mixed Hide selection. **Delete…** moves the
+  selected originals—including linked files—to the Windows Recycle Bin after
+  confirmation. Linked originals require their separate recycling permission.
+  When more than 256 captures match, **Select first 256 matches** follows the current filter and sort order.
+  Cancelling confirmation keeps the selection. After confirmation, progress shows the number processed.
+  **Stop remaining** cancels outstanding work and keeps changes Windows has already made. If the host loses a receipt, the widget
+  stops sending changes. **Review batch results** identifies unavailable files, changes awaiting
+  confirmation and items skipped. Select remaining captures again to retry.
 - **Open folder** opens the saved location in Windows Explorer through the host's
   normal release-aware foreground handoff. No separate export copy or file picker
   is required. Busy buttons retain their focus identity.
@@ -51,20 +62,30 @@ Optional library read access is separate from permission to capture a new window
 
 ## Replay recording
 
-**More → Start replay recording** asks you to choose and approve one external application.
+**Start replay** uses the approved application window that had focus before you
+opened WidgetRail. If that window is unapproved or unavailable, choose a window
+and select **Record** for this session or **Record and add to approved** for
+future automatic starts. A notification names the app once recording starts.
 The host owns that recording, so closing or idling Capture Library does not stop
 it. **Save replay** saves the available recent video to the default capture folder;
 the saved duration can be shorter while the buffer fills, at its memory limit,
 or because the clip must begin on a decodable keyframe. **Stop** ends recording.
 
 Capture settings contain duration, memory budget, hardware quality, application
-audio, cursor and optional automatic start for the previously approved application.
+audio, cursor and optional automatic start for approved applications.
 Stop an active session before changing those settings; changes never silently
 discard its buffer. Defaults are 60 seconds, 128 MiB and hardware 720p at 30 fps with application
 audio. There is no continuous software fallback. Unsupported encoder/audio
 configuration fails visibly. Minimize pauses the active recording timeline;
-sleep retires the buffer. Application exit never switches capture to the desktop
-or another application. Automatic start needs fresh eligibility and authority.
+sleep retires the buffer. When an application exits, the host finishes its session before considering
+another application for automatic recording. Auto-start requires one open
+approved application with one eligible window. If multiple approved apps are
+open, WidgetRail waits and checks again after five seconds. **Start now** lets you choose while it waits. Automatic
+starts use the same recording notification as manual starts.
+
+In **Capture settings → Replay recording → Approved applications**, use **Add application**
+to choose an open app. Adding it saves permission for future automatic starts. Removing
+an app while it is recording preserves the current session and its buffered video.
 
 The host tray exposes recording status and Save/Stop independently of widget
 residency. Configure the optional replay keyboard shortcut in host controller/input
@@ -73,6 +94,8 @@ or its capture permission retires its recorder. Removing library-save permission
 cancels that caller's pending save without stopping an independently authorized
 recording. Closing WidgetRail releases
 the worker and buffer. An already-admitted save is drained before normal Stop.
+
+Replay shortcuts show a transient result banner, subject to notification preferences. Saving can finish while the Capture Library widget is unloaded. Starting a replay requires the capture feature to be installed and authorized.
 
 `HostServices.Capture.Replay` exposes `GetAsync`, `OpenChangesSubscriptionAsync`,
 `ConfigureAsync`, `StartAsync`, `StopAsync` and `SaveAsync`. Subscribe before reading
@@ -83,6 +106,8 @@ Settings updates carry the displayed settings revision. Stop/Save carry the
 displayed session ID, so stale controls cannot affect a replacement session.
 Save returns a validated library item and actual duration, rather than a shortcut
 dispatch acknowledgment. Do not automatically retry ambiguous save side effects.
+
+Instant replay keeps buffering the selected window if its application audio becomes unavailable. The Capture Library shows an audio warning, preserves earlier sound and fills the missing interval with silence. It retries audio capture for the same application in the background and clears the warning when audio packets are accepted again. A quiet application needs no restart.
 
 ## External Windows captures
 
@@ -380,6 +405,18 @@ item. Successful earlier items are not rolled back when a later item fails.
 Cancellation or a lost transport reply can occur after an external effect; refresh
 before retrying rather than assuming nothing happened.
 
+**Associating existing captures.** A capture from an identified window can include a process basename and a `SourceProcess` interval. Its opaque instance key identifies one execution of a Windows process. Integrations observing a launch can compute the same key with `CaptureProcessInterval.InstanceId(processId, creationFileTime)`. The file time is Windows UTC process creation time. Clip and screenshot intervals bound the capture operation. Replay intervals conservatively cover the recording session through save admission, including any pauses. A missing interval is ineligible for automatic matching.
+
+Use `CaptureLibraryQuery.SourceIntervals` for an indexed containment query over up to 64 intervals. Combine `AvailableOnly`, `OriginPackageId`, `Reference` and `ExcludeReference` to read unlinked, available matches. With the manage permission, `AttachContextAsync(id, contentRevision, context)` attaches immutable caller-owned references to a visible, existing capture. It preserves the media and its original owner. Use a stable idempotency key per capture and relationship. Reusing that key for another capture or changing the reference identity is rejected. Each publisher/package can attach up to 64 associations per capture through this operation. The existing related-item query and gallery intent resolve the references.
+
+Use `EnsureSubjectAsync` when the user wants to associate an existing capture with one destination. The broker checks the active package, kind and ID under the store lock before creating a receipt. Inherited references and references from another installation of the same package satisfy the request. The operation returns only the outcome. Explicit selection can restore the caller's own detached receipt. Use `GetDestinationsAsync` for a paged list of related destinations. It groups matching references before pagination and preserves their related-item actions.
+
+For automatic matching, also set `ExcludeDetachedReference`. The manual picker can still offer a previously removed capture. A repeated `AttachContextAsync` for a detached receipt returns `Detached`, including after an index rebuild.
+
+`FindOwnedLinksAsync(captureIds, reference)` returns editable links for up to 16 visible captures. The lookup is scoped to the authenticated publisher, package and widget instance. Multiple matching associations, compound references and timed events do not offer a single removable link. A copied capture has its own association identity.
+
+Use `SetContextLinkedAsync(contentRevision, association, linked: false)` after an explicit unlink action. Keep the returned association for Undo and pass it back with `linked: true`. The broker checks the capture content revision and the association's link revision. A repeated request can confirm its previous result. An older command cannot overwrite a newer decision. Ordinary media queries, related actions, edits and copies see only active links.
+
 `RecycleAsync` requests recoverable removal only. Unsupported recycle destinations
 fail without falling back to permanent deletion. Windows recycling uses the
 internal `ITransferSource.RecycleItem` primitive. Recovery markers retain title and
@@ -392,8 +429,7 @@ handoff; author-supplied paths are never accepted.
 ## Saving copies outside the library
 
 `HostServices.CaptureLibrary.CopyAsync` accepts up to 256 capture mutation references
-(the capture ID, content revision, and metadata revision). One host-owned Windows
-folder picker supplies the destination; widget requests never include paths. The
+(the capture ID, content revision, and metadata revision). The host opens its folder chooser. **Copy here** selects the browsed folder for the whole batch. Widget requests never include paths. The
 manage permission and interactive admission are required. The admitted operation
 can finish while the native picker owns focus, but permission revocation and worker
 retirement cancel it.
@@ -596,14 +632,19 @@ Share is available from a gallery preview, capture detail and the selection tool
 Selected sharing uses the indexed collection's bounded selection reader and independently retained original-file grants. Changing the query, selection or navigation during preparation cancels that preparation; changed or unavailable originals are rejected. Terminal feedback releases sender resources without revoking custody already accepted by a recipient. Sharing leaves the original files and gallery selection intact.
 
 
-### Favorite-only query continuity
+### Gallery query continuity
 
 `QueryContinuityAsync` returns `CaptureLibraryContinuityPage(Page, OrderingRevision)`
 through a separate Read operation. The original Query reply remains unchanged.
 For the same exact query/filter and count, an unchanged OrderingRevision proves
-that only favorite metadata changed; the existing indexed collection can refresh
-row content without replacing membership or focus ownership. Inserts, removals,
-Hide/Unhide, title/content changes and context-association changes invalidate the
-proof. FavoritesOnly uses the full query revision because toggling favorite can
-change membership. Range reads always use the new `Page.Revision`; ordering proof
-never authorizes stale range reads or bypasses row/preview authority.
+that the existing indexed collection can refresh row content and keep its selection.
+Inserts, removals, Hide/Unhide, and title or content changes invalidate the proof.
+Changes to associations invalidate it for searches and origin/reference filters.
+FavoritesOnly uses the full query revision because toggling a favorite can change
+membership. Range reads use the new `Page.Revision`.
+
+`RunsAsync` groups eligible captures by exact source process instance before
+paging. Each legacy capture without that identity occupies its own row. Each run
+includes a representative, time range and media counts. Source terms and a
+preferred executable affect ranking. The query's filters determine membership.
+Use the returned revision to read the reviewed members before a batch write.

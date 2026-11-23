@@ -15,6 +15,8 @@ public static class WidgetCaptureCapabilities
     public static WidgetCapabilityOperation<CaptureRecordingQuery, CaptureCapabilities> RecordingCapabilities { get; } = new(Permission, "capture.recording-capabilities");
     public static WidgetCapabilityOperation<CaptureSessionRequest, CaptureConfigurationValidation> Validate { get; } = new(Permission, "capture.validate");
     public static WidgetCapabilityOperation<CaptureSessionRequest, WindowCaptureTicket> Start { get; } = new(Permission, "capture.start");
+    public static WidgetCapabilityOperation<CaptureSessionRequest, WidgetCapabilityAcknowledgement> SaveScreenshot { get; } = new(Permission, "capture.save-screenshot");
+    public static WidgetCapabilityOperation<CaptureSessionRequest, WidgetCapabilityAcknowledgement> RecordClip { get; } = new(Permission, "capture.record-clip");
     public static WidgetCapabilityOperation<WindowCaptureTicket, WidgetCapabilityAcknowledgement> Stop { get; } = new(Permission, "capture.stop");
 }
 
@@ -73,6 +75,17 @@ public sealed partial class WidgetCaptureService
         var result = await client.InvokeAsync(WidgetCaptureCapabilities.Start, request, cancellationToken).ConfigureAwait(false);
         if (!CaptureLimits.ValidToken(result?.RequestId)) throw Malformed();
         return result!;
+    }
+    /// <summary>Hands one capture to the host for automatic publication in the library. Returns on
+    /// admission. The host owns confirmation, capture and saving after the widget unloads.</summary>
+    public async ValueTask CaptureToLibraryAsync(CaptureSessionRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request is null || !request.IsWellFormed() ||
+            (request.Recording is not null) != (request.OutputPurpose == CaptureOutputPurpose.LibraryRecording))
+            throw new ArgumentException("Invalid library capture request.", nameof(request));
+        var operation = request.Recording is null ? WidgetCaptureCapabilities.SaveScreenshot : WidgetCaptureCapabilities.RecordClip;
+        var result = await client.InvokeAsync(operation, request, cancellationToken).ConfigureAwait(false);
+        if (result?.Acknowledged != true) throw Malformed();
     }
     public ValueTask<WindowCaptureTicket> RequestScreenshotAsync(ScreenshotOptions options, CapturePreparation? preparation = null,
         CancellationToken cancellationToken = default) => StartAsync(new() { Screenshot = options, Preparation = preparation ?? new() }, cancellationToken);

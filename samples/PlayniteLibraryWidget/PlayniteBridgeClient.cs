@@ -36,6 +36,7 @@ internal enum PlayniteBridgeCommandKind
     ResolveArtwork,
     ResolveArtworkPaths,
     Launch,
+    LaunchStatus,
     SetFavorite,
     SetHidden,
     SetCategories,
@@ -51,6 +52,7 @@ internal enum PlayniteBridgeCommandKind
     UpdateCaptureSettings,
     CaptureIntegration,
     ConfigureCaptureIntegration,
+    RecentActivity,
 }
 
 internal sealed record PlayniteBridgeCommand(
@@ -67,8 +69,11 @@ internal sealed record PlayniteBridgeCommand(
     internal long AfterSequence { get; init; }
     internal int WaitMilliseconds { get; init; } = 25000;
     internal string? OperationId { get; init; }
+    internal bool ReturnOnly { get; init; }
+    internal string? RunningApproval { get; init; }
     internal string? CommandId { get; init; }
     internal string? ExpectedConnectionId { get; init; }
+    internal IReadOnlyList<string> ActivityGameIds { get; init; } = [];
 }
 
 internal sealed record PlayniteBridgeResponse(
@@ -137,6 +142,7 @@ internal sealed record PlayniteBridgeGame(
     internal IReadOnlyList<string> Series { get; init; } = [];
     internal IReadOnlyList<string> AgeRatings { get; init; } = [];
     internal IReadOnlyList<PlayniteGameLink> Links { get; init; } = [];
+    internal uint? SteamAppId { get; init; }
     internal string? ReleaseDate { get; init; }
     internal long? InstallSize { get; init; }
     internal long? PlayCount { get; init; }
@@ -185,7 +191,7 @@ internal interface IPlayniteLibraryBridgeClient : IAsyncDisposable
     async ValueTask<PlayniteCaptureSettings> GetCaptureSettingsForConnectionAsync(string connectionId,CancellationToken token)
     {var value=await GetCaptureSettingsAsync(token);return value.ConnectionId==connectionId?value:throw new PlayniteBridgeDataException("capture_connection_changed");}
     ValueTask<PlayniteCaptureSettings> UpdateCaptureSettingsAsync(PlayniteCaptureSettings current, IReadOnlyDictionary<string, System.Text.Json.JsonElement> patch, CancellationToken token) => ValueTask.FromException<PlayniteCaptureSettings>(new NotSupportedException());
-    ValueTask<PlayniteCaptureIntegration?> GetCaptureIntegrationAsync(CancellationToken token) => ValueTask.FromResult<PlayniteCaptureIntegration?>(null);
+    ValueTask<PlayniteCaptureIntegration?> GetCaptureIntegrationAsync(CancellationToken token, string? gameId = null) => ValueTask.FromResult<PlayniteCaptureIntegration?>(null);
     ValueTask<PlayniteCaptureIntegration> ConfigureCaptureIntegrationAsync(PlayniteCaptureIntegration current, string path, bool enabled, CancellationToken token) => ValueTask.FromException<PlayniteCaptureIntegration>(new NotSupportedException());
     ValueTask<PlayniteProviderRefreshResult> RefreshAchievementsAsync(string gameId, CancellationToken token) =>
         ValueTask.FromResult(PlayniteProviderRefreshResult.Unavailable);
@@ -203,9 +209,15 @@ internal interface IPlayniteLibraryBridgeClient : IAsyncDisposable
         PlayniteBridgeArtworkKind kind,
         CancellationToken cancellationToken);
     ValueTask<bool> LaunchAsync(string gameId, CancellationToken cancellationToken);
+    async ValueTask<PlayniteLaunchReceipt?> BeginObservedGameAsync(string gameId, CancellationToken token, string? approval = null, bool returnOnly = false) =>
+        !returnOnly && await LaunchAsync(gameId, token).ConfigureAwait(false) ? new(null, null) : null;
+    ValueTask<PlayniteLaunchProgress> GetLaunchStatusAsync(string gameId, PlayniteLaunchReceipt receipt, CancellationToken token) =>
+        ValueTask.FromResult(new PlayniteLaunchProgress("unconfirmed", 0, 0));
     ValueTask<PlayniteAchievementOverview> GetAchievementOverviewAsync(CancellationToken token) => ValueTask.FromResult(PlayniteAchievementOverview.Unavailable);
     ValueTask<PlayniteAchievements> GetAchievementsAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteAchievements.Unavailable);
     ValueTask<PlayniteActivity> GetActivityAsync(string gameId, CancellationToken token) => ValueTask.FromResult(PlayniteActivity.Unavailable);
+    ValueTask<PlayniteRecentActivity> GetRecentActivityAsync(IReadOnlyList<string> games, CancellationToken token) =>
+        ValueTask.FromResult(PlayniteRecentActivity.Empty);
     ValueTask<bool> ChangeInstallationAsync(string gameId, bool install, CancellationToken token) => ValueTask.FromResult(false);
     ValueTask<PlayniteBridgeGame?> SetFavoriteAsync(
         string gameId, bool favorite, CancellationToken cancellationToken);
@@ -796,7 +808,7 @@ internal sealed partial class PlayniteBridgeClient(
             Developers = OptionalNames(value, "developers"), Publishers = OptionalNames(value, "publishers"),
             Tags = OptionalNames(value, "tags"), Features = OptionalNames(value, "features"),
             Series = OptionalNames(value, "series"), AgeRatings = OptionalNames(value, "ageRatings"),
-            Links = ParseLinks(value), ReleaseDate = OptionalString(value, "releaseDate", 32),
+            Links = ParseLinks(value), SteamAppId = ParseSteamAppId(value), ReleaseDate = OptionalString(value, "releaseDate", 32),
             InstallSize = OptionalCount(value, "installSize"), PlayCount = OptionalCount(value, "playCount"),
             CommunityScore = OptionalScore(value, "communityScore"), CriticScore = OptionalScore(value, "criticScore"),
             UserScore = OptionalScore(value, "userScore"),
@@ -828,9 +840,9 @@ internal sealed partial class PlayniteBridgeClient(
         return true;
     }
 
-    private static JsonDocument ParseJson(PlayniteBridgeResponse response)
+    private static JsonDocument ParseJson(PlayniteBridgeResponse response, int maximumBytes = PlayniteBridgeHttpTransport.MaximumJsonBytes)
     {
-        if (response.Body.Length > PlayniteBridgeHttpTransport.MaximumJsonBytes)
+        if (response.Body.Length > maximumBytes)
             throw new PlayniteBridgeTransportException(isMalformed: true);
         return JsonDocument.Parse(response.Body, new JsonDocumentOptions
         {

@@ -18,9 +18,14 @@ internal static class UnifiedLayoutTests
         check(callNodes.Any(n=>n.Id=="discord.main.mute")&&callNodes.Any(n=>n.Id=="discord.share.start")&&
             callNodes.Any(n=>n.Id=="discord.stream.30")&&callNodes.Any(n=>n.Id=="discord.activities"),
             "Unified call places voice, sharing, incoming screens and activity on one page");
+        check(new[]{"discord.main.mute","discord.main.deafen","discord.share.start","discord.main.leave"}
+            .All(id=>callNodes.Single(node=>node.Id==id).Focus?.Down=="discord.people.pin"),
+            "Every primary call action leads Down to Pin voice participants");
         check(!callNodes.Any(n=>n.Id=="discord.navigation.shell")&&
-            !callNodes.SelectMany(n=>n.Shortcuts).Any(s=>s.Button is ControllerButton.LeftBumper or ControllerButton.RightBumper),
-            "Unified call has no obsolete navigation shell or tab-cycling shortcuts");
+            callNodes.Single(n=>n.Id=="discord.sections").Children.Select(n=>n.Id).SequenceEqual(["discord.call.open","discord.messages.open"]) &&
+            callNodes.Single(n=>n.Id=="discord.messages.open").IsDisabled==true &&
+            !callNodes.SelectMany(n=>n.Shortcuts).Any(s=>s.Button==ControllerButton.RightBumper),
+            "Call and Messages are primary destinations; unavailable messaging has no active bumper command");
         var shortcuts=callNodes.SelectMany(n=>n.Shortcuts).ToArray();
         check(shortcuts.Single(s=>s.Button==ControllerButton.X).ActionId==test.Node("discord.main.mute").ActionId&&
             shortcuts.Single(s=>s.Button==ControllerButton.Y).ActionId==test.Node("discord.share.start").ActionId,

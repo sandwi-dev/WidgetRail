@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://www.youtube.com; frame-src https://www.youtube-nocookie.com; style-src 'unsafe-inline'">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Game trailer</title>
+<style>html,body,#player,iframe{width:100%;height:100%;margin:0;background:black;border:0;display:block;overflow:hidden}</style>
+</head><body><div id="player"></div><script src="adapter-runtime.js"></script><script>
+"use strict";
+let key = "", state = "ready", player, pending;
+function finish(error) {
+  if (!pending) return;
+  const completion = pending;
+  pending = null;
+  clearTimeout(completion.deadline);
+  if (error) completion.reject(WidgetRailEmbeddedMediaAdapter.error(error));
+  else completion.resolve();
+}
+function fail(code) {
+  state = "error";
+  if (pending) finish(code);
+  else adapter.observeError(code);
+}
+async function confirm(command, change, observed) {
+  change();
+  const until = performance.now() + 2500;
+  while (!observed()) {
+    if (command.signal.aborted) throw WidgetRailEmbeddedMediaAdapter.error("authority-replaced");
+    if (performance.now() >= until) throw WidgetRailEmbeddedMediaAdapter.error("trailer-command-timeout");
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+}
+function startPlayer() {
+  if (!pending || !key) return;
+  player = new YT.Player("player", {
+    host:"https://www.youtube-nocookie.com", videoId:key, width:"100%", height:"100%",
+    playerVars:{autoplay:1,mute:1,playsinline:1,controls:0,disablekb:1,fs:0,rel:0,origin:location.origin},
+    events:{
+      onReady(e) { e.target.mute(); e.target.playVideo(); },
+      onStateChange(e) {
+        state = ({0:"ended",1:"playing",2:"paused",3:"loading",5:"ready"})[e.data] || "loading";
+        if (state === "playing" && pending) finish();
+        else adapter.observe();
+      },
+      onError() { fail("trailer-unavailable"); },
+      onAutoplayBlocked() {
+        if (pending) fail("trailer-autoplay-blocked");
+        else { state = "paused"; adapter.observe(); }
+      }
+    }
+  });
+}
+const adapter = WidgetRailEmbeddedMediaAdapter.create({
+  focus:"trailer",
+  bounds:() => ({x:0,y:0,width:Math.max(1,innerWidth),height:Math.max(1,innerHeight)}),
+  snapshot:() => ({mediaKey:key,playbackState:state,positionSeconds:player?.getCurrentTime?.() || 0,
+    durationSeconds:player?.getDuration?.() || 0,volume:(player?.getVolume?.() ?? 100)/100,
+    playbackRate:1,muted:player?.isMuted?.() ?? true,loop:false}),
+  driver:{
+    load(command) {
+      if (!/^[A-Za-z0-9_-]{11}$/.test(command.mediaKey)) throw WidgetRailEmbeddedMediaAdapter.error("invalid-trailer");
+      key = command.mediaKey;
+      state = "loading";
+      return new Promise((resolve,reject) => {
+        pending = {resolve,reject,deadline:setTimeout(() => fail("trailer-timeout"),12000)};
+        command.signal.addEventListener("abort",() => { finish("authority-replaced"); player?.destroy?.(); },{once:true});
+        window.onYouTubeIframeAPIReady = startPlayer;
+        const script = document.createElement("script");
+        script.src = "https://www.youtube.com/iframe_api";
+        script.onerror = () => fail("trailer-api-unavailable");
+        document.head.appendChild(script);
+      });
+    },
+    toggle(command) {
+      const pause = player.getPlayerState() === 1;
+      return confirm(command, () => pause ? player.pauseVideo() : player.playVideo(),
+        () => player.getPlayerState() === (pause ? 2 : 1));
+    },
+    setMuted(command) {
+      return confirm(command, () => command.muted ? player.mute() : player.unMute(),
+        () => player.isMuted() === command.muted);
+    },
+    seekBackward() { player.seekTo(Math.max(0,player.getCurrentTime()-5),true); },
+    seekForward() { player.seekTo(Math.min(player.getDuration(),player.getCurrentTime()+5),true); }
+  }
+});
+</script></body></html>

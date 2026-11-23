@@ -133,7 +133,7 @@ internal sealed class PinnedDirectoryContentLease : IWidgetProcessContentLease
     private static SafeFileHandle OpenPinned(string path, bool expectDirectory)
     {
         var handle = NativeMethods.CreateFile(
-            path,
+            WidgetRail.Shared.WindowsHandlePath.ForCreateFile(path),
             GenericRead,
             FileShareRead,
             IntPtr.Zero,

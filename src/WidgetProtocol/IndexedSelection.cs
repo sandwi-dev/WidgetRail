@@ -6,9 +6,11 @@ public sealed record IndexedCollectionSelection(bool IsActive, long Epoch, IRead
     public const int MaximumItems = 256;
     [System.Text.Json.Serialization.JsonIgnore]
     public int Count => Indices.Count;
+    [System.Text.Json.Serialization.JsonIgnore(Condition=System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool SupportsHeldSelection { get; init; }
 }
 
-public enum IndexedSelectionGesture { Toggle, Replace, Extend, ExtendAdd, SelectAll, Clear }
+public enum IndexedSelectionGesture { Toggle, Replace, Extend, ExtendAdd, SelectAll, Clear, BeginAdd, Add }
 public sealed record IndexedSelectionInput(long Epoch, IndexedSelectionGesture Gesture);
 
 public static class IndexedSelectionContract

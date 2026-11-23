@@ -513,6 +513,12 @@ internal sealed class WidgetWorkerServer
         case MessageTypes.Render:
             var render = RuntimeJson.FromElement<RenderPayload>(request.Payload);
             var presentationRequest = ValidateRenderRequest(render);
+            if (render.PrepareTrayAction is { } requestedAction)
+            {
+                if (!TrayActionContract.ValidId(requestedAction) || presentationRequest.TransactionKind != WidgetPresentationTransactionKind.OrdinaryCheckpoint)
+                    throw new WidgetProtocolViolationException("Invalid tray preparation.");
+                await _widget.PrepareTrayActionAsync(requestedAction, cancellationToken).ConfigureAwait(false);
+            }
             var publication = _widget.RenderPublication(
                 _widgetInstanceId,
                 presentationRequest.TransactionKind ==
@@ -620,19 +626,31 @@ internal sealed class WidgetWorkerServer
         case MessageTypes.ControllerInput:
             var input = RuntimeJson.FromElement<ControllerInputEvent>(request.Payload);
             ValidateControllerInput(input);
+            if (input is { Context: ControllerInputContext.TrayQuickAction, TrackTrayWork: true })
+            {
+                var work = RunTrackedTrayActionAsync(input, cancellationToken);
+                var pending = !work.IsCompleted;
+                var immediate = pending ? TrayActionResult.Success : await work.ConfigureAwait(false);
+                await ReplyAsync(MessageTypes.ControllerInputResult, request.RequestId,
+                    new ControllerInputResultPayload(immediate.Handled) { WorkPending = pending, Reason = immediate.Reason }, cancellationToken).ConfigureAwait(false);
+                if (pending) _ = ReportTrayCompletionAsync(input.Sequence, work, cancellationToken);
+                break;
+            }
             using (input is
                 {
-                    Context: ControllerInputContext.DashboardQuickAction,
+                    Context: ControllerInputContext.DashboardQuickAction or ControllerInputContext.TrayQuickAction,
                     Origin: ControllerInputOrigin.PhysicalController,
-                }
+                } || input is { Context: ControllerInputContext.TrayQuickAction, TrayOffer: { CaptureCommand: not null } or { MediaCommand: not null } }
                 ? WidgetCapabilityInvocationContext.Enter(
                     new WidgetCapabilityGestureContext(
                         input.Sequence, input.SnapshotSequence))
                 : null)
             {
-            var handled = await _widget.OnControllerInputAsync(input, cancellationToken).ConfigureAwait(false);
+            var result = input.Context == ControllerInputContext.TrayQuickAction
+                ? await _widget.DispatchTrayActionAsync(input, cancellationToken).ConfigureAwait(false)
+                : new TrayActionResult(await _widget.OnControllerInputAsync(input, cancellationToken).ConfigureAwait(false));
             await ReplyAsync(MessageTypes.ControllerInputResult, request.RequestId,
-                    new ControllerInputResultPayload(handled), cancellationToken)
+                    new ControllerInputResultPayload(result.Handled) { Reason = result.Reason }, cancellationToken)
                 .ConfigureAwait(false);
             }
             break;
@@ -686,6 +704,29 @@ internal sealed class WidgetWorkerServer
                 args.Action.ActionId,
                 args.Action.SourceElementId,
                 "Action failed."));
+    }
+
+    private async Task<TrayActionResult> RunTrackedTrayActionAsync(ControllerInputEvent input, CancellationToken token)
+    {
+        using var gesture = WidgetCapabilityInvocationContext.Enter(new WidgetCapabilityGestureContext(input.Sequence, input.SnapshotSequence));
+        return await _widget!.DispatchTrayActionAsync(input, token).ConfigureAwait(false);
+    }
+
+    private async Task ReportTrayCompletionAsync(long sequence, Task<TrayActionResult> work, CancellationToken token)
+    {
+        TrayActionResult result;
+        try { result = await work.ConfigureAwait(false); }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            result = TrayActionResult.Unavailable("The widget could not finish this action.");
+        }
+        if (token.IsCancellationRequested) return;
+        try
+        {
+            await SendAsync(new RuntimeEnvelope { Type = MessageTypes.TrayWorkTerminal,
+                Payload = RuntimeJson.ToElement(new TrayWorkTerminalPayload(sequence, result)) }, token).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is OperationCanceledException or IOException or ObjectDisposedException) { }
     }
 
     private void OnActionTerminated(object? sender, WidgetActionExecutionTerminal terminal)

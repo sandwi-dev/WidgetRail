@@ -36,6 +36,9 @@ internal sealed partial class PlayniteLibraryApplicationService
             };
             var retrievedAt = catalog.RetrievedAt;
             var generation = Interlocked.Read(ref _connectionGeneration);
+            var mutationRevision = Interlocked.Read(ref _lastGoodMutationRevision);
+            var revision = catalog.Revision;
+            var providerRevision = catalog.ProviderRevision;
             return new(query, context, games, authority, Array.AsReadOnly(ProjectSources(catalog, stale)),
                 catalog.Revision, retrievedAt, stale,
                 game =>
@@ -45,7 +48,15 @@ internal sealed partial class PlayniteLibraryApplicationService
                         throw new WidgetCapabilityException("invalid_cursor", "The Playnite connection changed. Refresh the library.");
                     return PlayniteLibraryItem.From(Project(game, stale, registerArtwork: false, retrievedAt));
                 }, (game, handle, cancellation) => ResolveCapturedArtworkAsync(game, handle, generation, cancellation),
-                (game, handle, cancellation) => ResolveCapturedArtworkSourceAsync(game, handle, generation, cancellation));
+                (game, handle, cancellation) => ResolveCapturedArtworkSourceAsync(game, handle, generation, cancellation))
+            {
+                CanReuseOnTabEntry = () => !stale && !_disposed && providerRevision is not null &&
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - retrievedAt is >= 0 and < 30_000 &&
+                    generation == Interlocked.Read(ref _connectionGeneration) &&
+                    mutationRevision == Interlocked.Read(ref _catalogMutationRevision) &&
+                    Volatile.Read(ref _lastGood) is { } latest &&
+                    latest.ProviderRevision == providerRevision && latest.Revision == revision,
+            };
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (ObjectDisposedException) { throw; }

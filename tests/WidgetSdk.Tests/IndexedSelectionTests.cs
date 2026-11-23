@@ -13,6 +13,28 @@ internal static class IndexedSelectionTests
         {
             Check(widget.Source.Selection is { IsActive: false, Count: 0 } && widget.Reads == 0, "Opt-in does not activate or realize rows.");
             Check(ViewSnapshotValidator.Validate(host.CurrentSnapshot with { ProtocolVersion = 111 }).Any(e => e.Code == "feature_requires_version"), "Old hosts reject selection declarations.");
+            Check(ViewSnapshotValidator.Validate(host.CurrentSnapshot with { ProtocolVersion = 127 }).Any(e=>e.Code=="feature_requires_version"),
+                "Held-selection declarations are version gated before new gestures are sent");
+            var published=host.CurrentSnapshot;
+            var legacySelection=published.Root.Children.Single(node=>node.Id=="items").IndexedSelection! with{IsActive=true,SupportsHeldSelection=false};
+            var older=published with{ProtocolVersion=127,Root=published.Root with{Children=published.Root.Children.Select(node=>
+                node.Id=="items"?node with{IndexedSelection=legacySelection}:node).ToArray()}};
+            Check(ViewSnapshotValidator.Validate(older).Count==0,"A legacy active selection declaration remains valid without held-selection support");
+            var legacyJson=System.Text.Json.JsonSerializer.Serialize(legacySelection);
+            Check(!legacyJson.Contains("SupportsHeldSelection",StringComparison.Ordinal) &&
+                System.Text.Json.JsonSerializer.Deserialize<IndexedCollectionSelection>(legacyJson)?.SupportsHeldSelection==false,
+                "Legacy selection wire omits the new capability and defaults to unsupported on read");
+            var notifications=0;widget.Source.SelectionChanged+=(_,_)=>notifications++;
+            var initialEpoch=widget.Source.Selection!.Epoch;
+            await Gesture(10,IndexedSelectionGesture.BeginAdd,()=>widget.Source.Selection is {IsActive:true,Count:1});
+            Check(widget.Source.Selection!.Epoch==initialEpoch+1 && notifications==1,"Held selection atomically starts a new epoch and selects its first item");
+            await Gesture(20,IndexedSelectionGesture.Add,()=>widget.Source.Selection!.Count==2);
+            Check(widget.Source.Selection!.Indices.SequenceEqual([10,20]),"Visited-item selection does not select intervening grid positions");
+            var eventsBefore=notifications;
+            await Gesture(10,IndexedSelectionGesture.Add,()=>true);
+            await Task.Delay(30);
+            Check(widget.Source.Selection!.Indices.SequenceEqual([10,20])&&notifications==eventsBefore,"Revisiting a held item is idempotent and does not republish selection");
+            widget.Source.EndSelection();host.PublishSnapshot();
             widget.Source.BeginSelection(); host.PublishSnapshot();
             await Gesture(10, IndexedSelectionGesture.Toggle, () => widget.Source.Selection!.Indices.SequenceEqual(new[] { 10 }));
             await Gesture(12, IndexedSelectionGesture.Extend, () => widget.Source.Selection!.Indices.SequenceEqual(new[] { 10, 11, 12 }));
@@ -32,6 +54,15 @@ internal static class IndexedSelectionTests
             Check((await widget.Source.ReadSelectedAsync()).All(i => i.Content == "updated"), "Mutation inputs resolve current revisioned data.");
             using var stale = await host.AcquireAsync("items", 10, 1);
             var oldEpoch = widget.Source.Selection!.Epoch;
+            var readsBeforePrefix = widget.RowsRead;
+            widget.Source.SelectFirst(256);
+            Check(widget.Source.Selection!.Indices.SequenceEqual(Enumerable.Range(0, 256)) && widget.RowsRead == readsBeforePrefix,
+                "Selecting a bounded prefix must not fetch gallery rows.");
+            foreach (var invalid in new[] { 0, 257 })
+            {
+                try { widget.Source.SelectFirst(invalid); throw new InvalidOperationException("Invalid prefix accepted."); }
+                catch (ArgumentOutOfRangeException) { }
+            }
             widget.Source.EndSelection(); widget.Source.BeginSelection(); host.PublishSnapshot();
             Check(stale.RouteSelection("item-10", new(oldEpoch, IndexedSelectionGesture.Toggle)) is null, "Prior selection mode cannot reselect after reset.");
             widget.Source.PublishQuery("new-query", 4); host.PublishSnapshot();

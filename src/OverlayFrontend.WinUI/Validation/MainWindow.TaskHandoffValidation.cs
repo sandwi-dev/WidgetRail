@@ -14,7 +14,7 @@ public sealed partial class MainWindow
         {
             if (input is null) throw new InvalidOperationException("Task handoff validation requires the native input adapter.");
             original = page.Appearance;
-            page.ApplyOverlayMotionValidationAppearance(original with { Motion = reduced ? MotionPreference.Reduced : MotionPreference.Full });
+            page.ApplyOverlayMotionValidationAppearance(original with { AnimateOverlayVisibility = true, Motion = reduced ? MotionPreference.Reduced : MotionPreference.Full });
             input.HandoffValidationButtons = 0x1000;
             if (primeInput)
             {

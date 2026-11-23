@@ -441,7 +441,7 @@ internal sealed class WindowsAppContainer : IDisposable
             if (_handles.TryGetValue(target, out var existing)) return existing;
 
             var handle = NativeMethods.CreateFile(
-                target.Path,
+                WidgetRail.Shared.WindowsHandlePath.ForCreateFile(target.Path),
                 NativeMethods.ReadControl | NativeMethods.WriteDac,
                 NativeMethods.FileShareRead |
                     NativeMethods.FileShareWrite |

@@ -31,7 +31,7 @@ struct State {
     uint32_t codec{},pixelFormat{},rateControl{},quality{};uint64_t adapterLuid{};
 };
 static_assert(sizeof(State)==168);
-constexpr uint32_t Saving=1,Ended=2;
+constexpr uint32_t Saving=1,Ended=2,AudioLost=4;
 #ifdef CAPTURE_WORKER_VALIDATION
 struct Diagnostics {
     uint64_t callbacks{},encoded{},duplicateSlots{},encoderDrops{},compressedDrops{},frameGaps{};

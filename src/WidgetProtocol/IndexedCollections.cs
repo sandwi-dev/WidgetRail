@@ -38,6 +38,15 @@ public sealed record IndexedCollectionBoundaries(bool Before, bool After);
 /// <summary>Entry from another control through directional navigation; explicit focus requests retain their own policy.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<IndexedDirectionalEntryMode>))]
 public enum IndexedDirectionalEntryMode { Remembered = 0, VisibleEdge = 1 }
+
+[JsonConverter(typeof(JsonStringEnumConverter<FocusAnchorPoint>))]
+public enum FocusAnchorPoint { Leading, Center, Trailing }
+
+/// <summary>Alignment along a collection's scroll axis during directional navigation.</summary>
+public sealed record DirectionalScrollAnchor(FocusAnchorPoint ItemPoint, int ViewportPercent)
+{
+    public bool IsValid() => Enum.IsDefined(ItemPoint) && ViewportPercent is >= 0 and <= 100;
+}
 public sealed record IndexedViewportObservation(string ViewportId, long Sequence, bool Active, bool AtEnd)
 {
     public IndexedCollectionBoundary? Boundary { get; init; }
@@ -52,7 +61,12 @@ public sealed record IndexedViewportRecovery(string ViewportId, long Sequence, s
 public sealed record IndexedViewportRecoveryResult(bool Recovered, string? AnchorKey);
 
 /// <summary>One contiguous display-only heading and item run in an existing flat indexed query.</summary>
-public sealed record IndexedCollectionGroup(string Key, string Header, int Count);
+public sealed record IndexedCollectionGroup(string Key, string Header, int Count)
+{
+    /// <summary>Draw a horizontal separator after the group heading.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ShowHeaderRule { get; init; }
+}
 
 /// <summary>A logical occurrence in an immutable query; content refresh does not change its identity.</summary>
 public sealed record IndexedCollectionFocusTarget(string CollectionId, string SourceId, long QueryGeneration, string ItemKey, int Index);

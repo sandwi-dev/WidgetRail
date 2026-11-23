@@ -19,7 +19,7 @@ service. Both sandboxed and full-trust application widgets use these APIs. See [
 | `media.capture-library.manage.v1` | `DeleteAsync` / `ExportAsync` | Interactive; fixed Pictures export destination |
 | `presentation.documents.v1` | `HostServices.Documents.CreateAsync` / `DiscardAsync`, `UI.ProviderContent` | Owned restricted HTML; scripts/forms/network blocked; background publication allowed |
 | `system.apps.windows.preview.v1` | Host-rendered `UI.WindowPreview` | A current window and preview permission |
-| `system.apps.windows.switch.v1` | `HostServices.TaskSwitcher.SwitchAsync` | Interactive |
+| `system.apps.windows.switch.v1` | `HostServices.TaskSwitcher.SwitchAsync`, `BeginLaunchAsync`, `TryCompleteLaunchAsync` | Interactive |
 | `system.apps.windows.close.v1` | `HostServices.TaskSwitcher.CloseAsync` | Interactive |
 | `system.power.read.v1` | `HostServices.Power.GetAvailabilityAsync` | Visible or Interactive |
 | `system.power.control.v1` | `ShutDownAsync`, `RestartAsync`, `SleepAsync` | Interactive |
@@ -32,3 +32,13 @@ Window and launch IDs have a current observation lifetime. The provider checks
 them again before acting. Window preview is view-only, and switching/closing
 require separate permission. Confirm destructive power actions in the UI.
 Windows may still refuse a switch or a preview after capability approval.
+
+A widget that launches through an external provider can call `BeginLaunchAsync`
+inside its interactive Play action before dispatching the launch. When that
+provider confirms the process and its window appears, call `TryCompleteLaunchAsync`
+with the ticket, PID, UTC process creation time in Windows file-time units, and
+window handle. A false result means the window is not eligible yet. Stop on
+cancellation, loss of the originating action, or expiry. The broker admits one
+handoff per ticket for up to 30 seconds and checks the exact window independently.
+The ordinary task-switch activation deadline applies after the target is ready.
+Successful admission queues activation and Windows still decides foreground ownership.

@@ -37,6 +37,9 @@ public sealed record WidgetCursorResourceOptions<TItem> where TItem : notnull
     /// <summary>Optional eviction target. Visible pages may exceed it, up to MaximumRetainedItems.</summary>
     public int? RetainedItemTarget { get; init; }
     public int PaginationThreshold { get; init; } = 2;
+    /// <summary>Fetches at most one unpublished page per available edge after a successful load.
+    /// Boundary demand still owns publication and eviction. Disabled by default.</summary>
+    public bool PrepareAdjacentPages { get; init; }
     public required Func<WidgetCollectionCursor?, WidgetCursorDirection?, int,
         CancellationToken, ValueTask<WidgetCursorPage<TItem>>> LoadPage { get; init; }
     public required Func<Exception, WidgetResourceError> MapError { get; init; }
@@ -198,6 +201,11 @@ public sealed partial class WidgetCursorResource<TItem> where TItem : notnull
             throw new ArgumentException("At least one cursor viewport is required.", nameof(options.Viewports));
 
         _operationKey = operationKey;
+        if (options.PrepareAdjacentPages)
+        {
+            StableIdentifier.Validate(PrepareKey(WidgetCursorDirection.Before), nameof(operationKey));
+            StableIdentifier.Validate(PrepareKey(WidgetCursorDirection.After), nameof(operationKey));
+        }
         _beforeActionId = operationKey + ".cursor.before";
         _afterActionId = operationKey + ".cursor.after";
         StableIdentifier.Validate(_beforeActionId, nameof(operationKey));
@@ -395,6 +403,7 @@ public sealed partial class WidgetCursorResource<TItem> where TItem : notnull
             lock (_gate)
             {
                 _epoch++;
+                ClearPreparedPagesLocked();
                 _current = null;
                 _failed = null;
                 _cursorHistory.Clear();
@@ -415,6 +424,7 @@ public sealed partial class WidgetCursorResource<TItem> where TItem : notnull
                 };
             }
             _operations.Cancel(_operationKey);
+            CancelPreparedOperations();
         }
         if (changed && invalidate) _invalidate();
     }
@@ -439,6 +449,7 @@ public sealed partial class WidgetCursorResource<TItem> where TItem : notnull
             {
                 if (_current is { } duplicate && SameIntent(duplicate.Intent, intent))
                     return new(WidgetOperationAdmission.Joined, duplicate.Completion.Task);
+                if (intent.Direction is null) ClearPreparedPagesLocked();
                 ++_recoveryIntentRevision;
                 if (intent.MoveFocus && _navigationRequestId >= ProtocolConstants.MaximumFocusGroupEntryRequestId)
                     throw new InvalidOperationException("Navigation request generation exhausted.");
@@ -457,6 +468,7 @@ public sealed partial class WidgetCursorResource<TItem> where TItem : notnull
                     RequestId = ++_navigationRequestId, OriginFocusId = intent.OriginFocusId,
                 } : null };
             }
+            if (intent.Direction is null) CancelPreparedOperations();
             var underlying = _operations.RunLatest(_operationKey,
                 context => LoadCoreAsync(request, context), _options.Lifetime);
             if (changed && underlying.IsAccepted && underlying.Admission != WidgetOperationAdmission.Started)
@@ -471,17 +483,27 @@ public sealed partial class WidgetCursorResource<TItem> where TItem : notnull
         var committed = false;
         try
         {
-            var loaded = await _options.LoadPage(request.Intent.Cursor,
-                request.Intent.Direction, _options.PageSize, context.CancellationToken).ConfigureAwait(false);
+            var loaded = await LoadPreparedOrFreshAsync(request, context.CancellationToken).ConfigureAwait(false);
             var page = Normalize(loaded);
             lock (_gate)
             {
                 if (!CanCommit(request, context)) return;
                 ValidateTraversalProgress(request.Intent, page);
+                var proposed = Merge(page, request.Intent.Cursor, request.Intent.Direction,
+                    request.Intent.ProtectedKeys, request.Intent.RetainedKeys,
+                    deferProtectedCapacity: _options.PrepareAdjacentPages && !request.Intent.MoveFocus);
+                if (proposed is null)
+                {
+                    // Early demand can still see part of the opposite page.
+                    // Keep the fetched data, but leave publication to a later
+                    // demand with current visible keys instead of reporting an
+                    // error or evicting the reader during continuous scrolling.
+                    RememberPreparedPage(request, page);
+                    return;
+                }
                 if (_windowGeneration >=
                     WidgetRail.WidgetProtocol.ProtocolConstants.MaximumVirtualCollectionRequestGeneration)
                     throw new InvalidOperationException("Virtual collection request generation is exhausted.");
-                var proposed = Merge(page, request.Intent.Cursor, request.Intent.Direction, request.Intent.ProtectedKeys, request.Intent.RetainedKeys);
                 proposed = ReplayLiveChanges(proposed, request);
                 var merged = new ReadOnlyCollection<TItem>(proposed.SelectMany(segment => segment.Page.Items).ToArray());
                 var anchor = request.Intent.Direction is null
@@ -582,9 +604,10 @@ public sealed partial class WidgetCursorResource<TItem> where TItem : notnull
         };
     }
 
-    private IReadOnlyList<Segment> Merge(WidgetCursorPage<TItem> page,
+    private IReadOnlyList<Segment>? Merge(WidgetCursorPage<TItem> page,
         WidgetCollectionCursor? requestCursor,
-        WidgetCursorDirection? direction, IReadOnlySet<string>? protectedKeys, IReadOnlySet<string>? retainedKeys)
+        WidgetCursorDirection? direction, IReadOnlySet<string>? protectedKeys, IReadOnlySet<string>? retainedKeys,
+        bool deferProtectedCapacity)
     {
         var proposed = direction is null ? new List<Segment>() : _segments.ToList();
         var start = page.FirstItemIndex ?? (direction switch
@@ -609,12 +632,16 @@ public sealed partial class WidgetCursorResource<TItem> where TItem : notnull
                 throw new InvalidOperationException("Duplicate collection item key.");
         }
         var count = proposed.Sum(segment => segment.Page.Items.Count);
+        var blockedByVisiblePage = false;
         while (count > (_options.RetainedItemTarget ?? _options.MaximumRetainedItems) && proposed.Count > 1)
         {
             var removed = direction == WidgetCursorDirection.Before
                 ? proposed[^1] : proposed[0];
             if (protectedKeys is not null && removed.Page.Items.Any(item => protectedKeys.Contains(KeyOf(item).Value)))
+            {
+                blockedByVisiblePage = true;
                 break;
+            }
             if (count <= _options.MaximumRetainedItems && retainedKeys is not null &&
                 removed.Page.Items.Any(item => retainedKeys.Contains(KeyOf(item).Value)))
                 break;
@@ -623,7 +650,12 @@ public sealed partial class WidgetCursorResource<TItem> where TItem : notnull
             count -= removed.Page.Items.Count;
         }
         if (count > _options.MaximumRetainedItems)
+        {
+            // Validate identity and logical continuity before deciding to wait.
+            // Invalid provider data must not masquerade as capacity deferral.
+            if (deferProtectedCapacity && blockedByVisiblePage) return null;
             throw new InvalidOperationException("Visible collection exceeds the configured retained capacity.");
+        }
         return proposed;
     }
 
@@ -738,6 +770,7 @@ public sealed partial class WidgetCursorResource<TItem> where TItem : notnull
         {
             var result = underlying.Completion.GetAwaiter().GetResult();
             Restore(request);
+            if (result.Status == WidgetOperationStatus.Succeeded) PrepareAdjacentPages();
             request.Completion.TrySetResult(result);
         });
     private void Restore(Request request)

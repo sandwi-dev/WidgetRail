@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
@@ -15,6 +16,24 @@ internal sealed partial class WidgetValueButton : Button
     private bool sensitive;
     internal bool IsCommandMenu { get; set; }
     private bool expanded;
+    private bool menuHint;
+    private static readonly ViewNode MenuGlyph = new() { Id = "menu-shortcut", Kind = ViewNodeKind.ControllerGlyph, ControllerPrompt = ControllerPrompt.Menu };
+    internal void SetMenuHint(bool show, bool playStation)
+    {
+        if (!show && !menuHint) return;
+        menuHint = show;
+        var grid = (Grid)Content;
+        Grid.SetColumn(affordance, show ? 0 : 1);
+        Grid.SetColumn(valueLabel, show ? 1 : 0);
+        grid.ColumnDefinitions[0].Width = show ? GridLength.Auto : new(1, GridUnitType.Star);
+        grid.ColumnDefinitions[1].Width = show ? new(1, GridUnitType.Star) : GridLength.Auto;
+        if (show) WidgetGlyphs.Apply(affordance, MenuGlyph, playStation);
+        else
+        {
+            affordance.FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Segoe Fluent Icons");
+            affordance.Glyph = ExpandRequested is null ? "\uE70F" : "\uE70D";
+        }
+    }
     internal Action? ExpandRequested { get; set; }
     internal Action? CollapseRequested { get; set; }
     internal WidgetValueButton()
@@ -33,7 +52,7 @@ internal sealed partial class WidgetValueButton : Button
     internal void SetLabel(string value)
     {
         WidgetTextStyleAdapter.SetSource(valueLabel, value);
-        affordance.Glyph = ExpandRequested is null ? "\uE70F" : "\uE70D";
+        if (!menuHint) affordance.Glyph = ExpandRequested is null ? "\uE70F" : "\uE70D";
     }
 
     internal void SetAccessibleValue(string? value, bool isSensitive)

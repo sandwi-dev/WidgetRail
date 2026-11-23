@@ -46,7 +46,7 @@ public sealed partial class GameHelpWidget
                     if (opened.ByteLength > CaptureLimits.MaximumContextBytes)
                     { model.Update(s => s with { Error = "This clip is too large for game context. Choose a shorter clip or a screenshot. Your question is kept." }); return; }
                     var old = model.Value.Preview;
-                    model.Update(s => s with { Preview = opened, PreviewReadOnly = false, Context = s.Context == old ? null : s.Context,
+                    model.Update(s => s with { Preview = opened, PreviewReadOnly = false, SkipPriorCapture = false, Context = s.Context == old ? null : s.Context,
                         LibraryOpen = false, OfferContext = false, CaptureOptions = false });
                     opened = null;
                     if (old is not null) try { await HostServices.Capture.DiscardAsync(old, context.CancellationToken); } catch (WidgetCapabilityException) { }

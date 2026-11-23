@@ -48,7 +48,7 @@ foreach ($required in @('OverlayFrontend.WinUI.exe','OverlayFrontend.WinUI.dll',
     if (!(Test-Path -LiteralPath (Join-Path $published $required))) { throw "Missing WinUI runtime asset: $required" }
 }
 $runtime = Get-Content (Join-Path $published 'OverlayFrontend.WinUI.runtimeconfig.json') -Raw | ConvertFrom-Json
-if (!($runtime.runtimeOptions.includedFrameworks | Where-Object { $_.name -ceq 'Microsoft.NETCore.App' -and $_.version -like '10.*' })) { throw 'Frontend must carry its .NET 10 runtime.' }
+if (!($runtime.runtimeOptions.includedFrameworks | Where-Object { $_.name -ceq 'Microsoft.NETCore.App' -and $_.version -like '10.0.*' -and [version]$_.version -ge [version]'10.0.15' })) { throw 'Frontend must carry .NET 10.0.15 or a newer .NET 10 servicing patch.' }
 $retired = @(Get-ChildItem -LiteralPath $published -Recurse -File | Where-Object { $_.Name -in @('OverlayHost.exe','ArtworkDecoderHost.exe') -or $_.Name -match '(?i)taffy' })
 if ($retired.Count) { throw "Retired renderer artifact: $($retired[0].FullName)" }
 Invoke-NuGetAuditedRestore -Project 'tools/ReleaseVerifier/ReleaseVerifier.csproj' -Properties @('-p:Configuration=Release','-p:RuntimeIdentifier=win-x64','-p:SelfContained=false')

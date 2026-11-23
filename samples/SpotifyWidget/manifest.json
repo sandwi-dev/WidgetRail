@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.spotify",
   "publisher": "widgetrail.samples",
   "name": "Spotify",
-  "version": "0.3.97",
+  "version": "0.3.98",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -55,6 +55,11 @@
       }
     ]
   },
+  "trayActions": [
+    { "id": "play-pause", "label": "Play or pause" },
+    { "id": "previous", "label": "Previous track" },
+    { "id": "next", "label": "Next track" }
+  ],
   "residencyPolicy": {
     "schemaVersion": 1,
     "mode": "keep-alive"

@@ -20,13 +20,13 @@ public sealed class WidgetMotionTests
         Assert.AreEqual(expected, WidgetMotionPolicy.CanAnimateSize(width, height));
 
     [TestMethod]
-    public void OverlayEntranceUsesOriginalZoomAndDirectionalEasingWithSharedSpeed()
+    public void DefaultOverlayFadeKeepsGeometryFixedInBothDirections()
     {
         var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Full,
             AnimateWidgetSwitching = false, SectionAnimation = WidgetSectionAnimation.None };
         var opening = WidgetMotionPolicy.OverlayVisibility(appearance, true, true);
         var closing = WidgetMotionPolicy.OverlayVisibility(appearance, true, false);
-        Assert.AreEqual(new Vector3(.88f, .88f, 1), opening.From.Scale);
+        Assert.AreEqual(Vector3.One, opening.From.Scale);
         Assert.AreEqual(0f, opening.From.Opacity);
         Assert.AreEqual(Vector3.Zero, opening.From.Translation);
         Assert.AreEqual(WidgetMotionPose.Identity, opening.To);
@@ -41,19 +41,16 @@ public sealed class WidgetMotionTests
     }
 
     [TestMethod]
-    public void OverlayBackdropFadesWithoutZoomAndReducedMotionSettlesBothDirections()
+    public void OverlayFadeRespectsTheSwitchAndReducedMotionInBothDirections()
     {
         foreach (var opening in new[] { true, false })
         {
-            var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Full };
+            var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Full, AnimateOverlayVisibility = true };
             var shell = WidgetMotionPolicy.OverlayVisibility(appearance, true, opening);
-            var backdrop = WidgetMotionPolicy.OverlayVisibility(appearance, true, opening, backdrop: true);
-            Assert.AreEqual(shell.Duration, backdrop.Duration);
-            Assert.AreEqual(shell.Easing, backdrop.Easing);
-            Assert.AreEqual(shell.From.Opacity, backdrop.From.Opacity);
-            Assert.AreEqual(shell.To.Opacity, backdrop.To.Opacity);
-            Assert.AreEqual(Vector3.One, backdrop.From.Scale);
-            Assert.AreEqual(Vector3.One, backdrop.To.Scale);
+            var disabled = WidgetMotionPolicy.OverlayVisibility(appearance with { AnimateOverlayVisibility = false }, true, opening);
+            Assert.AreEqual(TimeSpan.Zero, disabled.Duration);
+            Assert.AreEqual(Vector3.One, disabled.To.Scale);
+            Assert.AreEqual(opening ? 1f : 0f, disabled.To.Opacity);
             foreach (var preference in new[] { MotionPreference.Reduced, MotionPreference.System })
             {
                 var reduced = WidgetMotionPolicy.OverlayVisibility(appearance with { Motion = preference }, false, opening);
@@ -68,20 +65,23 @@ public sealed class WidgetMotionTests
     }
 
     [TestMethod]
-    public void GuideCrossfadeUsesSharedSpeedAndAccessibilityWithoutMovingContent()
+    public void GuideFadeThroughKeepsLabelsDisjointAndUsesSharedSpeedAndAccessibility()
     {
         var appearance = AppearanceSettings.Default with { Motion = MotionPreference.Full,
             SectionAnimation = WidgetSectionAnimation.Slide, Transparency = TransparencyPreference.Full };
         WidgetSectionMotion Fade(AppearanceSettings value, bool system = true, bool contrast = false) =>
-            WidgetMotionPolicy.GuideCrossfade(value, system, contrast);
+            WidgetMotionPolicy.GuideFadeThrough(value, system, contrast);
         var fade = Fade(appearance);
-        Assert.AreEqual(140, fade.Incoming.Duration.TotalMilliseconds);
-        Assert.AreEqual(fade.Incoming.Duration, fade.Outgoing.Duration);
+        Assert.AreEqual(240, (fade.Incoming.Delay + fade.Incoming.Duration).TotalMilliseconds);
+        Assert.AreEqual(fade.Outgoing.Duration * 2, fade.Incoming.Duration);
+        Assert.AreEqual(fade.Outgoing.Duration + fade.Outgoing.Delay, fade.Incoming.Delay);
         Assert.AreEqual(WidgetMotionPose.Identity with { Opacity = 0 }, fade.Incoming.From);
         Assert.AreEqual(WidgetMotionPose.Identity, fade.Incoming.To);
         Assert.AreEqual(WidgetMotionPose.Identity, fade.Outgoing.From);
         Assert.AreEqual(fade.Incoming.From, fade.Outgoing.To);
-        Assert.AreEqual(70, Fade(appearance with { WidgetAnimationSpeed = 2 }).Incoming.Duration.TotalMilliseconds);
+        var fast = Fade(appearance with { WidgetAnimationSpeed = 2 });
+        Assert.AreEqual(120, (fast.Incoming.Delay + fast.Incoming.Duration).TotalMilliseconds);
+        Assert.AreEqual(fast.Outgoing.Duration, fast.Incoming.Delay);
         Assert.AreEqual(TimeSpan.Zero, Fade(appearance with { Motion = MotionPreference.Reduced }).Incoming.Duration);
         Assert.AreEqual(TimeSpan.Zero, Fade(appearance with { Motion = MotionPreference.System }, false).Incoming.Duration);
         Assert.AreEqual(TimeSpan.Zero, Fade(appearance with { SectionAnimation = WidgetSectionAnimation.None }).Incoming.Duration);

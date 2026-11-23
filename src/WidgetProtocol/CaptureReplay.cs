@@ -14,6 +14,46 @@ public enum CaptureReplayIssue
 [JsonConverter(typeof(JsonStringEnumConverter<CaptureReplayOutcome>))]
 public enum CaptureReplayOutcome { Accepted, Cancelled, Unavailable, Conflict, Busy, Failed }
 
+/// <summary>Stable application identity and display name approved for automatic replay.</summary>
+public sealed record ReplayApprovedApplication(string Id, string Name)
+{
+    public bool IsWellFormed() => Id is { Length: 64 } && Id.All(char.IsAsciiHexDigit) &&
+        Name is { Length: > 0 and <= 120 } && !string.IsNullOrWhiteSpace(Name) && !Name.Any(char.IsControl);
+}
+
+public sealed record ReplayApplicationApprovals
+{
+    public const int MaximumApplications = 64;
+    public static ReplayApplicationApprovals Empty { get; } = new(Array.Empty<ReplayApprovedApplication>());
+    public IReadOnlyList<ReplayApprovedApplication> Applications { get; }
+
+    [JsonConstructor]
+    public ReplayApplicationApprovals(IReadOnlyList<ReplayApprovedApplication> applications)
+    {
+        ArgumentNullException.ThrowIfNull(applications);
+        if (applications.Count > MaximumApplications) throw new System.Text.Json.JsonException("Too many replay approvals.");
+        Applications = Array.AsReadOnly(applications.ToArray());
+    }
+    public bool IsWellFormed() => Applications.All(item => item?.IsWellFormed() == true) &&
+        Applications.Select(item => item.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() == Applications.Count;
+    public bool Contains(string? id) => Applications.Any(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+    public ReplayApplicationApprovals Add(ReplayApprovedApplication application)
+    {
+        if (!application.IsWellFormed()) throw new ArgumentException("Invalid replay application.", nameof(application));
+        if (Contains(application.Id)) return this;
+        if (Applications.Count >= MaximumApplications) throw new InvalidOperationException("The replay approval list is full.");
+        return new(Applications.Append(application).ToArray());
+    }
+    public bool Equals(ReplayApplicationApprovals? other) =>
+        ReferenceEquals(this, other) || other is not null && Applications.SequenceEqual(other.Applications);
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        foreach (var item in Applications) hash.Add(item);
+        return hash.ToHashCode();
+    }
+}
+
 /// <summary>Host recording preferences, independent of any widget's residency.</summary>
 public sealed record CaptureReplaySettings
 {
@@ -59,6 +99,9 @@ public sealed record CaptureReplaySettingsUpdate(long ExpectedRevision,CaptureRe
     public bool EncodingDetails { get; init; }
     public bool IsWellFormed()=>ExpectedRevision>=0 && Settings is not null && Settings.IsWellFormed();
 }
+public sealed record ReplayApprovalRevision(long ExpectedRevision);
+public sealed record ReplayApprovalRemoval(long ExpectedRevision, string ApplicationId);
+public sealed record ReplayApprovalList(long Revision, ReplayApplicationApprovals Approvals);
 public sealed record CaptureReplaySessionRequest(string? ExpectedSessionId)
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]

@@ -14,7 +14,7 @@ internal static class ReplayPipeScenarios
         try
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30)); var token = deadline.Token;
-            var actor = new BrokerWidgetIdentity("example.replay", "example.publisher", "replay.instance");
+            var actor = new BrokerWidgetIdentity("widgetrail.firstparty.capture-library", "widgetrail.firstparty", "replay.instance");
             string[] permissions = [PlatformCapabilities.CaptureLibraryReadV1, PlatformCapabilities.CaptureLibrarySaveV1, PlatformCapabilities.WindowCaptureV1];
             var consent = new ConsentStore(Path.Combine(root, "consent"));
             await consent.SetDecisionsAsync(actor, permissions, ConsentDecision.Grant, token);
@@ -29,7 +29,7 @@ internal static class ReplayPipeScenarios
             var simulation = new SimulatedPlatformBrokerBackend();
             await using var backend = new CompositePlatformBrokerBackend(simulation, simulation, captureLibrary: library) { CaptureReplay = replay };
             var configured = new ConfiguredWidget { Id = "replay", PackageId = actor.PackageId, PublisherId = actor.PublisherId, InstanceId = actor.InstanceId,
-                Name = "Replay fixture", WorkerExecutable = "unused.exe", DeclaredCapabilities = permissions,
+                Name = "Replay fixture", WorkerExecutable = "unused.exe", DeclaredCapabilities = permissions, GrantsBundledPermissionDefaults = true,
                 WorkerFingerprint = new string('a', 64), CatalogFingerprint = new string('b', 64) };
             var hostPipe = "replay-host-" + Guid.NewGuid().ToString("N");
             await using var server = new WidgetBridgeServer(hostPipe, new([configured]), consentStore: consent, platformBackend: backend);
@@ -43,11 +43,24 @@ internal static class ReplayPipeScenarios
             await using var client = new BrokerPipeClient(capabilityPipe, actor, broker.ChannelNonce, new() { RequestTimeout = TimeSpan.FromSeconds(1) });
             await client.ConnectAsync(token); broker.SetLifecycle(BrokerLifecycleState.Interactive);
             var sdk = new WidgetHostServices(new BrokerWidgetCapabilityClient(client)).Capture.Replay;
-            await using var changes = await sdk.OpenChangesSubscriptionAsync(token);
-            await using var events = changes.ReadAllAsync(token).GetAsyncEnumerator(token);
             var initial = await sdk.GetAsync(token);
             Check(initial.Phase == CaptureReplayPhase.Off && (await session.GetReplayStatusAsync(token)).Phase == initial.Phase, "Replay reads did not cross both pipes");
             _ = await session.TakeReplayWorkAsync(cancellationToken: token);
+            broker.SetLifecycle(BrokerLifecycleState.Background);
+            broker.GrantDashboardGestureAuthority(PlatformCapabilities.WindowCaptureV1, "capture.replay.start", 1, 1,
+                TimeSpan.FromSeconds(2), null, new TrayCaptureCommand("capture.replay.start", Revision: initial.Revision));
+            var trayStart = client.RequestWithGestureAsync(PlatformCapabilities.WindowCaptureV1, "capture.replay.start",
+                new CaptureReplayReadRequest { EncodingDetails = true }, 1, 1, token);
+            var choice = await Pending(HostReplayCommandKind.Start);
+            Check(choice.RequestedFromTray && !choice.Automatic && !trayStart.IsCompleted, "A tray gesture did not wait for the source picker");
+            Check(await session.CompleteReplayCommandAsync(new(choice.Id, CaptureReplayOutcome.Cancelled, CaptureReplayIssue.Cancelled)
+                { SessionId = choice.SessionId }, token), "Could not dismiss the tray source picker");
+            Check(BrokerJson.ParsePayload<CaptureReplayControlResult>((await trayStart).Payload ?? throw new Exception("Missing replay admission")).Outcome == CaptureReplayOutcome.Cancelled && (await session.GetReplayStatusAsync(token)).Phase == CaptureReplayPhase.Off,
+                "A cancelled host quick action started recording");
+            broker.SetLifecycle(BrokerLifecycleState.Interactive);
+            // The cancelled start generated status events before the configuration check below.
+            await using var changes = await sdk.OpenChangesSubscriptionAsync(token);
+            await using var events = changes.ReadAllAsync(token).GetAsyncEnumerator(token);
             var notification = events.MoveNextAsync().AsTask();
             var configuring = sdk.ConfigureAsync(initial.Settings with { Enabled = true, ReplayDurationSeconds = 15 }, initial.SettingsRevision, token).AsTask();
             var approval = await Pending(HostReplayCommandKind.ApproveSettings);
@@ -58,7 +71,7 @@ internal static class ReplayPipeScenarios
             var starting = sdk.StartAsync(token).AsTask(); var start = await Pending(HostReplayCommandKind.Start);
             Check(await session.IsReplayCommandCurrentAsync(start.Id, token), "Start lost native admission authority");
             Check(await session.CompleteReplayCommandAsync(new(start.Id, CaptureReplayOutcome.Accepted) { SessionId = start.SessionId,
-                Target = new("123", 456, "789", "FixtureWindow"), ApprovedApplication = new string('a', 64), ApplicationName = "Fixture game" }, token),
+                Target = new("123", 456, "789", "FixtureWindow"), ApplicationIdentity = new string('a', 64), ApplicationName = "Fixture game" }, token),
                 "Host start completion rejected");
             Check((await starting).Status.Phase == CaptureReplayPhase.Starting, "Start incorrectly claimed decoded frames");
             _ = await session.TakeReplayWorkAsync(new(start.SessionId!, CaptureReplayPhase.Recording, 3, 1024, 0), token);
@@ -70,6 +83,27 @@ internal static class ReplayPipeScenarios
             broker.SetLifecycle(BrokerLifecycleState.Background);
             await CompleteOutput(firstOutput);
             Check((await firstSave).Outcome == CaptureReplayOutcome.Accepted, "SDK save failed after source hid");
+            // A later quick action can use a fresh authenticated worker channel to control
+            // the host session. A stale press cannot redirect its save to a new session.
+            await using (var fresh = new PlatformCapabilityBroker(actor, permissions, consent, backend))
+            {
+                fresh.SetLifecycle(BrokerLifecycleState.Background);
+                var op = "capture.replay.save";
+                Task<System.Text.Json.JsonElement> Save(string id, long sequence) => fresh.ExecuteAsync(new BrokerRequestEnvelope(
+                    BrokerJson.ProtocolVersion, sequence, actor, PlatformCapabilities.WindowCaptureV1, op,
+                    BrokerJson.ToElement(new CaptureReplaySaveRequest(id, Guid.NewGuid().ToString("N"))))
+                    { GestureInputSequence = sequence, GestureSnapshotSequence = 8 }, token);
+                void Grant(long sequence) => fresh.GrantDashboardGestureAuthority(PlatformCapabilities.WindowCaptureV1,
+                    op, sequence, 8, TimeSpan.FromSeconds(2), null, new TrayCaptureCommand(op, start.SessionId));
+                Grant(1);
+                try { await Save(Guid.NewGuid().ToString("N"), 1); throw new Exception("Replay save redirected to another session"); }
+                catch (BrokerException error) when (error.Code == "capture_stale") { }
+                Grant(2);
+                var traySave = Save(start.SessionId!, 2);
+                await CompleteOutput(await Pending(HostReplayCommandKind.Save));
+                Check(BrokerJson.ParsePayload<CaptureReplaySaveResult>(await traySave).Outcome == CaptureReplayOutcome.Accepted,
+                    "Fresh background worker failed to save the active replay");
+            }
             broker.SetLifecycle(BrokerLifecycleState.Interactive);
             var secondSave = session.SaveReplayAsync(start.SessionId!, token);
             var secondOutput = await Pending(HostReplayCommandKind.Save);
@@ -77,8 +111,8 @@ internal static class ReplayPipeScenarios
             var draining = await session.TakeReplayWorkAsync(new(start.SessionId!, CaptureReplayPhase.Stopping, 3, 1024, 0, Ended: true), token);
             Check(draining.StopRequested && draining.Status.Saving, "Host stop discarded accepted save");
             await CompleteOutput(secondOutput);
-            Check((await secondSave).Outcome == CaptureReplayOutcome.Accepted && (await library.ListAsync(0, token)).TotalCount == 2,
-                "Host save did not commit exactly one second output");
+            Check((await secondSave).Outcome == CaptureReplayOutcome.Accepted && (await library.ListAsync(0, token)).TotalCount == 3,
+                "The three independent saves did not produce exactly three clips");
             Check((await session.StopReplayAsync(null, token)).Outcome == CaptureReplayOutcome.Accepted, "Host idle stop failed");
             await session.SetReplayPowerStateAsync(1, true, token); await session.SetReplayPowerStateAsync(2, false, token);
             Check((await session.GetReplayStatusAsync(token)).SessionId is null, "Power messages restored a retired session");

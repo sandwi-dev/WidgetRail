@@ -82,7 +82,7 @@ internal sealed class NativeReplayCaptureBackend(ReplayWorkerNative.WorkerHandle
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         var result = ReplayWorkerNative.WrailReplayWorkerRead(handle, out var state, timeout);
         if (result < 0) throw new ReplayBackendException(CaptureReplayIssue.HostUnavailable, result);
-        if (state.Size != 168 || state.Version != 2 || state.Epoch != epoch || state.Phase is < 1 or > 6 || state.Issue > 10 || (state.Flags & ~3u) != 0 ||
+        if (state.Size != 168 || state.Version != 2 || state.Epoch != epoch || state.Phase is < 1 or > 6 || state.Issue > 10 || (state.Flags & ~7u) != 0 ||
             state.BufferedTicks < 0 || state.BufferedTicks > (long)settings.ReplayDurationSeconds * TimeSpan.TicksPerSecond ||
             state.ResidentBytes > (ulong)settings.MemoryBudgetBytes || state.DroppedFrames > long.MaxValue)
             throw new ReplayBackendException(CaptureReplayIssue.HostUnavailable);
@@ -106,7 +106,7 @@ internal sealed class NativeReplayCaptureBackend(ReplayWorkerNative.WorkerHandle
         return Task.FromResult(new ReplayBackendState(state.Phase switch
         { 1 => CaptureReplayPhase.Starting, 2 => CaptureReplayPhase.Recording, 3 => CaptureReplayPhase.Paused, 4 => CaptureReplayPhase.Stopping,
             5 => CaptureReplayPhase.Off, _ => CaptureReplayPhase.Error }, state.BufferedTicks / (double)TimeSpan.TicksPerSecond,
-            checked((long)state.ResidentBytes), checked((long)state.DroppedFrames), state.Phase == 6 ? Issue(state.Issue) : CaptureReplayIssue.None,
+            checked((long)state.ResidentBytes), checked((long)state.DroppedFrames), state.Phase == 6 ? Issue(state.Issue) : (state.Flags & 4) != 0 ? CaptureReplayIssue.AudioUnavailable : CaptureReplayIssue.None,
             (state.Flags & 2) != 0, (state.Flags & 1) != 0));
     }
     public void RenewAuthority()

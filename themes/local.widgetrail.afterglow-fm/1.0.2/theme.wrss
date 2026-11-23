@@ -1,0 +1,52 @@
+/* Afterglow FM. The shell stays nocturnal; interactive surfaces pick up the sunset. */
+:root {
+  --canvas: #22172f;
+  --canvas-veil: rgba(31, 18, 44, .72);
+  --surface: #45284e;
+  --surface-raised: #54365e;
+  --modal-surface: #46284f;
+  --surface-subtle: #53324f;
+  --surface-muted: #422d48;
+  --surface-active: #7e385e;
+  --border: #8f688e;
+  --border-strong: #da93b5;
+  --text: #fff6f6;
+  --text-muted: #f0d7e7;
+  --text-subdued: #d8b8cc;
+  --accent: #ff9fc3;
+  --focus: #ffdcad;
+  --focus-highlight: #ff90c7;
+  --controller-glyph-color: #ffe7ed;
+  --scrollbar-track: #462b50;
+  --scrollbar-thumb: #d9a7c8;
+  --scrim: rgba(30, 14, 35, .74);
+  --poster-scrim: rgba(38, 21, 48, .94);
+  --success: #ace6c1;
+  --info: #b5eaff;
+  --warning: #ffe07a;
+  --danger: #ffac9c;
+  --error: var(--danger);
+  --data-red: #ffacac;
+  --data-blue: #b5eaff;
+  --data-green: #ace6c1;
+  --data-gold: #ffe0a7;
+  --data-purple: #dac3ff;
+  --data-orange: #ffc19a;
+  --depth-highlight: rgba(255, 197, 223, .14);
+  --depth-shadow: rgba(26, 9, 41, .42);
+}
+.wrail-navigation-shell__compact, .wrail-segmented-tabs { background: #71395e; }
+.wrail-navigation-shell__item--selected, .wrail-segmented-tabs__tab--selected {
+  background: #ffe2ed; color: #381c3a; border-color: #ffe2ed;
+}
+.wrail-navigation-shell__item--selected:focused, .wrail-segmented-tabs__tab--selected:focused {
+  outline-color: #381c3a; outline-offset: -3px; outline-width: 2px;
+}
+.wrail-action-surface:focused { background: #613657; outline-color: var(--focus); }
+
+tray-item:selected {
+  background: #773354; color: #fff6f6; border-color: #da93b5;
+}
+tray-item:selected:focused {
+  outline-color: var(--focus); outline-offset: -2px; outline-width: 2px;
+}

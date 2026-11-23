@@ -6,7 +6,11 @@ internal sealed record PlayniteAchievementGame(string Id, string Name, string So
     internal double Completion => Total == 0 ? 0 : (double)Unlocked / Total;
 }
 internal sealed record PlayniteRecentAchievement(string GameId, string GameName, string AchievementId,
-    string Name, DateTimeOffset UnlockedAt, double? Percent);
+    string Name, DateTimeOffset UnlockedAt, double? Percent)
+{
+    public string? Description { get; init; }
+    public string? Icon { get; init; }
+}
 internal sealed record PlayniteAchievementOverview(string Availability, string? ConnectionId, string Revision,
     DateTimeOffset? ObservedAt, IReadOnlyList<PlayniteAchievementGame> Games, IReadOnlyList<PlayniteRecentAchievement> Recent)
 {

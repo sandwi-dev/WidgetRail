@@ -94,6 +94,41 @@ internal static class LinkedRecycleTests
         Check(batch.Results[0].ErrorCode is null&&batch.Results[1].ErrorCode=="cancelled"&&!File.Exists(f.Path("second.png"))&&File.Exists(f.Path("third.png")),
             "Cancellation forgot a committed OS recycle or processed later items");
     }
+    internal static async Task SlowLargeBatchOverPipe()
+    {
+        using var fixture = new Fixture();
+        var items = new List<CaptureLibraryItem>();
+        for (var i = 0; i < 150; i++) items.Add(await fixture.Add($"batch-{i}.png"));
+        var move = fixture.Store.LinkedOriginalRecycler!;
+        fixture.Store.LinkedOriginalRecycler = async (path, current, token) =>
+        {
+            await Task.Delay(12, token);
+            return await move(path, current, token);
+        };
+        var capability = PlatformCapabilities.CaptureLibraryRecycleLinkedV1;
+        var consent = new ConsentStore(System.IO.Path.Combine(fixture.Root, "consent"));
+        await consent.SetDecisionAsync(Caller, capability, ConsentDecision.Grant);
+        var simulator = new SimulatedPlatformBrokerBackend();
+        await using var backend = new CompositePlatformBrokerBackend(simulator, simulator, captureLibrary: fixture.Store);
+        var pipe = "wrail-bulk-recycle-" + Guid.NewGuid().ToString("N");
+        var options = new BrokerPipeTransportOptions { RequestTimeout = TimeSpan.FromMilliseconds(100) };
+        await using var server = new BrokerPipeServer(pipe, Caller, [capability], consent, backend, options, new string('C', 64));
+        var serving = server.RunAsync();
+        await using var client = new BrokerPipeClient(pipe, Caller, server.ChannelNonce, options);
+        await client.ConnectAsync();
+        server.SetLifecycle(BrokerLifecycleState.Interactive);
+        await GalleryTests.RecycleLinkedSelectionThroughBroker(items, async (request, token) =>
+        {
+            var response = await client.RequestAsync(capability, "capture-library.recycle-linked", request, token);
+            Check(response.Succeeded, $"Recycle request failed: {response.ErrorCode}");
+            return BrokerJson.ParsePayload<CaptureLibraryBatchResult>(response.Payload!.Value);
+        });
+        Check(fixture.Calls == items.Count && !Directory.EnumerateFiles(fixture.Path("")).Any() &&
+            Directory.EnumerateFiles(fixture.Bin("")).Count() == items.Count, "Generated files must each move exactly once");
+        await client.DisposeAsync();
+        await server.DisposeAsync();
+        await serving.WaitAsync(TimeSpan.FromSeconds(3));
+    }
 
     internal static async Task SdkRouting()
     {

@@ -33,6 +33,9 @@ internal sealed class PlayniteLibraryCapturedQuery
     internal string CatalogRevision { get; }
     internal long RetrievedAt { get; }
     internal bool RetainedLastGood { get; }
+    // Supplied only by a provider that can check profile and catalog validity
+    // without taking its I/O gate. Other providers revalidate on tab entry.
+    internal Func<bool>? CanReuseOnTabEntry { get; init; }
 
     /// <summary>Random access to 1–64 rows. Empty queries never require a range read.</summary>
     internal IReadOnlyList<PlayniteLibraryCapturedItem> ReadRange(int start, int count, CancellationToken token = default)

@@ -1,6 +1,9 @@
 namespace WidgetRail.WidgetBridge;
 
-public sealed record BridgeFilePickerPrompt(string RequestId, string WidgetId, string Title, bool Multiple);
+public sealed record BridgeFilePickerPrompt(string RequestId, string WidgetId, string Title, bool Multiple)
+{
+    public string? CommitLabel { get; init; }
+}
 public sealed record BridgeFilePickerTake(BridgeFilePickerPrompt? Prompt);
 public sealed record BridgeFilePickerReference(string RequestId);
 public sealed record BridgeFilePickerCurrent(bool Current);

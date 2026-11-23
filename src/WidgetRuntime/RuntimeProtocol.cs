@@ -59,6 +59,7 @@ internal static class MessageTypes
     public const string DashboardGestureActivationResult = "dashboard-gesture-activation-result";
     public const string Acknowledged = "acknowledged";
     public const string Invalidated = "invalidated";
+    public const string TrayWorkTerminal = "tray-work-terminal";
     public const string ActionTerminal = "action-terminal";
     public const string ControllerActionFailed = "controller-action-failed";
     public const string Error = "error";
@@ -84,6 +85,7 @@ internal sealed record HelloAcceptedPayload(bool SupportsActionTerminals = false
 internal sealed record WidgetLifecyclePayload(WidgetLifecycleState State);
 internal sealed record RenderPayload
 {
+    public string? PrepareTrayAction { get; init; }
     public PresentationUpdateCapabilities? UpdateCapabilities { get; init; }
     public long BaseSequence { get; init; }
     public string? PresentationGeneration { get; init; }
@@ -111,7 +113,14 @@ internal sealed record ControllerActionFailurePayload(
     string SourceElementId,
     string Message);
 internal sealed record ErrorPayload(string Code, string Message);
-internal sealed record ControllerInputResultPayload(bool Handled);
+internal sealed record ControllerInputResultPayload(bool Handled)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool WorkPending { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Reason { get; init; }
+}
+internal sealed record TrayWorkTerminalPayload(long Sequence, [property: JsonRequired] TrayActionResult Result);
 internal sealed record IntentDeliveryPayload(long DeliveryId, WidgetIntentRequest Intent, bool Control = false, WidgetIntentFeedback? Feedback = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool Prepare = false);
 internal sealed record IntentCancellationPayload(long DeliveryId);

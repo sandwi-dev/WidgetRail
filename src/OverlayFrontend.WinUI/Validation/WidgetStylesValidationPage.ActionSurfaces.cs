@@ -42,7 +42,7 @@ internal sealed partial class WidgetStylesValidationPage
                 if (fragmentOnly) page.ApplyFragment(frame, root, root.Id); else page.Apply(frame);
                 await Wait(() => Within<TextBlock>(page, "Widget.title")?.ActualWidth > 0);
                 var title = Within<TextBlock>(page, "Widget.title")!;
-                var mark = Within<Border>(page, "Widget.mark")!;
+                var mark = Within<WidgetSpacer>(page, "Widget.mark")!;
                 var origin = title.TransformToVisual(page).TransformPoint(new(0, 0));
                 Check(title.ActualWidth < 240 && origin.X + title.ActualWidth <= page.ActualWidth + 1 && Near(mark.ActualWidth, 56),
                     $"{(fragmentOnly ? "indexed" : "ordinary")} horizontal action surface gives its growing content a finite native width");
@@ -73,16 +73,16 @@ internal sealed partial class WidgetStylesValidationPage
         try
         {
             responsivePage.Apply(CreateFrame(root with { Children = (ViewNode[])[root.Children[0] with { VisibleWhen = ResponsiveVisibility.ExpandedOnly }, root.Children[1]] }, styles));
-            await Wait(() => Within<Border>(responsivePage, "Widget.mark")?.Visibility == Visibility.Visible &&
+            await Wait(() => Within<WidgetSpacer>(responsivePage, "Widget.mark")?.Visibility == Visibility.Visible &&
                 Within<TextBlock>(responsivePage, "Widget.title")?.ActualWidth > 0);
             var title = Within<TextBlock>(responsivePage, "Widget.title")!;
             var expandedWidth = title.ActualWidth;
             responsivePage.Width = 800;
-            await Wait(() => Within<Border>(responsivePage, "Widget.mark")?.Visibility == Visibility.Collapsed && title.ActualWidth > expandedWidth + 50);
+            await Wait(() => Within<WidgetSpacer>(responsivePage, "Widget.mark")?.Visibility == Visibility.Collapsed && title.ActualWidth > expandedWidth + 50);
             Check(title.ActualWidth > expandedWidth + 50,
                 "resizing an ordinary action surface removes hidden child tracks and their gaps");
             responsivePage.Width = 1020;
-            await Wait(() => Within<Border>(responsivePage, "Widget.mark")?.Visibility == Visibility.Visible && Near(title.ActualWidth, expandedWidth));
+            await Wait(() => Within<WidgetSpacer>(responsivePage, "Widget.mark")?.Visibility == Visibility.Visible && Near(title.ActualWidth, expandedWidth));
             Check(Near(title.ActualWidth, expandedWidth), "expanding restores the same constrained action surface layout");
         }
         finally { host.Children.Remove(responsivePage); await responsivePage.DisposeAsync(); }

@@ -43,6 +43,17 @@ public sealed partial class CaptureLibraryWidget
             },
         });
 
+    private void GallerySelectionChanged(object? sender,EventArgs args)
+    {
+        lock(galleryGate)
+        {
+            var selecting=gallery.Selection!.IsActive;
+            if(galleryQuery.Selecting==selecting)return;
+            galleryQuery=galleryQuery with{Selecting=selecting};
+            gallery.UpdateContent(galleryQuery);
+        }
+    }
+
     private void WatchLibrary()
     {
         Operations.RunLatest("capture-library.changes", async context =>
@@ -65,7 +76,11 @@ public sealed partial class CaptureLibraryWidget
         }, WidgetOperationLifetime.Active);
     }
 
-    private void QueueGalleryRefresh() => StartGalleryRefresh();
+    private void QueueGalleryRefresh()
+    {
+        // The batch owns its immutable references and reconciles once on exit.
+        if (Volatile.Read(ref pendingBatch) is not { Started: true }) StartGalleryRefresh();
+    }
 
     private WidgetOperationHandle StartGalleryRefresh() => Operations.RunLatest("capture-library.query", async context =>
     {
@@ -219,7 +234,7 @@ public sealed partial class CaptureLibraryWidget
         await ReleaseAsync(model.Value, token);
         model.Update(s => s with { Preview = null, Detail = true, SelectedId = item.Id, Navigation = WidgetNavigationOperation.Forward });
         var media = await HostServices.CaptureLibrary.OpenAsync(item.Id, cancellationToken: token);
-        model.Update(s => s with { Preview = media, FromLibrary = true });
+        model.Update(s => s with { Preview = media });
     });
 
     private void DeleteSelectedCapture(State state, string id,bool recycleLinkedOriginal=false)
@@ -230,7 +245,7 @@ public sealed partial class CaptureLibraryWidget
         {
             await RequirePermissionsAsync([recycleLinkedOriginal?WidgetCaptureLibraryCapabilities.RecycleLinkedPermission:WidgetCaptureLibraryCapabilities.ManagePermission], token);
             token.ThrowIfCancellationRequested();
-            model.Update(s => s with { Preview = null, FromLibrary = false, Detail = true });
+            model.Update(s => s with { Preview = null, Detail = true });
             await ReleaseAsync(state, token);
             try
             {
@@ -257,7 +272,7 @@ public sealed partial class CaptureLibraryWidget
                     if (current.Available && current.Revision == selected.Revision && current.MetadataRevision == selected.MetadataRevision)
                     {
                         var reopened = await HostServices.CaptureLibrary.OpenAsync(id,cancellationToken:token);
-                        token.ThrowIfCancellationRequested(); model.Update(s => s with { Preview = reopened, FromLibrary = true });
+                        token.ThrowIfCancellationRequested(); model.Update(s => s with { Preview = reopened });
                     }
                 }
                 catch (WidgetCapabilityException) { }
@@ -282,7 +297,7 @@ public sealed partial class CaptureLibraryWidget
             token.ThrowIfCancellationRequested();
             await ReleaseAsync(state, token);
             galleryNavigation.Back(); selectedCapture = null; galleryReturn = null;
-            model.Update(value => value with { Preview = null, Detail = false, SelectedId = null, FromLibrary = false,
+            model.Update(value => value with { Preview = null, Detail = false, SelectedId = null,
                 Navigation = WidgetNavigationOperation.Back });
             await RefreshGalleryAsync(token);
             UpdateFeedback(value => value with { Message = "Capture unhidden." });
@@ -339,7 +354,7 @@ public sealed partial class CaptureLibraryWidget
                 selectedCapture = next;
                 galleryReturn = null;
                 contexts = null; contextError = null; showContexts = false;
-                model.Update(s => s with { Preview = unclaimed, Detail = true, SelectedId = next.Id, FromLibrary = true });
+                model.Update(s => s with { Preview = unclaimed, Detail = true, SelectedId = next.Id });
                 unclaimed = null;
             }
             // Retire only the old, now unpublished lease. A failed open leaves
@@ -388,8 +403,7 @@ public sealed partial class CaptureLibraryWidget
         var card = UI.ActionSurface("capture-library.open-item", context.Id("capture"), spoken, query.Details ? ActionSurfaceOrientation.Horizontal : ActionSurfaceOrientation.Vertical,
             thumbnail, UI.Stack(context.Id("copy"),copy.ToArray()).Classes("capture-entry-copy"))
             .ContextAction("capture-library.item.favorite", item.IsFavorite ? "Remove favorite" : "Favorite", disabled: query.Selecting)
-            .ContextMenuShortcut(ControllerButton.Menu)
-            .Classes("capture-entry", query.Details ? "capture-detail-row" : "capture-grid-card");
+            .Classes("capture-entry", query.Details ? "capture-detail-row" : "capture-grid-card") with { NativeContextMenuOnly = true };
         if(!query.Details)card=card.FocusVisualTarget(context.Id("thumbnail-stage"));
         if (!item.Available || query.Selecting || !query.ClipPreviews) return card;
         return card.PresentOnFocus(UI.Stack(context.Id("clip-preview"),
@@ -469,17 +483,22 @@ public sealed partial class CaptureLibraryWidget
             yield return UI.Text("Use Search to narrow the application list.", "capture-library.applications.more").Classes("capture-help");
         if (selection.IsActive && selection.Count > 0)
         {
-            yield return UI.ResponsiveGrid("capture-library.selection.actions",180,4,
+            yield return UI.HorizontalScroll("capture-library.selection.actions",
                 ShareSelectionButton(state),
+                AssociateSelectedButton(state),
                 UI.Button("Favorite", "capture-library.batch.favorite", "capture-library.batch.favorite").Disabled(selection.Count==0).Busy(state.Busy),
                 UI.Button("Save copies", "capture-library.batch.copy", "capture-library.batch.copy").Disabled(selection.Count==0).Busy(state.Busy),
-                UI.Button(filter.HiddenOnly ? "Unhide" : "Remove…", filter.HiddenOnly ? "capture-library.batch.unhide" : "capture-library.batch.recycle",
-                    "capture-library.batch.recycle").Disabled(selection.Count==0).Busy(state.Busy));
+                UI.Button(filter.HiddenOnly ? "Unhide" : "Hide…", filter.HiddenOnly ? "capture-library.batch.unhide" : "capture-library.batch.hide",
+                    "capture-library.batch.hide").Busy(state.Busy),
+                UI.Button("Delete…", "capture-library.batch.recycle", "capture-library.batch.recycle")
+                    .Busy(state.Busy).Classes("capture-delete")).Classes("capture-selection-actions");
             if (selection.Count > MaximumSharedCaptures)
                 yield return UI.Text("Share up to 10 captures at a time.", "capture-library.share.limit").Classes("capture-help");
+            if (selection.Count > 64)
+                yield return UI.Text("Link up to 64 captures to a game at a time.", "capture-library.associate.limit").Classes("capture-help");
         }
-        if (selection.IsActive && (gallery.Descriptor.Count > 256 || selection.LimitReached))
-            yield return UI.Text("Select up to 256 captures per batch. Narrow the filters to select all matching captures.", "capture-library.selection.limit").Classes("capture-help");
+        if (selection.IsActive && (gallery.Descriptor.Count > IndexedCollectionSelection.MaximumItems || selection.LimitReached))
+            yield return UI.Text($"Select up to {IndexedCollectionSelection.MaximumItems} captures per batch.", "capture-library.selection.limit").Classes("capture-help");
         if (state.Page?.TotalCount == 0)
             yield return UI.Text(filter == new CaptureLibraryQuery() ? "Your saved screenshots and clips will appear here." : "No captures match these filters.", "capture-library.empty").Classes("capture-empty");
         else if (state.Page is not null)
@@ -586,14 +605,15 @@ public sealed partial class CaptureLibraryWidget
                     Invalidate(); return true;
                 case "capture-library.selection.toggle":
                     if(gallery.Selection!.IsActive)gallery.EndSelection();else gallery.BeginSelection();
-                    galleryQuery = galleryQuery with { Selecting = gallery.Selection.IsActive };
-                    gallery.UpdateContent(galleryQuery); return true;
-                case "capture-library.selection.all": gallery.SelectAll();return true;
+                    return true;
+                case "capture-library.selection.all" when gallery.Selection?.IsActive == true: gallery.SelectAll();return true;
+                case "capture-library.selection.first" when gallery.Selection?.IsActive == true: gallery.SelectFirst(IndexedCollectionSelection.MaximumItems);return true;
                 case "capture-library.selection.clear": gallery.ClearSelection();return true;
                 case "capture-library.batch.favorite": PrepareBatch("favorite");return true;
                 case "capture-library.batch.unfavorite": PrepareBatch("unfavorite");return true;
                 case "capture-library.batch.unhide": if (galleryQuery.Filter.HiddenOnly) PrepareBatch("unhide");return true;
                 case "capture-library.batch.recycle": PrepareBatch("recycle");return true;
+                case "capture-library.batch.hide": if (!galleryQuery.Filter.HiddenOnly) PrepareBatch("hide");return true;
                 case "capture-library.batch.copy": PrepareBatch("copy");return true;
             }
             var filter = galleryQuery.Filter;

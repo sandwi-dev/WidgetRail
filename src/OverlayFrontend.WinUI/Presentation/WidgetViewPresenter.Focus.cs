@@ -124,7 +124,7 @@ internal sealed partial class WidgetViewPresenter
         UpdateNativeNeighbors();
         if (snapshot.FocusGroupEntryRequest is not { } request)
         {
-            if (declaredGroupRequest is not null) CancelGroupEntry();
+            if (declaredGroupRequest is {} withdrawn) WithdrawGroupEntry(withdrawn);
             declaredGroupRequest = null;
             return;
         }
@@ -159,6 +159,20 @@ internal sealed partial class WidgetViewPresenter
             if (binding.Element is WidgetIndexedCollectionView collection) collection.CancelEntry();
     }
 
+    private void WithdrawGroupEntry(long requestId)
+    {
+        // A completed request may remain in repeated widget snapshots. Its
+        // withdrawal retires only work it still owns, never a later native entry
+        // or another navigation-return viewport.
+        if(pendingGroupEntry?.RequestId==requestId){CancelGroupEntry();return;}
+        foreach(var binding in bindings.Values)
+            if(binding.Element is WidgetIndexedCollectionView collection)collection.CancelEntry(requestId);
+        if(suspendedCollectionReturn?.Request.RequestId==requestId)suspendedCollectionReturn=null;
+        foreach(var pending in pendingIndexedViewports.Where(item=>item.ReturnIntent?.RequestId==requestId).ToArray())
+        {ReleaseViewport(pending);pendingIndexedViewports.Remove(pending);}
+        if(!HasPendingMemoryRestore)CancelMemoryRestoration();
+    }
+
     private void RememberCollectionFocus(WidgetElementIdentity identity, IndexedCollectionFocusTarget item)
     {
         var key = new CollectionMemoryKey(identity, item.SourceId, item.QueryGeneration);
@@ -170,7 +184,7 @@ internal sealed partial class WidgetViewPresenter
         TraceFocus("remember-item");
     }
 
-    private bool FocusBinding(Binding binding,FocusNavigationDirection direction=FocusNavigationDirection.None,FrameworkElement? directionalOrigin=null)
+    private bool FocusBinding(Binding binding,FocusNavigationDirection direction=FocusNavigationDirection.None,FrameworkElement? directionalOrigin=null,long? requestId=null)
     {
         if (binding.Element is WidgetIndexedCollectionView collection)
         {
@@ -178,7 +192,9 @@ internal sealed partial class WidgetViewPresenter
                 return collection.EnterVisibleEdge(direction,directionalOrigin);
             var query = declarations[binding.Identity.Id].Node.IndexedCollection!;
             collectionMemory.TryGetValue(new(binding.Identity, query.SourceId, query.QueryGeneration), out var target);
-            return collection.Enter(target, allowFallback: true);
+            if(requestId is null && declarations[binding.Identity.Id].Node.IndexedPreferredEntryKey is {} preferred)
+                return collection.EnterPreferred(preferred,target,direction);
+            return collection.Enter(target, allowFallback: true,requestId:requestId,direction:direction);
         }
         return binding.Element is Control control && control.Focus(FocusState.Keyboard);
     }
@@ -243,19 +259,21 @@ internal sealed partial class WidgetViewPresenter
             // target is consumed so enabling it on a later refresh cannot steal focus.
             pendingGroupEntry = null;
             if (!bindings.TryGetValue(exact.Id, out var target) || target.Identity != exact ||
-                !IsDescendant(exact.Id, group.Identity.Id) || !Navigable(target) || !FocusBinding(target)) return false;
+                !IsDescendant(exact.Id, group.Identity.Id) || !Navigable(target) || !FocusBinding(target,requestId:entry.RequestId)) return false;
         }
         else if (group.Element is WidgetIndexedCollectionView collection)
         {
             if (entry.IndexedItem is { } item)
             {
-                if (collection.Enter(item) && entry.RestoreViewport) RestoreReturnViewport(entry.RequestId, group.Identity, item);
+                if (collection.Enter(item,requestId:entry.RequestId,
+                    preserveViewport:entry.RestoreViewport && HasReturnViewport(group.Identity, item)) && entry.RestoreViewport)
+                    RestoreReturnViewport(entry.RequestId, group.Identity, item);
             }
-            else FocusBinding(group);
+            else FocusBinding(group,requestId:entry.RequestId);
             // Even a stale exact target is consumed. It must not fall through
             // to unrelated initial focus or replay on a later content update.
         }
-        else if (GroupTarget(group) is not { } target || !FocusBinding(target)) return false;
+        else if (GroupTarget(group) is not { } target || !FocusBinding(target,requestId:entry.RequestId)) return false;
         pendingGroupEntry = null;
         needsEntry = false;
         pendingEntryRestore = null;
@@ -266,12 +284,25 @@ internal sealed partial class WidgetViewPresenter
     private void OnGettingFocus(UIElement sender, GettingFocusEventArgs args)
     {
         TraceNativeFocusArrival(args);
+        artworkFocusTarget = null;
+        if (!applying && args.FocusState == FocusState.Keyboard && args.NewFocusedElement is { } destination)
+        {
+            var indexedMove = (FindBinding(destination)?.Element as WidgetIndexedCollectionView)?.CommittingDirection;
+            artworkFocusDirection = indexedMove is { } move && move != FocusNavigationDirection.None ? move :
+                routingDirection != FocusNavigationDirection.None ? routingDirection : args.Direction;
+            if (artworkFocusDirection != FocusNavigationDirection.None) artworkFocusTarget = new(destination);
+        }
         if (previewOwner is { } owner && !owner.previewEntered && FindBinding(args.NewFocusedElement) is not null)
         {
             if (args.FocusState is not (FocusState.Pointer or FocusState.Programmatic) || !owner.EnterFocusPreview(focusFirst: false)) { args.TryCancel(); return; }
         }
         if (RejectInactiveFocus(args)) return;
         if (RedirectCompletedKeyboardRecovery(args)) return;
+        if (!applying && !redirectingGroupFocus && IndexedActionDispatch is null && args.FocusState != FocusState.Pointer &&
+            FindBinding(args.NewFocusedElement) is { } reading && declarations[reading.Identity.Id].Node.IsReadingGroup &&
+            ReferenceEquals(reading.Element, args.NewFocusedElement) &&
+            (FindBinding(args.OldFocusedElement) is not { } oldReading || !IsDescendant(oldReading.Identity.Id, reading.Identity.Id)) &&
+            ReadingEntry(reading) is { } inline && args.TrySetNewFocusedElement(inline.Element)) return;
         if (!applying) ObserveReturnFocusDeparture(args);
         if (!applying && !redirectingGroupFocus && args.Direction != FocusNavigationDirection.None) CancelGroupEntry();
         // Pointer focus and explicit programmatic focus retain their exact target.

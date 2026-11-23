@@ -63,7 +63,7 @@ internal sealed record YouTubePlaybackRequest(
     string? VideoId = null,
     long? SearchRevision = null,
     IndexedCollectionFocusTarget? ReturnCollectionItem = null,
-    double? StartTimeSeconds = null);
+    double? StartTimeSeconds = null, string? TrayTarget = null, string? VideoTitle = null);
 
 /// <summary>
 /// One admitted setup mutation. The secret travels with the request and its
@@ -106,6 +106,7 @@ internal sealed record YouTubePlaybackState
 
     public string Link { get; init; } = string.Empty;
     public string? VideoId { get; init; }
+    public string? VideoTitle { get; init; }
     public string? ValidationError { get; init; }
     public string? PlaybackError { get; init; }
     public EmbeddedMediaPlaybackState State { get; init; } = EmbeddedMediaPlaybackState.Ready;
@@ -216,6 +217,7 @@ internal sealed record YouTubePlaybackState
         {
             ValidationError = null,
             VideoId = videoId,
+            VideoTitle = VideoId == videoId ? VideoTitle : null,
             Position = 0,
             Duration = 0,
         }).WithQueuedCommand(sequence, EmbeddedMediaPlaybackCommandKind.Load, videoId, volume: PreferredVolume);
@@ -227,6 +229,7 @@ internal sealed record YouTubePlaybackState
         {
             Link = "https://www.youtube.com/watch?v=" + videoId,
             VideoId = videoId,
+            VideoTitle = null,
             ValidationError = null,
             PlaybackError = null,
             SeekBufferingSemantic = null,
@@ -573,12 +576,12 @@ internal sealed record YouTubeWidgetState
         string videoId,
         long sequence,
         string playerFocusGroupId,
-        IndexedCollectionFocusTarget? returnCollectionItem = null, long focusRequestId = 0)
+        IndexedCollectionFocusTarget? returnCollectionItem = null, long focusRequestId = 0, string? videoTitle = null)
     {
         var selected = this with
         {
             Search = Search with { ReturnFocusId = returnFocusId, ReturnCollectionItem = returnCollectionItem },
-            Playback = Playback.WithSelectedVideo(videoId, sequence),
+            Playback = Playback.WithSelectedVideo(videoId, sequence) with { VideoTitle = videoTitle },
         };
         return selected.WithRootSection(
             YouTubeRootSection.Player, playerFocusGroupId, focusRequestId);

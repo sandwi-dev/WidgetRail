@@ -295,14 +295,20 @@ public sealed partial class MainWindow
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-task-cycle") is { } taskCycle &&
             Shell.FrontendArguments.Value(arguments, "--task-cycle-targets") is { } cycleTargets)
             EnableTaskCycleValidation(page, taskCycle, cycleTargets);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-banner-stack") is { } bannerResult)
+            page.EnableBannerStackValidation(bannerResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-host-utilities") is { } utilitiesResult)
             page.EnableHostUtilitiesValidation(utilitiesResult);
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-home-notification") is { } homeNotificationResult)
+            page.EnableHomeNotificationValidation(homeNotificationResult);
         if (Shell.FrontendArguments.Value(arguments, "--capture-interaction-diagnostics") is { } captureDiagnostics)
             page.EnableCaptureInteractionDiagnostics(captureDiagnostics);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-capture-gallery") is { } captureGallery)
             page.EnableCaptureGalleryValidation(captureGallery);
         if (Shell.FrontendArguments.Value(arguments, "--discord-messaging-probe") is { } messagingProbe)
             page.EnableDiscordMessagingProbe(messagingProbe);
+        if (Shell.FrontendArguments.Value(arguments, "--discord-poster-probe") is { } posterProbe)
+            page.EnableDiscordPosterProbe(posterProbe);
         if (Shell.FrontendArguments.Value(arguments, "--navigation-cache-memory-output") is { } cacheMemoryOutput)
             page.EnableCacheMemoryValidation(cacheMemoryOutput);
         if(arguments.Contains("--shell-no-controller")&&Shell.FrontendArguments.Value(arguments,"--validate-pob-tree") is {} treeProbe)
@@ -362,9 +368,9 @@ public sealed partial class MainWindow
         }
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-f1") is { } f1Result)
             EnableKeyboardShortcutValidation(page, f1Result);
-        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-replay-ui") is { } replayUi &&
+        if (arguments.Contains("--shell-no-controller") &&
             Shell.FrontendArguments.Value(arguments, "--replay-fixture-target") is { } replayTarget)
-            EnableReplayUiValidation(page, replayUi, replayTarget);
+            EnableReplayUiValidation(page, Shell.FrontendArguments.Value(arguments, "--validate-replay-ui"), replayTarget);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-overlay-motion") is { } overlayMotionResult)
             EnableOverlayMotionValidation(page, overlayMotionResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-task-activation") is { } taskResult &&
@@ -431,6 +437,8 @@ public sealed partial class MainWindow
             page.EnableDiscordNavigationValidation(discordNavigationResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-messages") is { } discordMessagesResult)
             page.EnableDiscordMessagesValidation(discordMessagesResult,arguments.Contains("--discord-messages-composer-only",StringComparer.Ordinal));
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--measure-playnite-library") is { } playniteResult)
+            page.EnablePlayniteLibraryMeasurement(playniteResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-capture-batch-share") is { } captureBatchShareResult)
             page.EnableCaptureBatchShareValidation(captureBatchShareResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-discord-audio") is { } discordAudioResult)

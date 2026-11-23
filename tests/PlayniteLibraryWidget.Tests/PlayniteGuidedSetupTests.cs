@@ -9,6 +9,95 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed partial class PlayniteLibraryTests
 {
     [TestMethod]
+    public async Task SettingsChecksAddonsAndSharesCardChoicesWithoutARunningGame()
+    {
+        var setup = new SetupFixture { MissingAddons = PlayniteOptionalAddon.GameActivity };
+        var host = new FakeHost(1);
+        var services = host.Services();
+        var widget = WidgetTestHost.Attach(new LauncherWidget(new TestApplicationService(services, host),
+            new FakeConnectionClient(), setupService: setup), services);
+        await Interactive(widget);
+        try
+        {
+            await Ready(widget, host);
+            await widget.OnActionAsync(new(LauncherWidget.SettingsOpen, "playnite-library.library.menu"));
+            await WaitFor(() => widget.RenderState.Value.Setup.Connected, "connected profile");
+            ViewNode Node(string id) => Nodes(Snapshot(widget, 1).Root).Single(node => node.Id == id);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(Snapshot(widget, 1)).Count);
+            Assert.AreEqual("Installed", Node("playnite.settings.achievements.status").Text);
+            Assert.AreEqual("Missing", Node("playnite.settings.sessions.status").Text);
+            var install = Node("playnite.settings.sessions.installer.install");
+            await widget.OnActionAsync(new(install.ActionId!, install.Id));
+            Assert.AreEqual(PlayniteOptionalAddon.GameActivity, setup.RequestedAddon);
+            // Playnite owns consent. Returning without installing must still
+            // offer Install, and losing the connection must suppress that offer.
+            var check = Node("playnite.settings.check");
+            await widget.OnActionAsync(new(check.ActionId!, check.Id));
+            Assert.AreEqual("Missing", Node("playnite.settings.sessions.status").Text);
+            setup.Stopped = true;
+            await widget.OnActionAsync(new(check.ActionId!, check.Id));
+            await WaitFor(() => !widget.RenderState.Value.Setup.Connected, "disconnected profile");
+            Assert.AreEqual("Status unavailable", Node("playnite.settings.achievements.status").Text);
+            Assert.AreEqual("Status unavailable", Node("playnite.settings.sessions.status").Text);
+            Assert.IsFalse(Nodes(Snapshot(widget, 1).Root).Any(n => n.Id == install.Id));
+            setup.Stopped = false;
+            var row = Node("playnite.card-preferences.row.Details");
+            await widget.OnActionAsync(new(row.ActionId!, row.Id));
+            Assert.AreEqual("playnite.card-preferences.on.Details", Node(row.Id).ActionId);
+            setup.MissingAddons = PlayniteOptionalAddon.None;
+            await widget.OnActionAsync(new(check.ActionId!, check.Id));
+            await WaitFor(() => Node("playnite.settings.sessions.status").Text == "Installed", "external installation");
+            Assert.IsFalse(Nodes(Snapshot(widget, 1).Root).Any(n => n.Id == install.Id));
+            var back = Node("playnite.settings.back");
+            await widget.OnActionAsync(new(back.ActionId!, back.Id, InputScopeId: Snapshot(widget, 1).ActiveInputScopeId));
+            Assert.IsTrue(Nodes(Snapshot(widget, 1).Root).Any(n => n.Id == "playnite-library.home.actions"));
+        }
+        finally { await Background(widget); }
+    }
+
+    [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task OptionalAddonButtonDispatchesOnlyForAConnectedProfileMissingThatAddon(bool achievements)
+    {
+        var addon = achievements ? PlayniteOptionalAddon.Achievements : PlayniteOptionalAddon.GameActivity;
+        var setup = new SetupFixture { MissingAddons = addon };
+        var host = new FakeHost(1);
+        var services = host.Services();
+        var app = new TestApplicationService(services, host);
+        app.OverviewHandler = _ => ValueTask.FromResult(PlayniteAchievementOverview.Unavailable with { Availability = "missing" });
+        var widget = WidgetTestHost.Attach(new LauncherWidget(app,
+            new FakeConnectionClient(), setupService: setup), services);
+        await Interactive(widget);
+        try
+        {
+            await WaitFor(() => widget.RenderState.Value.Setup.Connected, "connected optional add-on catalogue");
+            var state = widget.RenderState.Value.Setup;
+            var element = LauncherWidget.MissingAddon(state, addon, "fixture.addon");
+            Assert.IsNotNull(element);
+            var button = new WidgetView(element).CreateSnapshot("fixture", 1).Root;
+            Assert.AreEqual(achievements ? "Install Playnite Achievements" : "Install GameActivity", button.Text);
+            if (achievements)
+            {
+                await Ready(widget, host);
+                await widget.OnActionAsync(new(PlayniteLibraryActions.AchievementsOpen, "navigation"));
+                await PrivateField<WidgetResource<PlayniteAchievementOverview>>(widget, "achievementHub").WhenIdleAsync();
+                var snapshot = Snapshot(widget, 175_010);
+                Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+                button = Nodes(snapshot.Root).Single(node => node.Id == snapshot.InitialFocusId);
+                Assert.AreEqual("Install Playnite Achievements", button.Text);
+            }
+            Assert.IsNull(LauncherWidget.MissingAddon(state with { Connected = false }, addon, "fixture.addon"));
+            Assert.IsNull(LauncherWidget.MissingAddon(state, achievements ? PlayniteOptionalAddon.GameActivity :
+                PlayniteOptionalAddon.Achievements, "fixture.other"));
+            Assert.AreEqual(PlayniteOptionalAddon.None, setup.RequestedAddon);
+            await widget.OnActionAsync(new(button.ActionId!, button.Id));
+            Assert.AreEqual(addon, setup.RequestedAddon);
+            StringAssert.Contains(widget.RenderState.Value.Setup.AddonMessage!, "Playnite");
+        }
+        finally { await Background(widget); }
+    }
+    [TestMethod]
     public async Task InspectionFailureShowsReachableSettingsInsteadOfSilentlySkippingSetup()
     {
         var host = new FakeHost(1);
@@ -303,9 +392,13 @@ public sealed partial class PlayniteLibraryTests
 
     private sealed class SetupFixture : IPlayniteSetupService
     {
+        internal PlayniteOptionalAddon MissingAddons;
+        internal PlayniteOptionalAddon RequestedAddon;
+        public ValueTask OpenAddonInstallerAsync(PlayniteSetupInstallation installation, PlayniteOptionalAddon addon, CancellationToken token)
+        { RequestedAddon = addon; return ValueTask.CompletedTask; }
         internal readonly PlayniteSetupInstallation Installation = new("fixture", @"C:\Games\Playnite", @"D:\Profiles\Playnite", "Playnite profile", false, false);
         internal PlayniteSetupPlan Plan => new(Installation with { Running = Running }, Stopped && !MissingIntegration ? PlayniteSetupAction.Start : PlayniteSetupAction.Install,
-            "Connect Playnite", "Install integration and connect.", null, null, null);
+            "Connect Playnite", "Install integration and connect.", null, null, null) { MissingAddons = MissingAddons };
         internal bool Running;
         internal bool MissingIntegration;
         internal bool InspectionFailure;

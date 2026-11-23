@@ -362,7 +362,7 @@ internal sealed class InstalledPackageLaunchLease : IDisposable
     private static SafeFileHandle OpenPinnedHandle(string path, bool expectDirectory)
     {
         var handle = CreateFile(
-            path,
+            WidgetRail.Shared.WindowsHandlePath.ForCreateFile(path),
             GenericRead,
             (uint)FileShare.Read,
             IntPtr.Zero,

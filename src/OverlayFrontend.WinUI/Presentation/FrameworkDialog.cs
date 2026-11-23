@@ -10,6 +10,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 /// </summary>
 internal abstract partial class FrameworkDialog : ContentDialog
 {
+    internal virtual bool PositionsOwnPopup => false;
     internal FrameworkElement? DialogTemplatePart(string name) => GetTemplateChild(name) as FrameworkElement;
     internal event Action? DialogTemplateChanged;
     protected override void OnApplyTemplate()

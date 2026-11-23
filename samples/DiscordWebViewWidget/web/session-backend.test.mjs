@@ -17,6 +17,26 @@ function fixture(count=1000){
   vm.runInNewContext(source,context);
   return {state,calls,context,enableNativeCapture(){context.WidgetRailNativeMedia={start(){return true;}};},invoke:(method,payload={owner},signal=new AbortController().signal)=>handler(method,payload,{signal})};
 }
+test('private call commands retain exact invitation, previous call and command identity',async()=>{
+    const f=fixture(0),args={account:'1',channelId:'20',previousChannelId:null,invitationId:'b'.repeat(32),commandId:'c'.repeat(32)};
+    for(const method of ['callStart','callAnswer','callDecline']){
+        await f.invoke('command',{owner,method,args});assert.equal(f.calls.at(-1).method,method);assert.equal(f.calls.at(-1).args,args);
+    }
+    f.state.calls={incoming:Array(9).fill({}),activeChannels:[]};
+    await assert.rejects(f.invoke('snapshot'),/Invalid private call state/);
+});
+test('startup state is bounded and must agree with readiness',async()=>{
+ const f=fixture();
+ for(const connectionState of ['initializing','signed-out','reconnecting','unavailable','ready']){
+  f.state.connectionState=connectionState;f.state.ready=connectionState==='ready';
+  assert.equal((await f.invoke('snapshot')).context.connectionState,connectionState);
+ }
+ f.state.connectionState='signed-out';f.state.ready=true;
+ await assert.rejects(f.invoke('snapshot'),/Invalid connection state/);
+ f.state.connectionState='unknown';f.state.ready=false;
+ await assert.rejects(f.invoke('snapshot'),/Invalid connection state/);
+});
+
 test('complete 1,000-channel catalog uses framework batching and preserves order',async()=>{
   const f=fixture();const status=await f.invoke('snapshot');const result=await f.invoke('channels',{owner,account:'1',channelVersion:status.context.channelVersion});
   assert.equal(result.batched,true);assert.equal(result.items.length,1000);assert.equal(result.items[999].id,'1000');

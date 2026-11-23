@@ -8,6 +8,7 @@ internal enum BridgeRequestKind
 {
     ListWidgets,
     GetPlatformAppearance,
+    PreviewCatalogueTheme,
     ControllerControl,
     ApplicationControl,
     CompleteTaskActivation,
@@ -166,14 +167,17 @@ internal static class BridgeRequestClassifier
                 BridgeMessageTypes.TakeWebSessions or BridgeMessageTypes.CompleteWebSession or BridgeMessageTypes.WebSessionMessages or BridgeMessageTypes.CheckWebSessionView => BridgeRequestKey.Global(BridgeRequestKind.WebSessions),
                 BridgeMessageTypes.CompleteTaskActivation => TaskActivation(request.Payload),
                 BridgeMessageTypes.ActivateHostTaskWindow => HostTaskActivation(request.Payload),
-                BridgeMessageTypes.ListWidgets => Empty(
-                    request.Payload, BridgeRequestKind.ListWidgets),
+                BridgeMessageTypes.ListWidgets => request.Payload.ValueKind == JsonValueKind.Object &&
+                    request.Payload.TryGetProperty("includeIntentHandlers", out var include) &&
+                    include.ValueKind is JsonValueKind.True or JsonValueKind.False && request.Payload.EnumerateObject().Count() == 1
+                    ? BridgeRequestKey.Global(BridgeRequestKind.ListWidgets) : Empty(request.Payload, BridgeRequestKind.ListWidgets),
                 BridgeMessageTypes.GetPlatformAppearance => Appearance(request.Payload),
+                BridgeMessageTypes.PreviewCatalogueTheme => BridgeRequestKey.Global(BridgeRequestKind.PreviewCatalogueTheme),
                 BridgeMessageTypes.ControllerControl => ControllerControl(request.Payload),
                 BridgeMessageTypes.GetReplayStatus or BridgeMessageTypes.TakeReplayWork or BridgeMessageTypes.CheckReplayCommand or BridgeMessageTypes.CompleteReplayCommand or
                     BridgeMessageTypes.SaveReplay or BridgeMessageTypes.StopReplay or BridgeMessageTypes.ReplayPowerState or
                     BridgeMessageTypes.ReleaseMediaPlayer or BridgeMessageTypes.CaptureCapabilities or BridgeMessageTypes.TakeCapture or BridgeMessageTypes.CheckCapture or BridgeMessageTypes.RecordingCapture or
-                    BridgeMessageTypes.CheckCaptureEdit or BridgeMessageTypes.CompleteCaptureEdit or BridgeMessageTypes.CancelCaptureEdit or BridgeMessageTypes.CompleteCapture or BridgeMessageTypes.CompleteCaptureFolder or BridgeMessageTypes.CheckCaptureFolder or BridgeMessageTypes.CompleteCaptureSource or BridgeMessageTypes.CheckCaptureSource or BridgeMessageTypes.CompleteCaptureCopy or BridgeMessageTypes.CheckCaptureCopy or BridgeMessageTypes.ResolveMediaPlayer or BridgeMessageTypes.ResolveCaptureAttachment or BridgeMessageTypes.ResolveProviderDocument => BridgeRequestKey.Global(BridgeRequestKind.Capture),
+                    BridgeMessageTypes.CompleteReplayApproval or BridgeMessageTypes.CheckCaptureEdit or BridgeMessageTypes.CompleteCaptureEdit or BridgeMessageTypes.CancelCaptureEdit or BridgeMessageTypes.CompleteCapture or BridgeMessageTypes.DecideCaptureDestination or BridgeMessageTypes.CompleteCaptureFolder or BridgeMessageTypes.CheckCaptureFolder or BridgeMessageTypes.CompleteCaptureSource or BridgeMessageTypes.CheckCaptureSource or BridgeMessageTypes.CompleteCaptureCopy or BridgeMessageTypes.CheckCaptureCopy or BridgeMessageTypes.ResolveMediaPlayer or BridgeMessageTypes.ResolveCaptureAttachment or BridgeMessageTypes.ResolveProviderDocument => BridgeRequestKey.Global(BridgeRequestKind.Capture),
                 BridgeMessageTypes.TakePermission or BridgeMessageTypes.CheckPermission or BridgeMessageTypes.CompletePermission => BridgeRequestKey.Global(BridgeRequestKind.Permissions),
                 BridgeMessageTypes.TakeFilePicker or BridgeMessageTypes.CheckFilePicker or BridgeMessageTypes.CompleteFilePicker => BridgeRequestKey.Global(BridgeRequestKind.FilePicker),
                 BridgeMessageTypes.WindowPreviewPermissions => WindowPreviewPermissions(request.Payload),

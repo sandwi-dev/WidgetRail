@@ -22,7 +22,7 @@ internal static partial class MessagingTests
                 "Recipient choice during an in-flight send shows a truthful busy state without mutating that send");
             await scenario.Act("discord.messages.cancel-share");await Wait(()=>scenario.Released.Contains(scenario.IncomingFile.Id));
             scenario.Session.SendGate.SetResult();
-            await Wait(()=>scenario.Find("discord.messages.notice")?.Text=="Sent");
+            await scenario.Widget.WaitForMessageSendAsync().WaitAsync(TimeSpan.FromSeconds(5));
             await scenario.Act("discord.conversation.10");
             check(scenario.Session.Sends==1 && scenario.Find("discord.message.draft")?.TextEntryValue=="" &&
                 scenario.Released.Count(id=>id==scenario.IncomingFile.Id)==1,

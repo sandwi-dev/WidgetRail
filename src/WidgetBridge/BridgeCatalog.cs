@@ -41,6 +41,8 @@ internal sealed record ConfiguredWidget
     public WidgetIntentDeclarations? Intents { get; init; }
     [JsonIgnore]
     public IReadOnlyList<WidgetNotificationCategory> NotificationCategories { get; init; } = [];
+    [JsonIgnore]
+    public IReadOnlyList<TrayActionDefinition> TrayActions { get; init; } = [];
     /// <summary>Set only after sealed bundled admission; never accepted from JSON.</summary>
     [JsonIgnore]
     public bool GrantsBundledPermissionDefaults { get; init; }
@@ -128,6 +130,7 @@ internal sealed record ConfiguredWidget
         IsStopped = IsStopped,
         CanStop = CanStop,
         NotificationCategories = NotificationCategories,
+        TrayActions = TrayActions.Count > 0 ? TrayActions : null,
         CanManage = Id != "settings" && (PackageRoot is not null || UserWebApp is not null),
         IsUserWebApp = UserWebApp is not null,
         PackageContentDigest = PackageIconAssets.Count == 0
@@ -194,12 +197,15 @@ public sealed class BridgeCatalog
         _ordered = configured.ToArray();
         _configured = _ordered.ToDictionary(widget => widget.Id, StringComparer.Ordinal);
         _fingerprint = Fingerprint(_ordered.Select(widget => widget.CatalogFingerprint));
+        RegisteredIntentHandlers = _ordered.Where(widget => !widget.IsStopped).SelectMany(widget => widget.Intents?.Handles ?? [])
+            .Select(handler => new BridgeIntentSignature(handler.Id, handler.Version, CompiledWidgetIntentContract.Create(handler).SchemaDigest))
+            .Distinct().ToArray();
     }
 
     public IReadOnlyList<BridgeWidgetDescriptor> Widgets =>
         _ordered.Select(widget => widget.PublicDescriptor()).ToArray();
+    internal IReadOnlyList<BridgeIntentSignature> RegisteredIntentHandlers { get; }
     internal IReadOnlyList<ConfiguredWidget> IntentWidgets => _ordered;
-
     // Incomplete catalogs admit available widgets, but cannot prove that absent
     // installed widgets were removed. This metadata travels with the revision.
     internal bool IsComplete { get; }
@@ -637,6 +643,7 @@ public sealed class BridgeCatalog
                 DeclaredCapabilities = declaredCapabilities,
                 Intents = manifest.Intents,
                 NotificationCategories = manifest.NotificationCategories,
+                TrayActions = manifest.TrayActions,
                 RequiresAppContainer = executionTrust == WidgetExecutionTrust.Sandboxed,
                 ExecutionTrust = executionTrust,
                 IsolationKey = executionTrust == WidgetExecutionTrust.Sandboxed
@@ -727,6 +734,7 @@ public sealed class BridgeCatalog
             .. source.DeclaredCapabilities,
             .. (source.Intents is null ? Array.Empty<string>() : new[] { JsonSerializer.Serialize(source.Intents) }),
             JsonSerializer.Serialize(source.NotificationCategories),
+            JsonSerializer.Serialize(source.TrayActions),
             source.ExecutionTrust.ToString(),
             source.RequiresAppContainer ? "appcontainer-required" : "job-only",
             source.IsolationKey ?? string.Empty,
@@ -923,6 +931,7 @@ public sealed class BridgeCatalog
             PackageIconAssets = metadata.Available,
             Intents = manifest.Intents,
             NotificationCategories = manifest.NotificationCategories,
+            TrayActions = manifest.TrayActions,
             DeclaredPackageIconAssetIds = manifest.IconAssets.Keys.ToHashSet(StringComparer.Ordinal),
             PackageIconAdmissionFailure = metadata.Unavailable.Values.FirstOrDefault(),
         };
@@ -1071,6 +1080,7 @@ public sealed class BridgeCatalog
             DeclaredCapabilities = declaredCapabilities,
             Intents = manifest.Intents,
             NotificationCategories = manifest.NotificationCategories,
+            TrayActions = manifest.TrayActions,
             ExecutionTrust = executionTrust,
             RequiresAppContainer = sandboxed,
             IsolationKey = sandboxed ? BundledIsolationKey(manifest.Publisher, manifest.Id) : null,

@@ -18,6 +18,8 @@ internal sealed partial class WidgetViewPresenter
         return (owner.ActualWidth, owner.ActualHeight);
     }
 
+    internal void RefreshIntentVisibility() => RefreshResponsiveLayout();
+
     private void UpdateResponsiveVisibility()
     {
         var (width, height) = Viewport();
@@ -31,6 +33,9 @@ internal sealed partial class WidgetViewPresenter
                 ResponsiveVisibility.ExpandedOnly => !compact,
                 _ => true,
             };
+            if (visible && declaration.Node.Intent is { } intent &&
+                ComputedStyle(declaration.Node, "intent-visibility")?.Text == "when-handler-installed")
+                visible = Session?.HasRegisteredIntentHandler(intent) == true;
             bindings[declaration.Node.Id].Element.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
             bindings[declaration.Node.Id].LayoutElement.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         }

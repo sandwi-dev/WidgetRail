@@ -6,7 +6,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 internal static partial class NativeContextProbeInput
 {
     internal static string? LastPointerTrace { get; private set; }
-    internal static async Task ClickWindowElementAsync(nint window,FrameworkElement target,FrameworkElement? coordinateRoot=null,Windows.Foundation.Point? screenPoint=null,bool right=false)
+    internal static async Task ClickWindowElementAsync(nint window,FrameworkElement target,FrameworkElement? coordinateRoot=null,Windows.Foundation.Point? screenPoint=null,bool right=false,Windows.Foundation.Point? localPoint=null)
     {
         DemandOwnForeground();GetWindowThreadProcessId(window,out var process);
         if(process!=Environment.ProcessId)throw new InvalidOperationException("Click target is not owned by the fixture.");
@@ -19,7 +19,7 @@ internal static partial class NativeContextProbeInput
             screen=new(){X=(int)(point.X*scale),Y=(int)(point.Y*scale)};
             if(ClientToScreen(window,ref screen)==0)throw new InvalidOperationException("Pin coordinates unavailable.");
         }
-        else screen=ScreenCenter(target);
+        else screen=ScreenCenter(target, localPoint);
         if(GetCursorPos(out var previous)==0)throw new InvalidOperationException("Pointer coordinates unavailable.");
         var held=false;
         try
@@ -29,7 +29,7 @@ internal static partial class NativeContextProbeInput
             {
                 // Opening dialogs can still finish their layout while mouse
                 // admission wakes. Use the intended control's current bounds.
-                var latest=ScreenCenter(target);
+                var latest=ScreenCenter(target, localPoint);
                 if(latest.X!=screen.X||latest.Y!=screen.Y)
                 {screen=latest;SendPointerMove(screen);await Task.Delay(80);}
             }
@@ -91,7 +91,7 @@ internal static partial class NativeContextProbeInput
         SendPointerMove(target);await Task.Delay(80);
         SendPointerMove(new(){X=target.X+1,Y=target.Y});await Task.Delay(80);
     }
-    private static NativePoint ScreenCenter(FrameworkElement target)
+    private static NativePoint ScreenCenter(FrameworkElement target, Windows.Foundation.Point? localPoint = null)
     {
         if(!target.IsLoaded || target.ActualWidth<=0 || target.ActualHeight<=0 || target.XamlRoot is not { } root)
             throw new InvalidOperationException("The pointer target is not visible.");
@@ -104,7 +104,7 @@ internal static partial class NativeContextProbeInput
             if(node is UIElement { Visibility: Visibility.Collapsed })
                 throw new InvalidOperationException("The pointer target is not visible.");
             if(!ReferenceEquals(node,root.Content))continue;
-            var point=target.TransformToVisual(root.Content).TransformPoint(new(target.ActualWidth/2,target.ActualHeight/2));
+            var point=target.TransformToVisual(root.Content).TransformPoint(localPoint ?? new(target.ActualWidth/2,target.ActualHeight/2));
             if(point.X<0 || point.Y<0 || point.X>=root.Size.Width || point.Y>=root.Size.Height)
                 throw new InvalidOperationException("Native hover target lies outside the fixture's client area.");
             var window=Microsoft.UI.Win32Interop.GetWindowFromWindowId(root.ContentIslandEnvironment.AppWindowId);
@@ -115,6 +115,7 @@ internal static partial class NativeContextProbeInput
             return screen;
         }
         // UIA includes the ContentDialog popup's separate screen offset.
+        if (localPoint is not null) throw new InvalidOperationException("A local click point requires a mounted window element.");
         var bounds=FrameworkElementAutomationPeer.CreatePeerForElement(target)?.GetBoundingRectangle()
             ??throw new InvalidOperationException("The pointer target has no automation peer.");
         if(bounds.Width<=0||bounds.Height<=0)throw new InvalidOperationException("The pointer target is not visible.");

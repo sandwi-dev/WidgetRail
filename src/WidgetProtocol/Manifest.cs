@@ -34,6 +34,14 @@ public sealed record WidgetManifest
     public IReadOnlyDictionary<string, WidgetPackageIconAsset> IconAssets { get; init; } =
         new Dictionary<string, WidgetPackageIconAsset>(StringComparer.Ordinal);
     public IReadOnlyList<WidgetNotificationCategory> NotificationCategories { get; init; } = [];
+    [JsonIgnore]
+    public IReadOnlyList<TrayActionDefinition> TrayActions { get; init; } = [];
+    [JsonPropertyName("trayActions"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<TrayActionDefinition>? SerializedTrayActions
+    {
+        get => TrayActions.Count > 0 ? TrayActions : null;
+        init => TrayActions = value ?? [];
+    }
     public IReadOnlyList<string> Permissions { get; init; } = [];
     public IReadOnlyList<string> OptionalPermissions { get; init; } = [];
     /// <summary>Optional intent contracts. Declarations never grant platform permissions.</summary>
@@ -209,6 +217,8 @@ public static partial class WidgetManifestValidator
         ArgumentNullException.ThrowIfNull(manifest);
         var errors = new List<ManifestValidationError>();
         WidgetIntentContracts.ValidateDeclarations(manifest.Intents, Add);
+        if (!TrayActionContract.ValidDefinitions(manifest.TrayActions))
+            Add("$.trayActions", "invalid_tray_actions", "Tray actions need unique, bounded IDs and labels and a valid local fallback.");
         if (!WidgetNotificationContract.ValidCategories(manifest.NotificationCategories))
             Add("$.notificationCategories", "invalid_notification_categories", "Declare up to eight unique named notification categories with bounded labels and defaults; general is reserved.");
 

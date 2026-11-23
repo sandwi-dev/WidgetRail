@@ -25,6 +25,7 @@ public sealed partial class GameHelpWidget
         if (state.Settings) return SettingsView(view, state);
         if (state.LibraryOpen) return LibraryView(view, state);
         if (state.CaptureOptions) return CaptureOptionsView(view, state);
+        if (state.ReviewingDraft) return PreviewView(view, state, state.SkipPriorCapture ? null : state.Context);
         if (state.Preview is { } preview && !state.Capturing && !state.PreviewReadOnly)
             return PreviewView(view, state, preview);
         return view;
@@ -88,9 +89,12 @@ public sealed partial class GameHelpWidget
             .Shortcut(ControllerButton.X, "context.open", "Add context")
             .Shortcut(ControllerButton.LeftBumper, "new", "New chat")
             .Shortcut(ControllerButton.RightStick, "compose.focus", "Write a question");
+        if (state.Messages.Any(message => message.Answer is not null))
+            root = root.Shortcut(ControllerButton.RightBumper, "answer.latest", "Latest answer");
         return new(root, "help.composer", Surface: Surface)
         {
-            ScrollRevealRequest = state.Reveal,
+            ScrollRevealRequest = state.Reveal is { } reveal && state.Messages.Any(message => message.Id == reveal.MessageId)
+                ? reveal.Request.Reveal("help.transcript", "help.message." + reveal.MessageId) : null,
             FocusGroupEntryRequest = state.FocusRequest > 0 &&
                 (state.FocusGroup == "help.compose-focus" || state.FocusGroup == "help.context-choice" && state.OfferContext)
                 ? new() { RequestId = state.FocusRequest, GroupId = state.FocusGroup! } : null,
@@ -210,12 +214,12 @@ public sealed partial class GameHelpWidget
         if (state.Preview is not null && !state.Capturing)
             controls.Add(UI.Button("Review attached capture", "preview.open", "help.preview-open").Classes("help-attachment"));
         var entry = UI.Stack("help.compose-focus",
-            (UI.TextEntry(state.Draft, "Ask about the game…", "draft", "help.composer", 2048) with{InputKind=TextEntryInputKind.Prose}).Classes("help-composer"))
+            (UI.TextEntry(state.Draft, state.RequestedGame is { } title ? $"Ask about {title}…" : "Ask about the game…", "draft", "help.composer", 2048) with{InputKind=TextEntryInputKind.Prose}).Classes("help-composer"))
             .RememberChildFocus("help.composer");
         var compose = UI.Grid("help.composer-row", [GridTrack.Auto()], [GridTrack.Star(), GridTrack.Auto()], entry,
-            UI.Button("Send", "ask", "help.send").Disabled(string.IsNullOrWhiteSpace(state.Draft)).Busy(state.Busy || state.Capturing).InGrid(0, 1)).Spacing(0, 12);
-        if (!state.Busy && !state.Capturing && !string.IsNullOrWhiteSpace(state.Draft))
-            compose = compose.Shortcut(ControllerButton.RightTrigger, "ask", "Send question");
+            UI.Button("Review and send", "ask", "help.send").Busy(state.Busy || state.Capturing).InGrid(0, 1)).Spacing(0, 12);
+        if (!state.Busy && !state.Capturing)
+            compose = compose.Shortcut(ControllerButton.RightTrigger, "ask", "Review question");
         controls.Add(compose);
         return UI.Stack("help.footer", controls.ToArray()).Classes("help-footer");
     }
@@ -273,29 +277,42 @@ public sealed partial class GameHelpWidget
             "help.add-image", "context.close"));
     }
 
-    private static WidgetView PreviewView(WidgetView view, State state, CaptureAttachment preview)
+    private static WidgetView PreviewView(WidgetView view, State state, CaptureAttachment? preview)
     {
-        var content = UI.Stack("help.preview-content",
-            UI.Text(preview.SourceApplication is { } captured ? "Captured from " + captured.ApplicationName : "Captured application unavailable", "help.preview-application").Classes("help-caption"),
-            UI.MediaPlayer(MediaPlayerSource.FromCapture(preview), "help.preview-media", preview.ContentType == "video/mp4" ? "Recorded game context" : "Game screenshot", new(Muted: true)).Classes("help-preview-media"),
-            UI.Stack("help.preview-summary", UI.Text("Your question", "help.preview-question-label").Classes("help-section-title"),
-                UI.Stack("help.preview-question-group",
-                    (UI.TextEntry(state.PendingQuestion ?? "", "Ask about this capture…", "preview.question", "help.preview-question", 2048) with{InputKind=TextEntryInputKind.Prose}).Disabled(state.Busy))
-                    .RememberChildFocus("help.preview-question"),
-                UI.Text("Send this capture and your question to Google Gemini?", "help.preview-consent").Classes("help-caption")),
+        var question = state.ReviewingDraft ? state.Draft : state.PendingQuestion ?? "";
+        var confirm = state.ReviewingDraft ? "review.send" : "preview.send";
+        var edit = state.ReviewingDraft ? "review.question" : "preview.question";
+        var ready = !string.IsNullOrWhiteSpace(question);
+        var parts = new List<WidgetElement>();
+        if (preview is not null)
+        {
+            parts.Add(UI.Text(preview.SourceApplication is { } captured ? "Captured from " + captured.ApplicationName :
+                "Captured application unavailable", "help.preview-application").Classes("help-caption"));
+            parts.Add(UI.MediaPlayer(MediaPlayerSource.FromCapture(preview), "help.preview-media",
+                preview.ContentType == "video/mp4" ? "Recorded game context" : "Game screenshot", new(Muted:true)).Classes("help-preview-media"));
+        }
+        parts.Add(UI.Stack("help.preview-summary", UI.Text("Your question", "help.preview-question-label").Classes("help-section-title"),
+            UI.Stack("help.preview-question-group",
+                (UI.TextEntry(question, "What would you like to ask?", edit, "help.preview-question", 2048) with { InputKind=TextEntryInputKind.Prose })
+                    .Disabled(state.Busy)).RememberChildFocus("help.preview-question"),
+            UI.Text(preview is null ? "Send your question to Gemini without a capture?" :
+                "Send this capture and your question to Google Gemini?", "help.preview-consent").Classes("help-caption")));
+        var send = UI.Button("Send to Gemini", confirm, "help.preview-send").Disabled(!ready).Busy(state.Busy);
+        parts.Add(state.ReviewingDraft ? send :
             UI.Grid("help.preview-actions", [GridTrack.Auto(), GridTrack.Auto()], [GridTrack.Star(), GridTrack.Star()],
-                UI.Button("Send to Gemini", "preview.send", "help.preview-send").Disabled(string.IsNullOrWhiteSpace(state.PendingQuestion)).Busy(state.Busy).InGrid(0, 0, columnSpan: 2),
+                send.InGrid(0, 0, columnSpan: 2),
                 UI.Button("Retry capture", "preview.retry", "help.preview-retry").Busy(state.Busy).InGrid(1),
-                UI.Button("Discard", "preview.discard", "help.preview-discard").Busy(state.Busy).InGrid(1, 1)).Spacing(8, 12))
-            .Classes("help-dialog");
+                UI.Button("Discard", "preview.discard", "help.preview-discard").Busy(state.Busy).InGrid(1, 1)).Spacing(8, 12));
+        var content = UI.Stack("help.preview-content", parts.ToArray()).Classes("help-dialog");
         if (!state.Busy)
         {
-            content = content.Shortcut(ControllerButton.X, "preview.retry", "Retry capture")
-                .Shortcut(ControllerButton.RightStick, "preview.question.focus", "Edit question");
-            if (!string.IsNullOrWhiteSpace(state.PendingQuestion)) content = content.Shortcut(ControllerButton.Y, "preview.send", "Send to Gemini");
+            content = content.Shortcut(ControllerButton.RightStick, "preview.question.focus", "Edit question");
+            if (!state.ReviewingDraft) content = content.Shortcut(ControllerButton.X, "preview.retry", "Retry capture");
+            if (ready) content = content.Shortcut(ControllerButton.Y, confirm, "Send to Gemini");
         }
-        return view.WithModal(new("help.preview", "Review your capture", content,
-            string.IsNullOrWhiteSpace(state.PendingQuestion) ? "help.preview-question" : "help.preview-send", "preview.close")) with
+        return view.WithModal(new("help.preview", state.ReviewingDraft ? "Review your question" : "Review your capture", content,
+            ready ? "help.preview-send" : "help.preview-question", "preview.close")
+            { StyleClass = preview is null ? "help-question-dialog" : null }) with
         {
             FocusGroupEntryRequest = state.FocusGroup == "help.preview-question-group" && !state.Busy
                 ? new() { RequestId = state.FocusRequest, GroupId = "help.preview-question-group" } : null,

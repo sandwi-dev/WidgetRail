@@ -50,13 +50,36 @@ internal static class DashboardTests
             fake.State=fake.State with{Account="2",ChannelId="20"};await Refresh();host.PublishSnapshot();
             await widget.OnActionAsync(new(stale,"dashboard-card"));
             check(fake.Commands.Count==1,"A delayed dashboard leave cannot disconnect a replacement account/call");
+            var current = host.PublishSnapshot();
+            var mute = current.QuickActions.Single(action => action.TrayOffer?.Id == "mute");
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+            check((await WidgetTestHost.InvokeTrayActionAsync(widget, current, mute)).Handled, "Tray mute works with a resident background call");
+            await Wait(() => fake.Commands.Count == 2);
+            check(fake.Commands.Last().Args.GetProperty("channelId").GetString() == "20" && !widget.IsActive, "Tray mute targets only the offered call");
+            var retry = host.PublishSnapshot();
+            fake.CommandGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            fake.FailCommands = true;
+            var failure = WidgetTestHost.InvokeTrayActionAsync(widget, retry, retry.QuickActions.Single(item => item.TrayOffer?.Id == "mute")).AsTask();
+            await Wait(() => fake.Commands.Count == 3);
+            check(!failure.IsCompleted, "Tray mute waits for its Discord command reply");
+            fake.CommandGate.SetResult();
+            var rejected = await failure.WaitAsync(TimeSpan.FromSeconds(5));
+            check(!rejected.Handled && rejected.Reason?.Contains("could not confirm", StringComparison.Ordinal) == true,
+                "A refused Discord mute reports a single user-facing outcome");
+            fake.FailCommands = false;
+            fake.CommandGate = null;
+            await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
 
             fake.State=fake.State with{Capabilities=fake.State.Capabilities with{Mute=false,Deafen=false}};await Refresh();
             check(host.PublishSnapshot().QuickActions is [{Label:"Leave call"}],"Unsupported dashboard controls are not advertised");
             fake.State=fake.State with{ChannelId=null};await Refresh();
-            check(host.PublishSnapshot().QuickActions.Count==0,"No-call state exposes no call quick actions");
+            snapshot = host.PublishSnapshot();
+            check(snapshot.QuickActions.Count == 0 && snapshot.UnavailableTrayActions?["mute"] == "Join a voice call to use Discord voice controls.",
+                "Leaving a call replaces the mute offer with an explanation");
             fake.State=fake.State with{Ready=false};await Refresh();
-            check(host.PublishSnapshot().QuickActions.Count==0,"Signed-out Discord exposes no call quick actions");
+            snapshot = host.PublishSnapshot();
+            check(snapshot.QuickActions.Count == 0 && snapshot.UnavailableTrayActions?["deafen"] == "Connect to Discord to use voice controls.",
+                "A disconnected account replaces the previous call explanation");
         }
         finally
         {

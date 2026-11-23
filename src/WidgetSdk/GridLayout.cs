@@ -56,6 +56,10 @@ public sealed record GridLayoutElement : ContainerElement
 
     public GridLayoutDefinition Layout { get; init; }
 
+    /// <summary>Scroll the Auto header in row zero out of view when focus enters a later row.
+    /// Returning focus to the header restores it. Body collections retain their own viewport.</summary>
+    public GridLayoutElement RevealBodyOnFocus() => this with { Layout = Layout with { RevealBodyOnFocus = true } };
+
     public GridLayoutElement Spacing(double row, double column)
     {
         GridTrack.ValidateLength(row, nameof(row));

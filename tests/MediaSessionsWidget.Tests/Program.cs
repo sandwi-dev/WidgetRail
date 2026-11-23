@@ -84,7 +84,9 @@ static async Task HonestTransportStates()
     var snapshot = widget.RenderSnapshot("media.test", 1);
     Assert.Equal(WidgetSurfaceMode.Compact, snapshot.Surface!.Mode);
     Assert.Equal(WidgetSurfaceAppearance.DesktopAcrylic, snapshot.Surface.Appearance);
-    Assert.Equal(ProtocolConstants.DesktopAcrylicVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.TrayActionOfferVersion, snapshot.ProtocolVersion);
+    Assert.Equal(3, snapshot.UnavailableTrayActions!.Count);
+    Assert.Equal("The selected player does not support this control.", snapshot.UnavailableTrayActions["play-pause"]);
     Assert.Equal(WidgetSurfaceAxisMode.Content, snapshot.Surface.HeightMode);
     Assert.Equal(260d, snapshot.Surface.MinimumHeight!.Value);
     Assert.Equal("media-sessions", snapshot.ActiveInputScopeId);
@@ -232,6 +234,11 @@ static async Task DashboardQuickActions()
     await WaitUntil(() => fake.Commands.Count == 1);
     Assert.Equal(WidgetMediaSessionCommand.Next, fake.Commands[0].Command);
     await Background(widget);
+    var background = widget.RenderSnapshot("media.test", 3);
+    var next = background.QuickActions.Single(action => action.TrayOffer?.Id == "next");
+    Assert.True((await WidgetTestHost.InvokeTrayActionAsync(widget, background, next)).Handled);
+    Assert.Equal("one", fake.Commands.Last().SessionId);
+    Assert.True(!widget.IsActive);
 }
 
 static async Task DynamicSelectorKeepsOneRememberedScroll()

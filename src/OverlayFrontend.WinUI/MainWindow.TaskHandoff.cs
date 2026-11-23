@@ -75,32 +75,6 @@ public sealed partial class MainWindow
         finally { FinishOverlayHandoff(page, handoff); }
     }
 
-    private async Task RunTaskHandoffAsync(OverlayShellPage page, WidgetPresentationHostEffect effect, TaskWindowActivation activation)
-    {
-        if (cleanupStarted || taskHandoff is not null) return;
-        using var handoff = new TaskHandoff();
-        taskHandoff = handoff;
-        handoff.Cancellation.CancelAfter(TimeSpan.FromMilliseconds(Math.Clamp(
-            effect.InitiatedAtMilliseconds + 2000 - Environment.TickCount64, 1, 2000)));
-        try
-        {
-            await page.ActivateTaskWindowAsync(effect, activation, () =>
-            {
-                // The activation coordinator revalidates foreground, exact target,
-                // authority and expiry after preparation and again after hiding.
-                handoff.Committed = true;
-                input?.SetVisible(false);
-                CompleteOverlayHide();
-            }, () => PrepareOverlayHandoffAsync(page, handoff), handoff.Cancellation.Token);
-        }
-        catch (OperationCanceledException) when (handoff.Cancellation.IsCancellationRequested)
-        { input?.TraceInput("Task handoff cancelled"); }
-        finally
-        {
-            FinishOverlayHandoff(page, handoff);
-        }
-    }
-
     private async Task<bool> PrepareOverlayHandoffAsync(OverlayShellPage page, TaskHandoff handoff)
     {
         mouseSession?.End();

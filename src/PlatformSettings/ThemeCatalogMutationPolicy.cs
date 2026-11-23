@@ -31,10 +31,15 @@ public sealed class ThemeCatalogMutationPolicy
     public async Task<PlatformSettingsDocument> SelectAsync(
         string themeId,
         string version,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await SelectVerifiedAsync(themeId, version, null, cancellationToken).ConfigureAwait(false);
+
+    public async Task<PlatformSettingsDocument> SelectVerifiedAsync(string themeId, string version,
+        Func<CancellationToken, Task>? verifyInstalled, CancellationToken cancellationToken)
     {
         ValidateIdentity(themeId, version);
         await using var catalogLock = await AcquireLockAsync(cancellationToken).ConfigureAwait(false);
+        if (verifyInstalled is not null) await verifyInstalled(cancellationToken).ConfigureAwait(false);
         var loaded = _catalog.Load(themeId, version);
         if (!loaded.IsValid)
             throw new PlatformSettingsException(

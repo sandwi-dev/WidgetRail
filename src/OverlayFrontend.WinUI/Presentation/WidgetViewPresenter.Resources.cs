@@ -14,6 +14,7 @@ internal sealed partial class WidgetViewPresenter
     {
         internal string Identity { get; } = identity;
         internal WidgetPresentationBinding? Origin { get; set; } = origin;
+        internal Func<bool>? SourceCurrent { get; set; }
         internal CancellationTokenSource Lifetime { get; } = lifetime;
         internal bool Completed { get; set; }
         internal NativeArtworkDemand? Native { get; set; }
@@ -38,6 +39,10 @@ internal sealed partial class WidgetViewPresenter
 
     private void Retire(Binding binding)
     {
+        if (binding.Children is Motion.WidgetMotionStage stage)
+            foreach (var page in retainedPages.Where(page => ReferenceEquals(page.Mount, stage)).ToArray())
+                EvictCachedPage(page);
+        retainedStaticArtwork.Remove(binding);
         if (ReferenceEquals(previewSource?.Owner, binding) || ReferenceEquals(previewSource?.Source, binding)) ClearFocusPreview();
         if (binding.Element is ScrollViewer scroll && readingScrolls.Remove(scroll,out var reading)) reading.Dispose();
         RetireInlineLink(binding);
@@ -72,21 +77,24 @@ internal sealed partial class WidgetViewPresenter
 
     private WidgetIndexedCollectionView? FindIndexedCollection()
     {
-        if (XamlRoot is null) return null;
-        for (var node = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject; node is not null && !ReferenceEquals(node, this);
-             node = VisualTreeHelper.GetParent(node))
-            if (node is WidgetIndexedCollectionView collection) return collection;
-        return null;
+        // A row fragment shares the window's FocusManager with sibling rows.
+        // Walking from a sibling's focus can escape this presenter and find the
+        // outer collection, recursively routing pressed-state reset back into
+        // every row. Only a collection declared by this presenter owns its input.
+        return FocusedBinding()?.Element as WidgetIndexedCollectionView;
     }
 
     private void UpdateImage(Binding binding, WidgetArtworkView image, ViewNode node)
     {
         image.ApplyStyle(ResolveArtworkStyle(binding, node));
+        image.ConfigureFallback(ComputedStyle(node, "image-fallback")?.Text == "label" ? node.AccessibilityLabel : null, appearance.TextScale);
         UpdateArtwork(binding, node, value =>
         {
+            retainedStaticArtwork.Remove(binding);
             TraceArtworkReview(node.Id, image.Source is not null, value is not null);
             var firstPixels = image.Source is null && value is not null;
             image.Source = value;
+            image.SetUnavailable(value is null);
             if (value is null) { if (artworkReveals.Remove(binding, out var old)) old.Dispose(); return; }
             if (!firstPixels || binding.MotionHost?.ArtworkLayer is not { } layer) return;
             var parent = declarations.GetValueOrDefault(node.Id);
@@ -101,7 +109,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void UpdateMediaPoster(Binding binding, Media.MediaPlayerView media, ViewNode node)
     {
-        if (node.ArtworkHandle is null && !imageDemands.ContainsKey(binding)) return;
+        if (node.ArtworkHandle is null && node.ImageSource is null && !imageDemands.ContainsKey(binding)) return;
         UpdateArtwork(binding, node, image => media.SetPoster(image ?? (node.ArtworkHandle is { } handle ? BorrowPreviewArtwork?.Invoke(handle) : null)), ResolveArtworkAsync, ArtworkGeneration,
             ArtworkAuthorityCurrent, ResolveArtworkFallbackAsync, retainOnReplacement: false);
     }
@@ -127,6 +135,7 @@ internal sealed partial class WidgetViewPresenter
         if (binding.Element is WidgetPresentationSurface surface)
             surface.SetArtworkStyle(artworkStyle);
         var identity = node.ArtworkHandle is { } handle ? "handle:" + generation + ":" + handle : node.ImageSource ?? string.Empty;
+        if (node.ImageIsPublicMedia) identity = "public:" + identity;
         // Ordinary artwork survives cosmetic snapshots of the same owner. The
         // session checks continuous handle declaration; indexed artwork retains
         // its lease generation and pinned artwork retains its selected scope.
@@ -139,22 +148,26 @@ internal sealed partial class WidgetViewPresenter
             // Retained pixels can survive a snapshot; a later size upgrade must
             // resolve against the newly displayed authority, never the old one.
             prior.Origin = origin;
+            prior.SourceCurrent = sourceCurrent;
+            prior.Native?.SetPlaybackSuspended(false);
             // Media may have released its presentation while this exact artwork
             // demand remained valid. Reuse the demand's existing decoded image.
             if (!retainOnReplacement && prior.Completed) publish(prior.Native?.LastDecode?.Image);
             prior.Native?.Refresh(fit, artworkStyle.NaturalSize); return;
         }
         if (imageDemands.Remove(binding, out prior)) { prior.Lifetime.Cancel(); prior.Lifetime.Dispose(); }
+        if (binding.Element is WidgetArtworkView nextImage) nextImage.SetUnavailable(false);
         if (!retainOnReplacement) publish(null);
         var lifetime = new CancellationTokenSource();
-        var demand = new ImageDemand(identity, origin, lifetime);
+        var demand = new ImageDemand(identity, origin, lifetime) { SourceCurrent = sourceCurrent };
         imageDemands.Add(binding, demand);
         // Retained logical rows keep their previous pixels while replacement
         // artwork decodes. A different item creates a different Image binding.
         if (identity.Length == 0) { demand.Completed = true; publish(null); return; }
         demand.Native = new(binding.Element, fit,
-            () => !disposed && presentationActive && imageDemands.GetValueOrDefault(binding) == demand && (sourceCurrent?.Invoke() ?? true),
-            ResolveAsync, publish, value => demand.Completed = value, TrackRetirement, DecodeFailed, lifetime.Token, artworkStyle.NaturalSize);
+            () => !disposed && presentationActive && imageDemands.GetValueOrDefault(binding) == demand && (demand.SourceCurrent?.Invoke() ?? true),
+            ResolveAsync, publish, value => demand.Completed = value, TrackRetirement, DecodeFailed, lifetime.Token, artworkStyle.NaturalSize,
+            () => !Motion.WidgetMotionOptions.From(appearance, systemAnimationsEnabled).Reduced);
 
         async Task<NativeArtworkPayload?> ResolveAsync(CancellationToken token)
         {
@@ -186,7 +199,7 @@ internal sealed partial class WidgetViewPresenter
                 }
             }
             else if (node.ImageSource is { } uri && Uri.TryCreate(uri, UriKind.Absolute, out var parsed) && parsed.Scheme == Uri.UriSchemeHttps)
-                return new(ReadOnlyMemory<byte>.Empty, parsed);
+                return new(ReadOnlyMemory<byte>.Empty, parsed, IsPublicMedia: node.ImageIsPublicMedia);
             else if (node.ImageSource?.StartsWith("data:image/png;base64,", StringComparison.Ordinal) == true)
                 return new(await Task.Run(() => DecodeInlineArtwork(node.ImageSource), token));
             return null;
@@ -203,6 +216,9 @@ internal sealed partial class WidgetViewPresenter
             }
             if (IsUnavailableArtwork(error))
             {
+                if (binding.Element is WidgetPresentationSurface background && imageDemands.GetValueOrDefault(binding) == demand)
+                    background.ForegroundArtworkFailed();
+                if (binding.Element is WidgetArtworkView missingImage) missingImage.SetUnavailable(true);
                 // A failed optional resource must not replace the widget with
                 // shell recovery. Keep prior pixels (or the empty image slot)
                 // and retain a bounded diagnostic without logging the asset URL.
@@ -232,6 +248,10 @@ internal sealed partial class WidgetViewPresenter
     private void RefreshArtworkDemands()
     {
         foreach (var demand in imageDemands.Values) demand.Native?.RefreshSize();
+    }
+    private void RefreshArtworkPlayback()
+    {
+        foreach (var demand in imageDemands.Values) demand.Native?.RefreshPlayback();
     }
 
     private static ReadOnlyMemory<byte> DecodeInlineArtwork(string source)

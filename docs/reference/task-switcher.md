@@ -46,17 +46,19 @@ The broker revalidates the target and asks Windows to restore and activate it.
 A failed permission refresh does not cancel the handoff: the broker can retain
 activation permission after the host loses the ability to grant it again, such
 as after opening a folder. The broker's activation result and the observed
-foreground window determine success, matching the original widget path.
+foreground window determine success. Widget-requested switches and confirmed
+launch handoffs use the same foreground confirmation and Task View fallback as
+the task list. A widget must still redeem its own broker-issued effect.
 The host observes foreground for up
 to 250 ms, accepting that target or its owned dialog, rather than treating the
 API return or an unrelated window in the same process as proof. A canceled
 handoff cannot later hide a reopened overlay.
 
-A denial before commitment restores the still-owned overlay and its input. After commitment,
-the host does not steal focus back if Windows denies activation; the failure is
-reported when Task Switcher is next opened. Windows can still reject activation
-or cross-integrity close requests. No simulated-input workaround, retry loop or
-force-close path is used.
+A denial before the overlay commits to hiding restores the overlay and its input.
+After hiding, if the target still exists and Windows has not activated it by
+the confirmation deadline, the host requests Windows Task View once through
+the guarded Win+Tab command. New user input, a reopened overlay or a stale
+target cancels the fallback.
 
 ## Upgrade and SDK compatibility
 

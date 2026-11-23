@@ -38,6 +38,37 @@ public sealed class PlayniteLocalConnectionTests
         Assert.IsFalse(fixture.Paths.Any(path=>path.Contains("eval",StringComparison.Ordinal)));
     }
     [TestMethod]
+    public async Task RecentActivityScopesSessionsAndUnlocksAndAcceptsMissingProvider()
+    {
+        using var fixture = new LocalFixture();
+        using var client = PlayniteBridgeClient.CreateLocal(fixture, new Credentials());
+        var now = DateTimeOffset.UtcNow;
+        var gameId = LocalFixture.GameId;
+        var session = new { gameId, gameName = "Fixture", startedAt = now, seconds = 230 };
+        var unlock = new { gameId, gameName = "Fixture", achievementId = "chapter", name = "Chapter one", unlockedAt = now };
+        static LocalApiResponse Reply(object body) => new(200, JsonSerializer.SerializeToUtf8Bytes(body));
+        var response = Reply(new { sessions = new[] { session }, unlocks = new[] { unlock } });
+        fixture.CaptureHandler = request => request.Path == "/v1/activity/recent" && request.Query["ids"] == gameId ? response : null;
+
+        var recent = await client.GetRecentActivityAsync([gameId], default);
+        Assert.AreEqual(230L, recent.Sessions.Single().Seconds);
+        Assert.AreEqual("chapter", recent.Unlocks.Single().AchievementId);
+
+        foreach (var invalid in new object[]
+        {
+            new { sessions = new[] { session with { gameId = Guid.NewGuid().ToString("D") } }, unlocks = Array.Empty<object>() },
+            new { sessions = Array.Empty<object>(), unlocks = new[] { unlock, unlock } },
+            new { sessions = new[] { session with { seconds = -1 } }, unlocks = Array.Empty<object>() },
+        })
+        {
+            response = Reply(invalid);
+            await Assert.ThrowsAsync<PlayniteBridgeDataException>(async () => await client.GetRecentActivityAsync([gameId], default));
+        }
+        response = LocalApiResponse.Error(404, "not_found");
+        Assert.AreEqual(PlayniteRecentActivity.Empty, await client.GetRecentActivityAsync([gameId], default));
+    }
+
+    [TestMethod]
     public async Task OldPluginCaptureEndpointsProduceNormalUnavailableResults()
     {
         using var fixture=new LocalFixture();using var client=PlayniteBridgeClient.CreateLocal(fixture,new Credentials());
@@ -63,6 +94,25 @@ public sealed class PlayniteLocalConnectionTests
         using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
         await Assert.ThrowsAsync<OperationCanceledException>(async () => await client.RefreshAchievementsAsync(LocalFixture.GameId, cancel.Token));
         Assert.AreEqual(2, fixture.Refreshes, "Canceling the wait cannot resubmit or cancel the provider command.");
+    }
+
+    [TestMethod]
+    public async Task BusyEventWaitUsesTheSameCursorAndReturnsMissedChanges()
+    {
+        using var fixture = new LocalFixture();
+        using var client = PlayniteBridgeClient.CreateLocal(fixture, new Credentials());
+        var waits = new List<string?>();
+        fixture.CaptureHandler = request =>
+        {
+            if (request.Path != "/v1/events") return null;
+            Assert.AreEqual("7", request.Query["after"]);
+            waits.Add(request.Query["wait"]);
+            return waits.Count == 1 ? LocalApiResponse.Error(429, "event_wait_capacity") : null;
+        };
+        var batch = await client.ReadEventsAsync(7, default);
+        CollectionAssert.AreEqual(new[] { "25000", "0" }, waits.ToArray());
+        Assert.AreEqual(8, batch!.NextSequence);
+        Assert.AreEqual("achievement-unlocked", batch.Changes.Single().Kind);
     }
 
     [TestMethod]

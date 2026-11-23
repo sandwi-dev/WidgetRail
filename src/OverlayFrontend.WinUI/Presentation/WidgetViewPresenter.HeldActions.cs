@@ -8,8 +8,10 @@ internal sealed partial class WidgetViewPresenter
     {
         if (!presentationInputEnabled || !presentationActive || disposed || applying || presentationOnly ||
             presentation is not { IsCurrent: true } displayed || HasTransientControl || textEntryPopup is not null) return null;
-        if (FocusedMediaPlayer is { CanControl: true, Definition: { } definition } media && button is ControllerButton.LeftTrigger or ControllerButton.RightTrigger)
+        if (FocusedMediaPlayer is { CanControl: true, IsInlinePoster: false, Definition: { } definition } media && button is ControllerButton.LeftTrigger or ControllerButton.RightTrigger)
             return ((media, definition, button), true);
+        if (FocusedBinding() is { Element: WidgetIndexedCollectionView reading } && reading.ReadingMediaHeldAction(button) is { } mediaAction)
+            return mediaAction;
         if (FocusedBrowser is { } browser)
             return browser.Surface?.CaptureZoomGesture(button) is { } gesture ? ((displayed.Frame.Authority, gesture), true) : null;
         var focused = FocusedBinding();
@@ -41,6 +43,7 @@ internal sealed partial class WidgetViewPresenter
         {
             if (indexed.CaptureContextRow() is not { } row) return [];
             path.Add(row.Row.Item.Root);
+            if(indexed.FocusedReadingAction is {} inline)path.Add(inline);
         }
         return path;
     }

@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.discord-controls",
   "publisher": "widgetrail.samples",
   "name": "Discord",
-  "version": "0.1.0.20",
+  "version": "0.1.0.48",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -21,8 +21,15 @@
     "icon": "connection"
   },
   "permissions": [],
+  "notificationCategories": [
+    { "id": "calls", "name": "Incoming calls", "description": "Open a ringing private call in Discord controls. Alerts are withdrawn when ringing ends.", "enabledByDefault": true, "retention": "pending" }
+  ],
   "optionalPermissions": [
     "system.apps.windows.capture.v1"
+  ],
+  "trayActions": [
+    { "id": "mute", "label": "Mute or unmute" },
+    { "id": "deafen", "label": "Deafen or undeafen" }
   ],
   "residencyPolicy": {
     "schemaVersion": 1,
@@ -32,6 +39,10 @@
     "x64"
   ],
   "iconAssets": {
+    "discord.presence-online": { "path": "assets/icons/presence-online.svg" },
+    "discord.presence-idle": { "path": "assets/icons/presence-idle.svg" },
+    "discord.presence-dnd": { "path": "assets/icons/presence-dnd.svg" },
+    "discord.presence-offline": { "path": "assets/icons/presence-offline.svg" },
     "discord.mark": {
       "path": "assets/icons/discord.svg"
     },
@@ -90,6 +101,20 @@
   "intents": {
     "handles": [
       {
+        "id": "community.widgetrail.discord.call.open",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "sessionId": { "type": "string", "minLength": 32, "maxLength": 32 },
+            "account": { "type": "string", "minLength": 1, "maxLength": 32 },
+            "invitationId": { "type": "string", "minLength": 32, "maxLength": 32 }
+          },
+          "required": [ "sessionId", "account", "invitationId" ]
+        },
+        "hasDynamicAvailability": false
+      },
+      {
         "id": "widgetrail.web.notification.open",
         "version": 1,
         "payloadSchema": {
@@ -124,6 +149,19 @@
       }
     ],
     "requests": [
+      {
+        "id": "community.widgetrail.discord.call.open",
+        "version": 1,
+        "payloadSchema": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "sessionId": { "type": "string", "minLength": 32, "maxLength": 32 },
+            "account": { "type": "string", "minLength": 1, "maxLength": 32 },
+            "invitationId": { "type": "string", "minLength": 32, "maxLength": 32 }
+          },
+          "required": [ "sessionId", "account", "invitationId" ]
+        }
+      },
       {
         "id": "widgetrail.web.open",
         "version": 1,

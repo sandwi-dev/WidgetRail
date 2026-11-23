@@ -8,7 +8,7 @@ using WidgetRail.WidgetSdk;
 internal static partial class MessagingTests
 {
     internal static async Task FocusEntryAsync(Action<bool,string> check)
-    {await InitialRevealAsync(check);await NotificationNavigationAsync(check);}
+    {await InitialRevealAsync(check);await NotificationNavigationAsync(check);await SentMessageRevealAsync(check);}
     internal static async Task RunAsync(Action<bool,string> check)
     {
         var session=new MessagesSession();
@@ -35,7 +35,7 @@ internal static partial class MessagingTests
             await Act("discord.message.send");await Wait(()=>session.Sends==1);
             await widget.OnActionAsync(new(staleSend,"discord.message.send",InputScopeId:Snapshot().ActiveInputScopeId));
             await Act("discord.message.draft","edited while sending");
-            session.SendGate.TrySetResult();await Wait(()=>Find("discord.message.status")?.Text=="Sent");
+            session.SendGate.TrySetResult();await widget.WaitForMessageSendAsync().WaitAsync(TimeSpan.FromSeconds(5));
             check(session.Sends==1 && Find("discord.message.draft")?.Text=="edited while sending","Explicit send is single flight and acknowledgment preserves a subsequently edited draft");
             session.Ambiguous=true;
             await Act("discord.message.send");await Wait(()=>Find("discord.message.send")?.Text=="Check delivery");
@@ -45,6 +45,8 @@ internal static partial class MessagingTests
             session.Inner.State=session.Inner.State with{Account="2"};
             await widget.OnActionAsync(new("refresh","test"));await widget.WaitForStateReadAsync().WaitAsync(TimeSpan.FromSeconds(5));
             check(Find("discord.message.draft") is null,"Changing account removes prior-account message history and draft");
+            check(Find("discord.section.content")?.Transition?.Key.EndsWith(".2",StringComparison.Ordinal)==true,
+                "Account replacement uses a distinct section-memory identity");
             await widget.OnActionAsync(new(staleSend,"discord.message.send",InputScopeId:Snapshot().ActiveInputScopeId));
             check(session.Sends==2,"Stale send cannot target a replacement account");
         }
@@ -54,19 +56,24 @@ internal static partial class MessagingTests
         await DefiniteFailureAsync(check);
         await CatalogPagingAsync(check);
         await MessageIndicatorAsync(check);
+        await InitialHistoryIndicatorAsync(check);
         await InitialRevealAsync(check);
         await LiveMessagesAsync(check);
         await MessagePresentationAsync(check);
         await LiveTailViewportAsync(check);
+        await ReadStateAsync(check);
+        await IntegratedNavigationAsync(check);
+        await PrivateCallsAsync(check);
         await NotificationNavigationAsync(check);
         await UploadCancellationAsync(check);
         await SubmittedCancellationAsync(check);
         await ShareWhileSendingAsync(check);
         ViewSnapshot Snapshot()
         {try{return widget.Render().CreateSnapshot("messages.test",1);}catch(ProtocolValidationException error){throw new InvalidDataException(string.Join("; ",error.Errors),error);}}
-        ViewNode? Find(string id)=>Nodes(Snapshot().Root).FirstOrDefault(node=>node.Id==id);
+        ViewNode? Find(string id)=>Nodes(Snapshot().Root).FirstOrDefault(node=>node.Id==id)??ConversationRowsHarness.Find(widget,Snapshot(),id);
         async Task Act(string id,string? text=null)
         {
+            if(ConversationRowsHarness.IsRow(id)){await ConversationRowsHarness.ActAsync(widget,id);return;}
             var node=Find(id)??throw new Exception("Missing "+id);
             await widget.OnActionAsync(new(node.ActionId!,id,InputScopeId:Snapshot().ActiveInputScopeId){CommittedText=text,FocusedElementId=id});
         }
@@ -89,7 +96,7 @@ internal static partial class MessagingTests
         check(scenario.Find("discord.message.file.0") is null && scenario.Released.IsEmpty,
             "Another recipient does not inherit or revoke attachment grants held by the uncertain send");
         session.Ambiguous=false;await scenario.Act("discord.message.draft","Other recipient message");await scenario.Act("discord.message.send");
-        await Wait(()=>scenario.Find("discord.message.status")?.Text=="Sent");
+        await scenario.Widget.WaitForMessageSendAsync().WaitAsync(TimeSpan.FromSeconds(5));
         check(session.Calls.Last(call=>call.Method=="messageSend").Request.GetProperty("channelId").GetString()=="20",
             "Another recipient remains sendable while the first channel has unresolved delivery");
         await scenario.Act("discord.messages.back");await scenario.Act("discord.conversation.10");await scenario.WaitForHistory();
@@ -98,7 +105,7 @@ internal static partial class MessagingTests
         check(scenario.Find("discord.message.file.0")?.Text?.Contains(scenario.File.Name,StringComparison.Ordinal)==true &&
             scenario.ReadIds.All(id=>id==scenario.File.Id) && scenario.Uploads==1 && scenario.Released.IsEmpty,
             "Returning restores the exact admitted attachment without rereading, reuploading, or releasing its grant");
-        await scenario.Act("discord.message.send");await Wait(()=>scenario.Find("discord.message.status")?.Text=="Sent");
+        await scenario.Act("discord.message.send");await scenario.Widget.WaitForMessageSendAsync().WaitAsync(TimeSpan.FromSeconds(5));
         var reconciled=session.Calls.Last(call=>call.Method=="messageReconcile").Request;
         check(reconciled.GetProperty("nonce").GetString()==sent.GetProperty("nonce").GetString() &&
             reconciled.GetProperty("content").GetString()==sent.GetProperty("content").GetString() &&
@@ -116,7 +123,7 @@ internal static partial class MessagingTests
         await using var scenario=await Scenario.OpenAsync();
         await scenario.Act("discord.conversation.10");await scenario.WaitForHistory();
         await scenario.Act("discord.message.draft","Keep this unsent draft");await scenario.Act("discord.messages.back");
-        scenario.Session.FriendName="Renamed friend";await scenario.Act("discord.messages.refresh");
+        scenario.Session.FriendName="Renamed friend";await scenario.Act("discord.refresh");
         await Wait(()=>scenario.Find("discord.conversation.name.10")?.Text=="Renamed friend");
         await scenario.Act("discord.conversation.10");await scenario.WaitForHistory();
         check(scenario.Find("discord.message.title")?.Text=="Renamed friend" && scenario.Find("discord.message.draft")?.Text=="Keep this unsent draft",
@@ -129,11 +136,13 @@ internal static partial class MessagingTests
         await scenario.Act("discord.conversation.10");await scenario.WaitForHistory();
         scenario.Session.PreflightFailure="recipient_unavailable";
         await scenario.Act("discord.message.draft","Retain after definite rejection");await scenario.Act("discord.message.send");
-        await Wait(()=>scenario.Find("discord.message.status")?.Text?.StartsWith("Message was not sent.",StringComparison.Ordinal)==true);
+        await scenario.Widget.WaitForMessageSendAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        check(scenario.Notifications.Any(command=>command.Notification?.Body?.StartsWith("Message was not sent.",StringComparison.Ordinal)==true) &&
+            scenario.Find("discord.message.status") is null,"Definite send failure uses a toast without a permanent status line");
         check(scenario.Find("discord.message.send") is { Glyph: WidgetGlyph.Send, AccessibilityLabel: "Send message" } && scenario.Find("discord.message.draft")?.Text=="Retain after definite rejection" && scenario.Session.Reconciles==0,
             "Definite provider preflight rejection preserves draft and clears pending delivery instead of trapping Check delivery");
         scenario.Session.PreflightFailure=null;await scenario.Act("discord.message.send");
-        await Wait(()=>scenario.Find("discord.message.status")?.Text=="Sent");
+        await scenario.Widget.WaitForMessageSendAsync().WaitAsync(TimeSpan.FromSeconds(5));
         check(scenario.Session.Calls.Count(call=>call.Method=="messageSend")==2,
             "After a definite preflight rejection a later explicit Send is admitted normally");
     }
@@ -141,18 +150,30 @@ internal static partial class MessagingTests
     private static async Task CatalogPagingAsync(Action<bool,string> check)
     {
         await using var scenario=await Scenario.OpenAsync(new(){ConversationCount=81});
-        await scenario.Act("discord.messages.next");await Wait(()=>scenario.Find("discord.conversation.140") is not null);
+        check(scenario.Find("discord.messages.next") is null && scenario.Find("discord.messages.previous") is null &&
+            scenario.Find("discord.messages.list")?.IndexedCollection?.Count==81,"The inbox declares all positions without paging buttons");
+        check(scenario.Session.Calls.Count(call=>call.Method=="messageConversations")==1,"Initial inbox rendering fetches only its first bounded page");
+        using var rows=WidgetTestHost.CreateIndexedCollectionHost(scenario.Widget,"conversation-paging");rows.PublishSnapshot();
+        using var oldRange=await rows.AcquireAsync("discord.messages.list",40,40);
         var next=scenario.Session.Calls.Last(call=>call.Method=="messageConversations").Request;
         check(next.GetProperty("offset").GetInt32()==40 && next.GetProperty("version").GetString()=="v1",
-            "Adjacent conversation pages carry the exact provider catalog version");
-        await scenario.Act("discord.messages.refresh");await Wait(()=>scenario.Find("discord.conversation.10") is not null);
+            "Host range demand carries the exact provider catalog version");
+        var reads=scenario.Session.Calls.Count(call=>call.Method=="messageConversations");
+        check(await rows.LocateAsync("discord.messages.list",new("180"))==80 &&
+            scenario.Session.Calls.Count(call=>call.Method=="messageConversations")==reads,"Preferred deep conversation lookup does not load intervening pages");
+        var before=scenario.Find("discord.messages.list")!.IndexedCollection!;
+        await scenario.Act("discord.refresh");await Wait(()=>scenario.Find("discord.messages.list")!.IndexedCollection!=before);
         var refreshed=scenario.Session.Calls.Last(call=>call.Method=="messageConversations").Request;
         check(refreshed.GetProperty("offset").GetInt32()==0 && refreshed.GetProperty("version").ValueKind==JsonValueKind.Null,
             "Explicit catalog refresh restarts at the first page without reusing an obsolete catalog version");
-        await scenario.Act("discord.messages.next");await Wait(()=>scenario.Find("discord.conversation.140") is not null);
+        rows.PublishSnapshot();using var refreshedRange=await rows.AcquireAsync("discord.messages.list",40,1);
+        before=scenario.Find("discord.messages.list")!.IndexedCollection!;
         scenario.Session.CatalogVersion="v2";scenario.Session.CatalogRevision++;
         await scenario.Widget.OnActionAsync(new("refresh","test"));await scenario.Widget.WaitForStateReadAsync().WaitAsync(TimeSpan.FromSeconds(5));
-        await Wait(()=>scenario.Find("discord.conversation.10") is not null);
+        await Wait(()=>scenario.Find("discord.messages.list")!.IndexedCollection!.QueryGeneration>before.QueryGeneration);
+        rows.PublishSnapshot();
+        check(oldRange.RouteAction("140",ControllerButton.A) is null && refreshedRange.RouteAction("140",ControllerButton.A) is null,
+            "Catalog replacement revokes earlier recipient actions");
         var invalidated=scenario.Session.Calls.Last(call=>call.Method=="messageConversations").Request;
         check(invalidated.GetProperty("offset").GetInt32()==0 && invalidated.GetProperty("version").ValueKind==JsonValueKind.Null,
             "A live catalog revision retires the old offset and loads a fresh first page");
@@ -191,13 +212,13 @@ internal static partial class MessagingTests
         {
             await unread.Act("discord.conversation.10");await unread.WaitForHistory();
             check(unread.Snapshot().ScrollRevealRequest?.IndexedItem is {ItemKey:"105",Index:5} &&
-                unread.Session.Calls.Single(call=>call.Method=="messageHistory").Request.GetProperty("around").GetString()=="105",
+                unread.Session.Calls.Single(call=>call.Method=="messageHistory" && call.Request.TryGetProperty("around",out var around) && around.ValueKind==JsonValueKind.String).Request.GetProperty("around").GetString()=="105",
                 "Fresh entry reveals the authoritative first unread message with one bounded around read");
-            await unread.Widget.OnActionAsync(new("message-focus-header","test"){InputScopeId=unread.Snapshot().ActiveInputScopeId});
+            await unread.Widget.OnActionAsync(new("message-focus-composer","test"){InputScopeId=unread.Snapshot().ActiveInputScopeId});
             using var rows=WidgetTestHost.CreateIndexedCollectionHost(unread.Widget,"messages.unread.entry");
             using var boundary=await rows.AcquireAsync("discord.message.history",5,1);
             check(Nodes(boundary.Range.Items[0].Root).Any(node=>node.Text=="Unread messages") && unread.Snapshot().ScrollRevealRequest is null,
-                "Explicit header focus cancels the reveal without discarding the entry unread separator");
+                "Explicit composer focus cancels the reveal without discarding the entry unread separator");
         }
         await using(var stale=await Scenario.OpenAsync(new(){HistoryCount=18,OldestUnread="999"}))
         {
@@ -230,11 +251,11 @@ internal static partial class MessagingTests
                 "Explicit recipient reopening reveals latest and focuses composer while reusing its current loaded query without another read");
             var controls=scenario.Snapshot().Root.Shortcuts;
             check(controls.Any(item=>item.Button==ControllerButton.X && item.ActionId=="message-focus-composer") &&
-                controls.Any(item=>item.Button==ControllerButton.LeftStick && item.ActionId=="message-focus-header") &&
-                controls.Any(item=>item.Button==ControllerButton.Y && item.ActionId=="message-latest"),"Conversation declares shared route-scoped write, header and latest shortcuts");
-            await scenario.Widget.OnActionAsync(new("message-focus-header","test",InputScopeId:scenario.Snapshot().ActiveInputScopeId));
-            check(scenario.Snapshot().FocusGroupEntryRequest?.TargetId=="discord.messages.back" && scenario.Snapshot().ScrollRevealRequest is null,
-                "Header shortcut replaces obsolete initial reveal with an exact shared focus intent");
+                !controls.Any(item=>item.Button==ControllerButton.LeftStick) && scenario.Find("discord.message.options") is null &&
+                controls.Any(item=>item.Button==ControllerButton.Y && item.ActionId=="message-latest"),"Conversation keeps write/latest shortcuts without redundant header controls");
+            await scenario.Widget.OnActionAsync(new("message-focus-composer","test",InputScopeId:scenario.Snapshot().ActiveInputScopeId));
+            check(scenario.Snapshot().FocusGroupEntryRequest?.TargetId=="discord.message.draft" && scenario.Snapshot().ScrollRevealRequest is null,
+                "Composer shortcut replaces obsolete initial reveal with an exact shared focus intent");
         }
         await using(var scenario=await Scenario.OpenAsync(new(){HistoryCount=18}))
         {
@@ -265,13 +286,16 @@ internal static partial class MessagingTests
         internal readonly WidgetFileReference File=new(new string('e',32),"pending-capture.png","image/png",3,long.MaxValue);
         internal readonly WidgetFileReference IncomingFile=new(new string('a',32),"incoming.png","image/png",3,long.MaxValue);
         internal readonly ConcurrentQueue<string> Released=new(),ReadIds=new();
+        internal readonly ConcurrentQueue<WidgetNotificationCommand> Notifications=new();
         internal int Uploads;
         internal TaskCompletionSource? UploadGate;
         internal bool IgnoreUploadCancellation;
-        private Scenario(MessagesSession session)
+        private Scenario(MessagesSession session,TimeProvider? clock=null)
         {
             Session=session;
             var services=new WidgetTestHostServicesBuilder()
+                .WithHandler(WidgetNotificationCapabilities.Publish,(request,token)=>
+                {token.ThrowIfCancellationRequested();Notifications.Enqueue(request);return ValueTask.FromResult(new WidgetNotificationReceipt(true));})
                 .WithHandler(WidgetFileCapabilities.Choose,(_,_)=>ValueTask.FromResult(new WidgetFileSelection([File])))
                 .WithHandler(WidgetFileCapabilities.Accept,(_,_)=>ValueTask.FromResult(new WidgetFileSelection([IncomingFile])))
                 .WithHandler(WidgetFileCapabilities.Get,(request,_)=>request.Id==File.Id?ValueTask.FromResult(File):throw new InvalidDataException("Foreign file"))
@@ -282,7 +306,7 @@ internal static partial class MessagingTests
                     return ValueTask.FromResult(new WidgetFileReadChunk(request.Offset,Enumerable.Repeat((byte)42,count).ToArray(),request.Offset+count==File.ByteLength));
                 })
                 .WithHandler(WidgetFileCapabilities.Release,(request,_)=>{Released.Enqueue(request.Id);return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));}).Build();
-            Widget=WidgetTestHost.Attach(new DiscordWebViewWidget(session,refreshInterval:TimeSpan.FromHours(1),uploadAttachment:async(_,stream,progress,token)=>
+            Widget=WidgetTestHost.Attach(new DiscordWebViewWidget(session,time:clock,refreshInterval:TimeSpan.FromHours(1),uploadAttachment:async(_,stream,progress,token)=>
             {
                 Interlocked.Increment(ref Uploads);
                 var chunk=new byte[checked((int)stream.Length/2)];await stream.ReadExactlyAsync(chunk,token);progress(stream.Position);
@@ -290,9 +314,9 @@ internal static partial class MessagingTests
                 if(!IgnoreUploadCancellation){await stream.CopyToAsync(Stream.Null,token);progress(stream.Position);}
             }),services);
         }
-        internal static async Task<Scenario> OpenAsync(MessagesSession? session=null)
+        internal static async Task<Scenario> OpenAsync(MessagesSession? session=null,TimeProvider? clock=null)
         {
-            var result=new Scenario(session??new());
+            var result=new Scenario(session??new(),clock);
             try
             {
                 await WidgetTestHost.InitializeAsync(result.Widget);await WidgetTestHost.SetLifecycleStateAsync(result.Widget,WidgetLifecycleState.Interactive);
@@ -302,24 +326,34 @@ internal static partial class MessagingTests
             catch{await result.DisposeAsync();throw;}
         }
         internal ViewSnapshot Snapshot()=>Widget.Render().CreateSnapshot("messages.lifecycle",1);
-        internal ViewNode? Find(string id)=>Nodes(Snapshot().Root).FirstOrDefault(node=>node.Id==id);
+        internal ViewNode? Find(string id)=>Nodes(Snapshot().Root).FirstOrDefault(node=>node.Id==id)??ConversationRowsHarness.Find(Widget,Snapshot(),id);
         internal Task WaitForHistory()=>Wait(()=>Find("discord.message.history")?.IndexedCollection?.Count==Session.HistoryCount);
         internal async Task Act(string id,string? text=null)
         {
+            if(ConversationRowsHarness.IsRow(id)){await ConversationRowsHarness.ActAsync(Widget,id);return;}
             var node=Find(id)??throw new InvalidOperationException("Missing "+id);
             await Widget.OnActionAsync(new(node.ActionId!,id,InputScopeId:Snapshot().ActiveInputScopeId){CommittedText=text,FocusedElementId=id});
         }
-        public async ValueTask DisposeAsync(){UploadGate?.TrySetResult();Session.SendGate?.TrySetResult();Session.HistoryGate?.TrySetResult();await WidgetTestHost.DestroyAsync(Widget);}
+        public async ValueTask DisposeAsync(){UploadGate?.TrySetResult();Session.SendGate?.TrySetResult();Session.HistoryGate?.TrySetResult();Session.ReadGate?.TrySetResult();Session.ObservationGate?.TrySetResult();await WidgetTestHost.DestroyAsync(Widget);}
     }
 
     private sealed class MessagesSession:IDiscordSession
     {
+        public event Action<WebSessionReference>? Invalidated {add=>Inner.Invalidated+=value;remove=>Inner.Invalidated-=value;}
         internal FakeSession Inner=new();
         internal int Sends,Reconciles;
         internal bool Ambiguous;
         internal string FriendName="Friend",CatalogVersion="v1";
+        internal string? CatalogOrderVersion;
         internal string? OldestUnread;
+        internal string? LastMessage;
+        internal Func<DiscordConversation,DiscordConversation>? ConversationMetadata;
+        internal bool CanMarkRead;
+        internal bool? HasUnread;
         internal string SentId="100";
+        internal int? LatestStartAfterSend;
+        internal string? RejectReadBeyond;
+        internal bool OwnHistory;
         internal string? PreflightFailure;
         internal int ConversationCount=2;
         internal int HistoryCount=1,HistoryReplies;
@@ -340,10 +374,13 @@ internal static partial class MessagingTests
         internal readonly ConcurrentQueue<(string Method,JsonElement Request)> Calls=new();
         internal TaskCompletionSource? SendGate;
         internal TaskCompletionSource? HistoryGate;
+        internal TaskCompletionSource? ReadGate;
+        internal TaskCompletionSource? ObservationGate;
+        internal Func<string,JsonElement,Task>? CallEffect;
         public WebSessionReference? Reference=>Inner.Reference;
         public ValueTask<DiscordState> ReadAsync(CancellationToken token)=>ValueTask.FromResult(Inner.State with
         {Messaging=new(Inner.State.Account,"ready",true,true,true,2000,50,MessageRevision:MessageRevision,ObservedChannelId:ObservedChannel,
-            CatalogRevision:CatalogRevision,ObservedSinceRevision:ObservedSinceRevision,WatchEpoch:WatchEpoch)});
+            CatalogRevision:CatalogRevision,ObservedSinceRevision:ObservedSinceRevision,WatchEpoch:WatchEpoch,CanMarkRead:CanMarkRead,HasUnreadConversations:HasUnread)});
         public async ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token)
         {
             var request=JsonSerializer.SerializeToElement(args);
@@ -357,25 +394,47 @@ internal static partial class MessagingTests
                     conversation=new DiscordConversation("20","20",null,"Friend 20","dm",null,null,true,true)
                 });
             }
+            if(method=="messageLocateConversation")
+            {
+                var key=request.GetProperty("key").GetString();
+                var version=request.GetProperty("version").GetString();
+                if(version!=CatalogVersion)throw new DiscordCommandException("conversation_catalog_changed");
+                int? found=key=="10"?0:key=="20"?1:int.TryParse(key,out var numeric)?numeric-100:null;
+                if(found is <0 || found>=ConversationCount)found=null;
+                return JsonSerializer.SerializeToElement(new{account=Inner.State.Account,version=CatalogVersion,totalCount=ConversationCount,key,index=found});
+            }
             if(method=="messageConversations")
             {
                 var offset=request.GetProperty("offset").GetInt32();var limit=request.GetProperty("limit").GetInt32();
                 var version=request.TryGetProperty("version",out var supplied)?supplied.GetString():null;
                 if(version is not null && version!=CatalogVersion)throw new DiscordCommandException("conversation_catalog_changed");
                 var items=Enumerable.Range(offset,Math.Min(limit,ConversationCount-offset)).Select(index=>
-                {var id=index==0?"10":index==1?"20":(100+index).ToString();return new DiscordConversation(id,id,null,index==0?FriendName:"Friend "+id,"dm",null,null,OldestUnread is not null,true){OldestUnreadMessageId=OldestUnread};}).ToArray();
-                return JsonSerializer.SerializeToElement(new DiscordConversationPage(new(Inner.State.Account,CatalogVersion,ConversationCount,offset,offset+items.Length<ConversationCount),items));
+                {var id=index==0?"10":index==1?"20":(100+index).ToString();var row=new DiscordConversation(id,id,null,index==0?FriendName:"Friend "+id,"dm",null,LastMessage,OldestUnread is not null,true){OldestUnreadMessageId=OldestUnread};return ConversationMetadata?.Invoke(row)??row;}).ToArray();
+                return JsonSerializer.SerializeToElement(new DiscordConversationPage(new(Inner.State.Account,CatalogVersion,ConversationCount,offset,offset+items.Length<ConversationCount)
+                    {OrderVersion=CatalogOrderVersion},items));
             }
             var channel=request.TryGetProperty("channelId",out var channelValue)&&channelValue.ValueKind==JsonValueKind.String?channelValue.GetString()!:"10";
+            if(method=="messageMarkRead")
+            {
+                // Model an external action that can finish after cancellation.
+                if(ReadGate is {} readGate)await readGate.Task;
+                if(RejectReadBeyond is {} head && long.Parse(request.GetProperty("messageId").GetString()!)>long.Parse(head))
+                    throw new DiscordCommandException("invalid_read_target");
+                return JsonSerializer.SerializeToElement(new{account=request.GetProperty("account").GetString(),channelId=channel,
+                    messageId=request.GetProperty("messageId").GetString(),status="applied"});
+            }
             if(method=="messageHistory")
             {
                 if(HistoryGate is {} gate)await(IgnoreHistoryCancellation?gate.Task:gate.Task.WaitAsync(token));
                 var before=request.TryGetProperty("before",out var beforeValue)?beforeValue.GetString():null;
                 var after=request.TryGetProperty("after",out var afterValue)?afterValue.GetString():null;
-                var start=PagedNotificationHistory?(before is not null?int.Parse(before)-HistoryCount:after is not null?int.Parse(after)+1:100):100;
-                var items=Enumerable.Range(start,HistoryCount).Select(index=>Message("Hello from history",null,channel) with{Id=index.ToString()}).ToArray();
-                Interlocked.Increment(ref HistoryReplies);
                 var around=request.TryGetProperty("around",out var aroundValue)?aroundValue.GetString():null;
+                var start=PagedNotificationHistory?(before is not null?int.Parse(before)-HistoryCount:after is not null?int.Parse(after)+1:100):100;
+                if(Sends>0 && LatestStartAfterSend is {} latest && before is null && after is null)
+                    start=around is null?latest:int.Parse(around)-HistoryCount/2;
+                var items=Enumerable.Range(start,HistoryCount).Select(index=>Message("Hello from history",null,channel) with{
+                    Id=index.ToString(),IsOwn=OwnHistory || Sends>0 && LatestStartAfterSend.HasValue && index.ToString()==SentId}).ToArray();
+                Interlocked.Increment(ref HistoryReplies);
                 return JsonSerializer.SerializeToElement(new DiscordMessagePage(new(Inner.State.Account,channel,before,
                     items.Length==0?null:items[0].Id,PagedNotificationHistory,After:after,NextAfter:items.Length==0?null:items[^1].Id,Around:around),items));
             }
@@ -383,6 +442,7 @@ internal static partial class MessagingTests
             {
                 var next=request.GetProperty("active").GetBoolean() && request.GetProperty("channelId").ValueKind==JsonValueKind.String
                     ?request.GetProperty("channelId").GetString():null;
+                if(next is not null && ObservationGate is {} observing)await observing.Task.WaitAsync(token);
                 if(ObservedChannel!=next){ObservedChannel=next;ObservedSinceRevision=MessageRevision;if(LiveUpdates)WatchEpoch++;}
                 if(LiveUpdates)return JsonSerializer.SerializeToElement((await ReadAsync(token)).Messaging);
                 return JsonSerializer.SerializeToElement(new{ok=true});
@@ -414,6 +474,8 @@ internal static partial class MessagingTests
                 return JsonSerializer.SerializeToElement(new DiscordMessageSendResult(Inner.State.Account,channel,nonce,
                     Ambiguous?"unknown":"sent",Ambiguous?null:Message(request.GetProperty("content").GetString()!,nonce,channel),null));
             }
+            if(method is "callStart" or "callAnswer" or "callDecline" && CallEffect is {} effect)
+            {await effect(method,request);return JsonSerializer.SerializeToElement(new{});}
             return await Inner.InvokeAsync(method,args,token);
         }
         private DiscordMessage Message(string text,string? nonce,string channel="10")=>new(nonce is null?"100":SentId,channel,Inner.State.Account,"Friend",null,text,1,null,nonce,[],nonce is not null);

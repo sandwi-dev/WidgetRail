@@ -6,7 +6,9 @@ watching a video beside a game or keeping compact playback information nearby.
 ## Pin a view
 
 1. Open a widget that supports pinning. For video, first choose the content you want to play.
-2. Return to the tray and press **Menu** to open pin controls.
+2. Return to the tray and press **Menu** to open pin controls. For YouTube Video,
+   choose **Pin video**. The same command is available in Player and beside the
+   current video in Discover.
 3. Choose an available layout and adjust its placement and size.
 4. Hide the overlay. The pinned view remains on screen.
 

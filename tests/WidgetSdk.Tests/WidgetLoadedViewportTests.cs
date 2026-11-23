@@ -6,6 +6,7 @@ internal static class WidgetLoadedViewportTests
     internal static async Task Run()
     {
         await TailProvenance();
+        await ObservedEndProvenance();
         await CallbackBound();
         var fixture = new Fixture();
         await WidgetTestHost.InitializeAsync(fixture);
@@ -132,6 +133,32 @@ internal static class WidgetLoadedViewportTests
             OnViewportChanged = async (_, _, _) => { Started.Release(); await Release.Task; },
         });
         public override WidgetView Render() => new(UI.Stack("root", UI.CollectionList("items", Rows, 48, "Items")), ActiveInputScopeId: "root");
+    }
+
+    private static async Task ObservedEndProvenance()
+    {
+        var fixture=new Fixture();
+        await WidgetTestHost.InitializeAsync(fixture);
+        await WidgetTestHost.SetLifecycleStateAsync(fixture,WidgetLifecycleState.Interactive);
+        using var host=WidgetTestHost.CreateIndexedCollectionHost(fixture,"observed-end");
+        try
+        {
+            var viewport=Guid.NewGuid().ToString("N");
+            host.PublishSnapshot();
+            await host.ObserveViewportAsync("items",new(viewport,1,true,true));
+            var observation=fixture.Rows.ViewportState;
+            Check(observation.ObservedEndItemKey?.Value=="item.2","Exact observed tail was not captured");
+            fixture.Rows.Publish("initial","initial",[1,2,3]);host.PublishSnapshot();
+            Check(observation.ObservedEndItemKey?.Value=="item.2","Captured observation changed after publication");
+            Check(fixture.Rows.ViewportState.ObservedEndItemKey is null,"New unobserved tail was treated as visible");
+            await host.ObserveViewportAsync("items",new(viewport,2,true,true));
+            Check(fixture.Rows.ViewportState.ObservedEndItemKey?.Value=="item.3","Fresh tail observation did not advance");
+            await host.ObserveViewportAsync("items",new(Guid.NewGuid().ToString("N"),1,true,false));
+            Check(fixture.Rows.ViewportState.ObservedEndItemKey is null,"A second reading viewport was ignored");
+            await WidgetTestHost.SetLifecycleStateAsync(fixture,WidgetLifecycleState.Background);
+            Check(fixture.Rows.ViewportState.ObservedEndItemKey is null,"Background state retained visible-tail evidence");
+        }
+        finally {await WidgetTestHost.DestroyAsync(fixture);}
     }
 
     private sealed class Fixture : Widget

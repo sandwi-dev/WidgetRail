@@ -14,8 +14,11 @@ internal static class CollectionBoundaryTests
             var deferred=intent.DeferCollectionReveal(widget.Source,"items");
             var declaration=widget.Render() with{ScrollRevealRequest=deferred};
             var snapshot=declaration.CreateSnapshot("boundary.defer",1);
-            Check(snapshot.ProtocolVersion==ProtocolConstants.TargetedCollectionPresentationVersion && deferred.IndexedItem is null,
+            Check(snapshot.ProtocolVersion==ProtocolConstants.CurrentVersion && deferred.IndexedItem is null,
                 "Deferred reveal publishes its admission before a target exists");
+            Check(ViewSnapshotValidator.Validate(snapshot with{ProtocolVersion=ProtocolConstants.TargetedCollectionPresentationVersion-1})
+                .Any(error=>error.Code=="feature_requires_version"&&error.Path=="$.scrollRevealRequest.deferredSource"),
+                "Deferred reveal still requires its introduction version while indexed templates advertise current SDK capabilities");
             widget.Source.Publish("initial","account",[1,2,3]);
             var target=intent.RevealCollection(widget.Source,"items",widget.Source.FocusTarget("items",new("item-3"),2));
             Check(target.RequestId==deferred.RequestId && IndexedCollectionContract.SameViewportDomain(widget.Source.Descriptor,before),

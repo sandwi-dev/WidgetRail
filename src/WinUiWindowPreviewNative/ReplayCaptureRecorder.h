@@ -69,17 +69,18 @@ public:
         if(audio){audio->Finish(SegmentAudioEnd());audio.reset();}
         origin=0;lastRawTime=0;paused=true;
     }
-    void Audio(uint32_t kind,int64_t timestamp,const void* bytes,uint32_t count) {
+    bool Audio(uint32_t kind,int64_t timestamp,const void* bytes,uint32_t count) {
         Own();
-        if(kind==3){Pause();return;}
+        if(kind==3){Pause();return false;}
         if(kind!=2 || !withAudio || timestamp<0 || timestamp>INT64_MAX/10 || !bytes || count==0 || count%4 || count>192000)
             throw winrt::hresult_error(E_INVALIDARG);
         ++audioPackets;
-        if(!audio || !origin || paused){++pausedAudioPackets;return;}
+        if(!audio || !origin || paused){++pausedAudioPackets;return false;}
         const auto pcm=static_cast<const int16_t*>(bytes);
         std::deque<CapturedAudioPacket> packets;
         packets.push_back({static_cast<uint64_t>(timestamp)*10,std::vector<int16_t>(pcm,pcm+count/2)});
         audio->Queue(std::move(packets));
+        return true;
     }
     bool Frame(UINT w,UINT h,UINT sourceW,UINT sourceH,int64_t timestamp,ID3D11Texture2D* texture) {
         Own();

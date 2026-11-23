@@ -12,6 +12,43 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 internal sealed partial class OverlayShellPage
 {
+    internal void EnableHomeNotificationValidation(string path)
+    {
+        Loaded += async (_, _) =>
+        {
+            string? error = null;
+            try
+            {
+                await WaitUntil(() => !startupPresentationPending && !switching && activeWidget == "marketplace" && browserOwner is not null);
+                var notice = browserOwner!.Notifications.Add("settings", "fixture", "", "", "Open Settings", "", this,
+                    new(() => true, () => { }, () => { }, () => { }, () => { }), NotificationPresentation.ListOnly,
+                    new WidgetNotification("open-settings", "Open Settings") { Interaction = WidgetNotificationInteraction.OpenWidget })!;
+                FocusUtility(ShellUtility.Notifications);
+                await WaitUntil(() => utilityPanel is { IsLoaded: true });
+                NavigateTray(FocusNavigationDirection.Up);
+                await WaitUntil(() => UtilityListFocused && utilityPanel!.FocusedId == notice.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                Receive(new() { Connected = 1 });
+                await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Pressed);
+                await RouteButtonAsync(ControllerButton.A, ControllerEventPhase.Released);
+                await WaitUntil(() => homeWidgetId == "marketplace" && activeWidget == "settings" && MainFocusEnabled && !switching &&
+                    FocusManager.GetFocusedElement(XamlRoot) is DependencyObject element &&
+                    AutomationProperties.GetAutomationId(element).StartsWith("Widget.category.", StringComparison.Ordinal));
+            }
+            catch (Exception failure) { error = failure.ToString(); }
+            await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new
+            {
+                passed = error is null, error, home = homeWidgetId, displayed = activeWidget,
+                focus = FocusManager.GetFocusedElement(XamlRoot) is DependencyObject element ? AutomationProperties.GetAutomationId(element) : null,
+            }));
+
+            static async Task WaitUntil(Func<bool> ready)
+            {
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(18));
+                while (!ready()) await Task.Delay(50, deadline.Token);
+            }
+        };
+    }
+
     internal async Task VerifyUtilityReentryAsync()
     {
         var deadline = Environment.TickCount64 + 5000;
@@ -50,7 +87,7 @@ internal sealed partial class OverlayShellPage
             {
                 await Task.Delay(100);
                 if (startup is not null) await startup;
-                await Until(() => !switching && browserOwner is not null && taskSwitcherButton.IsLoaded);
+                await Until(() => !startupPresentationPending && !switching && browserOwner is not null && taskSwitcherButton.IsLoaded);
                 shellGestures.Claim(ControllerButton.A);
                 Receive(new() { Connected = 1 });
                 Check(!shellGestures.Owns(ControllerButton.A), "Neutral controller state clears a missed A release before tray navigation");
@@ -88,6 +125,10 @@ internal sealed partial class OverlayShellPage
                     Check(requested == 0 && SystemTaskViewFocused, "X cannot close the Windows Task View action");
                     await Button(ControllerButton.A);
                     Check(requested == 1 && panel!.ContainsFocus, "A requests Windows Task View once and a rejected request retains list focus");
+                    var taskViewRow = taskRows.Items.Cast<ListViewItem>().Single(row => Equals(row.Tag, SystemTaskViewId));
+                    var taskWindow = Microsoft.UI.Win32Interop.GetWindowFromWindowId(taskViewRow.XamlRoot.ContentIslandEnvironment.AppWindowId);
+                    await Validation.NativeContextProbeInput.ClickWindowElementAsync(taskWindow, taskViewRow);
+                    Check(requested == 2 && panel!.ContainsFocus, "Left-click requests the pointed Task View entry once");
                     taskStatus = null;
                 }
                 finally { SystemTaskViewRequested = taskView; }
@@ -143,6 +184,38 @@ internal sealed partial class OverlayShellPage
                 var notificationRows = FindControl<ListView>(utilityPanel!, "Overlay.Utility.List")!;
                 Check(notificationRows.Items.Cast<ListViewItem>().Count(row => ((ShellUtilityRowContent)row.Content).HintShown) == 1 &&
                     utilityPanel!.FocusedDismissLabel == "Dismiss", "Focused notification shows a dismiss hint");
+                var opened = 0;
+                var closed = 0;
+                var informational = inbox.Add("settings", "fixture", "", "", "Information", "", this,
+                    new(() => true, () => { }, () => opened++, () => closed++, () => { }), NotificationPresentation.ListOnly,
+                    new WidgetNotification("information", "Information") { Interaction = WidgetNotificationInteraction.Informational })!;
+                var actionable = inbox.Add("settings", "fixture", "", "", "Open item", "", this,
+                    new(() => true, () => { }, () => opened++, () => closed++, () => { }), NotificationPresentation.ListOnly)!;
+                async Task ClickEntry(NotificationEntry item, bool padding = false, bool right = true)
+                {
+                    var rowId = item.Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    var items = notificationRows.Items.Cast<ListViewItem>();
+                    await Until(() => items.Any(row => Equals(row.Tag, rowId)));
+                    notificationRows.ScrollIntoView(items.Single(row => Equals(row.Tag, rowId)));
+                    await Until(() => items.Any(row => Equals(row.Tag, rowId) &&
+                        row.IsLoaded && row.ActualHeight > 0 && row.ActualWidth > 0));
+                    var row = notificationRows.Items.Cast<ListViewItem>().Single(row => Equals(row.Tag, rowId));
+                    var window = Microsoft.UI.Win32Interop.GetWindowFromWindowId(row.XamlRoot.ContentIslandEnvironment.AppWindowId);
+                    var title = ((NotificationCard)((ShellUtilityRowContent)row.Content).Body).TitleText;
+                    await Validation.NativeContextProbeInput.ClickWindowElementAsync(window, padding ? row : title, right: right,
+                        localPoint: padding ? new Windows.Foundation.Point(3, row.ActualHeight / 2) : null);
+                    if (right) Check(!inbox.Entries.Contains(item), $"Right-click on {(padding ? "row padding" : "title text")} dismissed notification {rowId}");
+                }
+                await ClickEntry(informational);
+                Check(inbox.Entries.Contains(entry) && inbox.Entries.Contains(actionable) && closed == 1,
+                    "Right-click dismisses the pointed informational notification while a different row has focus");
+                var arriving = inbox.Add("settings", "fixture", "", "", "New arrival", "", this,
+                    new(() => true, () => { }, () => opened++, () => closed++, () => { }), NotificationPresentation.ListOnly)!;
+                await ClickEntry(actionable, padding: true);
+                Check(inbox.Entries.Contains(entry) && inbox.Entries.Contains(arriving) && opened == 0 && closed == 2,
+                    "Right-click dismisses an actionable notification once without activating it");
+                await ClickEntry(arriving);
+                Check(inbox.Entries.Contains(entry) && closed == 3, "A notification arriving between dismissals keeps its own identity");
                 await Button(ControllerButton.B);
                 Check(notificationBell.FocusState != FocusState.Unfocused && !RadialOpen, "Notification Back returns to bell");
                 await Button(ControllerButton.B);
@@ -163,7 +236,8 @@ internal sealed partial class OverlayShellPage
                 await Until(() => utilityPanel?.FocusedId == entry.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 Check(shownUtility == ShellUtility.Notifications && UtilityListFocused && !RadialOpen && !reordering,
                     "Hold Y enters the first pending notification without an extra Up or A");
-                inbox.Dismiss(entry.Id);
+                notificationRows = FindControl<ListView>(utilityPanel!, "Overlay.Utility.List")!;
+                await ClickEntry(entry, padding: true);
                 await Task.Delay(50);
                 Check(shownUtility == ShellUtility.Notifications, "Dismissing the last notification does not switch the active panel");
                 // Removing the last row can already return focus to the bell.
@@ -206,6 +280,20 @@ internal sealed partial class OverlayShellPage
                 await Task.Delay(150);
                 Check(UtilityIconFocused && shownUtility == ShellUtility.Tasks && trayMenu is null,
                     "Tray command opens Task Switcher without late menu focus stealing it");
+                FocusUtility(ShellUtility.Notifications);
+                var openWidget = inbox.Add("settings", "fixture", "", "", "Open Settings", "", this,
+                    new(() => true, () => { }, () => { }, () => { }, () => { }), NotificationPresentation.ListOnly,
+                    new WidgetNotification("open-settings", "Open Settings") { Interaction = WidgetNotificationInteraction.OpenWidget })!;
+                notificationRows = FindControl<ListView>(utilityPanel!, "Overlay.Utility.List")!;
+                string? clickedItem = null;
+                string? activationId = null;
+                notificationRows.ItemClick += (_, args) => clickedItem = args.ClickedItem?.GetType().Name;
+                utilityPanel!.Activated += id => activationId = id;
+                await ClickEntry(openWidget, right: false);
+                Check(activationId == openWidget.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    $"Left-click activates the pointed row (native item={clickedItem}, activation={activationId}, panel={shownUtility}, foreground={foreground})");
+                await Until(() => MainFocusEnabled && activeWidget == "settings" && shownUtility is null);
+                Check(true, "Left-click on the notification title opens its widget");
             }
             catch (Exception failure) { error = failure.ToString(); }
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);

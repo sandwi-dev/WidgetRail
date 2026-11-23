@@ -6,12 +6,17 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 internal static class PlayniteAchievementPresentation
 {
     private const string Prefix = PlayniteAchievementBrowse.Prefix;
-    internal static WidgetElement Page(PlayniteDetailsExtras state, PlayniteAchievementBrowse? query, WidgetElement? list)
+    internal static WidgetElement Page(PlayniteDetailsExtras state, PlayniteAchievementBrowse? query, WidgetElement? list, WidgetElement? install = null)
     {
         if (state.Achievements is not { Available: true } data)
+        {
+            if (install is not null)
+                return UI.Stack(Prefix + "achievements.setup", UI.Text("Playnite Achievements tracks this game’s unlocks.",
+                    Prefix + "achievements.unavailable").Classes("playnite-library-details-copy"), install);
             return UI.Text(state.AchievementsLoading ? "Loading achievements…" : state.AchievementsError ??
                 "No achievement data is available. Sync this game in PlayniteAchievements or SuccessStory, then refresh here.", Prefix + "achievements.unavailable")
                 .Classes("playnite-library-details-copy");
+        }
         var summary = UI.Row(Prefix + "achievements.summary-row",
             UI.Text($"{data.Unlocked} / {data.Total} unlocked · {(data.Total == 0 ? 0 : 100.0 * data.Unlocked / data.Total):0}%", Prefix + "achievements.summary")
                 .Classes("playnite-library-achievement-summary"),
@@ -46,7 +51,7 @@ internal static class PlayniteAchievementPresentation
             providerTools.Add(UI.Button("Adjust progress pin", Prefix + "achievement.manage." + selection, Prefix + "achievement.manage"));
             providerTools.Add(UI.Button("Unpin progress", Prefix + "achievement.unpin." + selection, Prefix + "achievement.unpin"));
         }
-        var freshness = UI.Text(state.AchievementRefreshMessage ?? "Cached achievements · Right-click or press X to track unfinished achievements with progress.",
+        var freshness = UI.Text(state.AchievementRefreshMessage ?? "Cached achievements · Right-click or press X to track unfinished achievements.",
             Prefix + "achievements.freshness").Classes("playnite-library-details-meta");
         var rows = new List<GridTrackDefinition> { GridTrack.Auto() };
         var content = new List<WidgetElement> { summary };
@@ -63,10 +68,26 @@ internal static class PlayniteAchievementPresentation
     }
 
     internal static bool CanTrack(PlayniteAchievement item) =>
+        !item.Unlocked && !item.Hidden && item.Id is { Length: > 0 } && (item.Progress is null || CanPinProgress(item));
+
+    internal static bool CanPinProgress(PlayniteAchievement item) =>
         !item.Unlocked && !item.Hidden && item.Id is { Length: > 0 } &&
         item.Progress is { Current: >= 0, Maximum: > 0 } progress && progress.Current < progress.Maximum;
 
-    internal static WidgetElement Row(PlayniteAchievementEntry entry, string id, bool capturesAvailable = false)
+    internal static string AwardFacts(PlayniteAchievement item)
+    {
+        var facts = new List<string>();
+        if (item.UnlockedAt is { } when && item.Unlocked) facts.Add(when.ToLocalTime().ToString("g"));
+        if (!item.Unlocked && item.Progress is { } progress) facts.Add($"{progress.Current:N0} / {progress.Maximum:N0}");
+        if (item.GamerScore is { } points) facts.Add($"{points} points");
+        if (!string.IsNullOrWhiteSpace(item.TrophyType)) facts.Add(item.TrophyType);
+        if (!string.IsNullOrWhiteSpace(item.Category) && !string.Equals(item.Category, "Default", StringComparison.OrdinalIgnoreCase)) facts.Add(item.Category);
+        if (item.IsGoal) facts.Add("Goal");
+        if (item.IsCapstone) facts.Add("Capstone");
+        return string.Join(" · ", facts);
+    }
+
+    internal static WidgetElement Row(PlayniteAchievementEntry entry, string id, bool capturesAvailable = false, bool trackableSource = true, bool tracked = false)
     {
         var item = entry.Item;
         var children = new List<WidgetElement>();
@@ -74,6 +95,7 @@ internal static class PlayniteAchievementPresentation
         else children.Add(entry.Secret ? UI.Text("?", id + ".icon").Classes("playnite-library-achievement-row-icon") :
             UI.Icon(PlayniteIcons.Achievements, id + ".icon", "Achievement").Classes("playnite-library-achievement-row-icon"));
         var meta = item.Unlocked ? "Unlocked" : "Locked";
+        if (tracked) meta += " · Tracked";
         if (item.Percent is { } rarity) meta += $" · {rarity:0.#}% of players";
         if (item.Unlocked && item.UnlockedAt is { } date) meta += " · " + date.ToLocalTime().ToString("g");
         if (item.GamerScore is { } points) meta += $" · {points} points";
@@ -85,6 +107,7 @@ internal static class PlayniteAchievementPresentation
             UI.Text(item.Unlocked ? " · Unlocked" : " · Locked", id + ".meta")
                 .Classes("playnite-library-achievement-meta", item.Unlocked ? "playnite-ink-progress" : "playnite-ink-muted"),
         };
+        if (tracked) heading.Add(UI.Text(" · Tracked", id + ".tracked").Classes("playnite-library-achievement-meta", "playnite-ink-progress"));
         if (item.Percent is { } percent) heading.Add(UI.Text($" · {percent:0.#}% of players", id + ".rarity")
             .Classes("playnite-library-achievement-meta", "playnite-ink-reward"));
         if (item.Unlocked && item.UnlockedAt is { } unlockedAt) heading.Add(UI.Text(" · " + unlockedAt.ToLocalTime().ToString("g"), id + ".date")
@@ -95,6 +118,10 @@ internal static class PlayniteAchievementPresentation
             .Classes("playnite-library-achievement-meta", "playnite-ink-reward"));
         if (!entry.Secret && item.IsGoal) heading.Add(UI.Text(" · Goal", id + ".goal")
             .Classes("playnite-library-achievement-meta", "playnite-ink-source"));
+        if (!entry.Secret && !string.IsNullOrWhiteSpace(item.Category))
+            heading.Add(UI.Text(" · " + item.Category, id + ".category").Classes("playnite-library-achievement-meta"));
+        if (!entry.Secret && item.IsCapstone)
+            heading.Add(UI.Text(" · Capstone", id + ".capstone").Classes("playnite-library-achievement-meta"));
         var text = new List<WidgetElement>
         {
             UI.RichText(id + ".heading", heading.ToArray()).Classes("playnite-library-achievement-heading"),
@@ -120,7 +147,11 @@ internal static class PlayniteAchievementPresentation
             ? UI.ActionSurface(Prefix + "achievement.reveal." + entry.Key, id, label, ActionSurfaceOrientation.Horizontal, children.ToArray())
             : UI.ReadingSurface(id, label, ActionSurfaceOrientation.Horizontal, children.ToArray()));
         var actions = new List<WidgetContextAction>();
-        if (!entry.Secret && CanTrack(item)) actions.Add(new(Prefix + "achievement.track." + entry.Key, "Track in progress pin"));
+        if (tracked) actions.Add(new(Prefix + "achievement.untrack." + entry.Key, "Stop tracking"));
+        else if (trackableSource && entry.UniqueId && CanTrack(item))
+            actions.Add(new(Prefix + "achievement.track." + entry.Key, "Track achievement"));
+        if (trackableSource && entry.UniqueId && CanPinProgress(item))
+            actions.Add(new(Prefix + "achievement.pin." + entry.Key, "Pin progress"));
         if (!entry.Secret && capturesAvailable && item.Unlocked && item.Id is not null)
             actions.Add(new(Prefix + "achievement.captures." + entry.Key, "View captures"));
         if (actions.Count > 0) surface = surface with

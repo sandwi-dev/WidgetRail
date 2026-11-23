@@ -52,9 +52,11 @@ internal sealed partial class NotificationBannerStyleValidationPage : Page, IDis
                 var creates = specimens[0].Depth.NativeResourceCreates;
                 specimens[0].Width = 481; await Task.Delay(50); specimens[0].Width = 480; await Task.Delay(50);
                 if (specimens[0].Depth.NativeResourceCreates != creates) throw new InvalidOperationException("Resize recreated shadow resources.");
+                await VerifyTextFitAsync();
                 await File.WriteAllTextAsync(resultPath, JsonSerializer.Serialize(new { passed = true,
                     checks = new[] { "Four theme/opacity specimens use the shared banner chrome", "Outer-only shadow fits the reserved transparent gutter",
-                        "High contrast suppresses shadow", "Resize reuses compositor resources" } }));
+                        "High contrast suppresses shadow", "Resize reuses compositor resources",
+                        "Short and wrapped notification bodies paint the full last line at fractional zoom and enlarged text" } }));
             }
             catch (Exception error) { await File.WriteAllTextAsync(resultPath, JsonSerializer.Serialize(new { passed = false, error = error.ToString() })); }
         };

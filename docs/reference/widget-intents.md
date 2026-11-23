@@ -347,6 +347,15 @@ code, so handlers should promptly accept navigation data and honor cancellation.
 
 ## Initial consumers
 
+Capture Library offers **Link to game…** for a saved capture or up to 64 selected
+captures. The `widgetrail.captures.associate` version 1 payload contains
+`captures`, an array of saved `id` and `revision` pairs. A receiver needs its own
+library permissions. Playnite Library searches its local catalog, asks the user
+to confirm a game, and rechecks the active profile and each content revision
+before attaching references. The source retains its selection when its ordering
+and membership survive. If no compatible receiver is available, the shell shows
+its unavailable-action dialog in Capture Library.
+
 Playnite Library's game-details links declare `widgetrail.web.open`. The host
 opens an eligible browser widget or uses the default-browser fallback; the widget
 no longer launches a browser from its companion process. Link identity and URL

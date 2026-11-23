@@ -22,6 +22,7 @@ internal sealed partial class WidgetViewPresenter
         internal Dictionary<string, Declaration> Plan { get; } = plan;
         internal Dictionary<string, Binding> Bindings { get; } = content;
         internal Binding Root { get; } = root;
+        internal WidgetMotionStage? Mount { get; set; }
         internal double RootOpacity { get; } = root.LayoutElement.Opacity;
         internal Dictionary<Binding, bool> HitTesting { get; } = content.Values.ToDictionary(binding => binding, binding => binding.Element.IsHitTestVisible);
         internal Task Suspension { get; set; } = Task.CompletedTask;
@@ -45,10 +46,32 @@ internal sealed partial class WidgetViewPresenter
         SettleTransitions();
         ClearFocusPreview(); DismissTransientControl();
 
+        // When the whole input scope changes, even the ancestors of a nested
+        // section would be replaced. Retain that branch at the motion stage so
+        // WinUI can keep its virtualized item containers and artwork mounted.
+        var cacheOutgoing = outgoing;
+        var cacheIncoming = incoming;
+        var mount = motionStage;
+        if (next.Kind == WidgetTransitionKind.Content && outgoing.Identity.Scope != incoming.Identity.Scope)
+        {
+            var oldRoot = ScopeRoot(outgoing, declarations);
+            var newRoot = ScopeRoot(incoming, plan);
+            if (oldRoot.ParentId is { } parent && newRoot.ParentId == parent &&
+                declarations[parent].Identity == plan[parent].Identity && SameSurfaceOwnership(plan[parent], plan) &&
+                declarations[parent].Node.Transition?.Kind == plan[parent].Node.Transition?.Kind &&
+                bindings[parent].Children is WidgetMotionStage stage && ReferenceEquals(stage.Current, bindings[oldRoot.Node.Id].LayoutElement) &&
+                CanRetainSectionRoot(declarations, oldRoot, outgoing) && CanRetainSectionRoot(plan, newRoot, incoming))
+            {
+                cacheOutgoing = oldRoot;
+                cacheIncoming = newRoot;
+                mount = stage;
+            }
+        }
         CachedPage? restored = null;
         var candidate = retainedPages.FirstOrDefault(page => page.Transition.GroupId == next.GroupId && page.Transition.Kind == next.Kind && page.Transition.Key == next.Key);
         if (candidate is not null &&
-            candidate.Root.Identity.Id == incoming.Node.Id && candidate.Suspension.IsCompletedSuccessfully && CompatibleCachedPage(candidate, incoming, plan))
+            candidate.Root.Identity == cacheIncoming.Identity && (candidate.Mount is null || candidate.Mount == mount) &&
+            candidate.Suspension.IsCompletedSuccessfully && CompatibleCachedPage(candidate, cacheIncoming, plan))
         {
             restored = candidate;
             retainedPages.Remove(candidate); cachedPages.Remove(candidate);
@@ -59,7 +82,7 @@ internal sealed partial class WidgetViewPresenter
         }
         else if (candidate is not null)
         {
-            var subtree = Subtree(incoming, plan);
+            var subtree = Subtree(cacheIncoming, plan);
             var mismatch = subtree.FirstOrDefault(pair => !candidate.Plan.TryGetValue(pair.Key, out var old) || old.Identity != pair.Value.Identity ||
                 old.ParentId != pair.Value.ParentId || !old.Node.Children.Select(child => child.Id).SequenceEqual(pair.Value.Node.Children.Select(child => child.Id)));
             PageCacheStatus = $"miss:{next.Key} ready={candidate.Suspension.IsCompletedSuccessfully} old={candidate.Bindings.Count} new={subtree.Count} mismatch={mismatch.Key}";
@@ -67,16 +90,16 @@ internal sealed partial class WidgetViewPresenter
         }
         else PageCacheStatus = "cold:" + next.Key;
 
-        var outgoingPlan = Subtree(outgoing, declarations);
+        var outgoingPlan = Subtree(cacheOutgoing, declarations);
         if (CacheablePage(outgoingPlan) && !declarations.Values.Any(value => value.Node.Kind == ViewNodeKind.ModalLayer) && outgoingPlan.Count <= MaximumCachedBindings &&
-            bindings[outgoing.Node.Id].LayoutElement is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 })
+            bindings[cacheOutgoing.Node.Id].LayoutElement is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 })
         {
             var content = outgoingPlan.Keys.ToDictionary(id => id, id => bindings[id], StringComparer.Ordinal);
-            var page = new CachedPage(this, prior, declarations, content, bindings[outgoing.Node.Id]);
+            var page = new CachedPage(this, prior, declarations, content, bindings[cacheOutgoing.Node.Id]);
             // A top-level page can stay under the same native parent throughout
             // its lifetime. Reparenting a GridView preserves the control object
             // but lets WinUI recycle its row templates, defeating retained paint.
-            motionStage?.RetainRoot(page.Root.LayoutElement);
+            if (mount?.RetainRoot(page.Root.LayoutElement) == true) page.Mount = mount;
             Input.PointerCaptureLifetime.ReleaseWithin(page.Root.LayoutElement);
             foreach (var duplicate in retainedPages.Where(value => value.Transition.GroupId == prior.GroupId && value.Transition.Kind == prior.Kind && value.Transition.Key == prior.Key).ToArray()) EvictCachedPage(duplicate);
             retainedPages.Add(page); cachedPages.AddLast(page);
@@ -85,17 +108,42 @@ internal sealed partial class WidgetViewPresenter
             {
                 // Retain paint, not an unsent input intent from the hidden view.
                 RetireSlider(binding);
+                if (binding.Children is WidgetActionPanel face) face.EndLighting();
+                if (binding.Element is WidgetPresentationSurface background) background.ArtworkMotion.SetSuspended(true);
                 binding.Element.IsHitTestVisible = false;
+                if (nativeStyles.TryGetValue(binding, out var adapter)) adapter.FocusDecoration?.RefreshSettledVisibility();
                 if (binding.Element is Control control) control.IsTabStop = false;
                 if (binding.Element is WidgetIndexedCollectionView collection) drains.Add(collection.SetPresentationActiveAsync(false));
                 if (binding.Element is WidgetPresentationSurface { Fragment: { } fragment }) drains.Add(fragment.SetPresentationActiveAsync(false));
                 if (artworkReveals.TryGetValue(binding, out var reveal)) reveal.Cancel();
-                if (imageDemands.TryGetValue(binding, out var demand) && !demand.Completed)
-                { imageDemands.Remove(binding); demand.Lifetime.Cancel(); demand.Lifetime.Dispose(); }
+                if (imageDemands.TryGetValue(binding, out var demand))
+                {
+                    demand.Native?.SetPlaybackSuspended(true);
+                    if (!demand.Completed)
+                    { imageDemands.Remove(binding); demand.Lifetime.Cancel(); demand.Lifetime.Dispose(); }
+                }
             }
             page.Suspension = Task.WhenAll(drains);
             TrackRetirement(page.Suspension);
-            while (retainedPages.Count > MaximumCachedPagesPerWidget) EvictCachedPage(retainedPages[0]);
+            if (retainedPages.Count > MaximumCachedPagesPerWidget)
+            {
+                var oldest = retainedPages[0];
+                // Keep one return page while its child swaps sections. The other
+                // slot can rotate through tabs without losing the parent collection.
+                var evict = oldest;
+                if (next.Kind == WidgetTransitionKind.Content && oldest.Transition.Kind == WidgetTransitionKind.Page &&
+                    retainedPages[1].Transition.Kind == WidgetTransitionKind.Content)
+                {
+                    for (var parent = incoming.ParentId; parent is not null; parent = plan[parent].ParentId)
+                        if (plan[parent].Node.Transition is { Kind: WidgetTransitionKind.Page } enclosing &&
+                            enclosing.GroupId == oldest.Transition.GroupId)
+                        {
+                            evict = retainedPages[1];
+                            break;
+                        }
+                }
+                EvictCachedPage(evict);
+            }
             while (cachedPages.Count > MaximumCachedPages)
             { var oldest = cachedPages.First!.Value; oldest.Owner.EvictCachedPage(oldest); }
         }
@@ -114,6 +162,24 @@ internal sealed partial class WidgetViewPresenter
         !plan.Values.Any(value => value.Node.Kind is ViewNodeKind.WebBrowser or ViewNodeKind.WindowPreview or
             ViewNodeKind.MediaViewport or ViewNodeKind.MediaPlayer or ViewNodeKind.CapturedMedia or
             ViewNodeKind.ModalLayer);
+
+    private static Declaration ScopeRoot(Declaration node, Dictionary<string, Declaration> plan)
+    {
+        while (node.ParentId is { } id && plan[id].Identity.Scope == node.Identity.Scope) node = plan[id];
+        return node;
+    }
+
+    private static bool CanRetainSectionRoot(Dictionary<string, Declaration> plan, Declaration root, Declaration section)
+    {
+        var branch = Subtree(root, plan);
+        return branch.Count <= MaximumCachedBindings && CacheablePage(branch) && branch.Values.All(value =>
+            value.Identity.Scope == root.Identity.Scope && (ReferenceEquals(value, section) ||
+                value.Node.Transition?.Kind is not (WidgetTransitionKind.Content or WidgetTransitionKind.Page)));
+    }
+
+    private bool NeedsMountedSectionPaint(Binding binding) => retainedPages.Any(page =>
+        page.Mount is not null && !ReferenceEquals(page.Mount, motionStage) &&
+        ReferenceEquals(page.Bindings.GetValueOrDefault(binding.Identity.Id), binding));
 
     private bool CompatibleCachedPage(CachedPage page, Declaration incoming, Dictionary<string, Declaration> plan)
     {
@@ -149,7 +215,7 @@ internal sealed partial class WidgetViewPresenter
         {
             if (activeTransition?.Retained.Contains(page.Root) == true) continue;
             var root = page.Root.LayoutElement;
-            if (motionStage.IsRetainedRoot(root)) { root.Opacity = 0; continue; }
+            if (page.Mount is not null) { root.Opacity = 0; continue; }
             if (ReferenceEquals(VisualTreeHelper.GetParent(root), motionStage.Cached)) continue;
             // Keep the virtualized native tree mounted: unloading would discard its
             // row presenters and decoded artwork. Only the current page is measured.
@@ -162,9 +228,9 @@ internal sealed partial class WidgetViewPresenter
     private void DetachCachedRoot(CachedPage page, bool restoring = false)
     {
         var root = page.Root.LayoutElement;
-        if (motionStage?.IsRetainedRoot(root) == true)
+        if (page.Mount is { } stage)
         {
-            motionStage.ReleaseRoot(root, remove: !restoring);
+            stage.ReleaseRoot(root, remove: !restoring);
             if (restoring) root.Opacity = page.RootOpacity;
             return;
         }

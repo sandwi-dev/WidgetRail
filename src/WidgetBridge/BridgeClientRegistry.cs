@@ -258,6 +258,8 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
     bool IsRunning { get; }
     int Starts { get; }
     Task<ViewSnapshot> GetSnapshotAsync(CancellationToken cancellationToken);
+    Task<WidgetRuntimePresentation> PrepareTrayPresentationAsync(string action, string generation, CancellationToken token) =>
+        GetPresentationAsync(PresentationUpdateCapabilities.None, generation, 0, WidgetPresentationTransactionKind.OrdinaryCheckpoint, 0, token);
     async Task<WidgetRuntimePresentation> GetPresentationAsync(
         PresentationUpdateCapabilities capabilities,
         string presentationGeneration,
@@ -302,13 +304,14 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
     Task SendEmbeddedMediaPlaybackEventAsync(
         EmbeddedMediaPlaybackEvent playbackEvent,
         CancellationToken cancellationToken, int expectedStartOrdinal);
-    Task<bool> SendControllerInputAsync(
+    Task<WidgetProcessClient.InputDispatch> SendControllerInputAsync(
         ControllerInputEvent input,
         WidgetDashboardGestureAuthority? authority,
         CancellationToken cancellationToken, int? expectedStartOrdinal = null);
     Task<bool?> SendRevalidatedControllerInputAsync(
         ControllerInputEvent input, CancellationToken cancellationToken, string? admittedActionId = null, int? expectedStartOrdinal = null) =>
         Task.FromResult<bool?>(null);
+    Task TrayWorkDrained => Task.CompletedTask;
     Task UnloadAsync(CancellationToken cancellationToken);
 }
 
@@ -397,11 +400,14 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         EmbeddedMediaPlaybackEvent playbackEvent,
         CancellationToken cancellationToken, int expectedStartOrdinal) =>
         client.SendEmbeddedMediaPlaybackEventForWorkerAsync(playbackEvent, cancellationToken, expectedStartOrdinal);
-    public Task<bool> SendControllerInputAsync(
+    public Task<WidgetProcessClient.InputDispatch> SendControllerInputAsync(
         ControllerInputEvent input,
         WidgetDashboardGestureAuthority? authority,
         CancellationToken cancellationToken, int? expectedStartOrdinal = null) =>
         client.SendControllerInputForWorkerAsync(input, authority, cancellationToken, expectedStartOrdinal);
+    public Task<WidgetRuntimePresentation> PrepareTrayPresentationAsync(string action, string generation, CancellationToken token) =>
+        client.GetPresentationAsync(PresentationUpdateCapabilities.None, generation, 0, WidgetPresentationTransactionKind.OrdinaryCheckpoint, 0, token, action);
+    public Task TrayWorkDrained => client.TrayWorkDrained;
     public Task UnloadAsync(CancellationToken cancellationToken) =>
         client.UnloadAsync(cancellationToken);
     public ValueTask DisposeAsync() => client.DisposeAsync();
@@ -533,6 +539,15 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             new BridgeClientSnapshot(value.Configured, value.Snapshot) { WorkerRun = value.WorkerRun });
     }
 
+    private static void DemandTrayPreparation(ConfiguredWidget widget, BridgeTrayPreparation request)
+    {
+        var descriptor = widget.PublicDescriptor();
+        if (descriptor.IsStopped || descriptor.RuntimeGeneration != request.RuntimeGeneration ||
+            descriptor.PresentationGeneration != request.PresentationGeneration ||
+            !descriptor.AvailableTrayActions.Any(action => action.Id == request.ActionId && action.WakeOnInvoke))
+            throw new BridgeStaleControllerInputAuthorityException("This package does not offer the requested wake action.");
+    }
+
     internal async Task<BridgeClientPublication<BridgeClientPresentation>> GetPresentationAsync(
         string widgetId,
         WidgetPresentationTransactionKind transactionKind,
@@ -540,18 +555,37 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         long baseSequence,
         long recoveryOriginSequence,
         CancellationToken sessionCancellation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BridgeTrayPreparation? trayPreparation = null)
     {
         ValidatePresentationRequest(
             transactionKind, capabilities, baseSequence, recoveryOriginSequence);
+        if (trayPreparation is not null)
+        {
+            if (transactionKind != WidgetPresentationTransactionKind.OrdinaryCheckpoint)
+                throw new BridgeProtocolException("Tray preparation requires a checkpoint.");
+            lock (_gate) DemandTrayPreparation(_catalog.GetConfigured(widgetId), trayPreparation);
+        }
         var registration = await GetOrCreateAsync(widgetId, cancellationToken).ConfigureAwait(false);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var coldTrayWake = false;
         try
         {
             DemandCurrent(registration);
+            coldTrayWake = trayPreparation is not null && !registration.Client.IsRunning;
+            var preserveIdle = trayPreparation is not null && registration.PreserveOrdinaryIdleDeadline;
+            if (trayPreparation is not null)
+            {
+                DemandTrayPreparation(registration.Configured, trayPreparation);
+                if (registration.HostLifecycle == WidgetLifecycleState.Interactive)
+                    throw new BridgeStaleControllerInputAuthorityException("The caller is no longer in the tray.");
+                if (!registration.Client.IsRunning)
+                    await ExecuteClientOperationAsync(registration, (client, token) =>
+                        client.SetLifecycleStateAsync(WidgetLifecycleState.Background, token), cancellationToken).ConfigureAwait(false);
+            }
             var residencyMode = WidgetResidencyPolicies.Resolve(
                 registration.Configured.ResidencyPolicy).Mode;
-            var hiddenAndRestricted =
+            var hiddenAndRestricted = trayPreparation is null &&
                 registration.HostLifecycle == WidgetLifecycleState.Background &&
                 residencyMode is WidgetResidencyMode.SuspendWhenHidden or
                     WidgetResidencyMode.UnloadAfterIdle;
@@ -575,11 +609,11 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                 retainedWorkerStart = incremental
                     ? registration.DemandCurrentPresentationBase(baseSequence)
                     : 0;
-                registration.CancelIdleUnload();
+                if (!preserveIdle) registration.CancelIdleUnload();
                 var generation = registration.Configured.PublicDescriptor().PresentationGeneration;
                 presentation = await ExecuteClientOperationAsync(
                         registration,
-                        (client, token) => client.GetPresentationAsync(
+                        (client, token) => trayPreparation is not null ? client.PrepareTrayPresentationAsync(trayPreparation.ActionId, generation, token) : client.GetPresentationAsync(
                             incremental ? capabilities : PresentationUpdateCapabilities.None,
                             generation,
                             incremental ? baseSequence : 0,
@@ -600,7 +634,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                 DemandPackageIconAuthority(
                     registration.Configured, presentation.Snapshot);
                 CommitIndexedAwareSnapshot(registration, presentation.Snapshot);
-                ScheduleIdleUnload(registration, sessionCancellation);
+                if (!coldTrayWake && !preserveIdle) ScheduleIdleUnload(registration, sessionCancellation);
             }
             return AdmitPublication(
                 registration,
@@ -614,6 +648,11 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         }
         finally
         {
+            if (coldTrayWake && registration.Client.IsRunning)
+            {
+                registration.TrayOnlyStart = registration.Client.Starts;
+                ScheduleIdleUnload(registration, sessionCancellation);
+            }
             registration.OperationGate.Release();
         }
     }
@@ -944,9 +983,21 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         CancellationToken cancellationToken,
         string? expectedActionId = null,
         string? expectedSelectOptionActionId = null,
-        BridgeWorkerRun? expectedWorkerRun = null)
+        BridgeWorkerRun? expectedWorkerRun = null,
+        Action<Task<TrayActionResult>>? observeTrayCompletion = null)
     {
-        var registration = await GetOrCreateAsync(widgetId, cancellationToken).ConfigureAwait(false);
+        ClientRegistration registration;
+        if (input.Context == ControllerInputContext.TrayQuickAction)
+        {
+            lock (_gate)
+            {
+                if (expectedWorkerRun is null || expectedRuntimeGeneration is null ||
+                    !_clients.TryGetValue(widgetId, out var resident) || !IsCurrentLocked(resident) || !resident.HasCurrentSnapshotWorker)
+                    throw new BridgeStaleControllerInputAuthorityException("Tray action worker is unavailable.");
+                registration = resident;
+            }
+        }
+        else registration = await GetOrCreateAsync(widgetId, cancellationToken).ConfigureAwait(false);
         var pinnedInput = input.Context == ControllerInputContext.PinnedSurface;
         using var heldRegistration = AdmitInputPublication(registration, registration, pinnedInput);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -974,7 +1025,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                 (!registration.Configured.PinningSupported || !registration.Configured.FullWidgetPinningSupported))
                 throw new BridgeStalePinnedInputAuthorityException(
                     "The widget does not support full-widget pinning.");
-            if (input.Context != ControllerInputContext.PinnedLayoutSelection)
+            if (input.Context is not (ControllerInputContext.PinnedLayoutSelection or ControllerInputContext.TrayQuickAction))
                 DemandInteractionAllowed(registration);
             if (input.Context is ControllerInputContext.OpenWidget or ControllerInputContext.PinnedSurface &&
                 !registration.HasCurrentSnapshotWorker)
@@ -1006,7 +1057,8 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             var revalidated = admitted.SnapshotSequence != input.SnapshotSequence &&
                 input.Context is ControllerInputContext.OpenWidget or ControllerInputContext.PinnedSurface;
             input = RevalidateDashboardInput(registration, admitted);
-            registration.CancelIdleUnload();
+            var preserveIdle = input.TrackTrayWork && registration.PreserveOrdinaryIdleDeadline;
+            if (!preserveIdle) registration.CancelIdleUnload();
             if (revalidated)
             {
                 // Adopt the already-published snapshot under the render gate.
@@ -1024,17 +1076,23 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
                         "Controller input could not be revalidated before delivery.");
                 return AdmitInputPublication(registration, result.Value, pinnedInput);
             }
-            var handled = await ExecuteClientOperationAsync(
+            var authority = ResolveDashboardGestureAuthority(registration, input);
+            var hostCompletion = authority is not null && observeTrayCompletion is not null ? new HostActionCompletion() : null;
+            if (hostCompletion is not null) authority = authority! with { HostCompletion = hostCompletion };
+            var dispatch = await ExecuteClientOperationAsync(
                     registration,
                     (client, token) => client.SendControllerInputAsync(
-                        input,
-                        ResolveDashboardGestureAuthority(registration, input),
-                        token, expectedWorkerRun?.StartOrdinal),
+                        input, authority, token, expectedWorkerRun?.StartOrdinal),
                     cancellationToken)
                 .ConfigureAwait(false);
             DemandCurrentInputRegistration(registration, pinnedInput);
-            ScheduleIdleUnload(registration, sessionCancellation);
-            return AdmitInputPublication(registration, handled, pinnedInput);
+            if (input.Context == ControllerInputContext.TrayQuickAction && observeTrayCompletion is not null)
+            {
+                var work = dispatch.Completion ?? Task.FromResult(new TrayActionResult(dispatch.Handled));
+                observeTrayCompletion(hostCompletion?.WaitAsync(work) ?? work);
+            }
+            if (!preserveIdle) ScheduleIdleUnload(registration, sessionCancellation);
+            return AdmitInputPublication(registration, dispatch.Handled, pinnedInput);
         }
         finally
         {
@@ -2062,15 +2120,13 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         CancellationToken sessionCancellation)
     {
         var policy = WidgetResidencyPolicies.Resolve(registration.Configured.ResidencyPolicy);
-        if (policy.Mode != WidgetResidencyMode.UnloadAfterIdle ||
-            HasBrowserRetention(registration) ||
-            registration.HostLifecycle != WidgetLifecycleState.Background ||
-            !registration.Client.IsRunning || policy.IdleDuration is not { } delay)
+        var shortcutOnly = registration.TrayOnlyStart == registration.Client.Starts;
+        if (HasBrowserRetention(registration) || registration.HostLifecycle != WidgetLifecycleState.Background ||
+            !registration.Client.IsRunning || !shortcutOnly && policy.Mode != WidgetResidencyMode.UnloadAfterIdle)
             return;
-        registration.ScheduleIdleUnload(
-            sessionCancellation,
-            (generation, cancellationToken) =>
-                RunIdleUnloadAsync(registration, generation, delay, cancellationToken));
+        var delay = shortcutOnly ? TimeSpan.FromSeconds(5) : policy.IdleDuration!.Value;
+        registration.ScheduleIdleUnload(sessionCancellation,
+            (generation, cancellationToken) => RunIdleUnloadAsync(registration, generation, delay, shortcutOnly, cancellationToken));
     }
 
     private async Task<T> ExecuteClientOperationAsync<T>(
@@ -2143,29 +2199,33 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         ClientRegistration registration,
         long generation,
         TimeSpan delay,
+        bool shortcutOnly,
         CancellationToken cancellationToken)
     {
         try
         {
+            if (shortcutOnly) await registration.Client.TrayWorkDrained.WaitAsync(cancellationToken).ConfigureAwait(false);
             await _delay(delay, cancellationToken).ConfigureAwait(false);
-            await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
+            while (true)
             {
-                if (!registration.IsIdleUnloadCurrent(generation) ||
-                    HasBrowserRetention(registration) ||
-                    !IsCurrent(registration) ||
-                    registration.HostLifecycle != WidgetLifecycleState.Background ||
-                    !registration.Client.IsRunning ||
-                    WidgetResidencyPolicies.Resolve(registration.Configured.ResidencyPolicy).Mode !=
-                        WidgetResidencyMode.UnloadAfterIdle)
+                await registration.Client.TrayWorkDrained.WaitAsync(cancellationToken).ConfigureAwait(false);
+                await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    if (!registration.IsIdleUnloadCurrent(generation) || HasBrowserRetention(registration) ||
+                        !IsCurrent(registration) || registration.HostLifecycle != WidgetLifecycleState.Background ||
+                        !registration.Client.IsRunning ||
+                        (shortcutOnly ? registration.TrayOnlyStart != registration.Client.Starts :
+                            WidgetResidencyPolicies.Resolve(registration.Configured.ResidencyPolicy).Mode != WidgetResidencyMode.UnloadAfterIdle))
+                        return;
+                    // A subsequent press can acquire another work lease between the wait and the gate.
+                    if (!registration.Client.TrayWorkDrained.IsCompleted) continue;
+                    using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    shutdown.CancelAfter(RetireDeadline);
+                    await registration.Client.UnloadAsync(shutdown.Token).ConfigureAwait(false);
                     return;
-                using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                shutdown.CancelAfter(RetireDeadline);
-                await registration.Client.UnloadAsync(shutdown.Token).ConfigureAwait(false);
-            }
-            finally
-            {
-                registration.OperationGate.Release();
+                }
+                finally { registration.OperationGate.Release(); }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -2278,11 +2338,28 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
 
     private static ControllerInputEvent RevalidateDashboardInput(ClientRegistration registration, ControllerInputEvent input)
     {
+        if (input.Context == ControllerInputContext.TrayQuickAction)
+        {
+            var snapshot = registration.CachedSnapshot;
+            var offer = input.TrayOffer;
+            var seen = registration.FindInputOriginSnapshot(input.SnapshotSequence);
+            var first = seen?.QuickActions.SingleOrDefault(action => action.TrayOffer == offer);
+            var latestOffer = snapshot?.QuickActions.SingleOrDefault(action => action.TrayOffer == offer);
+            if (!TrayActionContract.ValidOffer(offer) || !registration.HasCurrentSnapshotWorker || snapshot is null ||
+                registration.HostLifecycle is not (WidgetLifecycleState.Background or WidgetLifecycleState.Visible) ||
+                !registration.Configured.TrayActions.Any(def => def.Id == offer!.Id) ||
+                latestOffer is null || first != latestOffer || input.Button != latestOffer.Button ||
+                input.TrayFallbackFor is { } primary && (!registration.Configured.TrayActions.Any(def => def.Id == primary && def.FallbackId == offer!.Id) ||
+                    !TrayActionContract.AllowsFallback(seen!.QuickActions, offer!, primary) || !TrayActionContract.AllowsFallback(snapshot.QuickActions, offer!, primary)))
+                throw new BridgeStaleControllerInputAuthorityException("The tray action target changed.");
+            return input with { SnapshotSequence = snapshot.Sequence,
+                TrackTrayWork = registration.Configured.TrayActions.Any(def => def.Id == offer!.Id && def.WakeOnInvoke) };
+        }
         if (input.Context != ControllerInputContext.DashboardQuickAction) return input;
         var current = registration.CachedSnapshot;
         var origin = registration.FindInputOriginSnapshot(input.SnapshotSequence);
-        var original = origin?.QuickActions.SingleOrDefault(action => action.Button == input.Button);
-        var latest = current?.QuickActions.SingleOrDefault(action => action.Button == input.Button);
+        var original = origin?.QuickActions.SingleOrDefault(action => action.OnDashboard && action.Button == input.Button);
+        var latest = current?.QuickActions.SingleOrDefault(action => action.OnDashboard && action.Button == input.Button);
         if (!registration.HasCurrentSnapshotWorker || registration.HostLifecycle != WidgetLifecycleState.Visible ||
             current is null || origin is null || original is null || latest is null ||
             input.ActiveInputScopeId != origin.ActiveInputScopeId || origin.ActiveInputScopeId != current.ActiveInputScopeId ||
@@ -2295,8 +2372,9 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         ClientRegistration registration,
         ControllerInputEvent input)
     {
-        if (input.Context != ControllerInputContext.DashboardQuickAction) return null;
-        if (registration.HostLifecycle != WidgetLifecycleState.Visible)
+        var tray = input.Context == ControllerInputContext.TrayQuickAction;
+        if (!tray && input.Context != ControllerInputContext.DashboardQuickAction) return null;
+        if (!tray && registration.HostLifecycle != WidgetLifecycleState.Visible)
             throw new BridgeProtocolException(
                 "Dashboard quick actions require the widget to remain Visible.");
         var snapshot = registration.CachedSnapshot ?? throw new BridgeProtocolException(
@@ -2305,14 +2383,14 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             throw new BridgeProtocolException(
                 "Dashboard quick action targets a stale snapshot sequence.");
         var quickAction = snapshot.QuickActions.SingleOrDefault(
-            action => action.Button == input.Button) ?? throw new BridgeProtocolException(
+            action => tray ? action.TrayOffer == input.TrayOffer : action.OnDashboard && action.Button == input.Button) ?? throw new BridgeProtocolException(
                 "Dashboard button is not exposed by the cached snapshot.");
         if (input.Phase == ControllerEventPhase.Repeated &&
             quickAction.RepeatPolicy != ControllerActionRepeatPolicy.WhileHeld)
             throw new BridgeProtocolException(
                 "Dashboard button does not admit held repetition.");
         if (input.Phase != ControllerEventPhase.Pressed ||
-            input.Origin != ControllerInputOrigin.PhysicalController ||
+            input.Origin != ControllerInputOrigin.PhysicalController && !tray ||
             quickAction.Capability is null)
         {
             registration.AcceptDashboardInputSequence(input.Sequence);
@@ -2320,6 +2398,13 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         }
 
         var requested = quickAction.Capability;
+        var capture = tray ? quickAction.TrayOffer?.CaptureCommand : null;
+        if (capture is not null && (!capture.IsWellFormed() || requested.CapabilityId != PlatformCapabilities.WindowCaptureV1 ||
+            requested.OperationId != capture.Operation))
+            throw new BridgeProtocolException("Capture operation differs from the offered tray command.");
+        if (tray && capture is null && (quickAction.TrayOffer?.MediaCommand is null || requested.CapabilityId != PlatformCapabilities.MediaSessionsControlV1 ||
+            requested.OperationId != PlatformCapabilities.MediaSessionControl))
+            throw new BridgeProtocolException("No exact tray capability command was declared.");
         if (!PlatformCapabilities.TryGet(requested.CapabilityId, out var capability) ||
             capability.KindForOperation(requested.OperationId) != BrokerCapabilityKind.Control ||
             !capability.Operations.Contains(requested.OperationId))
@@ -2335,7 +2420,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             requested.OperationId,
             input.Sequence,
             input.SnapshotSequence,
-            PlatformCapabilityBroker.MaximumDashboardGestureLifetime);
+            PlatformCapabilityBroker.MaximumDashboardGestureLifetime) { TrayCommand = tray ? quickAction.TrayOffer!.MediaCommand : null, CaptureCommand = capture };
     }
 
     /// Returns the admitted input, or null when the current projection binds no
@@ -2646,11 +2731,20 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         internal long Generation { get; } = generation;
         internal BridgeClientNotificationLane NotificationLane { get; } = new(recordFailure);
         internal SemaphoreSlim OperationGate { get; } = new(1, 1);
+        internal int? TrayOnlyStart { get; set; }
+        internal bool PreserveOrdinaryIdleDeadline
+        {
+            get { lock (_residencyGate) return TrayOnlyStart != Client.Starts && _idleUnloadCancellation is { IsCancellationRequested: false }; }
+        }
         private int _hostLifecycle = (int)WidgetLifecycleState.Background;
         internal WidgetLifecycleState HostLifecycle
         {
             get => (WidgetLifecycleState)Volatile.Read(ref _hostLifecycle);
-            set => Volatile.Write(ref _hostLifecycle, (int)value);
+            set
+            {
+                if (value != WidgetLifecycleState.Background) TrayOnlyStart = null;
+                Volatile.Write(ref _hostLifecycle, (int)value);
+            }
         }
 
         internal ViewSnapshot? CachedSnapshot { get; private set; }

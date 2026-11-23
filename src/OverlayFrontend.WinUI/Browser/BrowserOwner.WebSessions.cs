@@ -125,6 +125,7 @@ internal sealed partial class BrowserOwner
                     BeforeHostedConfigureForValidation?.Invoke(surface);
 #endif
                     surface.ConfigureHostedSession(definition, work.Resources);
+                    surface.SetOwnerMainViewVisible(mainViewWidget==request.WidgetId);
                     surface.HostedCaptureChanged += status => _ = PublishHostedCaptureAsync(request.Session, status);
                     entry = new Entry(authority, surface)
                     { Hosted = request.Session, Retained = videoParent is null && definition.Browser.Background == BrowserBackgroundMode.KeepAlive, LastUse = Environment.TickCount64 };

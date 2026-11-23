@@ -16,7 +16,7 @@ internal static partial class GalleryTests
         CheckInlineBinding(fixture,"capture-library.photo",ControllerPrompt.Y,ControllerButton.Y,"capture-library.photo");
         CheckInlineBinding(fixture,"capture-library.video",ControllerPrompt.X,ControllerButton.X,"capture-library.video");
         var more = fixture.Node("capture-library.more");
-        Check(more?.IsCommandMenu == true && more.SelectOptions.Count == 4 && more.SelectOptions.All(option => !option.IsSelected) &&
+        Check(more is { IsCommandMenu: true, ContextMenuButton: ControllerButton.Menu, Text: "Menu" } && more.SelectOptions.Count == 4 && more.SelectOptions.All(option => !option.IsSelected) &&
             more.SelectOptions.All(option => option.ActionId is not ("capture-library.save-recent" or "capture-library.replay.start")),
             "More must be an unselected native command dropdown");
         Check(fixture.Node("capture-library.filters") is null && fixture.Node("capture-library.selection.actions") is null,
@@ -70,15 +70,15 @@ internal static partial class GalleryTests
         await fixture.Action("capture-library.selection.toggle");
         await fixture.Action("capture-library.selection.all");
         await fixture.Until(() => fixture.Collection?.IndexedSelection?.Count == 3);
-        await fixture.Action("capture-library.batch.recycle");
+        await fixture.Action("capture-library.batch.hide");
         await fixture.Until(() => !fixture.Busy && fixture.Node("capture-library.batch.confirmation") is not null);
-        Check(fixture.Node("capture-library.batch.help")?.Text is {} help && help.Contains("Linked captures are hidden") &&
-            help.Contains("their originals are kept") && help.Contains("WidgetRail originals go to the Recycle Bin"),
-            "Mixed-source confirmation misrepresents deletion ownership");
+        Check(fixture.Node("capture-library.batch.help")?.Text?.Contains("originals stay in place") == true &&
+            fixture.Node("capture-library.batch.safety")?.Text?.Contains("2 WidgetRail originals cannot be hidden") == true,
+            "Mixed-source hide must explain which captures can be hidden without deleting anything");
         await fixture.Action("capture-library.batch.confirm");
-        await fixture.Until(() => !fixture.Busy && fixture.Items.Count == 0);
-        Check(fixture.Unlinked == 1 && fixture.Recycled == 2 && fixture.LastRecycleReferences.All(item => item.Id != 1.ToString("x32")),
-            "Provider original was sent to the recycling operation");
+        await fixture.Until(() => !fixture.Busy && fixture.Items.Count == 2);
+        Check(fixture.Unlinked == 1 && fixture.Recycled == 0 && fixture.HiddenItems.Count == 1,
+            "Hide must never recycle an original, including in a mixed selection");
     }
 
     internal static async Task SourceSettingsConnectAndDisconnect()
@@ -165,6 +165,55 @@ internal static partial class GalleryTests
             "Closed context republished stale links");
     }
 
+    internal static async Task RelatedDestinationUndoAndFocus()
+    {
+        var game = new CaptureLibraryDestination("widgetrail.tests.provider", "game", "silksong", "Silksong", true);
+        var changes = new List<CaptureDestinationChange>();
+        var linked = true;
+        await using var fixture = new GalleryFixture((builder, state) => builder
+            .WithHandler(WidgetCaptureLibraryCapabilities.ChangeDestination, (request, _) =>
+            {
+                changes.Add(request);
+                if (changes.Count == 1) return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(false));
+                linked = request.Undo;
+                state.Items[0] = state.Items[0] with { ContextCount = linked ? 1 : 0 };
+                return ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true));
+            }));
+        fixture.Items[0] = fixture.Items[0] with { ContextCount = 1 };
+        fixture.DestinationPage = () => new(linked ? [game] : [], 0, linked ? 1 : 0, linked ? "a" : "b");
+        await fixture.Start();
+        using var host = await OpenEditingSource(fixture);
+        await fixture.Action("capture-library.context.open");
+        await fixture.Until(() => fixture.Nodes.Any(node => node.Text == "Unlink"));
+        var unlinkButton = fixture.Nodes.Single(node => node.Text == "Unlink");
+        Check(unlinkButton.AccessibilityLabel == "Unlink from Silksong", "Unlink did not identify its destination to assistive input");
+        var unlink = unlinkButton.ActionId!;
+        var gameId = fixture.Nodes.Single(node => node.Intent?.ContractId == WidgetIntentContracts.OpenRelatedItem).Id;
+        await fixture.Action(unlink);
+        await fixture.Until(() => changes.Count == 1 && !fixture.Busy);
+        Check(fixture.Node(gameId) is not null && fixture.Node("capture-library.context.undo") is null,
+            "Cancelling Unlink removed the link or exposed an Undo");
+        await fixture.Action(unlink);
+        await fixture.Until(() => fixture.Node("capture-library.context.undo") is not null && !fixture.Busy);
+        var removed = fixture.View();
+        var undoId = "capture-library.context.undo";
+        Check(changes.Count == 2 && changes[1].CaptureId == fixture.Items[0].Id && changes[1].DestinationId == game.Id &&
+            changes[1].ContentRevision == fixture.Items[0].Revision && changes[1].ExpectedRevision == "a" &&
+            fixture.Node("capture-library.context.empty") is not null && fixture.Node(gameId) is null &&
+            removed.FocusGroupEntryRequest?.TargetId == undoId && ViewSnapshotValidator.Validate(removed).Count == 0,
+            "Removing the last link did not leave a valid dialog focused on Undo");
+        await fixture.Action("capture-library.context.close");
+        Check(fixture.Node("capture-library.context.open") is { IsDisabled: not true }, "Closing the dialog made Undo unreachable");
+        await fixture.Action("capture-library.context.open");
+        await fixture.Until(() => fixture.Node("capture-library.context.empty") is not null);
+        await fixture.Action(fixture.Node(undoId)!.ActionId!);
+        await fixture.Until(() => fixture.Node(gameId) is not null && !fixture.Busy);
+        var restored = fixture.View();
+        Check(changes.Count == 3 && changes[2] == (changes[1] with { Undo = true }) && fixture.Node(undoId) is null &&
+            restored.FocusGroupEntryRequest?.TargetId == gameId && ViewSnapshotValidator.Validate(restored).Count == 0,
+            "Undo did not restore the original destination and request focus on its button");
+    }
+
     internal static async Task CopyCanBeCancelledFromGallery()
     {
         await using var fixture = new GalleryFixture(); await fixture.Start();
@@ -231,6 +280,43 @@ internal static partial class GalleryTests
         await fixture.Action("capture-library.batch.confirm");
         await fixture.Until(()=>fixture.Recycled==3&&!fixture.Busy);
         Check(fixture.Items.Count==0&&fixture.Node("capture-library.empty") is not null,"Recycle did not refresh gallery");
+    }
+
+    internal static async Task HeldSelectionReconcilesPresentation()
+    {
+        await using var fixture=new GalleryFixture();await fixture.Start();
+        using var host=WidgetTestHost.CreateIndexedCollectionHost(fixture.Widget,"gallery-held-selection",100);
+        fixture.Host=host;
+        var before=fixture.Collection!.IndexedCollection!;
+        using(var first=await host.AcquireAsync("capture-library.entries",0,1))
+        {
+            Check(first.Range.Items[0].Root.ContextActions.Any(action=>action.ActionId=="capture-library.item.favorite"&&!action.IsDisabled),
+                "Normal gallery favorite action is available before framework selection");
+            var epoch=fixture.Collection!.IndexedSelection!.Epoch;
+            Check(first.RouteSelection(fixture.Items[0].Id,new(epoch,IndexedSelectionGesture.BeginAdd)) is not null,
+                "Framework start-and-add was rejected");
+            await fixture.Until(()=>fixture.Collection?.IndexedSelection is {IsActive:true,Count:1});
+        }
+        var selected=fixture.Collection!;
+        Check(selected.IndexedCollection!.QueryGeneration==before.QueryGeneration && selected.IndexedCollection.ContentRevision>before.ContentRevision,
+            "Host-started selection updates gallery presentation without replacing its query");
+        using(var selectedRows=await host.AcquireAsync("capture-library.entries",0,3))
+        {
+            Check(selectedRows.Range.Items.All(item=>item.Root.FocusPresentation is null &&
+                item.Root.ContextActions.Any(action=>action.ActionId=="capture-library.item.favorite"&&action.IsDisabled)),
+                "Framework selection synchronizes gallery previews and per-item action policy");
+            var epoch=selected.IndexedSelection!.Epoch;
+            Check(selectedRows.RouteSelection(fixture.Items[2].Id,new(epoch,IndexedSelectionGesture.Add)) is not null,
+                "Held additive selection was rejected after the presentation update");
+            await fixture.Until(()=>fixture.Collection?.IndexedSelection?.Indices.SequenceEqual([0,2])==true);
+        }
+        Check(fixture.Node("capture-library.batch.favorite") is not null,"Host-selected rows expose the normal gallery batch commands");
+        await fixture.Action("capture-library.selection.toggle");
+        host.PublishSnapshot();
+        using var restored=await host.AcquireAsync("capture-library.entries",0,1);
+        Check(fixture.Collection?.IndexedSelection is {IsActive:false,Count:0} &&
+            restored.Range.Items[0].Root.ContextActions.Any(action=>action.ActionId=="capture-library.item.favorite"&&!action.IsDisabled),
+            "Ending framework selection restores normal gallery policy");
     }
 
     internal static async Task CancelledBatchReplyDoesNotClearNewConfirmation()
@@ -343,6 +429,7 @@ internal static partial class GalleryTests
         internal int ReplayStarts,ReplayStops,ReplaySaves,ReplayReads,ReplayConfigurations,ReplaySubscriptions;
         internal CaptureReplayOutcome ReplayStartOutcome=CaptureReplayOutcome.Accepted;
         internal WidgetPermissionOutcome PermissionOutcome=WidgetPermissionOutcome.Granted;
+        internal string? DeniedPermission;
         internal readonly List<string[]> PermissionRequests=[];
         internal TaskCompletionSource? ReplaySaveGate;
         internal void NotifyReplay(CaptureReplayStatus status){Replay=status;replayChanges.Writer.TryWrite(status);}
@@ -351,8 +438,10 @@ internal static partial class GalleryTests
         internal readonly CaptureLibraryWidget Widget;
         internal WidgetIndexedCollectionTestHost? Host;
         internal int Batches,Recycled,Unlinked,SourceRemovals,Opened,Released,RecycleAttempts;
+        internal int? LoseRecycleReplyOnAttempt;
         internal bool FailRecycle,ReleasedBeforeRecycle;
         internal Func<CaptureLibraryOpenRequest,CancellationToken,ValueTask<CaptureAttachment>>? OpenOverride;
+        internal Func<CaptureLibraryRecycleRequest,CancellationToken,ValueTask<CaptureLibraryBatchResult>>? RecycleLinkedOverride;
         internal Func<CaptureRecordingQuery,CancellationToken,ValueTask<CaptureCapabilities>>? EncodingOverride;
         internal readonly List<CaptureRecordingQuery> EncodingQueries=[];
         internal Func<CaptureLibraryGroupsRequest,CancellationToken,ValueTask<CaptureLibraryGroups>>? GroupsOverride;
@@ -364,6 +453,7 @@ internal static partial class GalleryTests
         internal CaptureLibraryChooseSourceRequest? LastSourceRequest;
         internal readonly WidgetTestPrivateState PrivateState;
         internal bool DelayContexts;
+        internal Func<CaptureLibraryDestinationsPage>? DestinationPage;
         internal readonly TaskCompletionSource ContextEntered = new(TaskCreationOptions.RunContinuationsAsynchronously), ContextRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal IReadOnlyList<CaptureLibraryMutationReference> LastRecycleReferences = [];
         internal bool DelayRecycle;
@@ -384,10 +474,11 @@ internal static partial class GalleryTests
                 .WithHandler(WidgetCaptureReplayCapabilities.Configure,(request,_)=>
                 {Check(request.ExpectedRevision==Replay.SettingsRevision,"Stale settings reached service");ReplayConfigurations++;Replay=Replay with{Revision=Replay.Revision+1,SettingsRevision=Replay.SettingsRevision+1,Settings=request.Settings};return ValueTask.FromResult(new CaptureReplayControlResult(CaptureReplayOutcome.Accepted,Replay));})
                 .WithHandler(WidgetCaptureReplayCapabilities.Save,async(request,token)=>
-                {ReplaySaves++;if(ReplaySaveGate is {} gate)await gate.Task.WaitAsync(token);var saved=Items[0] with{Media=Items[0].Media with{ContentType="video/mp4",DurationSeconds=5}};return new(CaptureReplayOutcome.Accepted,request.RequestId,saved,5);})
+                {ReplaySaves++;if(ReplaySaveGate is {} gate)await gate.Task.WaitAsync(token);var saved=Items[0] with{Media=Items[0].Media with{ContentType="video/mp4",DurationSeconds=5,SourceApplication=new("Recorded game","Window title")}};return new(CaptureReplayOutcome.Accepted,request.RequestId,saved,5);})
                 .WithEventStream(WidgetCaptureLibraryCapabilities.Changed,token=>changes.Reader.ReadAllAsync(token))
                 .WithHandler(WidgetPermissionCapabilities.Request,(request,_)=>
-                {PermissionRequests.Add(request.CapabilityIds.ToArray());return ValueTask.FromResult(new WidgetPermissionRequestState(PermissionOutcome));})
+                {PermissionRequests.Add(request.CapabilityIds.ToArray());return ValueTask.FromResult(new WidgetPermissionRequestState(
+                    DeniedPermission is { } denied && request.CapabilityIds.Contains(denied) ? WidgetPermissionOutcome.Denied : PermissionOutcome));})
                 .WithResponse(WidgetCaptureCapabilities.Capabilities, new CaptureCapabilities(true,[CaptureImageFormat.Png],
                     [new("1080p30-hardware",1920,1080,30,3_000_000,12_000_000,CaptureEncoderMode.Hardware)],[CaptureAudioMode.None],true,120))
                 .WithHandler(WidgetCaptureCapabilities.RecordingCapabilities,async(request,token)=>
@@ -436,13 +527,13 @@ internal static partial class GalleryTests
                 .WithHandler(WidgetCaptureLibraryCapabilities.GetMetadata, (request, token) => MetadataOverride?.Invoke(request, token) ?? ValueTask.FromResult(Items.Concat(HiddenItems).Single(item => item.Id == request.Id)))
                 .WithHandler(WidgetCaptureLibraryCapabilities.Open, (request, token) => { Opened++; return OpenOverride?.Invoke(request, token) ?? ValueTask.FromResult(Items.Concat(HiddenItems).Single(item => item.Id == request.Id).Media with { Id = Guid.NewGuid().ToString("N"), Origin = CaptureAttachmentOrigin.SavedLibrary }); })
                 .WithHandler(WidgetCaptureLibraryCapabilities.Release, (request, token) => { Released++; OnReleased?.Invoke(request); return ReleaseOverride?.Invoke(request, token) ?? ValueTask.FromResult(new WidgetCapabilityAcknowledgement(true)); })
-                .WithHandler(WidgetCaptureLibraryCapabilities.GetContexts, async (request, token) =>
+                .WithHandler(WidgetCaptureLibraryCapabilities.GetDestinations, async (request, token) =>
                 {
                     ContextEntered.TrySetResult(); if (DelayContexts) await ContextRelease.Task;
-                    return new CaptureLibraryContextsPage([new(new string('c', 32), request.Id,
-                        new("widgetrail.tests.provider", "widgetrail.tests", "provider.default"),
-                        [new(CaptureContextReferenceRole.Subject, "example.item", "opaque-id", "Related item") { HasRelatedAction = true },
-                         new(CaptureContextReferenceRole.Related, "example.session", "session-id", "Metadata-only session")], null, null, 1)], 0, 1, "a");
+                    if (DestinationPage is not null) return DestinationPage();
+                    return new CaptureLibraryDestinationsPage([
+                        new("widgetrail.tests.provider", "example.item", "opaque-id", "Related item", true),
+                        new("widgetrail.tests.provider", "example.session", "session-id", "Metadata-only session", false)], 0, 2, "a");
                 })
                 .WithHandler(WidgetCaptureLibraryCapabilities.SaveCopy, async (request, token) =>
                 {
@@ -482,7 +573,28 @@ internal static partial class GalleryTests
                         else { Items.RemoveAll(value => value.Id == item.Id); Recycled++; results.Add(new(item.Id)); }
                     }
                     revision++;
-                    return new CaptureLibraryBatchResult(results);});
+                    if (LoseRecycleReplyOnAttempt == RecycleAttempts) throw new TimeoutException("Lost reply after commit");
+                    return new CaptureLibraryBatchResult(results);})
+                .WithHandler(WidgetCaptureLibraryCapabilities.RecycleLinked, (request, token) =>
+                {
+                    if (RecycleLinkedOverride is { } custom) return custom(request, token);
+                    var results = new List<CaptureLibraryMutationResult>();
+                    foreach (var reference in request.Items)
+                    {
+                        var item = Items.Concat(HiddenItems).FirstOrDefault(item => item.Id == reference.Id);
+                        if (item?.SourceId is null || item.Revision != reference.ContentRevision || item.MetadataRevision != reference.MetadataRevision)
+                            results.Add(new(reference.Id, ErrorCode: "capture_library_metadata_conflict"));
+                        else if (FailRecycle)
+                            results.Add(new(reference.Id, ErrorCode: "capture_library_recycle_unavailable"));
+                        else
+                        {
+                            Items.Remove(item); HiddenItems.Remove(item); Recycled++;
+                            results.Add(new(reference.Id));
+                        }
+                    }
+                    revision++;
+                    return ValueTask.FromResult(new CaptureLibraryBatchResult(results));
+                });
             client.WithCaptureContinuity();
             configure?.Invoke(client, this);
             Widget=WidgetTestHost.Attach(new CaptureLibraryWidget(),client.Build());
@@ -497,7 +609,7 @@ internal static partial class GalleryTests
         internal IEnumerable<ViewNode> Nodes => Walk(View().Root);
         internal bool Busy=>Walk(View().Root).Any(node=>node.IsBusy==true);
         private static IEnumerable<ViewNode> Walk(ViewNode node)=>new[]{node}.Concat(node.Children.SelectMany(Walk));
-        internal async Task Start(){await WidgetTestHost.InitializeAsync(Widget);await WidgetTestHost.SetLifecycleStateAsync(Widget,WidgetLifecycleState.Interactive);await Until(()=>Collection?.IndexedCollection?.Count==3&&!Busy);}
+        internal async Task Start(){var count=Items.Count;await WidgetTestHost.InitializeAsync(Widget);await WidgetTestHost.SetLifecycleStateAsync(Widget,WidgetLifecycleState.Interactive);await Until(()=>Collection?.IndexedCollection?.Count==count&&!Busy);}
         internal async Task Action(string id,string? text=null){await Widget.OnActionAsync(new(id,id){CommittedText=text});}
         internal async Task Until(Func<bool> condition){using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(5));while(!condition())await Task.Delay(10,deadline.Token);}
         public async ValueTask DisposeAsync(){SlowRelease.TrySetResult();RecycleRelease.TrySetResult();ContextRelease.TrySetResult();ReplaySaveGate?.TrySetResult();await WidgetTestHost.DestroyAsync(Widget);changes.Writer.TryComplete();replayChanges.Writer.TryComplete();}

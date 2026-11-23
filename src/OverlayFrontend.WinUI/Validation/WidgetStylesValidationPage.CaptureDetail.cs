@@ -11,7 +11,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Validation;
 
 internal sealed partial class WidgetStylesValidationPage
 {
-    // Geometry uses the production saved/unsaved snapshots. It does not resolve
+    // Geometry uses the production saved capture snapshot. It does not resolve
     // the synthetic capture token or claim to validate media playback.
     private async Task CaptureDetailGeometryAsync(string directory, Grid root, WidgetViewPresenter page,
         ThemeCatalog catalog, WrssDocument package)
@@ -20,7 +20,7 @@ internal sealed partial class WidgetStylesValidationPage
             new((WrssDocument[])[package], []), catalog.Load(ThemeIdentity.BuiltInMonoInk, "1.0.0").Package).Theme!;
         var scale = XamlRoot.RasterizationScale;
         App.Window.AppWindow.ResizeClient(new((int)(1240 * scale), (int)(800 * scale)));
-        foreach (var state in new[] { "unsaved", "saved" })
+        const string state = "saved";
         foreach (var narrow in new[] { false, true })
         {
             root.Width = page.Width = narrow ? 560 : 1180;
@@ -53,7 +53,7 @@ internal sealed partial class WidgetStylesValidationPage
             else
                 Check(mediaBounds.Width >= layout.ActualWidth * .45 && mediaBounds.Width <= layout.ActualWidth * .55 && infoBounds.Left >= mediaBounds.Right + 8,
                     $"{state}: wide detail gives media half the page beside information");
-            var actionId = state == "saved" ? "capture-library.back" : "capture-library.save";
+            const string actionId = "capture-library.delete";
             var action = Find<Button>("Widget." + actionId, root)!;
             var contentViewport = ScrollParts(scroll).OfType<ScrollContentPresenter>().First();
             Check(action.Focus(FocusState.Keyboard), $"{state}: detail action remains keyboard reachable");

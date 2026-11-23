@@ -36,14 +36,13 @@ internal sealed class NotificationEntry(long id, string widget, string profile, 
 }
 
 /// <summary>Dispatcher-owned pending notifications. Banner expiry never removes an entry.</summary>
-internal sealed class NotificationInbox(int capacity = 256) : IDisposable
+internal sealed class NotificationInbox(int capacity = 128) : IDisposable
 {
     private readonly int capacityLimit = capacity > 0 ? capacity : throw new ArgumentOutOfRangeException(nameof(capacity));
     private readonly List<NotificationEntry> entries = [];
     private readonly List<NotificationEntry> transient = [];
     private long sequence;
     internal IReadOnlyList<NotificationEntry> Entries => entries;
-    internal int OverflowCount { get; private set; }
     internal event Action? Changed;
 
     internal NotificationEntry? Add(string widget, string profile, string origin, string tag, string title, string body,
@@ -58,15 +57,18 @@ internal sealed class NotificationInbox(int capacity = 256) : IDisposable
             if (previous is not null) { replaced = true; Remove(previous, notify: true); }
         }
         var target = content?.Retention == WidgetNotificationRetention.BannerOnly ? transient : entries;
-        if (target.Count >= (ReferenceEquals(target, transient) ? 32 : capacityLimit))
+        if (ReferenceEquals(target, transient) && transient.Count >= 32)
         {
-            // Preserve existing pending items; reject new handles and expose a
-            // visible overflow count rather than silently evicting older items.
-            if (ReferenceEquals(target, entries)) OverflowCount = Math.Min(int.MaxValue - 1, OverflowCount) + 1;
-            callbacks.Detach(); Changed?.Invoke(); return null;
+            callbacks.Detach(); return null;
         }
         var item = new NotificationEntry(++sequence, widget, profile, origin, Bound(tag, 256), Bound(title, 256), Bound(body, 2048), owner, callbacks) { ReplacesPrevious = replaced, Content = content };
-        target.Add(item); if (item.Pending) Changed?.Invoke(); return item;
+        target.Add(item);
+        if (item.Pending)
+        {
+            if (entries.Count > capacityLimit) Remove(entries[0], notify: true);
+            Changed?.Invoke();
+        }
+        return item;
     }
     internal NotificationEntry? Find(long id) => entries.Concat(transient).FirstOrDefault(entry => entry.Id == id);
     internal void WithdrawWidgetKey(string widget, string key)
@@ -144,7 +146,7 @@ internal sealed class NotificationInbox(int capacity = 256) : IDisposable
     internal void Clear()
     {
         foreach (var entry in entries.ToArray()) Remove(entry, notify: true);
-        OverflowCount = 0; Changed?.Invoke();
+        Changed?.Invoke();
     }
     internal void InvalidateOwner(object owner)
     {
@@ -169,28 +171,103 @@ internal sealed class NotificationInbox(int capacity = 256) : IDisposable
     public void Dispose() { Clear(); foreach (var item in transient.ToArray()) Remove(item, notify: false); Changed = null; }
 }
 
-internal sealed class NotificationBannerState
+internal sealed class NotificationBannerState(Action<long>? released = null)
 {
+    internal const int MaximumVisible = 3;
+    internal const int MaximumWaiting = 8;
+    internal const int MaximumWaitMilliseconds = 15_000;
     internal static readonly TimeSpan VisibleDuration = TimeSpan.FromSeconds(4);
-    internal static readonly TimeSpan QuietInterval = TimeSpan.FromSeconds(8);
-    internal long? EntryId { get; private set; }
-    internal string? Widget { get; private set; }
-    internal long ExpiresAt { get; private set; }
-    private long nextAllowed;
+
+    internal sealed class Slot(NotificationEntry entry, long queuedAt)
+    {
+        internal NotificationEntry Entry { get; set; } = entry;
+        internal long QueuedAt { get; } = queuedAt;
+        internal long ExpiresAt { get; set; }
+        internal int Additional { get; set; }
+        internal bool SameSource(NotificationEntry other) => Entry.Widget == other.Widget && Entry.Profile == other.Profile;
+        internal bool Matches(NotificationEntry other) => Entry.Id == other.Id ||
+            other.Tag.Length > 0 && SameSource(other) && Entry.Origin == other.Origin && Entry.Tag == other.Tag;
+    }
+
+    private readonly List<Slot> visible = [];
+    private readonly List<Slot> waiting = [];
+    internal IReadOnlyList<Slot> Visible => visible;
+    internal IReadOnlyList<Slot> Waiting => waiting;
+    internal long Revision { get; private set; }
+    internal long? EntryId => visible.Count > 0 ? visible[0].Entry.Id : null;
+    internal long ExpiresAt => visible.Count > 0 ? visible[0].ExpiresAt : 0;
+
+    // A tagged replacement can arrive after its old inbox entry has detached.
+    // Match its slot before checking ownership on the normal presentation tick.
     internal bool Offer(NotificationEntry entry, long now, bool allowNew = true)
     {
         Expire(now);
-        if (EntryId is not null)
+        var match = visible.Find(slot => slot.Matches(entry)) ?? waiting.Find(slot => slot.Matches(entry));
+        if (match is not null)
         {
-            if (Widget != entry.Widget) return false;
-            EntryId = entry.Id; return true; // Same burst, same expiry.
+            match.Entry = entry;
+            Revision++;
+            return true;
         }
-        if (!allowNew || now < nextAllowed) return false;
-        EntryId = entry.Id; Widget = entry.Widget;
-        ExpiresAt = now + (entry.Content?.DurationMilliseconds ?? (long)VisibleDuration.TotalMilliseconds);
-        nextAllowed = ExpiresAt + (long)QuietInterval.TotalMilliseconds;
+        if (!allowNew) return false;
+        var burst = waiting.Find(slot => slot.SameSource(entry));
+        if (burst is not null && (visible.Count(slot => slot.SameSource(entry)) >= 2 || waiting.Count == MaximumWaiting))
+        {
+            if (burst.Additional < int.MaxValue) burst.Additional++;
+            Revision++;
+            return false;
+        }
+        if (waiting.Count == MaximumWaiting) return false;
+        waiting.Add(new(entry, now));
+        Revision++;
         return true;
     }
-    internal void Expire(long now) { if (EntryId is not null && now >= ExpiresAt) Hide(); }
-    internal void Hide() { EntryId = null; Widget = null; }
+
+    internal void Advance(long now, Predicate<NotificationEntry> eligible, Func<Slot, bool> fits)
+    {
+        Expire(now);
+        RemoveWhere(visible, slot => !eligible(slot.Entry));
+        RemoveWhere(waiting, slot => !eligible(slot.Entry));
+        while (visible.Count < MaximumVisible)
+        {
+            // A source with two visible cards yields to other sources until a slot expires.
+            var index = waiting.FindIndex(slot => visible.Count(active => active.SameSource(slot.Entry)) < 2 && fits(slot));
+            if (index < 0) break;
+            var next = waiting[index];
+            waiting.RemoveAt(index);
+            next.ExpiresAt = now + (next.Entry.Content?.DurationMilliseconds ?? (long)VisibleDuration.TotalMilliseconds);
+            visible.Insert(0, next);
+            Revision++;
+        }
+    }
+
+    internal void RemoveWidget(string widget)
+    {
+        RemoveWhere(visible, slot => slot.Entry.Widget == widget);
+        RemoveWhere(waiting, slot => slot.Entry.Widget == widget);
+    }
+
+    internal void Expire(long now)
+    {
+        RemoveWhere(visible, slot => now >= slot.ExpiresAt);
+        RemoveWhere(waiting, slot => now - slot.QueuedAt >= MaximumWaitMilliseconds);
+    }
+
+    internal void Hide()
+    {
+        RemoveWhere(visible, _ => true);
+        RemoveWhere(waiting, _ => true);
+    }
+
+    private void RemoveWhere(List<Slot> slots, Predicate<Slot> predicate)
+    {
+        for (var i = slots.Count - 1; i >= 0; i--)
+        {
+            var slot = slots[i];
+            if (!predicate(slot)) continue;
+            slots.RemoveAt(i);
+            released?.Invoke(slot.Entry.Id);
+            Revision++;
+        }
+    }
 }

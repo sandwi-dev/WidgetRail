@@ -19,6 +19,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetModalLayer : Grid, IDisposable
 {
     private FrameworkElement? dialog;
+    internal OverlayModalPresentation? OverlayPresentation { get; set; }
     private double preferredWidth;
     private double preferredHeight;
     private AnchoredPresentation? anchoredPresentation;
@@ -31,6 +32,9 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
     private double authoredMaxHeight;
     private readonly RectangleGeometry boundsClip = new();
     internal UIElement Chrome => Scrim;
+    internal UIElement BackdropLayer => ScrimStrength;
+    private WidgetModalPanel? materialPanel;
+    private long backgroundChanged;
     private WidgetDialogMotion? motion;
     internal Task<WidgetMotionOutcome>? OpeningMotion => motion?.Opening;
     internal Task<WidgetMotionOutcome> CloseAsync() => motion?.CloseAsync() ?? Task.FromResult(WidgetMotionOutcome.Completed);
@@ -80,6 +84,7 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
             motion = new(panel, Scrim, appearance, systemAnimationsEnabled);
         }
         dialog = panel;
+        ObserveMaterial(semanticDialog as WidgetModalPanel);
         anchoredPresentation = anchored; resolveAnchor = anchor;
         if (observingAnchor) LayoutUpdated -= AnchorLayoutUpdated;
         observingAnchor = anchored is not null;
@@ -100,10 +105,38 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
         ConstrainDialog();
     }
 
+    private void ObserveMaterial(WidgetModalPanel? next)
+    {
+        if (ReferenceEquals(materialPanel, next)) return;
+        if (materialPanel is not null) materialPanel.UnregisterPropertyChangedCallback(Panel.BackgroundProperty, backgroundChanged);
+        materialPanel = next;
+        if (next is not null) backgroundChanged = next.RegisterPropertyChangedCallback(Panel.BackgroundProperty, UpdateScrimStrength);
+        UpdateScrimStrength(this, Panel.BackgroundProperty);
+    }
+
+    private void UpdateScrimStrength(DependencyObject sender, DependencyProperty property)
+    {
+        // A full-strength veil removes most of the color that in-app acrylic samples.
+        // Keep the authored brush and input surface intact, including their motion.
+        ScrimStrength.Opacity = materialPanel?.Background is AcrylicBrush ? .4 : 1;
+    }
+
     private void ConstrainDialog()
     {
         boundsClip.Rect = new(0, 0, ActualWidth, ActualHeight);
         if (dialog is null) return;
+        if (OverlayPresentation is { } overlay)
+        {
+            // Preserve the requested ratio while fitting the overlay. Keep a
+            // real backdrop target on every side, including short displays.
+            var width = Math.Max(0, Math.Min(overlay.MaximumWidth,
+                Math.Min(ActualWidth - 64, (ActualHeight - 96) * overlay.AspectRatio)));
+            dialog.MinWidth = dialog.MinHeight = 0;
+            dialog.MaxWidth = dialog.Width = width;
+            dialog.MaxHeight = dialog.Height = width / overlay.AspectRatio;
+            dialog.Margin = new();
+            return;
+        }
         // Clamping a native control's requested dimensions is host geometry
         // policy, not a replacement measure/arrange pass. Zero is valid while
         // opening; the first SizeChanged supplies the actual widget viewport.
@@ -116,6 +149,13 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
         // Native minimums take precedence over Width/Height. Placement must use
         // the same effective dimensions that WinUI will actually arrange.
         dialog.Width = Math.Clamp(preferredWidth, dialog.MinWidth, dialog.MaxWidth);
+        // Centered WRSS height:auto uses WinUI's intrinsic height. MaxHeight above
+        // still bounds long content and its ScrollViewer as the window resizes.
+        if (double.IsNaN(preferredHeight))
+        {
+            dialog.Height = double.NaN;
+            return;
+        }
         var maximumHeight = Math.Clamp(preferredHeight, dialog.MinHeight, dialog.MaxHeight);
         dialog.Height = anchoredPresentation?.SizeToContentHeight == true
             ? contentHeight.Resolve(dialog.Width, Math.Max(96, dialog.MinHeight), maximumHeight, appearance.TextScale,
@@ -178,6 +218,7 @@ internal sealed partial class WidgetModalLayer : Grid, IDisposable
 
     public void Dispose()
     {
+        ObserveMaterial(null);
         CancelBackdropGesture(); CaptureBackdropDismissal = null;
         if (observingAnchor) LayoutUpdated -= AnchorLayoutUpdated;
         observingAnchor = false; resolveAnchor = null;

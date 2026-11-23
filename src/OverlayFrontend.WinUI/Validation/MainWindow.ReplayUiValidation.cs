@@ -8,13 +8,14 @@ namespace WidgetRail.OverlayFrontend.WinUI;
 
 public sealed partial class MainWindow
 {
-    private void EnableReplayUiValidation(Shell.OverlayShellPage page, string output, string targetFile)
+    private void EnableReplayUiValidation(Shell.OverlayShellPage page, string? output, string targetFile)
     {
         var target = JsonSerializer.Deserialize<NativeWindowPreviewTarget>(File.ReadAllText(targetFile))
             ?? throw new InvalidDataException("An exact owned replay fixture target is required.");
         if (target.ClassName != "WidgetRailCaptureFixture") throw new InvalidDataException("Only the synthetic replay window is admitted.");
         var backend = new GuardedReplayUiBackend(target);
         page.ReplayBackendFactory = backend;
+        if (output is null) return; // External native input runs use the same exact-window guard.
         page.EnableReplayUiValidation(output, backend, async verified =>
         {
             if (replaySaveCommand is null) throw new InvalidOperationException("Production replay shortcut handler is not attached.");

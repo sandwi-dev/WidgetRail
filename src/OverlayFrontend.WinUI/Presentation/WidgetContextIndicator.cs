@@ -39,7 +39,7 @@ internal sealed partial class WidgetContextIndicator : Panel, IDisposable
     }
 
     internal static ControllerButton? Resolve(ViewNode node) => node.Kind == ViewNodeKind.ActionSurface &&
-        node.IsDisabled != true && node.IsBusy != true && node.ContextActions.Any(action => !action.IsDisabled && !action.IsBusy)
+        node.NativeContextMenuOnly != true && node.IsDisabled != true && node.IsBusy != true && node.ContextActions.Any(action => !action.IsDisabled && !action.IsBusy)
             ? node.ContextMenuButton ?? ControllerButton.Menu : null;
 
     internal void Update(ControllerButton? prompt, Panel? contentHost = null)

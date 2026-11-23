@@ -1,9 +1,7 @@
 # ViGEmClient provenance
 
-WidgetRail vendors the minimal native source closure from the archived official
-ViGEmClient release below. The upstream files are copied byte-for-byte and are
-compiled only into the dormant `ControllerIsolationWorker.exe`; OverlayHost and
-OverlayPlatformInterop do not link this dependency.
+WidgetRail builds this pinned dependency into the production
+`OverlayPlatformInterop.dll` for controller isolation.
 
 - Project: https://github.com/nefarius/ViGEmClient
 - Tag: `v1.16.18.0`
@@ -13,28 +11,15 @@ OverlayPlatformInterop do not link this dependency.
 - License: MIT; see `LICENSE` and the repository-level
 `THIRD_PARTY_NOTICES.md`.
 
-ViGEmClient documents that the native API is not thread-safe, so the worker
-serializes all client and target calls. Those calls are synchronous and expose
-no caller-supplied deadline. The guardian can terminate only the exact worker
-process after a bounded heartbeat and final identity recheck; whether abrupt
-process termination yields a sufficiently bounded driver-side target removal
-remains a required physical measurement and is not established by fake tests.
+WidgetRail patches the X360 feedback reader to own its cancellation event and
+join its thread before releasing the controller target or client. Device
+discovery keeps its enumeration list alive through the loop and closes a bus
+handle if version negotiation fails. Controller isolation serializes the
+client and target management calls. The callback only publishes rumble values.
+The synthetic policy suite exercises the same reader with real overlapped pipe
+I/O without changing the user's devices.
 
-The expected same-directory parent executable check prevents accidental or
-unconfigured helper launch; it is not a security boundary against a hostile
-process already running with the same user's process-handle or debugging
-authority. Channel admission additionally requires the private inherited
-handle set, snapshotted nonce, exact process identity and generation sequence.
-
-This milestone is prepare/neutral-only. Its 250 ms host lease deliberately
-retires the dormant worker because no physical reader or Playing session is
-connected yet. The next routing slice must move healthy closed-overlay
-forwarding under the guardian/reader lifetime, independent of OverlayHost
-heartbeats. A host lease may govern interactive containment, but host loss may
-leave containment only through the same current-neutral release barrier; it
-must never stop healthy Playing forwarding or resume a held control.
-
-Vendored file SHA-256 values:
+Original upstream SHA-256 values:
 
 | Path | SHA-256 |
 | --- | --- |

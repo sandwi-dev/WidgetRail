@@ -11,8 +11,16 @@ internal sealed partial class EmbeddedMediaOwner
     private string? compactInputWidget;
     internal event Action? CompactChanged;
     internal WidgetMediaPresentation? GetCompact(string widget)=>compactSurfaces.GetValueOrDefault(widget)?.Presentation;
-    internal bool CanPin(string widgetId)=>!retired && !compactSurfaces.ContainsKey(widgetId) &&
-        visible && activeWidget==widgetId && IsReady(widgetId) && MatchingViewport(widgetId) is not null;
+    internal bool CanPin(string widgetId)
+    {
+        if (retired || !visible || activeWidget != widgetId || compactSurfaces.ContainsKey(widgetId) || IsFullscreen(widgetId) ||
+            entries.GetValueOrDefault(widgetId) is not { Document: { } document, Surface: { IsReady: true } surface } ||
+            session.GetEmbeddedMediaState(document)?.Declaration.SupportedPresentations.Contains(MediaPresentationKind.CompactPinned) != true)
+            return false;
+        return MatchingViewport(widgetId) is { } viewport
+            ? ReferenceEquals(surface.Element.Parent, MainHost(widgetId, viewport))
+            : IsParked(widgetId);
+    }
     internal WidgetPresentationEmbeddedMediaState? GetCompactState(WidgetMediaPresentation presentation)=>
         session.IsMediaPresentationCurrent(presentation)?session.GetEmbeddedMediaState(presentation.Document):null;
     internal EmbeddedMediaPlaybackEvent? GetCompactPlayback(WidgetMediaPresentation presentation)=>
@@ -23,11 +31,8 @@ internal sealed partial class EmbeddedMediaOwner
     {
         DemandDispatcher();
         var id=displayed.Authority.WidgetId;
-        if(retired || compactSurfaces.ContainsKey(id) || !visible || id!=activeWidget || !destination.IsLoaded ||
-            entries.GetValueOrDefault(id) is not {Document:{ } document,Surface:{IsReady:true} surface} ||
-            MatchingViewport(id) is not { } ordinary || !ReferenceEquals(surface.Element.Parent,MainHost(id,ordinary)))return null;
+        if (!destination.IsLoaded || !CanPin(id) || entries[id].Document is not { } document) return null;
         var receipt=session.EnterEmbeddedMediaCompact(displayed,document);
-        if(fullscreen?.Document.Authority.WidgetId==id)ExitFullscreen();
         compactSurfaces.Add(id,new(receipt,destination));
         Reconcile();CompactChanged?.Invoke();
         return receipt;

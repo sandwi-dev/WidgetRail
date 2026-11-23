@@ -17,6 +17,7 @@ internal static class PinnedSurfaceContract
                 FocusGroupEntryRequest = null,
                 ScrollRevealRequest = null,
                 QuickActions = [],
+                EmbeddedMediaSession = null,
             }
             : snapshot;
 }
@@ -25,7 +26,28 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 127;
+    public const int CurrentVersion = 145;
+    public const int ScrollContainerAnchorVersion = 145;
+    public const int ForegroundBackgroundVersion = 144;
+    public const int DirectionalScrollAnchorVersion = 143;
+    public const int InlineCarouselVersion = 142;
+    public const int EmbeddedGalleryVersion = 141;
+    public const int GalleryThumbnailVersion = 140;
+    public const int ReadingGroupViewportVersion = 139;
+    public const int FocusRevealGridVersion = 138;
+    public const int ScopedCommandMenuVersion = 137;
+    public const int TrayActionOfferVersion = 136;
+    public const int OverlayModalVersion = 135;
+    public const int InlineVideoVersion = 134;
+    public const int PublicMediaVersion = 133;
+    public const int ReadingGroupVersion = 132;
+    public const int MaximumReadingGroupActions = 32;
+    public const int MaximumReadingGroupDescendants = 128;
+    public const int InlineAnimationVersion = 131;
+    public const int PreferredCollectionEntryVersion = 130;
+    public const int RemoteImagePlayerVersion = 129;
+    public const int MediaPlayerGalleryVersion = 129;
+    public const int HeldCollectionSelectionVersion = 128;
     public const int IndexedQueryRefreshVersion = 127;
     public const int DirectionalCollectionEntryVersion = 125;
     public const int CaptureLibraryHiddenQueryVersion = 126;

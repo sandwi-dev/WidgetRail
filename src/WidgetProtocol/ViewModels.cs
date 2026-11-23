@@ -372,7 +372,17 @@ public sealed record WidgetQuickAction(
     string ActionId,
     string Label,
     WidgetQuickActionCapability? Capability = null,
-    ControllerActionRepeatPolicy RepeatPolicy = ControllerActionRepeatPolicy.None);
+    ControllerActionRepeatPolicy RepeatPolicy = ControllerActionRepeatPolicy.None)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TrayActionOffer? TrayOffer { get; init; }
+    [JsonIgnore]
+    public bool OnDashboard => TrayOffer?.TrayOnly != true;
+
+    /// <summary>Publishes a named tray action. The user chooses the direction in the host.</summary>
+    public static WidgetQuickAction ForTray(string label, TrayActionOffer offer, WidgetQuickActionCapability? capability = null) =>
+        new(ControllerButton.X, offer.Id, label, capability) { TrayOffer = offer with { TrayOnly = true } };
+}
 
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetContextActionStyle>))]
 public enum WidgetContextActionStyle
@@ -424,6 +434,9 @@ public sealed record WidgetDisclosure(string ContentId, bool IsExpanded);
 /// <summary>Declared cancellation shared by keyboard, controller and optional backdrop dismissal.</summary>
 public sealed record WidgetModalDismissal(string ActionId, bool DismissOnBackdrop = true);
 
+/// <summary>Centered overlay-relative dialog geometry, in DIPs. Content keeps its widget input/lifetime owner.</summary>
+public sealed record OverlayModalPresentation(double MaximumWidth = 1280, double AspectRatio = 16.0 / 9.0);
+
 /// <summary>A renderer-neutral node. Properties that do not apply to Kind must be null.</summary>
 public sealed record ViewNode
 {
@@ -456,6 +469,8 @@ public sealed record ViewNode
     public LineGraphDefinition? Graph { get; init; }
     public IReadOnlyList<WidgetContextAction> ContextActions { get; init; } = [];
     public ControllerButton? ContextMenuButton { get; init; }
+    /// <summary>Keep an action surface's context actions available to pointer and keyboard without a controller binding.</summary>
+    public bool? NativeContextMenuOnly { get; init; }
     public IReadOnlyList<WidgetSelectOption> SelectOptions { get; init; } = [];
     /// <summary>A Select that invokes commands without a selected option or accessible value; requires v115.</summary>
     public bool? IsCommandMenu { get; init; }
@@ -477,6 +492,9 @@ public sealed record ViewNode
     /// </summary>
     public SliderInteractionMode? SliderInteractionMode { get; init; }
     public string? ImageSource { get; init; }
+    /// <summary>Acquire this HTTPS image anonymously, within bounds, without leaving its exact origin.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ImageIsPublicMedia { get; init; }
     /// <summary>
     /// Optional protocol-v14 host-resolved artwork identity. It is opaque to
     /// widgets and grants no path, URL, file, network, or decode authority.
@@ -487,6 +505,8 @@ public sealed record ViewNode
     /// focusable node owns host focus inside an opted-in BackgroundSurface.
     /// </summary>
     public string? FocusBackgroundArtworkHandle { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ForegroundBackgroundProcessKey { get; init; }
     /// <summary>
     /// Protocol-v23 identity of the one top-level EmbeddedMedia declaration
     /// whose pixels are placed inside this native layout node.
@@ -510,6 +530,9 @@ public sealed record ViewNode
     /// equivalent to <see cref="WidgetProtocol.ActionSurfacePresentation.Standard"/>.
     /// </summary>
     public ActionSurfacePresentation? ActionSurfacePresentation { get; init; }
+    /// <summary>Opt-in reading group containing bounded inline buttons. The group itself has no primary action.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool IsReadingGroup { get; init; }
     /// <summary>Presentational descendant whose bounds own this action surface's focus decoration. Focus and hit testing remain on the action surface.</summary>
     public string? FocusVisualTargetId { get; init; }
     /// <summary>Currently loadable edges of an opted-in finite indexed window.</summary>
@@ -517,6 +540,11 @@ public sealed record ViewNode
     /// <summary>Opt-in viewport-based directional entry for indexed lists. Explicit entry/return memory remains unchanged.</summary>
     [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingDefault)]
     public IndexedDirectionalEntryMode IndexedDirectionalEntry { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DirectionalScrollAnchor? DirectionalAnchor { get; init; }
+    /// <summary>Preferred query-scoped occurrence for default or directional entry. Explicit focus/return requests are unchanged.</summary>
+    [JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)]
+    public string? IndexedPreferredEntryKey { get; init; }
     /// <summary>
     /// Smallest desired logical-DIP column width for a responsive Grid. The
     /// host computes a stable column count from the grid's actual content
@@ -530,6 +558,7 @@ public sealed record ViewNode
     public AnchoredPresentation? AnchoredPresentation { get; init; }
     /// <summary>Only valid on a modal layer. Omission preserves legacy keyboard/controller-only dismissal.</summary>
     public WidgetModalDismissal? ModalDismissal { get; init; }
+    public OverlayModalPresentation? OverlayModal { get; init; }
     /// <summary>
     /// Optional author cap on responsive columns. Omitting it lets the host use
     /// any safe count allowed by the protocol and available width.
@@ -633,9 +662,10 @@ public sealed record ViewNode
     public IReadOnlyList<ViewNode> Children { get; init; } = [];
 
     [JsonIgnore]
-    public bool IsFocusable => Kind is
+    public bool IsFocusable => (Kind is
         ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or
-        ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.IndexedCollection or ViewNodeKind.WebBrowser or ViewNodeKind.CapturedMedia or ViewNodeKind.MediaPlayer;
+        ViewNodeKind.TextEntry or ViewNodeKind.Select or ViewNodeKind.IndexedCollection or ViewNodeKind.WebBrowser or ViewNodeKind.CapturedMedia or ViewNodeKind.MediaPlayer) &&
+        !(Kind == ViewNodeKind.MediaPlayer && MediaPlayer?.Presentation == MediaPlayerPresentation.Animation);
 }
 
 public sealed record ViewSnapshot
@@ -655,6 +685,9 @@ public sealed record ViewSnapshot
     /// <summary>One-shot request to reveal a declared child in an ordinary scroll container without changing focus.</summary>
     public ScrollRevealRequest? ScrollRevealRequest { get; init; }
     public IReadOnlyList<WidgetQuickAction> QuickActions { get; init; } = [];
+    /// <summary>Informational text for unavailable named tray actions, keyed by manifest action ID.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, string>? UnavailableTrayActions { get; init; }
     /// <summary>Versioned, host-clamped sizing hints for this exact view.</summary>
     public WidgetSurfaceHints? Surface { get; init; }
     public IReadOnlyList<PinnedPresentationLayout> PinnedLayouts { get; init; } = [];
@@ -711,6 +744,7 @@ public enum EmbeddedMediaCommand
     TogglePlayback,
     SeekBackward,
     SeekForward,
+    ToggleMute,
 }
 
 public enum EmbeddedMediaPlaybackCommandKind
