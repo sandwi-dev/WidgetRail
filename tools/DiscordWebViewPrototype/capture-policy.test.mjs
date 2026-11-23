@@ -15,6 +15,41 @@ test('explicit codec policy admits only the selected video codec and repair form
     assert.match(p.description({type:'offer',sdp:'m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=rtpmap:96 H264/90000\r\n'}).description.sdp,/x-google-max-bitrate=9000/);
 });
 
+test('explicit H264 profiles require exact supported profile and packetization mode one',()=>{
+    const variants=[
+        {mimeType:'video/H264',sdpFmtpLine:'profile-level-id=42e01f;packetization-mode=1'},
+        {mimeType:'video/H264',sdpFmtpLine:'profile-level-id=42001f;packetization-mode=0'},
+        {mimeType:'video/H264',sdpFmtpLine:'profile-level-id=42001f;packetization-mode=1'},
+        {mimeType:'video/rtx'}
+    ];
+    for(const profile of ['42001f','42e01f']){
+        let selected;
+        const p=policy({codec:'H264',h264Profile:profile},{RTCRtpSender:{getCapabilities:()=>({codecs:variants})}});
+        p.chooseCodec({getTransceivers:()=>[{sender:{track:{kind:'video'}},setCodecPreferences:value=>selected=value}]});
+        assert.equal(selected.length,2);assert.match(selected[0].sdpFmtpLine,new RegExp('profile-level-id='+profile));
+        assert.match(selected[0].sdpFmtpLine,/packetization-mode=1/);assert.equal(selected[1],variants[3]);
+        assert.equal(p.reference.requestedH264Profile,profile);
+        const offer=p.description({type:'offer',sdp:`m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=rtpmap:96 H264/90000\r\na=fmtp:96 packetization-mode=1;profile-level-id=${profile};level-asymmetry-allowed=1\r\n`});
+        assert.equal(offer.h264Formats[0].profileLevelId,profile);assert.equal(offer.h264Formats[0].packetizationMode,1);
+        assert.match(offer.description.sdp,/level-asymmetry-allowed=1/);
+        for(const fmtp of ['profile-level-id=64001f;packetization-mode=1',`profile-level-id=${profile};packetization-mode=0`,''])
+            assert.throws(()=>p.description({type:'answer',sdp:`m=video 9 UDP/TLS/RTP/SAVPF 96\r\na=rtpmap:96 H264/90000\r\na=fmtp:96 ${fmtp}\r\n`}));
+    }
+    assert.throws(()=>policy({codec:'H264',h264Profile:'42001f'},{RTCRtpSender:{getCapabilities:()=>({codecs:[variants[0],variants[1]]})}}).chooseCodec({}));
+});
+
+test('H264 format diagnostics expose only bounded normalized profile and packetization data',()=>{
+    const p=policy();
+    const normalized=p.h264Format('level-asymmetry-allowed=1; PROFILE-LEVEL-ID = 42E01F ; packetization-mode=1;private=secret');
+    assert.equal(normalized.profileLevelId,'42e01f');assert.equal(normalized.packetizationMode,1);
+    assert.equal(JSON.stringify(normalized).includes('secret'),false);
+    for(const line of [null,'x'.repeat(2049),'profile-level-id=42e01f;profile-level-id=42001f','packetization-mode=1;packetization-mode=0']){
+        const result=p.h264Format(line);assert.equal(result.profileLevelId,null);assert.equal(result.packetizationMode,null);
+    }
+    assert.equal(p.h264Format('profile-level-id=42e01f').packetizationMode,null);
+    for(const settings of [{codec:'H264',h264Profile:'64001f'},{codec:'VP8',h264Profile:'42001f'},{h264Profile:'42e01f'}])assert.throws(()=>policy(settings));
+});
+
 test('unknown or unsupported codec policies fail rather than silently testing a different encoder',()=>{
     for(const settings of [{codec:'unknown'},{maximumBitrate:Infinity},{maximumBitrate:50000001}])assert.throws(()=>policy(settings));
     assert.throws(()=>policy({codec:'AV1'},{RTCRtpSender:{getCapabilities:()=>({codecs:[{mimeType:'video/H264'}]})}}).chooseCodec({}));

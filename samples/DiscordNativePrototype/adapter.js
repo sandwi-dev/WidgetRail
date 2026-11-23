@@ -42,6 +42,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
         let shareOwnerDeadline = 0;
         let lastFailure = null;
         let diagnosticsPending = null;
+        const diagnosticsHistory = new WeakMap();
         let shareQualityBinding = null;
 
         function capabilities() {
@@ -216,6 +217,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
         }
 
         const captureResolutions=[480,720,1080,1440],captureFrameRates=[15,30,60];
+        const highDetailBitrate=18000000;
         const isCaptureQuality=quality=>quality&&captureResolutions.includes(quality.resolution)&&captureFrameRates.includes(quality.frameRate);
         function shareQualityPolicy(expectedAccount=me()?.id,expectedChannel=channelId()) {
             const baseline=[{resolution:480,frameRate:15},{resolution:480,frameRate:30},
@@ -271,13 +273,28 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             if(!pool||typeof pool!=='object')return undefined;
             return Object.getOwnPropertyDescriptor(pool,source)?.value;
         }
+        function streamIncarnation(key,source) {
+            try {
+                const owner=store('ApplicationStreamingStore'),read=owner?.getStreamerActiveStreamMetadataForStream;
+                if(typeof read!=='function'||typeof source!=='string'||source.startsWith('prepicked:'))return null;
+                const value=read.call(owner,key);
+                return value&&typeof value==='object'&&value.sourceId===source?{owner,read,value,key,source}:null;
+            }catch{return null;}
+        }
+        function sameStreamIncarnation(held) {
+            try{return store('ApplicationStreamingStore')===held.owner&&held.owner.getStreamerActiveStreamMetadataForStream===held.read&&
+                held.read.call(held.owner,held.key)===held.value&&held.value.sourceId===held.source;}catch{return false;}
+        }
         function setQualityWarning(code,args,engine,source,epoch,capturedSource=null,check=null) {
             let sourceObject=null,stream=null;
             try{sourceObject=capturedSource??peekDesktopSource(engine,source)??null;stream=currentShare()??null;}catch{}
             shareQualityWarning={code,account:args.account,channel:args.channelId,engine,source,epoch,created:Date.now(),
-                pool:engine.desktopInputPool,sourceObject,stream,sourceObserved:false,check};
+                pool:engine.desktopInputPool,sourceObject,stream,sourceObserved:false,check,
+                incarnation:stream?streamIncarnation(streamKey(stream),source):null};
         }
         function qualityWarningForSnapshot() {
+            shareQualityBinding?.checkBandwidth?.();
+            shareQualityBinding?.checkEncoder?.();
             const warning=shareQualityWarning;if(!warning)return null;
             const clear=()=>{if(shareQualityWarning===warning)shareQualityWarning=null;return null;};
             try {
@@ -289,7 +306,8 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 const selected=media?.getGoLiveSource?.()?.desktopSource?.id;
                 if(selected!=null){if(selected!==warning.source)return clear();warning.sourceObserved=true;}
                 else if(warning.sourceObserved)return clear();
-                if(warning.stream!==null){if(own!==warning.stream||own.state==='ENDED')return clear();}
+                if(warning.stream!==null){if(!own||own.state==='ENDED'||(warning.incarnation?
+                    !sameStreamIncarnation(warning.incarnation)||streamKey(own)!==warning.incarnation.key:own!==warning.stream))return clear();}
                 else if(own){
                     if(own.state==='ENDED'||own.channelId!==warning.channel||(own.ownerId||own.userId)!==warning.account)return clear();
                     warning.stream=own;
@@ -298,7 +316,64 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             }catch{return clear();}
         }
 
+        function baselineAnswer(local,answer,mid,payload) {
+            // This parser deliberately accepts only the known browser answer
+            // boundary. It never rewrites a local offer or changes payload IDs,
+            // audio, RTX, transport, encryption, bandwidth or other video MIDs.
+            if(local?.type!=='offer'||answer?.type!=='answer'||typeof mid!=='string'||!/^[\w-]{1,32}$/.test(mid)||
+                !Number.isInteger(payload)||payload<0||payload>127)return null;
+            function selected(sdp,localSide) {
+                if(typeof sdp!=='string'||sdp.length>65536||!sdp.startsWith('v=0\r\n')&&!sdp.startsWith('v=0\n'))return null;
+                const rows=sdp.split('\n');if(rows.length>1024)return null;
+                const sections=[];let part=null,offset=0;
+                for(const raw of rows){
+                    const line=raw.endsWith('\r')?raw.slice(0,-1):raw;
+                    if(/[\r\u0000]/.test(line))return null;
+                    if(line.startsWith('m=')){part=[];sections.push(part);if(sections.length>16)return null;}
+                    if(part)part.push({line,offset});else if(line.startsWith('a=mid:'))return null;
+                    offset+=raw.length+1;
+                }
+                const mids=new Set();let target=null;
+                for(const section of sections){
+                    const found=section.filter(row=>row.line.startsWith('a=mid:'));
+                    if(found.length!==1)return null;
+                    const id=found[0].line.slice(6);
+                    if(!/^[\w-]{1,32}$/.test(id)||mids.has(id))return null;mids.add(id);
+                    if(id===mid)target=section;
+                }
+                if(!target)return null;
+                const media=/^m=video ([1-9]\d*) UDP\/TLS\/RTP\/SAVPF ([\d ]+)$/.exec(target[0].line);
+                if(!media)return null;
+                const payloads=media[2].split(' ');
+                if(payloads.some(value=>!/^\d{1,3}$/.test(value)||Number(value)>127)||new Set(payloads).size!==payloads.length||!payloads.includes(String(payload)))return null;
+                const directions=target.filter(row=>/^a=(sendrecv|sendonly|recvonly|inactive)$/.test(row.line));
+                if(directions.length!==1||!(localSide?/^a=(sendrecv|sendonly)$/:/^a=(sendrecv|recvonly)$/).test(directions[0].line))return null;
+                const rtp=target.filter(row=>new RegExp('^a=rtpmap:'+payload+'(?:\\s|$)').test(row.line));
+                if(rtp.length!==1||!new RegExp('^a=rtpmap:'+payload+' H264/90000$','i').test(rtp[0].line))return null;
+                const fmtp=target.filter(row=>new RegExp('^a=fmtp:'+payload+'(?:\\s|$)').test(row.line));
+                if(fmtp.length!==1||!fmtp[0].line.startsWith('a=fmtp:'+payload+' '))return null;
+                const prefix='a=fmtp:'+payload+' ',parameters=new Map();let position=fmtp[0].offset+prefix.length,profileOffset=null;
+                for(const raw of fmtp[0].line.slice(prefix.length).split(';')){
+                    const match=/^(\s*([a-z0-9-]+)\s*=\s*)([^;\s]+)(\s*)$/i.exec(raw);
+                    if(!match||parameters.has(match[2].toLowerCase()))return null;
+                    parameters.set(match[2].toLowerCase(),match[3]);
+                    if(match[2].toLowerCase()==='profile-level-id')profileOffset=position+match[1].length;
+                    position+=raw.length+1;
+                }
+                const profile=parameters.get('profile-level-id')?.toLowerCase();
+                if(!/^(4200|42e0)(0a|0b|0c|0d|14|15|16|1e|1f|20|28|29|2a|32|33|34|3c|3d|3e)$/.test(profile??'')||
+                    parameters.get('packetization-mode')!=='1'||parameters.get('level-asymmetry-allowed')!=='1'||profileOffset===null)return null;
+                return {profile,profileOffset};
+            }
+            const offered=selected(local.sdp,true),remote=selected(answer.sdp,false);
+            if(!offered?.profile.startsWith('4200')||!remote||offered.profile.slice(4)!==remote.profile.slice(4))return null;
+            const profile=offered.profile;
+            return {profile,sdp:answer.sdp.slice(0,remote.profileOffset)+profile+answer.sdp.slice(remote.profileOffset+6)};
+        }
+
         function bindOutgoingQuality(args,quality,engine,source,epoch) {
+            const requestedBitrate=args.bandwidthPreference==='high-detail'?highDetailBitrate:null;
+            const preferHardware=args.encoderPreference==='prefer-hardware';
             const sourcePool=engine.desktopInputPool,selected=peekDesktopSource(engine,source),track=selected?.stream?.getVideoTracks?.()[0];
             if(!selected||track?.kind!=='video'||typeof track.getConstraints!=='function'||
                 typeof engine.on!=='function'||typeof engine.removeListener!=='function'||typeof engine.connections?.has!=='function')fail('share_quality_unavailable');
@@ -308,9 +383,10 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             const maximumWidth=({480:1706,720:2560,1080:3840,1440:5120})[quality.resolution];
             if(!Number.isInteger(width)||!Number.isInteger(height)||width<2||height<2||width>maximumWidth||height>quality.resolution)
                 fail('share_quality_unavailable');
-            const wrappers=new Map();let closed=false,applied=false,timer,ownedStream=null;
+            const wrappers=new Map();let closed=false,applied=false,timer,ownedStream=null,ownedIncarnation=null;
             const streamWrappers=new Map();
-            let contentHint=null,contentPreferenceUnavailable=false;
+            const encoderWrappers=new Map();let requestedProfile=null,appliedProfile=null,observedEncoderPc=null;
+            let contentHint=null,contentPreferenceUnavailable=false,appliedBitrate=null,observeBandwidth=null;
             try{
                 const native=globalThis.WidgetRailNativeMedia?.status?.();
                 if(native?.active===true){
@@ -320,10 +396,17 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             }catch{contentPreferenceUnavailable=true;}
             const key=(store('ChannelStore')?.getChannel?.(args.channelId)?.guild_id)
                 ?`guild:${store('ChannelStore').getChannel(args.channelId).guild_id}:${args.channelId}:${args.account}`:`call:${args.channelId}:${args.account}`;
-            const current=()=>{try{const queued=peekDesktopSource(engine,source);return !closed&&epoch===shareEpoch&&me()?.id===args.account&&channelId()===args.channelId&&
+            const current=()=>{try{const queued=peekDesktopSource(engine,source),own=currentShare();return !closed&&epoch===shareEpoch&&me()?.id===args.account&&channelId()===args.channelId&&
                 store('MediaEngineStore')?.getMediaEngine?.()===engine&&engine.desktopInputPool===sourcePool&&
                 (queued===undefined||queued===selected)&&selected.stream?.getVideoTracks?.()[0]===track&&track.readyState==='live'&&
-                (ownedStream===null||currentShare()===ownedStream&&ownedStream.state!=='ENDED');}catch{return false;}};
+                (ownedStream===null||own&&own.state!=='ENDED'&&(ownedIncarnation?
+                    sameStreamIncarnation(ownedIncarnation)&&streamKey(own)===key:own===ownedStream));}catch{return false;}};
+            const restoreEncoder=pc=>{
+                const held=encoderWrappers.get(pc);if(!held)return;
+                encoderWrappers.delete(pc);++held.sequence;
+                if(pc.setRemoteDescription!==held.wrapper)return;
+                try{if(held.descriptor)Object.defineProperty(pc,'setRemoteDescription',held.descriptor);else delete pc.setRemoteDescription;}catch{}
+            };
             const restore=connection=>{
                 const held=wrappers.get(connection);if(!held)return;
                 wrappers.delete(connection);
@@ -339,10 +422,130 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                     try{if(held.descriptor)Object.defineProperty(connection,'setStream',held.descriptor);else delete connection.setStream;}catch{}
                 }
                 streamWrappers.clear();
+                for(const pc of [...encoderWrappers.keys()])restoreEncoder(pc);
+                requestedProfile=appliedProfile=observedEncoderPc=null;
                 if(shareQualityBinding===binding)shareQualityBinding=null;
             };
             const markUnavailable=(check='attachment-timeout')=>{if(current())setQualityWarning('share_quality_unconfirmed',args,engine,source,epoch,selected,check);dispose();};
             const contentUnavailable=()=>{if(current())setQualityWarning('share_content_preference_unconfirmed',args,engine,source,epoch,selected);};
+            const encoderUnavailable=pc=>{
+                if(pc&&observedEncoderPc!==null&&observedEncoderPc!==pc)return;
+                appliedProfile=null;
+                if(current()&&!shareQualityWarning)setQualityWarning('share_encoder_unconfirmed',args,engine,source,epoch,selected);
+            };
+            const checkEncoder=()=>{
+                if(observedEncoderPc===null)return;
+                try{if(encoderWrappers.get(observedEncoderPc)?.attached())return;}catch{}
+                encoderUnavailable(observedEncoderPc);requestedProfile=null;
+            };
+            function bindEncoderPreference(connection,rtc) {
+                if(!preferHardware)return;
+                for(const [pc,held] of encoderWrappers)if(!held.current())restoreEncoder(pc);
+                const pc=connection.pc,transceiver=connection.videoTransceiver,sender=transceiver?.sender;
+                if(!ownedIncarnation||!pc||typeof pc.setRemoteDescription!=='function'||!transceiver||!sender||encoderWrappers.size>=4){encoderUnavailable();return;}
+                if(encoderWrappers.has(pc))return;
+                const original=pc.setRemoteDescription,descriptor=Object.getOwnPropertyDescriptor(pc,'setRemoteDescription');
+                const ownsConnection=()=>current()&&sameStreamIncarnation(ownedIncarnation)&&connection.destroyed===false&&engine.connections.has(connection)&&
+                    store('StreamRTCConnectionStore')?.getRTCConnection?.(key)===rtc&&rtc._connection===connection&&rtc._destroyed===false&&
+                    rtc.context==='stream'&&rtc.streamKey===key&&rtc.isOwner===true&&rtc.streamContext?.ownerId===args.account&&
+                    rtc.streamContext?.channelId===args.channelId&&connection.pc===pc&&connection.videoTransceiver===transceiver&&
+                    transceiver.sender===sender&&
+                    store('MediaEngineStore')?.getGoLiveSource?.()?.desktopSource?.id===source&&pc.signalingState!=='closed';
+                const exact=()=>ownsConnection()&&sender.track===track&&connection.streamVideoTrack===track&&connection.input?.desktop===selected;
+                const held={descriptor,sequence:0,current:ownsConnection,attached:exact,wrapper:null};
+                held.wrapper=function(description){
+                    if(this!==pc)return original.apply(this,arguments);
+                    if(!ownsConnection()){restoreEncoder(pc);encoderUnavailable(pc);return original.apply(this,arguments);}
+                    if(!exact()){encoderUnavailable(pc);return original.apply(this,arguments);}
+                    const sequence=++held.sequence;let changed=null,offer,mid,payload;
+                    try{
+                        const answer={type:description?.type,sdp:description?.sdp};
+                        const local=pc.localDescription;
+                        offer={type:local?.type,sdp:local?.sdp};
+                        mid=transceiver.mid;payload=connection.videoPayloadType;
+                        if(pc.signalingState==='have-local-offer'&&connection.videoCodec==='H264')
+                            changed=baselineAnswer(offer,answer,mid,payload);
+                    }catch{}
+                    // Provider description getters can run synchronous callbacks.
+                    // Snapshot them once, then recheck the exact negotiation and
+                    // owner immediately before changing this answer.
+                    if(!changed||pc.signalingState!=='have-local-offer'||connection.videoCodec!=='H264'||
+                        transceiver.mid!==mid||connection.videoPayloadType!==payload||!exact()){
+                        if(!ownsConnection())restoreEncoder(pc);
+                        encoderUnavailable(pc);return original.apply(this,arguments);
+                    }
+                    const profile=changed.profile;observedEncoderPc=pc;requestedProfile=profile;appliedProfile=null;
+                    const forwarded=Array.from(arguments);forwarded[0]={type:'answer',sdp:changed.sdp};
+                    let result;
+                    try{result=original.apply(this,forwarded);}
+                    catch(error){encoderUnavailable(pc);throw error;}
+                    Promise.resolve(result).then(()=>{
+                        if(held.sequence!==sequence||encoderWrappers.get(pc)!==held||!exact())return;
+                        const observed=baselineAnswer(pc.localDescription?.type==='offer'?pc.localDescription:
+                            {type:'offer',sdp:pc.currentLocalDescription?.sdp},pc.remoteDescription,transceiver.mid,connection.videoPayloadType);
+                        if(observed?.profile===profile&&pc.remoteDescription?.sdp===observed.sdp){
+                            appliedProfile=profile;
+                            if(shareQualityWarning?.code==='share_encoder_unconfirmed')shareQualityWarning=null;
+                        }else encoderUnavailable(pc);
+                    },()=>{if(held.sequence===sequence&&encoderWrappers.get(pc)===held&&exact())encoderUnavailable(pc);}).catch(()=>{});
+                    return result;
+                };
+                try{Object.defineProperty(pc,'setRemoteDescription',{value:held.wrapper,writable:true,configurable:true});encoderWrappers.set(pc,held);}
+                catch{encoderUnavailable();}
+            }
+            const bandwidthUnavailable=()=>{
+                appliedBitrate=null;
+                if(current()&&!shareQualityWarning)setQualityWarning('share_bandwidth_unconfirmed',args,engine,source,epoch,selected);
+            };
+            function attachWithBandwidth(connection,rtc,manager,original,input) {
+                if(requestedBitrate===null)return original.call(connection,input);
+                const exact=()=>current()&&connection.destroyed===false&&engine.connections.has(connection)&&
+                    connection.videoQualityManager===manager&&manager?.connection===connection&&manager.contextType==='stream'&&
+                    store('StreamRTCConnectionStore')?.getRTCConnection?.(key)===rtc&&rtc._connection===connection&&rtc._destroyed===false&&
+                    rtc.isOwner===true&&rtc.streamContext?.ownerId===args.account&&rtc.streamContext?.channelId===args.channelId&&
+                    store('MediaEngineStore')?.getGoLiveSource?.()?.desktopSource?.id===source;
+                const originalQuality=manager?.setGoliveQuality,descriptor=manager&&Object.getOwnPropertyDescriptor(manager,'setGoliveQuality');
+                if(!exact()||typeof originalQuality!=='function'){bandwidthUnavailable();return original.call(connection,input);}
+                let calls=0,installed=false,result;
+                const wrapper=function(value){
+                    // The browser's setDesktopInput resets bitrateMax itself.
+                    // Replace that one synchronous source-policy write, then let
+                    // its normal quality manager retain remote demand and network
+                    // adaptation. Never patch a prototype, floor, target or sender.
+                    const constraints=track.getConstraints(),w=bound(constraints?.width),h=bound(constraints?.height);
+                    if(this!==manager||!exact()||value?.capture?.width!==w||value?.capture?.height!==h||
+                        value?.encode?.width!==w||value?.encode?.height!==h||
+                        !Number.isFinite(value?.bitrateMax)||value.bitrateMax<=0)
+                        return originalQuality.apply(this,arguments);
+                    calls++;
+                    return originalQuality.call(this,{...value,bitrateMax:requestedBitrate},...Array.prototype.slice.call(arguments,1));
+                };
+                try{Object.defineProperty(manager,'setGoliveQuality',{value:wrapper,writable:true,configurable:true});installed=true;}
+                catch{bandwidthUnavailable();}
+                try{result=original.call(connection,input);}
+                catch(error){bandwidthUnavailable();throw error;}
+                finally{
+                    // Never leave the manager patched across an await or replace
+                    // a method installed by the provider while attachment ran.
+                    if(installed&&manager.setGoliveQuality===wrapper){
+                        try{if(descriptor)Object.defineProperty(manager,'setGoliveQuality',descriptor);else delete manager.setGoliveQuality;}
+                        catch{bandwidthUnavailable();}
+                    }
+                }
+                if(installed&&calls===1&&!(result&&typeof result.then==='function')&&exact()&&
+                    connection.input?.desktop===selected&&connection.streamVideoTrack===track&&manager.goliveMaxQuality?.bitrateMax===requestedBitrate){
+                    appliedBitrate=requestedBitrate;
+                    observeBandwidth=()=>exact()&&connection.input?.desktop===selected&&connection.streamVideoTrack===track&&
+                        manager.goliveMaxQuality?.bitrateMax===requestedBitrate;
+                }
+                else bandwidthUnavailable();
+                return result;
+            }
+            const checkBandwidth=()=>{
+                if(appliedBitrate===null||!observeBandwidth)return;
+                try{if(observeBandwidth())return;}catch{}
+                bandwidthUnavailable();
+            };
             function bindContentHint(connection,rtc) {
                 if(contentPreferenceUnavailable){contentUnavailable();return;}
                 if(contentHint===null||streamWrappers.has(connection))return;
@@ -382,9 +585,17 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 if(wrappers.has(connection))return;
                 if(wrappers.size>=4||typeof connection.setDesktopInput!=='function'){markUnavailable();return;}
                 const original=connection.setDesktopInput,descriptor=Object.getOwnPropertyDescriptor(connection,'setDesktopInput');
+                let boundManager=null,boundRtc=null;
                 const wrapper=function(input){
-                    if(this!==connection||input!==selected)return original.apply(this,arguments);
-                    restore(connection);
+                    if(this!==connection)return original.apply(this,arguments);
+                    if(input!==selected){if(requestedBitrate!==null)dispose();return original.apply(this,arguments);}
+                    if(!current()){dispose();return original.apply(this,arguments);}
+                    if(boundManager!==null&&(connection.videoQualityManager!==boundManager||
+                        store('StreamRTCConnectionStore')?.getRTCConnection?.(key)!==boundRtc)){
+                        bandwidthUnavailable();dispose();return original.apply(this,arguments);
+                    }
+                    if(requestedBitrate===null)restore(connection);
+                    let bandwidthOwner;
                     let check='provider-exception';
                     const requireCheck=(condition,name)=>{if(!condition){check=name;fail('share_quality_unconfirmed');}};
                     try {
@@ -422,15 +633,20 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                         primary.maxFrameRate=quality.frameRate;
                         primary.maxResolution={type:constants.FIXED,width,height};
                         ownedStream=own;
+                        ownedIncarnation??=streamIncarnation(key,source);
                         applied=true;shareQualityWarning=null;clearTimeout(timer);
                         bindContentHint(connection,rtc);
+                        bindEncoderPreference(connection,rtc);
+                        bandwidthOwner={rtc,manager};
+                        if(requestedBitrate!==null){boundManager=manager;boundRtc=rtc;}
                     }catch{markUnavailable(check);}
-                    return original.apply(this,arguments);
+                    return bandwidthOwner?attachWithBandwidth(connection,bandwidthOwner.rtc,bandwidthOwner.manager,original,input):original.apply(this,arguments);
                 };
                 try{Object.defineProperty(connection,'setDesktopInput',{value:wrapper,writable:true,configurable:true});wrappers.set(connection,{wrapper,descriptor});}
                 catch{markUnavailable();}
             }
-            const binding={dispose,current,observe:()=>({active:current(),applied,pending:wrappers.size,contentHooks:streamWrappers.size})};
+            const binding={dispose,current,checkBandwidth,checkEncoder,observe:()=>{if(!current()){dispose();return null;}checkBandwidth();checkEncoder();return {active:current(),applied,pending:wrappers.size,contentHooks:streamWrappers.size,
+                requestedBitrate,appliedBitrate,encoderPreference:preferHardware?'prefer-hardware':'discord',requestedProfile,appliedProfile};}};
             shareQualityBinding?.dispose();shareQualityBinding=binding;
             try{engine.on('connection',created);timer=setTimeout(()=>{if(!applied)markUnavailable();},15000);}
             catch{dispose();fail('share_quality_unavailable');}
@@ -447,9 +663,14 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 const key=streamKey(own),connections=store('StreamRTCConnectionStore');
                 const rtc=connections?.getRTCConnection?.(key),connection=rtc?._connection;
                 const engine=store('MediaEngineStore')?.getMediaEngine?.();
+                const incarnation=streamIncarnation(key,store('MediaEngineStore')?.getGoLiveSource?.()?.desktopSource?.id);
+                const ownsStream=()=>{
+                    const active=currentShare();
+                    return active&&active.state!=='ENDED'&&streamKey(active)===key&&active.channelId===args.channelId&&
+                        (active.ownerId||active.userId)===args.account&&(incarnation?sameStreamIncarnation(incarnation):active===own);
+                };
                 const exact=()=>shareEpoch===generation&&me()?.id===args.account&&channelId()===args.channelId&&
-                    currentShare()===own&&own.state!=='ENDED'&&streamKey(own)===key&&own.channelId===args.channelId&&
-                    (own.ownerId||own.userId)===args.account&&connections?.getRTCConnection?.(key)===rtc&&
+                    ownsStream()&&connections?.getRTCConnection?.(key)===rtc&&
                     rtc?.context==='stream'&&rtc.streamKey===key&&rtc._destroyed===false&&rtc.isOwner===true&&
                     rtc.streamContext?.ownerId===args.account&&rtc.streamContext?.channelId===args.channelId&&
                     rtc._connection===connection&&connection?.context==='stream'&&connection.userId===args.account&&
@@ -476,6 +697,11 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                     fail('stream_diagnostics_unavailable');
                 const dimension=value=>Number.isInteger(value)&&value>=2&&value<=8192?value:null;
                 const rate=value=>Number.isFinite(value)&&value>=0&&value<=240?value:null;
+                const previous=diagnosticsHistory.get(connection);
+                const diagnosticOwner=incarnation?.value??own;
+                const prior=previous?.owner===diagnosticOwner&&previous.generation===generation?previous.samples:null;
+                const samples=new Map();
+                const number=(value,max=Number.MAX_SAFE_INTEGER)=>Number.isFinite(value)&&value>=0&&value<=max?value:null;
                 const outbound=[];let inspected=0;
                 for(const report of raw.values()) {
                     if(++inspected>256)fail('stream_diagnostics_unavailable');
@@ -484,9 +710,44 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                     const codecReport=typeof raw.get==='function'?raw.get(report.codecId):null;
                     const codec=({'video/vp8':'VP8','video/vp9':'VP9','video/h264':'H264','video/av1':'AV1','video/h265':'H265'})[
                         typeof codecReport?.mimeType==='string'?codecReport.mimeType.toLowerCase():''];
-                    outbound.push({width:dimension(report.frameWidth),height:dimension(report.frameHeight),framesPerSecond:rate(report.framesPerSecond),
+                    const item={width:dimension(report.frameWidth),height:dimension(report.frameHeight),framesPerSecond:rate(report.framesPerSecond),
                         qualityLimitationReason:['none','cpu','bandwidth','other'].includes(report.qualityLimitationReason)?report.qualityLimitationReason:null,
-                        ...(codec?{codec}:{})});
+                        ...(codec?{codec}:{})};
+                    if(codec==='H264'&&typeof codecReport?.sdpFmtpLine==='string'&&codecReport.sdpFmtpLine.length<=2048){
+                        const fields=codecReport.sdpFmtpLine.split(';').map(value=>value.trim());
+                        const profiles=fields.filter(value=>/^profile-level-id=[0-9a-f]{6}$/i.test(value));
+                        const modes=fields.filter(value=>/^packetization-mode=[01]$/.test(value));
+                        if(profiles.length===1)item.h264Profile=profiles[0].split('=')[1].toLowerCase();
+                        if(modes.length===1)item.packetizationMode=Number(modes[0].split('=')[1]);
+                    }
+                    // Retain only bounded numeric counters for this exact stream.
+                    // Requested limits and advertised FPS are not measurements.
+                    const sample={timestamp:number(report.timestamp),frames:number(report.framesEncoded),sent:number(report.framesSent),
+                        bytes:number(report.bytesSent),encode:number(report.totalEncodeTime),qp:number(report.qpSum),
+                        codec:codec+':'+(item.h264Profile??'')+':'+(item.packetizationMode??''),
+                        width:item.width,height:item.height};
+                    const id=typeof report.id==='string'&&report.id.length<=256?report.id:null;
+                    const old=id===null?null:prior?.get(id);
+                    if(id!==null&&sample.timestamp!==null)samples.set(id,sample);
+                    if(old&&sample.timestamp!==null&&old.timestamp!==null&&sample.codec===old.codec&&sample.width===old.width&&sample.height===old.height){
+                        const ms=sample.timestamp-old.timestamp;
+                        const delta=key=>sample[key]!==null&&old[key]!==null&&sample[key]>=old[key]?sample[key]-old[key]:null;
+                        const frames=delta('frames'),bytes=delta('bytes'),encode=delta('encode'),qp=delta('qp'),sent=delta('sent');
+                        if(ms>=250&&ms<=30000){
+                            item.measurement={milliseconds:ms,encodedFps:frames===null?null:number(frames*1000/ms,240),
+                                sentFps:sent===null?null:number(sent*1000/ms,240),bitrateMbps:bytes===null?null:number(bytes*8/ms/1000,1000),
+                                meanEncodeMs:frames>0&&encode!==null?number(encode*1000/frames,10000):null,
+                                meanQp:frames>0&&qp!==null?number(qp/frames,255):null};
+                        }
+                    }
+                    if(typeof report.powerEfficientEncoder==='boolean')item.powerEfficientEncoder=report.powerEfficientEncoder;
+                    const implementation=['OpenH264','libvpx','ExternalEncoder','MediaFoundation','NVENC'].find(name=>
+                        typeof report.encoderImplementation==='string'&&report.encoderImplementation.includes(name));
+                    if(implementation)item.encoderImplementation=implementation;
+                    const remote=typeof raw.get==='function'?raw.get(report.remoteId):null;
+                    if(remote?.type==='remote-inbound-rtp'&&(remote.kind??remote.mediaType)==='video')
+                        item.remote={roundTripMs:number(remote.roundTripTime*1000,120000),fractionLost:number(remote.fractionLost,1)};
+                    outbound.push(item);
                 }
                 const parameters=readParameters.call(connection);
                 if(!Array.isArray(parameters)||parameters.length>4||parameters.some(item=>!item||typeof item!=='object'))
@@ -523,6 +784,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                     qualityBinding:shareQualityBinding?.observe?.()??null,
                     qualityCheck:qualityWarningForSnapshot()?shareQualityWarning?.check??null:null};
                 if(!exact())fail('stream_diagnostics_stale');
+                diagnosticsHistory.set(connection,{owner:diagnosticOwner,generation,samples});
                 return {source,outbound,advertised,...(senderInfo?{sender:senderInfo}:{}),attachment};
             }catch(error) {
                 if(['account_changed','call_changed','stream_diagnostics_unavailable','stream_diagnostics_busy','stream_diagnostics_timeout','stream_diagnostics_stale'].includes(error?.adapterCode))throw error;
@@ -766,6 +1028,10 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             sameCall(args);
             if (sharePending || currentShare()) fail('share_already_active');
             const quality=args.captureQuality;
+            if(args.encoderPreference!==undefined&&!['discord','prefer-hardware'].includes(args.encoderPreference))fail('share_encoder_unsupported');
+            if(args.encoderPreference==='prefer-hardware'&&quality===undefined)fail('share_encoder_unsupported');
+            if(args.bandwidthPreference!==undefined&&!['automatic','high-detail'].includes(args.bandwidthPreference))fail('share_bandwidth_unsupported');
+            if(args.bandwidthPreference==='high-detail'&&quality===undefined)fail('share_bandwidth_unsupported');
             if(quality!==undefined&&(!quality||typeof quality!=='object'||Array.isArray(quality)||
                 Object.keys(quality).some(key=>!['resolution','frameRate'].includes(key))||
                 !isCaptureQuality(quality)))fail('share_quality_unsupported');

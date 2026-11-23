@@ -41,6 +41,13 @@ public sealed partial class MainWindow
         var shellConfiguration = Shell.FrontendArguments.Value(arguments, "--shell-config");
         var widgetConfiguration = Shell.FrontendArguments.Value(arguments, "--widget-config");
         var indexedValidationPipe = Shell.FrontendArguments.Value(arguments, "--indexed-validation-pipe");
+        if (Shell.FrontendArguments.Value(arguments, "--validate-desktop-surface") is { } desktopSurfaceConfiguration)
+        {
+            ConfigureDesktopSurfaceValidation(desktopSurfaceConfiguration);
+            ConfigureValidationWindowObservation(arguments);
+            handled = true;
+            return;
+        }
         if (validateEmbeddedMedia)
         {
             var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96d;
@@ -256,6 +263,7 @@ public sealed partial class MainWindow
             validateGridView ? typeof(Validation.GridViewValidationPage) : typeof(MainPage));
         else return; // Debug and Release use the same production launch by default.
         ConfigureValidationActivation(arguments);
+        ConfigureValidationWindowObservation(arguments);
         handled = true;
     }
 
@@ -405,6 +413,8 @@ public sealed partial class MainWindow
     }
     partial void RetireValidation()
     {
+        validationWindowObserver?.Dispose();
+        RetireDesktopSurfaceValidation();
         replay?.Dispose();
         exclusiveControlValidationInput?.Dispose();
         (RootFrame.Content as Validation.ExternalSurfacePage)?.Retire();

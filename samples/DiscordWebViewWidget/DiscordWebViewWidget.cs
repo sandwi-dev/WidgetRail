@@ -74,7 +74,7 @@ public sealed partial class DiscordWebViewWidget : Widget
         },WidgetOperationLifetime.Widget);
         return ValueTask.CompletedTask;
     }
-    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime){state.EnsureLoaded();ResumeVoiceControls();return ValueTask.CompletedTask;}
+    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime){state.EnsureLoaded();channelPreferences.EnsureLoaded();ResumeVoiceControls();return ValueTask.CompletedTask;}
 
     private async ValueTask<DiscordState> ReadAsync(CancellationToken token)
     {
@@ -96,6 +96,7 @@ public sealed partial class DiscordWebViewWidget : Widget
 
     public override ValueTask OnActionAsync(WidgetActionEvent action,CancellationToken cancellationToken=default)
     {
+        if(TrySharePreferenceAction(action,cancellationToken))return ValueTask.CompletedTask;
         if(TryVoiceControlAction(action,cancellationToken,out var voiceAction))return voiceAction;
         if(navigation.TryHandleBack(action,action.FocusedElementId))return ValueTask.CompletedTask;
         if(TryPickerAction(action,cancellationToken,out var pickerAction))return pickerAction;

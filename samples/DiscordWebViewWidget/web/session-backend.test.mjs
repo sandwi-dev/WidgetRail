@@ -82,6 +82,31 @@ test('share requires explicit supported host-selected quality before provider in
   await f.invoke('command',{owner,method:'share',args});assert.equal(f.calls.length,1);assert.equal(f.calls[0].args,args);
 });
 
+test('share bandwidth remains an explicit bounded provider preference',async()=>{
+  const f=fixture();f.enableNativeCapture();
+  for(const bandwidthPreference of [null,'18mbps','',18000000,{maximum:18000000},['high-detail']])
+    await assert.rejects(f.invoke('command',{owner,method:'share',args:{captureQuality:{resolution:720,frameRate:30},bandwidthPreference}}),/Stream bandwidth unavailable/);
+  assert.equal(f.calls.length,0);
+  for(const bandwidthPreference of [undefined,'automatic','high-detail']) {
+    await f.invoke('command',{owner,method:'share',args:{captureQuality:{resolution:1440,frameRate:60},bandwidthPreference}});
+    assert.equal(f.calls.at(-1).args.bandwidthPreference,bandwidthPreference);
+  }
+  assert.equal(f.calls.length,3);
+});
+
+test('share encoder opt-in is bounded and leaves the default provider policy intact',async()=>{
+  const f=fixture();f.enableNativeCapture();
+  for(const encoderPreference of [null,'hardware','force-h264','',true,{codec:'H264'},['prefer-hardware']])
+    await assert.rejects(f.invoke('command',{owner,method:'share',args:{captureQuality:{resolution:720,frameRate:30},encoderPreference}}),/Stream encoder preference unavailable/);
+  assert.equal(f.calls.length,0);
+  for(const encoderPreference of [undefined,'discord','prefer-hardware']) {
+    await f.invoke('command',{owner,method:'share',args:{captureQuality:{resolution:1440,frameRate:60},bandwidthPreference:'high-detail',encoderPreference}});
+    assert.equal(f.calls.at(-1).args.encoderPreference,encoderPreference);
+    assert.equal(f.calls.at(-1).args.bandwidthPreference,'high-detail');
+  }
+  assert.equal(f.calls.length,3);
+});
+
 test('bounded high quality requests preserve provider eligibility validation and native source requirement',async()=>{
   const f=fixture();f.enableNativeCapture();
   for(const resolution of [480,720,1080,1440])for(const frameRate of [15,30,60]){

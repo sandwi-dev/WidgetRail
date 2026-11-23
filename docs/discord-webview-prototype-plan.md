@@ -1,14 +1,22 @@
 # Discord WebView2 prototype plan and evidence
 
-Status: active implementation and user testing; completion remains unproven.
+Status: WebView streaming experiments stopped at the user's request; retained
+implementation and evidence, not accepted as a completed quality improvement.
 Updated: 2026-10-27.
+
+The proposed full-feature migration is now documented in
+[Discord Desktop integration plan](discord-desktop-integration-plan.md).
+That plan uses the existing official desktop client and explicitly includes all
+native controls, setup, audio, sharing, pins and the full Discord page. It does
+not authorize modifying the installed Discord client. Historical candidate
+handoffs below are evidence records, not instructions to resume WebView tuning.
 
 Working-baseline acceptance: the user authorized merging the current integration
 to main before beginning the next motion-quality improvement phase. This accepts
 the working0.0.14 behavior and its supporting contracts/tools; it does not claim
 the remaining audio, sustained60FPS or higher-bitrate acceptance gates are complete.
-No release was requested. The18Mbps comparison remains test-only; production
-stream bandwidth behavior is unchanged.
+No release was requested. At that baseline merge, the18Mbps comparison was
+test-only; later candidate changes are recorded below.
 
 Merge verification (2026-10-27): the Discord shard, SDK compatibility, protocol
 parity, runtime, presentation session, broker and gallery checks passed. The
@@ -43,6 +51,300 @@ source runs at60FPS before testing a60FPS capture path; continue observing that
 source during the measurement too.
 
 ## Current handoff and remaining gates
+
+### User live feedback and change of direction (2026-10-27)
+
+After launching isolated0.0.18 for the requested live check, the user reported
+no meaningful visible improvement and explicitly ended these streaming
+experiments. Sender statistics for that attempt were not collected before the
+change of direction; do not infer which profile or bitrate actually applied.
+The synthetic improvements are not accepted remote-quality evidence. Preserve
+the current work without further WebView streaming experiments. The user now
+wants to discuss using the official Electron-based Discord desktop client as
+the media backend. This is architectural investigation, not authorization to
+modify the installed Discord client or install a client adapter.
+
+### Measurement review and cadence decision (2026-10-27)
+
+The matched comparison in `artifacts/discord-webview/cadence-matched-1/`
+qualified both generated sources near60FPS before and during capture. Fixed
+deadlines changed decoded throughput from56.361 to56.663FPS, while long native
+timestamp gaps increased from31/741 to43/638 intervals. This does not establish
+a material benefit. The four native experiment files were restored to HEAD;
+the existing capture implementation and idle policy remain unchanged. Full
+measurements and limitations are recorded in `tools/DiscordWebViewPrototype/QUALITY.md`.
+
+Review found an evidence gap in the capture runner: first/last format checks
+could miss a temporary resolution or codec adaptation. The runner now retains
+bounded periodic format observations and rejects missing or changed worker,
+display/RTP dimensions, codec and H264 profile/mode data. Pure reducer fixtures
+cover stale samples, transient changes and missing fields. These are test-tool
+changes, not a new host/widget contract or runtime polling mechanism. Earlier
+comparisons remain endpoint-only evidence; no additional benchmark was run merely
+to exercise this future safeguard. Candidate0.0.18 remains selected and closed.
+
+### Continuation verification / candidate 0.0.18, adapter 23 (2026-10-27)
+
+The preceding goal turn made implementation and verification progress. This
+continuation closed an additional gap without reopening the user's Discord
+session: a new fresh-profile WebView2 test runs the exact adapter with real peer
+connections and generated320x180 video. Default negotiation retains42e01f. The
+opt-in adapter's actual instance wrapper changes the sender to42001f while the
+receiver's local answer and observed inbound codec remain42e01f. Both peers
+decode generated frames. Source ownership and provider stores are fixture data;
+this does not establish Discord/SFU/DAVE interoperability or a constrained-only
+decoder, hardware implementation or performance.
+
+Independent review reproduced a stale-owner edge case: a provider description
+getter could replace the stream metadata after the wrapper's initial check.
+Adapter23 snapshots description fields once, then rechecks ownership and the
+signaling/codec/MID/payload immediately before forwarding a modified answer.
+It otherwise delegates the original description exactly once. The reproduction
+now reports one getter read, one setter call, original-description forwarding
+and no rewrite after retirement. Cached Discord's ordinary path was not observed
+to trigger this getter behavior. It is a fixture-reproduced ownership safeguard.
+
+158 provider tests and181 minified/composed tests plus5 sealed-endpoint checks
+pass. The real-WebView test was rerun against adapter23 and now explicitly
+asserts actual sender/receiver codec profiles, not merely the description labels;
+both cases decoded4 frames, transferred one source, invoked the native setter
+once, restored their hook, closed peers/tracks and observed browser exit.
+Evidence: `artifacts/discord-webview/adapter-negotiation-real-23/result.json`,
+`provenance.json`, `encoder-final-owner-tests-23.log` and
+`encoder-final-owner-minified-23.log` under the same artifacts parent.
+Probe timeout cleanup now stops only its runner-owned process tree. No
+additional performance benchmark, browser flags or real capture was used.
+
+0.0.18 is validated, packaged and selected through the isolated catalog update
+path, retaining existing state and matching permission decisions. It remains
+closed. Package: `artifacts/discord-webview/widget-0.0.18-h264/discord-0.0.18.wrwidget`;
+SHA256 `74692D1A43FEF2779CB74FF73564FB773F408BA8EF9AA7A689BBA3FC133BB4E1`.
+The retained comparison widget's17 checks and documentation contracts passed in
+`artifacts/discord-webview/adapter23-final-verification/20261027T201447Z-f0c50dd6`.
+The real-WebView check is an explicit local developer tool, not a new default CI
+gate: installed browser/runtime and local-peer availability still vary by runner.
+No commit, merge, push or release was performed for these improvements.
+
+Current completion audit:
+
+| Goal requirement | Authoritative evidence / remaining boundary |
+| --- | --- |
+| Remembered higher-detail bandwidth, default and eligibility preserved | Account/CAS/stale-action tests; live0.0.15 sender confirmed18Mbps limit. Actual rate was measured separately. Remote motion benefit was not accepted by the user. |
+| Investigate encoding, compression, pacing and copies | Qualified exact-profile and9/18Mbps comparisons; current GPU/capability probe and cited upstream source. Cadence experiment reverted when benefit was unproven; no speculative transport rewrite. |
+| Verify settings reach the encoder | Live18Mbps sender readback; local real peers confirm changed outbound profile. Corrected profile through real Discord is still pending. |
+| Preserve default negotiation and receiver decoding | Real-WebView default/opt-in cases with actual native setters and decoded frames; original answer is retained on unsupported/retired authority. Remote Discord and other receivers remain unverified. |
+| Source60FPS qualification and truthful performance | Generated source qualified before/during the recorded1440p60 tests. Reported22/56FPS results are not locked60 or physical-game proof. |
+| Source choice, audio, pins, background, cancellation and teardown | No SDK/protocol/host/native transport changes from accepted baseline; relevant widget/provider tests and native peer cleanup pass. Live concurrent streams, audio and sustained background behavior through the new profile still require acceptance. |
+| Controller-first settings and persistence |443 widget checks plus expanded/minimum native keyboard/mouse evidence. Physical controller acceptance remains distinct. |
+| Privacy/isolation and reviewable candidate | Browser-owned authentication retained; generated local media only for independent tests; no production install/profile changes, no merge/push/release. Real candidate remains closed at user request. |
+
+The goal is not complete: live corrected-profile delivery, motion quality/FPS,
+receiver compatibility and application audio cannot be established from these
+local fixtures. The remaining live check needs the user's microphone approval,
+broadcast-source choice and receiver confirmation. Avoid repeating generic
+benchmarks or adding unrelated changes while those acceptance gates are open.
+
+### Review candidate 0.0.17 / adapter 22 (2026-10-27)
+
+Current source includes the opt-in **Prefer hardware H.264** correction and the
+stable broadcast-incarnation fix described below. Default negotiation is
+unchanged. The correction wraps only the exact outgoing PC's answer setter and
+changes six profile digits for the exact outgoing MID/payload, only if the local
+offer already admits matching Baseline level/mode. All other SDP bytes are kept;
+unsupported/ambiguous answers are passed through unchanged with a warning.
+No global peer prototypes, experimental browser flags, forced renegotiation or
+retries were introduced. Rejected or stale async completion cannot report success.
+Ordinary stream UI record replacement no longer retires content/bandwidth/quality
+hooks when stable metadata and exact source/RTC ownership still match. Same-key
+restarts, metadata replacement and source/RTC changes retire them. Diagnostic
+samples use that same stable incarnation and never compare across a restart.
+
+The preference is account-scoped and explicitly separate from Bandwidth. Both
+controls retain focus eligibility while a saved-state write is pending; duplicate
+actions are rejected by the existing operation gate. Tests delay real fixture
+state transport while preserving typed requests/responses and revision checks;
+no production hooks or SDK changes were necessary.
+
+The combined Discord verification passed all13 selected steps in
+`artifacts/discord-webview/h264-candidate-verification/20261027T193804Z-4846e487`,
+including443 widget checks,157 provider tests,180 composed/minified tests and
+5 sealed-endpoint checks. Native keyboard/mouse checks in the synthetic worker
+confirmed both dropdowns, keyboard selection, retained activation after save,
+and confirmed saved values at1040x680. A420x360 native check confirmed stacked,
+reachable controls and a usable encoder popup. It caught duplicated dropdown
+text; labels now use the existing SDK's label/selected-value presentation.
+Evidence: `artifacts/discord-webview/share-preferences-native/interaction-result.json`.
+These are native keyboard/mouse observations, not physical-controller or remote
+Discord proof. Both synthetic processes exited; real candidate79800 stayed closed.
+
+0.0.16 was packaged and installed but never launched, then superseded by0.0.17
+for the verified label correction. Actual corrected-profile sender/receiver
+negotiation, remote compatibility, sustained moving-game FPS and received audio
+remain open acceptance gates. A fresh candidate launch does not authorize the
+agent to grant microphone access or choose broadcast content.
+
+0.0.17 is validated, packaged and selected in the isolated catalog through the
+documented update path; it is **left closed** after the user's close request.
+Package: `artifacts/discord-webview/widget-0.0.17-h264/discord-0.0.17.wrwidget`;
+SHA256 `29CE5439EF1C12436E9ADD93CC33906A0D35B18F9FA95D58BC90AF4B75A10F79`.
+Launcher remains `artifacts/discord-webview/improvements-runtime-1/Launch-Candidate.ps1`.
+The final label correction passed443 widget checks and documentation contracts
+again in `artifacts/discord-webview/h264-ui-final-verification`. Default/previous
+saved preferences were retained. No profile correction has yet been exercised
+against the real remote Discord receiver. Next live check: join the approved
+Lobby, user-grant microphone access, choose Prefer hardware H.264 + Higher detail,
+and user-select safe moving content at1440p60/Clarity. Observe actual negotiated
+profile/throughput and receiver picture before considering this verified.
+
+### Motion improvement candidate 0.0.15 / adapter 21 (2026-10-27)
+
+Baseline `23d542cb` is merged into local main. New work remains uncommitted on
+`codex/discord-native-prototype`; no push/release is authorized. The user's active
+goal now explicitly covers end-to-end motion quality, FPS, measured encoder
+behavior and a remembered higher-detail bandwidth option.
+
+Live baseline observation, before restarting the authorized Test server/Lobby
+candidate: Silksong capture and outbound both2560x1440, **24 outbound FPS**,
+H264, `qualityLimitationReason=cpu`, Clarity,9Mbps maximum and1x scale. Advertised
+60FPS did not describe actual delivery. A separate two-second process sample
+showed the WebView renderer near99% of one CPU core, capture worker19% and
+frontend23%; no GPU encode engine appeared in that sample. NVIDIA reported0%
+encode,38% GPU utilization. These are short observations, not a sustained test
+or proof of software encoding: an AMD GPU is also present, and encoder-identity
+stats may be privacy-gated. The game source was not independently qualified at
+60FPS for this live observation.
+
+Implemented:
+
+- Per-account Automatic / Higher detail (up to18Mbps), using the existing SDK
+  Select and private-state serial writes. Existing profiles default Automatic;
+  changes apply to the next share. No capture-source/permission contract changes.
+- The provider's `setDesktopInput` resets `bitrateMax` to3.5/9Mbps. The new
+  exact-source attachment override changes only that synchronous policy write,
+  restores the manager method immediately, and retains minimum/target bitrate,
+  account eligibility, receiver demand and network adaptation. Automatic does
+  not change provider bandwidth. Lost readback becomes a visible warning;
+  there is no periodic rate-enforcement loop. Policy readback alone is not proof
+  of actual sender rate.
+- Stream details samples twice over approximately one second, on demand only.
+  Provider-owned, bounded counter history is scoped to the exact stream and
+  connection; resets, identity/geometry/codec changes and invalid intervals are
+  not compared. Details distinguish encoded/sent FPS, actual payload bitrate,
+  mean encode cost, QP and transport loss/RTT from advertised quality and limits.
+  Missing/unknown hardware identity remains unavailable.
+- Activation now loads the existing preference resource directly. Tests found
+  cached initial state could otherwise leave the selector disabled until a later
+  provider refresh. No retry flags, counters or new host behavior were added.
+- The local probe separates startup from steady video-credit drops, and records
+  stage pacing, receiver drops/freezes/loss/jitter with bounded storage.
+
+The deadline-preserving native cadence experiment was **deferred and reverted**.
+One qualified60FPS-source1440p60/H264/18Mbps run under concurrent real-stream/game
+load measured55.07 submitted,56.05 encoded,56.66 decodedFPS, only3 steady credit
+drops and zero local receiver drops/freezes/lost packets. It did not establish an
+improvement over the historical58.77FPS result. Construction/encode costs were
+higher (5.29/10.69ms versus3.46/7.78ms); this is not a controlled same-load A/B.
+All four experimental native files are identical to main. Evidence and deferred
+patch: `artifacts/discord-webview/cadence-1440p60-clarity-18m-1`.
+
+Ownership/consumer applicability:
+
+| Area | Owner and consumers | Disposition |
+| --- | --- | --- |
+| Bandwidth policy, measurements | Discord provider; WebView widget and retained native comparison adapter | Optional argument is backward compatible; source and composed/minified adapter checks pass. Other providers do not share Discord encoding semantics. |
+| Preference/control lifecycle | Discord widget using existing SDK Select/resource/serial state APIs | No protocol or host additions; account/call/attempt checks retained. |
+| Capture diagnostics | Standalone validation tools | No shipping consumer migration; runtime buffers, audio, capture tickets and teardown unchanged. |
+| Cadence experiment | Native capture host | Rejected for this candidate pending causal evidence; no runtime transport change shipped. |
+
+Verification:422 widget checks passed in
+`artifacts/discord-webview/bandwidth-widget-verification/20261027T190049Z-0819f1f7`.
+The remaining12 verification steps, including source/minified provider tests,
+backend routing, capture measurement tests and runner self-test, passed in
+`artifacts/discord-webview/motion-provider-final-corrected/20261027T190200Z-45ba02a3`.
+The new manifest step was added to the runner's explicit aggregate expectation
+after its first self-test correctly caught the mismatch.
+
+Candidate0.0.15 was validated, packaged and updated through
+`scripts/Install-CommunityPackage.ps1` in the existing isolated catalog; settings
+and matching permission decisions were retained. Frontend79800 uses the same
+qualified host/native payload. Package:
+`artifacts/discord-webview/widget-0.0.15-bandwidth/discord-0.0.15.wrwidget`, SHA256
+`DA2344FF970C2A122B05C406F6EADC0C9354D1B7CB5A891587F05FCA064F56C6`.
+Live18Mbps readback, actual moving-content throughput, remote picture quality
+and native selector/controller behavior were pending. User was asked
+to rejoin/approve microphone and select the safe source for the bundled check.
+
+Subsequent live0.0.15 check: user selected Higher detail and shared Silksong again,
+but reported little visible improvement. Native UI confirmed the selected18Mbps
+setting and the sender readback confirmed18Mbps maximum. A1.1-second on-demand
+sample reported2560x1440,52.3 encoded/sentFPS,1.72Mbps actual,6.95ms mean encode
+time,QP17.6,26ms transport RTT and0% reported loss, with no reported limitation.
+Effective content hint was **Smoothness**, not a confirmed Clarity selection.
+The source was not independently qualified for this live sample. This verifies
+policy propagation, not sustained60FPS, sufficient motion quality or a fix for
+the user's report. The share was left running.
+
+### H.264 profile / hardware investigation (2026-10-27)
+
+Added a separate read-only WebView2 capability probe using a new empty profile,
+the pinned SDK and installed runtime156.0.4314.50; its browser exits afterward.
+No environment/policy GPU overrides or disable flags were found for the isolated
+candidate. The active adapter is RTX5070Ti/D3D11 and video encode is enabled.
+The initial GPU page is an asynchronous placeholder; the probe waits for real
+adapter identity before interpreting its report.
+
+The GPU table's1080p121/4K30 buckets do **not** establish a1440p60 limitation.
+The browser encoding-capability query reports1080p60,1440p30 and1440p60 supported
+and smooth. Baseline42001f, Main4d001f and High640032 (packetization mode1) report
+power-efficient support; Constrained Baseline42e01f reports false. Capability
+predictions are not actual encoder proof. Evidence:
+`artifacts/discord-webview/gpu-capabilities-default-4/gpu-capabilities.json` and
+`gpu-overrides-20261027.json` in the parent directory.
+
+Discord's cached SDP builder hardcodes42e01f (`quality-source-20261026/725999.js`,
+1396–1399). Chromium's `PlatformH264CbpEncoding` is disabled by default on Windows
+in [webrtc_util.cc](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/third_party/blink/renderer/platform/peerconnection/webrtc_util.cc).
+This explains a plausible difference between generic H264 synthetic runs and
+Discord's selected profile, but the installed stream's exact negotiated fmtp
+still needs confirmation. Diagnostics now extract only bounded H264 profile/mode,
+never raw SDP;141 provider tests pass. This addition is not yet installed in0.0.15.
+
+[Legcord's primary implementation](https://github.com/Legcord/Legcord/blob/a5f0a9c3b5d6adab74e203656ed8b51bd831ccb2/src/discord/preload/patches.mts)
+rewrites Constrained Baseline to Baseline in local and remote descriptions, with
+an opt-out. Its [Windows flags](https://github.com/Legcord/Legcord/blob/a5f0a9c3b5d6adab74e203656ed8b51bd831ccb2/src/common/flags.ts)
+also enable constrained-baseline hardware support. Do not copy its global peer
+prototype hooks, bitrate floors, blocklist overrides or global flags into this
+host. WidgetRail's BrowserOwner environment is shared by other browser consumers.
+The next bounded comparison selects exact profiles in the synthetic harness;
+the provider review is evaluating an exact outgoing-PC correction that preserves
+account/source/RTC ownership, negotiation and DAVE. No profile rewrite or GPU
+flag has been installed in the user's candidate.
+
+The exact-profile comparison is now recorded in
+`artifacts/discord-webview/h264-profile-comparison-1`: at full2560x1440/60FPS
+source,18Mbps/Clarity,42e01f encoded/decoded22.03FPS with43.73ms mean encoding,
+4.13Mbps actual andQP28.63;42001f encoded55.94/decoded56.36FPS with14.49ms,
+14.40Mbps andQP18.59. Sender and receiver both confirmed the requested profile
+and mode1. No receiver drops/freezes/loss were reported. GPU implementation
+fields remained unavailable; do not call this proof of the active hardware
+encoder. Other user apps were running and candidate shutdown may have begun
+near the final second of the second sample. No repeated comparison was run.
+Both sources qualified near60FPS before/during; neither pipeline achieved locked60.
+
+The user explicitly requested closing the isolated candidate. Its worker retired
+at19:22:56 UTC; frontend79800 and its capture worker are gone. Do not treat the
+earlier PID as a running candidate. A new opt-in, provider-scoped encoder
+correction is being implemented; default Discord negotiation stays unchanged.
+
+Confirmed lifecycle defect found during this review: ApplicationStreamingStore
+replaces the public stream object during ordinary viewer/RTC updates. The prior
+`currentShare()===ownedStream` guard could therefore discard quality/content
+hooks within one broadcast. Its separate streamer metadata object is created by
+STREAM_START and cleared by STREAM_STOP; exact metadata identity/source plus
+RTC/PC/selected-track guards can distinguish a same-key restart without depending
+on presentation-object identity. Cached source evidence:
+`artifacts/discord-webview/provider-source-20261027/application-streaming-store-616356.js`.
+This is provider-owned broadcast identity, not SDK presentation plumbing.
 
 ### Motion-quality investigation and external references (2026-10-27)
 

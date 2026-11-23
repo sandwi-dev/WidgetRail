@@ -696,11 +696,24 @@ function qualityFixture(){
                 const track=stream?.getVideoTracks?.()[0];
                 if(track&&f.state.motionExperiment)track.contentHint='motion';
                 this.streamVideoTrack=track;
+                if(this.videoTransceiver)this.videoTransceiver.sender.track=track;
                 f.state.duringStream?.(this);
             },
-            setDesktopInput(input){this.input={desktop:input};this.setStream(input.stream);observed.push(structuredClone({quality:this.videoQualityManager.goliveMaxQuality,parameters:this.videoStreamParameters}));}};
+            setDesktopInput(input){
+                f.state.beforeDesktop?.(this);
+                if(f.state.providerBitrateReset){
+                    const constraints=input.stream.getVideoTracks()[0].getConstraints();
+                    const dimensions={width:constraints.width.max,height:constraints.height.max};
+                    this.videoQualityManager.setGoliveQuality({capture:dimensions,encode:dimensions,bitrateMax:dimensions.height>720?9000000:3500000});
+                }
+                this.input={desktop:input};this.setStream(input.stream);observed.push(structuredClone({quality:this.videoQualityManager.goliveMaxQuality,parameters:this.videoStreamParameters}));
+                return f.state.afterDesktop?.(this);
+            }};
         connection.videoQualityManager={connection,contextType:'stream',goliveMaxQuality:{capture:{width:1280,height:720,framerate:30},encode:{width:1280,height:720,framerate:30}},
-            setGoliveQuality(value){this.goliveMaxQuality=value;}};
+            setGoliveQuality(value){this.goliveMaxQuality=f.state.providerBitrateReset?
+                {...this.goliveMaxQuality,...value,capture:{...this.goliveMaxQuality.capture,...value.capture},encode:{...this.goliveMaxQuality.encode,...value.encode}}:value;}};
+        if(f.state.providerBitrateReset)Object.assign(connection.videoQualityManager.goliveMaxQuality,{bitrateMin:500000,bitrateMax:3500000,bitrateTarget:600000});
+        f.state.configureConnection?.(connection);
         f.engine.connections.push(connection);
         emitter.emit('connection',connection);
         f.state.ownRtc={context:'stream',streamKey:'guild:10:20:1',_destroyed:false,isOwner:true,streamContext:{ownerId:'1',channelId:'20'},_connection:connection};
@@ -709,7 +722,9 @@ function qualityFixture(){
     };
     wp.findByCode=pattern=>pattern==='canStreamWithSettings'?(f.state.qualityAvailable?api.canStream:undefined):
         pattern==='"STREAM_UPDATE_SETTINGS"'?(f.state.qualityAvailable?api.update:undefined):
-        pattern==='"STREAM_START",streamType'?()=>{findCode(pattern)();f.state.goLiveSource={desktopSource:{id:'capture'}};connect();}:findCode(pattern);
+        pattern==='"STREAM_START",streamType'?()=>{findCode(pattern)();f.state.goLiveSource={desktopSource:{id:'capture'}};
+            if(f.state.metadataAvailable)f.state.streamMetadata={sourceId:'capture'};
+            connect();}:findCode(pattern);
     // Discord731854.ei is string-valued: FIXED="fixed", SOURCE="source".
     wp.findByProps=(...names)=>names.includes('SOURCE')?{SOURCE:'source',FIXED:'fixed'}:names.includes('PRESET_CUSTOM')?(f.state.qualityAvailable?presets:undefined):findProps(...names);
     f.stores.GuildStore.getGuild=id=>({id,premiumTier:f.state.guildTier});
@@ -717,6 +732,339 @@ function qualityFixture(){
     return {...f,qualityApi:api,qualityReads:reads,qualityWrites:writes,presets,source,sourceTrack,connect,qualityObserved:observed,listeners};
 }
 const hdQuality={resolution:1080,frameRate:30};
+
+function encoderSdp(profile='42e01f',local=false){
+    return ['v=0','o=- 123 2 IN IP4 127.0.0.1','s=-','t=0 0','a=group:BUNDLE audio0 video0 incoming0',
+        'a=fingerprint:sha-256 synthetic-fingerprint',
+        'm=audio 9 UDP/TLS/RTP/SAVPF 111','a=mid:audio0','a=sendrecv','a=rtpmap:111 opus/48000/2',
+        'a=fmtp:111 minptime=10;useinbandfec=1;usedtx=0;stereo=1',
+        'm=video 9 UDP/TLS/RTP/SAVPF 96 97','a=mid:video0',local?'a=sendrecv':'a=recvonly',
+        'a=rtpmap:96 H264/90000','a=rtpmap:97 rtx/90000',
+        'a=fmtp:96 x-google-max-bitrate=9000;level-asymmetry-allowed=1;packetization-mode=1;profile-level-id='+profile,
+        'a=fmtp:97 apt=96','a=ssrc:123 cname:synthetic','a=ssrc-group:FID 123 124',
+        'a=extmap:4 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time',
+        'm=video 9 UDP/TLS/RTP/SAVPF 96 97','a=mid:incoming0',local?'a=recvonly':'a=sendonly',
+        'a=rtpmap:96 H264/90000','a=fmtp:96 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f',
+        'a=rtpmap:97 rtx/90000','a=fmtp:97 apt=96',''].join('\r\n');
+}
+
+async function encoderFixture(preference='prefer-hardware',{metadata=true,defer=false}={}){
+    const f=qualityFixture();f.state.entitled1080=true;f.state.deferDesktop=defer;f.state.metadataAvailable=metadata;
+    const calls=[];
+    if(metadata)f.stores.ApplicationStreamingStore.getStreamerActiveStreamMetadataForStream=key=>key==='guild:10:20:1'?f.state.streamMetadata:null;
+    f.state.configureConnection=connection=>{
+        connection.videoCodec='H264';connection.videoPayloadType=96;
+        connection.videoTransceiver={mid:'video0',sender:{track:null,getParameters:()=>({encodings:[{}]})}};
+        connection.pc={signalingState:'have-local-offer',connectionState:'connected',localDescription:{type:'offer',sdp:encoderSdp('42001f',true)},remoteDescription:null,
+            setRemoteDescription(description){
+                calls.push({pc:this,description});
+                if(f.state.remoteSetter)return f.state.remoteSetter(this,description);
+                this.remoteDescription=description;this.signalingState='stable';return Promise.resolve();
+            }};
+        connection.getRawStats=async()=>new Map();connection.getStreamParameters=()=>connection.videoStreamParameters;
+    };
+    await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60},...(preference===undefined?{}:{encoderPreference:preference})});
+    await settle();f.pending[0]('capture');await settle();
+    const connection=f.state.ownRtc._connection,pc=connection.pc;
+    const answer=sdp=>pc.setRemoteDescription({type:'answer',sdp:sdp??encoderSdp()});
+    const nextOffer=()=>{pc.signalingState='have-local-offer';pc.localDescription={type:'offer',sdp:encoderSdp('42001f',true)};};
+    const binding=async()=>{const result=await f.invoke('streamDiagnostics');assert.equal(result.ok,true);return result.value.attachment.qualityBinding;};
+    return {...f,connection,pc,calls,answer,nextOffer,binding};
+}
+
+test('encoder preference rejects unknown policy or missing capture quality without opening a source',async()=>{
+    for(const encoderPreference of [null,1,{},'hardware','PREFER-HARDWARE']){
+        const f=qualityFixture();assert.equal((await f.invoke('share',{captureQuality:hdQuality,encoderPreference})).code,'share_encoder_unsupported');assert.equal(f.pending.length,0);
+    }
+    const f=qualityFixture();assert.equal((await f.invoke('share',{encoderPreference:'prefer-hardware'})).code,'share_encoder_unsupported');
+});
+
+test('Discord encoder policy leaves the provider answer and instance method unchanged',async()=>{
+    const f=await encoderFixture('discord'),sdp=encoderSdp();
+    assert.equal(f.pc.setRemoteDescription.name,'setRemoteDescription');await f.answer(sdp);
+    assert.equal(f.calls[0].description.sdp,sdp);assert.equal(f.calls.length,1);
+});
+
+test('hardware preference changes exactly the offered outgoing H264 profile bytes',async()=>{
+    const f=await encoderFixture(),sdp=encoderSdp();await f.answer(sdp);await settle();
+    const expected=sdp.replace('profile-level-id=42e01f','profile-level-id=42001f');
+    assert.equal(f.calls.length,1);assert.equal(f.calls[0].description.sdp,expected);
+    assert.equal(f.pc.localDescription.sdp,encoderSdp('42001f',true),'The offer is never changed');
+    assert.equal(f.calls[0].description.type,'answer');
+    const info=await f.binding();assert.equal(info.requestedProfile,'42001f');assert.equal(info.appliedProfile,'42001f');
+    assert.equal(info.encoderPreference,'prefer-hardware');assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,null);
+});
+
+test('encoder answer correction accepts LF and preserves whitespace and unknown fmtp parameters byte for byte',async()=>{
+    const f=await encoderFixture(),sdp=encoderSdp().replaceAll('\r\n','\n').replace('profile-level-id=42e01f','  profile-level-id = 42E01F ;x-test=preserved');
+    await f.answer(sdp);assert.equal(f.calls[0].description.sdp,sdp.replace('42E01F','42001f'));
+});
+
+test('encoder correction snapshots description getters once and revalidates after reentrant changes',async()=>{
+    const stable=await encoderFixture();let typeReads=0,sdpReads=0;
+    await stable.pc.setRemoteDescription({get type(){typeReads++;return 'answer';},get sdp(){sdpReads++;return encoderSdp();}});
+    await settle();assert.equal(typeReads,1);assert.equal(sdpReads,1);assert.equal((await stable.binding()).appliedProfile,'42001f');
+    for(const change of ['metadata','signaling','codec','mid','payload','offer']){
+        const f=await encoderFixture();
+        const description={type:'answer',get sdp(){
+            if(change==='metadata')f.state.streamMetadata={sourceId:'capture'};
+            if(change==='signaling')f.pc.signalingState='stable';
+            if(change==='codec')f.connection.videoCodec='VP8';
+            if(change==='mid')f.connection.videoTransceiver.mid='other';
+            if(change==='payload')f.connection.videoPayloadType=99;
+            if(change==='offer')f.pc.localDescription={type:'offer',sdp:encoderSdp('420020',true)};
+            return encoderSdp();
+        }};
+        await f.pc.setRemoteDescription(description);await settle();
+        assert.equal(f.calls.length,1,change);assert.equal(f.calls[0].description,description,change);
+    }
+});
+
+test('encoder answer correction refuses ambiguous malformed and unsupported SDP boundaries',async()=>{
+    const cases=[
+        s=>s.replace('a=mid:incoming0','a=mid:video0'),
+        s=>s.replace('a=mid:video0','a=mid:video0\r\na=mid:video0'),
+        s=>s.replace('a=rtpmap:96 H264/90000','a=rtpmap:96 H264/90000\r\na=rtpmap:96 H264/90000'),
+        s=>s.replace('a=rtpmap:96 H264/90000','a=rtpmap:96 H264/90000\r\na=rtpmap:96\tH264/90000'),
+        s=>s.replace('a=fmtp:96 x-google','a=fmtp:96 profile-level-id=42e01f\r\na=fmtp:96 x-google'),
+        s=>s.replace('a=fmtp:96 x-google','a=fmtp:96\tprofile-level-id=42e01f\r\na=fmtp:96 x-google'),
+        s=>s.replace('profile-level-id=42e01f','profile-level-id=42e01f;profile-level-id=42e01f'),
+        s=>s.replace('packetization-mode=1','packetization-mode=0'),
+        s=>s.replace('level-asymmetry-allowed=1','level-asymmetry-allowed=0'),
+        s=>s.replace('profile-level-id=42e01f','profile-level-id=42e020'),
+        s=>s.replace('profile-level-id=42e01f','profile-level-id=42e0ff'),
+        s=>s.replace('profile-level-id=42e01f','profile-level-id=4d001f'),
+        s=>s.replace('profile-level-id=42e01f','profile-level-id=42e01f;invalid'),
+        s=>s.replace('a=rtpmap:96 H264/90000','a=rtpmap:96 VP8/90000'),
+        s=>s.replace('a=recvonly','a=inactive'),
+        s=>s.replace('a=recvonly','a=recvonly\r\na=sendrecv'),
+        s=>s.replace('m=video 9 UDP/TLS/RTP/SAVPF 96 97','m=video 0 UDP/TLS/RTP/SAVPF 96 97'),
+        s=>s.replace('m=video 9 UDP/TLS/RTP/SAVPF 96 97','m=video 9 UDP/TLS/RTP/SAVPF 96 96 97'),
+        s=>s.replace('a=mid:video0','a=mid:video\r0'),
+        s=>s+'a=x:'+ 'x'.repeat(65536)
+    ];
+    for(const mutate of cases){const f=await encoderFixture(),sdp=mutate(encoderSdp());await f.answer(sdp);await settle();
+        assert.equal(f.calls.length,1);assert.equal(f.calls[0].description.sdp,sdp);
+        assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,'share_encoder_unconfirmed');assert.equal((await f.binding()).appliedProfile,null);}
+});
+
+test('local offer must already contain the exact Baseline payload level and packetization',async()=>{
+    for(const mutate of [s=>s.replace('profile-level-id=42001f','profile-level-id=42e01f'),s=>s.replace('profile-level-id=42001f','profile-level-id=420020'),
+        s=>s.replace('packetization-mode=1','packetization-mode=0'),s=>s.replace('a=mid:video0','a=mid:other'),s=>s.replace('a=rtpmap:96 H264/90000','a=rtpmap:96 VP9/90000')]){
+        const f=await encoderFixture();f.pc.localDescription.sdp=mutate(f.pc.localDescription.sdp);const sdp=encoderSdp();await f.answer(sdp);
+        assert.equal(f.calls[0].description.sdp,sdp);assert.equal(f.calls.length,1);
+    }
+});
+
+test('unsupported state type codec MID payload or missing metadata preserves provider negotiation',async()=>{
+    for(const change of ['offer','stable','codec','mid','payload','metadata']){
+        const f=await encoderFixture('prefer-hardware',{metadata:change!=='metadata'});
+        if(change==='stable')f.pc.signalingState='stable';if(change==='codec')f.connection.videoCodec='VP9';
+        if(change==='mid')f.connection.videoTransceiver.mid='absent';if(change==='payload')f.connection.videoPayloadType=98;
+        const description={type:change==='offer'?'offer':'answer',sdp:encoderSdp()};await f.pc.setRemoteDescription(description);
+        assert.equal(f.calls[0].description,description,change);assert.equal(f.calls.length,1);
+        assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,'share_encoder_unconfirmed',change);
+    }
+});
+
+test('setter rejection and synchronous throws never retry a changed negotiation',async()=>{
+    for(const synchronous of [true,false]){
+        const f=await encoderFixture();const failure=Error('native-setter-rejected');
+        f.state.remoteSetter=()=>{if(synchronous)throw failure;return Promise.reject(failure);};
+        if(synchronous)assert.throws(()=>f.answer(),e=>e===failure);else await assert.rejects(f.answer(),e=>e===failure);
+        await settle();assert.equal(f.calls.length,1);assert.equal((await f.binding()).appliedProfile,null);
+        assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,'share_encoder_unconfirmed');
+    }
+});
+
+test('ordinary stream UI replacement preserves the quality bandwidth and content owners',async()=>{
+    const f=qualityFixture();f.state.entitled1080=true;f.state.metadataAvailable=true;f.state.providerBitrateReset=true;f.state.motionExperiment=true;
+    f.stores.ApplicationStreamingStore.getStreamerActiveStreamMetadataForStream=()=>f.state.streamMetadata;
+    f.sourceTrack.contentHint='detail';f.context.WidgetRailNativeMedia={status:()=>({active:true,contentPreference:'detail'})};
+    await f.invoke('share',{captureQuality:hdQuality,bandwidthPreference:'high-detail'});await settle();f.pending[0]('capture');await settle();
+    const connection=f.state.ownRtc._connection;
+    for(const state of ['ACTIVE','PAUSED','ACTIVE']){
+        f.state.share={...f.state.share,state};await f.invoke('snapshot');connection.setStream(f.source.stream);
+        assert.equal(f.sourceTrack.contentHint,'detail',state);assert.equal(f.listeners.size,1);assert.equal(connection.videoQualityManager.goliveMaxQuality.bitrateMax,18000000);
+    }
+    f.state.streamMetadata=null;await f.invoke('snapshot');assert.equal(f.listeners.size,0);connection.setStream(f.source.stream);assert.equal(f.sourceTrack.contentHint,'motion');
+});
+
+test('same-key metadata restart retires all prior source hooks even when the source ID is recycled',async()=>{
+    const f=await encoderFixture();const held=f.pc.setRemoteDescription;f.state.streamMetadata={sourceId:'capture'};f.state.share={...f.state.share};
+    const description={type:'answer',sdp:encoderSdp()};await held.call(f.pc,description);
+    assert.equal(f.calls[0].description,description);await f.invoke('snapshot');assert.equal(f.listeners.size,0);
+    assert.equal(f.pc.setRemoteDescription.name,'setRemoteDescription');assert.equal((await f.binding()),null);
+});
+
+test('async profile observation cannot publish after metadata or source retirement',async()=>{
+    for(const change of ['metadata','source','account','call','stop','pc','sender']){
+        const f=await encoderFixture();let finish;f.state.remoteSetter=(pc,description)=>new Promise(resolve=>finish=()=>{pc.remoteDescription=description;pc.signalingState='stable';resolve();});
+        const pending=f.answer();
+        if(change==='metadata')f.state.streamMetadata={sourceId:'capture'};
+        if(change==='source')f.engine.desktopInputPool.set('capture',{});
+        if(change==='account')f.state.account='other';if(change==='call')f.state.channel='other';
+        if(change==='stop')await f.invoke('stopShare');if(change==='pc')f.connection.pc={};
+        if(change==='sender')f.connection.videoTransceiver.sender={track:f.sourceTrack};
+        finish();await pending;await settle();assert.equal(f.calls.length,1,change);
+        if(['pc','sender'].includes(change))assert.equal((await f.binding()).appliedProfile,null,change);
+        else {await f.invoke('snapshot');assert.equal(f.listeners.size,0,change);}
+    }
+});
+
+test('same-broadcast reconnection installs a new exact-PC hook and retires the old one',async()=>{
+    const f=await encoderFixture(),old=f.pc,held=old.setRemoteDescription;
+    f.state.deferDesktop=true;const replacement=f.connect();replacement.setDesktopInput(f.source);
+    await replacement.pc.setRemoteDescription({type:'answer',sdp:encoderSdp()});await settle();
+    assert.equal(f.calls.at(-1).description.sdp,encoderSdp().replace('profile-level-id=42e01f','profile-level-id=42001f'));
+    const oldDescription={type:'answer',sdp:encoderSdp()};old.signalingState='have-local-offer';await held.call(old,oldDescription);
+    assert.equal(f.calls.at(-1).description,oldDescription);assert.equal(old.setRemoteDescription.name,'setRemoteDescription');
+    assert.equal((await f.binding()).appliedProfile,'42001f','A stale old PC cannot erase the new PC observation');
+});
+
+test('encoder hooks never affect another PC and preserve provider method replacements on teardown',async()=>{
+    const f=await encoderFixture(),held=f.pc.setRemoteDescription,description={type:'answer',sdp:encoderSdp()};
+    const other={signalingState:'have-local-offer'};await held.call(other,description);assert.equal(f.calls[0].pc,other);assert.equal(f.calls[0].description,description);
+    const replacement=()=>Promise.resolve();f.pc.setRemoteDescription=replacement;await f.invoke('stopShare');assert.equal(f.pc.setRemoteDescription,replacement);
+});
+
+test('same-broadcast renegotiation rechecks current offer and confirms only the latest answer',async()=>{
+    const f=await encoderFixture();await f.answer();await settle();assert.equal((await f.binding()).appliedProfile,'42001f');
+    f.nextOffer();f.pc.localDescription.sdp=f.pc.localDescription.sdp.replace('profile-level-id=42001f','profile-level-id=42e01f');
+    await f.answer();await settle();assert.equal((await f.binding()).appliedProfile,null);assert.equal(f.calls.length,2);
+    f.nextOffer();await f.answer();await settle();assert.equal((await f.binding()).appliedProfile,'42001f');assert.equal(f.calls.length,3);
+});
+
+test('profile diagnostics clear immediately when the observed PC or broadcast incarnation changes',async()=>{
+    for(const change of ['metadata','pc','sender']){
+        const f=await encoderFixture();await f.answer();await settle();assert.equal((await f.binding()).appliedProfile,'42001f');
+        if(change==='metadata')f.state.streamMetadata={sourceId:'capture'};
+        if(change==='pc')f.connection.pc={};
+        if(change==='sender')f.connection.videoTransceiver.sender={track:f.sourceTrack};
+        const info=await f.binding();
+        if(change==='metadata')assert.equal(info,null);else {assert.equal(info.appliedProfile,null);assert.equal(info.requestedProfile,null);}
+    }
+});
+
+async function bandwidthFixture(preference='high-detail',defer=false){
+    const f=qualityFixture();f.state.entitled1080=true;f.state.providerBitrateReset=true;f.state.deferDesktop=defer;
+    assert.equal((await f.invoke('share',{captureQuality:{resolution:1440,frameRate:60},...(preference===undefined?{}:{bandwidthPreference:preference})})).ok,true);
+    await settle();f.pending[0]('capture');await settle();return f;
+}
+
+test('bandwidth preference rejects unknown values and unqualified sources before capture',async()=>{
+    for(const value of [null,18,{},'18mbps','HIGH-DETAIL']){
+        const f=qualityFixture();assert.equal((await f.invoke('share',{captureQuality:hdQuality,bandwidthPreference:value})).code,'share_bandwidth_unsupported');
+        assert.equal(f.pending.length,0);
+    }
+    const f=qualityFixture();assert.equal((await f.invoke('share',{bandwidthPreference:'high-detail'})).code,'share_bandwidth_unsupported');
+});
+
+test('Automatic keeps the provider ceiling and restores its ordinary attachment method',async()=>{
+    const f=await bandwidthFixture('automatic'),connection=f.state.ownRtc._connection;
+    assert.equal(connection.videoQualityManager.goliveMaxQuality.bitrateMax,9000000);
+    assert.equal(connection.videoQualityManager.goliveMaxQuality.bitrateMin,500000);
+    assert.equal(connection.setDesktopInput.name,'setDesktopInput');
+    assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,null);
+});
+
+test('high-detail changes only the exact provider source ceiling before downstream quality application',async()=>{
+    const f=await bandwidthFixture(),connection=f.state.ownRtc._connection,manager=connection.videoQualityManager;
+    assert.equal(manager.goliveMaxQuality.bitrateMax,18000000);
+    assert.equal(manager.goliveMaxQuality.bitrateMin,500000);assert.equal(manager.goliveMaxQuality.bitrateTarget,600000);
+    assert.equal(f.qualityObserved[0].quality.bitrateMax,18000000,'Provider downstream application sees the selected ceiling');
+    assert.equal(manager.setGoliveQuality.name,'setGoliveQuality','Manager method is immediately restored');
+    manager.setGoliveQuality({bitrateMax:7000000});assert.equal(manager.goliveMaxQuality.bitrateMax,7000000,'Unrelated policy writes remain unchanged');
+    connection.setDesktopInput(f.source);assert.equal(manager.goliveMaxQuality.bitrateMax,18000000,'Same source reattachment retains the selected preference');
+    await f.invoke('stopShare');assert.equal(connection.setDesktopInput.name,'setDesktopInput');assert.equal(f.listeners.size,0);
+});
+
+test('high-detail cannot apply premium resolution when the provider denies it',async()=>{
+    const f=qualityFixture();assert.equal((await f.invoke('share',{captureQuality:hdQuality,bandwidthPreference:'high-detail'})).code,'share_quality_unsupported');
+    assert.equal(f.pending.length,0);
+});
+
+test('high-detail source policy retires on changed account call source stream and provider replacement',async()=>{
+    for(const change of ['account','call','source','stream','manager','rtc','stop','dispose']){
+        const f=await bandwidthFixture(),connection=f.state.ownRtc._connection,held=connection.setDesktopInput;
+        if(change==='account')f.state.account='other';
+        if(change==='call')f.state.channel='other';
+        if(change==='source')f.engine.desktopInputPool.set('capture',{});
+        if(change==='stream')f.state.share={...f.state.share};
+        if(change==='manager')connection.videoQualityManager={...connection.videoQualityManager};
+        if(change==='rtc')f.state.ownRtc={...f.state.ownRtc};
+        if(change==='stop')await f.invoke('stopShare');
+        if(change==='dispose')f.context.WidgetRailDiscordPrototype.dispose();
+        held.call(connection,f.source);
+        assert.equal(connection.videoQualityManager.goliveMaxQuality.bitrateMax,9000000,change);
+        assert.equal(connection.setDesktopInput.name,'setDesktopInput',change);
+        assert.equal(f.listeners.size,0,change);
+    }
+});
+
+test('another source on the same connection retires high-detail without changing its ceiling',async()=>{
+    const f=await bandwidthFixture(),connection=f.state.ownRtc._connection;
+    const foreign={stream:{getVideoTracks:()=>[{kind:'video',getConstraints:()=>({width:{max:1280},height:{max:720}})}]}};
+    connection.setDesktopInput(foreign);assert.equal(connection.videoQualityManager.goliveMaxQuality.bitrateMax,3500000);
+    assert.equal(connection.setDesktopInput.name,'setDesktopInput');assert.equal(f.listeners.size,0);
+});
+
+test('authority loss during original attachment never changes the provider rate',async()=>{
+    for(const change of ['account','call','manager','source']){
+        const f=await bandwidthFixture('high-detail',true),connection=f.state.ownRtc._connection;
+        f.state.beforeDesktop=()=>{
+            if(change==='account')f.state.account='other';
+            if(change==='call')f.state.channel='other';
+            if(change==='manager')connection.videoQualityManager={...connection.videoQualityManager};
+            if(change==='source')f.engine.desktopInputPool.set('capture',{});
+        };
+        connection.setDesktopInput(f.source);assert.equal(connection.videoQualityManager.goliveMaxQuality.bitrateMax,9000000,change);
+    }
+});
+
+test('unwrappable or ignored provider ceiling warns without breaking the original capture',async()=>{
+    for(const mode of ['frozen','ignored','async']){
+        const f=await bandwidthFixture('high-detail',true),connection=f.state.ownRtc._connection,manager=connection.videoQualityManager;
+        if(mode==='frozen')Object.defineProperty(manager,'setGoliveQuality',{value:manager.setGoliveQuality,configurable:false,writable:false});
+        if(mode==='ignored'){
+            const original=manager.setGoliveQuality;
+            manager.setGoliveQuality=function(value){return original.call(this,value.bitrateMax===18000000?{...value,bitrateMax:9000000}:value);};
+        }
+        if(mode==='async')f.state.afterDesktop=()=>Promise.resolve();
+        const original=manager.setGoliveQuality;
+        connection.setDesktopInput(f.source);
+        assert.equal(connection.input.desktop,f.source,mode);assert.equal(manager.setGoliveQuality,original,mode);
+        assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,'share_bandwidth_unconfirmed',mode);
+    }
+});
+
+test('throwing provider attachment restores its manager and never retries the source',async()=>{
+    const f=await bandwidthFixture('high-detail',true),connection=f.state.ownRtc._connection,manager=connection.videoQualityManager;
+    const original=manager.setGoliveQuality;let calls=0;
+    f.state.beforeDesktop=()=>{calls++;throw Error('provider-failure');};
+    assert.throws(()=>connection.setDesktopInput(f.source),/provider-failure/);
+    assert.equal(calls,1);assert.equal(manager.setGoliveQuality,original);
+    assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,'share_bandwidth_unconfirmed');
+});
+
+test('bandwidth hook cleanup preserves later provider method replacements',async()=>{
+    const f=await bandwidthFixture(),connection=f.state.ownRtc._connection,manager=connection.videoQualityManager;
+    const replacement=()=>{};f.state.afterDesktop=()=>{manager.setGoliveQuality=replacement;};
+    connection.setDesktopInput(f.source);assert.equal(manager.setGoliveQuality,replacement);
+    connection.setDesktopInput=replacement;await f.invoke('stopShare');assert.equal(connection.setDesktopInput,replacement);
+});
+
+test('later provider ceiling changes are reported without fighting adaptive or replacement policy',async()=>{
+    for(const change of ['rate','manager','rtc']){
+        const f=await bandwidthFixture(),connection=f.state.ownRtc._connection;
+        if(change==='rate')connection.videoQualityManager.setGoliveQuality({bitrateMax:6000000});
+        if(change==='manager')connection.videoQualityManager={...connection.videoQualityManager};
+        if(change==='rtc')f.state.ownRtc={...f.state.ownRtc};
+        assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,'share_bandwidth_unconfirmed',change);
+        if(change==='rate')assert.equal(connection.videoQualityManager.goliveMaxQuality.bitrateMax,6000000);
+        assert.equal(f.state.started,1,'A failed readback does not restart sharing');
+    }
+});
 
 test('quality inspection leaves the source for the provider single ownership transfer',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;
@@ -904,6 +1252,85 @@ function diagnosticsFixture(){
     return {...f,own,rtc,connection,reports,parameters,readCount:()=>reads};
 }
 const unavailableAttachment={nativeFrames:null,videoSupported:null,inputTrack:null,desktopTrack:null,senderTrack:null,peerState:null,signalingState:null,qualityBinding:null,qualityCheck:null};
+
+test('stream diagnostics measure actual counter deltas without exporting private stats identities',async()=>{
+    const f=diagnosticsFixture(),r=f.reports.get('outgoing');
+    Object.assign(r,{timestamp:1000,framesEncoded:100,framesSent:98,bytesSent:1000000,totalEncodeTime:1,qpSum:3000,
+        encoderImplementation:'SimulcastEncoderAdapter (OpenH264)',powerEfficientEncoder:false});
+    assert.equal((await f.invoke('streamDiagnostics')).value.outbound[0].measurement,undefined);
+    Object.assign(r,{timestamp:2000,framesEncoded:124,framesSent:122,bytesSent:2000000,totalEncodeTime:1.72,qpSum:3840});
+    const result=(await f.invoke('streamDiagnostics')).value.outbound[0];
+    assert.equal(result.measurement.encodedFps,24);assert.equal(result.measurement.sentFps,24);
+    assert.equal(result.measurement.bitrateMbps,8);assert.equal(result.measurement.meanQp,35);
+    assert.ok(Math.abs(result.measurement.meanEncodeMs-30)<.0001);
+    assert.equal(result.encoderImplementation,'OpenH264');assert.equal(result.powerEfficientEncoder,false);
+    assert.equal(JSON.stringify(result).includes('private'),false);
+});
+
+test('diagnostic samples survive ordinary stream records but never span metadata incarnations',async()=>{
+    const f=diagnosticsFixture(),r=f.reports.get('outgoing');let metadata={sourceId:'capture'};
+    f.stores.ApplicationStreamingStore.getStreamerActiveStreamMetadataForStream=()=>metadata;
+    f.stores.MediaEngineStore.getGoLiveSource=()=>({desktopSource:{id:'capture'}});
+    Object.assign(r,{timestamp:1000,framesEncoded:100,bytesSent:1000});await f.invoke('streamDiagnostics');
+    f.state.share={...f.own};Object.assign(r,{timestamp:2000,framesEncoded:160,bytesSent:2000});
+    assert.equal((await f.invoke('streamDiagnostics')).value.outbound[0].measurement.encodedFps,60);
+    metadata={sourceId:'capture'};Object.assign(r,{timestamp:3000,framesEncoded:220,bytesSent:3000});
+    assert.equal((await f.invoke('streamDiagnostics')).value.outbound[0].measurement,undefined);
+    f.connection.getRawStats=async()=>{f.state.share={...f.state.share};return f.reports;};
+    assert.equal((await f.invoke('streamDiagnostics')).ok,true);
+    f.connection.getRawStats=async()=>{metadata={sourceId:'capture'};return f.reports;};
+    assert.equal((await f.invoke('streamDiagnostics')).code,'stream_diagnostics_stale');
+});
+
+test('diagnostics expose only bounded negotiated H264 parameters, and profile changes reset comparison',async()=>{
+    const f=diagnosticsFixture(),r=f.reports.get('outgoing');
+    f.reports.set('private-codec',{type:'codec',mimeType:'video/H264',sdpFmtpLine:'private=secret;profile-level-id=42e01f;packetization-mode=1'});
+    Object.assign(r,{timestamp:1000,framesEncoded:100,bytesSent:1000});
+    let result=(await f.invoke('streamDiagnostics')).value.outbound[0];
+    assert.equal(result.h264Profile,'42e01f');assert.equal(result.packetizationMode,1);assert.equal(JSON.stringify(result).includes('secret'),false);
+    f.reports.get('private-codec').sdpFmtpLine='profile-level-id=42001f;packetization-mode=1';
+    Object.assign(r,{timestamp:2000,framesEncoded:160,bytesSent:2000});
+    result=(await f.invoke('streamDiagnostics')).value.outbound[0];
+    assert.equal(result.h264Profile,'42001f');assert.equal(result.measurement,undefined);
+    f.reports.get('private-codec').sdpFmtpLine='profile-level-id=private;packetization-mode=8';
+    result=(await f.invoke('streamDiagnostics')).value.outbound[0];
+    assert.equal(result.h264Profile,undefined);assert.equal(result.packetizationMode,undefined);
+    f.reports.get('private-codec').sdpFmtpLine='profile-level-id=42e01f;profile-level-id=42001f;packetization-mode=1;packetization-mode=0';
+    result=(await f.invoke('streamDiagnostics')).value.outbound[0];
+    assert.equal(result.h264Profile,undefined);assert.equal(result.packetizationMode,undefined);
+});
+
+test('diagnostic intervals reject reset counters, encoder changes and replacement streams',async()=>{
+    for(const change of ['reset','geometry','codec','identity','stream','clock','too-long']){
+        const f=diagnosticsFixture(),r=f.reports.get('outgoing');
+        Object.assign(r,{timestamp:1000,framesEncoded:100,framesSent:100,bytesSent:1000,totalEncodeTime:1,qpSum:3000});
+        await f.invoke('streamDiagnostics');
+        Object.assign(r,{timestamp:2000,framesEncoded:160,framesSent:160,bytesSent:2000,totalEncodeTime:2,qpSum:4200});
+        if(change==='reset')Object.assign(r,{framesEncoded:1,framesSent:1,bytesSent:1,totalEncodeTime:0,qpSum:1});
+        if(change==='geometry')r.frameWidth=640;
+        if(change==='codec')f.reports.set('private-codec',{type:'codec',mimeType:'video/H264'});
+        if(change==='identity')r.id='new';
+        if(change==='stream')f.state.share={...f.own};
+        if(change==='clock')r.timestamp=999;
+        if(change==='too-long')r.timestamp=32000;
+        const result=(await f.invoke('streamDiagnostics')).value.outbound[0];
+        if(change==='reset')assert.deepEqual(JSON.parse(JSON.stringify(result.measurement)),
+            {milliseconds:1000,encodedFps:null,sentFps:null,bitrateMbps:null,meanEncodeMs:null,meanQp:null});
+        else assert.equal(result.measurement,undefined,change);
+    }
+});
+
+test('diagnostics expose bounded transport observations and never turn an unknown encoder into hardware evidence',async()=>{
+    const f=diagnosticsFixture(),r=f.reports.get('outgoing');
+    r.encoderImplementation='private';r.powerEfficientEncoder='true';
+    f.reports.set('private-remote',{type:'remote-inbound-rtp',kind:'video',roundTripTime:.032,fractionLost:.02,address:'private'});
+    let result=(await f.invoke('streamDiagnostics')).value.outbound[0];
+    assert.equal(result.encoderImplementation,undefined);assert.equal(result.powerEfficientEncoder,undefined);
+    assert.deepEqual(JSON.parse(JSON.stringify(result.remote)),{roundTripMs:32,fractionLost:.02});
+    f.reports.set('private-remote',{type:'remote-inbound-rtp',kind:'video',roundTripTime:Infinity,fractionLost:-1});
+    result=(await f.invoke('streamDiagnostics')).value.outbound[0];
+    assert.deepEqual(JSON.parse(JSON.stringify(result.remote)),{roundTripMs:null,fractionLost:null});
+});
 
 test('stream diagnostics distinguish source pixels, outbound encoding and advertised quality without leaking provider metadata',async()=>{
     const f=diagnosticsFixture(),result=await f.invoke('streamDiagnostics');assert.equal(result.ok,true);

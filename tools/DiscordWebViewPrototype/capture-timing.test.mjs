@@ -28,3 +28,22 @@ test('diagnostic timing bounds unacknowledged observation storage',()=>{
     for(let sequence=0;sequence<100;sequence++)listener({additionalData:{kind:1,sequence}});
     assert.equal(context.captureProbeTiming().pendingAcknowledgements,8);
 });
+
+test('cadence separates native timestamps from delayed browser delivery and ignores epoch discontinuities',()=>{
+    let now=0,listener;
+    const context={VideoFrame:class{},MediaStreamTrackGenerator:class{},performance:{now:()=>now},
+        WidgetRailNativeMedia:{status:()=>({targetFrameRate:60})},
+        chrome:{webview:{addEventListener:(_,fn)=>listener=fn,postMessage:()=>{}}}};
+    vm.createContext(context);vm.runInContext(source,context);context.chrome.webview.addEventListener('sharedbufferreceived',()=>{});
+    const frame=(epoch,sequence,time,at)=>{now=at;listener({additionalData:{kind:1,epoch,sequence,time}});};
+    frame(1,1,1000,0);frame(1,2,17667,40);frame(1,3,34334,41);
+    let result=context.captureProbeTiming();
+    assert.equal(result.nativeTimestampIntervals.count,2);assert.equal(result.nativeTimestampIntervals.lateIntervals,0);
+    assert.equal(result.browserDeliveryIntervals.count,2);assert.equal(result.browserDeliveryIntervals.lateIntervals,1);
+    assert.equal(result.browserDeliveryIntervals.maxMs,40);assert.equal(result.expectedFrameIntervalMs,1000/60);
+    frame(2,1,1,5000);frame(2,2,33335,5033);
+    result=context.captureProbeTiming();
+    assert.equal(result.nativeTimestampIntervals.count,3);assert.equal(result.nativeTimestampIntervals.lateIntervals,1);
+    assert.equal(result.browserDeliveryIntervals.count,3);assert.equal(result.browserDeliveryIntervals.lateIntervals,2);
+    assert.equal(result.browserDeliveryIntervals.maxMs,40);
+});

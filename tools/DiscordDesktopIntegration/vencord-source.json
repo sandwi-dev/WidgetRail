@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/Vendicated/Vencord.git",
+  "commit": "443688b5366a4d43e9868519f48a4544cd7520d4",
+  "version": "1.15.13",
+  "packageManager": "pnpm@11.9.0",
+  "minimumNodeMajor": 22,
+  "lockfileSha256": "3B86813EE4E3854683150B56D9D71C1654B5BD961392BA6F85A886246FA2154C",
+  "sourceDateEpoch": 1792800237
+}

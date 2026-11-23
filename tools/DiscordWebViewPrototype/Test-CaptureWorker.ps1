@@ -6,6 +6,7 @@ param(
     [ValidateSet('480p15','480p30','480p60','720p15','720p30','720p60','1080p15','1080p30','1080p60','1440p15','1440p30','1440p60')][string]$Quality='720p30',
     [ValidateSet('motion','detail')][string]$ContentPreference='detail',
     [ValidateSet('Auto','H264','VP8','VP9','AV1')][string]$Codec='Auto',
+    [ValidateSet('Auto','42001f','42e01f')][string]$H264Profile='Auto',
     [ValidateRange(1,50)][int]$BitrateMbps=8,
     [int]$SourceWidth=0,[int]$SourceHeight=0,
     [switch]$ApplicationAudio,
@@ -13,10 +14,12 @@ param(
 )
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot/CaptureSource.ps1"
+. "$PSScriptRoot/CaptureMeasurements.ps1"
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $candidate=[IO.Path]::GetFullPath($CandidateDirectory)
 $native=[IO.Path]::GetFullPath($NativeDirectory)
 $targetFps=[int]($Quality -split 'p')[1]
+if($H264Profile -ne 'Auto' -and $Codec -ne 'H264'){throw 'An explicit H264 profile requires the H264 codec.'}
 if($targetFps -eq 60 -and $SourceKind -ne 'Browser'){throw '60-FPS pipeline tests require the measured browser source preflight.'}
 foreach($file in @((Join-Path $candidate 'OverlayFrontend.WinUI.exe'),(Join-Path $native 'WebRtcCapturePrototype.dll'),(Join-Path $native 'WebRtcCaptureWorker.exe'),(Join-Path $native 'CaptureWorkerHost.dll'))){
     if(!(Test-Path -LiteralPath $file)){throw "Missing capture-worker prerequisite: $file"}
@@ -27,8 +30,8 @@ if(Test-Path -LiteralPath $output){throw 'Use a fresh evidence directory.'}
 New-Item -ItemType Directory -Path $output | Out-Null
 Copy-Item -LiteralPath $candidate -Destination "$output/candidate" -Recurse
 foreach($file in @('WebRtcCapturePrototype.dll','WebRtcCaptureWorker.exe','CaptureWorkerHost.dll')){Copy-Item -LiteralPath "$native/$file" -Destination "$output/candidate"}
-& "$PSScriptRoot/Stage.ps1" -OutputDirectory "$output/assets" -ProbeCodec $Codec -ProbeBitrateMbps $BitrateMbps
-$source=$null;$probe=$null
+& "$PSScriptRoot/Stage.ps1" -OutputDirectory "$output/assets" -ProbeCodec $Codec -ProbeBitrateMbps $BitrateMbps -ProbeH264Profile $H264Profile
+$source=$null;$probe=$null;$formatObservation=New-CaptureFormatObservation
 try{
     # Visible generated content is the sole source selected by the self-test.
     $source=Start-SyntheticCaptureSource -CandidateDirectory "$output/candidate" -NativeDirectory $native -OutputDirectory "$output/source" -Kind $SourceKind -Audio ([bool]$ApplicationAudio) -Width $SourceWidth -Height $SourceHeight
@@ -55,6 +58,7 @@ try{
                 $videoReady=@($current.receiver.inbound|Where-Object { $_.kind -eq 'video' -and $_.framesDecoded -gt 0 }).Count -eq 1
                 $audioReady=!$ApplicationAudio -or @($current.receiver.inbound|Where-Object { $_.kind -eq 'audio' -and $_.totalSamplesReceived -gt 0 }).Count -eq 1
                 if($current.capture.running -and $current.receiver.connection -eq 'connected' -and $current.receiver.frames -gt 30 -and $videoReady -and $audioReady){
+                    Add-CaptureFormatObservation $formatObservation $current
                     $sample=[pscustomobject]@{at=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds();value=$current}
                     if(!$before){$before=$sample;if($SourceKind -eq 'Browser'){$sourceBefore=Read-SyntheticSourceObservation $source}}
                     $last=$sample;if($SourceKind -eq 'Browser'){$sourceLast=Read-SyntheticSourceObservation $source}
@@ -78,8 +82,9 @@ try{
     $encodeSeconds=($lastEncoded.timestamp-$beforeEncoded.timestamp)/1000.0
     $encoded=if($encodeSeconds -ge 8){($lastEncoded.framesEncoded-$beforeEncoded.framesEncoded)/$encodeSeconds}else{$null}
     $codecOkay=$Codec -eq 'Auto' -or ($lastEncoded.codec -eq ('video/'+$Codec) -and $lastVideo.codec -eq ('video/'+$Codec))
+    $profileOkay=$H264Profile -eq 'Auto' -or ($lastEncoded.h264.profileLevelId -eq $H264Profile -and $lastEncoded.h264.packetizationMode -eq 1 -and $lastVideo.h264.profileLevelId -eq $H264Profile -and $lastVideo.h264.packetizationMode -eq 1)
     $frameDelta=$lastEncoded.framesEncoded-$beforeEncoded.framesEncoded
-    $encoding=[pscustomobject]@{requestedCodec=$Codec;codec=$lastEncoded.codec;codecConfirmed=$codecOkay;maximumBitrateMbps=$BitrateMbps;
+    $encoding=[pscustomobject]@{requestedCodec=$Codec;codec=$lastEncoded.codec;codecConfirmed=$codecOkay;requestedH264Profile=$H264Profile;h264ProfileConfirmed=$profileOkay;senderH264=$lastEncoded.h264;receiverH264=$lastVideo.h264;maximumBitrateMbps=$BitrateMbps;
         actualBitrateMbps=if($encodeSeconds -ge 8 -and $null -ne $lastEncoded.bytesSent -and $null -ne $beforeEncoded.bytesSent -and $lastEncoded.bytesSent -ge $beforeEncoded.bytesSent){($lastEncoded.bytesSent-$beforeEncoded.bytesSent)*8/$encodeSeconds/1000000}else{$null};
         meanEncodeMilliseconds=if($frameDelta -gt 0 -and $null -ne $lastEncoded.totalEncodeTime -and $null -ne $beforeEncoded.totalEncodeTime -and $lastEncoded.totalEncodeTime -ge $beforeEncoded.totalEncodeTime){1000*($lastEncoded.totalEncodeTime-$beforeEncoded.totalEncodeTime)/$frameDelta}else{$null};
         meanQuantizer=if($frameDelta -gt 0 -and $null -ne $lastEncoded.qpSum -and $null -ne $beforeEncoded.qpSum -and $lastEncoded.qpSum -ge $beforeEncoded.qpSum){($lastEncoded.qpSum-$beforeEncoded.qpSum)/$frameDelta}else{$null};
@@ -95,13 +100,19 @@ try{
     $measuredHeight=if($SourceKind -eq 'Browser'){$source.Identity.captureHeight}else{$SourceHeight}
     $expectedScale=if($measuredWidth -gt 0){[Math]::Min(1,[Math]::Min($targetWidth/$measuredWidth,$targetHeight/$measuredHeight))}else{0}
     $geometryOkay=$last.value.receiver.quality -eq $Quality -and $last.value.receiver.width -gt 0 -and $last.value.receiver.height -gt 0 -and $last.value.receiver.width -le $targetWidth -and $last.value.receiver.height -le $targetHeight
+    $geometryOkay=$geometryOkay -and $lastEncoded.width -eq $last.value.receiver.width -and $lastEncoded.height -eq $last.value.receiver.height -and
+        $lastVideo.width -eq $last.value.receiver.width -and $lastVideo.height -eq $last.value.receiver.height
     if($measuredWidth -gt 0){$geometryOkay=$geometryOkay -and $last.value.receiver.width -eq ([int][Math]::Floor($measuredWidth*$expectedScale/2)*2) -and $last.value.receiver.height -eq ([int][Math]::Floor($measuredHeight*$expectedScale/2)*2)}
     $sourceCadence=if($SourceKind -eq 'Browser'){Measure-SyntheticSourceCadence $sourceBefore $sourceLast}else{$null}
     $sourceOkay=$targetFps -ne 60 -or ($sourceCadence.seconds -ge 8 -and $sourceCadence.framesPerSecond -ge 58.5 -and $sourceCadence.framesPerSecond -le 61.5)
-    $passed=$codecOkay -and $sourceOkay -and $geometryOkay -and $last.value.receiver.contentPreference -eq $ContentPreference -and $sent -ge $targetFps*.85 -and $decoded -ge $targetFps*.85 -and (!$ApplicationAudio -or ($audioSamples -gt 48000 -and $decodedAudioSamples -gt 48000)) -and $stopped.milliseconds -lt 2500 -and $stopped.capture.workerExited -and
+    $observedFormat=Complete-CaptureFormatObservation $formatObservation
+    $passed=$observedFormat.stable -and $codecOkay -and $profileOkay -and $sourceOkay -and $geometryOkay -and $last.value.receiver.contentPreference -eq $ContentPreference -and $sent -ge $targetFps*.85 -and $decoded -ge $targetFps*.85 -and (!$ApplicationAudio -or ($audioSamples -gt 48000 -and $decodedAudioSamples -gt 48000)) -and $stopped.milliseconds -lt 2500 -and $stopped.capture.workerExited -and
         $stopped.capture.forcedTermination -eq [bool]$BlockStop -and $processGone -and !$stopped.capture.running
     $result=[pscustomobject]@{passed=$passed;quality=$Quality;contentPreference=$ContentPreference;geometryOkay=$geometryOkay;sourceKind=$SourceKind;sourceIdentity=$source.Identity;sourceQualified=$sourceOkay;sourcePreflight=$preflight;sourceCadence=$sourceCadence;sourceFirst=$sourceBefore;sourceLast=$sourceLast;applicationAudio=[bool]$ApplicationAudio;audioSamples=$audioSamples;decodedAudioSamples=$decodedAudioSamples;submittedFps=$sent;encodedFps=$encoded;decodedFps=$decoded;seconds=$seconds;stopMilliseconds=$stopped.milliseconds;forced=$stopped.capture.forcedTermination;workerExited=$stopped.capture.workerExited;processGone=$processGone;nativeCapture=$last.value.capture;firstReceiver=$before.value.receiver;receiver=$last.value.receiver;scope='Synthetic source to job-owned WGC worker to WebView native shared mapping to local WebRTC; no Discord or microphone'}
     $result|Add-Member -NotePropertyName encoding -NotePropertyValue $encoding
+    $result|Add-Member -NotePropertyName firstNativeCapture -NotePropertyValue $before.value.capture
+    $result|Add-Member -NotePropertyName measurementWindow -NotePropertyValue (Measure-CapturePipelineWindow $before.value $last.value)
+    $result|Add-Member -NotePropertyName observedFormat -NotePropertyValue $observedFormat
     $result|ConvertTo-Json -Depth 10|Set-Content -LiteralPath "$output/result.json"
     $result|ConvertTo-Json -Depth 10|Write-Output
     if(!$passed){throw "Capture worker probe failed; see $output/result.json"}

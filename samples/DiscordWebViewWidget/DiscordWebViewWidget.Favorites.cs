@@ -7,7 +7,7 @@ namespace WidgetRail.Samples.DiscordWebView;
 
 public sealed partial class DiscordWebViewWidget
 {
-    internal sealed record ChannelAccountPreferences(string Account,string[] Favorites,string[] Recent,string? ContentPreference=null);
+    internal sealed record ChannelAccountPreferences(string Account,string[] Favorites,string[] Recent,string? ContentPreference=null,string? BandwidthPreference=null,string? EncoderPreference=null);
     internal sealed record ChannelPreferenceStore(int SchemaVersion=1,ChannelAccountPreferences[]? Accounts=null);
     private sealed record ChannelPreferenceSnapshot(ChannelPreferenceStore Store,long Revision);
     private WidgetResource<ChannelPreferenceSnapshot> channelPreferences=null!;
@@ -34,7 +34,9 @@ public sealed partial class DiscordWebViewWidget
         return new(1,(store.Accounts??[]).Where(account=>account is not null&&ValidId(account.Account))
             .DistinctBy(account=>account.Account,StringComparer.Ordinal).Take(MaximumPreferenceAccounts)
             .Select(account=>new ChannelAccountPreferences(account.Account,Ids(account.Favorites,MaximumFavoriteChannels),
-                Ids(account.Recent,MaximumRecentChannels),account.ContentPreference is "motion" or "detail"?account.ContentPreference:null)).ToArray());
+                Ids(account.Recent,MaximumRecentChannels),account.ContentPreference is "motion" or "detail"?account.ContentPreference:null,
+                account.BandwidthPreference is "automatic" or "high-detail"?account.BandwidthPreference:null,
+                account.EncoderPreference is "discord" or "prefer-hardware"?account.EncoderPreference:null)).ToArray());
     }
 
     private ChannelAccountPreferences PreferencesFor(string account)=>
@@ -108,7 +110,7 @@ public sealed partial class DiscordWebViewWidget
         return ValueTask.CompletedTask;
     }
 
-    private async ValueTask MutatePreferencesAsync(string account,Func<ChannelAccountPreferences,ChannelAccountPreferences> update,CancellationToken token,bool reportFailure)
+    private async ValueTask MutatePreferencesAsync(string account,Func<ChannelAccountPreferences,ChannelAccountPreferences> update,CancellationToken token,bool reportFailure,string? failureMessage=null)
     {
         try
         {
@@ -127,7 +129,7 @@ public sealed partial class DiscordWebViewWidget
         {
             if(error is WidgetCapabilityException{ErrorCode:"state_conflict"})channelPreferences.Refresh();
             if(reportFailure&&CurrentState()?.Account==account)
-                view.Update(current=>current with{Notice=error is InvalidOperationException?"Favorite limit reached. Remove one first.":"Could not save channel preferences. Refresh and try again."});
+                view.Update(current=>current with{Notice=failureMessage??(error is InvalidOperationException?"Favorite limit reached. Remove one first.":"Could not save channel preferences. Refresh and try again.")});
         }
     }
 

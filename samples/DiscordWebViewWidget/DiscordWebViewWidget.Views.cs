@@ -146,7 +146,7 @@ public sealed partial class DiscordWebViewWidget
         }
         if(view.Value.StreamKey is { } key&&!data.Streams.Any(stream=>stream.Key==key))
             rows.Add(UI.Button("Stop watching",UnwatchAction(view.Value),"discord.streams.stop").Classes("discord-control"));
-        if(CanStopSharing(view.Value,data)||view.Value.InterruptedCapture is not null||data.ShareError is not null)
+        if(data.Capabilities.Share||CanStopSharing(view.Value,data)||view.Value.InterruptedCapture is not null||data.ShareError is not null)
             rows.Add(SharingDetails(data));
         return UI.Stack("discord.call.page",rows.ToArray()).Classes("discord-call-content");
     }

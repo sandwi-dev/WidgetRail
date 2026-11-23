@@ -1,5 +1,53 @@
 # Capture quality contract
 
+## Real adapter negotiation check (2026-10-27)
+
+`Test-AdapterNegotiation.ps1` compiles a small non-activating WinForms/WebView2
+runner with the already installed .NET Framework compiler and pinned WebView2
+SDK. It copies the shipping adapter verbatim, records its build and SHA256, and
+uses a fresh profile with default browser options. The only media is a generated
+320 × 180 canvas; two real `RTCPeerConnection`s use no STUN/TURN servers. There
+is no account, microphone, window capture, browser flag or global prototype patch.
+Provider stores and source ownership are fixture data. Discord's Constrained
+Baseline answer construction is modeled, while the actual shipping adapter must
+perform any answer correction and the browser executes both description setters.
+
+Run `tools/DiscordWebViewPrototype/Test-AdapterNegotiation.ps1` with an optional
+fresh `-OutputDirectory`. The window uses both `ShowWithoutActivation` and
+`WS_EX_NOACTIVATE`. The runner records only bounded checkpoints, codec/profile
+observations, decoded-frame counts and cleanup; it never exports SDP, ICE
+credentials or addresses. Browser permission requests are denied.
+
+The first run passed on WebView2 `156.0.4314.50`, adapter **22**, SHA256
+`C8B27BE9CC49F9BA4064966FCBDAC0CB5DB8E7400B729E57814C8815FBF1F18D`:
+
+| Observation | Discord default | Prefer hardware |
+| --- | --- | --- |
+| Sender's actual local offer | `42001f`, mode 1 | `42001f`, mode 1 |
+| Receiver's actual local answer / inbound codec | `42e01f` | `42e01f` |
+| Sender's actual remote answer / outbound codec | `42e01f` | `42001f` |
+| Shipping adapter's applied profile readback | none | `42001f` |
+| Decoded generated frames | 3 at 320 × 180 | 3 at 320 × 180 |
+| Native remote setter calls / source transfers | 1 / 1 | 1 / 1 |
+
+Both cases restored the setter, closed both peers, ended their tracks and observed
+browser-process exit. Evidence: `artifacts/discord-webview/adapter-negotiation-real-1/`
+(`result.json`, `provenance.json`, exact staged source and compiler log).
+
+The adapter23 rerun in `adapter-negotiation-real-23/` also passed after the final
+post-getter ownership check was added. It asserts actual outbound/inbound codec
+profiles explicitly; both cases decoded4 frames with one setter/source transfer
+and confirmed cleanup. This is a bounded functional test, not a benchmark.
+
+This closes the mocked-setter gap for this WebView2 runtime and verifies that its
+receiver decodes generated frames while declaring Constrained Baseline. It does
+**not** prove a Constrained-Baseline-only decoder, native Discord/DAVE/SFU
+interoperability, sustained frame rate, hardware encoding, application audio or
+background continuity. The tiny frame count is a functional assertion, not a
+performance benchmark. The user's isolated Discord candidate remained closed.
+
+## Supported capture modes
+
 The local native/C#/JavaScript transport supports twelve presets: 480p, 720p,
 1080p and 1440p, each at 15, 30 or 60 FPS. `720p30` remains the default. These are
 target rates and nominal vertical resolution ceilings, not promises about the
@@ -139,6 +187,136 @@ options are exercised by adapter tests, but live Discord encoder-policy changes
 have not been verified by this test.
 
 ## Remaining acceptance gates
+
+### Exact H264 profile comparison (2026-10-27)
+
+The validation-only codec policy now accepts `Auto`, baseline `42001f`, or
+constrained baseline `42e01f`. Explicit profiles require H264 and packetization
+mode 1 in the browser's actual capabilities; unsupported combinations fail
+instead of testing a fallback codec. Codec preferences are applied before the
+offer. Both SDP descriptions and actual sender/receiver codec statistics must
+retain the exact requested profile and mode. Only normalized profile/mode values
+are exported, never raw SDP, transport IDs or other format parameters. Existing
+Auto codec/profile and 8 Mbps defaults are unchanged. Seventeen JavaScript
+fixture tests and invalid cross-codec staging admission passed.
+
+One back-to-back pair tested the exact profile hypothesis with the unchanged
+production native worker, generated 2560x1440 source, 1440p60, H264, Clarity and
+18 Mbps ceiling. The worker SHA256 matched in both staged candidates and the
+production-native directory. Both actual sender and receiver confirmed their
+requested profile with packetization mode 1 and full 2560x1440 encoded dimensions.
+
+| Measurement | Constrained baseline `42e01f` | Baseline `42001f` |
+| --- | --- | --- |
+| Source FPS before / during | 59.998 / 59.997 | 59.853 / 60.078 |
+| Delivered video FPS | 57.274 | 55.903 |
+| Encoded / decoded FPS | 22.031 / 22.031 | 55.945 / 56.357 |
+| Mean encode time | 43.734 ms | 14.492 ms |
+| Actual bitrate | 4.128 Mbps | 14.401 Mbps |
+| Mean reported H264 quantizer | 28.628 | 18.594 |
+| Steady-state native credit drops | 1 | 11 |
+| Receiver drops / freezes / lost packets / retransmissions | 0 / 0 / 0 / 0 | 0 / 0 / 0 / 0 |
+| Stop / confirmed worker exit | 89 ms / yes | 79 ms / yes |
+
+Constrained baseline failed the fixture's existing 85%-of-target throughput
+gate; baseline passed. Both reported limitation `none`, demonstrating why
+measured encode time and delivered/encoded/decoded rates are needed alongside
+that categorical field. Encoder implementation and power-efficiency fields
+remained unavailable. GPU sampling produced no attributable encoder-engine
+observations, so it cannot establish zero GPU utilization or identify hardware
+encoding. The result supports profile selection as a concrete next lever; it
+does not establish a particular encoder implementation or prove remote Discord
+will negotiate the same improved path.
+
+Evidence: `artifacts/discord-webview/h264-profile-comparison-1/{42e01f,42001f}/result.json`.
+The samples span 19:21:54–19:22:47 UTC. The real candidate/game was also active;
+the user's requested candidate shutdown completed at 19:22:56 UTC and may have
+started near the final second of the second sample. Competing load was therefore
+not controlled exactly. No repeat pair was run. Generated sources were closed;
+the comparison did not change the live candidate, installed widget, production
+policy, native transport or user-selected share.
+
+### Cadence experiment rejected for this iteration (2026-10-27)
+
+The later matched comparison in `artifacts/discord-webview/cadence-matched-1/`
+rebuilt both baseline and fixed-deadline native variants from the same current
+source using identical validation flags/toolchain, then tested both with the
+same current runner, generated 2560x1440 source, exact H264 `42001f`/mode 1,
+18 Mbps and Clarity. The real candidate was closed and no external capture
+workers were present. Source qualification passed before and during both runs.
+Baseline and candidate deterministic policy checks passed; the candidate's
+jitter, stall, overrun and idle-resume tests did not require timing benchmarks.
+
+| Matched measurement | Existing pacing | Fixed deadlines |
+| --- | --- | --- |
+| Source FPS before / during | 60.029 / 59.991 | 60.016 / 60.006 |
+| Delivered / encoded / decoded FPS | 56.467 / 56.437 / 56.361 | 57.129 / 56.752 / 56.663 |
+| Mean native timestamp interval | 17.697 ms | 17.499 ms |
+| Gaps above 1.5 frame periods | 31 / 741 intervals | 43 / 638 intervals |
+| Steady-state native credit drops | 0 | 0 |
+| Mean encode time / quantizer | 8.030 ms / 19.924 | 7.872 ms / 21.103 |
+| Actual bitrate | 13.909 Mbps | 13.257 Mbps |
+| Worker mean CPU, percent of one core | 20.47% | 20.09% |
+| Worker peak private memory | 102.18 MiB | 102.85 MiB |
+| Stop / confirmed worker exit | 319 ms / yes | 67 ms / yes |
+
+Both receivers reported zero drops, freezes, packet loss and retransmissions.
+The first and last sender/receiver samples retained 2560x1440 and the exact
+requested codec/profile/mode. Intermediate encoded dimensions were not retained,
+so this pair does not prove uninterrupted full-resolution encoding. Resource
+samples cover each process's observed lifetime, including startup, and are
+supporting observations rather than isolated steady-state CPU benchmarks.
+
+After this comparison, the runner gained bounded `observedFormat` measurements
+across periodic ready samples. Missing or changed worker identity, display/RTP
+dimensions, codec or H264 profile/mode now prevents a stable-format pass; repeated
+identical RTP timestamp pairs do not count as additional observations. Final
+sender and receiver dimensions must also match rendered dimensions. Reducer
+fixtures cover transient changes that recover before the final sample and
+missing values. This is periodic observation, not frame-by-frame proof; it does
+not retroactively strengthen the recorded comparisons. No new capture benchmark
+was run solely for this test-tool change.
+
+The approximately 0.3 decoded-FPS difference does not establish a material
+benefit, while long-gap incidence increased. The fixed-deadline change was
+therefore rejected for this iteration and its exact four native files restored
+to HEAD; baseline bytes, hashes, source patch, resource samples and both results
+remain in the evidence directory. No repeat pair, sweep or real Discord test
+was run. The accepted 250 ms idle-repeat policy and transport ownership remain
+unchanged; actual idle/audio/source-loss testing of this rejected variant is
+unnecessary and no claim of that acceptance is made.
+
+Source inspection found that the native pacer schedules the next frame from
+the actual wake time, allowing timer lateness to accumulate. A bounded experiment
+preserved scheduled deadlines for ordinary jitter and reset after stalls without
+catch-up bursts. Deterministic 15/30/60 FPS jitter, stall, overrun and idle-resume
+policy checks passed, but the single generated 1440p60/H264/18Mbps/Clarity run
+did not demonstrate a performance improvement. The runtime experiment and its
+probe changes were reverted; the accepted native transport remains unchanged.
+
+The source measured 59.995 FPS before capture and 59.999 FPS during it. Submission
+was 55.07 FPS, encoding 56.05 FPS and local decoding 56.66 FPS, compared with the
+historical 58.74/58.77/58.77 FPS run below. This run overlapped the real stream/game
+load: JavaScript frame construction rose from 3.46 to 5.29 ms and mean encoding
+from 7.78 to 10.69 ms. It is not a controlled causal A/B comparison and does not
+prove the proposed deadline policy caused the difference. No further benchmark
+was run and no cadence improvement is claimed.
+
+The retained diagnostic improvements now separate startup from steady-state
+loss. In the measured window there were three native credit drops (59 before,
+62 after), zero receiver frame drops/freezes/lost packets/retransmissions, and
+50 native-timestamp gaps versus 48 browser-delivery gaps above 1.5 frame periods.
+Mean delivered native cadence was 18.16 ms. Independent asynchronous stage
+counters cannot be subtracted to infer exact frame loss. The worker stopped in
+83 ms and its exit was confirmed. Evidence and the retired experiment patch are
+in `artifacts/discord-webview/cadence-1440p60-clarity-18m-1/`.
+
+`CaptureMeasurements.ps1` retains unknown/reset counters as unknown, distinguishes
+native packet counts (including audio) from video frames, and rejects comparisons
+across worker replacement. The fixture now records receiver freeze, jitter-buffer,
+packet-loss and retransmission evidence plus native-timestamp/browser-delivery
+cadence. These diagnose the local test peer; they do not measure remote Discord.
+Eight focused JavaScript checks and the PowerShell measurement checks passed.
 
 ### Controlled H264 motion comparison (2026-10-27)
 

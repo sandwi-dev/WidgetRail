@@ -14,16 +14,23 @@
             const codec=stats.get(report.codecId);
             const common={kind:report.kind??report.mediaType,timestamp:number(report.timestamp),
                 width:number(report.frameWidth),height:number(report.frameHeight),framesPerSecond:number(report.framesPerSecond),
-                codec:text(codec?.mimeType),clockRate:number(codec?.clockRate)};
+                codec:text(codec?.mimeType),clockRate:number(codec?.clockRate),
+                h264:codec?.mimeType?.toLowerCase()==='video/h264'?globalThis.captureProbePolicy.h264Format(codec.sdpFmtpLine):null};
             result.push(type==='media-source'?{kind:common.kind,timestamp:common.timestamp,width:number(report.width),height:number(report.height),
                 frames:number(report.frames),framesPerSecond:common.framesPerSecond}
                 :type==='outbound-rtp'?{...common,framesEncoded:number(report.framesEncoded),framesSent:number(report.framesSent),
                 bytesSent:number(report.bytesSent),targetBitrate:number(report.targetBitrate),totalEncodeTime:number(report.totalEncodeTime),qpSum:number(report.qpSum),
+                packetsSent:number(report.packetsSent),retransmittedPacketsSent:number(report.retransmittedPacketsSent),
+                totalPacketSendDelay:number(report.totalPacketSendDelay),nackCount:number(report.nackCount),pliCount:number(report.pliCount),
                 encoderImplementation:text(report.encoderImplementation),powerEfficientEncoder:typeof report.powerEfficientEncoder==='boolean'?report.powerEfficientEncoder:null,
                 qualityLimitationReason:['none','cpu','bandwidth','other'].includes(report.qualityLimitationReason)?report.qualityLimitationReason:null,
                 qualityLimitationDurations:Object.fromEntries(['none','cpu','bandwidth','other'].map(key=>[key,number(report.qualityLimitationDurations?.[key])]))}
                 :{...common,framesDecoded:number(report.framesDecoded),framesDropped:number(report.framesDropped),
                     bytesReceived:number(report.bytesReceived),totalSamplesReceived:number(report.totalSamplesReceived),
+                    packetsReceived:number(report.packetsReceived),packetsLost:number(report.packetsLost),jitter:number(report.jitter),
+                    jitterBufferDelay:number(report.jitterBufferDelay),jitterBufferEmittedCount:number(report.jitterBufferEmittedCount),
+                    freezeCount:number(report.freezeCount),totalFreezesDuration:number(report.totalFreezesDuration),
+                    totalInterFrameDelay:number(report.totalInterFrameDelay),totalSquaredInterFrameDelay:number(report.totalSquaredInterFrameDelay),
                     totalDecodeTime:number(report.totalDecodeTime),decoderImplementation:text(report.decoderImplementation),
                     powerEfficientDecoder:typeof report.powerEfficientDecoder==='boolean'?report.powerEfficientDecoder:null});
         }
@@ -48,7 +55,8 @@
             await rx.setLocalDescription(answer.description);await tx.setRemoteDescription(rx.localDescription);
             const actual=await policy.sender(tx,WidgetRailNativeMedia.status().targetFrameRate);
             if(id!==generation)throw Error('Local probe was retired during sender setup');
-            encodingPolicy={...policy.reference,...actual,offerCodecs:offer.codecs,answerCodecs:answer.codecs};
+            encodingPolicy={...policy.reference,...actual,offerCodecs:offer.codecs,answerCodecs:answer.codecs,
+                offerH264Formats:offer.h264Formats,answerH264Formats:answer.h264Formats};
             return true;
         },stop,
         status(){

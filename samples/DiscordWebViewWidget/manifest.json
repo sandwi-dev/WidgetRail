@@ -3,7 +3,7 @@
   "id": "widgetrail.prototype.discord-webview",
   "publisher": "widgetrail.prototype",
   "name": "Discord WebView Prototype",
-  "version": "0.0.14",
+  "version": "0.0.18",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",

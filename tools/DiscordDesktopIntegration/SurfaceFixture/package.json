@@ -1,0 +1,9 @@
+{
+  "name": "widgetrail-generated-desktop-surface-fixture",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Generated local Electron client for the WinUI cooperative-window feasibility fixture",
+  "devDependencies": {
+    "electron": "44.9.3"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "widgetrail-discord-desktop-build-tools",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Isolated build-time ASAR packaging; never installed into Discord",
+  "dependencies": {
+    "@electron/asar": "4.0.1"
+  }
+}

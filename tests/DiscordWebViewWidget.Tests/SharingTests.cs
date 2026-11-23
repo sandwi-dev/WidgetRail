@@ -4,10 +4,12 @@ using WidgetRail.Samples.DiscordWebView;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
-internal static class SharingTests
+internal static partial class SharingTests
 {
     internal static async Task RunAsync(Action<bool,string> check)
     {
+        await BandwidthTests(check);
+        await EncoderPreferenceTests(check);
         await QualityTests(check);
         await ShareDetailsTests(check);
         await using(var harness=await Harness.CreateAsync())
@@ -342,6 +344,15 @@ internal static class SharingTests
 
     private static async Task ShareDetailsTests(Action<bool,string> check)
     {
+        var measured=System.Text.Json.JsonSerializer.SerializeToElement(new{
+            source=new{width=2560,height=1440},outbound=new[]{new{width=2560,height=1440,framesPerSecond=24,codec="H264",
+                qualityLimitationReason="cpu",encoderImplementation="OpenH264",measurement=new{milliseconds=1000,encodedFps=24,sentFps=23.5,
+                    bitrateMbps=8.25,meanEncodeMs=32.5,meanQp=35},remote=new{roundTripMs=32,fractionLost=.02}}},advertised=new[]{new{width=2560,height=1440,frameRate=60}}});
+        var measuredText=DiscordWebViewWidget.FormatShareDetails(measured);
+        check(measuredText.Contains("24 encoded FPS · 23.5 sent FPS · 8.25 Mb/s actual · 32.5 ms/frame encoding · mean QP 35")&&
+            measuredText.Contains("H264 · CPU limited")&&measuredText.Contains("Encoder implementation: OpenH264")&&
+            measuredText.Contains("32 ms round trip · 2% reported packet loss")&&measuredText.Contains("Advertised: 2560 × 1440 · 60 FPS"),
+            "Stream details separate measured throughput and transport loss from advertised quality");
         static string DetailsAction(Harness h)=>h.Snapshot.Root.ContextActions.Single(action=>action.Label=="Stream details").ActionId;
         static string Notice(Harness h)=>Nodes(h.Snapshot.Root).FirstOrDefault(node=>node.Id=="discord.notice")?.Text??"";
         static async Task Start(Harness h)
@@ -357,8 +368,8 @@ internal static class SharingTests
             await h.Act(DetailsAction(h));await h.Widget.WaitForShareDetailsAsync().WaitAsync(TimeSpan.FromSeconds(8));
             check(Notice(h)=="Capture: 2560 × 1440\nSent: 1920 × 1080 · 59.5 FPS\nAdvertised: 1280 × 720 · 60 FPS",
                 "Stream details separates capture, actual encoded dimensions and advertised quality");
-            check(h.Provider.Commands.Count==before+1&&h.Provider.Commands.Last().Method=="streamDiagnostics"&&h.Capture.Stops.IsEmpty,
-                "Reading details issues one read with no sharing mutation or capture restart");
+            check(h.Provider.Commands.Count==before+2&&h.Provider.Commands.Skip(before).All(command=>command.Method=="streamDiagnostics")&&h.Capture.Stops.IsEmpty,
+                "Reading details takes two bounded samples with no sharing mutation or capture restart");
             h.Provider.Diagnostics=System.Text.Json.JsonSerializer.SerializeToElement(new{
                 source=new{width=2560,height=1440},outbound=new[]{new{width=1280,height=720,framesPerSecond=59.8,codec="VP8",qualityLimitationReason="bandwidth"}},
                 advertised=new[]{new{width=2560,height=1440,frameRate=60}},sender=new{contentHint="detail",degradationPreference="maintain-framerate",

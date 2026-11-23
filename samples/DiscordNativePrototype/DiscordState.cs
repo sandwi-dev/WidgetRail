@@ -20,7 +20,7 @@ internal sealed record DiscordState(int Revision, bool Ready, string Account, Di
     public DiscordShareQuality[] ShareQualities {get;init;}=ShareQualities??DiscordShareQuality.Baseline;
     internal void Validate()
     {
-        if(ShareQualityWarning is not(null or "share_quality_unavailable" or "share_quality_unconfirmed" or "share_content_preference_unconfirmed"))
+        if(ShareQualityWarning is not(null or "share_quality_unavailable" or "share_quality_unconfirmed" or "share_content_preference_unconfirmed" or "share_bandwidth_unconfirmed" or "share_encoder_unconfirmed"))
             throw new InvalidDataException("invalid_share_quality_warning");
         if(VoiceConnection is not("disconnected" or "connecting" or "connected" or "reconnecting" or "unavailable") ||
             VoiceConnection is "connected" or "connecting" or "reconnecting" && ChannelId is null)

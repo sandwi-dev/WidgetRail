@@ -5,7 +5,10 @@ participants and stream rows. It never opens a Discord page, accesses an account
 captures an application or broadcasts media. Mute, deafen, leave and join mutate
 only its local fake state. Watch can exercise pin admission, but the synthetic
 receiver deliberately reports unavailable; there is no real media stream. Outgoing
-capture capability is absent.
+capture capability is absent by default. `Stage.ps1 -SharePreferences` exposes
+the native Bandwidth and Encoder controls for keyboard/layout checks, but still
+has no registered browser session, capture permission or real media source.
+Use it only for preference controls; it cannot establish a real broadcast.
 
 `Stage.ps1 -Audio` selects the separate `widgetrail.tests.discord-audio` fixture.
 It places an opt-in marker in the staged payload because the production manifest

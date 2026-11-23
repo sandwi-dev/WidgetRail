@@ -51,8 +51,9 @@ public sealed partial class DiscordWebViewWidget
                 :" Choose Share game to select an application again."):
             data?.SharePending==true?"Discord is starting a stream…":
             data?.Sharing==true?"Discord reports an active stream.":"";
-        var content=new List<WidgetElement>{UI.Text("Your stream","discord.share.heading").Classes("discord-section-title"),
-            UI.Text(status,"discord.share.status").Classes("discord-secondary")};
+        var content=new List<WidgetElement>{UI.Text("Your stream","discord.share.heading").Classes("discord-section-title")};
+        if(status.Length>0)content.Add(UI.Text(status,"discord.share.status").Classes("discord-secondary"));
+        if(data is{Ready:true,ChannelId:not null,Capabilities.Share:true})content.Add(SharePreferenceControls(data));
         if(data?.ShareError is {Length:>0} error)
             content.Add(UI.Text(ShareErrorMessage(error),"discord.share.error").Classes("discord-notice"));
         if(data?.ShareQualityWarning is {Length:>0} warning&&capture is not null&&OwnsCall(capture.Owner,data))
@@ -64,6 +65,10 @@ public sealed partial class DiscordWebViewWidget
     {
         "share_quality_unconfirmed"=>"Discord could not confirm the selected stream quality. Check Stream details.",
         "share_content_preference_unconfirmed"=>"Discord could not preserve your Smoothness/Clarity preference. Sharing is still active.",
+        "share_bandwidth_unconfirmed"=>"Discord could not confirm the selected bandwidth. Sharing is still active; check Stream details.",
+        "share_bandwidth_unsupported"=>"This Discord version could not apply the selected bandwidth. Choose Automatic and try again.",
+        "share_encoder_unconfirmed"=>"Discord could not confirm the selected encoder preference. Sharing is still active; check Stream details.",
+        "share_encoder_unsupported"=>"This Discord version could not apply the selected encoder preference. Choose Discord default and try again.",
         "share_quality_unavailable"=>"This Discord version could not apply the selected stream quality.",
         "share_quality_unsupported"=>"That stream quality is no longer available for this call.",
         "share_picker_timeout"=>"Sharing setup timed out. Choose Share game to try again.",
@@ -94,6 +99,14 @@ public sealed partial class DiscordWebViewWidget
             try
             {
                 if(!context.IsCurrent || !OwnsCall(intent))return;
+                // Finish an already-admitted preference write before capturing
+                // the immutable policy for this attempt. Later setting actions
+                // are rejected while the source chooser or stream is active.
+                await Operations.WhenIdleAsync(PreferenceWriteOperation,context.CancellationToken);
+                await channelPreferences.EnsureLoaded().Completion.WaitAsync(context.CancellationToken);
+                if(!context.IsCurrent || !OwnsCall(intent))return;
+                var bandwidth=BandwidthPreference(intent.Account);
+                var encoder=EncoderPreference(intent.Account);
                 var permission=await HostServices.Permissions.RequestAsync([WidgetCaptureCapabilities.Permission],context.CancellationToken);
                 if(permission!=WidgetPermissionOutcome.Granted)
                 {
@@ -131,7 +144,7 @@ public sealed partial class DiscordWebViewWidget
                 {view.Update(current=>current with{Notice="That quality is no longer available. Choose Share game to select another."});return;}
                 view.Update(current=>current with{Outgoing=capture});
                 providerAttempted=true;
-                var accepted=await client!.InvokeAsync("share",new{account=intent.Account,channelId=intent.Channel,
+                var accepted=await client!.InvokeAsync("share",new{account=intent.Account,channelId=intent.Channel,bandwidthPreference=bandwidth,encoderPreference=encoder,
                     captureQuality=new{resolution=capture.Quality.Height,frameRate=capture.Quality.FrameRate}},context.CancellationToken);
                 if(!accepted.TryGetProperty("requested",out var requested)||requested.ValueKind!=System.Text.Json.JsonValueKind.True)
                     throw new InvalidDataException("Discord did not acknowledge the sharing request.");

@@ -10,11 +10,12 @@ using WidgetRail.WidgetRuntime;
 var audioMode=args.Contains("--audio",StringComparer.Ordinal)||File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-audio.enabled"));
 var voicePinMode=File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-voice-pin.enabled"));
 var voiceControlsMode=File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-voice-controls.enabled"));
+var sharePreferencesMode=File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-share-preferences.enabled"));
 var fixtureArgs=args.Where(arg=>arg!="--audio").ToArray();
 if(fixtureArgs is ["--snapshots",var destination])
 {
     Directory.CreateDirectory(destination);
-    var widget=WidgetTestHost.Attach(new DiscordWebViewWidget(new SyntheticDiscordSession(audioMode,voicePinMode,voiceControlsMode)),new WidgetTestHostServicesBuilder()
+    var widget=WidgetTestHost.Attach(new DiscordWebViewWidget(new SyntheticDiscordSession(audioMode,voicePinMode,voiceControlsMode,sharePreferencesMode)),new WidgetTestHostServicesBuilder()
         .WithHandler(WidgetPinningCapabilities.Open,(_,token)=>{token.ThrowIfCancellationRequested();return ValueTask.FromResult(new WidgetPinReceipt(true));}).Build());
     await WidgetTestHost.InitializeAsync(widget);
     await WidgetTestHost.SetLifecycleStateAsync(widget,WidgetLifecycleState.Interactive);
@@ -50,7 +51,7 @@ if(fixtureArgs is ["--snapshots",var destination])
     await WidgetTestHost.DestroyAsync(widget);
     return;
 }
-Environment.ExitCode=await WidgetApplicationBootstrap.RunAsync(fixtureArgs,()=>new DiscordWebViewWidget(new SyntheticDiscordSession(audioMode,voicePinMode,voiceControlsMode)));
+Environment.ExitCode=await WidgetApplicationBootstrap.RunAsync(fixtureArgs,()=>new DiscordWebViewWidget(new SyntheticDiscordSession(audioMode,voicePinMode,voiceControlsMode,sharePreferencesMode)));
 static IEnumerable<ViewNode> Nodes(ViewNode root)=>new[]{root}.Concat(root.Children.SelectMany(Nodes));
 
 internal sealed class SyntheticDiscordSession:IDiscordSession
@@ -71,10 +72,11 @@ internal sealed class SyntheticDiscordSession:IDiscordSession
          new("3","Morgan","idle","listening","Evening playlist","",null,null,null,null,false,null,false),
          new("4","Sky","online","voice","Co-op night","Friends & games","11","100","Co-op night","Friends & games",true,null,false),
          new("5","Reese","dnd","playing","Hollow Knight: Silksong","",null,null,null,null,false,null,false)],"ready"){VoiceConnection="connected"};
-    internal SyntheticDiscordSession(bool audioMode=false,bool voicePinMode=false,bool voiceControlsMode=false)
+    internal SyntheticDiscordSession(bool audioMode=false,bool voicePinMode=false,bool voiceControlsMode=false,bool sharePreferencesMode=false)
     {
         this.audioMode=audioMode;
         this.voiceControlsMode=voiceControlsMode;
+        if(sharePreferencesMode)state=state with{Capabilities=state.Capabilities with{Share=true}};
         if(voiceControlsMode)state=state with{Participants=state.Participants.Select(person=>person.Id==state.Account?person:person with{Audio=new(true,false,50)}).ToArray()};
         if(audioMode)state=state with{Streams=state.Streams.Select(stream=>stream with{Audio=new(true,false,100)}).ToArray()};
         if(voicePinMode)state=state with{ChannelName="A very long voice channel name for compact controller pin layout checks",Muted=true,Deafened=true};

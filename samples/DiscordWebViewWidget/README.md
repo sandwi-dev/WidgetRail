@@ -94,6 +94,25 @@ delivery still requires verification. The widget retains an unconfirmed stop for
 explicit retry and never retries an uncertain broadcast start. No fallback opens
 the browser capture picker or silently broadcasts a source.
 
+The call page's **Bandwidth** selector keeps Discord's **Automatic** policy by
+default. **Higher detail · up to 18 Mb/s** raises the maximum for the next share;
+it uses more upload bandwidth but still permits Discord to adapt to network and
+receiver conditions. The preference is remembered per account, independently of
+resolution, FPS and Smoothness/Clarity. It cannot change an active share. A changed
+provider that cannot confirm the selected ceiling produces a warning while the
+working stream remains available. The ceiling is not a promised actual bitrate
+or a remedy for CPU-limited encoding; remote performance remains under testing.
+
+**Encoder** defaults to **Discord default**. **Prefer hardware H.264** is an
+experimental, per-account opt-in for the next share. Discord's browser answer
+normally selects Constrained Baseline, which can choose software encoding on
+Windows even when Baseline has platform support. This adapter corrects only the
+owned outgoing video payload when its local offer already contains matching
+Baseline support. It does not change browser flags, other calls, authentication,
+audio or encryption. Unsupported negotiation stays unchanged and reports a
+warning. Actual encoder selection and receiver compatibility still require live
+verification; the preference is not a hardware-encoding guarantee.
+
 During an owned outgoing share, **Menu → Stream details** reads captured pixel
 dimensions, actual outbound video dimensions/FPS and Discord's advertised quality
 separately. Discord's receiver quality badge uses advertised metadata; it is not
@@ -105,6 +124,12 @@ When available, details also shows the codec, reported adaptation reason and
 effective sender policy, including Smoothness/Clarity, bitrate ceiling and scale.
 These observations help distinguish a capture limit from encoder adaptation;
 unknown provider values are not presented as verified settings.
+Details takes two read-only samples roughly one second apart to report measured
+encoded/sent FPS, payload bitrate, mean encode cost and quantizer when available.
+Transport round-trip time and reported packet loss are distinct from end-user
+decoder/rendering performance. Counter resets or stream/encoder changes invalidate
+the comparison. Hardware identity is shown only when the browser exposes a known
+implementation; missing fields do not establish software encoding.
 
 If local capture ends while Discord still reports a broadcast, the widget keeps
 that distinction and offers explicit Stop. It cannot safely stop an unknown newer

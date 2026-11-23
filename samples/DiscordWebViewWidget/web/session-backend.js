@@ -44,6 +44,10 @@
         }
         if (method !== 'command' || !commands.has(request.method)) throw new Error('Command unavailable');
         if (request.method === 'share') {
+            const bandwidth = request.args?.bandwidthPreference;
+            if (bandwidth !== undefined && !['automatic', 'high-detail'].includes(bandwidth)) throw new Error('Stream bandwidth unavailable');
+            const encoder = request.args?.encoderPreference;
+            if (encoder !== undefined && !['discord', 'prefer-hardware'].includes(encoder)) throw new Error('Stream encoder preference unavailable');
             const quality = request.args?.captureQuality;
             if (!quality || Object.keys(quality).some(key => !['resolution', 'frameRate'].includes(key)) ||
                 ![480,720,1080,1440].includes(quality.resolution) || ![15,30,60].includes(quality.frameRate)) throw new Error('Capture quality unavailable');
