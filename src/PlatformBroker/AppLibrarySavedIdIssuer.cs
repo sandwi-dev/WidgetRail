@@ -136,6 +136,26 @@ internal sealed class AppLibrarySavedIdIssuer : IAppLibrarySavedIdIssuer
 
     private static byte[] ReadKey(string keyPath)
     {
+        // A concurrent first-run publisher can briefly deny reads during the rename.
+        // Recheck the directory and file on every attempt before reading the winner.
+        const int maximumRetries = 12;
+        for (var retry = 0; ; retry++)
+        {
+            try
+            {
+                DemandOrdinaryDirectory(Path.GetDirectoryName(keyPath)!);
+                return ReadExistingKey(keyPath);
+            }
+            catch (IOException error) when (retry < maximumRetries && OperatingSystem.IsWindows() &&
+                error.HResult is unchecked((int)0x80070020) or unchecked((int)0x80070021))
+            {
+                Thread.Sleep(20);
+            }
+        }
+    }
+
+    private static byte[] ReadExistingKey(string keyPath)
+    {
         var attributes = File.GetAttributes(keyPath);
         if ((attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
             throw new BrokerException(

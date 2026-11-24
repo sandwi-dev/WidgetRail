@@ -2124,6 +2124,30 @@ static async Task AppLibrarySavedIdsAreDurableAndScoped()
     Assert.True(firstSavedId !=
         new AppLibrarySavedIdIssuer(keyPath).Issue(identity, "provider-other-stable-identity"));
 
+    if (OperatingSystem.IsWindows())
+    {
+        using var locked = File.Open(keyPath, FileMode.Open, FileAccess.Read, FileShare.None);
+        Assert.Throws<BrokerException>(() => new AppLibrarySavedIdIssuer(keyPath)
+            .Issue(identity, stableProviderIdentity), "platform_unavailable");
+
+        using var releaserReady = new ManualResetEventSlim();
+        using var readerStarting = new ManualResetEventSlim();
+        var release = Task.Factory.StartNew(() =>
+        {
+            releaserReady.Set();
+            readerStarting.Wait();
+            Thread.Sleep(60);
+            locked.Dispose();
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        releaserReady.Wait();
+        readerStarting.Set();
+        try
+        {
+            Assert.Equal(firstSavedId, new AppLibrarySavedIdIssuer(keyPath).Issue(identity, stableProviderIdentity));
+        }
+        finally { await release; }
+    }
+
     var racingKeyPath = Path.Combine(temp.Path, "racing", "saved-id.key");
     var racingIds = await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => Task.Run(() =>
         new AppLibrarySavedIdIssuer(racingKeyPath)
