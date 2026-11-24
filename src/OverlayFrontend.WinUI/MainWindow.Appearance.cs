@@ -42,7 +42,9 @@ public sealed partial class MainWindow
         if (allow != ForegroundBackgroundAllowed)
         {
             ForegroundBackgroundAllowed = allow;
-            ForegroundBackgroundChanged?.Invoke();
+            // Apply the committed surface material before its first visible frame.
+            // An incoming transparent surface must not fade from the outgoing widget's paint.
+            ForegroundBackgroundChanged?.Invoke(false);
         }
         if (backgroundHook != 0 && foregroundReturnTarget is { } target && !BackgroundWindowVisible(target))
             EndForegroundBackground();

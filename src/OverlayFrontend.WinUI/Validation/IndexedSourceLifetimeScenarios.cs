@@ -96,9 +96,19 @@ internal static class IndexedSourceLifetimeScenarios
         Check(lateOwner.Releases == 1 && source.CompletedLoads == 4,
             "late successful reply releases once without publishing into suspended rows");
         await source.SetPresentationActiveAsync(true);
-        Complete(await Next());
+        bool leaseCurrent = true;
+        var retiredPage = Complete(await Next(), isCurrent: () => leaseCurrent);
         await Until(() => source.CompletedLoads == 5);
         Check(ReferenceEquals(preserved, source[4]), "repeated suspension preserves logical identity");
+
+        leaseCurrent = false;
+        source.RangesChanged(new(4, 2), []);
+        var renewal = await Next();
+        Check(renewal.Request.StartIndex == 4 && renewal.Request.ContentRevision == 4 && !source.DemandIsSettled &&
+            ((IndexedItem<string>)source[4]).Value == "4:4", "retired command authority keeps pixels while renewing only the demanded page");
+        Complete(renewal);
+        await Until(() => source.DemandIsSettled && retiredPage.Releases == 1);
+        Check(ReferenceEquals(preserved, source[4]) && resets == 0, "same-revision renewal preserves the native slot");
 
         source.RefreshContent(5);
         var duringClose = await Next();
@@ -114,14 +124,14 @@ internal static class IndexedSourceLifetimeScenarios
             await Until(() => !requests.IsEmpty);
             return requests.TryDequeue(out var request) ? request : throw new InvalidOperationException("Missing range request.");
         }
-        Lifetime Complete(Pending pending, bool wrongIdentity = false)
+        Lifetime Complete(Pending pending, bool wrongIdentity = false, Func<bool>? isCurrent = null)
         {
             var owner = new Lifetime(); owners.Add(owner);
             var request = pending.Request;
             pending.Reply.SetResult(new(request.Query, request.RequestId + (wrongIdentity ? 1 : 0), request.StartIndex,
                 Enumerable.Range(request.StartIndex, request.Count).Select(index =>
                     new KeyedCollectionItem<string>($"item.{index}", $"{request.ContentRevision}:{index}")).ToArray(),
-                request.ContentRevision, owner));
+                request.ContentRevision, owner, isCurrent));
             return owner;
         }
         void Check(bool condition, string message)

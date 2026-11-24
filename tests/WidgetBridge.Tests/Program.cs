@@ -175,6 +175,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Media preview drains late opens without displacing replacement", HostMediaPlaybackScenarios.PendingOpenDrainsBeforeReplacement),
     ("Media preview original-file custody and revocation cross both pipes", MediaPreviewPipeScenarios.SavedCaptureThroughPipes),
     ("Media preview PNG original-file custody and revocation cross both pipes", MediaPreviewPipeScenarios.SavedPngThroughPipes),
+    ("Intent bridge background delivery requires both declarations and current source", BridgeIntentScenarios.BackgroundDelivery),
     ("Intent bridge prepared payloads cannot change routes schemas or stale actions", BridgeIntentScenarios.PreparedPayloads),
     ("Intent bridge file contract is exact reserved and path-free", BridgeIntentScenarios.FileContract),
     ("Intent bridge file handoff owns recipient authority after source hides", BridgeIntentScenarios.FileHandoff),

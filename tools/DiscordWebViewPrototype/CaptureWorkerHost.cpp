@@ -40,7 +40,7 @@ int32_t __stdcall WrailCaptureWorkerStart(const wchar_t* executable,const Config
     uint64_t videoMapping,uint32_t videoBytes,uint64_t audioMapping,uint32_t audioBytes,void** result) noexcept {
     if(!result)return E_POINTER;*result=nullptr;
     if(!executable||!configuration||!Valid(*configuration)||!videoMapping||
-        videoBytes!=uint64_t(configuration->maximumWidth)*configuration->maximumHeight*4||
+        videoBytes!=uint64_t(configuration->maximumWidth)*configuration->maximumHeight*4+((configuration->flags&NativeH264)?H264Extra:0)||
         (configuration->includeAudio?(audioMapping==0||audioBytes!=AudioBytes):(audioMapping!=0||audioBytes!=0)))return E_INVALIDARG;
     try{
         auto session=std::make_unique<Session>();
@@ -107,6 +107,14 @@ int32_t __stdcall WrailCaptureWorkerAcknowledge(void* value,uint64_t epoch,uint3
     if(InterlockedCompareExchange64(pending,0,static_cast<LONG64>(sequence))!=static_cast<LONG64>(sequence))return S_FALSE;
     InterlockedExchange(kind==1?&session->control->videoCredit:&session->control->audioCredit,1);return S_OK;
 }
+int32_t __stdcall WrailCaptureWorkerEncoding(void* value,uint64_t epoch,uint32_t generation,uint32_t bitrate,uint32_t key) noexcept {
+    if(!value||generation>INT32_MAX||bitrate>INT32_MAX||key>1)return E_INVALIDARG;
+    auto c=static_cast<Session*>(value)->control;
+    if(!(c->configuration.flags&NativeH264)||epoch!=c->configuration.epoch||InterlockedCompareExchange(&c->stop,0,0))return RO_E_CLOSED;
+    InterlockedExchange64(&c->encoding,(static_cast<LONG64>(generation)<<32)|bitrate);
+    if(key)InterlockedIncrement(&c->keyframeRequests);
+    return S_OK;
+}
 int32_t __stdcall WrailCaptureWorkerHeartbeat(void* value,uint64_t epoch) noexcept {
     if(!value)return E_INVALIDARG;const auto session=static_cast<Session*>(value);
     if(epoch!=session->control->configuration.epoch||InterlockedCompareExchange(&session->control->stop,0,0))return RO_E_CLOSED;
@@ -132,7 +140,7 @@ void __stdcall WrailCaptureWorkerRelease(void* value) noexcept {
 
 int32_t __stdcall WrailCaptureBuffersCreate(IUnknown* projected,uint32_t videoBytes,uint32_t audioBytes,void** result) noexcept {
     if(!result)return E_POINTER;*result=nullptr;
-    if(videoBytes==0||videoBytes>MaximumLiveCaptureVideoBytes||audioBytes>AudioBytes)return E_INVALIDARG;
+    if(videoBytes==0||videoBytes>MaximumLiveCaptureVideoBytes+H264Extra||audioBytes>AudioBytes)return E_INVALIDARG;
     try{
         auto core=NativeCore(projected);ComPtr<ICoreWebView2_2> core2;auto hr=core.As(&core2);if(FAILED(hr))return hr;
         ComPtr<ICoreWebView2Environment> environment;hr=core2->get_Environment(&environment);if(FAILED(hr))return hr;

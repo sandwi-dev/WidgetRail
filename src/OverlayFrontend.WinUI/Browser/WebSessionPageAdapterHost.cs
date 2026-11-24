@@ -312,7 +312,7 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
     // blank child and keeps the original browser document and media track alive.
     private const string VideoViewPrelude="""
         const videoViews=new Map(), openVideoWindow=window.open.bind(window);
-        function setVideoTrack(id,track){
+        function setVideoTrack(id,track,restart=false){
           const entry=videoViews.get(id);
           if(!entry || entry.child.closed || (track!==null && !(track instanceof MediaStreamTrack && track.kind==='video' && track.readyState==='live')))return false;
           if(!track){
@@ -327,10 +327,11 @@ internal sealed partial class WebSessionPageAdapterHost : IDisposable
             Object.assign(video.style,{display:'block',width:'100vw',height:'100vh',objectFit:'contain'});
             doc.body.replaceChildren(video);entry.video=video;
           }
-          if(entry.track===track)return true;
+          if(entry.track===track&&!restart)return true;
           entry.track=track;entry.failed=false;
-          video.srcObject=new MediaStream([track]);
-          video.play().catch(()=>{if(entry.track===track){entry.failed=true;entry.child.close();}});
+          const source=new MediaStream([track]);
+          video.srcObject=source;
+          video.play().catch(()=>{if(video.srcObject===source){entry.failed=true;entry.child.close();}});
           return true;
         }
         function videoPlayback(id){

@@ -33,9 +33,13 @@ internal sealed partial class WidgetViewPresenter
     {
         if (previewEntered && previewSurface?.Fragment is { } preview) return preview.IsGuidePresentationReady(requireFocus);
         if (disposed || applying || !presentationActive || frame is null || !IsLoaded) return false;
+        if (requireFocus && (!presentationInputEnabled || presentation?.IsCurrent != true)) return false;
         if (HasTransientControl || OwnsSelectFocusReturn) return true;
         if (requireFocus && (restoreNativeFocus || pendingRestore is not null || pendingGroupEntry is not null ||
             needsEntry && bindings.Values.Any(Navigable))) return false;
+        // The row can be on screen before its scoped actions can be resolved.
+        // Use the same focused-row authority that CaptureControllerGuide needs.
+        if (requireFocus && FocusedBinding()?.Element is WidgetIndexedCollectionView { FocusedGuideRowPending: true }) return false;
         foreach (var binding in bindings.Values)
         {
             if (binding.Identity.Scope != activeScope || !IsMemoryVisible(binding.Element) ||

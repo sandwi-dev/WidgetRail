@@ -170,7 +170,7 @@ internal sealed partial class WidgetStylesValidationPage
             Check(applied==1,"Late admission after source removal cannot dispatch");
             page.EnsureInteractionAsync=null;
             Check(true, "Source removal revokes the preview");
-            sourceVisible = true; delay=1500; Publish(); source = Find<Button>("Widget.preview.source", root)!;
+            sourceVisible = true; delay=2500; Publish(); source = Find<Button>("Widget.preview.source", root)!;
             source.Focus(FocusState.Keyboard);
             await page.HandleControllerButtonAsync(ControllerButton.RightStick);
             await Wait(()=>ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),Find<Button>("Widget.preview.apply",root)));

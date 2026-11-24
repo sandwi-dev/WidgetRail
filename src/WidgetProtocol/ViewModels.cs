@@ -463,6 +463,8 @@ public sealed record ViewNode
     public string? ActionId { get; init; }
     /// <summary>Host-routed intent for this button/action surface's primary activation.</summary>
     public WidgetIntentRequest? Intent { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SummaryProviderPackage { get; init; }
     public WebBrowserDocument? WebBrowser { get; init; }
     public MediaPlayerDefinition? MediaPlayer { get; init; }
     public CaptureAttachment? CapturedMedia { get; init; }

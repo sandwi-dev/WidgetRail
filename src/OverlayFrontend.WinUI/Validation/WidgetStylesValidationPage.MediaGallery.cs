@@ -69,6 +69,31 @@ internal sealed partial class WidgetStylesValidationPage
         var pressed = 0; var clicks = 0;
         try
         {
+            if (Environment.GetCommandLineArgs().Contains("--gallery-image-switch-only"))
+            {
+                declared = UI.MediaGallery((MediaPlayerGalleryItem[])[first, duplicate with {
+                    Source = MediaPlayerSource.FromSavedCapture(new string('b',32),1) }], "gallery").Media;
+                media.SetMediaMotion(Motion.WidgetMotionOptions.From(appearance with {
+                    Motion = MotionPreference.Full, SectionAnimation = WidgetSectionAnimation.Slide }, true));
+                media.SetActive(true, true);
+                Publish();
+                await Wait(() => media.IsImage && media.ActualWidth > 0);
+                var original = media.GalleryPictureForValidation;
+                delayed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                media.Handle(ControllerButton.RightBumper, ControllerEventPhase.Pressed);
+                await Task.Delay(320);
+                Check(!media.IsImage && original is not null && ReferenceEquals(original, media.GalleryPictureForValidation),
+                    "A delayed next capture holds the old picture without granting it input");
+                await CaptureGallery("pending.png");
+                var selected = declared.SelectGalleryItem("duplicate");
+                delayed.SetResult(new(selected,new Uri(imagePath).AbsoluteUri,IsImage:true,Width:320,Height:180));
+                await Wait(() => media.IsImage && media.GalleryImageTransitionForValidation);
+                await CaptureGallery("switch.png");
+                media.Handle(ControllerButton.LeftBumper, ControllerEventPhase.Pressed);
+                await Wait(() => media.SelectedGalleryItemId == "first" && media.IsImage && !media.GalleryImageTransitionForValidation);
+                Check(media.CanControl && media.GalleryPictureForValidation is not null,"Reverse navigation settles on the first picture");
+                return;
+            }
             if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--store-gallery-fixture") is { } fixture)
             {
                 var items = JsonSerializer.Deserialize<MediaPlayerGalleryItem[]>(await File.ReadAllTextAsync(fixture))
@@ -358,6 +383,7 @@ internal sealed partial class WidgetStylesValidationPage
             media.Handle(ControllerButton.RightBumper, ControllerEventPhase.Pressed);
             media.Handle(ControllerButton.RightBumper, ControllerEventPhase.Released);
             await Wait(() => media.SelectedGalleryItemId == "clip" && media.IsPlaying);
+            Check(media.PreviewSystemControlsDisabledForValidation, "Fullscreen gallery clips keep playback controls local");
             Check(media.IsExpanded && MediaPlayerView.ResidentPlayers == resident + 1, "Fullscreen image-to-video selection keeps fullscreen and owns exactly one video player");
             var galleryChrome = (FrameworkElement)previous.Parent;
             var galleryTitle = Find<TextBlock>("MediaPlayer.Gallery.Position", root)!;
@@ -592,7 +618,7 @@ internal sealed partial class WidgetStylesValidationPage
                 resolutions.Add(key!);
                 var selected = declared.SelectGalleryItem(key);
                 if (failDuplicate && key == "duplicate") return Task.FromException<HostMediaPlayerSource>(new IOException("Synthetic unavailable image"));
-                return key == "clip" && delayed is not null ? delayed.Task : Task.FromResult(Resolve(selected));
+                return (key == "clip" || selected.Source.Kind == MediaPlayerSourceKind.SavedCapture) && delayed is not null ? delayed.Task : Task.FromResult(Resolve(selected));
             });
     }
 }

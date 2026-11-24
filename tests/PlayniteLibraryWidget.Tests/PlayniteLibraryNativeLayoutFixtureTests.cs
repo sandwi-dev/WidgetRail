@@ -44,7 +44,7 @@ public sealed partial class PlayniteLibraryLayoutTests
             new() { Tab = PlayniteDetailsTab.Description },
             new() { Tab = PlayniteDetailsTab.Information },
             new() { Tab = PlayniteDetailsTab.Achievements, AchievementsLoading = true },
-            new() { Tab = PlayniteDetailsTab.Achievements, Achievements = new(true, 0, 0, []) },
+            new() { Tab = PlayniteDetailsTab.Achievements, Achievements = new(true, 0, 0, []) { CanRefresh = true } },
             new() { Tab = PlayniteDetailsTab.Activity, Activity = PlayniteActivity.Unavailable },
             new() { Tab = PlayniteDetailsTab.Achievements, Achievements = PlayniteAchievements.Unavailable },
             new() { Tab = PlayniteDetailsTab.Achievements, AchievementsError = "Unavailable" },

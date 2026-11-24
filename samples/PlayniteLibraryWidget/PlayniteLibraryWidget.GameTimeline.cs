@@ -69,8 +69,9 @@ public sealed partial class PlayniteLibraryWidget
                 .Grouped(timelineRows.Context.Groups).Classes("game-journal-list");
         if (extras.ActivityLoading || extras.AchievementsLoading || media.Status == WidgetResourceStatus.Loading)
             return UI.LoadingIndicator(TimelineId + ".loading", size: LoadingIndicatorSize.Compact);
-        return UI.Text(extras.ActivityError ?? extras.AchievementsError ?? media.Error?.Message ??
-            "No recent activity for this game yet.", TimelineId + ".empty").Classes("playnite-library-details-meta");
+        return (extras.ActivityError ?? extras.AchievementsError ?? media.Error?.Message) is { } error
+            ? PlayniteLibraryDetailsPresentation.ReadError(TimelineId + ".error", error, PlayniteLibraryDetailsPresentation.RetryTimelineAction)
+            : UI.Text("No recent activity for this game yet.", TimelineId + ".empty").Classes("playnite-library-details-meta");
     }
 
     private sealed record JournalEntry(string Key, PlayniteActivityDay Day, DateTimeOffset When)

@@ -228,6 +228,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.FocusPreview is not null)
                 Add("focus-preview", ProtocolConstants.AnchoredPresentationVersion, path + ".focusPreview",
                     "Anchored focus previews require protocol version 92 or later.");
+            if (node.FocusPreview?.DelayMilliseconds > FocusPreviewContract.LegacyMaximumDelayMilliseconds)
+                Add("extended-focus-preview-delay", ProtocolConstants.ExtendedFocusPreviewDelayVersion, path + ".focusPreview.delayMilliseconds",
+                    "Focus preview delays above 1500 ms require protocol version 146 or later.");
             if (node.AnchoredPresentation is not null)
                 Add("anchored-presentation", ProtocolConstants.AnchoredPresentationVersion, path + ".anchoredPresentation",
                     "Anchored presentations require protocol version 92 or later.");
@@ -286,6 +289,8 @@ internal sealed class ProtocolVersionRequirements
             if (node.Intent is not null)
                 Add("widget-intent", ProtocolConstants.WidgetIntentVersion, $"{path}.intent",
                     "Declarative widget intents require protocol version 65 or later.");
+            if (node.SummaryProviderPackage is not null || node.Intent?.Presentation == WidgetIntentPresentation.StayInSource || node.Intent?.Fallback?.Presentation == WidgetIntentPresentation.StayInSource)
+                Add("background-intent", ProtocolConstants.BackgroundIntentVersion, $"{path}.intent", "Background intent delivery requires protocol version 147 or later.");
             if (node.Intent?.PreparationKey is not null || node.Intent?.Fallback?.PreparationKey is not null)
                 Add("intent-preparation", ProtocolConstants.IntentPreparationVersion, $"{path}.intent.preparationKey",
                     "Asynchronous intent preparation requires protocol version 85 or later.");

@@ -7,6 +7,9 @@
       "version": "1.0.2",
       "creator": "WidgetRail",
       "description": "Sunset pink and peach highlights over deep violet panels.",
+      "details": [
+        {"section": "Design", "label": "Inspiration", "value": "Grand Theft Auto VI (GTA 6)"}
+      ],
       "tags": ["GTA VI", "Vice City", "Neon", "Dark"],
       "released": "2026-11-22"
     },
@@ -15,6 +18,9 @@
       "version": "1.0.1",
       "creator": "WidgetRail",
       "description": "Bronze surfaces, laurel red and spectral mint, inspired by Hades.",
+      "details": [
+        {"section": "Design", "label": "Inspiration", "value": "Hades"}
+      ],
       "tags": ["Hades", "Bronze", "Dark"],
       "released": "2026-11-22"
     },
@@ -23,6 +29,9 @@
       "version": "1.0.1",
       "creator": "WidgetRail",
       "description": "Sea-glass focus rings and warm lettering against charcoal and deep teal.",
+      "details": [
+        {"section": "Design", "label": "Inspiration", "value": "Coastal tide pools and sea glass"}
+      ],
       "tags": ["Coastal", "Teal", "Dark"],
       "released": "2026-11-22"
     }

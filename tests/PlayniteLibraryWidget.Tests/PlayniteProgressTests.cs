@@ -153,6 +153,7 @@ public sealed partial class PlayniteLibraryTests
         await changes.Writer.WriteAsync(new("profile", "process", false, 2,
             [new(2, "achievements-changed", widget.RenderState.Value.DetailsItem!.Value.SavedId, null, 1)]));
         await WaitIndexed(() => reads == initialReads + 1);
+        await WaitIndexed(() => polls >= 3);
         await Background(widget);
         await WaitIndexed(() => cancelled == 1);
         var before = baselines;
@@ -281,20 +282,18 @@ public sealed partial class PlayniteLibraryTests
         await Interactive(widget); await Ready(widget, provider);
         var game = PageNodes(widget, Snapshot(widget, 201001).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
         await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
-        await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
+        await widget.OnActionAsync(new(PlayniteLibraryDetailsPresentation.SyncGameAction, "sync"));
         Assert.AreEqual(0, requests, "Other details tabs must not request provider synchronization.");
         await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
         await Bounded(widget.WhenDetailsIdleAsync(), "cached achievements");
         Assert.AreEqual(0, requests);
         var nodes = Nodes(Snapshot(widget, 201002).Root).ToArray();
         Assert.IsTrue(nodes.SelectMany(node => node.Shortcuts).Any(shortcut =>
-            shortcut.Button == ControllerButton.Y && shortcut.ActionId == DetailAction + "refresh"));
-        Assert.IsFalse(nodes.Any(node => node.ActionId == DetailAction + "achievement.refresh-provider"));
-        Assert.IsFalse(nodes.Any(node => node.Id == DetailAction + "achievements.provider-tools"),
-            "An empty pin-tools row must not reserve space.");
-        await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
+            shortcut.Button == ControllerButton.Y && shortcut.ActionId == PlayniteLibraryDetailsPresentation.SyncGameAction));
+        Assert.AreEqual("Sync this game", nodes.Single(node => node.ActionId == PlayniteLibraryDetailsPresentation.SyncGameAction).Text);
+        await widget.OnActionAsync(new(PlayniteLibraryDetailsPresentation.SyncGameAction, "sync"));
         await Bounded(started.Task, "provider refresh admitted");
-        await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
+        await widget.OnActionAsync(new(PlayniteLibraryDetailsPresentation.SyncGameAction, "sync"));
         Assert.AreEqual(1, requests);
         await Background(widget); await Interactive(widget);
         Assert.IsFalse(widget.RenderState.Value.DetailsExtras.AchievementRefreshBusy);
@@ -332,9 +331,10 @@ public sealed partial class PlayniteLibraryTests
             await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
             await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
             await Bounded(widget.WhenDetailsIdleAsync(), "initial cache");
-            await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
+            await widget.OnActionAsync(new(PlayniteLibraryDetailsPresentation.RetryAchievementsAction, "retry"));
             await Bounded(readStarted.Task, "pre-provider cache read");
-            await Bounded(providerStarted.Task, "provider requested through Refresh");
+            await widget.OnActionAsync(new(PlayniteLibraryDetailsPresentation.SyncGameAction, "sync"));
+            await Bounded(providerStarted.Task, "provider requested through Sync this game");
             providerDone.SetResult(PlayniteProviderRefreshResult.Completed);
             await Bounded(staleCanceled.Task, "pre-provider read retired");
             // The SDK serializes reads until the canceled provider releases its work.

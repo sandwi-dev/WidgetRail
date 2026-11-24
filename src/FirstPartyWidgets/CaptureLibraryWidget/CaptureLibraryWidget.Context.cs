@@ -28,7 +28,7 @@ public sealed partial class CaptureLibraryWidget
         if (!IsActive || !request.IsWellFormed() || request.ContractId != contract.Id || request.Version != contract.Version ||
             request.SchemaDigest != contract.SchemaDigest || !contract.Accepts(request.Payload)) return WidgetIntentResult.Rejected;
         var label = request.Version == namedBrowseIntent.Version ? request.Payload.GetProperty("referenceLabel").GetString()?.Trim() : null;
-        var filter = new CaptureLibraryQuery
+        var filter = DefaultGalleryFilter with
         {
             OriginPackageId = request.Payload.GetProperty("originPackageId").GetString(),
             Reference = new(request.Payload.GetProperty("referenceKind").GetString()!, request.Payload.GetProperty("referenceId").GetString()!),

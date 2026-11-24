@@ -395,7 +395,7 @@ internal static partial class PlayniteLibraryPresentation
                             "playnite-library.loading.text", "Loading installed games")))
                 .Classes("playnite-library-content");
         }
-        else if (snapshot.Status == WidgetPagedResourceStatus.Error)
+        else if (snapshot.Status == WidgetPagedResourceStatus.Error || snapshot.Error is not null)
         {
             var error = PlayniteLibraryAvailabilityPresentation.Error(snapshot.Error);
             content = UI.Stack("playnite-library.content",
@@ -414,26 +414,21 @@ internal static partial class PlayniteLibraryPresentation
             var title = activeQuery ? "No matching games" : "No games";
             var detail = activeQuery
                 ? "Clear search and filters to see your full library."
-                : "Add games to Playnite, then refresh your library.";
-            var actionLabel = activeQuery ? "Clear search and filters" : "Refresh";
-            var actionId = activeQuery
-                ? "playnite-library.query.clear"
-                : "playnite-library.refresh";
+                : "Games you add in Playnite will appear here.";
+            var empty = new List<WidgetElement>
+            {
+                UI.Text(title, "playnite-library.browse.empty.title", title).Classes("playnite-library-empty-title"),
+                UI.Text(detail, "playnite-library.browse.empty.detail", detail).Classes("playnite-library-empty-detail"),
+            };
+            if (activeQuery)
+            {
+                empty.Add(UI.Button("Clear search and filters", "playnite-library.query.clear", "playnite-library.browse.empty.action")
+                    .Disabled(!renderActionsEnabled).AddClasses("playnite-library-control", "playnite-library-empty-action"));
+                initialFocus ??= "playnite-library.browse.empty.action";
+            }
             content = UI.Stack("playnite-library.content",
-                    UI.Stack("playnite-library.browse.empty",
-                            UI.Text(title, "playnite-library.browse.empty.title", title)
-                                .Classes("playnite-library-empty-title"),
-                            UI.Text(detail, "playnite-library.browse.empty.detail", detail)
-                                .Classes("playnite-library-empty-detail"),
-                            UI.Button(actionLabel, actionId,
-                                    "playnite-library.browse.empty.action")
-                                .Disabled(!renderActionsEnabled)
-                                .AddClasses("playnite-library-control",
-                                    "playnite-library-empty-action"))
-                        .Classes("playnite-library-empty"))
-                .Classes("playnite-library-content");
-            content = content.AddClasses("playnite-library-empty-content");
-            initialFocus ??= "playnite-library.browse.empty.action";
+                    UI.Stack("playnite-library.browse.empty", empty.ToArray()).Classes("playnite-library-empty"))
+                .Classes("playnite-library-content", "playnite-library-empty-content");
         }
         else
         {
@@ -993,7 +988,6 @@ internal static partial class PlayniteLibraryPresentation
         return (hint with { Children = hint.Children.Select(child =>
                 child.AddClasses("playnite-library-nav-hint")).ToArray() })
             .ContextMenu(ControllerButton.Menu,
-                new(PlayniteLibraryActions.Refresh, "Refresh library", IsDisabled: !renderActionsEnabled),
                 new(PlayniteLibraryWidget.SettingsOpen, "Settings", IsDisabled: !renderActionsEnabled),
                 new(PlayniteLibraryActions.CategoriesOpen, "Categories", IsDisabled: !renderActionsEnabled),
                 new(PlayniteLibraryActions.HiddenOpen, "Hidden games",

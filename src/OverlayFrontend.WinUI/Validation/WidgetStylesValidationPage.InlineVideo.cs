@@ -93,6 +93,7 @@ internal sealed partial class WidgetStylesValidationPage
             Check(true,"Reentering a scrolled poster places actual keyboard focus on its visible Play button");
             started.Restart();video.Toggle(); await Wait(() => video.IsPlaying);
             if(colorProbe)await RecordFrame("return",started);
+            Check(video.PreviewSystemControlsDisabledForValidation, "Manually resumed inline playback stays out of Windows media sessions after unmute");
             Check(reads == 2 && !video.PreviewMutedForValidation, "Explicit resume reacquires video and remembers widget audio");
             video.SetActive(false, false);
             Check(!video.IsPlaying && MediaPlayerView.ResidentPlayers == baseline, "Leaving the chat releases inline playback synchronously");

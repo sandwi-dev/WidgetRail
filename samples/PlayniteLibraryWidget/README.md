@@ -20,6 +20,14 @@ to play, and launch it with your controller without leaving the overlay.
 - Choose Play to launch a game. Allow **Switch to open windows** to bring the game's verified window forward automatically. Reopening the overlay cancels a pending switch. Declining the permission still launches the game through Playnite.
 - Organize favorites, hidden games, categories, and completion status.
 
+## Discord on Currently Playing
+
+While a game is running, the Discord card sits beside **Resume playing**. Choose **Connect Discord** to let Playnite read the friend and voice activity Discord shares. The permission is specific to Discord and can be revoked in WidgetRail Settings.
+
+**Start Discord** starts the widget in the background. If the Discord card asks you to sign in, select Discord on the rail and sign in there. Return to Playnite to see friends and calls.
+
+Two people fit in the compact card. A third expands it to two columns. Open the card to join a friend’s voice channel or watch and pin a stream while keeping Playnite selected. If Discord needs microphone access, the prompt appears over Playnite. B or Escape closes the panel and returns to the shelf. X on the card opens its visibility options.
+
 ## Connect your library
 
 This widget includes **WidgetRail for Playnite**, an independent Playnite plugin
@@ -76,9 +84,9 @@ Playnite's extension discovery folders. Setup never force-terminates Playnite.
 | LB / RB | Switch Home and Library, or details tabs while a game is open |
 | L3 / left-stick click | Jump to search in Library or Achievements |
 | Right stick movement | Scroll the focused list or panel |
-| Y | Play/install the focused game; refresh while inside details |
+| Y | Play or install the focused game. On the game's Achievements tab, sync that game when supported |
 | X | Open the focused game’s quick actions |
-| Menu | Page options: Refresh, Categories, Hidden games, and Playnite connection |
+| Menu | Page options: Settings, Categories, Hidden games, and Playnite connection |
 | B | Close details or a nested page; from Home/Library, return to the tray |
 
 Use the **Home** and **Library** navigation tabs to switch between peer destinations.
@@ -87,11 +95,9 @@ focused game summary and artwork while using the tray, other controls, or detail
 it falls back if that game leaves the current view, including query replacement. Home shows installed
 games; Library includes uninstalled games too. Selecting either destination enters
 its game list. Game details appears inside the widget with the page dimmed behind
-it; B restores the selected game. Each opening starts at Play/Install, while
-refreshing or switching detail tabs preserves your position. The poster and primary
+it; B restores the selected game. Switching detail tabs preserves your position. The poster and primary
 controls share the top row, with Play/Install and a favorite icon beside the poster and full-width
-details tabs below. The tabs stay visible while their content scrolls. Header hints show X Game options, Y Refresh, and B Close; X
-offers game options including category membership, Refresh and Uninstall.
+details tabs below. The tabs stay visible while their content scrolls. X opens game options including category membership and Uninstall. Failed sections offer **Try again** in place.
 Long details scroll inside the panel. Hiding and reopening the overlay preserves
 the open details, tab, focus, and scroll position while the widget remains loaded.
 Interrupted reads resume; installation requests are never replayed automatically.
@@ -118,11 +124,11 @@ in Playnite, with saved data for the selected game. Missing data is explained in
 relevant tab. Achievements scroll continuously, with local search, All/Locked/Unlocked
 filters, and sorting by recent unlocks, rarity, name or numerical progress when available.
 Each row shows its description, icon, status, rarity, unlock date and available progress
-directly. Press **X** or right-click a visible unfinished achievement with a unique provider ID to track it, including achievements without a numerical counter. **Track achievement** remembers one choice per game in the connected Playnite profile. **Stop tracking** clears that game's choice. Achievements with measurable progress also offer **Pin progress**, which can follow a different achievement. Currently Playing features the tracked choice, the latest unlock, and up to five visible locked achievements with the highest known player unlock percentages. Selecting an achievement opens its full row in Game Details. Press **A** on a secret achievement to reveal its
+directly. Press **X** or right-click a visible unfinished achievement with a unique provider ID to track it, including achievements without a numerical counter. **Track achievement** remembers one choice per game in the connected Playnite profile. **Stop tracking** clears that game's choice. Achievements with measurable progress also offer **Pin progress**, which can follow a different achievement. Currently Playing features the tracked choice, the latest unlock, and one **Next activity** suggestion by default. Suggestions start with the highest known player unlock percentage among visible locked achievements. In **Playnite settings → Currently Playing cards**, set **Next activity cards** to **Off** or choose a limit from 1 to 5. Selecting an achievement opens its full row in Game Details. Press **A** on a secret achievement to reveal its
 description and artwork. Search suggestions use all loaded, revealed achievement names;
 the active filter still controls results. Sessions groups virtualized history by date. Press **A** on a session with highlights to browse all its matched unlocks and captures, and **B** to collapse it. Data loads when you open the
-tab and updates when Playnite reports changes. **Refresh / Y** reloads details and,
-on the Achievements tab, asks PlayniteAchievements to sync when supported. Playnite
+tab and updates when Playnite reports changes. **Sync this game** or **Y** on the
+Achievements tab asks PlayniteAchievements to sync that game when supported. Playnite
 owns provider accounts and prompts. Closing the view does not cancel an accepted sync.
 
 Track one achievement in a compact passive progress pin. Selecting another eligible achievement replaces its content while preserving the window position, size and opacity;
@@ -207,10 +213,10 @@ L3 focuses search. Narrow layouts use a compact summary and one game column.
 If the provider is missing, choose **Install Playnite Achievements** in Achievements or **Install GameActivity** in a game's Sessions tab. Playnite opens the matching catalogue installer and asks for approval. An already installed provider can be enabled in Playnite's Add-ons menu. The page also distinguishes an unsupported add-on API and an
 outdated WidgetRail integration. Home and Library remain available.
 
-The page's Refresh reloads cached information. In a game's Achievements tab,
-**Refresh / Y** also asks the add-on to update that game when supported. Provider cache events
-update the displayed progress; the add-on and game determine when fresh progress
-is available. WidgetRail does not produce duplicate unlock banners.
+After installing Playnite Achievements, open the add-on in Playnite, set up and
+sign in to your achievement sources, and start a refresh there. Start any
+library-wide refresh from Playnite. The widget reads the add-on's cache and
+updates the overview automatically as Playnite reports changes.
 
 Only unfinished achievements with measurable progress can be tracked in a pin.
 The pin uses that achievement's artwork when available. Choosing another target

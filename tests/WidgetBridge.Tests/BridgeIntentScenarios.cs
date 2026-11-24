@@ -183,6 +183,25 @@ internal static partial class BridgeIntentScenarios
         Check(!(await fixture.Registry.CommitIntentAsync(new("source", prepared.TicketId!, "browser", target.WorkerRun), default)).Accepted);
     }
 
+    internal static async Task BackgroundDelivery()
+    {
+        var target = Target("reader") with { Intents = new() { Handles = [new(WidgetIntentContracts.Web) { SupportsBackgroundDelivery = true }] } };
+        await using var fixture = Fixture([Source(), target, Target("ordinary")], presentation: WidgetIntentPresentation.StayInSource);
+        var request = await PrepareSource(fixture);
+        var prepared = await fixture.Registry.PrepareIntentAsync(request, default);
+        Check(prepared.Kind == WidgetIntentLaunchKind.Widget && prepared.Destinations.Single().WidgetId == "reader" && fixture.Clients.Count == 1);
+        using var checkpoint = await fixture.Registry.GetPresentationAsync("reader", WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+            PresentationUpdateCapabilities.None, 0, 0, default, default, intentTicket: prepared.TicketId);
+        var frame = checkpoint.Value;
+        var commit = new BridgeIntentCommitRequest("source", prepared.TicketId!, "reader", frame.WorkerRun);
+        Check((await fixture.Registry.CommitIntentAsync(commit, default)).Accepted);
+        Check(!(await fixture.Registry.CommitIntentAsync(commit, default)).Accepted);
+        prepared = await fixture.Registry.PrepareIntentAsync(request, default);
+        await fixture.SetLifecycleAsync("source", WidgetLifecycleState.Background);
+        Check(!(await fixture.Registry.CommitIntentAsync(commit with { TicketId = prepared.TicketId! }, default)).Accepted);
+        Check(fixture.Clients.Single(c => c.WidgetId == "reader").Intents.Count == 1);
+    }
+
     internal static async Task FailureOffersFallback()
     {
         await using var fixture = Fixture([Source(), Target("browser")]);

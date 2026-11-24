@@ -14,7 +14,6 @@ internal static class PlayniteLibraryGameOptions
                 IsDisabled: busy || !PlayniteLibraryAvailabilityPresentation.Tile(item).Launchable),
             new(PlayniteLibraryActions.Favorite, favorite ? "Remove favorite" : "Add favorite", IsDisabled: !enabled),
             new(PlayniteLibraryActions.Hide, "Hide", IsDisabled: !enabled),
-            new(PlayniteLibraryActions.RefreshSource, "Refresh source", IsDisabled: !enabled),
         };
         foreach (var category in (categories ?? []).Take(ProtocolConstants.MaximumContextActionCount - actions.Count))
         {

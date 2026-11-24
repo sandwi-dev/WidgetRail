@@ -41,7 +41,9 @@ public sealed partial class PlayniteLibraryWidget
     {
         LoadHomeActivity();
         lock (_gate)
-            if (HomeState.Publication is { Query.IsWarmDisplayOnly: false } && IndexedHomeSelectionIsCurrent() || Operations.IsBusy(IndexedHomeOperation))
+            if (Operations.IsBusy(IndexedHomeOperation) ||
+                HomeState.Publication is { Query.IsWarmDisplayOnly: false } && IndexedHomeSelectionIsCurrent() &&
+                HomeState.CatalogRevision == _model.Value.CatalogChangeRevision)
                 return new(WidgetOperationAdmission.Completed, Task.FromResult(new WidgetOperationResult(WidgetOperationStatus.Succeeded)));
         return RefreshIndexedHome();
     }
@@ -58,6 +60,7 @@ public sealed partial class PlayniteLibraryWidget
             return HomeState is { Status: WidgetPagedResourceStatus.Ready, Publication.Query: { IsWarmDisplayOnly: false } query } &&
                 _organization.ManualSavedIds.Count == 0 && string.IsNullOrEmpty(query.Source.Query.SearchText) &&
                 _model.Value.PendingRestoredSavedId is null && IndexedHomeSelectionIsCurrent() &&
+                HomeState.CatalogRevision == _model.Value.CatalogChangeRevision &&
                 query.Source.CanReuseOnTabEntry?.Invoke() == true;
         }
     }
@@ -67,13 +70,14 @@ public sealed partial class PlayniteLibraryWidget
         PlayniteLibraryCollectionState selection;
         WidgetAppLibraryQuery query;
         PlayniteLibraryQueryContext queryContext;
-        long attempt, authorityRevision, authorityGeneration;
+        long attempt, authorityRevision, authorityGeneration, revision;
         WidgetPagedResourceStatus before;
         lock (_gate)
         {
             before = HomeState.Status;
             attempt = HomeState.Attempt + 1;
             var local = _model.Value;
+            revision = local.CatalogChangeRevision;
             selection = local.Collection;
             query = EffectiveQueryLocked(PlayniteLibraryRoute.Library, local);
             queryContext = new(selection.RecentlyPlayed ? PlayniteLibraryQueryScope.RecentlyPlayed : PlayniteLibraryQueryScope.Home);
@@ -121,7 +125,8 @@ public sealed partial class PlayniteLibraryWidget
                     _model.Update(state => state with
                     {
                         IndexedHome = state.IndexedHome with { Publication = content, Selection = selection,
-                            Status = WidgetPagedResourceStatus.Ready },
+                            Status = WidgetPagedResourceStatus.Ready, CatalogRevision = revision,
+                            Error = captured.RetainedLastGood ? StaleLibraryError : null },
                         HomeGameCount = new(authorityGeneration, projected.Count),
                         SourceObservations = PlayniteLibrarySourceCatalog.RetainObservations(state.SourceObservations, captured.Sources),
                         FixedRows = fixedRows, FixedRowsRevision = state.FixedRowsRevision + 1,

@@ -58,10 +58,17 @@ internal sealed partial class OverlayShellPage
         var rows = new List<Action>();
         foreach (var direction in Directions)
         {
-            var row = new MenuFlyoutItem();
-            var glyph = direction switch { TrayDirection.Up => "\uE74A", TrayDirection.Right => "\uE72A",
-                TrayDirection.Down => "\uE74B", _ => "\uE72B" };
-            row.Icon = new FontIcon { Glyph = glyph, FontFamily = new("Segoe Fluent Icons") };
+            var icon = new FontIcon { FontFamily = new("Segoe Fluent Icons") };
+            var row = new MenuFlyoutItem
+            {
+                Icon = icon,
+                KeyboardAcceleratorTextOverride = direction switch
+                {
+                    TrayDirection.Up => "↑", TrayDirection.Right => "→",
+                    TrayDirection.Down => "↓", TrayDirection.Left => "←",
+                    _ => throw new ArgumentOutOfRangeException(nameof(direction))
+                }
+            };
             AutomationProperties.SetAutomationId(row, "Favorite.Menu." + direction);
             Favorite? shown = null;
             TrayActionBinding? binding = null;
@@ -70,18 +77,25 @@ internal sealed partial class OverlayShellPage
                 binding = preferences.TrayActions.Get(direction);
                 shown = ResolveFavorite(direction);
                 var title = shown?.Label ?? "Assign action…";
-                var detail = binding is null ? direction.ToString() :
-                    favoriteProviders.GetValueOrDefault(binding.Provider)?.Name ?? "Widget unavailable";
+                var provider = binding is null ? null : favoriteProviders.GetValueOrDefault(binding.Provider);
+                var providerName = binding is not null && provider is not null && provider.PublisherId == binding.Publisher && provider.PackageId == binding.Package
+                    ? provider.Name : binding?.Provider;
                 var work = runningFavorites.GetValueOrDefault(direction);
                 var inProgress = work is not null && work.Binding == binding;
-                if (inProgress) { title = work!.Label; detail = "In progress"; }
-                else if (shown?.Reason is { } reason)
-                    detail = reason;
+                if (inProgress) title = work!.Label;
+                var reason = inProgress ? "In progress" : shown?.Reason;
+                icon.Glyph = (inProgress, reason, binding) switch
+                {
+                    (true, _, _) => "\uE823",     // Clock
+                    (_, not null, _) => "\uE733", // Blocked
+                    (_, _, null) => "\uE710",     // Add
+                    _ => "\uE945"                 // Quick actions
+                };
                 row.Text = title;
-                row.KeyboardAcceleratorTextOverride = detail;
-                ToolTipService.SetToolTip(row, inProgress ? null : shown?.Reason);
+                var detail = string.Join(", ", new[] { providerName, reason }.Where(value => !string.IsNullOrEmpty(value)));
+                NativePopupTheme.SetToolTip(row, detail);
                 row.IsEnabled = !inProgress && (binding is null || shown?.Command is not null);
-                AutomationProperties.SetName(row, $"{title}, {direction}, {detail}");
+                AutomationProperties.SetName(row, detail.Length == 0 ? $"{title}, {direction}" : $"{title}, {direction}, {detail}");
             }
             rows.Add(Update);
             Update();
@@ -102,7 +116,7 @@ internal sealed partial class OverlayShellPage
             menu.Items.Add(row);
         }
         menu.Items.Add(new MenuFlyoutSeparator());
-        var edit = new MenuFlyoutItem { Text = "Edit assignments…" };
+        var edit = new MenuFlyoutItem { Text = "Edit assignments…", Icon = new SymbolIcon(Symbol.Edit) };
         AutomationProperties.SetAutomationId(edit, "Favorite.Menu.Edit");
         edit.Click += async (_, _) => { if (Current()) await EditFavoriteSlotsAsync(); };
         menu.Items.Add(edit);

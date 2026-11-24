@@ -9,7 +9,7 @@ public enum WidgetPermissionOutcome { Pending, Granted, Denied, Cancelled, Unava
 public sealed record WidgetPermissionQuery(IReadOnlyList<string> CapabilityIds)
 {
     public bool IsWellFormed() => CapabilityIds is { Count: > 0 and <= 8 } &&
-        CapabilityIds.All(id => id is { Length: > 0 and <= 160 } && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or ':')) &&
+        CapabilityIds.All(id => id is { Length: > 0 and <= 160 } && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or ':' or '_')) &&
         CapabilityIds.Distinct(StringComparer.Ordinal).Count() == CapabilityIds.Count;
 }
 public sealed record WidgetPermissionStatus(string CapabilityId, WidgetPermissionState State);

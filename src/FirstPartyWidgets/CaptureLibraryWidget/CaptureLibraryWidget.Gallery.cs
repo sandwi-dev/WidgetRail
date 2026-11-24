@@ -16,6 +16,8 @@ public sealed partial class CaptureLibraryWidget
         internal IReadOnlyList<CaptureLibraryGroup> Groups { get; init; } = [];
         internal bool MoreApplications { get; init; }
         internal string? RelatedLabel { get; init; }
+        internal bool RecoveryGrid { get; init; }
+        internal bool ShowDetails => Filter.UnavailableOnly ? !RecoveryGrid : Details;
         internal bool Selecting { get; init; }
         internal bool ClipPreviews { get; init; }
     }
@@ -23,7 +25,8 @@ public sealed partial class CaptureLibraryWidget
     private readonly WidgetIndexedCollection<GalleryQuery, CaptureLibraryItem> gallery;
     private readonly WidgetNavigator<GalleryRoute> galleryNavigation;
     private readonly object galleryGate = new();
-    private GalleryQuery galleryQuery = new(new());
+    private static readonly CaptureLibraryQuery DefaultGalleryFilter = new() { AvailableOnly = true };
+    private GalleryQuery galleryQuery = new(DefaultGalleryFilter);
     private CaptureLibraryItem? selectedCapture;
     private FocusGroupEntryRequest? galleryReturn;
     private string dateFilter = "all";
@@ -125,6 +128,16 @@ public sealed partial class CaptureLibraryWidget
                 var groups = request.Filter.Sort is CaptureLibrarySort.Newest or CaptureLibrarySort.Oldest
                     ? (await HostServices.CaptureLibrary.GroupsAsync(request.Filter, page.Revision, token)).Items : [];
                 var position = anchor is null ? null : await HostServices.CaptureLibrary.FindAsync(request.Filter, anchor, page.Revision, token);
+                var returnIndex = position?.Index;
+                var returnKey = anchor;
+                if (returnIndex is null && navigation.CollectionReturnFocus is { } previousFocus && page.TotalCount > 0)
+                {
+                    var nearest = Math.Min(previousFocus.Item.Index, page.TotalCount - 1);
+                    var neighbor = nearest < page.Items.Count ? page.Items[nearest] :
+                        (await HostServices.CaptureLibrary.QueryAsync(request.Filter, nearest, 1, page.Revision, token)).Items.SingleOrDefault();
+                    returnIndex = neighbor is null ? null : nearest;
+                    returnKey = neighbor?.Id;
+                }
                 CaptureLibraryItem? latest = null;
                 string? notice = null;
                 if (selected is not null)
@@ -173,8 +186,8 @@ public sealed partial class CaptureLibraryWidget
                     if (ownsPreview && navigation.CollectionReturnFocus is { } returning &&
                         (galleryReturn is null || galleryReturn.RequestId == returning.RequestId) &&
                         ReferenceEquals(galleryNavigation.Value.CollectionReturnFocus, returning))
-                        galleryReturn = position?.Index is { } index
-                            ? gallery.Enter(GalleryId, returning.RequestId, gallery.FocusTarget(GalleryId,new(anchor!),index)) : null;
+                        galleryReturn = returnIndex is { } index
+                            ? gallery.Enter(GalleryId, returning.RequestId, gallery.FocusTarget(GalleryId,new(returnKey!),index)) : null;
                     model.Update(s => s with { Page = new(page.Items, 0, page.TotalCount, page.StoredBytes),
                         Message = ownsPreview ? notice ?? s.Message : s.Message,
                         PermissionRequired = ownsPreview && notice is not null ? false : s.PermissionRequired });
@@ -233,6 +246,7 @@ public sealed partial class CaptureLibraryWidget
     {
         await ReleaseAsync(model.Value, token);
         model.Update(s => s with { Preview = null, Detail = true, SelectedId = item.Id, Navigation = WidgetNavigationOperation.Forward });
+        if (!item.Available) return;
         var media = await HostServices.CaptureLibrary.OpenAsync(item.Id, cancellationToken: token);
         model.Update(s => s with { Preview = media });
     });
@@ -346,7 +360,7 @@ public sealed partial class CaptureLibraryWidget
             // Keep one coherent detail page while the next lease opens. Clearing
             // Preview here removed metadata and replaced the native player for
             // a few frames, moving the controls and losing its retained state.
-            unclaimed = await HostServices.CaptureLibrary.OpenAsync(next.Id, cancellationToken: token);
+            if (next.Available) unclaimed = await HostServices.CaptureLibrary.OpenAsync(next.Id, cancellationToken: token);
             token.ThrowIfCancellationRequested();
             lock (galleryGate)
             {
@@ -373,14 +387,14 @@ public sealed partial class CaptureLibraryWidget
     {
         var name = item.Title ?? item.Media.SourceApplication?.ApplicationName ?? item.FileName ?? "Application capture";
         var video = item.Media.ContentType == "video/mp4";
-        var density = query.Details ? "capture-row-thumbnail" : "capture-density-" + query.Density;
+        var density = query.ShowDetails ? "capture-row-thumbnail" : "capture-density-" + query.Density;
         var art = item.Available ? (WidgetElement)UI.Artwork(new(ArtworkKey(item)), context.Id("thumbnail"), "Capture thumbnail", ImageFit.Contain).Classes("capture-thumbnail", density)
             : UI.Text("Unavailable", context.Id("thumbnail")).Classes("capture-thumbnail-placeholder", density);
         var duration = TimeSpan.FromSeconds(item.Media.DurationSeconds);
         var durationText = duration.TotalHours >= 1 ? $"{(int)duration.TotalHours}:{duration.Minutes:00}:{duration.Seconds:00}" : $"{(int)duration.TotalMinutes}:{duration.Seconds:00}";
         var info = video ? "Clip · " + durationText : "Screenshot";
-        WidgetElement thumbnail = query.Details ? art : UI.Stack(context.Id("thumbnail-stage"),art).Classes("capture-thumbnail-stage",density);
-        if (!query.Details && video && item.Available)
+        WidgetElement thumbnail = query.ShowDetails ? art : UI.Stack(context.Id("thumbnail-stage"),art).Classes("capture-thumbnail-stage",density);
+        if (!query.ShowDetails && video && item.Available)
             thumbnail = UI.Grid(context.Id("thumbnail-stage"), [GridTrack.Star()], [GridTrack.Star()], art.InGrid(),
                 UI.Stack(context.Id("duration-overlay"), UI.Row(context.Id("duration-badge"),
                     UI.Icon(WidgetGlyph.Play,context.Id("duration-icon"),"Clip").Classes("capture-duration-icon"),
@@ -394,17 +408,17 @@ public sealed partial class CaptureLibraryWidget
             UI.Row(context.Id("title-row"),
                 UI.Text(name, context.Id("title")).Classes("capture-heading", "capture-card-title"),
                 UI.Text(item.IsFavorite ? "★" : "", context.Id("favorite")).Classes("capture-card-favorite")).Classes("capture-card-title-row"),
-            UI.Text(query.Details ? info + $" · {item.Media.Width} × {item.Media.Height}" :
+            UI.Text(query.ShowDetails ? info + $" · {item.Media.Width} × {item.Media.Height}" :
                     captured.ToString("MMM d",CultureInfo.CurrentCulture)+" · "+captured.ToString("t",CultureInfo.CurrentCulture), context.Id("info"))
                     .Classes("capture-card-info"),
         };
-        if (query.Details) copy.Add(UI.Text(date, context.Id("date")).Classes("capture-help", "capture-row-date"));
+        if (query.ShowDetails) copy.Add(UI.Text(date, context.Id("date")).Classes("capture-help", "capture-row-date"));
         var spoken = name + ". " + info + ". " + date + (item.IsFavorite ? ". Favorite" : "") + (item.Available ? "" : ". Unavailable");
-        var card = UI.ActionSurface("capture-library.open-item", context.Id("capture"), spoken, query.Details ? ActionSurfaceOrientation.Horizontal : ActionSurfaceOrientation.Vertical,
+        var card = UI.ActionSurface("capture-library.open-item", context.Id("capture"), spoken, query.ShowDetails ? ActionSurfaceOrientation.Horizontal : ActionSurfaceOrientation.Vertical,
             thumbnail, UI.Stack(context.Id("copy"),copy.ToArray()).Classes("capture-entry-copy"))
             .ContextAction("capture-library.item.favorite", item.IsFavorite ? "Remove favorite" : "Favorite", disabled: query.Selecting)
-            .Classes("capture-entry", query.Details ? "capture-detail-row" : "capture-grid-card") with { NativeContextMenuOnly = true };
-        if(!query.Details)card=card.FocusVisualTarget(context.Id("thumbnail-stage"));
+            .Classes("capture-entry", query.ShowDetails ? "capture-detail-row" : "capture-grid-card") with { NativeContextMenuOnly = true };
+        if(!query.ShowDetails)card=card.FocusVisualTarget(context.Id("thumbnail-stage"));
         if (!item.Available || query.Selecting || !query.ClipPreviews) return card;
         return card.PresentOnFocus(UI.Stack(context.Id("clip-preview"),
             UI.Row(context.Id("preview-header"),
@@ -435,7 +449,7 @@ public sealed partial class CaptureLibraryWidget
         GalleryQuery query; lock (galleryGate) query = galleryQuery;
         var filter = query.Filter;
         var selection = gallery.Selection!;
-        var activeFilters = (filter.MediaKind != CaptureLibraryMediaKind.All || filter.FavoritesOnly || filter.HiddenOnly ? 1 : 0) +
+        var activeFilters = (filter.MediaKind != CaptureLibraryMediaKind.All || filter.FavoritesOnly || filter.HiddenOnly || filter.UnavailableOnly ? 1 : 0) +
             (filter.Application is not null ? 1 : 0) + (filter.SourceId is not null ? 1 : 0) + (dateFilter != "all" ? 1 : 0) + (filter.Reference is not null ? 1 : 0);
         var filterPanel = FilterPanel(query);
         var filterLabel = activeFilters == 0 ? "Filters" : $"Filters ({activeFilters})";
@@ -465,8 +479,8 @@ public sealed partial class CaptureLibraryWidget
                 UI.Button("Remove related filter", "capture-library.related-filter.clear", "capture-library.related-filter.clear"))
                 .Classes("capture-related-filter");
         var appliedFilters = new List<WidgetElement>();
-        if (filter.HiddenOnly || filter.FavoritesOnly || filter.MediaKind != CaptureLibraryMediaKind.All)
-            appliedFilters.Add((UI.Button((filter.HiddenOnly ? "Hidden" : filter.FavoritesOnly ? "Favorites" : filter.MediaKind == CaptureLibraryMediaKind.Screenshot ? "Screenshots" : "Clips") + " \u00d7",
+        if (filter.UnavailableOnly || filter.HiddenOnly || filter.FavoritesOnly || filter.MediaKind != CaptureLibraryMediaKind.All)
+            appliedFilters.Add((UI.Button((filter.UnavailableOnly ? "Unavailable" : filter.HiddenOnly ? "Hidden" : filter.FavoritesOnly ? "Favorites" : filter.MediaKind == CaptureLibraryMediaKind.Screenshot ? "Screenshots" : "Clips") + " \u00d7",
                 "capture-library.filter.all", "capture-library.active.type") with { AccessibilityLabel = "Remove media type filter" }).Classes("capture-active-filter"));
         if (filter.Application is { } application)
             appliedFilters.Add((UI.Button((application.Length == 0 ? "Unknown application" : application) + " \u00d7",
@@ -500,16 +514,16 @@ public sealed partial class CaptureLibraryWidget
         if (selection.IsActive && (gallery.Descriptor.Count > IndexedCollectionSelection.MaximumItems || selection.LimitReached))
             yield return UI.Text($"Select up to {IndexedCollectionSelection.MaximumItems} captures per batch.", "capture-library.selection.limit").Classes("capture-help");
         if (state.Page?.TotalCount == 0)
-            yield return UI.Text(filter == new CaptureLibraryQuery() ? "Your saved screenshots and clips will appear here." : "No captures match these filters.", "capture-library.empty").Classes("capture-empty");
+            yield return UI.Text(filter == DefaultGalleryFilter ? "Your saved screenshots and clips will appear here." : filter.UnavailableOnly ? "No unavailable captures match these filters." : "No captures match these filters.", "capture-library.empty").Classes("capture-empty");
         else if (state.Page is not null)
         {
-            var collection = query.Details ? UI.CollectionList(GalleryId, gallery, 110, "Saved captures") :
+            var collection = query.ShowDetails ? UI.CollectionList(GalleryId, gallery, 110, "Saved captures") :
                 UI.CollectionGrid(GalleryId, gallery, query.Density switch {0=>230,2=>420,_=>300}, query.Density switch {0=>208,2=>344,_=>264}, "Saved captures", maximumColumns: query.Density==2?2:query.Density==0?4:3);
             if (query.Groups.Count > 0) collection = collection.Grouped(query.Groups.Select(group => new IndexedCollectionGroup("month."+group.Key, GroupLabel(group.Key),group.Count)).ToArray());
             var content = collection.Classes("capture-gallery");
             yield return query.ClipPreviews && !selection.IsActive
                 ? (UI.FocusPresentationSurface(content, UI.Text("", "capture-library.gallery.preview.empty"), "capture-library.gallery.preview") with
-                { Preview = new(560, 560, AnchorPlacement.CenterOnAnchor, DelayMilliseconds: 450) { EnterButton = ControllerButton.RightStick, AllowMedia = true, SizeToContentHeight = true } }).Classes("capture-gallery-preview")
+                { Preview = new(560, 560, AnchorPlacement.CenterOnAnchor, DelayMilliseconds: 1500) { EnterButton = ControllerButton.RightStick, AllowMedia = true, SizeToContentHeight = true } }).Classes("capture-gallery-preview")
                 : content;
         }
     }
@@ -529,10 +543,11 @@ public sealed partial class CaptureLibraryWidget
         var filter = query.Filter;
         var choices = UI.Stack("capture-library.filters.choices",
             UI.Select("Type", new SelectOption[] {
-                new("all", "All captures", "capture-library.filter.all", IsSelected:filter.MediaKind==CaptureLibraryMediaKind.All&&!filter.FavoritesOnly&&!filter.HiddenOnly),
-                new("screenshots", "Screenshots", "capture-library.filter.screenshots", IsSelected:filter.MediaKind==CaptureLibraryMediaKind.Screenshot&&!filter.FavoritesOnly&&!filter.HiddenOnly),
-                new("clips", "Clips", "capture-library.filter.clips", IsSelected:filter.MediaKind==CaptureLibraryMediaKind.Video&&!filter.FavoritesOnly&&!filter.HiddenOnly),
+                new("all", "All captures", "capture-library.filter.all", IsSelected:filter.MediaKind==CaptureLibraryMediaKind.All&&!filter.FavoritesOnly&&filter.AvailableOnly),
+                new("screenshots", "Screenshots", "capture-library.filter.screenshots", IsSelected:filter.MediaKind==CaptureLibraryMediaKind.Screenshot&&!filter.FavoritesOnly&&filter.AvailableOnly),
+                new("clips", "Clips", "capture-library.filter.clips", IsSelected:filter.MediaKind==CaptureLibraryMediaKind.Video&&!filter.FavoritesOnly&&filter.AvailableOnly),
                 new("favorites", "Favorites", "capture-library.filter.favorites", IsSelected:filter.FavoritesOnly&&!filter.HiddenOnly),
+                new("unavailable", "Unavailable", "capture-library.filter.unavailable", IsSelected:filter.UnavailableOnly),
                 new("hidden", "Hidden", "capture-library.filter.hidden", IsSelected:filter.HiddenOnly)}, "capture-library.filter"),
             UI.Select("Application", ApplicationOptions(query), "capture-library.application"),
             UI.Select("Folder", FolderOptions(query), "capture-library.folder-filter"),
@@ -541,15 +556,15 @@ public sealed partial class CaptureLibraryWidget
         return UI.Stack("capture-library.filters",
             UI.Text("Filters", "capture-library.filters.heading").Classes("capture-heading"),
             choices,
-            UI.Button("Clear filters", "capture-library.clear", "capture-library.clear").Disabled(filter == new CaptureLibraryQuery()))
+            UI.Button("Clear filters", "capture-library.clear", "capture-library.clear").Disabled(filter == DefaultGalleryFilter))
             .Classes("capture-filter-panel");
     }
 
     private static WidgetElement ViewControl(GalleryQuery query)
     {
-        var choices=new[]{("compact","Small thumbnails",!query.Details&&query.Density==0),
-            ("normal","Medium thumbnails",!query.Details&&query.Density==1),
-            ("large","Large thumbnails",!query.Details&&query.Density==2),("details","Details",query.Details)};
+        var choices=new[]{("compact","Small thumbnails",!query.ShowDetails&&query.Density==0),
+            ("normal","Medium thumbnails",!query.ShowDetails&&query.Density==1),
+            ("large","Large thumbnails",!query.ShowDetails&&query.Density==2),("details","Details",query.ShowDetails)};
         var panel=UI.Stack("capture-library.view.choices",
             [UI.Text("View","capture-library.view.heading").Classes("capture-heading"),
              ..choices.Select(choice=>UI.Button(choice.Item2,"capture-library.view."+choice.Item1,"capture-library.view."+choice.Item1)
@@ -623,13 +638,14 @@ public sealed partial class CaptureLibraryWidget
                 case "capture-library.search": filter=filter with{Search=action.CommittedText?.Trim()}; break;
                 case "capture-library.application.all": filter=filter with{Application=null}; break;
                 case "capture-library.folder-filter.all": filter=filter with{SourceId=null}; break;
-                case "capture-library.clear": filter=new();dateFilter="all";break;
+                case "capture-library.clear": filter=DefaultGalleryFilter;dateFilter="all";break;
                 case "capture-library.related-filter.clear": filter=filter with{Reference=null,OriginPackageId=null};break;
-                case "capture-library.filter.all":filter=filter with{MediaKind=CaptureLibraryMediaKind.All,FavoritesOnly=false,HiddenOnly=false};break;
-                case "capture-library.filter.screenshots":filter=filter with{MediaKind=CaptureLibraryMediaKind.Screenshot,FavoritesOnly=false,HiddenOnly=false};break;
-                case "capture-library.filter.clips":filter=filter with{MediaKind=CaptureLibraryMediaKind.Video,FavoritesOnly=false,HiddenOnly=false};break;
-                case "capture-library.filter.favorites":filter=filter with{MediaKind=CaptureLibraryMediaKind.All,FavoritesOnly=true,HiddenOnly=false};break;
-                case "capture-library.filter.hidden":filter=filter with{MediaKind=CaptureLibraryMediaKind.All,FavoritesOnly=false,HiddenOnly=true};break;
+                case "capture-library.filter.all":filter=filter with{MediaKind=CaptureLibraryMediaKind.All,FavoritesOnly=false,HiddenOnly=false,AvailableOnly=true,UnavailableOnly=false};break;
+                case "capture-library.filter.screenshots":filter=filter with{MediaKind=CaptureLibraryMediaKind.Screenshot,FavoritesOnly=false,HiddenOnly=false,AvailableOnly=true,UnavailableOnly=false};break;
+                case "capture-library.filter.clips":filter=filter with{MediaKind=CaptureLibraryMediaKind.Video,FavoritesOnly=false,HiddenOnly=false,AvailableOnly=true,UnavailableOnly=false};break;
+                case "capture-library.filter.favorites":filter=filter with{MediaKind=CaptureLibraryMediaKind.All,FavoritesOnly=true,HiddenOnly=false,AvailableOnly=true,UnavailableOnly=false};break;
+                case "capture-library.filter.hidden":filter=filter with{MediaKind=CaptureLibraryMediaKind.All,FavoritesOnly=false,HiddenOnly=true,AvailableOnly=false,UnavailableOnly=false};break;
+                case "capture-library.filter.unavailable":filter=filter with{MediaKind=CaptureLibraryMediaKind.All,FavoritesOnly=false,HiddenOnly=false,AvailableOnly=false,UnavailableOnly=true};break;
                 default:
                     if(galleryQuery.Applications.FirstOrDefault(app=>ApplicationAction(app.Name)==action.ActionId) is { } application)filter=filter with{Application=application.Name};
                     else if(galleryQuery.Folders.FirstOrDefault(folder=>FolderAction(folder.SourceId)==action.ActionId) is { } folder)filter=filter with{SourceId=folder.SourceId};
@@ -642,7 +658,7 @@ public sealed partial class CaptureLibraryWidget
                     else if(action.ActionId.StartsWith("capture-library.view.",StringComparison.Ordinal)) {
                         var mode=action.ActionId["capture-library.view.".Length..];
                         if(mode is not ("compact" or "normal" or "large" or "details"))return true;
-                        galleryQuery=galleryQuery with{Density=mode=="compact"?0:mode=="large"?2:1,Details=mode=="details"};
+                        galleryQuery=galleryQuery with{Density=mode=="compact"?0:mode=="large"?2:1,Details=galleryQuery.Filter.UnavailableOnly ? galleryQuery.Details : mode=="details",RecoveryGrid=galleryQuery.Filter.UnavailableOnly && mode!="details"};
                         gallery.UpdateContent(galleryQuery);Invalidate();return true;
                     }
                     else changed=false;

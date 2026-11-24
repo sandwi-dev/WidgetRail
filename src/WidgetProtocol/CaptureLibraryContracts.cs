@@ -68,7 +68,10 @@ public sealed record CaptureLibraryQuery
     public bool ExcludeDetachedReference { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool AvailableOnly { get; init; }
-    public bool IsWellFormed() => Enum.IsDefined(MediaKind) && Enum.IsDefined(Sort) &&
+    /// <summary>Select records whose original media is currently unavailable.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool UnavailableOnly { get; init; }
+    public bool IsWellFormed() => !(AvailableOnly && UnavailableOnly) && Enum.IsDefined(MediaKind) && Enum.IsDefined(Sort) &&
         (SourceId is null or "" || CaptureLimits.ValidToken(SourceId)) &&
         (OriginPackageId is null || CaptureContextLimits.Identity(OriginPackageId)) &&
         (Reference is null || OriginPackageId is not null && Reference.IsWellFormed()) &&

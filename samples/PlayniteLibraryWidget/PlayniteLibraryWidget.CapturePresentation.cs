@@ -28,17 +28,22 @@ public sealed partial class PlayniteLibraryWidget
         const string id = RelatedCapturePrefix;
         var page = snapshot.Value;
         var children = new List<WidgetElement>();
+        if (snapshot.Error is { } error)
+            children.Add(PlayniteLibraryDetailsPresentation.ReadError(id + ".read-error", error.Message, id + ".retry"));
         if (page?.NeedsPermission == true)
         {
             children.Add(UI.Text("See screenshots and clips saved for this game.",id+".intro").Classes("playnite-library-details-meta"));
             children.Add(UI.Button("Show captures",id+".allow",id+".allow").FocusUp(tab));
         }
         else if (page?.Reference is null)
-            children.Add(UI.Text(snapshot.Error?.Message ?? (page is null ? "Loading captures…" : "Update WidgetRail for Playnite to browse game captures."),id+".status"));
+        {
+            if (snapshot.Error is null)
+                children.Add(UI.Text(page is null ? "Loading captures…" : "Update WidgetRail for Playnite to browse game captures.", id + ".status"));
+        }
         else
         {
             var items = page.Items.Where(item => item.Available).ToArray();
-            ButtonElement Action(ButtonElement button) => items.Length == 0 ? button.FocusUp(tab) : button.FocusUp(CardId(items[0]));
+            ButtonElement Action(ButtonElement button) => items.Length == 0 ? button.FocusUp(tab) : button;
             var actions = new List<WidgetElement>();
             if (AvailableUndo(page, state.DetailsExtras) is { } undo)
                 actions.Add(Action(UI.Button("Undo unlink", UndoLinkAction(undo.Change), id + ".undo")));
@@ -56,13 +61,7 @@ public sealed partial class PlayniteLibraryWidget
                 actions.Add(Action(UI.Button("Open Capture Library",id+".browse",id+".browse"))
                     .OpenIntent(WidgetIntentContracts.CaptureLibraryV2,JsonSerializer.SerializeToElement(new { originPackageId=PlaynitePackage,
                         referenceKind=page.Kind,referenceId=page.Reference,referenceLabel=RelatedCaptureLabel(state.DetailsExtras.CaptureAchievementName ?? page.Query.Name) })));
-            if (items.Length > 0)
-            {
-                if (page.LinkedRuns is { Count: > 0 } sessions)
-                    AddSessionHeading(sessions[0], latest: true);
-                children.Add(LinkedCard(page, items[0], featured: true).FocusUp(tab));
-            }
-            else
+            if (items.Length == 0)
             {
                 children.Add(UI.Text(Operations.IsBusy(SessionLinks(page.Query.Opening)) ? "Looking for game captures…" :
                     page.Total > 0 ? "Capture files are unavailable" : "No linked captures yet",id+".empty").Classes("playnite-capture-title"));
@@ -70,68 +69,79 @@ public sealed partial class PlayniteLibraryWidget
                     children.Add(UI.Text(page.CanLink ? "Choose a screenshot or clip from Capture Library to add it here." :
                         "Allow linking to find captures from your Playnite sessions.",id+".help").Classes("playnite-library-details-meta"));
             }
+            if (items.Length > 0)
+            {
+                var tiles = items.Select(item => LinkedCard(page, item)).ToArray();
+                tiles[0] = tiles[0].FocusUp(tab);
+                children.Add(UI.ResponsiveGrid(id + ".cards", 220, 2, tiles).Classes("playnite-capture-grid"));
+            }
             if (actions.Count > 0)
-            {
                 children.Add(UI.Row(id+".actions",actions.ToArray()).Classes("playnite-capture-header-actions"));
-            }
-            if (page.LinkedRuns is { } grouped)
-            {
-                foreach (var run in grouped)
-                {
-                    if (run != grouped[0])
-                    {
-                        children.Add(UI.Divider(id + ".divider." + run.Latest.Id));
-                        AddSessionHeading(run, latest: false);
-                    }
-                    foreach (var item in items.Skip(1).Where(item => SameRun(run, item))) children.Add(LinkedCard(page, item));
-                }
-            }
-            else
-            {
-                if (items.Length > 1) children.Add(UI.Divider(id + ".earlier-divider"));
-                foreach (var item in items.Skip(1)) children.Add(LinkedCard(page, item));
-            }
             if (state.DetailsExtras.CaptureLinkMessage is { } feedback)
                 children.Add(UI.Text(feedback,id+".link-feedback").Classes("playnite-library-details-meta"));
 
-            void AddSessionHeading(CaptureLibraryRun run, bool latest)
-            {
-                var key = id + ".session." + run.Latest.Id;
-                children.Add(UI.Text(latest ? "Latest session" : RunTime(run), key).Classes("playnite-capture-title"));
-                children.Add(UI.Text(latest ? RunTime(run) + " · " + MediaCounts(run) : MediaCounts(run),
-                    key + ".summary").Classes("playnite-library-details-meta"));
-            }
         }
         return UI.Stack(id+".content",children.ToArray()).Classes("playnite-capture-content");
     }
 
     private static string CaptureType(CaptureLibraryItem item) => item.Media.ContentType == "video/mp4" ? "Video clip" : "Screenshot";
-    private static ActionSurfaceElement LinkedCard(RelatedCapturePage page, CaptureLibraryItem item, bool featured = false)
+    private static ActionSurfaceElement LinkedCard(RelatedCapturePage page, CaptureLibraryItem item)
     {
-        var card = CaptureCard(item, ViewAction(page, item), featured, session: page.LinkedRuns?.FirstOrDefault(run => SameRun(run, item)));
+        var card = page.Query.BrowseLinked ? CaptureRow(item, ViewAction(page,item), pick:false) : LinkedTile(page,item);
         return page.CanLink && page.Kind == CaptureRelatedIdentity.GameKind && page.Revision is not null && item.Available && item.ContextCount > 0
             ? card.ContextAction(UnlinkAction(page, item), "Unlink from this game").ContextMenuShortcut(ControllerButton.Menu)
             : card;
     }
+
+    private static ActionSurfaceElement LinkedTile(RelatedCapturePage page, CaptureLibraryItem item)
+    {
+        var id = CardId(item);
+        var kind = CaptureType(item);
+        var title = string.IsNullOrWhiteSpace(item.Title) ? kind : item.Title;
+        var local = DateTimeOffset.FromUnixTimeMilliseconds(item.CapturedAtUnixMilliseconds ?? item.SavedAtUnixMilliseconds).ToLocalTime();
+        var stamp = $"{EventDay(local.DateTime)}, {local:t}";
+        var format = $"{item.Media.Width} × {item.Media.Height}";
+        var picture = new List<WidgetElement> {
+            UI.Artwork(CaptureArtwork(item), id + ".art", title, ImageFit.Cover).Classes("story-photo")
+        };
+        if (item.Media.ContentType == "video/mp4")
+            picture.Add(UI.Text(PlayniteLibraryDetailsPresentation.Duration((long)item.Media.DurationSeconds), id + ".duration")
+                .Classes("story-photo-note").AlignInGrid(GridCellAlignment.End, GridCellAlignment.End));
+        var labels = new List<WidgetElement> { UI.Text(title, id + ".name").Classes("playnite-capture-card-title"),
+            UI.Text(stamp, id + ".time").Classes("story-credit-time"),
+            UI.Text(format, id + ".format").Classes("playnite-library-details-meta") };
+        var session = page.LinkedRuns?.FirstOrDefault(run => run.Latest.Id == item.Id);
+        if (session is not null)
+        {
+            if (session == page.LinkedRuns![0]) labels.Add(UI.Text("Latest session",id+".session").Classes("playnite-capture-caption"));
+            labels.Add(UI.Text(RunTime(session) + " · " + MediaCounts(session),id+".session-summary").Classes("playnite-library-details-meta"));
+        }
+        var copy = UI.Stack(id + ".labels",labels.ToArray()).Classes("home-digest-credit");
+        var panel = UI.Grid(id + ".layout", [], [GridTrack.Star(1.15), GridTrack.Star()],
+            UI.Grid(id + ".picture", [], [], picture.ToArray()).Classes("playnite-linked-picture"), copy.InGrid(column: 1))
+            .Classes("playnite-capture-tile", "story-card-material");
+        return UI.ActionSurface(ViewAction(page, item), id, $"View {title}, {kind}, {CaptureTime(item)}, {format}",
+            ActionSurfaceOrientation.Vertical, panel).Classes("story-card");
+
+    }
     private static string CaptureTime(CaptureLibraryItem item) => DateTimeOffset.FromUnixTimeMilliseconds(
         item.CapturedAtUnixMilliseconds ?? item.SavedAtUnixMilliseconds).ToLocalTime().ToString("g");
 
-    private static ActionSurfaceElement CaptureCard(CaptureLibraryItem item,string action,bool featured=false,bool pick=false,CaptureLibraryRun? session=null)
+    private static ActionSurfaceElement CaptureRow(CaptureLibraryItem item,string action,bool pick)
     {
         var id = pick ? RelatedCapturePrefix + ".picker.item." + item.Id : CardId(item);
         var title = item.Title ?? (pick ? item.Media.SourceApplication?.ApplicationName : null) ?? CaptureType(item);
         var dimensions = $"{item.Media.Width} × {item.Media.Height}";
         var detail = (item.Media.DurationSeconds > 0 ? TimeSpan.FromSeconds(item.Media.DurationSeconds).ToString(@"m\:ss")+" · " : "")+dimensions;
         var copy = new List<WidgetElement>();
-        if (title != CaptureType(item) || featured && session is null)
-            copy.Add(UI.Text(featured && session is null ? "Latest capture" : CaptureType(item),id+".kind").Classes("playnite-capture-caption"));
+        if (title != CaptureType(item))
+            copy.Add(UI.Text(CaptureType(item),id+".kind").Classes("playnite-capture-caption"));
         copy.Add(UI.Text(title,id+".name").Classes("playnite-capture-card-title"));
-        if (session is null || (long)session.Screenshots + session.Videos > 1)
-            copy.Add(UI.Text(CaptureTime(item),id+".time").Classes("playnite-library-details-meta"));
+        copy.Add(UI.Text(CaptureTime(item),id+".time").Classes("playnite-library-details-meta"));
         copy.Add(UI.Text(detail,id+".format").Classes("playnite-library-details-meta"));
         var labels = UI.Stack(id+".labels",copy.ToArray()).Classes("playnite-capture-card-labels");
         return UI.ActionSurface(action,id,(pick ? "Link " : "View ") + title + ", " + CaptureTime(item),ActionSurfaceOrientation.Horizontal,
-            UI.Artwork(CaptureArtwork(item),id+".art",title,ImageFit.Contain).Classes(featured ? "playnite-capture-feature-art" : "playnite-capture-row-art"),labels)
+            UI.Artwork(CaptureArtwork(item),id+".art",title,ImageFit.Contain).Classes("playnite-capture-row-art"),labels)
             .Classes("playnite-capture-card");
     }
 
@@ -194,7 +204,7 @@ public sealed partial class PlayniteLibraryWidget
             }
             else if (page.Runs is { } runs) AddRunChoices(children, page, runs);
             else foreach (var item in page.Items)
-                children.Add(CaptureCard(item,PickAction(page,item),pick:true));
+                children.Add(CaptureRow(item,PickAction(page,item),pick:true));
             if (!linked && page.Items.FirstOrDefault() is { } choice) entry = id + ".picker.item." + choice.Id;
             if (page.Items.Count == 0) children.Add(UI.Text(linked ? "No captures on this page." : "No more captures to link.",id+".picker.empty"));
             var paging = new List<WidgetElement>();

@@ -79,8 +79,18 @@ internal sealed partial class WidgetIndexedCollectionView
     partial void TraceHeldSelection(string phase)=>NavigationTrace?.Invoke("held-selection "+phase);
     partial void TraceNavigationRealization(int index,double previousExtent,double currentExtent)=>
         NavigationTrace?.Invoke($"realization-retarget index={index} previousExtent={previousExtent} currentExtent={currentExtent}");
+    internal Action<WidgetRail.WidgetProtocol.IndexedCollectionBoundary>? BoundaryTraceForValidation { get; set; }
+    internal string GuideRowStateForValidation()
+    {
+        var index=FocusedIndex();
+        var row=index is { } i && source is not null && source.Items[i] is IndexedItem<WidgetIndexedRow> slot ? slot.Value : null;
+        return $"index={index}, canInput={CanReceiveInput}, active={presentationActive}, input={inputActive}, enabled={view?.IsEnabled}, " +
+            $"lease={row?.Lease.IsCurrent}, demanded={source?.Items.IsDemanded(index??-1)}, failed={source?.Items.FailedLoads}, " +
+            $"loads={source?.Items.CompletedLoads}, settled={source?.Items.DemandIsSettled}, anchor={view?.ContainerFromIndex(index??-1) is FrameworkElement {IsLoaded:true}}";
+    }
     partial void TraceBoundaryDemand(WidgetRail.WidgetProtocol.IndexedCollectionBoundary direction)
     {
+        BoundaryTraceForValidation?.Invoke(direction);
         if(NavigationTrace is null || observedScroll is not {} scroll)return;
         var visible=VisibleOccurrences(scroll);
         NavigationTrace($"boundary direction={direction} query={source?.Declaration.IndexedCollection?.QueryGeneration} count={source?.Items.Count} offset={scroll.VerticalOffset} maximum={scroll.ScrollableHeight} viewport={scroll.ViewportHeight} visible={string.Join(",",visible.Select(item=>item.Slot.Index))} pendingIndex={pendingIndex} continuity={pendingContinuity is not null}");

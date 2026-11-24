@@ -7,14 +7,17 @@ namespace WidgetRail.WidgetBridge;
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentLaunchKind>))]
 public enum WidgetIntentLaunchKind { Widget, ChooseHandler, ExternalBrowser, Unavailable, Rejected }
 
-public sealed record WidgetIntentDestination(string WidgetId, string Name, bool SupportsPassiveDelivery = false);
+public sealed record WidgetIntentDestination(string WidgetId, string Name, bool SupportsPassiveDelivery = false, bool OpenStoppedPage = false);
 public sealed record WidgetIntentPreparation(string SourceWidgetId, string? TicketId,
     WidgetIntentLaunchKind Kind, IReadOnlyList<WidgetIntentDestination> Destinations,
     WidgetIntentPresentation Presentation = WidgetIntentPresentation.PreferExistingSurface,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool PreparationFailed = false);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool PreparationFailed = false)
+{
+    public bool SourceReportsResult { get; init; }
+}
 public sealed record WidgetIntentCompletion(bool Accepted, string? ExternalUrl = null, string? BrowserFallbackUrl = null,
     bool RequiresInteraction = false, WidgetIntentStatus Status = WidgetIntentStatus.Failed, WidgetIntentPreparation? FollowUp = null,
-    WidgetIntentFailure Failure = WidgetIntentFailure.None);
+    WidgetIntentFailure Failure = WidgetIntentFailure.None, string? RequestedPinLayout = null);
 
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentFailure>))]
 public enum WidgetIntentFailure { None, FileCapacity }

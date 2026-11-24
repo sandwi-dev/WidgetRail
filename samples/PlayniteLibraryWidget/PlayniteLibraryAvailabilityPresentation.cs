@@ -31,9 +31,9 @@ internal static class PlayniteLibraryAvailabilityPresentation
             return new($"Busy · {OperationLabel(operation)}", false, true);
         if (presentation.Availability.State == WidgetAppLibraryAvailabilityState.StaleSource)
             return IsOwned(presentation)
-                ? new("Owned · Source degraded · Refresh to confirm install availability",
+                ? new("Owned · Install availability could not be checked",
                     false, false)
-                : new("Source degraded · Refresh to confirm availability", false, false);
+                : new("Availability could not be checked", false, false);
         if (IsUninstalled(item)) return new("Not installed", false, false);
         if (presentation.Availability.State == WidgetAppLibraryAvailabilityState.Unavailable)
             return OwnedUnavailable(presentation);

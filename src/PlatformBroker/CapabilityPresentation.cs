@@ -5,6 +5,8 @@ public static class CapabilityPresentation
 {
     public static string CapabilityName(string id)
     {
+        if (WidgetRail.WidgetProtocol.WidgetSummaryScope.Provider(id) is { } provider)
+            return $"Read activity from {provider}";
         if (PlatformCapabilities.TryGetLoopbackPort(id, out var port))
             return $"Access local app on port {port}";
         return id switch
@@ -33,6 +35,8 @@ public static class CapabilityPresentation
         PlatformCapabilities.NetworkBluetoothUnpairV1 => "Remove Bluetooth pairings",
         PlatformCapabilities.NetworkBluetoothManageV1 => "Open Bluetooth device settings",
         PlatformCapabilities.RecentActivityReadV1 => "See recently observed apps",
+        PlatformCapabilities.WidgetSummaryReadV1 => "Read activity shared with this widget",
+        PlatformCapabilities.WidgetSummaryPublishV1 => "Share activity with a connected widget",
         PlatformCapabilities.AppLibraryReadV1 => "See your app library",
         PlatformCapabilities.ProviderDocumentsV1 => "Display restricted HTML documents",
         PlatformCapabilities.WindowCaptureV1 => "Capture an application window",
@@ -62,6 +66,8 @@ public static class CapabilityPresentation
 
     public static string CapabilityDescription(string id)
     {
+        if (WidgetRail.WidgetProtocol.WidgetSummaryScope.Provider(id) is { } provider)
+            return $"Read the friend, voice and activity details that {provider} shares with this widget.";
         if (PlatformCapabilities.TryGetLoopbackPort(id, out var port))
             return $"Exchange bounded JSON with only 127.0.0.1:{port}. GET works while the " +
                 "widget is visible; POST requires an interactive widget or a host-issued dashboard " +
@@ -127,6 +133,8 @@ public static class CapabilityPresentation
         PlatformCapabilities.RecentActivityReadV1 =>
             "See a bounded list of privacy-filtered running applications observed after you allow access. " +
             "Widgets receive only display names, app kinds, state, and opaque IDs—never process IDs, paths, command lines, or window handles.",
+        PlatformCapabilities.WidgetSummaryReadV1 => "Read live summaries addressed to this widget. These can include friends, voice status and game activity.",
+        PlatformCapabilities.WidgetSummaryPublishV1 => "Send a live summary to a connected widget that has permission to read it. The summary expires when the source widget stops.",
         PlatformCapabilities.AppLibraryReadV1 =>
             "See a bounded app library of current installed applications and this package's explicitly remembered apps, using conservative kinds and opaque IDs. " +
             "Widgets never receive paths, shortcuts, command lines, package identities, AUMIDs, or launch authority.",

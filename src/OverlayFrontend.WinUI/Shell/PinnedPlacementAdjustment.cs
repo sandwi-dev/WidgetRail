@@ -46,6 +46,50 @@ internal sealed class PinnedPlacementAdjustment(PinnedBounds original, PinnedMon
         return true;
     }
 
+    internal bool Snap(PinnedPlacementDirection direction)
+    {
+        if (direction == PinnedPlacementDirection.None) return false;
+        var area = Monitor.WorkArea;
+        int right = area.X + (area.Width - Current.Width);
+        int bottom = area.Y + (area.Height - Current.Height);
+        int middle = area.Y + (area.Height - Current.Height) / 2;
+        int x = direction switch
+        {
+            PinnedPlacementDirection.Left => area.X,
+            PinnedPlacementDirection.Right => right,
+            _ => Current.X - (long)area.X <= (long)right - Current.X ? area.X : right,
+        };
+        int y = direction switch
+        {
+            PinnedPlacementDirection.Up => Current.Y > middle ? middle : area.Y,
+            PinnedPlacementDirection.Down => Current.Y < middle ? middle : bottom,
+            _ when Current.Y - (long)area.Y < (long)middle - Current.Y => area.Y,
+            _ when (long)bottom - Current.Y < Current.Y - (long)middle => bottom,
+            _ => middle,
+        };
+        var next = Current with { X = x, Y = y };
+        if (next == Current) return false;
+        Current = next;
+        return true;
+    }
+
+    internal bool Move(int x, int y, IReadOnlyList<PinnedMonitor> monitors)
+    {
+        if (x == 0 && y == 0) return false;
+        var next = PinnedPlacementPolicy.Constrain(Current with { X = Add(Current.X, x), Y = Add(Current.Y, y) }, Monitor, Limits);
+        bool horizontal = Math.Abs(x) >= Math.Abs(y);
+        // Cross the facing edge even when the secondary axis can still slide along it.
+        if ((horizontal ? next.X == Current.X : next.Y == Current.Y) && monitors.Count > 1)
+        {
+            var direction = horizontal ? x > 0 ? PinnedPlacementDirection.Right : PinnedPlacementDirection.Left
+                : y > 0 ? PinnedPlacementDirection.Down : PinnedPlacementDirection.Up;
+            if (MoveToAdjacentMonitor(direction, monitors)) return true;
+        }
+        if (next == Current) return false;
+        Current = next;
+        return true;
+    }
+
     private bool MoveToAdjacentMonitor(PinnedPlacementDirection direction, IReadOnlyList<PinnedMonitor> monitors)
     {
         var horizontal = direction is PinnedPlacementDirection.Left or PinnedPlacementDirection.Right;
@@ -117,25 +161,65 @@ internal sealed class PinnedPlacementAdjustment(PinnedBounds original, PinnedMon
 }
 
 /// <summary>
-/// Original pinned-adjustment navigation: 15000/9000 hysteresis, 250ms initial
-/// delay and 80ms repeat. Samples consume at most one step; stalls never queue
-/// accumulated movement. This is not another controller reader.
+/// Existing controller samples drive stick travel, discrete snaps and resize repeats.
 /// </summary>
 internal sealed class PinnedPlacementInput
 {
-    private readonly Axis dpad = new(), move = new(), resize = new();
+    private readonly Axis resize = new();
+    private ushort lastDpad;
+    private long previousSample, movingSince;
+    private double carryX, carryY, previousX, previousY;
+    private bool moving, waitForNeutral;
 
     internal void Prime(ushort buttons, short leftX, short leftY, short rightX, short rightY, long now)
     {
-        dpad.Reset(); move.Reset(); resize.Reset();
-        _ = Sample(buttons, leftX, leftY, rightX, rightY, now);
+        lastDpad = (ushort)(buttons & 15);
+        resize.Reset();
+        resize.Sample(rightX, rightY, now);
+        moving = false;
+        previousSample = now;
+        waitForNeutral = (double)leftX * leftX + (double)leftY * leftY > 8000d * 8000;
     }
 
-    internal (PinnedPlacementDirection Dpad, PinnedPlacementDirection Move, PinnedPlacementDirection Resize) Sample(
-        ushort buttons, short leftX, short leftY, short rightX, short rightY, long now) =>
-        (dpad.Sample(((buttons & 8) != 0 ? 32767 : 0) - ((buttons & 4) != 0 ? 32767 : 0),
-            ((buttons & 1) != 0 ? 32767 : 0) - ((buttons & 2) != 0 ? 32767 : 0), now),
-         move.Sample(leftX, leftY, now), resize.Sample(rightX, rightY, now));
+    internal (PinnedPlacementDirection Dpad, int X, int Y, PinnedPlacementDirection Resize) Sample(
+        ushort buttons, short leftX, short leftY, short rightX, short rightY, long now, PinnedMonitor monitor)
+    {
+        var pressed = buttons & ~lastDpad & 15;
+        lastDpad = (ushort)(buttons & 15);
+        var snap = pressed switch { 1 => PinnedPlacementDirection.Up, 2 => PinnedPlacementDirection.Down,
+            4 => PinnedPlacementDirection.Left, 8 => PinnedPlacementDirection.Right, _ => PinnedPlacementDirection.None };
+        var size = resize.Sample(rightX, rightY, now);
+        var elapsed = now - previousSample;
+        previousSample = now;
+        double magnitude = Math.Sqrt((double)leftX * leftX + (double)leftY * leftY);
+        if (magnitude <= 8000) waitForNeutral = false;
+        if (waitForNeutral || magnitude <= 8000 || snap != PinnedPlacementDirection.None)
+        {
+            moving = false;
+            return (snap, 0, 0, size);
+        }
+        double x = leftX / magnitude, y = -leftY / magnitude;
+        if (!moving || elapsed > 100 || x * previousX + y * previousY <= 0)
+        {
+            movingSince = now;
+            carryX = carryY = 0;
+            elapsed = Math.Clamp(elapsed, 0, 16);
+        }
+        moving = true;
+        previousX = x;
+        previousY = y;
+        double strength = Math.Clamp((magnitude - 8000) / (32767 - 8000), 0, 1);
+        double ramp = .25 + .75 * Math.Clamp((now - movingSince) / 350d, 0, 1);
+        double span = Math.Max(monitor.WorkArea.Width, monitor.WorkArea.Height);
+        double speed = 85 * monitor.Scale * strength + span * 1.15 * strength * strength * strength * ramp;
+        double distance = speed * Math.Clamp(elapsed, 0, 40) / 1000;
+        carryX += x * distance;
+        carryY += y * distance;
+        int dx = (int)carryX, dy = (int)carryY;
+        carryX -= dx;
+        carryY -= dy;
+        return (snap, dx, dy, size);
+    }
 
     private sealed class Axis
     {

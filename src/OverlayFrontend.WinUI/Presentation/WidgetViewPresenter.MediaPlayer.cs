@@ -44,7 +44,7 @@ internal sealed partial class WidgetViewPresenter
     {
         media.AudioPreferenceWidgetId = presentation?.Frame.Authority.WidgetId;
         media.ThumbnailAnchor = node.DirectionalAnchor;
-        media.SetAnimationsAllowed(!Motion.WidgetMotionOptions.From(appearance, systemAnimationsEnabled).Reduced);
+        media.SetMediaMotion(Motion.WidgetMotionOptions.From(appearance, systemAnimationsEnabled));
         media.InteractionChanged = NotifyControllerGuideChanged;
         if (presentation is { } activityOwner)
             media.AudioChanged = playing => NativeAudioChanged?.Invoke(media, activityOwner.Frame.Authority.WidgetId, playing);
@@ -54,6 +54,8 @@ internal sealed partial class WidgetViewPresenter
         // no native video plane before its preview frame has settled.
         media.PresentationReady = pageReady.IsCompletedSuccessfully ? previewReady :
             previewReady.IsCompletedSuccessfully ? pageReady : Task.WhenAll(pageReady, previewReady);
+        media.IsModalPlayback = effectiveView?.Root is { Kind: ViewNodeKind.ModalLayer, Children.Count: 2 } modal &&
+            scope == modal.Children[1].InputScopeId;
         media.SetPreviewPlayback(previewMediaAllowed);
         media.RequestPreviewInteraction = previewMediaAllowed && previewOwner is { } parent ? () => parent.EnterFocusPreview(focusFirst: false) : null;
         media.SetEditorPreviewPaused(mediaEditorSuspensions != 0);

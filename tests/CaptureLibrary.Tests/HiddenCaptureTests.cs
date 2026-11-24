@@ -54,7 +54,7 @@ internal static class HiddenCaptureTests
         }
         await Reject(async () => { await using var unexpected = await f.Store.OpenAsync(item.Id, CaptureImageResolution.Original, default); }, "capture_library_not_found");
         var replacement = (await f.Store.LinkAsync(new(f.Source!.Id, "capture.png"), Owner, default)).Item;
-        Check(replacement.Id == item.Id && (await f.Query()).TotalCount == 1 && (await f.Query(true)).TotalCount == 0,
+        Check(replacement.Id != item.Id && (await f.Query()).TotalCount == 1 && (await f.Query(true)).TotalCount == 0,
             "Replacement physical file inherited old hide");
     }
 

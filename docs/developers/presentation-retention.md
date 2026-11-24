@@ -268,11 +268,18 @@ UI.FocusPresentationSurface(
 
 The default is settled focus and mouse hover after 350 ms. `OnFocus` and `OnHover`
 can independently disable either source; at least one must remain enabled.
-`DelayMilliseconds` accepts 0–1500, width 160–960 DIP and height 96–800 DIP. The
+`DelayMilliseconds` accepts 0–5000. Delays above 1500 ms require protocol 146.
+Preview width is 160–960 DIP and height is 96–800 DIP. The
 host can shrink and flip the panel to keep it within the widget. Long content is
 clipped; put complete information and controls in the optional interactive state
 described above. Passive fragments retain their existing 64-node,
 8-level limits and cannot contain focusable controls, actions or scrolling.
+
+| Consumer | Automatic delay |
+| --- | --- |
+| Catalogue listing previews and Capture Library media previews | 1500 ms |
+| Capture Library Filters and View controls, Discord and Path of Building previews | Existing declarations, including the 350 ms default |
+| Other widgets, templates and examples | Use their declared delay if they opt into an anchored preview |
 
 Preview activation does not invoke the widget or calculate data. Reuse content
 already loaded for the source. Updating that content does not restart the settling
@@ -311,4 +318,4 @@ Native navigation retention also applies to eligible keyed Page and Content regi
 
 Protocol 144 lets a transparent widget reveal the external application underneath its focused cards. Set `ForegroundBackgroundProcessKey` on an opted-in `BackgroundSurfaceElement` and call `RevealForegroundOnFocus(processInstanceKey)` on its contributing controls. Supply the same stable process-instance key on the surface and its cards. A focused poster can still supply ordinary artwork. The host compares the key with the pre-overlay window on the overlay display. It exposes neither window identity nor the match result to the widget.
 
-Keep the foreground content and the user's desktop dimmer independent of the surface artwork. The host animates the canvas, artwork, tint and scrim together using the surface's artwork transition duration. Unknown process identity, a first frame without an admitted match, reduced transparency, high contrast and solid surface overrides retain ordinary paint. An unavailable poster restores the ordinary background. Losing the matched window invalidates the opening. Keyboard and controller focus stay with the original controls.
+Keep the foreground content and the user's desktop dimmer independent of the surface artwork. The host animates the canvas, artwork, tint and scrim together using the surface's artwork transition duration. A match available before the first frame can display directly. If a cold widget supplies the process key after that frame, the host checks it against the same captured window and fades out the paint when the selected content requests it. Unknown process identity, reduced transparency, high contrast and solid surface overrides retain ordinary paint. An unavailable poster restores the ordinary background. Losing the matched window invalidates the opening. Keyboard and controller focus stay with the original controls.

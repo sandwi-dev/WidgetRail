@@ -16,6 +16,7 @@ internal sealed partial class BridgeClientRegistry
     private readonly Dictionary<string, ActiveIntentDelivery> _activeIntentDeliveries = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (string Source, long Time)> _cancelledIntentPreparations = new(StringComparer.Ordinal);
     internal Func<long> IntentNow { get; init; } = () => Environment.TickCount64;
+    internal WidgetSummaryExchange? Summaries { get; init; }
     private static bool IntentFresh(long created, long now) => now >= created && now - created <= 60_000;
 
     internal async Task<WidgetIntentPreparation> PrepareIntentAsync(BridgeIntentPrepareRequest request, CancellationToken cancellationToken)
@@ -139,10 +140,19 @@ internal sealed partial class BridgeClientRegistry
             if (!IntentActionCurrent(ticket)) return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
             if (_intentTickets.Count + _activeIntentDeliveries.Count >= 16 && _intentTickets.Values.All(item => IntentFresh(item.CreatedAt, IntentNow())))
                 return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
+            var summaryAction = intent.ContractId == WidgetIntentContracts.InvokeSummaryAction;
+            var destination = summaryAction ? SummaryDestination(ticket) : null;
+            if (summaryAction && destination is null) return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
+            var opensProvider = intent.ContractId == WidgetIntentContracts.OpenSummaryProvider;
+            var package = opensProvider ? intent.Payload.GetProperty("packageId").GetString() : null;
+            if (opensProvider && (intent.Presentation == WidgetIntentPresentation.PreferExistingSurface || !WidgetManifestValidator.IsValidPackageIdentity(package)))
+                return new(ticket.SourceId, null, WidgetIntentLaunchKind.Rejected, []);
             candidates = intent.Routing == WidgetIntentRouting.Windows ? [] : _catalog.IntentWidgets
-                .Where(widget => !widget.IsStopped && (!ticket.HostSettings || widget.Id == "settings") &&
+                .Where(widget => (opensProvider ? widget.PackageId == package : !widget.IsStopped) && (!ticket.HostSettings || widget.Id == "settings") &&
+                    (destination is null || MatchesDestination(widget, destination)) &&
                     (ticket.WebNotification is null || widget.Id == ticket.SourceId)).SelectMany(widget =>
-                (widget.Intents?.Handles ?? []).Where(handler => handler.Id == intent.ContractId && handler.Version == intent.Version)
+                (widget.Intents?.Handles ?? []).Where(handler => handler.Id == intent.ContractId && handler.Version == intent.Version &&
+                    (intent.Presentation != WidgetIntentPresentation.StayInSource || handler.SupportsBackgroundDelivery))
                 .Select(handler => (new IntentHandlerCandidate(widget.Id, _catalogRevision + 1, CompiledWidgetIntentContract.Create(handler),
                     true, handler.SupportsPassiveDelivery), widget.CatalogFingerprint, handler.HasDynamicAvailability))).ToList();
         }
@@ -151,7 +161,7 @@ internal sealed partial class BridgeClientRegistry
         // File sharing discovers declared destinations without waking every
         // potential receiver. The chosen target is presented before delivery;
         // its optional dynamic check and admission guards still run there.
-        var discoverFromCatalog = intent.ContractId == WidgetIntentContracts.FileShare;
+        var discoverFromCatalog = intent.Presentation == WidgetIntentPresentation.StayInSource || intent.ContractId is WidgetIntentContracts.FileShare or WidgetIntentContracts.OpenSummaryProvider;
         var ready = new List<IntentHandlerCandidate>();
         foreach (var candidate in candidates)
         {
@@ -191,7 +201,9 @@ internal sealed partial class BridgeClientRegistry
                 IntentResolutionKind.Unavailable => WidgetIntentLaunchKind.Unavailable,
                 _ => WidgetIntentLaunchKind.Rejected,
             };
-            prepared = new(ticket.SourceId, null, kind, []);
+            if (intent.Presentation == WidgetIntentPresentation.StayInSource && kind == WidgetIntentLaunchKind.ExternalBrowser)
+                kind = WidgetIntentLaunchKind.Unavailable;
+            prepared = new(ticket.SourceId, null, kind, [], intent.Presentation) { SourceReportsResult = intent.ReportsResult };
             if (kind is not (WidgetIntentLaunchKind.Unavailable or WidgetIntentLaunchKind.Rejected))
             {
                 var now = IntentNow();
@@ -201,7 +213,8 @@ internal sealed partial class BridgeClientRegistry
                 var targets = resolution.Candidates.ToDictionary(item => item.WidgetId, item => _catalog.GetConfigured(item.WidgetId).CatalogFingerprint, StringComparer.Ordinal);
                 _intentTickets.Add(id, ticket with { Kind = kind, Targets = targets });
                 return new(ticket.SourceId, id, kind, resolution.Candidates.Select(item => new WidgetIntentDestination(item.WidgetId,
-                    _catalog.GetConfigured(item.WidgetId).Name, item.SupportsPassiveDelivery)).ToArray(), intent.Presentation);
+                    _catalog.GetConfigured(item.WidgetId).Name, item.SupportsPassiveDelivery,
+                    intent.ContractId == WidgetIntentContracts.OpenSummaryProvider && _catalog.GetConfigured(item.WidgetId).IsStopped)).ToArray(), intent.Presentation) { SourceReportsResult = intent.ReportsResult };
             }
         }
         var followUp = await ReportIntentAsync(id, ticket, prepared.Kind == WidgetIntentLaunchKind.Unavailable
@@ -308,21 +321,48 @@ internal sealed partial class BridgeClientRegistry
                         if (handler.HasDynamicAvailability && !await ExecuteClientOperationAsync(target,
                             (client, token) => client.QueryIntentAsync(ticket.Request, null, request.TargetWorkerRun!.StartOrdinal, token), operation.Token).ConfigureAwait(false))
                             return new(false, Status: WidgetIntentStatus.Unavailable);
-                        lock (_gate) if (!IntentSourceCurrent(ticket) || !IntentPreviewCurrent(ticket)) return new(false);
+                        lock (_gate) if (!IntentSourceCurrent(ticket) || !IntentPreviewCurrent(ticket) ||
+                            ticket.Request.ContractId == WidgetIntentContracts.InvokeSummaryAction &&
+                            (SummaryDestination(ticket) is not { } destination || !MatchesDestination(target.Configured, destination))) return new(false);
                         // Only trusted, selected-target intent delivery can turn
                         // an opaque offer into recipient-scoped file references.
                         // Existing source/run/presentation checks remain in charge.
                         using var files = fileShareSource is null ? null : FileReferenceRegistry.Shared.AuthorizeShare(
                             fileShareSource, new(target.Configured.PackageId, target.Configured.PublisherId, target.Configured.InstanceId),
                             ticket.Request.Payload.GetProperty("offerId").GetString()!);
+                        var wantsPin = ticket.Request.ContractId == WidgetIntentContracts.InvokeSummaryAction &&
+                            ticket.Request.Payload.GetProperty("pin").GetBoolean();
+                        WidgetSummaryExchange.ActionDelivery? deliveryGrant = null;
+                        var wantsMicrophone = ticket.Request.ContractId == WidgetIntentContracts.InvokeSummaryAction &&
+                            ticket.Request.Version == 2 && ticket.Request.Presentation == WidgetIntentPresentation.StayInSource &&
+                            ticket.Request.Payload.GetProperty("microphone").GetBoolean();
+                        if (wantsPin && wantsMicrophone) return new(false, Status: WidgetIntentStatus.Rejected);
+                        if (wantsPin || wantsMicrophone)
+                        {
+                            if (request.PinnedTarget is not null || ticket.Request.Presentation == WidgetIntentPresentation.PreferExistingSurface)
+                                return new(false, Status: WidgetIntentStatus.Rejected);
+                            lock (_gate)
+                            {
+                                if (!IntentSourceCurrent(ticket) || wantsPin && !target.Configured.PinningSupported) return new(false);
+                                var from = _clients[ticket.SourceId].Configured;
+                                deliveryGrant = Summaries?.BeginDelivery(new(from.PackageId, from.PublisherId, from.InstanceId),
+                                    new(target.Configured.PackageId, target.Configured.PublisherId, target.Configured.InstanceId),
+                                    ticket.Request.Payload.GetProperty("reader").GetString()!, ticket.Request.Payload.GetProperty("token").GetString()!, wantsPin, request.TicketId);
+                            }
+                            if (deliveryGrant is null) return new(false);
+                        }
+                        using var delivery = deliveryGrant;
                         var result = await ExecuteClientOperationAsync(target,
                             (client, token) => client.DeliverIntentAsync(ticket.Request, request.TargetWorkerRun!.StartOrdinal, token), operation.Token)
                             .ConfigureAwait(false);
                         operation.Token.ThrowIfCancellationRequested();
                         if (!Enum.IsDefined(result)) return new(false);
-                        var accepted = result != WidgetIntentResult.Rejected;
+                        var accepted = result == WidgetIntentResult.Accepted || result == WidgetIntentResult.InteractionRequired &&
+                            ticket.Request.Presentation != WidgetIntentPresentation.StayInSource;
                         if (files is not null) accepted = files.Complete(accepted);
-                        return new(accepted, BrowserFallbackUrl: accepted ? null : BrowserFallback(ticket.Request),
+                        var requestedPin = accepted && wantsPin ? delivery?.Complete() : null;
+                        if (wantsPin && requestedPin is null) return new(false, Status: WidgetIntentStatus.Rejected);
+                        return new(accepted, RequestedPinLayout: requestedPin, BrowserFallbackUrl: accepted ? null : BrowserFallback(ticket.Request),
                             RequiresInteraction: accepted && result == WidgetIntentResult.InteractionRequired, Status: accepted ? WidgetIntentStatus.Accepted : WidgetIntentStatus.Rejected);
                     }
                     catch (BridgeWidgetRequestException)
@@ -370,7 +410,28 @@ internal sealed partial class BridgeClientRegistry
         }
     }
 
-    private bool IntentSourceCurrent(IntentTicket ticket) => !_disposed && ManagedTargetCurrent(ticket) && WebNotificationIntentCurrent(ticket) &&
+    // Called under the registry gate both before and after waiting for the receiver.
+    private void DemandBackgroundIntent(string ticketId, ConfiguredWidget target)
+    {
+        if (!_intentTickets.TryGetValue(ticketId, out var ticket) || !IntentFresh(ticket.CreatedAt, IntentNow()) ||
+            ticket.Request.Presentation != WidgetIntentPresentation.StayInSource || !IntentActionCurrent(ticket) ||
+            !ticket.Targets.TryGetValue(target.Id, out var fingerprint) || fingerprint != target.CatalogFingerprint ||
+            target.IsStopped || target.Intents?.Handles.Any(h => h.SupportsBackgroundDelivery &&
+                h.Id == ticket.Request.ContractId && h.Version == ticket.Request.Version) != true)
+            throw new BridgeStaleControllerInputAuthorityException("The background action has expired.");
+    }
+
+    private static bool MatchesDestination(ConfiguredWidget widget, BrokerWidgetIdentity destination) =>
+        widget.PackageId == destination.PackageId && widget.PublisherId == destination.PublisherId && widget.InstanceId == destination.InstanceId;
+
+    private BrokerWidgetIdentity? SummaryDestination(IntentTicket ticket) =>
+        _clients.TryGetValue(ticket.SourceId, out var source) && ticket.Request.Payload.TryGetProperty("reader", out var reader) &&
+        reader.ValueKind == System.Text.Json.JsonValueKind.String && reader.GetString() is { } proof ?
+            Summaries?.ActionDestination(new(source.Configured.PackageId, source.Configured.PublisherId, source.Configured.InstanceId), proof) : null;
+
+    private bool IntentSourceCurrent(IntentTicket ticket) => !_disposed &&
+        (ticket.Request.Presentation != WidgetIntentPresentation.StayInSource ||
+            _clients.GetValueOrDefault(ticket.SourceId)?.HostLifecycle == WidgetLifecycleState.Interactive) && ManagedTargetCurrent(ticket) && WebNotificationIntentCurrent(ticket) &&
         _clients.TryGetValue(ticket.SourceId, out var source) && IsCurrentLocked(source) &&
         source.Configured.WorkerFingerprint == ticket.SourceFingerprint &&
         (ticket.HostSettings || ticket.NotificationToken is not null || ticket.WebNotification is not null
@@ -383,6 +444,12 @@ internal sealed partial class BridgeClientRegistry
 
     private bool IntentPreviewCurrent(IntentTicket ticket)
     {
+        if (ticket.Request.Presentation == WidgetIntentPresentation.StayInSource && ticket.Request.ContractId != WidgetIntentContracts.OpenSummaryProvider && ticket.Origin is { } origin)
+        {
+            if (!_clients.TryGetValue(ticket.SourceId, out var caller) || caller.CachedSnapshot is not { } currentFrame) return false;
+            var currentAction = ResolveIntentSourceLocked(caller, currentFrame, currentFrame, origin, out var currentProof);
+            return currentProof == ticket.PreviewProof && ticket.Original.Matches(currentAction) && Declared(caller, ticket.Request);
+        }
         if (ticket.PreviewProof is null) return true; // Preserve ordinary prepared-intent source-hide semantics.
         if (ticket.Origin is not { } request || !_clients.TryGetValue(ticket.SourceId, out var source) || source.CachedSnapshot is not { } current) return false;
         // Hold the admitted semantic proof, not an obsolete native preview or a
@@ -438,6 +505,9 @@ internal sealed partial class BridgeClientRegistry
 
     private static bool IntentTargetPresented(ClientRegistration target, IntentTicket ticket, BridgeIntentPinnedTarget? pin)
     {
+        if (ticket.Request.Presentation == WidgetIntentPresentation.StayInSource)
+            return pin is null && !target.Configured.IsStopped && target.Configured.Intents?.Handles.Any(h =>
+                h.Id == ticket.Request.ContractId && h.Version == ticket.Request.Version && h.SupportsBackgroundDelivery) == true;
         if (pin is null) return target.HostLifecycle == WidgetLifecycleState.Interactive;
         // The authenticated presentation session owns the live selection. Never
         // infer it from saved pin preferences; revalidate its exact displayed
@@ -474,6 +544,6 @@ internal sealed partial class BridgeClientRegistry
     // An offer for explicit user confirmation, never permission to auto-launch
     // a second handler after an uncertain or unsuccessful delivery.
     private static string? BrowserFallback(WidgetIntentRequest request) =>
-        request.ContractId == WidgetIntentContracts.OpenWebPage && request.Version is 1 or 2
+        request.Presentation != WidgetIntentPresentation.StayInSource && request.ContractId == WidgetIntentContracts.OpenWebPage && request.Version is 1 or 2
             ? request.Payload.GetProperty("url").GetString() : null;
 }

@@ -175,7 +175,7 @@ public sealed partial class CaptureLibraryStore
                 { Title = title, IsFavorite = request.IsFavorite, MetadataRevision = checked(saved.Item.MetadataRevision + 1) } };
             // Publish metadata atomically; cancellation after this point must not
             // pretend that an already-committed edit did not happen.
-            WriteMetadata(updated); IndexPut(updated, new FileInfo(MediaPath(updated)).Exists ? new FileInfo(MediaPath(updated)).Length : 0);
+            WriteMetadata(updated); IndexPut(updated, updated.Item.Available ? updated.Item.Media.ByteLength : 0);
             return ItemView(updated);
         }
         finally { gate.Release(); }
@@ -196,6 +196,7 @@ public sealed partial class CaptureLibraryStore
     {
         var conditions = new List<string>(); var parameters = new List<(string, object)>();
         if (query.AvailableOnly) conditions.Add("available=1");
+        if (query.UnavailableOnly) conditions.Add("available=0");
         if (query.HiddenOnly) DemandHiddenState();
         LoadSources();
         if (!hiddenStateAvailable) conditions.Add("json_extract(data,'$.Item.SourceId') IS NULL");

@@ -20,6 +20,12 @@ internal sealed partial class OverlayShellPage
             try
             {
                 if (startup is not null) await startup;
+                if (Environment.GetCommandLineArgs().Contains("--validate-retained-reopen"))
+                {
+                    await ValidateRetainedReopenAsync(Check);
+                    Write(true, null);
+                    return;
+                }
                 await ValidateStartupPresentationAsync(Check);
                 if (Environment.GetCommandLineArgs().Contains("--validate-startup-only")) { Write(true, null); return; }
                 var indicator = openingIndicator!;
@@ -157,6 +163,56 @@ internal sealed partial class OverlayShellPage
             yield return root;
             for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); ++i)
                 foreach (var child in Descendants(VisualTreeHelper.GetChild(root, i))) yield return child;
+        }
+    }
+
+    private async Task ValidateRetainedReopenAsync(Action<bool, string> check)
+    {
+        var id = activeWidget ?? throw new InvalidOperationException("A committed widget is required.");
+        var indicator = openingIndicator!;
+        await SelectAsync(id, true);
+        var presenter = surface!;
+        var count = indicator.ShowCount;
+        foreach (bool stall in new[] { false, true })
+        {
+            SetVisible(false);
+            await transitions.WaitAsync();
+            try
+            {
+                SetVisible(true);
+                await Task.Delay(450);
+                check(switching && ReferenceEquals(surface, presenter) && presenter.Visibility == Visibility.Visible &&
+                    !indicator.IsShowing && indicator.ShowCount == count, "Retained content stays visible past the cold-opening threshold");
+                if (stall)
+                {
+                    await Task.Delay(1400);
+                    check(indicator.IsShowing && indicator.StatusText == "Resuming…" && indicator.WidgetName == retainedSurfaces[id].Descriptor.Name,
+                        "A stalled same-widget reopen provides resume feedback");
+                }
+            }
+            finally { transitions.Release(); }
+            await Settled();
+            check(indicator.ShowCount == (stall ? count + 1 : count), "Completion retires feedback without a late flash");
+        }
+        SetVisible(false);
+        await transitions.WaitAsync();
+        Task<bool> replacement;
+        try
+        {
+            SetVisible(true);
+            replacement = SelectAsync(catalogItems.First(item => item.Id != id && !item.IsStopped).Id, false);
+            await Task.Delay(350);
+            check(indicator.IsShowing && indicator.StatusText == "Opening…", "Switching away supersedes the delayed resume timer");
+        }
+        finally { transitions.Release(); }
+        await replacement;
+        await Settled();
+
+        async Task Settled()
+        {
+            long until = Environment.TickCount64 + 15000;
+            while ((switching || indicator.IsShowing) && Environment.TickCount64 < until) await Task.Delay(20);
+            check(!switching && !indicator.IsShowing && !RecoveryVisible, "Selection completed without recovery or a lingering badge");
         }
     }
 }

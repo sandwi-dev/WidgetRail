@@ -40,6 +40,24 @@ input dispatcher; no second action path was introduced.
 
 ## Validation
 
+On overlay reopen, a virtualized row can still show the right content after the
+worker has retired its authority to handle commands. The WinUI host checks the
+lease in `WidgetIndexedRows` when reusing a demanded page. It renews expired
+pages in place and waits for the focused row to accept input before publishing
+its replacement guide. The cache keeps the original slots during renewal.
+
+A bounded history window can also lose its query while a newer snapshot is
+travelling from the bridge to WinUI. If a speculative range read is rejected,
+the host falls back to ordinary row loading and its row-level failure handling.
+A failed commit still reports an error.
+
+| Consumers | Applicability and verification |
+| --- | --- |
+| YouTube Music | Reproduced the guide dropping to Back and Close on a focused song. The native reopen scenario samples the guide across transitions and invokes the restored Options action. |
+| Discord | The native Messages fixture checks published keys and visible positions during history pagination. The configured 20-message adjacent page can be prepared before a scroll while only the first 20 messages are displayed. |
+| Playnite, Spotify, YouTube Video, FullApplicationWidget, PoB Companion, Capture Library, Games & Apps, Settings | Use the shared indexed renderer. Source reviewed. No widget changes required. |
+| Non-indexed views and widget authoring templates | No page lease handling to migrate. |
+
 The Windows App SDK analyzer build passed with no warnings.
 Validated on the combined production-shell baseline: 66 managed shell tests,
 87 native production checks (including five recovery-guide assertions), 29

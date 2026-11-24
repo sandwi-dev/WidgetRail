@@ -892,6 +892,9 @@ public static class ViewSnapshotValidator
                     Add($"{path}.transition", "invalid_transition_container", "Content transitions require a layout or focus-presentation container.");
             }
             CheckString(node.AccessibilityLabel, $"{path}.accessibilityLabel");
+            if (node.SummaryProviderPackage is { } provider &&
+                (node.Kind != ViewNodeKind.ActionSurface || !WidgetManifestValidator.IsValidPackageIdentity(provider)))
+                Add($"{path}.summaryProviderPackage", "invalid_provider", "Summary cards require a valid provider package.");
             CheckString(node.AccessibilityValue, $"{path}.accessibilityValue");
             if (node.Intent is { } intent)
             {
@@ -2128,7 +2131,7 @@ public static class ViewSnapshotValidator
                 if (node.Intent is { } intent)
                     aggregateStrings += StringLength(intent.ContractId) + StringLength(intent.SchemaDigest) +
                         (intent.Payload.ValueKind == System.Text.Json.JsonValueKind.Undefined ? 0 : intent.Payload.GetRawText().Length);
-                aggregateStrings += StringLength(node.Id) + StringLength(node.Text) +
+                aggregateStrings += StringLength(node.Id) + StringLength(node.SummaryProviderPackage) + StringLength(node.Text) +
                     StringLength(node.AccessibilityLabel) + StringLength(node.AccessibilityValue) +
                     StringLength(node.ActionId) + StringLength(node.TextEntryValue) +
                     StringLength(node.TextEntryPlaceholder) + StringLength(node.TextEntrySuggestions?.Key) + StringLength(node.ValueChangedActionId) +

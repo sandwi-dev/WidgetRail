@@ -896,20 +896,27 @@ static async Task QueueContinuity()
     try
     {
         var first = new MusicItem("same", "song", "First duplicate");
-        var second = new MusicItem("same", "song", "Second duplicate");
+        var second = new MusicItem("same", "song", "Second duplicate",
+            Artwork: "https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg");
         service.ReplaceQueue([first, second]);
         await widget.OnActionAsync(new("tab.queue", "test"));
         var rows = await Rows(widget);
         var keys = rows.Select(row => row.CollectionItemKey).ToArray();
+        var secondRowId = rows[1].Id;
+        var secondArtworkId = Nodes(rows[1]).Single(node => node.Kind == ViewNodeKind.Image).Id;
         Check(keys[0] != keys[1], "Duplicate occurrences share keys");
         service.ReplaceQueue([new("inserted", "song", "New"), first, second]);
         rows = await Rows(widget);
         Check(rows[1].CollectionItemKey == keys[0] && rows[2].CollectionItemKey == keys[1], "Insertion changes surviving keys");
+        Check(rows[2].Id == secondRowId && rows[2].ActionId == "item.2", "Shifted row changes artwork identity or keeps a stale action");
         await RowAction(widget, "remove.1");
         await Until(() => service.Commands.Contains("remove"));
         rows = await Rows(widget);
         Check(rows.Count == 2 && rows[1].CollectionItemKey == keys[1] && ReferenceEquals(service.State.Queue[1], second),
             "Remove did not preserve the remaining duplicate");
+        Check(rows[1].Id == secondRowId && rows[1].ActionId == "item.1" &&
+            Nodes(rows[1]).Single(node => node.Kind == ViewNodeKind.Image).Id == secondArtworkId,
+            "Removal recreates surviving artwork or keeps a stale action");
         var source = BrowseScroll(widget).IndexedCollection!;
         service.ReplaceQueue(service.State.Queue.ToArray());
         Check(BrowseScroll(widget).IndexedCollection!.QueryGeneration == source.QueryGeneration, "Equivalent queue republished membership");

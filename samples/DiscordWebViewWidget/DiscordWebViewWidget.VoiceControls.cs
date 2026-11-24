@@ -193,7 +193,7 @@ public sealed partial class DiscordWebViewWidget
                 UI.Button("Refresh devices",VoiceAction("voiceRefresh",dialog),id+".refresh").Busy(voiceSettings.IsBusy).Classes("discord-control"),
                 UI.Button("Open Discord",VoiceAction("voiceOpen",dialog),id+".open").Classes("discord-control","discord-quiet")).Classes("discord-actions"));
         }
-        if(voiceControls.Value.Notice.Length>0)content.Add(UI.Text(voiceControls.Value.Notice,id+".notice").Classes("discord-notice"));
+        if(voiceControls.Value.Notice.Length>0)content.Add(UI.Text(voiceControls.Value.Notice,id+".notice").Classes("discord-notice","discord-notice-compact"));
         return result.WithModal(new(modalId,title,UI.Stack(id+".content",content.ToArray()).Classes("discord-voice-dialog"),first,VoiceCloseAction(dialog.Visit))
         {
             // Reserve room before asynchronous device enumeration completes.

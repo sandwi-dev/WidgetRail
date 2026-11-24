@@ -2,7 +2,6 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal static class PlayniteLibraryActions
 {
-    internal const string RefreshSource = "playnite-library.refresh-source";
     internal const string Previous = "playnite-library.previous";
     internal const string Next = "playnite-library.next";
     internal const string Refresh = "playnite-library.refresh";

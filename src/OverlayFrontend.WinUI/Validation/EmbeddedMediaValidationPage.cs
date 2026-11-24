@@ -89,12 +89,19 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
                 Write(new { passed = true, phase = "failure-admission", checks, diagnostics, resolveCount });
                 return;
             }
+            if (Environment.GetCommandLineArgs().Contains("--validate-gallery-reopen"))
+            {
+                await CheckGalleryReopenAsync(declaration);
+                return;
+            }
             status.Text = "Admitting sealed media document";
             var frame = await SnapshotAsync();
             var document = await session.ResolveEmbeddedMediaAsync(frame.Authority);
             CheckPolicy(document);
             CheckTransport();
-            surface = new(session, document, runtime);
+            var galleryPreview = Environment.GetCommandLineArgs().Contains("--validate-gallery-preview-playback");
+            surface = new(session, document, session.GetEmbeddedMediaState(document)!.Declaration,
+                galleryPreview ? runtime.CreateGalleryPreviewEnvironment() : runtime);
             surface.Diagnostic += code => diagnostics.Add(code);
             viewport.Children.Add(surface.Element);
             surface.UpdatePresentation(true, true);
@@ -111,6 +118,13 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
             Check(events.Last().State == EmbeddedMediaPlaybackState.Ready, "typed Load round-trips through strict adapter transport and session admission");
             await Command(EmbeddedMediaPlaybackCommandKind.Play, 2);
             Check(events.Last().State == EmbeddedMediaPlaybackState.Playing && events.Last().ErrorCode is null, "host input dispatch creates a trusted activation and starts native audio");
+            if (galleryPreview)
+            {
+                Write(new { passed = true, phase = "preview-playing", checks });
+                // Keep the real decoder playing while the external fixture enumerates Windows media sessions.
+                await Task.Delay(TimeSpan.FromSeconds(15), lifetime.Token);
+                return;
+            }
             if (Environment.GetCommandLineArgs().Contains("--validate-shared-webview"))
             {
                 await CheckSharedRuntimeAsync(document);
@@ -302,6 +316,8 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
                     ++resolveCount;
                     var requestedWidget = request.Payload.GetProperty("widgetId").GetString()!;
                     var descriptor = FixtureDescriptors().Single(value => value.Id == requestedWidget);
+                    if (galleryReopen && publishedMedia[requestedWidget] is null)
+                    { type = "error"; body = new { code = "presentation_stale", message = "Gallery closed" }; break; }
                     var media = publishedMedia[requestedWidget]!;
                     type = "embedded-media";
                     body = new { widgetId = descriptor.Id, instanceId = descriptor.InstanceId, runtimeGeneration = descriptor.RuntimeGeneration, presentationGeneration = descriptor.PresentationGeneration,
@@ -326,11 +342,11 @@ internal sealed partial class EmbeddedMediaValidationPage : Page, IAsyncDisposab
                     var snapshotDescriptor = FixtureDescriptors().Single(value => value.Id == snapshotWidget);
                     var snapshot = new ViewSnapshot { Sequence = ++snapshotSequence, WidgetInstanceId = snapshotDescriptor.InstanceId, ActiveInputScopeId = "page", EmbeddedMediaSession = declaration,
                         InitialFocusId = ownerChecks ? "native.play" : null,
-                        Root = ownerChecks ? OwnerRoot() : new() { Id = "page", Kind = ViewNodeKind.Stack, Children = declaration is null || parked ? [] : (ViewNode[])[new ViewNode { Id = "viewport", Kind = ViewNodeKind.MediaViewport, MediaSessionId = declaration.Id, AccessibilityLabel = declaration.AccessibleName }] } };
+                        Root = galleryReopen ? GalleryReopenRoot() : ownerChecks ? OwnerRoot() : new() { Id = "page", Kind = ViewNodeKind.Stack, Children = declaration is null || parked ? [] : (ViewNode[])[new ViewNode { Id = "viewport", Kind = ViewNodeKind.MediaViewport, MediaSessionId = declaration.Id, AccessibilityLabel = declaration.AccessibleName }] } };
                     var errors = ViewSnapshotValidator.Validate(snapshot);
                     if (errors.Count != 0) throw new InvalidOperationException(string.Join("; ", errors.Select(error => error.Message)));
                     using (var serialized = JsonDocument.Parse(SnapshotJson.Serialize(snapshot)))
-                        body = new { widgetId = snapshotWidget, transactionKind = "ordinaryCheckpoint", baseSequence = 0, recoveryOriginSequence = 0, snapshot = serialized.RootElement.Clone(), renderStyles = new Dictionary<string, BridgeNodeRenderStyles>() };
+                        body = new { widgetId = snapshotWidget, workerRun = galleryReopen ? new BridgeWorkerRun(1, 1) : null, transactionKind = "ordinaryCheckpoint", baseSequence = 0, recoveryOriginSequence = 0, snapshot = serialized.RootElement.Clone(), renderStyles = new Dictionary<string, BridgeNodeRenderStyles>() };
                     publishedMedia[snapshotWidget] = declaration;
                     publishedSequences[snapshotWidget] = snapshotSequence;
                     break;

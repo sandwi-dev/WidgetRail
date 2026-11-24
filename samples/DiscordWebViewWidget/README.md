@@ -46,8 +46,9 @@ list-to-conversation flow at compact width. Switching destinations retains the
 current conversation, unsent draft and reading position. Right from the conversation
 list enters the composer; Left from the composer or history returns to the selected
 conversation. Search uses the short label; the top-level Refresh also refreshes
-the conversation list. Back leaves the conversation for its inbox;
-Back from either root destination returns to the host chooser.
+the conversation list. **B** opens the radial directly from a conversation.
+Use the conversation-list button to return to the inbox. In an attachment
+gallery or picker, **B** closes that view first.
 
 Messages uses bounded native conversation/history lists. Gateway changes update
 retained text locally; opening history, paging and exceptional event-gap recovery
@@ -205,13 +206,15 @@ for every notification.
 
 Outgoing sharing uses the permission-bound host capture service. Its native
 chooser selects one application, optional application audio, and supported
-480p/720p/1080p at 15/30/60 FPS according to the current Discord account’s
-eligibility. The default is 720p30. Saved 1440p selections map to 1080p at the
-same frame rate when eligible. The provider remembers the confirmed resolution
-and frame rate. Discord requests the clarity content hint on every share.
-The adapter preserves that hint when Discord's motion experiment overwrites it
-during the supported synchronous attachment path. If a changed provider cannot
-confirm the preference, a warning appears while sharing remains available.
+480p and 720p at 15, 30, or 60 FPS, and 1080p at 15 or 30 FPS, according to the
+current Discord account’s eligibility. The default is 720p30. Saved 1440p
+selections map to 1080p. A saved 60 FPS selection at either 1080p or 1440p maps
+to 1080p30 when eligible. The provider remembers the confirmed resolution and
+frame rate. The picker defaults to **Prefer smoothness** for game motion.
+Choose **Prefer clarity** when preserving fine detail matters more than cadence.
+The adapter preserves the selected hint on the outgoing track during attachment.
+If the provider cannot confirm the preference, sharing remains available and
+the widget shows a warning.
 The widget passes confirmed settings to Discord and waits for
 both native capture and provider sharing state before advertising an active
 broadcast. These settings bound local capture; they do not prove the resolution
@@ -231,6 +234,9 @@ When available, details also shows the codec, reported adaptation reason and
 effective sender policy, including Smoothness/Clarity, bitrate ceiling and scale.
 These observations help distinguish a capture limit from encoder adaptation;
 unknown provider values are not presented as verified settings.
+**Measure stream cadence** on the active stream card samples 12 seconds of
+submitted, encoded, and sent frames. It keeps sampling while the overlay is
+closed so you can measure motion in the game.
 
 If local capture ends while Discord still reports a broadcast, the widget keeps
 that distinction and offers explicit Stop. It cannot safely stop an unknown newer

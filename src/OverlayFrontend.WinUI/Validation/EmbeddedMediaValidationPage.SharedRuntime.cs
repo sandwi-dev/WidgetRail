@@ -93,7 +93,7 @@ internal sealed partial class EmbeddedMediaValidationPage
             Check(surface.IsRetired && !page.IsReady, "Shared browser exit invalidates both controllers safely");
             await surface.DisposeAsync(); viewport.Children.Remove(surface.Element);
             await page.DisposeAsync(); host.Children.Remove(page); page = null;
-            surface = new(session!, document, runtime);
+            surface = new(session!, document, session!.GetEmbeddedMediaState(document)!.Declaration, runtime);
             viewport.Children.Add(surface.Element); surface.UpdatePresentation(true, true);
             await Until(() => surface.IsReady);
             await OpenBrowser();

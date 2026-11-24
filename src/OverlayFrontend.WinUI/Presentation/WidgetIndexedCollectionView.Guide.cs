@@ -1,11 +1,15 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using WidgetRail.OverlayFrontend.WinUI.Collections;
 using Windows.Foundation;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 
 internal sealed partial class WidgetIndexedCollectionView
 {
+    internal bool FocusedGuideRowPending => FocusedIndex() is { } index && source is not null &&
+        source.Items[index] is IndexedItem<WidgetIndexedRow> { Failed: false } && CaptureContextRow() is null;
+
     // Informational display readiness only. This deliberately reads local row
     // identity, not the cross-thread session authority used for input admission.
     internal bool HasCurrentGuideRows(FrameworkElement guideRoot, Rect clip)

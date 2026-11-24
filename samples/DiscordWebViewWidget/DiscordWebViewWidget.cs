@@ -54,7 +54,7 @@ public sealed partial class DiscordWebViewWidget : Widget
             {Route.VoiceSettings,"discord.voice-settings-dialog.scope"},{Route.ConnectionDetails,"discord.connection-dialog.scope"},
             {Route.Friends,"discord.friends.scope"},{Route.Conversation,"discord.conversation.scope"},{Route.MessageMedia,"discord.message.gallery.scope"},{Route.StreamViewer,"discord.viewer.scope"}}});
         state=CreateResource("discord.state",new WidgetResourceOptions<DiscordState>
-        {Load=ReadAsync,MapError=_=>{ReconcileCallAlert(null);return new("discord.unavailable","Discord is unavailable. Open Discord to check the connection, then Refresh.");},
+        {Load=ReadAsync,MapError=_=>{ReconcileCallAlert(null);QueueActivitySummary(null);return new("discord.unavailable","Discord is unavailable. Open Discord to check the connection, then Refresh.");},
             RetainLastGoodValue=false,Lifetime=WidgetOperationLifetime.Widget,CacheDuration=TimeSpan.FromSeconds(1)});
         InitializePicker();
         InitializeMessages();
@@ -155,6 +155,7 @@ public sealed partial class DiscordWebViewWidget : Widget
             if(cleared){view.Update(current=>current with{Notice="The selected stream ended or the call changed."});RestartReceiver(slot);}
         }
         RefreshChannelSuggestions(next);
+        QueueActivitySummary(next);
         return next;
     }
 
@@ -196,6 +197,8 @@ public sealed partial class DiscordWebViewWidget : Widget
         }
         if(selected.Outgoing is not null&&data is {ChannelId:not null,Sharing:true}&&action.ActionId==ShareDetailsAction(data,selected,session))
         {ReadShareDetails(data,selected,session);return ValueTask.CompletedTask;}
+        if(selected.Outgoing is not null&&data is {ChannelId:not null,Sharing:true}&&action.ActionId==ShareSampleAction(data,selected,session))
+        {SampleShareCadence(data,selected,session);return ValueTask.CompletedTask;}
         if(TryStreamAudioAction(action,data,session,cancellationToken,out var audioAction))return audioAction;
         foreach(var slot in watches)
         {
@@ -271,19 +274,41 @@ public sealed partial class DiscordWebViewWidget : Widget
         }
         return ValueTask.CompletedTask;
     }
-    private ValueTask WatchAsync(DiscordState data,DiscordStream stream,string? activityUser,CancellationToken token)
+    private async ValueTask WatchAsync(DiscordState data,DiscordStream stream,string? activityUser,CancellationToken token)
     {
         var slot = AvailableWatchSlot(stream, forPin: true);
         if(slot is null)
         {
             view.Update(current=>current with{Notice="All three screen slots are in use. Unpin a screen to watch another."});
-            return ValueTask.CompletedTask;
+            return;
         }
+        var selection = slot.State.Value;
+        if (slot.Pin.IsSelected && selection.Receiver is { } relay && selection.StreamSession == client?.Reference &&
+            relay.Account == data.Account && relay.Channel == data.ChannelId && relay.StreamKey == stream.Key)
+        {
+            try
+            {
+                var response = await client!.InvokeAsync("reconnectVideo", new { account = relay.Account, channelId = relay.Channel,
+                    key = stream.Key, lease = relay.Lease, videoView = relay.Receiver.Reference.Id }, token);
+                if (response.ValueKind == JsonValueKind.Object && response.TryGetProperty("reconnected", out var result) &&
+                    result.ValueKind == JsonValueKind.True) return;
+            }
+            catch (DiscordCommandException) { /* A retired output needs a fresh receiver. */ }
+            token.ThrowIfCancellationRequested();
+            if (!slot.Pin.IsSelected || slot.State.Value.Revision != selection.Revision || client?.Reference != selection.StreamSession ||
+                CurrentState() is not { } latest || latest.Account != data.Account || latest.ChannelId != data.ChannelId ||
+                !latest.Streams.Any(s => s.UserId == stream.UserId && s.Key == stream.Key)) return;
+        }
+        PrepareWatch(slot,data,stream,activityUser);
+        if (!slot.Pin.IsSelected) await RequestPinAsync(slot.Pin,token);
+    }
+
+    private void PrepareWatch(WatchSlot slot,DiscordState data,DiscordStream stream,string? activityUser)
+    {
         slot.State.Update(current=>new WatchState(data.Account,data.ChannelId,stream.Key,stream.Name,current.Receiver,activityUser,
             StreamSession:client?.Reference));
         view.Update(current=>current with{Notice=""});
         if(slot.Pin.IsSelected)RestartReceiver(slot);
-        return RequestPinAsync(slot.Pin,token);
     }
     private DiscordState? CurrentState()=>state.Snapshot is {HasValue:true,Value.Ready:true,Status:not WidgetResourceStatus.Error} snapshot?snapshot.Value:null;
     private IndexedCollectionDescriptor? CollectionSource(string id)=>id switch
@@ -381,20 +406,27 @@ public sealed partial class DiscordWebViewWidget : Widget
         }, WidgetOperationLifetime.Active);
     }
 
-    private ValueTask JoinAsync(string account,string target,CancellationToken token,string? activityUserId=null)
+    private async ValueTask JoinAsync(string account,string target,CancellationToken token,string? activityUserId=null) =>
+        _ = await JoinVoiceAsync(account,target,token,activityUserId);
+
+    private async ValueTask<bool> JoinVoiceAsync(string account,string target,CancellationToken token,string? activityUserId=null, WidgetSummaryMicrophone? summaryRequest=null)
     {
         token.ThrowIfCancellationRequested();
         bool Available(DiscordState data)=>activityUserId is null?data.Channels.Any(channel=>channel.Id==target):
             data.Activities.Any(row=>row.UserId==activityUserId&&row.ChannelId==target&&row.CanJoinVoice);
         var before=CurrentState();var session=client?.Reference;var origin=navigation.Value;
         if(before is null||before.Account!=account||!before.Capabilities.Voice||!Available(before)||Operations.IsBusy("discord.command")||before.ChannelId==target)
-            return ValueTask.CompletedTask;
-        Operations.RunSingleFlight("discord.command",async context=>
+            return false;
+        var joinedChannel = false;
+        var op = Operations.RunSingleFlight("discord.command",async context=>
         {
+            using var command = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, summaryRequest is null ? CancellationToken.None : token);
+            var ct = command.Token;
             view.Update(current=>current with{Notice=""});
             try
             {
-                var permission=await client!.RequestMicrophoneAsync(context.CancellationToken);
+                var permission = summaryRequest is null ? await client!.RequestMicrophoneAsync(ct) :
+                    await HostServices.Capabilities.InvokeAsync(WidgetSummaryCapabilities.RequestMicrophone, summaryRequest, ct);
                 if(permission.State!=WebSessionMicrophoneState.Granted)
                 {
                     if(context.IsCurrent && permission.State!=WebSessionMicrophoneState.Cancelled)
@@ -402,18 +434,27 @@ public sealed partial class DiscordWebViewWidget : Widget
                             "Microphone setup is unavailable on this host.":"Microphone access was not granted. You have not joined the channel."});
                     return;
                 }
+                if (summaryRequest is not null)
+                {
+                    await state.Refresh().Completion.WaitAsync(ct);
+                    var access = await HostServices.Capabilities.InvokeAsync(WidgetSummaryCapabilities.CheckReader, new(summaryRequest.Reader), ct);
+                    if (!access.Acknowledged) return;
+                }
                 var current=CurrentState();
-                if(!context.IsCurrent||client.Reference!=session||current is null||current.Account!=account||current.ChannelId!=before.ChannelId||!Available(current))return;
-                if(activityUserId is null)await client.InvokeAsync("join",new{account,target,channelId=current.ChannelId},context.CancellationToken);
-                else await client.InvokeAsync("joinActivity",new{account,target,userId=activityUserId,channelId=current.ChannelId},context.CancellationToken);
+                if(!context.IsCurrent||client!.Reference!=session||current is null||current.Account!=account||current.ChannelId!=before.ChannelId||!Available(current))return;
+                if(activityUserId is null)await client.InvokeAsync("join",new{account,target,channelId=current.ChannelId},ct);
+                else await client.InvokeAsync("joinActivity",new{account,target,userId=activityUserId,channelId=current.ChannelId},ct);
             }
             catch(Exception) when(!context.CancellationToken.IsCancellationRequested)
             {if(context.IsCurrent)view.Update(current=>current with{Notice="Discord could not join the channel. Check microphone setup and connection, then try again."});return;}
             finally{if(LifecycleState!=WidgetLifecycleState.Destroying)await state.Refresh().Completion;}
-            if(context.IsCurrent&&client!.Reference==session&&CurrentState() is { } joined&&joined.Account==account&&joined.ChannelId==target&&
+            joinedChannel = context.IsCurrent&&client!.Reference==session&&CurrentState() is { } joined&&joined.Account==account&&joined.ChannelId==target;
+            if(summaryRequest is null && joinedChannel &&
                 origin.Route is (Route.Channels or Route.Friends)&&ReferenceEquals(origin,navigation.Value))navigation.Back();
         },WidgetOperationLifetime.Widget);
-        return ValueTask.CompletedTask;
+        if (summaryRequest is null) return op.IsAccepted;
+        await op.Completion.WaitAsync(token);
+        return joinedChannel;
     }
     private async ValueTask<TrayActionResult> CommandAsync(string method, object args, WebSessionReference? session,
         bool notifyInWidget = true, CancellationToken token = default)
@@ -519,8 +560,17 @@ public sealed partial class DiscordWebViewWidget : Widget
         if(old.Receiver is { } relay)
         {await relay.Receiver.DisposeAsync();await ReleaseLeaseAsync(relay.Account,relay.Lease);}
     }
-    private async Task ReleaseLeaseAsync(string account,string lease)
-    {try{using var cleanup=new CancellationTokenSource(TimeSpan.FromSeconds(3));await client!.InvokeAsync("unwatch",new{account,lease},cleanup.Token);}catch(Exception){/* Provider expiry also bounds abandoned relays. */}}
+    private async Task<string?> ReleaseLeaseAsync(string account,string lease)
+    {
+        try
+        {
+            using var cleanup=new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            var reply=await client!.InvokeAsync("unwatch",new{account,lease},cleanup.Token);
+            return reply.ValueKind==JsonValueKind.Object && reply.TryGetProperty("reason",out var reason) &&
+                reason.ValueKind==JsonValueKind.String ? reason.GetString() : null;
+        }
+        catch(Exception){return null;} // Provider expiry also bounds abandoned relays.
+    }
     protected override async ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
         if(client is not null)

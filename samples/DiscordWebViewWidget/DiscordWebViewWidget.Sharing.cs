@@ -54,16 +54,19 @@ public sealed partial class DiscordWebViewWidget
         var content=new List<WidgetElement>{UI.Text("Your stream","discord.share.heading").Classes("discord-section-title"),
             UI.Text(status,"discord.share.status").Classes("discord-secondary")};
         if(data?.ShareError is {Length:>0} error)
-            content.Add(UI.Text(ShareErrorMessage(error),"discord.share.error").Classes("discord-notice"));
+            content.Add(UI.Text(ShareErrorMessage(error),"discord.share.error").Classes("discord-notice","discord-notice-compact"));
         if(data?.ShareQualityWarning is {Length:>0} warning&&capture is not null&&OwnsCall(capture.Owner,data))
-            content.Add(UI.Text(ShareErrorMessage(warning),"discord.share.quality-warning").Classes("discord-notice"));
+            content.Add(UI.Text(ShareErrorMessage(warning),"discord.share.quality-warning").Classes("discord-notice","discord-notice-compact"));
+        if(capture is {Phase:WebCaptureStreamPhase.Capturing}&&data is {Sharing:true,ChannelId:not null}&&OwnsCall(capture.Owner,data))
+            content.Add(UI.Button("Measure stream cadence",ShareSampleAction(data,current,client?.Reference),"discord.share.measure")
+                .Classes("discord-control"));
         return UI.Stack("discord.share.details",content.ToArray()).Classes("discord-stream-card");
     }
 
     private static string ShareErrorMessage(string error)=>error switch
     {
         "share_quality_unconfirmed"=>"Discord could not confirm the selected stream quality. Check Stream details.",
-        "share_content_preference_unconfirmed"=>"Discord could not preserve the clarity setting. Sharing is still active.",
+        "share_content_preference_unconfirmed"=>"Discord could not preserve the selected video preference. Sharing is still active.",
         "share_quality_unavailable"=>"This Discord version could not apply the selected stream quality.",
         "share_quality_unsupported"=>"That stream quality is no longer available for this call.",
         "share_picker_timeout"=>"Sharing setup timed out. Choose Share game to try again.",
@@ -112,10 +115,10 @@ public sealed partial class DiscordWebViewWidget
                 // quality just because this account/call cannot currently use it.
                 var preferred=provider.PreferredShareQuality is { } saved?new WebCaptureStreamOptions(saved.Resolution,saved.FrameRate):new WebCaptureStreamOptions();
                 if(!allowed.Contains(preferred))preferred=allowed.Contains(new WebCaptureStreamOptions())?new():allowed[0];
-                preferred=preferred with{ContentPreference=WebCaptureContentPreference.Detail};
+                preferred=preferred with{ContentPreference=WebCaptureContentPreference.Motion};
                 if(!context.IsCurrent||!OwnsCall(intent))return;
                 var prepared=await HostServices.Capture.WebStreams.PrepareAsync(intent.Session,preferred,allowed,
-                    allowContentPreferenceSelection:false,context.CancellationToken);
+                    allowContentPreferenceSelection:true,context.CancellationToken);
                 if(prepared.Ticket is { } ticket)
                     capture=new(intent,ticket,prepared.Quality??preferred,prepared.ApplicationName??"Selected application",prepared.ApplicationAudio,prepared.Phase);
                 // Capture may already have started while the preparation reply

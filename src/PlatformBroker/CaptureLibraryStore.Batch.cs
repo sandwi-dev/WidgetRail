@@ -82,7 +82,13 @@ public sealed partial class CaptureLibraryStore
             using var ownership = Own(); RefreshEntry(reference.Id, forceMetadata: true);
             var saved = IndexRows("WHERE id=$id", ("$id", reference.Id)).FirstOrDefault() ?? throw Error("capture_library_not_found");
             var path = MediaPath(saved); PlainPath(path);
-            if (File.Exists(path) || saved.Item.Revision != reference.ContentRevision || saved.Item.MetadataRevision != reference.MetadataRevision)
+            // File.Exists also returns false for access errors and offline volumes.
+            var containingFolder = saved.Item.SourceId is { } sourceId ? ReadSource(sourceId).Directory : captureDirectory;
+            if (!Directory.Exists(containingFolder)) throw Error("capture_library_source_unavailable");
+            try { _ = File.GetAttributes(path); throw Error("capture_library_metadata_conflict"); }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) when (Directory.Exists(containingFolder)) { }
+            if (saved.Item.Revision != reference.ContentRevision || saved.Item.MetadataRevision != reference.MetadataRevision)
                 throw Error("capture_library_metadata_conflict");
             token.ThrowIfCancellationRequested();
             // This operation removes only unavailable library metadata. Never
@@ -99,7 +105,14 @@ public sealed partial class CaptureLibraryStore
         DemandId(id); await gate.WaitAsync(token).ConfigureAwait(false);
         try
         {
-            using var ownership = Own(); var path = MediaPath(Read(id)); PlainPath(path);
+            using var ownership = Own();
+            var saved = Read(id);
+            var path = MediaPath(saved); PlainPath(path);
+            if (File.Exists(path) && HasStableFileIdentity(saved.ExternalIdentity))
+            {
+                using var original = CapturePinnedFile.Open(path);
+                if (!SamePhysicalFile(saved.ExternalIdentity, original.Identity)) throw Error("capture_library_not_found");
+            }
             if (!File.Exists(path)) throw Error("capture_library_not_found");
             return path;
         }

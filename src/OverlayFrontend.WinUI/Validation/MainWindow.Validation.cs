@@ -405,6 +405,8 @@ public sealed partial class MainWindow
             page.EnableEmbeddedSampleValidation(embeddedResult, arguments.Contains("--validate-embedded-fullscreen-only"));
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-widget-switches") is { } switchResult)
             page.EnableSwitchValidation(switchResult);
+        if (arguments.Contains("--shell-no-controller") && arguments.Contains("--validate-summary-microphone"))
+            Browser.BrowserSurface.FixturePage = _ => "<!doctype html><title>Local voice consent test</title>";
         if (arguments.Contains("--shell-no-controller") && arguments.Contains("--replay-shell-input"))
             page.EnableValidationInputReplay();
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-shared-ux") is { } uxResult)

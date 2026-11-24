@@ -1,6 +1,5 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Hosting;
 using WidgetRail.OverlayFrontend.WinUI.Motion;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
@@ -12,16 +11,18 @@ internal sealed partial class WidgetPresentationSurface
     private MainWindow? openingOwner;
     private string? defaultProcess, selectedProcess, publishedArtKey, requestedArtKey;
     private long observedOpening = -1;
-    private bool paintHidden, wantsForeground, admitted;
+    private bool paintHidden, wantsForeground, selectedBackground;
     internal bool IsForegroundRevealed => paintHidden;
+#if ENABLE_WIDGET_VALIDATION
+    internal bool HasForegroundPaint => foregroundPaint is not null;
+    internal TimeSpan ForegroundTransitionDuration => foregroundPaint?.OpacityTransition?.Duration ?? TimeSpan.Zero;
+#endif
     internal event Action<TimeSpan>? ForegroundPaintChanged;
     private WallpaperMotionStyle foregroundMotion = WallpaperMotionStyle.Default;
 
     internal Border? ConfigureForegroundBackground(string? key, WallpaperMotionStyle motionStyle)
     {
         foregroundMotion = motionStyle;
-        if (key == null && foregroundPaint == null && IsLoaded && App.Window is MainWindow main && main.OwnsBackgroundRoot(XamlRoot))
-            observedOpening = main.BackgroundOpening;
         defaultProcess = key;
         if (key != null && foregroundPaint == null)
         {
@@ -60,23 +61,24 @@ internal sealed partial class WidgetPresentationSurface
     }
     internal void SelectBackground(string? process, string? artKey)
     {
+        selectedBackground = true;
         selectedProcess = process;
         requestedArtKey = artKey;
         ReconcileForeground();
     }
-    private void ReconcileForeground()
+    private void ReconcileForeground(bool animate = true)
     {
         if (openingOwner is not { } main || foregroundPaint == null) return;
-        var opening = observedOpening != main.BackgroundOpening;
-        if (opening)
-        {
-            observedOpening = main.BackgroundOpening;
-            admitted = main.MatchesForegroundBackground(defaultProcess);
-        }
-        var eligible = admitted && main.MatchesForegroundBackground(defaultProcess);
-        wantsForeground = eligible && (opening ? defaultProcess : selectedProcess) == defaultProcess;
+        // On a warm open, the retained surface can win the match before the
+        // first frame and before native focus has returned. A late match uses
+        // the current foreground selection and the normal artwork fade.
+        var firstPresentation = observedOpening < 0;
+        var initial = observedOpening != main.BackgroundOpening && main.BeforeFirstBackgroundFrame;
+        observedOpening = main.BackgroundOpening;
+        var eligible = main.MatchesForegroundBackground(defaultProcess);
+        wantsForeground = eligible && (!selectedBackground || selectedProcess == defaultProcess);
         if (wantsForeground || !eligible || requestedArtKey == null || requestedArtKey == publishedArtKey)
-            SetPaintHidden(wantsForeground, eligible && !opening && IsLoaded);
+            SetPaintHidden(wantsForeground, animate && eligible && !firstPresentation && !initial && !main.BeforeFirstBackgroundFrame && IsLoaded);
     }
     private void ShowPaint(bool animate)
     {

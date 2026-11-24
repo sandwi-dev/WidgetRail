@@ -1,4 +1,4 @@
-param([string]$OutputDirectory,[string]$Configuration='Release')
+param([string]$OutputDirectory,[string]$Configuration='Release',[switch]$ExperimentalEncodedSource)
 $ErrorActionPreference='Stop'
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if(!$OutputDirectory){$OutputDirectory=Join-Path $repo ('artifacts/discord-webview-widget/'+[guid]::NewGuid().ToString('N'))}
@@ -14,7 +14,9 @@ try {
     & npm ci --ignore-scripts --no-audit --no-fund
     if($LASTEXITCODE){throw 'Pinned backend build-tool restore failed.'}
 } finally { Pop-Location }
-& node "$repo/tools/DiscordWebViewPrototype/Build-Backend.mjs" "$package/payload/web/backend.js"
+$backendArgs = @("$package/payload/web/backend.js")
+if ($ExperimentalEncodedSource) { $backendArgs += '--experimental-encoded-source' }
+& node "$repo/tools/DiscordWebViewPrototype/Build-Backend.mjs" @backendArgs
 if($LASTEXITCODE){throw 'Sealed backend composition failed.'}
 Copy-Item -LiteralPath "$PSScriptRoot/manifest.json" -Destination $package
 Copy-Item -LiteralPath "$PSScriptRoot/styles/default.wrss" -Destination "$package/styles"

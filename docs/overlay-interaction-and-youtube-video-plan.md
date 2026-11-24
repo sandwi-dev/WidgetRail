@@ -18,6 +18,9 @@ Update the table before moving between steps or stopping work. For an unfinished
 | 8. Playnite Settings | **Verified with live Playnite installers** | The disposable Playnite 10.65 profile began with both providers missing. Cancel preserved Missing. Both real add-ons installed through the widget, and reopening the overlay reported both Installed after Playnite restarted. Back and focus restoration passed from all three tabs. | Completed. The usual Playnite profile and Silksong are running again. |
 | 9. Themes catalogue | **Published and verified on the live feed** | All three archives and 15 images matched their SHA-256 digests. The index returned 200 and its conditional request returned 304. An open native tab recovered from the initial 404. Seven native first-download checks passed with the bundled archives omitted from a fixture bridge. | Completed. The production publication commit is `5aada704e36fd3edcad11b04b42deb6db0d1c0ca`. |
 | 10. Home widget | **Startup-only behavior verified on default profile** | Fresh processes honor the saved choice or default to Settings. Isolated reopen checks covered both Settings and Catalogue as home. On the default profile, Shift+F1 resumed Playnite with the same Silksong card focused. | Completed. The corrected candidate is running. |
+| Same-widget overlay reopen | **Verified on an isolated Release host** | The host gives a visible retained presentation 1.5 seconds to resume. A different destination uses the 200 ms opening delay. The normalized lifecycle fixture covered completion before the timer, a stalled resume and superseding switches. With Silksong running, an ordinary shortcut reopen restored focus to Resume playing and input was ready in 587 ms. | Release candidate staged. Evidence is in `E:/WidgetRail/interaction-plan/retained-reopen/`. |
+| Radial dismissal on overlay close | **Verified on an isolated native host** | Playnite kept its committed presenter on animated close, interrupted close, immediate hide and animations-off reopen. The wheel was collapsed before each entrance and remained absent in every sampled XAML rendering callback. Native focus returned to the Silksong Resume playing card. The 19 existing overlay-motion checks passed. | Release candidate staged. Evidence is in `E:/WidgetRail/interaction-plan/radial-reopen/`. |
+| Catalogue follow-up | **Verified locally** | Catalogue 0.2.1 groups all 19 listings into Featured, Essentials and More widgets. All 21 managed checks passed. Native keyboard, pointer and normalized D-pad, A/B and bumper checks covered entry, crossing shelves, opening listings and returning to the exact card at default size and at 150% text with high contrast. All 15 bundled preview hashes matched the generated index. Evidence is in `E:/WidgetRail/interaction-plan/catalogue-curation/`. | The new package and Audio Mixer thumbnails are ready for deployment. |
 
 ## 1. Right-click a notification to dismiss it
 
@@ -211,6 +214,24 @@ The public assets-only commit is `a9cd11da35f0a37dcd8094d59cd92f6715ae57ef`. All
 | Settings widget marketplace diagnostics | Retains widget browsing and review operations. The new theme operations are admitted through the bundled Catalogue capability. |
 | Samples, templates, and other first-party widgets | No other shipping widget uses the reserved Catalogue capability. Shared modal and artwork contracts retain their existing input and lifecycle behavior. |
 
+**Catalogue listing details follow-up — verified locally.** Catalogue 0.2.2 uses
+optional editorial rows for widget integrations and searchable theme inspiration.
+The widget and theme publisher accept older entries. The bridge enriches a
+legacy theme listing only when its bundle ID, version and package digest match.
+The Catalogue consumes the rows. The Settings management view can ignore them.
+Playnite retains its public media carousel and Capture Library retains its
+saved-media viewer. Neither consumer needs a shared control change. Bundled
+themes use their offline artwork handles. Remote themes with verified preview
+hashes and multi-screenshot widget listings can use the existing inline gallery.
+
+All 21 widget and 35 marketplace engine checks passed. The native fixture passed
+140 checks at widths of 900 and 560 DIPs, including selected image pixels,
+thumbnail navigation and exact return focus. An isolated production widget
+opened a real Playnite screenshot fullscreen, returned to its thumbnail, and
+entered Integrations. Searching for GTA 6 opened Afterglow FM and displayed
+its inspiration at normal size and at 150% text with high contrast.
+Evidence and the staged publication are in `E:/WidgetRail/interaction-plan/catalogue-details/`.
+
 ## 10. Choose the home widget for startup
 
 Add a **Home widget** picker to WidgetRail Settings. Settings is the default for a new profile or an unset preference, and the fallback whenever the chosen widget cannot open. Store the stable widget ID in the user's platform settings and offer the installed, enabled widgets the shell can show. Returning the preference to Settings should take one selection.
@@ -226,6 +247,15 @@ Native baseline on this machine used 0.4.93 with Silksong running and Playnite e
 The runtime's two targeted startup tests also passed, including independent stage deadlines, a deliberately delayed initial lifecycle, and serialization of overlapping start requests. Evidence: `E:/WidgetRail/interaction-plan/startup-deadlines.log`. The current and two rotated default-profile overlay logs include earlier generic Playnite failures, but do not identify them as timeout failures. The sampled healthy launches do not establish their historical cause.
 
 The original picker qualification covered persisted selection, explicit startup, missing/disabled/stopped fallback, re-enable and rapid close/reopen. Its former every-opening expectation was superseded by startup-only selection. The current shell resolves `homeWidgetId` at startup and resumes the current widget when it becomes visible again. Four isolated Release regressions tested both home choices. The default-profile run started in Settings, switched to Playnite, hid and reopened with Shift+F1, and restored focus to Resume playing for Silksong. Evidence is in `E:/WidgetRail/interaction-plan/startup-only-home/verification07/result.json` and `startup-only-home/default-reopen.json`.
+
+**Idle retirement and reopen.** On an ordinary reopen of the same selected widget,
+the shell compares its retained worker run with the newly admitted snapshot.
+A replacement worker gets interactive entry through the normal foreground and
+input checks. A warm rail preview keeps rail ownership. This policy belongs to
+the shell for every idle-unloading widget. Playnite exercises the native path.
+Resident widgets take the warm path. Pins, explicit selections, chooser previews,
+and startup home selection retain their own input policies. SDK templates and
+widget packages require no changes.
 
 With the persisted setting and the existing 20-widget inventory, six Debug-host starts and reopens reached Playnite focus. Median process launch to focus was 4,642 ms (4,442–6,612 ms). Median shortcut to warm focus was 96 ms (66–148 ms). Six same-build explicit-target runs measured 4,514 ms cold and 90 ms warm. The persisted runs each started one worker. The cold Interactive acknowledgement was 370–588 ms, so these runs give no reason to increase the worker deadlines. The Debug comparison is separate from earlier Release and explicit-target baselines. Evidence is in `E:/WidgetRail/interaction-plan/persisted-playnite/` and `explicit-playnite-debug/`.
 

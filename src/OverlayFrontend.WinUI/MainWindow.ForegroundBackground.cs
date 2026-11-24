@@ -7,13 +7,13 @@ namespace WidgetRail.OverlayFrontend.WinUI;
 
 public sealed partial class MainWindow
 {
-    internal event Action? ForegroundBackgroundChanged;
+    internal event Action<bool>? ForegroundBackgroundChanged;
     internal long BackgroundOpening { get; private set; }
     internal bool ForegroundBackgroundAllowed { get; private set; }
+    internal bool BeforeFirstBackgroundFrame { get; private set; }
     internal bool OwnsBackgroundRoot(XamlRoot? root) => root != null && ReferenceEquals(root, ShellRoot.XamlRoot);
     private string? backgroundProcess;
     private nint backgroundHook;
-    private bool backgroundAdmissionOpen;
     private BackgroundWindowEvent? backgroundEvent;
 
     private void BeginForegroundBackground()
@@ -22,23 +22,24 @@ public sealed partial class MainWindow
         BackgroundOpening++;
         backgroundProcess = foregroundReturnTarget is { } target
             ? CaptureProcessKey.Create(target.ProcessId, target.ProcessCreated) : null;
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= CloseBackgroundAdmission;
-        backgroundAdmissionOpen = backgroundProcess != null;
-        if (backgroundAdmissionOpen) Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += CloseBackgroundAdmission;
-        ForegroundBackgroundChanged?.Invoke();
+        // Only the initial paint is time-sensitive. A cold widget may publish
+        // its process key later, while the original opening still owns the window.
+        BeforeFirstBackgroundFrame = backgroundProcess != null;
+        if (BeforeFirstBackgroundFrame) Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnFirstBackgroundFrame;
+        ForegroundBackgroundChanged?.Invoke(true);
     }
 
-    private void CloseBackgroundAdmission(object? sender, object args)
+    private void OnFirstBackgroundFrame(object? sender, object args)
     {
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= CloseBackgroundAdmission;
-        backgroundAdmissionOpen = false;
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnFirstBackgroundFrame;
+        BeforeFirstBackgroundFrame = false;
     }
 
     internal bool MatchesForegroundBackground(string? key)
     {
         if (!ForegroundBackgroundAllowed || key is null || key != backgroundProcess || foregroundReturnTarget is not { } target) return false;
         if (backgroundHook != 0) return true;
-        if (!backgroundAdmissionOpen || !BackgroundWindowVisible(target)) return false;
+        if (!BackgroundWindowVisible(target)) return false;
         backgroundEvent ??= BackgroundWindowChanged;
         // Process-scoped object events include hide, destroy and location changes (minimize).
         backgroundHook = SetWinEventHook(0x8001, 0x800B, 0, backgroundEvent, target.ProcessId, 0, 0);
@@ -74,13 +75,13 @@ public sealed partial class MainWindow
     {
         backgroundProcess = null;
         ReleaseBackgroundHook();
-        ForegroundBackgroundChanged?.Invoke();
+        ForegroundBackgroundChanged?.Invoke(true);
     }
 
     private void ReleaseBackgroundHook()
     {
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= CloseBackgroundAdmission;
-        backgroundAdmissionOpen = false;
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnFirstBackgroundFrame;
+        BeforeFirstBackgroundFrame = false;
         if (backgroundHook != 0) { UnhookWinEvent(backgroundHook); backgroundHook = 0; }
     }
 

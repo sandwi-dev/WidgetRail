@@ -20,6 +20,11 @@ public sealed partial class PlayniteLibraryWidget
         lock (_gate) return new(game, _organization.TrackedAchievements.FirstOrDefault(t =>
             t.Game == game && (playingAuthority is null || t.Connection == playingAuthority.Value.Connection)));
     }
+
+    private PlayingAwards? VisiblePlayingAwards(string game)
+    {
+        lock (_gate) return playingAwards.GetSnapshot(AwardsQuery(game)).Value?.LimitNextActivity(_organization.NextActivityCount);
+    }
     private readonly WidgetQueryResource<string, IReadOnlyList<CaptureLibraryItem>> playingCaptures;
 
     private static string? PlayingId(PlayniteLibraryRenderState state) =>
@@ -28,6 +33,7 @@ public sealed partial class PlayniteLibraryWidget
 
     private void LoadPlaying()
     {
+        ObserveDiscordShelf();
         var id = PlayingId(_model.Value);
         if (id is null || LifecycleState != WidgetLifecycleState.Interactive || _navigation.Value.Route != PlayniteLibraryRoute.Library) return;
         var route = _navigation.Value.RouteCancellationToken;
@@ -91,9 +97,14 @@ public sealed partial class PlayniteLibraryWidget
             Add(PlayingCardKind.Details, PlayingResumeCard(entry, title, cover?.Handle == hero?.Handle ? null : cover?.Handle,
                 playingDetails.GetSnapshot(id).Value?.Game).FocusDown(below));
         }
+        if (!hidden.HasFlag(PlayingCardKind.Discord))
+        {
+            var card = DiscordShelfCard(key + ".discord", state) with { SummaryProviderPackage = Integrations.DiscordActivityIntegration.Provider };
+            Add(PlayingCardKind.Discord, card.FocusDown(below));
+        }
         if (LatestPlayingCapture(id) is { } capture)
             Add(PlayingCardKind.Capture, PlayingCaptureCard(key + ".capture", capture).FocusDown(below));
-        if (!hidden.HasFlag(PlayingCardKind.Achievements) && playingAwards.GetSnapshot(AwardsQuery(id)).Value is { Total: > 0 } awards)
+        if (!hidden.HasFlag(PlayingCardKind.Achievements) && VisiblePlayingAwards(id) is { Total: > 0 } awards)
         {
             if (awards.Badges.Count == 0)
                 Add(PlayingCardKind.Achievements, PlayingAchievementCard(key + ".achievement", awards, null).FocusDown(below));
@@ -120,7 +131,7 @@ public sealed partial class PlayniteLibraryWidget
         if (session is not null || started is not null)
             Add(PlayingCardKind.Sessions, PlayingSessionCard(key + ".sessions", started, session).FocusDown(below));
         if (cards.Count == 0) return null;
-        if (cards.Count == 1 && cards[0].Kind == PlayingCardKind.Help)
+        if (cards.All(card => card.Kind is PlayingCardKind.Help or PlayingCardKind.Discord))
             cards.Add((PlayingCardKind.Help, UI.ActionSurface(ManageCards, key + ".manage", "Manage cards", ActionSurfaceOrientation.Vertical,
                 UI.Text("Manage cards", key + ".manage.label").Classes("playing-card-title")).FocusDown(below).Classes("playing-action", "playing-manage")));
         var processKey = state.RunningProcesses?.GetValueOrDefault(id);
@@ -152,7 +163,8 @@ public sealed partial class PlayniteLibraryWidget
                 .Classes("playnite-library-home-summary")
             : PlayniteLibraryPresentation.FocusedGameSummary(id, title, item.Presentation.Source.DisplayName,
                 "Running", HomeState.Publication?.Query.Source.Authority.FavoriteGameIds.Contains(id) == true, null, item, browseLayout: false, canQuickPlay: false, runningShelf: true);
-        return new(UI.Stack(key + ".body", body.ToArray()).RememberChildFocus(entry).Classes("playing-body"), summary, entry, entry == key + ".help", processKey);
+        return new(UI.Stack(key + ".body", body.ToArray()).RememberChildFocus(entry).Classes("playing-body"), summary, entry,
+            entry == key + ".help" || entry == key + ".discord", processKey);
 
     }
 
@@ -181,12 +193,22 @@ public sealed partial class PlayniteLibraryWidget
             var selected = action.ActionId[Playing.Length..^7];
             if (state.RunningGames!.Contains(selected))
             {
-                _model.Update(s => s with { PlayingGame = selected, NewsReader = null });
+                _model.Update(s => s with { PlayingGame = selected, NewsReader = null, DiscordPanelGame = null });
                 LoadPlaying();
             }
             return true;
         }
         if (!action.ActionId.StartsWith(key + ".", StringComparison.Ordinal)) return true;
+        if (action.ActionId == key + ".discord" && state.DiscordSummary is { Mode: not "setup" } && !HiddenCards.HasFlag(PlayingCardKind.Discord))
+        {
+            _model.Update(current => current with { DiscordPanelGame = id, DiscordActionNotice = null });
+            return true;
+        }
+        if (action.ActionId == key + ".discord.close")
+        {
+            _model.Update(current => current with { DiscordPanelGame = null });
+            return true;
+        }
         if (action.ActionId == key + ".resume")
         {
             if (state.NewsReader is null && !HiddenCards.HasFlag(PlayingCardKind.Details))
@@ -209,7 +231,7 @@ public sealed partial class PlayniteLibraryWidget
         }
         else
         {
-            var badge = playingAwards.GetSnapshot(AwardsQuery(id)).Value?.Badges.FirstOrDefault(b =>
+            var badge = VisiblePlayingAwards(id)?.Badges.FirstOrDefault(b =>
                 action.ActionId == key + ".achievement." + b.Key);
             if (badge is null && action.ActionId != key + ".capture" &&
                 action.ActionId != key + ".achievement" && action.ActionId != key + ".sessions") return true;
@@ -220,7 +242,7 @@ public sealed partial class PlayniteLibraryWidget
                 await playingDetails.EnsureLoaded(id, route).Completion.WaitAsync(token);
                 if (route.IsCancellationRequested || PlayingId(_model.Value) != id ||
                     LifecycleState != WidgetLifecycleState.Interactive) return true;
-                if (badge is not null && playingAwards.GetSnapshot(AwardsQuery(id)).Value?.Badges.Any(b => b.Key == badge.Key) != true) return true;
+                if (badge is not null && VisiblePlayingAwards(id)?.Badges.Any(b => b.Key == badge.Key) != true) return true;
                 game = PlayingItem(id);
                 if (game is null) ShowActionToast("Game details", "The game could not be read from Playnite.", false);
             }

@@ -26,6 +26,10 @@ public sealed record WidgetIntentHandler : WidgetIntentContract
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool SupportsPassiveDelivery { get; init; }
 
+    /// <summary>Accepts user-invoked actions while the caller retains focus, including a cold worker start.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool SupportsBackgroundDelivery { get; init; }
+
     /// <summary>Query this handler's current readiness before presenting or delivering an intent.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool HasDynamicAvailability { get; init; }
@@ -64,6 +68,19 @@ public static class WidgetIntentContracts
         },"required":["captures"]}
         """));
     public const string FileShare = "widgetrail.files.share";
+    public const string InvokeSummaryAction = "widgetrail.summary.action";
+    public const string OpenSummaryProvider = "widgetrail.summary.open";
+    public static WidgetIntentContract SummaryProvider { get; } = new(OpenSummaryProvider, 1, Schema("""
+        {"type":"object","additionalProperties":false,"properties":{"packageId":{"type":"string","minLength":3,"maxLength":128}},"required":["packageId"]}
+        """));
+    /// <summary>The Bridge restricts this action to the publisher that supplied the invoking widget's addressed summary.</summary>
+    public static WidgetIntentContract SummaryAction { get; } = new(InvokeSummaryAction, 1, Schema("""
+        {"type":"object","additionalProperties":false,"properties":{"token":{"type":"string","minLength":32,"maxLength":32},"reader":{"type":"string","minLength":32,"maxLength":32},"pin":{"type":"boolean"}},"required":["token","reader","pin"]}
+        """));
+    /// <summary>The action declares whether it can request a microphone decision over the calling widget.</summary>
+    public static WidgetIntentContract SummaryActionV2 { get; } = new(InvokeSummaryAction, 2, Schema("""
+        {"type":"object","additionalProperties":false,"properties":{"token":{"type":"string","minLength":32,"maxLength":32},"reader":{"type":"string","minLength":32,"maxLength":32},"pin":{"type":"boolean"},"microphone":{"type":"boolean"}},"required":["token","reader","pin","microphone"]}
+        """));
     /// <summary>A host-authorized offer ID, never a filesystem path or permission declaration.</summary>
     public static WidgetIntentContract Files { get; } = new(FileShare, 1, Schema("""
         {"type":"object","additionalProperties":false,"properties":{
@@ -181,7 +198,8 @@ public static class WidgetIntentContracts
                     var standard = compiled.Id switch { OpenWebPage => compiled.Version == 2 ? WebV2 : Web, OpenWebNotification => WebNotification, OpenVideo => Video, SearchVideo => VideoSearch, AskGameHelp => GameHelp,
                         OpenWidgetSettings => WidgetSettings, OpenWidgetPermissions => WidgetPermissions, OpenMarketplace => Marketplace, OpenAppUpdates => AppUpdates, OpenAppearance => Appearance,
                         OpenCaptureLibrary => compiled.Version == 2 ? CaptureLibraryV2 : CaptureLibrary, OpenRelatedItem => RelatedItem,
-                        AssociateCaptures => CaptureAssociation, FileShare => Files, _ => null };
+                        AssociateCaptures => CaptureAssociation, FileShare => Files, InvokeSummaryAction => compiled.Version == 2 ? SummaryActionV2 : SummaryAction,
+                        OpenSummaryProvider => SummaryProvider, _ => null };
                     if (compiled.Id.StartsWith("widgetrail.", StringComparison.Ordinal) &&
                         (standard is null || compiled.Version != standard.Version ||
                          compiled.SchemaDigest != CompiledWidgetIntentContract.Create(standard).SchemaDigest))

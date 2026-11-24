@@ -570,6 +570,7 @@ internal static partial class GalleryTests
                         var existing = Items.FirstOrDefault(value => value.Id == item.Id);
                         if (existing is null || existing.Revision != item.ContentRevision || existing.MetadataRevision != item.MetadataRevision)
                             results.Add(new(item.Id, ErrorCode: "capture_library_metadata_conflict"));
+                        else if (!existing.Available) results.Add(new(item.Id, ErrorCode: "capture_library_not_found"));
                         else { Items.RemoveAll(value => value.Id == item.Id); Recycled++; results.Add(new(item.Id)); }
                     }
                     revision++;
@@ -599,7 +600,7 @@ internal static partial class GalleryTests
             configure?.Invoke(client, this);
             Widget=WidgetTestHost.Attach(new CaptureLibraryWidget(),client.Build());
         }
-        private CaptureLibraryItem[] Read(CaptureLibraryQuery query)=>(query.HiddenOnly?HiddenItems:Items).Where(item=>(!query.FavoritesOnly||item.IsFavorite)&&
+        private CaptureLibraryItem[] Read(CaptureLibraryQuery query)=>(query.HiddenOnly?HiddenItems:Items).Where(item=>(!query.AvailableOnly || item.Available) && (!query.UnavailableOnly || !item.Available) && (!query.FavoritesOnly||item.IsFavorite)&&
             (query.SourceId is null || (item.SourceId ?? "") == query.SourceId) &&
             (string.IsNullOrWhiteSpace(query.Search)||item.Title!.Contains(query.Search,StringComparison.OrdinalIgnoreCase))).ToArray();
         internal void Notify(){revision++;changes.Writer.TryWrite(new(revision));}
@@ -609,7 +610,7 @@ internal static partial class GalleryTests
         internal IEnumerable<ViewNode> Nodes => Walk(View().Root);
         internal bool Busy=>Walk(View().Root).Any(node=>node.IsBusy==true);
         private static IEnumerable<ViewNode> Walk(ViewNode node)=>new[]{node}.Concat(node.Children.SelectMany(Walk));
-        internal async Task Start(){var count=Items.Count;await WidgetTestHost.InitializeAsync(Widget);await WidgetTestHost.SetLifecycleStateAsync(Widget,WidgetLifecycleState.Interactive);await Until(()=>Collection?.IndexedCollection?.Count==count&&!Busy);}
+        internal async Task Start(){var count=Items.Count(item => item.Available);await WidgetTestHost.InitializeAsync(Widget);await WidgetTestHost.SetLifecycleStateAsync(Widget,WidgetLifecycleState.Interactive);await Until(()=>Collection?.IndexedCollection?.Count==count&&!Busy);}
         internal async Task Action(string id,string? text=null){await Widget.OnActionAsync(new(id,id){CommittedText=text});}
         internal async Task Until(Func<bool> condition){using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(5));while(!condition())await Task.Delay(10,deadline.Token);}
         public async ValueTask DisposeAsync(){SlowRelease.TrySetResult();RecycleRelease.TrySetResult();ContextRelease.TrySetResult();ReplaySaveGate?.TrySetResult();await WidgetTestHost.DestroyAsync(Widget);changes.Writer.TryComplete();replayChanges.Writer.TryComplete();}

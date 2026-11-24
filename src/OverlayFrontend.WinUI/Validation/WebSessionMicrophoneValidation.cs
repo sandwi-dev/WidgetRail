@@ -60,7 +60,12 @@ internal static class WebSessionMicrophoneValidation
             using var pin = new Shell.PinnedWidgetWindow("WidgetRail synthetic video pin");
             var target = new Microsoft.UI.Xaml.Controls.Grid();
             pin.SetContent(target);
-            pin.Place(new(32,32,800,450));
+            var displays = Microsoft.UI.Windowing.DisplayArea.FindAll();
+            var display = Microsoft.UI.Windowing.DisplayArea.Primary;
+            for (int i = 0; i < displays.Count; i++)
+                if (!displays[i].IsPrimary) { display = displays[i]; break; }
+            pin.Place(new(display.WorkArea.X + 32,display.WorkArea.Y + 32,800,450));
+            pin.SetOpacity(70);
             pin.Show();
             var reference = new WebSessionReference(Guid.NewGuid().ToString("N"));
             var videoDefinition = new WebSessionDefinition("video", "Synthetic video", WebSessionSource.BackendVideo(reference));
@@ -69,9 +74,9 @@ internal static class WebSessionMicrophoneValidation
             try
             {
                 video.ConfigureHostedSession(videoDefinition, []);
-                target.Children.Add(video); video.PlacementHost=target; target.UpdateLayout();
+                backing.Root.Children.Add(video); video.PlacementHost=backing.Root; backing.Root.UpdateLayout();
                 await video.StartBackendVideoAsync(browser, reference, default);
-                video.SetPresentation(true,false,passivePin:true);
+                video.SetPresentation(false,false);
                 const string draw = """
                     const canvas=document.createElement('canvas');canvas.width=1280;canvas.height=720;
                     const ctx=canvas.getContext('2d');let frame=0;
@@ -112,7 +117,13 @@ internal static class WebSessionMicrophoneValidation
                     await Task.Delay(50);
                 }
                 await browser.FixtureSetVideoTrackAsync(reference.Id);
-                var timeout=Environment.TickCount64+6000;
+                backing.Root.Children.Remove(video);
+                await Microsoft.UI.Xaml.Media.CompositionTarget.GetCompositorForCurrentThread().RequestCommitAsync();
+                target.Children.Add(video);
+                video.PlacementHost=target;
+                target.UpdateLayout();
+                video.SetPresentation(true,false,passivePin:true);
+                var timeout=Environment.TickCount64+12000;
                 while (await video.EvaluateFixtureAsync("document.querySelector('video')?.videoWidth")!="1280")
                 { if(Environment.TickCount64>=timeout)throw new TimeoutException("Direct video frames never reached the child."); await Task.Delay(35); }
                 static string Sample(string element) => "(()=>{const v="+element+
@@ -132,6 +143,10 @@ internal static class WebSessionMicrophoneValidation
                 var drops=pinLast.Dropped-pinFirst.Dropped;
                 Check(sourceFrames>=200 && pinFrames>=sourceFrames*.95 && drops<=pinFrames*.05,
                     $"Passive 720p pin follows original cadence across the idle memory boundary: source={sourceFrames}, pin={pinFrames}, pin drops={drops}");
+                await browser.EvaluateFixtureAsync("fixtureMain.pause();fixtureMain.srcObject=null;fixtureMain.remove()");
+                await Task.Delay(2000);
+                var pinOnly = await Counts(video,"document.querySelector('video')");
+                Check(pinOnly.Total > pinLast.Total + 15, "Pinned video continues receiving frames with the original viewer closed");
                 await video.DisposeAsync();
                 Check(!browser.HasActiveVideoOutput && await browser.EvaluateFixtureAsync("fixtureTrack.readyState")=="\"live\"",
                     "Closing the pin releases its media demand and preserves the original track");

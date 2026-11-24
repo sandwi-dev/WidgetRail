@@ -9,10 +9,16 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 /// <summary>Bounded native HTTP acquisition, including responses without Content-Length.</summary>
 internal static class NativeArtworkStream
 {
+#if ENABLE_WIDGET_VALIDATION
+    internal static Func<Uri, byte[]>? ValidationPublicImage { get; set; }
+#endif
     internal static async Task<IRandomAccessStream> OpenAsync(Uri uri, CancellationToken token, bool publicMedia = false)
     {
         if (publicMedia)
         {
+#if ENABLE_WIDGET_VALIDATION
+            if (ValidationPublicImage is { } fixture) return NativeArtworkDecoder.OpenMemory(fixture(uri));
+#endif
             if (ThemeCataloguePublication.PreviewFileDigest(uri) is { } digest)
                 return NativeArtworkDecoder.OpenMemory(await CataloguePreviewImageCache.ReadAsync(uri, digest, token).ConfigureAwait(false));
             var content = await NativePublicMediaTransport.Client.DownloadAsync(uri, PublicMediaPolicy.SameOrigin(uri),

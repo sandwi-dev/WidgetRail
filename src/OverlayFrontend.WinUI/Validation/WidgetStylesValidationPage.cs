@@ -50,6 +50,8 @@ internal sealed partial class WidgetStylesValidationPage : Page, IAsyncDisposabl
 
     private async Task RunAsync()
     {
+        if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--discord-shelf-fixtures") is { } shelfPath)
+        { await DiscordShelfAsync(shelfPath); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--native-chat-scroll-output") is { } nativeChatOutput)
         { await NativeChatScrollAsync(nativeChatOutput); return; }
         if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--gif-resource-output") is { } gifResourceOutput)

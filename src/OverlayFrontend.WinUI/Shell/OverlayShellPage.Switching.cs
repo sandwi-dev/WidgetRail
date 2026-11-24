@@ -17,9 +17,11 @@ internal sealed partial class OverlayShellPage
 
     private async Task<bool> SelectAsync(string id, bool enterWidget = true, bool preserveIntent = false,
         Func<WidgetPresentationFrame, CancellationToken, Task>? beforeReveal = null, CancellationToken selectionCancellation = default,
-        bool retainIntentSource = false, bool homeFallbackAvailable = false)
+        bool retainIntentSource = false, bool homeFallbackAvailable = false, bool overlayReopen = false)
     {
         if (retired || owner is null) return false;
+        if (BridgeDisconnected) { ShowBridgeRecovery(); return false; }
+        var reopeningRun = overlayReopen && !enterWidget && id == activeWidget ? surface?.CurrentBinding?.Frame.Authority.WorkerRun : null;
         if (id != activeWidget) cataloguePreviewCancellation?.Cancel();
         if (enterWidget || id != activeWidget) CloseUtilityPanel();
         if (!preserveIntent) intentCancellation?.Cancel();
@@ -41,7 +43,7 @@ internal sealed partial class OverlayShellPage
         var inputPublished = false;
         requestedWidget = id;
         var version = ++selectionVersion;
-        BeginOpening(version, id);
+        BeginOpening(version, id, overlayReopen);
         preparationFailure = null;
         interactive = enterWidget;
         UpdateTrayHelp();
@@ -83,7 +85,19 @@ internal sealed partial class OverlayShellPage
                     Mark("stopped");
                     return false;
                 }
-                var incoming = await PrepareWidgetSurfaceAsync(id, token);
+                // Keep a resumed game card drawable through a worker replacement. The
+                // new worker must own its own tree and all input is still revoked.
+                var returnPaint = overlayReopen && previousId == id ? previous?.Presenter.CaptureForegroundReturn() : null;
+                WidgetPresentationFrame? resumed = null;
+                var requestedLifecycle = interactive && foreground && !PinnedInteractionRequested
+                    ? WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive : LifecycleFor(id);
+                if (returnPaint is not null)
+                    resumed = await owner.Session.EstablishPresentationAsync(owner.Session.GetTarget(id), requestedLifecycle, token);
+                bool replace = resumed is not null && SameSurfaceOwner(previous!.Descriptor, resumed.Descriptor) &&
+                    resumed.Authority.WorkerRun != previous.Frame!.Authority.WorkerRun;
+                if (returnPaint is not null) Mark(replace ? "staging-cold-return" : "reusing-warm-return");
+                var incoming = await PrepareWidgetSurfaceAsync(id, token, replaceDisplayed: replace);
+                if (replace) incoming.Presenter.PrepareForegroundReturn(returnPaint);
                 preparingSurface = incoming;
                 try
                 {
@@ -93,7 +107,26 @@ internal sealed partial class OverlayShellPage
                     // Visible first exposes disabled preview rows to entry focus.
                     var preparedLifecycle = interactive && foreground && !PinnedInteractionRequested
                         ? WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive : LifecycleFor(id);
-                    await EstablishWidgetPresentationAsync(incoming, preparedLifecycle, token);
+                    if (resumed is not null && requestedLifecycle == preparedLifecycle)
+                    {
+                        // A publication can arrive while establishment is in flight.
+                        var latest = owner.Session.GetState(id)?.LastGood;
+                        ApplyWidgetSurfaceFrame(incoming, latest is not null && latest.Authority.WorkerRun == resumed.Authority.WorkerRun &&
+                            SameSurfaceOwner(latest.Descriptor, resumed.Descriptor) && latest.Authority.SnapshotSequence > resumed.Authority.SnapshotSequence
+                            ? latest : resumed);
+                        incoming.PresentedLifecycle = preparedLifecycle;
+                    }
+                    else await EstablishWidgetPresentationAsync(incoming, preparedLifecycle, token);
+                    if (reopeningRun is not null && incoming.Frame?.Authority.WorkerRun is { } currentRun &&
+                        currentRun != reopeningRun && visible && version == selectionVersion &&
+                        !RadialOpen && utilityPanel is null && !PinnedInteractionRequested && !PinnedAdjustmentActive &&
+                        !HostChoiceActive && !LocalInstallActive && !SystemFilePickerOpen && !IntroductionRunning && !IsMediaFullscreen)
+                    {
+                        // A cold reopen enters the restarted widget even if the
+                        // rail owned its previous run. The admission below still
+                        // requires foreground and the new worker's declaration.
+                        interactive = true;
+                    }
                     if (beforeReveal is not null)
                     {
                         // A navigation intent is accepted while the incoming
@@ -129,7 +162,7 @@ internal sealed partial class OverlayShellPage
                         }, token);
                     // Lifecycle callbacks can publish a newer declaration. Its
                     // final native layout must still precede visible publication.
-                    await WidgetPresentationReadiness.WaitAsync(incoming.Presenter, token);
+                    await WidgetPresentationReadiness.WaitAsync(incoming.Presenter, token, replace ? returnPaint : null);
                     token.ThrowIfCancellationRequested();
                     Mark("layout-ready");
                     // No await inside this publication: identity, extent, background,
@@ -159,6 +192,8 @@ internal sealed partial class OverlayShellPage
                     switching = false;
                     inputPublished = true;
                     PublishInputOwnership();
+                    if (replace && MainFocusEnabled)
+                        incoming.Presenter.RestoreRetainedFocusPresentation(requireVisible: true);
                     Mark("input-ready");
                     if (previous is not null && !ReferenceEquals(previous, incoming))
                     {
@@ -236,7 +271,7 @@ internal sealed partial class OverlayShellPage
             surface?.SetPresentationInputEnabled(visible && activeWidget == requestedWidget);
             surface?.SetAutomaticFocusEnabled(MainFocusEnabled && activeWidget == requestedWidget);
             if (MainFocusEnabled && activeWidget == requestedWidget) surface?.Enter(restoreNativeFocus: true);
-            else if (visible && !enterWidget && activeWidget == requestedWidget) FocusTray();
+            else if (visible && !interactive && activeWidget == requestedWidget) FocusTray();
             ReconcileMediaHostState();
             UpdateTrayHelp();
         }

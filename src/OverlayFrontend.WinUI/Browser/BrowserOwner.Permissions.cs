@@ -4,6 +4,6 @@ namespace WidgetRail.OverlayFrontend.WinUI.Browser;
 
 internal sealed partial class BrowserOwner
 {
-    internal Func<BrowserSurface, WebSessionPermissionKind, CancellationToken, Task<WebSessionPermissionResult>>? RequestPermission { get; set; }
+    internal Func<BrowserSurface, WebSessionPermissionKind, string?, CancellationToken, Task<WebSessionPermissionResult>>? RequestPermission { get; set; }
     private readonly Dictionary<string,CancellationTokenSource> hostedDecisionRequests=[];
 }

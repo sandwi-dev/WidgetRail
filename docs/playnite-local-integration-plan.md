@@ -1384,15 +1384,22 @@ Verification in `artifacts/playing-outlines` includes 293 Playnite tests, 41 sty
 
 ### Conditional Currently Playing background (0.4.88, add-on 1.3.9)
 
-Playnite includes the confirmed process-instance key in the running-game snapshot. The widget supplies the selected game's key on the Home background and Currently Playing cards. The host compares it with its existing pre-overlay foreground snapshot and checks display, window validity and effective surface appearance. An opening must establish the match by the first render. There is no extra provider query or periodic scan. The process-scoped window observer retires on hide. The desktop dimmer, foreground acquisition, card input and ordinary poster transitions retain their existing owners.
+Playnite includes the confirmed process-instance key in the running-game snapshot. The widget supplies the selected game's key on the Home background and Currently Playing cards. The host compares it with its existing pre-overlay foreground snapshot and checks display, window validity and effective surface appearance. A cold widget can supply the key after the first render. When the selected content matches the captured window, the host fades out the surface paint with the existing transition. There is no extra provider query or periodic scan. The process-scoped window observer retires on hide. The desktop dimmer, foreground acquisition, card input and ordinary poster transitions retain their existing owners.
 
 | Consumer | Behavior |
 | --- | --- |
-| Playnite Home | The cards can reveal the dimmed game. The poster rail uses decoded artwork. A missing match keeps ordinary paint for that opening. |
+| Playnite Home | The cards can reveal the dimmed game, including when a cold worker publishes the match after loading. The poster rail uses decoded artwork. A mismatch keeps ordinary paint. |
 | Playnite Library, Game Details, other widget backgrounds, SDK examples and templates | No paired process declaration. Existing artwork and material paths apply. |
 | Shell media and pinned widgets | A separate window cannot claim the main overlay's foreground snapshot. |
 
 Release evidence in E:/WidgetRail/foreground-background includes desktop captures of Silksong before and after opening, poster focus and return, a cold opening with late game data, a minimized game, and sampled color traces during interrupted transitions. The isolated visual fixture supplied Silksong's live process key using session data from the installed 1.3.8 add-on. The 1.3.9 production feed was independently exercised by the Framework/API fixture. No physical controller or exclusive display-mode switch was tested.
+
+The cold opening follow-up used the installed Playnite provider and a running
+Silksong window. The first open revealed the game, native focus on a poster
+brought back decoded artwork, and returning focus to Currently Playing revealed
+the game again. A cold open above an unrelated window kept the surface painted.
+Evidence is in `E:/WidgetRail/interaction-plan/late-game-background/final-match.json`
+and `final-mismatch.json`.
 
 **Default-profile rollout, 0.4.89 with add-on 1.3.9.** Silksong was closed normally and relaunched from Game Details after the widget updated Playnite. Home opts its navigation row into foreground-chrome auto-hide. Up focuses Home, mouse hover reveals the row, and Down returns to the card. All three states preserved the card bounds. The page still owns LB/RB. In-app acrylic on the shelf, focus summary and header uses the native brush's translucent fallback during live-game transparency, then resumes ordinary acrylic over artwork. Other backgrounds and themes continue using their existing material. No capture or per-frame refresh was added. Live input, desktop images and transition traces are under E:/WidgetRail/foreground-chrome. The tracked Woven achievement was reselected after the updater renewed the binding to the same Playnite profile.
 
@@ -1409,3 +1416,98 @@ Restoring the in-app brush when poster artwork started returning improved that d
 The performance comparison used the same copied profile and game. Across 20 poster/shelf round trips the host used 12.88 CPU seconds with the last prototype and 12.83 with the existing build. The median sampled Desktop Window Manager 3D-engine utilization over eight seconds on the settled shelf was 0.93% for each. These observations cover one machine and scene. The transition defect determined the decision.
 
 Keep the existing theme tint over the live game and in-app acrylic over poster artwork. No production host, widget, SDK, theme, pin or notification changes were made for this trial. A future host approach would need to composite the material against the same visible artwork/game blend as the owning surface. Passing the destination and duration from `WidgetPresentationSurface.SetPaintHidden` to independent targets in `DesktopAcrylicSurface` did not provide that behavior. Evidence under `E:/WidgetRail/acrylic-trial` includes `guardstress-exit-detail.png`, `coveredstress1-exit-detail.png`, `material-handoff.png`, the raw frames, CPU samples, and GPU counters.
+
+### Achievement sync and library recovery
+
+**Implemented and verified in the workspace.** Game Details offers **Sync this
+game** in Achievements when the provider supports it. Failed reads offer
+**Try again** beside the affected content. The achievement overview updates from
+the Playnite event feed. The same feed coalesces catalog updates for the visible
+Home or Library view. An inactive view picks up catalog changes on return.
+Installation copy directs users to configure achievement sources and start the
+initial refresh in Playnite. Library-wide achievement sync is done in Playnite.
+
+All 295 Playnite widget tests passed. Isolated WinUI fixtures verified
+controller navigation in the overview header and native focus and invocation
+for both new Game Details buttons. The installed profile was left alone, and
+the sync operation was tested with a fixture provider.
+
+### Discord card and activity panel in Currently Playing
+
+**Status** Implemented and verified in an isolated release candidate.
+
+| Step | Status | Verification |
+| --- | --- | --- |
+| Shelf entry and explicit Discord activation | Verified | A fresh isolated catalog displayed Start Discord beside Resume playing for Hollow Knight: Silksong. The lifetime log recorded no Discord worker until the card was invoked. The packaged Discord worker then opened its account setup. After an explicit **Stop widget**, the card opened the host’s Reload screen and the worker stayed stopped until Reload was pressed. Disabled and absent providers have no shelf destination. |
+| Live summary, consent and scoped actions | Verified | Independent grants on the two widgets exposed the synthetic call roster through the production Bridge. Watch & pin opened Discord’s selected stream layout. Leave followed by Join voice from a friend row updated Playnite to the new channel. Revoking the reader grant while the panel was open dismissed it and removed the roster. |
+| Compact and wide shelf, activity panel and navigation | Verified | The production-widget fixture exercised two → three → two, a six-person roster, an empty panel and all six avatar URLs. WinUI retained focus on Discord through expansion and on its right-hand neighbor through shrink and re-expansion. The neighbor stayed in view. Dismissal returned focus to Discord. |
+| Native visual and transition review | Verified | The X hint and overflow indicator have separate space. The action label aligns at the trailing edge. Public avatars and initial fallbacks share the same geometry. Mouse, keyboard and simulated controller checks covered the shipped surface. The narrow panel at 150% text retained its action and footer in high contrast. Recordings covered A/B, Enter/Escape and interrupted dismissal against the running game and hero artwork. |
+
+| Consumers of the new summary contract | Applicability |
+| --- | --- |
+| Discord and Playnite | Discord publishes a sequence-checked summary and owns the action tokens, current call and choice of pin slot. Playnite subscribes while its running-game shelf is active and owns layout, overflow and the dialog. |
+| Existing open intents, including Game Help, Settings, capture links and file sharing | Keep their existing handler selection and action authority. Only the reserved summary-action contract can stage a pin during delivery. |
+| Other shipping widgets, SDK Gallery and authoring templates | No addressed live-summary declarations. Ordinary widget pins still use the existing pinning API. Both entry points use the shell’s current-layout, capacity and replacement checks. |
+
+The production Discord package was used for cold activation. All people, voice changes and streams used to verify live actions came from the synthetic Discord session. The test used the running Silksong game and the actual Playnite library. The two test packages, permissions, pins and browser profiles were isolated from the user's installed catalog. A release-mode frontend verified a native stream pin through both worker processes. A separate isolated candidate with both production packages passed its final launch check.
+
+Place one Discord `UI.ActionSurface` beside Resume playing. Match the shelf’s card height, title style and theme focus outline. Give the whole card one focus stop and one primary action. Left and Right move between cards. X opens the existing Hide this card / Manage cards menu.
+
+| Card state | Presentation and action |
+| --- | --- |
+| Discord installed and stopped | Use the compact width. **Connect Discord** asks Playnite for permission to read Discord activity. **Start Discord** starts the worker in the background. If the user previously stopped it, ask for confirmation over Playnite. If Discord asks for sign-in, the card directs the player to Discord on the rail. |
+| Ready without a call | Keep zero, one or two active friends compact. Show an empty state or one row per friend with avatar, name and activity. At three friends, expand to two columns and show up to four friends. Activation opens **Friends active** with the displayed friends and their available actions. The full list is available from Discord on the rail. |
+| In a call | Lead with the channel name and participant count. Keep up to two participants compact. At three, expand to two columns and show up to four participants, each with an avatar, name and current voice status. Mark streaming separately so a muted streamer shows both states. List streamers first and keep positions stable as people speak. Activation opens the call panel. Full call controls live in Discord. |
+| Unavailable | Finish the rest of the shelf immediately. Hide the card when Discord is absent or disabled. Clear private rows on account change, revocation, or worker retirement. |
+
+Keep the shelf card 194 DIPs tall in both layouts. Use the 398-DIP Game updates card as the wide reference. When more people are available than fit, show a small avatar stack in the header with the remaining count, such as **+2** for six people with four visible. Use an ellipsis when Discord reports a truncated list with an unknown total. The indicator belongs to the card’s single focus target.
+
+Change width in place on the same card within the existing shelf and scroll container. Once the card is wide, speaking, muting, streaming, avatar arrival and overflow-count updates only update its contents. On warm reopen, retain the last authorized layout while awaiting a fresh summary from the same Discord session. On first load, allow one adjustment when the people count becomes known.
+
+Use a compact native `WidgetModal` centered inside Playnite, following the Game updates reader. Keep the shelf and game visible behind the themed dialog. Each row has an avatar, a name, a second line of activity or voice context, and a trailing action label when available. For “Alex · Streaming 007 First Light,” the whole row activates **Watch & pin**. A joinable voice row offers **Join voice**. Informational rows remain readable and skip directional focus. The list scrolls within the panel, keeping **Close** accessible in the footer.
+
+On entry, focus the first actionable row, falling back to **Close**. A, Enter or a click activates the row. B, Escape or Close dismisses the dialog and returns focus to the Discord shelf card.
+
+Playnite owns placement, presentation and the card visibility preference. Discord owns who is visible, target validation and pin slot choice. The SDK exposes publish, read, change notification and reader verification operations. The Bridge binds each summary to a worker lifetime and each action to the authenticated reader and publisher. Discord queues publication separately from its existing state reads. Playnite subscribes before its first read, cancels on exit, and clears private content on revocation. Opening Playnite leaves Discord asleep until an explicit start. The separate **Stop widget** command takes effect until the player confirms a restart.
+
+Native evidence is in `artifacts/discord-shelf-native/portraits-review`. The isolated cross-process recordings are `E:/WidgetRail/discord-shelf-verification-1124/synthetic/silksong-navigation.mp4` and `E:/WidgetRail/discord-shelf-verification-1124/qualified/hero-transitions.mp4`. The game recording captured 316 frames and the hero recording captured 240. The sampled shelf and background remained painted during modal entry, dismissal and rapid reversal. Physical controller hardware and a live Discord call with other people were outside this verification.
+
+The final local suites passed 297 Playnite tests, 1,089 Discord checks, 115 platform broker tests, 263 Bridge tests and 17 SDK compatibility tests. The Bridge workflow checks the description on Game Details’ Information tab before returning Home to launch. The capability check includes the existing reviewed capture-destination operation. Both retain their original action and authority assertions.
+
+Verify cold start, unavailable and signed-out states, arrival of a stream while focused, a friend leaving between display and activation, sign-out, and return focus after a pin or sign-in flow. Check empty and informational-only lists, long names at large text sizes, and footer access on a narrow surface. Exercise open, scroll and dismiss with controller, keyboard and mouse over both hero artwork and the transparent game background. Check for flashes, shelf movement and focus loss during transitions.
+
+For both friends and calls, exercise two → three → two with focus on Discord and on its right-hand neighbor near the scrolled end of the shelf. Verify the focused card stays visible, the scroll position does not reset, and the shelf stays painted throughout. Check a four-person roster, overflow at five, and a warm reopen with a delayed summary.
+
+### Capture tab and gallery navigation
+
+**Status** Implemented in the working tree. The Playnite Captures tab uses responsive two-column tiles with capture thumbnails and timestamps. Tiles share a grid across session boundaries. The shared gallery player holds the displayed image during an authorized same-gallery switch and applies the section motion to the decoded replacement. Playnite saved captures and Discord message attachments use this path. Single players and inline store carousels retain their own presentation. Other gallery consumers inherit this behavior for same-gallery image replacement. No SDK or protocol change is required.
+
+### Reader consent and actions that keep Playnite selected
+
+| Step | Status | Evidence |
+| --- | --- | --- |
+| Trace existing routes | Verified in source | Tray input uses a validated controller offer. Widget intents use a source snapshot, ticket and receiver worker identity. Existing pin delivery requires a visible pin. |
+| Reader-side connection | Verified | The isolated shelf showed Connect Discord, handled denial, granted access once, dismissed private rows on revocation and recovered after reconnect. Broker checks cover recipient scope, wrong-provider requests, worker replacement, revocation and legacy grants. |
+| Background delivery and Discord actions | Verified | The production Discord package in a fresh browser profile reached the signed-out card while its worker stayed in Background. The card kept focus. Selecting Discord from the rail exposed the real sign-in page. The synthetic provider exercised explicit stop and restart, microphone consent and cancellation, join, pin creation, stale actions and repeated pin presses. |
+| Regression and native verification | Verified in managed suites and isolated integration | Bridge 264/264, runtime 121/121, broker 115/115, Playnite 297/297, Discord widget 1,091 checks, backend adapter 159/159 and generated native contract parity. Native evidence records Playnite row focus after a pin and after a cancelled microphone prompt. The native tray passed mouse and keyboard activation, replay picker cancellation, and a radial retry after retiring the worker. |
+
+Discord and Playnite are the shipping summary consumers. Existing media, file, navigation and settings intents keep their declared presentation. Tray, dashboard and pinned shortcuts retain their input contracts. Templates have no summary or background intent consumer.
+
+The host reuses authenticated worker startup and snapshot preparation for tray presses and background intents. Tray assignments continue to revalidate their live offer, recorder revision or media session, and controller press. Background intents revalidate their source control, payload, handler and ticket. Moving existing tray commands to intent contracts would require replacing their persisted assignments, live fallback offers and capability admission. The overlap in this change is worker startup and preparation.
+
+Native signed-out evidence is under `E:/WidgetRail/discord-shelf-verification-1124/signed-out-check`. Voice consent and cancellation are under `stay-source-verified`, and native pin ownership, row focus and revocation are under `stay-source-pin-final` in the same test directory. The voice and stream checks used fixture participants. A live authenticated Discord call and physical controller hardware were outside this run.
+### Discord startup feedback
+
+The Start Discord card publishes “Connecting to Discord” during the existing outgoing intent preparation callback. The action and its scope stay stable for host revalidation. Acceptance keeps the progress label until the subscription reports Discord's activity or sign-in state. Cancellation and delivery failure restore an actionable retry on the same card. A failed activity subscription retries the subscription. Discord marks connection errors explicitly in its summary and refreshes a failed connection on a retry press.
+
+Playnite is the shipping sender of this start action. Other intent senders keep their existing feedback. The shell includes background worker startup in the existing Back-to-cancel window. This also applies to the existing background summary actions. The microphone and stopped-widget prompts retain their own input handling.
+
+The focused Playnite tests exercise progress before the worker starts, unchanged intent authority, cancellation, retry, acceptance before readiness and a subsequent provider failure. Discord's harness passes 1,093 checks, including failure and recovery through the background open handler. In a fresh native profile, cancelling the stopped-widget prompt returned to Retry, and confirming on the next attempt reached sign-in. Evidence is under `E:/WidgetRail/discord-connect-1124`.
+
+### Reconnecting a Discord stream pin
+
+The reported live stream played in Watch and disconnected in the pin. The running frontend had a separate pin window on the secondary display and Discord's receiver-session termination notice. The earlier build did not retain which provider condition ended that watch.
+
+Discord Controls 0.1.0.61 asks the existing video view to reattach its live track on explicit Reconnect before replacing the receiver. The action verifies the session, account, call, stream, lease and view. Repeating an already-connected Playnite Watch & pin reuses the selected receiver. The provider retries local playback once if no first frame appears by six seconds. It still retires a stalled connection at the original twelve-second deadline. A failure reason can travel back with the existing unwatch response for the matching owner, account and lease. Failure storage is limited to three slot records. No additional provider polling or automatic remote watch is required.
+
+Discord is the only shipping caller of BackendVideo and the track binding API across samples, first-party widgets and templates. The extra restart parameter is optional. The native fixture creates the receiver offscreen, attaches it to a passive pin at 70% opacity, tests a real local WebRTC track and closes the original viewer. All 57 native fixture checks passed on this system. The 720p comparison counted 529 frames on both players and 13 drops on the pin. The widget harness passed 1,094 checks and the adapter/backend suites passed 183 tests. Evidence is under `E:/WidgetRail/pin1124`. The remote participant's live failure remains to be rechecked on the updated candidate.

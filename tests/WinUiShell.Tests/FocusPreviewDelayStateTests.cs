@@ -7,17 +7,23 @@ namespace WidgetRail.Tests.WinUiShell;
 public sealed class FocusPreviewDelayStateTests
 {
     [TestMethod]
-    public void ContentUpdatesDoNotStarveSettledSource()
+    [DataRow(2500)]
+    [DataRow(5000)]
+    public void ContentUpdatesDoNotStarveSettledSource(int delay)
     {
         var state = new FocusPreviewDelayState();
-        Assert.IsTrue(state.Select(("owner", "first"), 350, 1000));
-        for (var now = 1001; now < 1350; now += 8)
+        const int start = 1000;
+        var due = start + delay;
+        Assert.IsTrue(state.Select(("owner", "first"), delay, start));
+        Assert.AreEqual(delay, state.Remaining(start));
+        for (var now = start + 1; now < due; now += 8)
         {
-            Assert.IsFalse(state.Select(("owner", "first"), 350, now));
+            Assert.IsFalse(state.Select(("owner", "first"), delay, now));
             Assert.IsFalse(state.Ready(now));
         }
-        Assert.IsTrue(state.Ready(1350));
-        Assert.AreEqual(0, state.Remaining(1400));
+        Assert.IsFalse(state.Ready(due - 1));
+        Assert.IsTrue(state.Ready(due));
+        Assert.AreEqual(0, state.Remaining(due));
     }
     [TestMethod]
     public void NewSourceAndLifetimeRevokePriorDeadline()

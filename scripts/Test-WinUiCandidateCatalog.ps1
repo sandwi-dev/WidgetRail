@@ -15,6 +15,17 @@ function InInstallation([string]$Path) {
     }
     return $resolved
 }
+$genericWorker = InInstallation (Join-Path $installation $catalog.genericWorkerExecutable)
+$bridgeDirectory = InInstallation (Join-Path $installation 'runtime/Bridge')
+foreach ($assembly in 'WidgetProtocol.dll', 'WidgetSdk.dll', 'WidgetRuntime.dll') {
+    $bridgeFile = Join-Path $bridgeDirectory $assembly
+    $workerFile = Join-Path (Split-Path $genericWorker) $assembly
+    if (!(Test-Path -LiteralPath $bridgeFile -PathType Leaf) -or
+        !(Test-Path -LiteralPath $workerFile -PathType Leaf) -or
+        (Get-FileHash -LiteralPath $bridgeFile).Hash -cne (Get-FileHash -LiteralPath $workerFile).Hash) {
+        throw "Candidate Bridge and generic worker host disagree on $assembly. Publish them from the same build before launching."
+    }
+}
 $settings=@($catalog.widgets|Where-Object {$_.id -ceq 'settings'})
 if($settings.Count -ne 1){throw 'Candidate requires exactly one configured Settings companion.'}
 $arguments=@($settings[0].workerArguments)

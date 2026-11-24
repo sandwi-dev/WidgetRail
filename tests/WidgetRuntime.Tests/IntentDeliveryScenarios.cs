@@ -21,6 +21,10 @@ internal static class IntentDeliveryScenarios
             await widget.SetLifecycleStateAsync(WidgetLifecycleState.Background, default);
             Check(await widget.ApplyIntentAsync(4, Request(), default) == WidgetIntentResult.Rejected);
             Check(widget.Calls == 2);
+            var background = Request() with { Presentation = WidgetIntentPresentation.StayInSource };
+            Check(await widget.ApplyIntentAsync(5, background, default) == WidgetIntentResult.Accepted);
+            Check(await widget.ApplyIntentAsync(5, background, default) == WidgetIntentResult.Rejected);
+            Check(!widget.IsActive && widget.Calls == 3);
         }
         finally { await widget.DestroyAsync(default); }
     }

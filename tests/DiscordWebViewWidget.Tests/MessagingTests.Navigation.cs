@@ -13,6 +13,9 @@ internal static partial class MessagingTests
             "Opening a conversation keeps the Messages section identity and does not start a whole-section animation");
         await scenario.Act("discord.message.draft","Unsent draft");
         var snapshot=scenario.Snapshot();
+        check(!snapshot.Root.Shortcuts.Any(s=>s.Button==ControllerButton.B) &&
+            scenario.Find("discord.messages.back")?.ActionId is not null,
+            "Conversation leaves B to the host and keeps an explicit route to its list");
         check(scenario.Find("discord.sections") is not null && scenario.Find("discord.messages.list") is not null &&
             scenario.Find("discord.message.history") is not null && scenario.Find("discord.call.dock.mute") is not null,
             "Conversation shares permanent destinations, the wide inbox and live call controls");

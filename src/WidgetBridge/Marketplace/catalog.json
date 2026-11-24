@@ -25,12 +25,19 @@
     "id": "widgetrail.samples.discord-controls", "publisher": "widgetrail.samples", "name": "Discord",
     "description": "Join voice channels, manage call and stream audio, share an application, and pin voice controls or incoming video. Full-access add-on.",
     "setupRequirements": ["Requires a Discord account. Install the matching WidgetRail update before installing this widget. Microphone and application capture require separate permission.", "Unofficial client modification: this integration modifies Discord's hosted web client and uses private APIs. It may violate Discord's Terms of Service and put your account at risk. Not affiliated with or endorsed by Discord.", "This is a separate full-access package, not an automatic upgrade of the older Discord web-app widget. Review access and sign in again. The older widget can be removed separately."],
+    "details": [
+      {"section": "Integrations", "label": "Capture Library", "value": "Receive screenshots and clips shared from Capture Library."}
+    ],
     "screenshots": []
   },
   {
     "id": "widgetrail.samples.game-help", "publisher": "widgetrail.samples", "name": "Game Help",
     "description": "Ask for game hints with screenshots and clips.",
     "setupRequirements": ["Requires your own Gemini API key. Google's API quotas and any usage charges apply."],
+    "details": [
+      {"section": "Integrations", "label": "Playnite Library", "value": "Start a help request with the running game already filled in."},
+      {"section": "Integrations", "label": "Capture Library", "value": "Attach a saved screenshot or clip to a help request."}
+    ],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/game-help.png"]
   },
   {
@@ -42,6 +49,10 @@
     "id": "widgetrail.samples.playnite-library", "publisher": "widgetrail.samples", "name": "Playnite Library",
     "description": "Browse and launch your Playnite games.",
     "setupRequirements": ["Requires Playnite installed on this PC.", "Guided setup includes the Playnite Bridge integration and connects automatically. Playnite may need one restart.", "The widget can start Playnite, but startup may show a window or take focus. Keep Playnite running while browsing."],
+    "details": [
+      {"section": "Integrations", "label": "Capture Library", "value": "Link screenshots and clips to games and browse them in Game Details."},
+      {"section": "Integrations", "label": "Game Help", "value": "Open Game Help with the name of the game you are playing."}
+    ],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/d7fecbcb0cd5af92b465d015d284c5ce7fc89145/docs/images/widgets/playnite-home.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/d7fecbcb0cd5af92b465d015d284c5ce7fc89145/docs/images/widgets/playnite-library.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/d7fecbcb0cd5af92b465d015d284c5ce7fc89145/docs/images/widgets/playnite-details.png", "https://raw.githubusercontent.com/sandwi-dev/WidgetRail/d7fecbcb0cd5af92b465d015d284c5ce7fc89145/docs/images/widgets/playnite-achievements.png"]
   },
   {
@@ -76,6 +87,10 @@
     "name": "Capture Library",
     "description": "Take screenshots, record clips with optional supported application audio, and browse, preview or manage your saved captures.",
     "setupRequirements": [],
+    "details": [
+      {"section": "Integrations", "label": "Playnite Library", "value": "Choose a game for a capture so it appears in that game’s activity."},
+      {"section": "Integrations", "label": "Discord", "value": "Share a saved screenshot or clip to a Discord conversation."}
+    ],
     "screenshots": ["https://raw.githubusercontent.com/sandwi-dev/WidgetRail/edf39bf174a28d1261dc19752be153df026dfc30/docs/images/widgets/capture-library.png"]
   },
   {

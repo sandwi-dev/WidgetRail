@@ -127,6 +127,14 @@ try {
             throw "Invalid catalogue identity $id $version."
         }
         $released = [DateOnly]::MinValue
+        if ($entry.Contains('details')) {
+            if ($entry.details -isnot [array] -or $entry.details.Count -gt 8) { throw "Invalid listing details for $id." }
+            foreach ($row in $entry.details) {
+                if (!(Test-ListingText $row.section 48) -or !(Test-ListingText $row.label 80) -or !(Test-ListingText $row.value 240)) {
+                    throw "Invalid listing detail for $id."
+                }
+            }
+        }
         if (!(Test-ListingText $entry.creator 80) -or !(Test-ListingText $entry.description 240) -or
             $entry.tags -isnot [array] -or $entry.tags.Count -gt 8 -or
             $entry.released -isnot [string] -or
@@ -221,9 +229,11 @@ try {
             $previewHashes[$asset] = $verified
         }
         if (!$reuse) { Write-ImmutableFile $archive (Join-Path $outputRoot "packages/$digest.wrtheme") }
-        $themes.Add([ordered]@{id=$id; version=$version; name=$manifest.name; publisher=$manifest.publisher; creator=$entry.creator
+        $listing = [ordered]@{id=$id; version=$version; name=$manifest.name; publisher=$manifest.publisher; creator=$entry.creator
             description=$entry.description; tags=$entry.tags; released=$entry.released; sha256=$digest
-            bytes=(Get-Item -LiteralPath $archive).Length; previewKey=$previewKey; previewHashes=$previewHashes})
+            bytes=(Get-Item -LiteralPath $archive).Length; previewKey=$previewKey; previewHashes=$previewHashes}
+        if ($entry.Contains('details')) { $listing.details = $entry.details }
+        $themes.Add($listing)
     }
     $index = [ordered]@{schemaVersion=1; featured=$source.featured; collections=$source.collections; themes=$themes}
     $pendingIndex = Join-Path $outputRoot ([Guid]::NewGuid().ToString('N') + '.tmp')

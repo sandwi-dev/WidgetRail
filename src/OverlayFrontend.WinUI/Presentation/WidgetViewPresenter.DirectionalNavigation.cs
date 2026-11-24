@@ -52,7 +52,12 @@ internal sealed partial class WidgetViewPresenter
     private bool RouteDirectionalFocus(FocusNavigationDirection direction, bool isRepeat)
     {
         CancelScrollReveal();
-        if (FocusedMediaPlayer?.MoveFocus(direction, isRepeat) == true) return true;
+        var media = FocusedMediaPlayer;
+        // Down from the strip can leave the player using its authored neighbor.
+        // Controls and fullscreen keep their existing internal navigation.
+        var mediaExit = direction == FocusNavigationDirection.Down && media is { HasInlineThumbnailFocus: true } &&
+            FocusedBinding() is { } mediaOrigin && declarations[mediaOrigin.Identity.Id].Node.Focus?.Down is not null;
+        if (!mediaExit && media?.MoveFocus(direction, isRepeat) == true) return true;
         if (FocusedBinding() is not { } origin || !NavigationTarget(origin) ||
             presentation?.IsCurrent != true) return true; // No current geometry is not a root exit.
         if (ReverseDirectionalScroll(origin, direction, isRepeat)) return true;

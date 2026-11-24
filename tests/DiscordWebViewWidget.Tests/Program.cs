@@ -180,6 +180,7 @@ await TransportChecks(Check);
 await ConnectionStateTests.RunAsync(Check);
 await SharingTests.RunAsync(Check);
 await ActivityUiTests.RunAsync(Check);
+await SummaryActionTests.RunAsync(Check);
 await ReceiverHealthTests.RunAsync(Check);
 await ReceiverLifecycleTests.RunAsync(Check);
 await DomainIntentTests.RunAsync(Check);
@@ -271,7 +272,8 @@ sealed class FakeSession:IDiscordSession
     internal int Reads,MicrophoneRequests,ReceiverRequests;
     internal bool Disposed;
     internal TaskCompletionSource? MicrophoneGate,ReceiverGate,CommandGate,ShareGate;
-    internal bool FailCommands,FailReceivers;
+    internal bool FailCommands,FailReceivers,CanReattachVideo;
+    internal string? FailedWatchReason;
     internal bool IgnoreShareCancellation;
     internal TaskCompletionSource? DiagnosticsGate;
     internal TaskCompletionSource<DiscordState>? ReadGate;
@@ -309,6 +311,8 @@ sealed class FakeSession:IDiscordSession
     public async ValueTask<JsonElement> InvokeAsync(string method,object? args,CancellationToken token)
     {
         token.ThrowIfCancellationRequested();var payload=JsonSerializer.SerializeToElement(args);Commands.Enqueue(new(method,payload));
+        if(method=="unwatch" && FailedWatchReason is { } reason)return JsonSerializer.SerializeToElement(new{reason});
+        if(method=="reconnectVideo")return JsonSerializer.SerializeToElement(new{reconnected=CanReattachVideo});
         if(method is "watch" or "watchActivity" && (!payload.TryGetProperty("key",out var key)||!State.Streams.Any(stream=>stream.Key==key.GetString())))
             throw new InvalidDataException("Provider stream key is missing or stale.");
         if(CommandGate is { } gate)await gate.Task.WaitAsync(token);

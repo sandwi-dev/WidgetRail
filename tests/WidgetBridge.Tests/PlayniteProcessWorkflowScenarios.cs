@@ -67,8 +67,11 @@ internal static partial class FullTrustCommunityScenarios
             Check(await lease.AdmitInputAsync(new(new(lease.Lease.LeaseId, item.Key), ControllerButton.A),
                 new(lease.Lease.Range.ScopeId, snapshot.Sequence), deadline.Token) == WidgetOperationAdmission.Enqueued,
                 "Current indexed selection was not admitted.");
-            snapshot = await Wait(snapshot => TryFind(snapshot.Root, "playnite-library.details.play") is not null &&
-                WorkflowNodes(snapshot.Root).Any(node => node.Text == "Cross-process production details"));
+            snapshot = await Wait(snapshot => TryFind(snapshot.Root, "playnite-library.details.play") is not null);
+            await Action(snapshot, "playnite-library.details.tab.information");
+            snapshot = await Wait(snapshot => WorkflowNodes(snapshot.Root).Any(node => node.Text == "Cross-process production details"));
+            await Action(snapshot, "playnite-library.details.tab.description");
+            snapshot = await Wait(snapshot => TryFind(snapshot.Root, "playnite-library.details.play") is not null);
             var modalScope = snapshot.ActiveInputScopeId;
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Background, deadline.Token);
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive, deadline.Token);

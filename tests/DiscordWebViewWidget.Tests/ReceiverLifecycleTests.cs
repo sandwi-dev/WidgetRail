@@ -17,6 +17,12 @@ internal static class ReceiverLifecycleTests
             await Act(widget,"watch.30");await pin.ReplaceSnapshotAsync();await pin.SelectAsync("discord.stream");
             await Until(()=>fake.Receivers.Count==1&&PinnedSession(widget)==fake.Receivers.First().Reference);
             var first=fake.Receivers.First();var watches=fake.Commands.Count(c=>c.Method=="watch");
+            fake.CanReattachVideo=true;
+            await Act(widget,"watch.30");
+            check(fake.ReceiverRequests==1&&!first.Disposed&&!fake.Commands.Any(c=>c.Method=="unwatch"),
+                "Reconnect restores the existing pin without creating a second watch or closing the first");
+            fake.CanReattachVideo=false;
+            fake.FailedWatchReason="video_no_frames";
             first.FailureSource.TrySetResult(new(first.Lease,"rtc_failed"));
             await Until(()=>first.Disposed&&PinnedSession(widget) is null);
             check(Nodes(Snapshot(widget).PinnedLayouts.Single(p=>p.Id=="discord.stream").Root!).Any(n=>n.Text?.Contains("retry")==true),
@@ -26,6 +32,9 @@ internal static class ReceiverLifecycleTests
             check(fake.Commands.Any(c=>c.Method=="unwatch"&&c.Args.GetProperty("lease").GetString()==first.Lease),
                 "Receiver failure releases only its exact provider lease");
 
+            await Until(()=>Nodes(Snapshot(widget).PinnedLayouts.Single(p=>p.Id=="discord.stream").Root!)
+                .Any(n=>n.Text?.Contains("No video frames arrived")==true));
+            fake.FailedWatchReason=null;
             await Act(widget,"watch.30");await Until(()=>fake.Receivers.Count==2&&PinnedSession(widget)==fake.Receivers.Last().Reference);
             var old=fake.Receivers.Last();old.KeepFailurePendingOnDispose=true;
             await Act(widget,"watch.30");await Until(()=>fake.Receivers.Count==3&&PinnedSession(widget)==fake.Receivers.Last().Reference);

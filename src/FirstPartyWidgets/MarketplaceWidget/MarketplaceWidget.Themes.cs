@@ -13,11 +13,19 @@ public sealed partial class MarketplaceWidget
         using var stream = typeof(MarketplaceWidget).Assembly.GetManifestResourceStream("ThemeSeeds.json")!;
         using var index = JsonDocument.Parse(stream);
         var paths = new Dictionary<string, string>(StringComparer.Ordinal);
+        const string originalPreviewKey = "d01e8396dbdd8716d51e44fc33883970aaae0919d5209187a19a725cd3e62fb3";
         foreach (var theme in index.RootElement.GetProperty("themes").EnumerateArray())
         {
-            var folder = theme.GetProperty("sha256").GetString() + "/" + theme.GetProperty("previewKey").GetString();
-            foreach (var file in Scenes.Select(scene => scene.File).Concat(["tray-480.png", "tray-960.png"]))
-                paths.Add(ArtHandle(folder, file), "assets/themes/" + folder + "/" + file);
+            var digest = theme.GetProperty("sha256").GetString();
+            var folder = digest + "/" + theme.GetProperty("previewKey").GetString();
+            foreach (var file in ThemeCataloguePublication.PreviewFiles)
+            {
+                var path = "assets/themes/" + folder + "/" + file;
+                paths[ArtHandle(folder, file)] = path;
+                // The original published index can still be cached offline.
+                // Future scene revisions keep their own verified remote artwork.
+                paths[ArtHandle(digest + "/" + originalPreviewKey, file)] = path;
+            }
         }
         return paths;
     });
@@ -34,12 +42,16 @@ public sealed partial class MarketplaceWidget
     {
         var folder = theme.Sha256 + "/" + theme.PreviewKey;
         var handle = ArtHandle(folder, file);
-        var url = ThemeCataloguePublication.Origin + "previews/" + folder + "/" + file;
-        if (theme.PreviewHashes?.TryGetValue(file, out var digest) == true) url += "?sha256=" + digest;
         var image = BundledArt.Value.ContainsKey(handle) ? UI.Artwork(new(handle), id, label, ImageFit.Contain) :
-            UI.PublicImage(url, id, label, ImageFit.Contain);
+            UI.PublicImage(ThemeArtUrl(theme, file), id, label, ImageFit.Contain);
         return UI.Grid(id + ".frame", [GridTrack.Star()], [GridTrack.Star()], image.Classes("theme-art"))
             .Classes(style);
+    }
+
+    private static string ThemeArtUrl(CatalogueTheme theme, string file)
+    {
+        var url = $"{ThemeCataloguePublication.Origin}previews/{theme.Sha256}/{theme.PreviewKey}/{file}";
+        return theme.PreviewHashes?.TryGetValue(file, out var digest) == true ? url + "?sha256=" + digest : url;
     }
 
     private WidgetResourceSnapshot<ThemeBrowsePage> ThemePageFor(State state) =>
@@ -75,7 +87,7 @@ public sealed partial class MarketplaceWidget
                 state.Snapshot.Operation?.State is not ("review" or "running") && themeStatus.GetSnapshot(key).Value is { } status &&
                 (action.ActionId == "theme.apply" ? status.Installed && !status.Applied : !status.Installed && !status.AtCapacity))
                 Work(ct => ReadAsync(new(action.ActionId.Replace('.', '-'), Theme: key), ct));
-            if (action.ActionId == "theme.back") model.Update(s => s with { SelectedTheme = null });
+            if (action.ActionId == "theme.back") model.Update(s => s with { SelectedTheme = null, ReturnFocus = CreateFocusRequest() });
             if (action.ActionId.StartsWith("theme.scene.", StringComparison.Ordinal) &&
                 int.TryParse(action.ActionId["theme.scene.".Length..], out var scene) && scene >= 0 && scene < Scenes.Length)
                 model.Update(s => s with { ThemeImage = scene });
@@ -131,10 +143,26 @@ public sealed partial class MarketplaceWidget
             header.Clear();
             header.Add(UI.Row("theme.detail.heading", UI.Button("Back to themes", "theme.back", "theme.back"),
                 UI.Text(selected.Name, "theme.name").Classes("theme-title")).Classes("marketplace-commands"));
-            var scene = Scenes[state.ThemeImage];
-            var gallery = ThemeArt(selected, scene.File, "theme.detail.art", selected.Name + ", " + scene.Name, "theme-gallery-art");
-            var scenes = UI.SegmentedTabs("theme.scenes", initial, Scenes.Select((s, i) =>
-                new SegmentedTab("theme.scene." + i, s.Name, "theme.scene." + i)).ToArray());
+            WidgetElement gallery;
+            if (selected.PreviewHashes is not null && !BundledArt.Value.ContainsKey(ArtHandle(selected.Sha256 + "/" + selected.PreviewKey, Scenes[0].File)))
+            {
+                var media = Scenes.Select((scene, index) =>
+                {
+                    var url = ThemeArtUrl(selected, scene.File);
+                    return new MediaPlayerGalleryItem("scene-" + index, scene.Name, MediaPlayerSource.PublicImage(url)) { PublicThumbnail = url };
+                }).ToArray();
+                gallery = UI.MediaGallery(media, "theme.gallery", inlineCarousel: true, selected.Name + " previews")
+                    .WithThumbnailAnchor(FocusAnchorPoint.Center, 50).Classes("catalogue-carousel");
+                initial = "theme.gallery";
+            }
+            else
+            {
+                var scene = Scenes[state.ThemeImage];
+                var art = ThemeArt(selected, scene.File, "theme.detail.art", selected.Name + ", " + scene.Name, "theme-gallery-art");
+                var scenes = UI.SegmentedTabs("theme.scenes", initial, Scenes.Select((s, i) =>
+                    new SegmentedTab("theme.scene." + i, s.Name, "theme.scene." + i)).ToArray());
+                gallery = UI.Stack("theme.gallery", art, scenes).Classes("theme-gallery");
+            }
             var status = themeStatus.GetSnapshot(Selection(selected));
             var op = state.Snapshot.Operation;
             var busy = state.Busy || op?.State is "running" or "review";
@@ -161,19 +189,26 @@ public sealed partial class MarketplaceWidget
             {
                 UI.Text(selected.Description, "theme.description").Classes("diagnostic-line"),
                 UI.Text(selected.Creator + " · " + selected.Version, "theme.credit").Classes("page-help"),
-                UI.Stack("theme.commands", actions.ToArray()).Classes("marketplace-commands"),
             };
+            // A single editorial field belongs beside the theme credit. Longer
+            // collections get the full width below the preview and its actions.
+            if (selected.Details is [var field])
+                overview.Add(UI.Stack("theme.about",
+                    UI.Text(field.Label, "theme.about.label").Classes("page-help"),
+                    UI.Text(field.Value, "theme.about.value").Classes("listing-detail-name")).Classes("listing-field"));
+            overview.Add(UI.Stack("theme.commands", actions.ToArray()).Classes("marketplace-commands"));
             var message = state.Error ?? status.Error?.Message ?? (op?.PackageId == selected.Id ? op.Message : null);
             if (message is not null) overview.Add(UI.Text(message, "theme.operation").Classes("page-help"));
             content.Add(UI.Grid("theme.detail.layout", [GridTrack.Auto()], [GridTrack.Star(2.1), GridTrack.Star()],
-                UI.Stack("theme.gallery", gallery, scenes).Classes("theme-gallery"),
+                gallery,
                 UI.Stack("theme.overview", overview.ToArray()).InGrid(column: 1).Classes("theme-overview"))
                 .Spacing(0, 16));
+            if (selected.Details is { Count: > 1 }) content.AddRange(DetailSections(selected.Details));
         }
         else
         {
             header.Add(UI.Stack("marketplace.search.group",
-                UI.TextEntry(state.ThemeSearch, "Search themes, creators or games", "theme.search", "theme.search", 128))
+                UI.TextEntry(state.ThemeSearch, "Search themes, creators or inspiration", "theme.search", "theme.search", 128))
                 .RememberChildFocus("theme.search"));
             if (page is null)
             {
@@ -208,7 +243,11 @@ public sealed partial class MarketplaceWidget
                 }
                 if (page.Offline) content.Add(UI.Text("Catalogue offline", "theme.offline").Classes("page-help"));
                 var returnId = state.ThemeReturnId;
-                if (returnId is not null && listedCards.Any(t => CardId(t.Item, t.Shelf) == returnId)) initial = returnId;
+                if (returnId is not null && listedCards.Any(t => CardId(t.Item, t.Shelf) == returnId))
+                {
+                    initial = returnId;
+                    focusEntry = state.ReturnFocus?.FocusElement("theme.browse", returnId);
+                }
                 if (state.ThemePageFocus is { } pageFocus && listedCards.Length > 0)
                     focusEntry = pageFocus.FocusElement("theme.browse", CardId(listedCards[0].Item, listedCards[0].Shelf));
             }
@@ -235,18 +274,17 @@ public sealed partial class MarketplaceWidget
         bool featured = shelf == "feature";
         var id = CardId(theme, shelf);
         var image = ThemeArt(theme, featured ? "tray-960.png" : "tray-480.png", id + ".art",
-            theme.Name + " radial tray", featured ? "theme-feature-art" : "theme-card-art");
+            theme.Name + " theme preview", featured ? "theme-feature-art" : "theme-card-art");
         var copy = new List<WidgetElement> { UI.Text(theme.Name, id + ".name").Classes(featured ? "theme-title" : "section-heading"),
             UI.Text(theme.Creator, id + ".creator").Classes("page-help") };
         if (featured)
         {
             copy.Add(UI.Text(theme.Description, id + ".summary").Classes("diagnostic-line"));
-            copy.Add(UI.Text("View theme ›", id + ".view").Classes("theme-feature-link"));
         }
         var caption = UI.Stack(id + ".caption", copy.ToArray()).Classes("theme-caption");
         WidgetElement layout = featured ? UI.Grid(id + ".layout", [GridTrack.Auto()], [GridTrack.Star(1.35), GridTrack.Star()],
                 image, caption.InGrid(column: 1))
-            : UI.Stack(id + ".layout", caption, image);
+            : UI.Stack(id + ".layout", image, caption);
         return UI.ActionSurface("theme.open." + id, id, theme.Name + ", by " + theme.Creator + ". " + theme.Description,
             ActionSurfaceOrientation.Vertical, layout).Classes("theme-card");
     }

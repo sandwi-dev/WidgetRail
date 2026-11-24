@@ -15,11 +15,9 @@ public sealed partial class PlayniteLibraryWidget
             tabs,
             UI.Row(Hub + ".utilities",
                 UI.Button("Capture settings", Captures + ".open", Captures + ".open")
-                    .FocusLeft(achievementTabId).FocusRight(Hub + ".refresh").Classes("playnite-library-control"),
-                UI.Button(busy ? "Updating…" : "Refresh", Hub + ".refresh", Hub + ".refresh").Disabled(busy)
-                    .FocusLeft(Captures + ".open").FocusRight(Hub + ".settings").Classes("playnite-library-control"),
+                    .FocusLeft(achievementTabId).FocusRight(Hub + ".settings").Classes("playnite-library-control"),
                 UI.Button("Settings", SettingsOpen, Hub + ".settings")
-                    .FocusLeft(busy ? Captures + ".open" : Hub + ".refresh").Classes("playnite-library-control"))
+                    .FocusLeft(Captures + ".open").Classes("playnite-library-control"))
                 .Classes("playnite-library-home-utilities").VisibleWhen(ResponsiveVisibility.ExpandedOnly))
             .Classes("playnite-library-home-actions");
         WidgetElement body;
@@ -40,16 +38,18 @@ public sealed partial class PlayniteLibraryWidget
             var description = snapshot.Error?.Message ?? (busy ? "Reading your cached progress from Playnite." : availability switch
             {
                 "missing" when install is not null => "Install Playnite Achievements to see progress and recent unlocks.",
-                "missing" => "Check that Playnite Achievements is enabled in Playnite, then refresh.",
-                "unsupported" => "This version of the add-on does not expose its achievement overview. Update it in Playnite and refresh this page.",
+                "missing" => "Check that Playnite Achievements is enabled in Playnite.",
+                "unsupported" => "Update Playnite Achievements in Playnite to see your progress here.",
                 "update-required" => "The installed WidgetRail plugin does not support the achievement overview yet. Open Playnite connection to update it.",
-                _ => "Open Playnite and check that PlayniteAchievements is enabled, then refresh.",
+                _ => "Open Playnite and check that Playnite Achievements is enabled.",
             });
             body = UI.Stack(Hub + ".empty", UI.Icon(PlayniteIcons.Achievements, Hub + ".empty.icon", "Achievements").Classes("playnite-hub-empty-icon"),
                 UI.Text(title, Hub + ".empty.title").Classes("playnite-hub-title"),
                 UI.Text(description, Hub + ".empty.description").Classes("playnite-hub-empty-description"),
                 install ?? UI.Button("Playnite connection", PlayniteOpenActionId, Hub + ".connection").Classes("playnite-library-control"),
-                UI.Button("Refresh", Hub + ".refresh", Hub + ".retry").Disabled(busy).VisibleWhen(ResponsiveVisibility.CompactOnly))
+                !busy && (snapshot.Error is not null || availability is "missing" or "unsupported" or "unavailable")
+                    ? UI.Button(snapshot.Error is null ? "Check again" : "Try again", Hub + ".refresh", Hub + ".retry")
+                    : UI.Spacer(Hub + ".retry.placeholder"))
                 .Classes("playnite-hub-empty");
         }
         else
@@ -73,9 +73,7 @@ public sealed partial class PlayniteLibraryWidget
                             .Classes("playnite-library-achievement-search"))
                         .RememberChildFocus(Hub + ".search").Classes("playnite-library-achievement-search-group"),
                     UI.Button("Clear", Hub + ".clear", Hub + ".clear").Disabled(string.IsNullOrEmpty(controls.Search)).FocusUp(toolbarUp)
-                        .Classes("playnite-library-search-clear"),
-                    UI.Button("Refresh", Hub + ".refresh", Hub + ".refresh.compact").Disabled(busy).FocusUp(achievementTabId)
-                        .Classes("playnite-library-search-clear").VisibleWhen(ResponsiveVisibility.CompactOnly))
+                        .Classes("playnite-library-search-clear"))
                     .Classes("playnite-library-achievement-search-group"),
                 UI.ResponsiveGrid(Hub + ".filters", 170, 2,
                 UI.Select("Progress", new SelectOption[]
@@ -94,7 +92,7 @@ public sealed partial class PlayniteLibraryWidget
             var filteredCount = achievementGames!.Descriptor.Count;
             var games = filteredCount == 0 ? UI.Stack(Hub + ".games.empty",
                 UI.Text(data.Games.Count == 0 ? "No cached achievements yet" : "No matching games", Hub + ".games.empty.title").Classes("playnite-hub-section-title"),
-                UI.Text(data.Games.Count == 0 ? "Refresh achievements for a game in PlayniteAchievements, then refresh this page." :
+                UI.Text(data.Games.Count == 0 ? AchievementsSetupHelp :
                     "Try another search or progress filter.", Hub + ".games.empty.detail").Classes("playnite-hub-meta")) :
                 (WidgetElement)UI.CollectionGrid(Hub + ".games", achievementGames, 380, 100, "Game achievement progress", maximumColumns: 2).Classes("playnite-hub-games");
             var summaryGroup = UI.Stack(Hub + ".overview", summary,
@@ -102,7 +100,7 @@ public sealed partial class PlayniteLibraryWidget
                     .Classes("playnite-hub-summary-compact").VisibleWhen(ResponsiveVisibility.CompactOnly), recent).Classes("playnite-hub-recent-section");
             if (snapshot.Error is { } error)
                 toolbar = UI.Stack(Hub + ".toolbar.status", toolbar,
-                    UI.Text(error.Message, Hub + ".error").Classes("playnite-hub-list-status"));
+                    PlayniteLibraryDetailsPresentation.ReadError(Hub + ".error", error.Message, Hub + ".refresh"));
             body = UI.Grid(Hub + ".body", [GridTrack.Auto(), GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
                 summaryGroup, toolbar.InGrid(row: 1), games.InGrid(row: 2)).Spacing(8, 0).Classes("playnite-hub-body");
         }
@@ -111,7 +109,6 @@ public sealed partial class PlayniteLibraryWidget
             .Spacing(12, 0).Classes("playnite-hub-page")
             .Shortcut(ControllerButton.LeftBumper, PlayniteLibraryActions.BrowseOpen, "Previous tab")
             .Shortcut(ControllerButton.RightBumper, PlayniteLibraryActions.HomeOpen, "Next tab")
-            .Shortcut(ControllerButton.Y, Hub + ".refresh", "Refresh")
             .Shortcut(ControllerButton.LeftStick, Hub + ".search-focus", "Search games");
         var view = new WidgetView(root, initialFocus, Surface: new()
         {

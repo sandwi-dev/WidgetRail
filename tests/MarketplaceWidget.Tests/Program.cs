@@ -11,6 +11,8 @@ if (args is ["--verify-theme-reconnect"])
     return 0;
 }
 var tests = new (string Name,Func<Task> Run)[] {
+    ("Catalogue opens with the complete bundled inventory", BundledInventory),
+    ("Curated shelves preserve every listing, search, and exact return focus", CuratedShelves),
     ("Catalogue bumpers cycle sections locally and stay out of details and reviews", SectionShortcuts),
     ("Theme discovery loads on entry and restores the same gallery card", ThemeNavigation),
     ("Theme pagination enters the first new card and retires focus on tab changes", ThemePageFocus),
@@ -104,27 +106,22 @@ static async Task ScreenshotNavigation(string? directory)
     const string second="https://raw.githubusercontent.com/sandwi-dev/WidgetRail/native-fixture/screenshot-2.png";
     const string package="widgetrail.firstparty.performance-monitor";
     await using var f=new Fixture();
-    f.Snapshot=f.Snapshot with {Items=[f.Snapshot.Items[0],new(package,"Performance Monitor","Local screenshot navigation fixture.",[first,second],"1.0.0")]};
+    f.Snapshot=f.Snapshot with {Items=[f.Snapshot.Items[0] with { Id = "widgetrail.firstparty.audio-mixer" },new(package,"Performance Monitor","Local screenshot navigation fixture.",[first,second],"1.0.0")]};
     Check(MarketplaceValidation.SnapshotError(f.Snapshot)is null,"Screenshot fixture bypasses catalogue image URL admission");
     await f.Start();await Until(()=>Node(f,"marketplace.refresh") is {IsBusy:not true});
     var card=Walk(f.View().Root).Where(n=>n.Kind==ViewNodeKind.ActionSurface).Last();
     await Write("screenshots-browse");await f.Act(card.ActionId!);
-    CheckImage(first,"1 / 2","Performance Monitor, screenshot 1");await Write("screenshots-first");
-    Check(f.View().Root.Shortcuts.Any(s=>s.Button==ControllerButton.RightBumper&&s.ActionId=="marketplace.screenshot.next")&&
-        f.View().Root.Shortcuts.Any(s=>s.Button==ControllerButton.LeftBumper&&s.ActionId=="marketplace.screenshot.previous"),"Screenshot bumper shortcuts are missing");
-    await f.Act("marketplace.screenshot.next");CheckImage(second,"2 / 2","Performance Monitor, screenshot 2");await Write("screenshots-next");
-    await f.Act("marketplace.screenshot.previous");CheckImage(first,"1 / 2","Performance Monitor, screenshot 1");await Write("screenshots-previous");
-    Check(f.View().Root.Shortcuts.Any(s=>s.Button==ControllerButton.B&&s.ActionId=="marketplace.back"),"Screenshot details lost the declared B Back shortcut");
+    var gallery = Node(f, "marketplace.gallery")?.MediaPlayer;
+    Check(gallery is { InlineCarousel: true, Gallery.Count: 2 } &&
+        gallery.Gallery.Select(i => i.Source.Location).SequenceEqual([first, second]) &&
+        gallery.Gallery.All(i => i.PublicThumbnail == i.Source.Location && i.Source.IsPublicMedia),
+        "Catalogue screenshot carousel lost its ordered sources or thumbnails");
+    await Write("screenshots-first");
     await f.Act("marketplace.back");
-    Check(f.View().InitialFocusId==card.Id&&Node(f,"marketplace.screenshot")is null,"Screenshot Back lost the exact non-first catalogue card");
+    Check(f.View().FocusGroupEntryRequest?.TargetId == card.Id && Node(f, "marketplace.gallery") is null,
+        "Screenshot Back lost the originating card");
     await Write("screenshots-back");
-    Check(f.Commands.All(c=>c.Action is "status" or "refresh"),"Screenshot browsing downloaded or changed a package");
-    void CheckImage(string source,string count,string label)
-    {
-        var image=Node(f,"marketplace.screenshot")!;
-        Check(image.ImageSource==source&&image.AccessibilityLabel==label&&Node(f,"marketplace.screenshot.count")?.Text==count,
-            "Screenshot identity, accessible label and count diverged");
-    }
+    Check(f.Commands.All(c => c.Action is "status" or "refresh"), "Browsing screenshots changed a package");
     async Task Write(string name)
     {
         var snapshot=f.View();
@@ -262,6 +259,46 @@ static async Task Search()
     catch (OperationCanceledException) { }
 }
 
+static async Task BundledInventory()
+{
+    await using var fixture = new Fixture();
+    var path = Path.Combine(AppContext.BaseDirectory, "fixture", "catalog.json");
+    var items = JsonSerializer.Deserialize<MarketplaceItem[]>(await File.ReadAllTextAsync(path),
+        new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    fixture.Snapshot = new(0, items);
+    await fixture.Start();
+    await Until(() => Node(fixture, "marketplace.shelf.featured") is not null);
+    var view = fixture.View();
+    Check(Walk(view.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface) == items.Length,
+        "Opening must present the full bundled inventory.");
+    Check(ViewSnapshotValidator.Validate(view).Count == 0 && WinUiPresentationContract.Validate(view).Count == 0,
+        "The bundled inventory must pass the presentation contracts.");
+}
+
+static async Task CuratedShelves()
+{
+    await using var fixture = new Fixture();
+    var packages = new[] { "future.widget", "widgetrail.firstparty.performance-monitor", "widgetrail.samples.youtube-video",
+        "widgetrail.samples.discord-controls", "widgetrail.firstparty.capture-library", "widgetrail.firstparty.audio-mixer",
+        "widgetrail.samples.playnite-library", "widgetrail.samples.spotify", "widgetrail.samples.ytmusic" };
+    fixture.Snapshot = fixture.Snapshot with { Items = packages.Select(id => new MarketplaceItem(id, id, "Find me", [])).ToArray() };
+    await fixture.Start();
+    string[] Names(string shelf) => Walk(Node(fixture, "marketplace.shelf." + shelf)!).Where(n =>
+        n.Kind == ViewNodeKind.Text && n.Id.EndsWith(".name", StringComparison.Ordinal)).Select(n => n.Text!).ToArray();
+    Check(Names("featured").SequenceEqual(new[] { packages[3], packages[4], packages[6], packages[8], packages[7], packages[2] }) &&
+        Names("essentials").SequenceEqual(new[] { packages[5], packages[1] }) && Names("more").SequenceEqual(new[] { packages[0] }),
+        "Shelf order or membership changed");
+    var view = fixture.View();
+    Check(ViewSnapshotValidator.Validate(view).Count == 0 && WinUiPresentationContract.Validate(view).Count == 0, "Curated cards failed admission");
+    var target = Walk(view.Root).Last(n => n.Kind == ViewNodeKind.ActionSurface);
+    await fixture.Act(target.ActionId!);
+    await fixture.Act("marketplace.back");
+    Check(fixture.View().FocusGroupEntryRequest?.TargetId == target.Id, "Back did not explicitly focus its originating card");
+    await fixture.Act("marketplace.search", "Find me");
+    Check(Node(fixture, "marketplace.shelf.featured") is null && Walk(fixture.View().Root).Count(n => n.Kind == ViewNodeKind.ActionSurface) == packages.Length,
+        "Cross-shelf search hid or duplicated a listing");
+}
+
 static async Task ThemeNavigation()
 {
     await using var f = new Fixture();
@@ -276,6 +313,13 @@ static async Task ThemeNavigation()
     Check(WinUiPresentationContract.Validate(f.View()).Count == 0, "Theme gallery violates WinUI contract");
     await f.Act("theme.back");
     Check(f.View().InitialFocusId == card.Id, "Back lost the originating card");
+    var external = Walk(f.View().Root).First(n => n.Kind == ViewNodeKind.ActionSurface);
+    await f.Act(external.ActionId!);
+    var onlineGallery = Node(f, "theme.gallery")?.MediaPlayer;
+    Check(onlineGallery is { InlineCarousel: true, Gallery.Count: 3 } &&
+        onlineGallery.Gallery.All(item => ThemeCataloguePublication.PreviewFileDigest(new Uri(item.PublicThumbnail!)) is not null) &&
+        ViewSnapshotValidator.Validate(f.View()).Count == 0, "Remote scenes lost their verified carousel or focus target");
+    await f.Act("theme.back");
     await f.Act("theme.search", "empty");
     await Until(() => Node(f, "theme.empty") is not null);
     Check(Node(f,"marketplace.tab.themes")?.IsSelected == true, "Search left Themes");
@@ -415,7 +459,7 @@ static async Task Previews()
     var card = Walk(host.CurrentSnapshot.Root).First(n => n.Kind == ViewNodeKind.ActionSurface);
     Check(Walk(host.CurrentSnapshot.Root).Where(n => n.Kind == ViewNodeKind.ActionSurface).Skip(1).All(n => n.FocusPreviewKey is null && n.FocusPresentation is null),
         "Listings without setup still advertise a preview");
-    Check(surface.FocusPreview is { EnterButton: null, SizeToContentHeight: true } && surface.FocusPreviewSource is not null,
+    Check(surface.FocusPreview is { EnterButton: null, SizeToContentHeight: true, DelayMilliseconds: 1500 } && surface.FocusPreviewSource is not null,
         "Preview is not deferred and read-only");
     Check(!Walk(host.CurrentSnapshot.Root).Any(n => n.Text?.Contains("Configure your token") == true), "Previews were eagerly constructed");
     var before = f.Commands.Count;
@@ -692,7 +736,7 @@ sealed class Fixture : IAsyncDisposable
             var items = new List<CatalogueTheme>();
             if (query.Search != "empty")
             {
-                items.Add(seed);
+                items.Add(seed with { PreviewHashes = ThemeCataloguePublication.PreviewFiles.ToDictionary(file => file, _ => new string('e', 64)) });
                 items.Add(seed with { Id = "dev.test.tidepool", Name = "Tidepool", Sha256 = new string('b',64) });
                 items.AddRange(Enumerable.Range(2, ThemeFixtureCount - 2)
                     .Select(index => seed with { Id = $"dev.test.theme-{index}", Name = $"Test theme {index}", Sha256 = index.ToString("x64") }));

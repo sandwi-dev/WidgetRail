@@ -100,7 +100,10 @@ public sealed partial class PlayniteLibraryWidget
                 if (history is null)
                 {
                     const string pendingId = Sessions + "preparing";
-                    var message = snapshot.Error?.Message ?? "Preparing session history…";
+                    if (snapshot.Error is { } error)
+                        return new(PlayniteLibraryDetailsPresentation.ReadError(pendingId, error.Message,
+                            PlayniteLibraryDetailsPresentation.RetrySessionsAction), pendingId + ".action", null, null);
+                    const string message = "Preparing session history…";
                     return new(UI.ReadingSurface(pendingId, message, ActionSurfaceOrientation.Vertical,
                         UI.Text(message, pendingId + ".label")), pendingId, null, null);
                 }
@@ -142,7 +145,7 @@ public sealed partial class PlayniteLibraryWidget
         if (filter is not null || chartEntry != SessionList) list = list.FocusUp(filter is not null ? SessionChartBack : chartEntry);
         if (!context.InlineHeadings) list = list.Grouped(context.VisibleGroups);
         var filtered = filter is not null;
-        var body = SessionDashboard(history, context, filter, list.Classes("sessions-history"), extras.ActivityError ?? analysisMessage);
+        var body = SessionDashboard(history, context, filter, list.Classes("sessions-history"), extras.ActivityError, analysisMessage);
         var expanded = context.Expanded is not null;
         var back = expanded || filtered ? SessionBack : null;
         FocusGroupEntryRequest? focus = null;

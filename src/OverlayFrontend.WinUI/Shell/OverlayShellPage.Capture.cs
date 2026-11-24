@@ -54,6 +54,7 @@ internal sealed partial class OverlayShellPage
                     if (next.Request is not null) capturing = RunCaptureAsync(next);
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { break; }
+                catch (Exception error) when (BridgeDisconnected && error is not OutOfMemoryException) { break; }
                 catch (Exception error) when (error is not OutOfMemoryException)
                 { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("capture-pump", error); }
             }

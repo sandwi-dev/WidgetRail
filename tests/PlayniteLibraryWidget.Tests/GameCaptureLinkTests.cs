@@ -19,7 +19,9 @@ public sealed partial class PlayniteLibraryTests
         var items = Enumerable.Range(1,13).Select(i =>
         {
             var id = i.ToString("x32");
-            return new CaptureLibraryItem(id, new(id, "image/png", 80, 80, 120, 0, long.MaxValue), 500) { ContextCount = 1, Revision = i };
+            var label = new[] { "The observatory", "Mountain pass", "Crystal valley" }[(i-1)%3];
+            return new CaptureLibraryItem(id, new(id, "image/png", 1920, 1080, 120, 0, long.MaxValue),
+                DateTimeOffset.Now.AddMinutes(-i*9).ToUnixTimeMilliseconds()) { Title=label, ContextCount=1, Revision=i };
         }).ToArray();
         var last = items[^1];
         bool linked = true;
@@ -31,6 +33,7 @@ public sealed partial class PlayniteLibraryTests
                 request.CapabilityIds.Select(id => new WidgetPermissionStatus(id, WidgetPermissionState.Granted)).ToArray())))
             .WithHandler(WidgetCaptureLibraryCapabilities.Query, (request, _) =>
             {
+                Assert.IsTrue(request.Query.AvailableOnly, "Missing captures must not count toward the linked gallery or its last page.");
                 Assert.IsFalse(request.Query.ExcludeReference);
                 var available = items.Where(item => item != last || linked).ToArray();
                 return ValueTask.FromResult(new CaptureLibraryQueryPage(available.Skip(request.Offset).Take(request.Count).ToArray(),
@@ -64,6 +67,17 @@ public sealed partial class PlayniteLibraryTests
             var tile = PageNodes(widget, Snapshot(widget, 9229).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
             await widget.OnActionAsync(new(tile.ActionId!, tile.Id));
             await widget.OnActionAsync(new(DetailAction + "tab.captures", "tab"));
+            await WaitFor(() => Current().Any(node => node.Id == prefix + ".cards"), "Linked capture tiles");
+            var grid = Current().Single(node => node.Id == prefix + ".cards");
+            Assert.AreEqual(2, grid.GridMaximumColumns);
+            Assert.AreEqual(4,grid.Children.Count);
+            CollectionAssert.AreEqual(items.Take(4).Select(item => prefix + ".item." + item.Id).ToArray(),
+                grid.Children.Select(node => node.Id).ToArray());
+            if (Environment.GetEnvironmentVariable("WRAIL_CAPTURE_TILES_FIXTURE") is { Length: > 0 } fixture)
+            {
+                var theme = WidgetRail.Tests.RendererFixtureExporter.CompileTheme(Path.Combine(AppContext.BaseDirectory, "styles"), "default.wrss");
+                WidgetRail.Tests.RendererFixtureExporter.Write(fixture,Snapshot(widget, 9230),theme);
+            }
             var target = prefix + ".item." + last.Id;
             await Activate(prefix + ".linked");
             await Activate(prefix + ".picker.next");

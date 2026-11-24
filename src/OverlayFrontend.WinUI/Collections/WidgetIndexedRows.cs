@@ -264,9 +264,12 @@ internal sealed partial class WidgetIndexedRows : IAsyncDisposable
             // leases after page eviction. Dispatch style-only notifications, not
             // collection Reset/reacquisition or provider ContentRevision changes.
             lease.RenderStylesChanged += (_, _) => ItemsDispatcherStylesChanged();
+            // Backgrounding can retire the worker lease without changing the
+            // widget's query or content revision. Keep the drawn rows until
+            // their demanded replacement arrives, but never reuse retired input.
             return new(request.Query, request.RequestId, request.StartIndex,
                 lease.Range.Items.Select(item => new KeyedCollectionItem<WidgetIndexedRow>(item.Key, new(item, lease, this))).ToArray(),
-                request.ContentRevision, lease);
+                request.ContentRevision, lease, () => lease.IsCurrent);
         }
         catch { await lease.DisposeAsync().ConfigureAwait(false); throw; }
     }

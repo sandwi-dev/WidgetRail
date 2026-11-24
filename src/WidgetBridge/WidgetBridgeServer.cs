@@ -18,6 +18,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
     private readonly ConsentStore? _consentStore;
     private readonly IPlatformBrokerBackend? _platformBackend;
     private readonly AppLibraryArtworkRegistry? _appLibraryArtwork;
+    private readonly WidgetSummaryExchange _widgetSummaries = new();
     private readonly BridgeCatalogMonitor? _catalogMonitor;
     private readonly BridgeClientRegistry _registry;
     private readonly BridgeDiagnosticsProjection _diagnostics;
@@ -123,7 +124,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                     _ = SendEventAsync(BridgeMessageTypes.WidgetActivityRetired,
                         new BridgeWidgetActivityRetired(diagnostic.WidgetId, new(diagnostic.RegistryGeneration, diagnostic.Process.StartOrdinal)));
                 lifetimeDiagnosticSink?.Invoke(diagnostic);
-            });
+            }) { Summaries = _widgetSummaries };
         _authorityRecovery = new BridgeAuthorityRecoveryProjection(
             AppContainerAuthorityRecoveryService.Default);
         _localData = new BridgeWidgetLocalDataService(
@@ -597,7 +598,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                 snapshotRequest.BaseSequence,
                 snapshotRequest.RecoveryOriginSequence,
                     _sessionCancellation,
-                    cancellationToken, snapshotRequest.TrayPreparation)
+                    cancellationToken, snapshotRequest.TrayPreparation, snapshotRequest.IntentTicket)
                 .ConfigureAwait(false);
             await ReplyPresentationAsync(
                 request.RequestId,
@@ -1491,6 +1492,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             _platformBackend,
             context,
             artworkRegistry: _appLibraryArtwork!,
+            summaries: _widgetSummaries, publishesSummary: configured.Intents?.Handles.Any(h => h.Id == WidgetIntentContracts.OpenSummaryProvider) == true,
             hostEffectSink: effect => PublishHostEffect(
                 configured.Id, configured.WorkerFingerprint, effect),
             diagnosticSink: diagnostic =>

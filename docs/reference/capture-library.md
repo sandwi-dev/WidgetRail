@@ -513,6 +513,10 @@ metadata, reveal and copy operations work on linked items. The original Delete
 and `RecycleAsync` contracts reject them with `capture_library_read_only_source`.
 `HideAsync` (the compatible `RemoveLinkAsync` alias) hides a linked entry from
 normal discovery without changing its original or revoking known-ID reads.
+Capture Library opens with `AvailableOnly`, as do Playnite's linked galleries and Game Help's attachment picker. Filters > Type > Unavailable uses `UnavailableOnly` to browse missing originals. Both options are optional on the wire and are mutually exclusive. The same filter applies to paging, counts, groups and position lookup. Hidden captures remain accessible through the separate Hidden filter.
+
+Linked files with stable Windows file IDs retain their title, favorite, and game links when the original returns to the same source path. A different physical file at that path gets its own capture ID. Existing path-based capture IDs remain valid for their original file. Source watchers reconcile folder departures and coalesce file changes. Offline sources retain their records.
+
 `CaptureLibraryQuery.HiddenOnly` selects hidden entries through the same bounded
 Query/Groups/Find/facet pipeline; default requests omit the new flag, and item
 response envelopes remain unchanged. `UnhideAsync` accepts an exact content and

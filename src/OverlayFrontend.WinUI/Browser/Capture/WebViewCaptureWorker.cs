@@ -37,6 +37,9 @@ internal sealed class WebViewCaptureWorker:IWebViewCaptureTransport
     private LiveCaptureQuality quality=LiveCaptureQuality.Default;
     private string? reason;
     private bool disposed,heartbeatPending;
+    private bool nativeH264;
+    private int lastEncoderGeneration;
+    private bool encoderOpen;
     public bool IsRunning=>pump is{IsCompleted:false};
     public bool HasEnded=>Volatile.Read(ref ended)!=0;
     public bool HasStarted=>Volatile.Read(ref started)!=0;
@@ -143,6 +146,17 @@ internal sealed class WebViewCaptureWorker:IWebViewCaptureTransport
             if(value.ValueKind!=JsonValueKind.Object||!value.TryGetProperty("captureEpoch",out var id)||!id.TryGetInt64(out var selected)||selected!=epoch)return;
             if(value.TryGetProperty("captureConsume",out var consume)&&consume.ValueKind==JsonValueKind.True){consumed?.TrySetResult();return;}
             if(value.TryGetProperty("captureError",out _)){Cancel("receiver_error");return;}
+            if(value.TryGetProperty("captureEncoder",out var encoder)){
+                if(!nativeH264||cancellation?.IsCancellationRequested!=false||worker is not {IsClosed:false} current||
+                    !encoder.TryGetInt32(out var generation)||generation<=0||generation<lastEncoderGeneration||
+                    !value.TryGetProperty("bitrate",out var rate)||!rate.TryGetInt32(out var bitrate)||bitrate< -1||
+                    (generation==lastEncoderGeneration&&!encoderOpen))return;
+                var key=value.TryGetProperty("keyframe",out var request)&&request.ValueKind==JsonValueKind.True;
+                lastEncoderGeneration=generation;encoderOpen=bitrate>=0;
+                _=CaptureWorkerNative.WrailCaptureWorkerEncoding(current,(ulong)selected,encoderOpen?(uint)generation:0,
+                    (uint)Math.Max(0,bitrate),key?1u:0u);
+                return;
+            }
             if(!value.TryGetProperty("captureAck",out var kindValue)||!kindValue.TryGetUInt32(out var kind)||kind is not(1 or 2)||
                 !value.TryGetProperty("captureSequence",out var sequenceValue)||!sequenceValue.TryGetInt64(out var sequence)||sequence<=0)return;
             if(cancellation?.IsCancellationRequested!=false||Volatile.Read(ref worker) is not {IsClosed:false} currentWorker)return;
@@ -168,6 +182,10 @@ internal sealed class WebViewCaptureWorker:IWebViewCaptureTransport
             submitted=dropped=0;processId=0;result=null;reason=null;stopped=new(true,false,0);started=capturing=ended=terminalLogged=cancellationResult=0;
             var videoBytes=checked(selected.MaximumWidth*selected.MaximumHeight*4);
             if(videoBytes>LiveCaptureQuality.MaximumVideoBytes)throw new InvalidOperationException("Capture video exceeds the transport budget.");
+            nativeH264=selected.ContentHint=="detail"&&
+                Environment.GetEnvironmentVariable("WIDGETRAIL_EXPERIMENTAL_NATIVE_H264")=="1";
+            lastEncoderGeneration=0;encoderOpen=false;
+            if(nativeH264)videoBytes=checked(videoBytes+524288+24);
             var reference=CoreReference();
             try
             {
@@ -176,7 +194,7 @@ internal sealed class WebViewCaptureWorker:IWebViewCaptureTransport
             }
             finally{Marshal.Release(reference);}
             Marshal.ThrowExceptionForHR(CaptureWorkerNative.WrailCaptureBuffersMappings(buffers,out var videoMap,out var audioMap));
-            using var jsStarted=JsonDocument.Parse(await core.ExecuteScriptAsync($"WidgetRailNativeMedia.start({current},{(includeAudio?"true":"false")},'{selected.Id}','{selected.ContentHint}')").AsTask().WaitAsync(TimeSpan.FromSeconds(5),cts.Token));
+            using var jsStarted=JsonDocument.Parse(await core.ExecuteScriptAsync($"WidgetRailNativeMedia.start({current},{(includeAudio?"true":"false")},'{selected.Id}','{selected.ContentHint}',{(nativeH264?"true":"false")})").AsTask().WaitAsync(TimeSpan.FromSeconds(5),cts.Token));
             cts.Token.ThrowIfCancellationRequested();
             if(!OriginCurrent)throw new OperationCanceledException("Capture document changed.");
             if(jsStarted.RootElement.ValueKind!=JsonValueKind.True)throw new InvalidOperationException("Generated media unavailable.");
@@ -184,7 +202,9 @@ internal sealed class WebViewCaptureWorker:IWebViewCaptureTransport
             {
                 Size=568,
 #if ENABLE_WIDGET_VALIDATION
-                Flags=testBlockedExit?2u:0,
+                Flags=(testBlockedExit?2u:0)|(nativeH264?4u:0),
+#else
+                Flags=nativeH264?4u:0,
 #endif
                 Epoch=(ulong)current,Window=ulong.Parse(target.Handle,NumberStyles.HexNumber),
                 Created=ulong.Parse(target.ProcessCreated,NumberStyles.HexNumber),ProcessId=target.ProcessId,IncludeAudio=includeAudio?1u:0,

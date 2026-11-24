@@ -29,13 +29,16 @@ public sealed record FocusPreviewOptions(double Width = 360, double Height = 240
 
 public static class FocusPreviewContract
 {
+    internal const int LegacyMaximumDelayMilliseconds = 1500;
+    private const int MaximumDelayMilliseconds = 5000;
+
     public static void Validate(FocusPreviewOptions value)
     {
         ArgumentNullException.ThrowIfNull(value);
         if (!double.IsFinite(value.Width) || value.Width is < 160 or > 960 ||
             !double.IsFinite(value.Height) || value.Height is < 96 or > 800 ||
             !Enum.IsDefined(value.Placement) || (!value.OnFocus && !value.OnHover) ||
-            value.DelayMilliseconds is < 0 or > 1500)
+            value.DelayMilliseconds is < 0 or > MaximumDelayMilliseconds)
             throw new ArgumentException("Choose bounded preview dimensions, delay, and at least one activation mode.", nameof(value));
         if (value.EnterButton is { } button && button is not (ControllerButton.A or ControllerButton.X or ControllerButton.Y or ControllerButton.LeftStick or ControllerButton.RightStick))
             throw new ArgumentException("Choose A, X, Y, left stick or right stick to enter a preview; B returns to the source.", nameof(value));

@@ -63,6 +63,7 @@ public sealed partial class CaptureLibraryStore
                     CREATE TABLE IF NOT EXISTS captures(id TEXT PRIMARY KEY, saved_at INTEGER NOT NULL, hash TEXT NOT NULL,
                       name TEXT, available INTEGER NOT NULL, bytes INTEGER NOT NULL, metadata_stamp INTEGER NOT NULL, data TEXT NOT NULL);
                     CREATE INDEX IF NOT EXISTS capture_order ON captures(saved_at DESC,id);
+                    CREATE INDEX IF NOT EXISTS capture_availability_order ON captures(available,saved_at DESC,id);
                     CREATE INDEX IF NOT EXISTS capture_hash ON captures(hash);
                     CREATE INDEX IF NOT EXISTS capture_name ON captures(name);
                     CREATE INDEX IF NOT EXISTS capture_process ON captures(json_extract(data,'$.Item.Media.SourceProcess.Instance'),
@@ -159,7 +160,7 @@ public sealed partial class CaptureLibraryStore
     {
         while (renames.TryDequeue(out var rename))
         {
-            var saved = IndexRows("WHERE name=$name", ("$name",rename.OldName)).FirstOrDefault();
+            var saved = IndexRows("WHERE name=$name AND json_extract(data,'$.Item.SourceId') IS NULL", ("$name",rename.OldName)).FirstOrDefault();
             if (saved is null || !ValidName(rename.NewName) || !Path.GetExtension(rename.NewName).Equals(Extension(saved.Item.Media),StringComparison.OrdinalIgnoreCase)) continue;
             var replacement = saved with { FileName = rename.NewName };
             PlainPath(MediaPath(replacement));
@@ -241,9 +242,18 @@ public sealed partial class CaptureLibraryStore
         var unchanged = file.Exists && file.Length == saved.Item.Media.ByteLength && file.LastWriteTimeUtc.Ticks == saved.MediaStamp;
         // Visible artwork/open requests inspect edits lazily; listing never decodes or hashes the whole folder.
         var available = saved.MetadataValid && file.Exists && (unchanged || inspect is not null && file.Length is > 0 and <= CaptureLimits.MaximumAttachmentBytes);
-        if (!unchanged) { verified.Remove(id); DeleteThumbnails(id); }
+        if (available && HasStableFileIdentity(saved.ExternalIdentity))
+        {
+            try
+            {
+                using var stream = new FileStream(mediaPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                available = SamePhysicalFile(saved.ExternalIdentity, CapturePinnedFile.ReadIdentity(stream));
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { available = false; }
+        }
+        if (!unchanged && (previous?.Item.Available != false || file.Exists)) { verified.Remove(id); DeleteThumbnails(id); }
         IndexPut(saved with { Item = saved.Item with { Available=available,
-            Revision = saved.Item.SourceId is not null ? saved.ExternalIdentity?.ChangeTime ?? saved.Item.Revision : file.Exists ? file.LastWriteTimeUtc.Ticks : saved.MediaStamp } },file.Exists?file.Length:0);
+            Revision = saved.Item.SourceId is not null ? saved.ExternalIdentity?.ChangeTime ?? saved.Item.Revision : file.Exists ? file.LastWriteTimeUtc.Ticks : saved.MediaStamp } },available ? file.Length : 0);
     }
     private Saved ReadMetadata(string path)
     {

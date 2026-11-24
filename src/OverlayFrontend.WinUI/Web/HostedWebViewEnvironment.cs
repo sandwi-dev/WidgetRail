@@ -9,6 +9,11 @@ internal sealed class HostedWebViewEnvironment(string userDataFolder, CoreWebVie
 {
     private Task<CoreWebView2Environment>? pending;
 
+    // Chromium applies hardware media-key integration to the browser process.
+    // A distinct user-data folder keeps preview playback independent of durable players.
+    internal HostedWebViewEnvironment CreateGalleryPreviewEnvironment() => new(
+        userDataFolder + "-GalleryPreviews", new() { AdditionalBrowserArguments = "--disable-features=HardwareMediaKeyHandling" });
+
     internal async Task<CoreWebView2Environment> GetAsync()
     {
         var attempt = pending ??= CoreWebView2Environment.CreateWithOptionsAsync(null, userDataFolder, options).AsTask();

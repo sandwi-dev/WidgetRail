@@ -127,6 +127,11 @@ public sealed partial class DiscordWebViewWidget
         request.Version==filesIntent.Version && request.SchemaDigest==filesIntent.SchemaDigest && filesIntent.Accepts(request.Payload);
     public override ValueTask<bool> IsIntentAvailableAsync(WidgetIntentRequest request,CancellationToken cancellationToken=default)
     {
+        if(Integrations.DiscordActivityIntegration.IsOpenRequest(request))return ValueTask.FromResult(true);
+        if(Integrations.DiscordActivityIntegration.ActionToken(request) is { } reference)
+        {
+            lock(summaryGate)return ValueTask.FromResult(summaryTokens.ContainsValue(reference));
+        }
         if(IsCallNotification(request))return ValueTask.FromResult(CallNotificationOwnerCurrent(request));
         if(IsMessageNotification(request))return ValueTask.FromResult(CanOpenMessageNotification(request));
         var available=IsFilesIntent(request) && (CurrentState() is {Ready:true,Messaging.CanSend:true} ||
@@ -136,7 +141,28 @@ public sealed partial class DiscordWebViewWidget
     }
     public override async ValueTask<WidgetIntentResult> OnIntentAsync(WidgetIntentRequest request,CancellationToken cancellationToken=default)
     {
+        if(Integrations.DiscordActivityIntegration.IsOpenRequest(request))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if(request.Presentation == WidgetIntentPresentation.StayInSource)
+            {
+                bool ConnectionFailed() => state.Snapshot is { Status: WidgetResourceStatus.Error } or
+                    { Value.EffectiveConnectionState: "unavailable" };
+                if (ConnectionFailed())
+                {
+                    await state.Refresh().Completion.WaitAsync(cancellationToken);
+                    if (ConnectionFailed()) return WidgetIntentResult.Rejected;
+                }
+                return WidgetIntentResult.Accepted;
+            }
+            if(!IsActive)return WidgetIntentResult.Rejected;
+            if(!messages.Value.IncomingFiles)OpenCallSection();
+            return WidgetIntentResult.Accepted;
+        }
         if(IsCallNotification(request))return await OpenCallNotificationAsync(request,cancellationToken);
+        if(Integrations.DiscordActivityIntegration.ActionToken(request) is { } reference)
+            return await PerformActivitySummaryActionAsync(reference,request.Payload.GetProperty("reader").GetString()!,
+                request.Payload.GetProperty("pin").GetBoolean(),request.Presentation == WidgetIntentPresentation.StayInSource,cancellationToken);
         if(IsMessageNotification(request))return await OpenMessageNotificationAsync(request,cancellationToken);
         if(!IsActive || !await IsIntentAvailableAsync(request,cancellationToken))return WidgetIntentResult.Rejected;
         var beforeVisit=navigation.Value;

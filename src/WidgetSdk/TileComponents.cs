@@ -153,6 +153,7 @@ public sealed record ActionSurfaceElement : WidgetElement
     /// <summary>Whether this is an opt-in reading group with bounded inline actions.</summary>
     public bool IsReadingGroup { get; init; }
     public WidgetIntentRequest? Intent { get; init; }
+    public string? SummaryProviderPackage { get; init; }
     /// <summary>Binds a host-routed intent to the surface's primary activation.</summary>
     public ActionSurfaceElement OpenIntent(WidgetIntentContract contract, System.Text.Json.JsonElement payload,
         WidgetIntentPresentation presentation = WidgetIntentPresentation.PreferExistingSurface) =>
@@ -276,6 +277,7 @@ public sealed record ActionSurfaceElement : WidgetElement
         AccessibilityLabel = AccessibilityLabel,
         ActionId = ActionId,
         Intent = Intent,
+        SummaryProviderPackage = SummaryProviderPackage,
         ContextActions = ContextActions,
         ContextMenuButton = ContextMenuButton,
         NativeContextMenuOnly = NativeContextMenuOnly ? true : null,

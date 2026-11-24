@@ -197,8 +197,10 @@ public sealed class BridgeCatalog
         _ordered = configured.ToArray();
         _configured = _ordered.ToDictionary(widget => widget.Id, StringComparer.Ordinal);
         _fingerprint = Fingerprint(_ordered.Select(widget => widget.CatalogFingerprint));
-        RegisteredIntentHandlers = _ordered.Where(widget => !widget.IsStopped).SelectMany(widget => widget.Intents?.Handles ?? [])
-            .Select(handler => new BridgeIntentSignature(handler.Id, handler.Version, CompiledWidgetIntentContract.Create(handler).SchemaDigest))
+        RegisteredIntentHandlers = _ordered.SelectMany(widget => (widget.Intents?.Handles ?? [])
+            .Where(handler => !widget.IsStopped || handler.Id == WidgetIntentContracts.OpenSummaryProvider)
+            .Select(handler => new BridgeIntentSignature(handler.Id, handler.Version, CompiledWidgetIntentContract.Create(handler).SchemaDigest,
+                handler.Id == WidgetIntentContracts.OpenSummaryProvider ? widget.PackageId : null)))
             .Distinct().ToArray();
     }
 

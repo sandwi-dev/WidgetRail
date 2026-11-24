@@ -195,7 +195,6 @@ public sealed partial class PlayniteLibraryLayoutTests
             Nodes(topActions).Where(node => node.IsFocusable).Select(node => node.ActionId).ToArray());
         CollectionAssert.AreEqual(new[]
         {
-            PlayniteLibraryActions.Refresh,
             LauncherWidget.SettingsOpen,
             "playnite-library.categories.open",
             "playnite-library.hidden.open",
@@ -380,7 +379,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsTrue(emptyBrowsePage.Shortcuts.Any(shortcut =>
             shortcut.Button == ControllerButton.RightTrigger));
         Assert.IsTrue(Nodes(emptyBrowsePage).Any(node =>
-            node.Id == "playnite-library.browse.empty.action"));
+            node.Id == "playnite-library.browse.empty.title"));
         foreach (var id in new[]
                  {
                      "playnite-library.filter.favorites",
@@ -860,8 +859,15 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.IsFalse(emptyNodes.Any(node => node.Id == "playnite-library.browse.summary"));
         Assert.AreEqual("No games", emptyNodes.Single(node =>
             node.Id == "playnite-library.browse.empty.title").Text);
-        Assert.AreEqual("playnite-library.refresh", emptyNodes.Single(node =>
-            node.Id == "playnite-library.browse.empty.action").ActionId);
+        Assert.IsFalse(emptyNodes.Any(node => node.Id == "playnite-library.browse.empty.action"));
+        var failed = State(Snapshot(WidgetPagedResourceStatus.Ready, []) with
+            { Error = new("library_stale", "Couldn’t check Playnite.") },
+            PlayniteLibraryPrivateState.Empty, PlayniteLibraryRoute.Browse, []);
+        var failedSnapshot = new PresentationWidget((await CapturePresentationAsync(failed)).View)
+            .RenderSnapshot("playnite-library.browse.retained-empty", 14);
+        var retry = Nodes(failedSnapshot.Root).Single(node => node.ActionId == PlayniteLibraryActions.Retry);
+        Assert.AreEqual("Try again", retry.Text);
+        Assert.IsTrue(retry.IsFocusable);
 
         var fixedRowsOnly = State(Snapshot(WidgetPagedResourceStatus.Ready, []),
             organization, PlayniteLibraryRoute.Browse, []) with
@@ -917,7 +923,7 @@ public sealed partial class PlayniteLibraryLayoutTests
                 StringComparer.Ordinal)));
         Assert.AreEqual("start", search.Get("text-align")?.Text);
         Assert.AreEqual("400", search.Get("font-weight")?.Text);
-        var emptyAction = emptyNodes.Single(node =>
+        var emptyAction = filteredNodes.Single(node =>
             node.Id == "playnite-library.browse.empty.action");
         CollectionAssert.Contains(emptyAction.StyleClasses.ToArray(),
             "playnite-library-control");

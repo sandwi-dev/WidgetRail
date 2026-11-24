@@ -248,7 +248,6 @@ internal sealed partial class OverlayShellPage
         var requestOwner=owner;
         var selection=selectionVersion;
         var visibleSession=visibleSince;
-        var pinRevision=pinIntent;
         var widgetId=effect.Authority.WidgetId;
         var layoutId=effect.PinnedLayoutId;
         if(activeWidget!=widgetId && !(PinnedInputActive && pinned?.WidgetId==widgetId))return;
@@ -285,19 +284,26 @@ internal sealed partial class OverlayShellPage
             if(target is not null)await UnpinAsync(save:true,target);
             return;
         }
-        if(pins.Any(pin=>pin.WidgetId==widgetId&&pin.LayoutId==layoutId&&pin.IsCurrent))return;
-        var failureCurrent=CapturePinIntentFailureGuard(pinRevision);
+        await OpenRequestedLayoutAsync(widgetId,layoutId,Current);
+    }
+
+    private async Task OpenRequestedLayoutAsync(string widgetId,string layoutId,Func<bool> current)
+    {
+        var requestOwner=owner;
+        if(requestOwner is null || !current() || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen || PinnedAdjustmentActive ||
+            pins.Any(pin=>pin.WidgetId==widgetId&&pin.LayoutId==layoutId&&pin.IsCurrent))return;
+        var failureCurrent=CapturePinIntentFailureGuard(pinIntent);
         try
         {
             // The action may have just republished a withdrawn layout. Refresh once
             // after the request rather than racing its asynchronous invalidation.
             // Keep exact worker/visibility/selection authority across the await.
-            var frame = requestOwner!.Session.GetState(widgetId)?.LastGood;
+            var frame = requestOwner.Session.GetState(widgetId)?.LastGood;
             if (frame is null) return;
             await requestOwner.Session.RefreshAsync(frame.Authority,lifetime.Token);
-            if(!Current())return;
+            if(!current())return;
             if (requestOwner.Session.GetState(widgetId)?.LastGood?.Snapshot.PinnedLayouts.Any(layout=>layout.Id==layoutId)!=true)return;
-            await PinAsync(widgetId,layoutId,admission:Current);
+            await PinAsync(widgetId,layoutId,admission:current);
         }
         catch(OperationCanceledException) when(retired) { }
         catch(Exception error) { ReportOperationFailure(error,failureCurrent); }

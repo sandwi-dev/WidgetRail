@@ -73,7 +73,12 @@ width around the selected media for adjacent stills (protocol 142). Give the
 player a bounded height for a predictable preview area. The first item aligns
 left, interior items center, and the last aligns right. A single item uses the
 ordinary centered player. The thumbnail strip owns keyboard and controller
-navigation. Clicking a neighboring still selects its thumbnail.
+navigation. Clicking a neighboring still selects its thumbnail. Use
+`.FocusDown("target-id")` to send Down from a focused thumbnail to a host
+focus target in the same widget scope. Preview transport and fullscreen
+navigation continue to use their own controls.
+
+WidgetRail keeps focus previews, inline clips, animations, capture reviews, modal native players, and media galleries out of Windows Media Sessions. This applies to manual playback, autoplay, and fullscreen. Preview controls operate inside the widget. Standalone native players and dedicated embedded media viewports can participate in Windows media controls. An embedded gallery video uses a separate private WebView2 environment, created on first use, because WebView2 applies hardware media-key integration to the whole browser process.
 
 Inline carousel screenshots use the thumbnail strip for interaction. Open the
 selected thumbnail in fullscreen for zoom and Fit. Fullscreen image navigation

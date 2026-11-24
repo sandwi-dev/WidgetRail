@@ -53,7 +53,7 @@ bool Valid(HWND hwnd, DWORD pid, uint64_t created, const wchar_t* name) {
 }
 static int32_t RunLiveCapture(uint64_t window, uint32_t pid, uint64_t created,
     const wchar_t* className, uint32_t includeAudio, uint32_t maximumWidth, uint32_t maximumHeight,
-    uint32_t framesPerSecond, Continue current, Frame deliver,TextureFrame textureFrame=nullptr,uint32_t includeCursor=0,uint32_t* failureStage=nullptr,CaptureBorderPolicy borderPolicy=CaptureBorderPolicy::SystemDefault,uint64_t adapterLuid=0,bool exactCanvas=false,void(__stdcall *audioUnavailable)(int32_t)=nullptr) noexcept {
+    uint32_t framesPerSecond, Continue current, Frame deliver,TextureFrame textureFrame=nullptr,uint32_t includeCursor=0,uint32_t* failureStage=nullptr,CaptureBorderPolicy borderPolicy=CaptureBorderPolicy::SystemDefault,uint64_t adapterLuid=0,bool exactCanvas=false,void(__stdcall *audioUnavailable)(int32_t)=nullptr,TextureFrame liveTap=nullptr) noexcept {
     if(failureStage)*failureStage=0;
     const LiveCaptureQuality quality{maximumWidth,maximumHeight,framesPerSecond};
     const bool boundedRecording=maximumWidth>=2&&maximumWidth<=8192&&maximumHeight>=2&&maximumHeight<=8192&&
@@ -115,13 +115,59 @@ static int32_t RunLiveCapture(uint64_t window, uint32_t pid, uint64_t created,
             winrt::check_hresult(drawing->CreateBitmapFromDxgiSurface(target.Get(),&props,&targetBitmap));
             if(!textureFrame)pixels.resize(size_t(width)*height*4);
         };
+        // The native encoder uses the exact scaled texture already used by the raw track.
+        auto deliverRaw=[&](ID3D11Texture2D* texture){
+            const auto time=QpcMicroseconds();
+            if(liveTap)liveTap(width,height,width,height,time,texture);
+            deliver(1,width,height,time,pixels.data(),static_cast<uint32_t>(pixels.size()));
+        };
         configureOutput();
         capture.pool=Direct3D11CaptureFramePool::CreateFreeThreaded(captureDevice,DirectXPixelFormat::B8G8R8A8UIntNormalized,2,size);
         auto frameAvailable=std::make_shared<widgetrail::capture::CaptureEvent>();
         auto arrival=capture.pool.FrameArrived(winrt::auto_revoke,[frameAvailable](auto&&,auto&&){frameAvailable->Signal();});
         auto closed=capture.item.Closed(winrt::auto_revoke,[frameAvailable](auto&&,auto&&){frameAvailable->Signal();});
+        using Clock=std::chrono::steady_clock;
+        IGraphicsCaptureSession5 acquisitionPacing{nullptr};
+        winrt::Windows::Foundation::TimeSpan defaultAcquisitionInterval{};
+        const auto fasterAcquisitionInterval=std::chrono::microseconds(frameInterval/2);
+        auto acquisitionSampleStart=Clock::now();
+        unsigned freshFrames{};
+        bool fasterAcquisition=false;
+        const auto observeAcquisition=[&](bool fresh) {
+            if(!acquisitionPacing)return;
+            if(fresh)++freshFrames;
+            const auto now=Clock::now();
+            const auto elapsed=now-acquisitionSampleStart;
+            if(elapsed<std::chrono::milliseconds(750))return;
+            const auto freshRate=freshFrames/std::chrono::duration<double>(elapsed).count();
+            acquisitionSampleStart=now;
+            freshFrames=0;
+
+            // A shorter WGC interval can preserve updates between 60 FPS send
+            // ticks when the source is changing unevenly. Stay with the system
+            // interval for idle and already steady sources. Hysteresis avoids
+            // flipping back as soon as faster acquisition yields extra frames.
+            const bool speedUp=freshRate>=17.0&&freshRate<=(fasterAcquisition?40.0:36.0);
+            if(speedUp==fasterAcquisition)return;
+            try {
+                acquisitionPacing.MinUpdateInterval(speedUp?fasterAcquisitionInterval:defaultAcquisitionInterval);
+                fasterAcquisition=speedUp;
+            }
+            catch(const winrt::hresult_error&) { acquisitionPacing=nullptr; }
+        };
         const auto configureSession=[&] {
             capture.session=capture.pool.CreateCaptureSession(capture.item);capture.session.IsCursorCaptureEnabled(includeCursor!=0);
+            acquisitionPacing=nullptr;
+            if(!textureFrame&&framesPerSecond==60)if(auto pacing=capture.session.try_as<IGraphicsCaptureSession5>()) {
+                try {
+                    defaultAcquisitionInterval=pacing.MinUpdateInterval();
+                    if(defaultAcquisitionInterval>fasterAcquisitionInterval)acquisitionPacing=pacing;
+                }
+                catch(const winrt::hresult_error&) { /* Keep default acquisition pacing. */ }
+                acquisitionSampleStart=Clock::now();
+                freshFrames=0;
+                fasterAcquisition=false;
+            }
             // Request borderless capture only through the supported Windows session
             // API. Windows still enforces the user's screenshot-border permission,
             // and another capturing application can require the border. Unsupported
@@ -136,9 +182,8 @@ static int32_t RunLiveCapture(uint64_t window, uint32_t pid, uint64_t created,
         if(includeAudio&&!textureFrame)audio=std::make_unique<widgetrail::capture::ProcessLoopbackCapture>(pid);
 
         capture.session.StartCapture();
-        using Clock=std::chrono::steady_clock;
         CapturePacer pacer;
-        auto next=Clock::now();auto nextAudio=next;auto lastVideo=next;bool haveVideo=false;
+        auto next=Clock::now();auto nextAudio=next;auto lastVideo=next;bool haveVideo=false,liveTextureBlack=false;
         auto retryAudioAt=Clock::time_point::min();
         auto retryDelay=std::chrono::seconds(1);
 #ifdef CAPTURE_WORKER_VALIDATION
@@ -207,21 +252,31 @@ static int32_t RunLiveCapture(uint64_t window, uint32_t pid, uint64_t created,
                 // Keep the connection alive with black frames while the selected
                 // window is unavailable; never switch to another application.
                 std::fill(pixels.begin(),pixels.end(),uint8_t{0});
-                deliver(1,width,height,QpcMicroseconds(),pixels.data(),static_cast<uint32_t>(pixels.size()));
+                if(liveTap){
+                    // Preserve the same privacy behavior and encoder across a
+                    // temporary minimize. Never submit the last visible texture.
+                    if(!liveTextureBlack){
+                        const float black[4]={0,0,0,1};
+                        immediate->ClearRenderTargetView(outputView.Get(),black);liveTextureBlack=true;
+                    }
+                    haveVideo=false;
+                }
+                deliverRaw(liveTap?output.Get():nullptr);
                 next=nextFrame;
                 continue;
             }
             auto frame=capture.pool.TryGetNextFrame();
+            if(haveVideo)observeAcquisition(static_cast<bool>(frame));
             if(!frame){
-                // Idle content uses a low refresh cadence. Changing content
-                // continues at the selected capture cadence above.
-                const auto repeat=std::chrono::microseconds(textureFrame?frameInterval:250000);
-                if(haveVideo&&Clock::now()-lastVideo>=repeat){
+                // A live share delivers the cached pixels on the scheduled tick when
+                // WGC has no newer picture. The recorder times repeats from its last texture.
+                const auto repeatAt = lastVideo + std::chrono::microseconds(frameInterval);
+                if (haveVideo && (!textureFrame || Clock::now() >= repeatAt)) {
                     if(textureFrame)textureFrame(width,height,renderedSourceWidth,renderedSourceHeight,QpcMicroseconds(),output.Get());
-                    else deliver(1,width,height,QpcMicroseconds(),pixels.data(),static_cast<uint32_t>(pixels.size()));
+                    else deliverRaw(output.Get());
                     lastVideo=Clock::now();next=nextFrame;
                 }else{
-                    auto wake=haveVideo?lastVideo+repeat:nextFrame;
+                    auto wake=haveVideo?repeatAt:nextFrame;
                     if(audio)wake=std::min(wake,nextAudio);
                     pacer.Until(wake,frameAvailable->Get());
                 }
@@ -235,7 +290,7 @@ static int32_t RunLiveCapture(uint64_t window, uint32_t pid, uint64_t created,
 #endif
                 frame.Close();
                 if(resized.Width>0&&resized.Height>0&&resized.Width<=16384&&resized.Height<=16384){
-                    size=resized;configureOutput();if(!textureFrame)haveVideo=false;
+                    size=resized;configureOutput();liveTextureBlack=false;if(!textureFrame)haveVideo=false;
                     // A static source may not publish another dirty frame after
                     // Recreate alone. Restart only this same admitted acquisition
                     // session to request its initial complete new-size picture.
@@ -280,9 +335,9 @@ static int32_t RunLiveCapture(uint64_t window, uint32_t pid, uint64_t created,
                 winrt::check_hresult(immediate->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped));
                 for(UINT y=0;y<height;++y)memcpy(pixels.data()+size_t(y)*width*4,static_cast<uint8_t*>(mapped.pData)+size_t(y)*mapped.RowPitch,width*4);
                 immediate->Unmap(staging.Get(),0);
-                deliver(1,width,height,QpcMicroseconds(),pixels.data(),static_cast<uint32_t>(pixels.size()));
+                deliverRaw(output.Get());
             }
-            frame.Close();haveVideo=true;lastVideo=Clock::now();next=nextFrame;
+            frame.Close();haveVideo=true;liveTextureBlack=false;lastVideo=Clock::now();next=nextFrame;
         }
         return S_OK;
     }catch(...){return winrt::to_hresult();}
@@ -337,4 +392,11 @@ extern "C" __declspec(dllexport) int32_t __stdcall WrailLiveCaptureRunReplay(uin
     if(!texture||!failureStage||!audioUnavailable||exactCanvas>1||(exactCanvas&&!adapterLuid))return E_INVALIDARG;
     return RunLiveCapture(window,pid,created,className,includeAudio,width,height,framesPerSecond,current,audioAndState,texture,includeCursor,failureStage,
         CaptureBorderPolicy::RequestBorderless,adapterLuid,exactCanvas!=0,audioUnavailable);
+}
+
+extern "C" __declspec(dllexport) int32_t __stdcall WrailLiveCaptureRunWithEncodingTap(uint64_t window,uint32_t pid,uint64_t created,
+    const wchar_t* className,uint32_t includeAudio,uint32_t maximumWidth,uint32_t maximumHeight,uint32_t fps,
+    Continue current,Frame raw,TextureFrame tap) noexcept {
+    return RunLiveCapture(window,pid,created,className,includeAudio,maximumWidth,maximumHeight,fps,current,raw,nullptr,0,nullptr,
+        CaptureBorderPolicy::RequestBorderless,0,false,nullptr,tap);
 }

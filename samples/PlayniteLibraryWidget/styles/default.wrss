@@ -373,9 +373,11 @@
 .playnite-game-link-hint { interaction-state-source: indexed-item; opacity: 0; }
 .playnite-game-link-hint:focused, .playnite-game-link-hint:pressed { opacity: 1; }
 .wrail-modal.playnite-link-status { width: 500px; height: auto; max-height: 480px; }
-.playnite-capture-feature-art { width:352px; height:180px; flex-grow:0; corner-radius:7px; }
+.playnite-capture-grid { width:100%; min-width:0; gap:8px; }
+.playnite-capture-tile { width:100%; min-width:0; min-height:104px; }
+.playnite-linked-picture { width:100%; min-width:0; height:104px; background:var(--canvas, var(--surface)); }
 .playnite-capture-row-art { width:112px; height:72px; flex-grow:0; corner-radius:6px; }
-.playnite-capture-stage { width:100%; flex-grow:1; min-width:0px; min-height:0px; }
+.playnite-capture-stage { background:var(--canvas, var(--surface)); width:100%; flex-grow:1; min-width:0px; min-height:0px; }
 .wrail-modal-overlay { padding:0px; border-width:0px; corner-radius:0px; background-material:standard; background:transparent; }
 .playnite-capture-viewer { width:100%; height:100%; min-height:0px; padding:0px; border-width:0px; corner-radius:0px; background:transparent; }
 .playnite-capture-card-labels { min-width:0; flex-grow:1; align:start; gap:3px; }
@@ -481,6 +483,26 @@
 .news-image { width: 100%; max-height: 220px; }
 .news-copy { font-size: 18px; line-height: 1.45; }
 .playing-help { width:164px; intent-visibility: when-handler-installed; }
+.playing-discord-compact { width:246px; }
+.playing-discord-wide { width:398px; }
+.playing-discord-face { padding:12px 14px; }
+.playing-discord-brand { width:24px; height:24px; }
+.playing-discord-launch-mark { width:66px; height:66px; }
+.playing-discord-title, .playing-discord-name, .playing-discord-count { max-lines:1; text-overflow:ellipsis; }
+.playing-discord-name { color:var(--text); font-size:16px; font-weight:600; }
+.playing-discord-copy { gap:1px; min-width:0px; justify:center; }
+.playing-discord-avatar { width:36px; height:36px; corner-radius:18px; overflow:clip; }
+.playing-discord-photo { width:100%; height:100%; }
+.playing-discord-avatar-fallback { align:center; justify:center; background:alpha(var(--data-purple, var(--accent)),.20); }
+.playing-discord-initial { text-align:center; font-size:14px; font-weight:600; color:var(--text); }
+.playing-discord-small-avatar { width:20px; height:20px; corner-radius:10px; font-size:12px; }
+.playing-discord-heading { padding:0px 12px 0px 0px; }
+.playing-discord-count, .playing-discord-command { color:var(--text); font-size:14px; font-weight:600; }
+.wrail-modal.playing-discord-dialog { width:548px; height:auto; max-height:82vh; }
+.playing-discord-rows { gap:2px; }
+.playing-discord-row { width:100%; min-width:0px; padding:8px 10px; min-height:56px; }
+.playing-discord-row-action { width:100%; padding:0px; align:stretch; }
+.playing-discord-footer { justify:end; gap:8px; }
 .news-reading-panes { focus-presentation-layout: reading-pane; width: 100%; height: 100%; min-height: 0px; flex-grow: 1; gap: 24px; }
 
 .news-headline-text { font-size: 16px; max-lines: 3; text-overflow: ellipsis; }

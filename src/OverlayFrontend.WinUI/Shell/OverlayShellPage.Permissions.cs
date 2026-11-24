@@ -20,6 +20,7 @@ internal sealed partial class OverlayShellPage
                     if (pending.Prompt is { } prompt) permissionPrompt = RunPermissionPromptAsync(prompt);
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { break; }
+                catch (Exception error) when (BridgeDisconnected && error is not OutOfMemoryException) { break; }
                 catch (Exception error) when (error is not OutOfMemoryException)
                 { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("permission-pump", error); }
             }

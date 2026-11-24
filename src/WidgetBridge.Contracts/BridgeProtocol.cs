@@ -166,6 +166,8 @@ internal sealed record BridgePresentationRequest(
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public BridgeTrayPreparation? TrayPreparation { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? IntentTicket { get; init; }
 }
 // The WinUI frontend always supplies the paired generation authority. The
 // nullable pair preserves the private synchronous pre-WIDGE-192 caller shape.

@@ -186,11 +186,12 @@ public sealed partial class MainWindow : Window
             if (input is not null) input.TraceForegroundState(message);
             else Diagnostics.FrontendFailureLog.Current.Write("window-activation", null, message);
         };
-        page.ApplicationControlRequested += action =>
+        page.ApplicationControlRequested += action => RequestApplicationExit(action switch
         {
-            RequestApplicationExit(action == WidgetRail.WidgetPresentationSession.WidgetApplicationControl.Restart
-                ? ApplicationRestartMode.Visible : null);
-        };
+            WidgetRail.WidgetPresentationSession.WidgetApplicationControl.Restart => ApplicationRestartMode.Visible,
+            WidgetRail.WidgetPresentationSession.WidgetApplicationControl.RestartSilently => ApplicationRestartMode.Hidden,
+            _ => null,
+        });
         // Probe/validation windows do not register a notification-area icon.
         // Interactive development sessions retain their own launch contract.
         if (options.Development is null)

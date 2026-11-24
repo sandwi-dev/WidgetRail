@@ -177,31 +177,58 @@ public sealed class PinnedPlacementAdjustmentTests
     }
 
     [TestMethod]
-    public void PrimingSuppressesInheritedPressAndRepeatNeverReplaysAHitch()
+    public void SnapUsesNewPressesAndReachesAllSixSlotsOnTheCurrentWorkArea()
     {
+        var monitor = new PinnedMonitor("left", new(-2560, -80, 2560, 1401), 1.5);
+        var pin = new PinnedPlacementAdjustment(new(-600, 600, 720, 405), monitor, PinnedPlacementLimits.Default, "compact", 65);
         var input = new PinnedPlacementInput();
-        input.Prime(8, 0, 0, 0, 0, 1000);
-        Assert.AreEqual(PinnedPlacementDirection.None, input.Sample(8, 0, 0, 0, 0, 1249).Dpad);
-        Assert.AreEqual(PinnedPlacementDirection.Right, input.Sample(8, 0, 0, 0, 0, 1250).Dpad);
-        Assert.AreEqual(PinnedPlacementDirection.None, input.Sample(8, 0, 0, 0, 0, 1329).Dpad);
-        Assert.AreEqual(PinnedPlacementDirection.Right, input.Sample(8, 0, 0, 0, 0, 8000).Dpad);
-        Assert.AreEqual(PinnedPlacementDirection.None, input.Sample(8, 0, 0, 0, 0, 8001).Dpad);
-        input.Sample(0, 0, 0, 0, 0, 8002);
-        Assert.AreEqual(PinnedPlacementDirection.Left, input.Sample(4, 0, 0, 0, 0, 8003).Dpad);
+        input.Prime(8, 0, 0, 0, 0, 0);
+        Assert.AreEqual(PinnedPlacementDirection.None, input.Sample(8, 0, 0, 0, 0, 2000, monitor).Dpad);
+        foreach (var side in new[] { (Button: (ushort)4, X: -2560), (Button: (ushort)8, X: -720) })
+        {
+            Tap(side.Button);
+            Tap(1); Tap(1);
+            foreach (int y in new[] { -80, 418, 916 })
+            {
+                Assert.AreEqual(new PinnedBounds(side.X, y, 720, 405), pin.Current);
+                Assert.AreEqual(monitor, pin.Monitor);
+                Tap(2);
+            }
+        }
+        void Tap(ushort button)
+        {
+            input.Sample(0, 0, 0, 0, 0, 2010, monitor);
+            pin.Snap(input.Sample(button, 0, 0, 0, 0, 2011, monitor).Dpad);
+            Assert.AreEqual(PinnedPlacementDirection.None, input.Sample(button, 0, 0, 0, 0, 3011, monitor).Dpad);
+        }
     }
 
     [TestMethod]
-    public void SticksAreIndependentAndPreserveNativeAxisHysteresis()
+    public void StickTravelScalesWithTiltAndTimeAndDropsStalledTime()
     {
-        var input = new PinnedPlacementInput(); input.Prime(0, 0, 0, 0, 0, 0);
-        var start = input.Sample(0, 16000, 0, 0, short.MinValue, 1);
-        Assert.AreEqual(PinnedPlacementDirection.Right, start.Move);
-        Assert.AreEqual(PinnedPlacementDirection.Down, start.Resize);
-        Assert.AreEqual(PinnedPlacementDirection.Right, input.Sample(0, 16000, 19000, 0, 0, 251).Move);
-        Assert.AreEqual(PinnedPlacementDirection.Up, input.Sample(0, 16000, 21000, 0, 0, 252).Move);
-        Assert.AreEqual(PinnedPlacementDirection.None, input.Sample(0, 0, 8000, 0, 0, 500).Move);
-        Assert.AreEqual(PinnedPlacementDirection.None, input.Sample(0, 0, 14000, 0, 0, 600).Move);
-        Assert.AreEqual(PinnedPlacementDirection.Up, input.Sample(0, 0, 15000, 0, 0, 601).Move);
+        var monitor = new PinnedMonitor("4k", new(0, 0, 3840, 2160), 1.5);
+        int Travel(int cadence, short tilt)
+        {
+            var input = new PinnedPlacementInput();
+            input.Prime(0, 0, 0, 0, 0, 0);
+            int travel = 0;
+            for (int time = 0; time <= 1000; time += cadence)
+                travel += input.Sample(0, tilt, 0, 0, 0, time, monitor).X;
+            return travel;
+        }
+        Assert.IsTrue(Travel(10, short.MaxValue) > 3300);
+        Assert.IsTrue(Math.Abs(Travel(20, short.MaxValue) - Travel(10, short.MaxValue)) < 45);
+        Assert.IsTrue(Travel(10, 11000) is > 0 and < 40);
+        var input = new PinnedPlacementInput();
+        input.Prime(0, short.MaxValue, 0, 0, 0, 0);
+        Assert.AreEqual(0, input.Sample(0, short.MaxValue, 0, 0, 0, 500, monitor).X);
+        input.Sample(0, 0, 0, 0, 0, 510, monitor);
+        var diagonal = input.Sample(0, short.MaxValue, short.MaxValue, 0, short.MinValue, 526, monitor);
+        Assert.IsTrue(diagonal.X > 0 && diagonal.Y == -diagonal.X);
+        Assert.AreEqual(PinnedPlacementDirection.Down, diagonal.Resize);
+        Assert.IsTrue(input.Sample(0, short.MaxValue, 0, 0, 0, 9000, monitor).X is > 0 and < 25);
+        Assert.IsTrue(input.Sample(0, short.MinValue, 0, 0, 0, 9016, monitor).X < 0);
+        Assert.AreEqual(0, input.Sample(0, 100, 100, 0, 0, 9032, monitor).X);
     }
 
     [TestMethod]

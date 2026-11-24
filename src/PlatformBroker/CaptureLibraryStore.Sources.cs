@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.PlatformBroker;
@@ -15,6 +16,8 @@ public sealed partial class CaptureLibraryStore
         internal bool Stopped;
         internal FileSystemWatcher? Watcher;
         internal readonly ConcurrentDictionary<string, byte> Pending = new(StringComparer.OrdinalIgnoreCase);
+        // Only the source worker touches retries. A busy writer cannot starve fresh events.
+        internal readonly Dictionary<string, (byte Attempts, long Due)> Retries = new(StringComparer.OrdinalIgnoreCase);
         internal int Rescan = 1;
         internal readonly ConcurrentDictionary<string, byte> Unsupported = new(StringComparer.OrdinalIgnoreCase);
         public void Dispose() { lock (Gate) { Stopped = true; Watcher?.Dispose(); } }
@@ -22,6 +25,8 @@ public sealed partial class CaptureLibraryStore
     private readonly ConcurrentDictionary<string, SourceGrant> sourceGrants = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, SourceWatch> sourceWatches = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource sourceStop = new();
+    private readonly Channel<bool> sourceWake = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
+        { SingleReader = true, FullMode = BoundedChannelFullMode.DropWrite });
     private Task? sourceTask;
     private int sourcesStopped;
     private const string ContextSuffix = ".widgetrail-context.json";
@@ -120,7 +125,7 @@ public sealed partial class CaptureLibraryStore
                 token.ThrowIfCancellationRequested();
                 WriteSource(source);
             }
-            StartSources(); NotifyChanged(); return SourceView(source);
+            StartSources(); sourceWake.Writer.TryWrite(true); NotifyChanged(); return SourceView(source);
         }
         finally { gate.Release(); }
     }
@@ -191,17 +196,41 @@ public sealed partial class CaptureLibraryStore
         IndexRemove(saved.Item.Id); verified.Remove(saved.Item.Id);
     }
     private Saved[] SourceRows(string sourceId, int offset) => IndexRows("WHERE json_extract(data,'$.Item.SourceId')=$source ORDER BY id LIMIT 64 OFFSET $offset", ("$source", sourceId), ("$offset", offset));
-    private void RefreshSourceRows(string sourceId, CancellationToken token)
+    private async Task RefreshSourceRowsAsync(SourceGrant source, CancellationToken token)
     {
         var after = string.Empty;
         while (true)
         {
-            var batch = IndexRows("WHERE json_extract(data,'$.Item.SourceId')=$source AND id>$after ORDER BY id LIMIT 64", ("$source", sourceId), ("$after", after));
-            if (batch.Length == 0) break;
-            foreach (var saved in batch) { token.ThrowIfCancellationRequested(); RefreshEntry(saved.Item.Id); }
-            after = batch[^1].Item.Id;
+            await gate.WaitAsync(token).ConfigureAwait(false);
+            try
+            {
+                using var ownership = Own();
+                if (!SourceEnabled(source)) return;
+                var batch = IndexRows("WHERE json_extract(data,'$.Item.SourceId')=$source AND id>$after ORDER BY id LIMIT 32",
+                    ("$source", source.Id), ("$after", after));
+                if (batch.Length == 0) return;
+                foreach (var saved in batch) { token.ThrowIfCancellationRequested(); RefreshEntry(saved.Item.Id); }
+                after = batch[^1].Item.Id;
+            }
+            finally { gate.Release(); }
         }
     }
+    // A directory moved out of a watched source can produce only one deletion event.
+    // The half-open prefix range uses the source/path index, including literal '%' and '_' names.
+    private void MarkSourcePathUnavailable(string sourceId, string relative)
+    {
+        var before = ChangeCount();
+        Execute("""
+            UPDATE captures SET available=0, bytes=0, data=json_set(data,'$.Item.Available',json('false'))
+            WHERE available=1 AND id IN (
+              SELECT id FROM captures WHERE json_extract(data,'$.Item.SourceId')=$source AND json_extract(data,'$.RelativePath')=$path COLLATE NOCASE
+              UNION ALL
+              SELECT id FROM captures WHERE json_extract(data,'$.Item.SourceId')=$source AND
+                json_extract(data,'$.RelativePath') >= $lower COLLATE NOCASE AND json_extract(data,'$.RelativePath') < $upper COLLATE NOCASE)
+            """, ("$source", sourceId), ("$path", relative), ("$lower", relative + "/"), ("$upper", relative + "0"));
+        if (ChangeCount() != before) NotifyChanged();
+    }
+
     public async Task<CaptureLibraryLinkResult> LinkAsync(CaptureLibraryLinkRequest request, BrokerWidgetIdentity owner, CancellationToken token)
     {
         if (request is null || !CaptureLimits.ValidToken(request.SourceId) || !CaptureLibrarySourceLimits.ValidRelativePath(request.RelativePath) ||
@@ -215,6 +244,9 @@ public sealed partial class CaptureLibraryStore
         }
         return new(item);
     }
+    private static string LinkedId(string key) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)))[..32].ToLowerInvariant();
+
     private async Task<CaptureLibraryItem> LinkFileAsync(string sourceId, string relative, BrokerWidgetIdentity owner, CancellationToken token, bool trustedScan = false)
     {
         await gate.WaitAsync(token).ConfigureAwait(false);
@@ -223,15 +255,36 @@ public sealed partial class CaptureLibraryStore
             using var ownership = Own(); var source = ReadSource(sourceId);
             if (!SourceEnabled(source) || !trustedScan && !HasSourceAccess(source, owner)) throw Error("permission_denied");
             var path = ResolveSourcePath(source, relative);
-            var id = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source.Id + "/" + relative.Replace('\\', '/').ToUpperInvariant())))[..32].ToLowerInvariant();
+            var pathKey = source.Id + "/" + relative.Replace('\\', '/').ToUpperInvariant();
+            var legacyId = LinkedId(pathKey);
             DemandHiddenState();
-            if(File.Exists(Path.Combine(root,id+".recycled")))RefreshRecycled(id);
-            var previous = IndexRows("WHERE id=$id", ("$id", id)).FirstOrDefault();
             var file = new FileInfo(path);
             if (!file.Exists) throw Error("capture_library_not_found");
             if (!ValidName(file.Name)) throw Error("capture_library_unsupported_media");
             using var pinned = CapturePinnedFile.Open(path);
-            if (ReleaseReplacedHidden(id, pinned.Identity)) previous = null;
+            var identity = pinned.Identity;
+            var id = HasStableFileIdentity(identity)
+                ? LinkedId($"{pathKey}/{identity.VolumeSerialNumber:x16}/{identity.FileIdHigh:x16}{identity.FileIdLow:x16}") : legacyId;
+
+            // Existing libraries used a path-derived key. Keep that key, including its
+            // game links, when the original is still present or restored from recycling.
+            foreach (var candidate in new[] { legacyId, id }.Distinct())
+                if (File.Exists(Path.Combine(root, candidate + ".recycled"))) RefreshRecycled(candidate);
+            var siblings = IndexRows("WHERE json_extract(data,'$.Item.SourceId')=$source AND json_extract(data,'$.RelativePath')=$path COLLATE NOCASE",
+                ("$source", source.Id), ("$path", relative.Replace('\\', '/')));
+            var legacyHidden = HiddenRecord(legacyId);
+            if (legacyHidden.Legacy || siblings.Any(row => row.Item.Id == legacyId && SamePhysicalFile(row.ExternalIdentity, identity)))
+                id = legacyId;
+            var legacyExclusion = siblings.FirstOrDefault(row => HiddenRecord(row.Item.Id).Legacy);
+            if (legacyExclusion is not null) id = legacyExclusion.Item.Id;
+            foreach (var sibling in siblings)
+            {
+                if (sibling.Item.Id == id) continue;
+                if (ReleaseReplacedHidden(sibling.Item.Id, identity)) continue;
+                if (sibling.Item.Available)
+                    IndexPut(sibling with { Item = sibling.Item with { Available = false } }, 0);
+            }
+            var previous = siblings.FirstOrDefault(row => row.Item.Id == id);
             if (previous is not null && previous.ExternalIdentity == pinned.Identity)
             { RefreshEntry(id); if (!trustedScan && HiddenRecord(id).Exists) throw Error("capture_library_link_removed"); return ItemView(Read(id)); }
             if (inspect is null) throw Error("capture_library_codec_unavailable");
@@ -286,7 +339,11 @@ public sealed partial class CaptureLibraryStore
                     try { await ScanSourceAsync(source, token).ConfigureAwait(false); }
                     catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or BrokerException) { }
                 }
-                await Task.Delay(TimeSpan.FromSeconds(2), token).ConfigureAwait(false);
+                // Keep a low-frequency check for folders that have gone offline or returned.
+                using var idle = CancellationTokenSource.CreateLinkedTokenSource(token);
+                idle.CancelAfter(TimeSpan.FromSeconds(2));
+                try { await sourceWake.Reader.ReadAsync(idle.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
@@ -299,13 +356,7 @@ public sealed partial class CaptureLibraryStore
             if (sourceWatches.TryRemove(source.Id, out var missing))
             {
                 missing.Dispose();
-                await gate.WaitAsync(token).ConfigureAwait(false);
-                try
-                {
-                    using var ownership = Own();
-                    RefreshSourceRows(source.Id, token);
-                }
-                finally { gate.Release(); }
+                await RefreshSourceRowsAsync(source, token).ConfigureAwait(false);
             }
             return;
         }
@@ -315,19 +366,29 @@ public sealed partial class CaptureLibraryStore
             if (watch.Stopped || !sourceGrants.TryGetValue(source.Id, out var currentGrant) || !SourceEnabled(currentGrant)) return;
             if (watch.Watcher is null)
             {
-            var watcher = new FileSystemWatcher(source.Directory) { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size };
-            void Queue(string path)
-            {
-                if (path.EndsWith(ContextSuffix, StringComparison.OrdinalIgnoreCase)) path = path[..^ContextSuffix.Length];
-                if (Path.GetExtension(path).ToLowerInvariant() is not (".png" or ".mp4")) { if (Directory.Exists(path)) Interlocked.Exchange(ref watch.Rescan, 1); return; }
-                var relative = Path.GetRelativePath(source.Directory, path);
-                if (!CaptureLibrarySourceLimits.ValidRelativePath(relative)) return;
-                if (watch.Pending.Count >= 1024) Interlocked.Exchange(ref watch.Rescan, 1); else watch.Pending[relative] = 0;
-            }
-            watcher.Created += (_, e) => Queue(e.FullPath); watcher.Changed += (_, e) => Queue(e.FullPath); watcher.Deleted += (_, e) => Queue(e.FullPath);
-            watcher.Renamed += (_, e) => { Queue(e.OldFullPath); Queue(e.FullPath); };
-            watcher.Error += (_, _) => Interlocked.Exchange(ref watch.Rescan, 1);
-            watch.Watcher = watcher; watcher.EnableRaisingEvents = true;
+                var watcher = new FileSystemWatcher(source.Directory) { IncludeSubdirectories = true, NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size };
+                void RequestScan()
+                {
+                    Interlocked.Exchange(ref watch.Rescan, 1);
+                    sourceWake.Writer.TryWrite(true);
+                }
+                void Queue(string path, bool removed)
+                {
+                    if (!removed && Directory.Exists(path)) { RequestScan(); return; }
+                    if (path.EndsWith(ContextSuffix, StringComparison.OrdinalIgnoreCase)) path = path[..^ContextSuffix.Length];
+                    if (!removed && Path.GetExtension(path).ToLowerInvariant() is not (".png" or ".mp4")) return;
+                    var relative = Path.GetRelativePath(source.Directory, path);
+                    if (!CaptureLibrarySourceLimits.ValidRelativePath(relative)) return;
+                    if (watch.Pending.Count >= 1024) { RequestScan(); return; }
+                    watch.Pending[relative] = 0;
+                    sourceWake.Writer.TryWrite(true);
+                }
+                watcher.Created += (_, e) => Queue(e.FullPath, false);
+                watcher.Changed += (_, e) => { if (!Directory.Exists(e.FullPath)) Queue(e.FullPath, false); };
+                watcher.Deleted += (_, e) => Queue(e.FullPath, true);
+                watcher.Renamed += (_, e) => { Queue(e.OldFullPath, true); Queue(e.FullPath, false); };
+                watcher.Error += (_, _) => RequestScan();
+                watch.Watcher = watcher; watcher.EnableRaisingEvents = true;
             }
         }
         if (Interlocked.Exchange(ref watch.Rescan, 0) != 0)
@@ -344,18 +405,54 @@ public sealed partial class CaptureLibraryStore
                 if (count % 32 == 0) await Task.Delay(10, token).ConfigureAwait(false);
             }
             // Overflow recovery also observes deletions that no longer enumerate.
+            await RefreshSourceRowsAsync(source, token).ConfigureAwait(false);
+        }
+        foreach (var retry in watch.Retries.Where(entry => entry.Value.Due <= Environment.TickCount64).ToArray())
+        {
+            watch.Retries.Remove(retry.Key);
+            watch.Pending.TryAdd(retry.Key, retry.Value.Attempts);
+        }
+        var missingPaths = new List<string>();
+        foreach (var entry in watch.Pending.Take(32))
+        {
+            if (!SourceEnabled(source)) return;
+            if (!watch.Pending.TryRemove(entry.Key, out var attempts)) continue;
+            watch.Retries.Remove(entry.Key);
+            var path = Path.Combine(source.Directory, entry.Key);
+            if (!File.Exists(path)) missingPaths.Add(entry.Key);
+            else await TryLinkAsync(path, attempts).ConfigureAwait(false);
+        }
+        if (missingPaths.Count > 0)
+        {
             await gate.WaitAsync(token).ConfigureAwait(false);
             try
             {
                 using var ownership = Own();
-                RefreshSourceRows(source.Id, token);
+                if (!SourceEnabled(source)) return;
+                // Commit a burst of deletes together. Recheck after waiting for the gate.
+                Execute("SAVEPOINT source_deletions");
+                try
+                {
+                    foreach (var relative in missingPaths)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        var path = Path.Combine(source.Directory, relative);
+                        if (!File.Exists(path) && !Directory.Exists(path))
+                            MarkSourcePathUnavailable(source.Id, relative.Replace(Path.DirectorySeparatorChar, '/'));
+                    }
+                    Execute("RELEASE source_deletions");
+                }
+                catch { Execute("ROLLBACK TO source_deletions"); Execute("RELEASE source_deletions"); throw; }
             }
             finally { gate.Release(); }
         }
-        foreach (var relative in watch.Pending.Keys.Take(32).ToArray())
+        if (!watch.Pending.IsEmpty) sourceWake.Writer.TryWrite(true);
+
+        void Retry(string relative, byte attempts)
         {
-            if (!SourceEnabled(source)) return;
-            watch.Pending.TryRemove(relative, out var attempts); await TryLinkAsync(Path.Combine(source.Directory, relative), attempts).ConfigureAwait(false);
+            if (watch.Retries.Count < 1024 || watch.Retries.ContainsKey(relative))
+                watch.Retries[relative] = (attempts, Environment.TickCount64 + 2000);
+            else Interlocked.Exchange(ref watch.Rescan, 1);
         }
         async Task TryLinkAsync(string path, byte attempts = 0)
         {
@@ -363,17 +460,10 @@ public sealed partial class CaptureLibraryStore
             if (!CaptureLibrarySourceLimits.ValidRelativePath(relative)) return;
             try
             {
-                if (File.Exists(path) && File.GetLastWriteTimeUtc(path) > DateTime.UtcNow.AddSeconds(-2)) { watch.Pending.TryAdd(relative, attempts); return; }
+                if (File.Exists(path) && File.GetLastWriteTimeUtc(path) > DateTime.UtcNow.AddSeconds(-2)) { Retry(relative, attempts); return; }
                 if (!File.Exists(path))
                 {
-                    await gate.WaitAsync(token).ConfigureAwait(false);
-                    try
-                    {
-                        using var ownership = Own();
-                        foreach (var saved in IndexRows("WHERE json_extract(data,'$.Item.SourceId')=$id AND json_extract(data,'$.RelativePath')=$path COLLATE NOCASE LIMIT 1",
-                            ("$id", source.Id), ("$path", relative.Replace('\\', '/')))) RefreshEntry(saved.Item.Id);
-                    }
-                    finally { gate.Release(); }
+                    watch.Pending.TryAdd(relative, 0);
                     return;
                 }
                 var item = await LinkFileAsync(source.Id, relative, source.Owner, token, trustedScan: true).ConfigureAwait(false);
@@ -395,7 +485,7 @@ public sealed partial class CaptureLibraryStore
             }
             catch (IOException)
             {
-                if (attempts < 5 && watch.Pending.Count < 1024) watch.Pending.TryAdd(relative, (byte)(attempts + 1));
+                if (attempts < 5) Retry(relative, (byte)(attempts + 1));
                 else if (watch.Unsupported.Count < 1024) watch.Unsupported.TryAdd(relative, 0);
             }
             catch (Exception error) when (error is BrokerException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException or JsonException)
