@@ -646,6 +646,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             ConfiguredWidget configured;
             string workerFingerprint;
             WidgetArtworkSource? workerArtwork;
+            var acknowledged = false;
             try
             {
                 using (var resolution = await _registry.ResolveArtworkAsync(
@@ -655,9 +656,11 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                     artworkRequest.PresentationGeneration,
                     _sessionCancellation,
                     cancellationToken,
-                    token => ReplyAsync(
-                        BridgeMessageTypes.Acknowledged,
-                        request.RequestId, new { }, token), pinnedArtwork, artworkRequest.AllowFileSource).ConfigureAwait(false))
+                    async token =>
+                    {
+                        await ReplyAsync(BridgeMessageTypes.Acknowledged, request.RequestId, new { }, token).ConfigureAwait(false);
+                        acknowledged = true;
+                    }, pinnedArtwork, artworkRequest.AllowFileSource).ConfigureAwait(false))
                 {
                     configured = resolution.Value.Configured;
                     workerFingerprint = resolution.Value.WorkerFingerprint;
@@ -687,9 +690,19 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                // Publish an unavailable completion only if the exact worker
-                // generation remains current. Session shutdown suppresses it.
                 return;
+            }
+            catch (Exception error) when (acknowledged && error is not OutOfMemoryException)
+            {
+                // Admission consumed the request ID. Complete only the original
+                // artwork demand, without publishing any rejected file or bytes.
+                if (error is BridgeWidgetRequestException workerError)
+                    ReportWidgetRequestFailure(_requestDiagnosticSink, workerError, request.RequestId);
+                await SendEventAsync(BridgeMessageTypes.Artwork,
+                    new BridgeLegacyArtworkEvent(artworkRequest.WidgetId, artworkRequest.ArtworkHandle,
+                        artworkRequest.RuntimeGeneration!, artworkRequest.PresentationGeneration!,
+                        string.Empty, string.Empty, artworkRequest.DemandId), _sessionCancellation).ConfigureAwait(false);
+                break;
             }
 
             using var artworkCompletion = _registry.TryAdmitArtwork(

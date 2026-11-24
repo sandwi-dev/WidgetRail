@@ -8,42 +8,9 @@ public sealed partial class MarketplaceWidget
 {
     private static readonly (string Name, string File)[] Scenes =
         [("Radial tray", "tray.png"), ("Poster rail", "posters.png"), ("Notification", "notification.png")];
-    private static readonly Lazy<Dictionary<string, string>> BundledArt = new(() =>
-    {
-        using var stream = typeof(MarketplaceWidget).Assembly.GetManifestResourceStream("ThemeSeeds.json")!;
-        using var index = JsonDocument.Parse(stream);
-        var paths = new Dictionary<string, string>(StringComparer.Ordinal);
-        const string originalPreviewKey = "d01e8396dbdd8716d51e44fc33883970aaae0919d5209187a19a725cd3e62fb3";
-        foreach (var theme in index.RootElement.GetProperty("themes").EnumerateArray())
-        {
-            var digest = theme.GetProperty("sha256").GetString();
-            var folder = digest + "/" + theme.GetProperty("previewKey").GetString();
-            foreach (var file in ThemeCataloguePublication.PreviewFiles)
-            {
-                var path = "assets/themes/" + folder + "/" + file;
-                paths[ArtHandle(folder, file)] = path;
-                // The original published index can still be cached offline.
-                // Future scene revisions keep their own verified remote artwork.
-                paths[ArtHandle(digest + "/" + originalPreviewKey, file)] = path;
-            }
-        }
-        return paths;
-    });
-
-    private static string ArtHandle(string folder, string file) => "theme.art." + Key(folder + "/" + file);
-    public override ValueTask<WidgetArtworkSource?> OnResolveArtworkSourceAsync(WidgetArtworkHandle handle, CancellationToken token = default)
-    {
-        token.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<WidgetArtworkSource?>(BundledArt.Value.TryGetValue(handle.Value, out var path)
-            ? new WidgetFileArtwork(path, handle.Value, packageRelative: true) : null);
-    }
-
     private static WidgetElement ThemeArt(CatalogueTheme theme, string file, string id, string label, string style)
     {
-        var folder = theme.Sha256 + "/" + theme.PreviewKey;
-        var handle = ArtHandle(folder, file);
-        var image = BundledArt.Value.ContainsKey(handle) ? UI.Artwork(new(handle), id, label, ImageFit.Contain) :
-            UI.PublicImage(ThemeArtUrl(theme, file), id, label, ImageFit.Contain);
+        var image = UI.PublicImage(ThemeArtUrl(theme, file), id, label, ImageFit.Contain);
         return UI.Grid(id + ".frame", [GridTrack.Star()], [GridTrack.Star()], image.Classes("theme-art"))
             .Classes(style);
     }
@@ -144,7 +111,7 @@ public sealed partial class MarketplaceWidget
             header.Add(UI.Row("theme.detail.heading", UI.Button("Back to themes", "theme.back", "theme.back"),
                 UI.Text(selected.Name, "theme.name").Classes("theme-title")).Classes("marketplace-commands"));
             WidgetElement gallery;
-            if (selected.PreviewHashes is not null && !BundledArt.Value.ContainsKey(ArtHandle(selected.Sha256 + "/" + selected.PreviewKey, Scenes[0].File)))
+            if (selected.PreviewHashes is not null)
             {
                 var media = Scenes.Select((scene, index) =>
                 {

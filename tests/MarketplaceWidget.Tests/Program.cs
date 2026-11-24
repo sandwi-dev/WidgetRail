@@ -306,6 +306,10 @@ static async Task ThemeNavigation()
     Check(!f.Commands.Any(c => c.Action == "themes"), "Theme feed was requested on activation");
     await f.Act("marketplace.tab.themes");
     await Until(() => Walk(f.View().Root).Count(n => n.Kind == ViewNodeKind.ActionSurface) == 2);
+    var thumbnails = Walk(f.View().Root).Where(n => n.Id.EndsWith(".art", StringComparison.Ordinal)).ToArray();
+    Check(thumbnails.Length == 2 && thumbnails.All(n => n.ImageIsPublicMedia && n.ArtworkHandle is null) &&
+        thumbnails.Any(n => ThemeCataloguePublication.PreviewFileDigest(new Uri(n.ImageSource!)) == new string('e', 64)),
+        "Theme cards must load published images and preserve their advertised hashes");
     var card = Walk(f.View().Root).Last(n => n.Kind == ViewNodeKind.ActionSurface);
     await f.Act(card.ActionId!);
     await f.Act("theme.scene.2");

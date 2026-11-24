@@ -610,6 +610,14 @@ static async Task BackgroundSurfaceArtworkCrossesBridge()
     Assert.Equal(BackgroundSurfaceBridgeFixtureWidget.ArtworkHandle, snapshot.Root.ArtworkHandle);
     Assert.Equal(ImageFit.Cover, snapshot.Root.ImageFit);
     Assert.Equal(true, snapshot.Root.UsesFocusedDescendantArtwork);
+    var missing = await harness.Client.RequestAsync(BridgeMessageTypes.ResolveArtwork,
+        new BridgeArtworkRequest("test-widget", BackgroundSurfaceBridgeFixtureWidget.MissingArtworkHandle,
+            DemandId: "missing-preview", AllowFileSource: true));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, missing.Type);
+    var unavailable = await harness.Client.ReadEventAsync(BridgeMessageTypes.Artwork);
+    Assert.Equal("missing-preview", unavailable.Payload.GetProperty("demandId").GetString());
+    Assert.Equal(string.Empty, unavailable.Payload.GetProperty("contentBase64").GetString());
+    Assert.False(unavailable.Payload.TryGetProperty("file", out _), "Rejected artwork exposed a file.");
     Assert.Equal(BackgroundSurfaceBridgeFixtureWidget.FirstFocusArtworkHandle,
         FindNode(snapshot.Root, "background-surface-test.first").FocusBackgroundArtworkHandle);
     Assert.Equal(BackgroundSurfaceBridgeFixtureWidget.SecondFocusArtworkHandle,

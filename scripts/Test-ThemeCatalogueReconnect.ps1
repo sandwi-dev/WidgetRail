@@ -28,7 +28,7 @@ Copy-Item -LiteralPath "$release/widget-catalog.json" -Destination "$install/wid
 @{ InitialWidgetId = 'marketplace'; SettingsRoot = $profile; InstalledCatalogRoot = "$profile/widgets"
    InstallationRoot = $install; LayoutDiagnosticsPath = "$out/layout.json" } |
     ConvertTo-Json | Set-Content -LiteralPath "$out/shell.json"
-# Reuse bundled preview identity so this test needs no public image hosting.
+# Reuse published preview identities. Index and reconnect behavior use the fixture.
 $seed = Get-Content -LiteralPath "$repository/src/WidgetBridge/Marketplace/themes/index.json" -Raw | ConvertFrom-Json -AsHashtable
 $template = $seed.themes[0]
 $rows = @(for ($n=1; $n -le 12; $n++) {
