@@ -3,6 +3,8 @@ using System.Reflection;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using WidgetRail.WidgetProtocol;
 using WidgetRail.Samples.PlayniteLibrary;
 using WidgetRail.WidgetSdk;
 
@@ -370,7 +372,7 @@ public sealed class PlayniteBridgeTests
     }
 
     [TestMethod]
-    public void ManifestDeclaresOnlyOptionalCaptureAndWindowSwitchAccessAndNoCredentialValue()
+    public void ManifestLimitsOptionalAccessToCaptureWindowSwitchAndDiscordActivityWithoutCredentials()
     {
         var root = RepositoryRoot();
         var manifestPath = Path.Combine(root, "samples", "PlayniteLibraryWidget", "manifest.json");
@@ -379,7 +381,11 @@ public sealed class PlayniteBridgeTests
         Assert.IsTrue(value.GetProperty("pinningSupported").GetBoolean(), "The authored progress layout requires package pin admission.");
         Assert.IsFalse(value.TryGetProperty("notificationCategories", out _), "PlayniteAchievements owns unlock notifications.");
         Assert.AreEqual(0, value.GetProperty("permissions").GetArrayLength());
-        CollectionAssert.AreEquivalent(new[]{"media.capture-library.read.v1","media.capture-library.manage.v1","system.apps.windows.switch.v1"},
+        CollectionAssert.AreEquivalent(new[]
+        {
+            "media.capture-library.read.v1", "media.capture-library.manage.v1", "system.apps.windows.switch.v1",
+            "widgets.summary.read.v1:widgetrail.samples.discord-controls"
+        },
             value.GetProperty("optionalPermissions").EnumerateArray().Select(item=>item.GetString()).ToArray());
         Assert.IsTrue(Version.TryParse(value.GetProperty("version").GetString(), out _),
             "The package must declare a valid version; its patch number is not a trust boundary.");
@@ -393,7 +399,14 @@ public sealed class PlayniteBridgeTests
                 .GetProperty("path").GetString());
         var manifestText = File.ReadAllText(manifestPath);
         Assert.IsFalse(manifestText.Contains("Bearer", StringComparison.OrdinalIgnoreCase));
-        Assert.IsFalse(manifestText.Contains("token", StringComparison.OrdinalIgnoreCase));
+        // The public schema declares a token field. Only that exact schema may contain it.
+        var manifestFields = JsonNode.Parse(manifestText)!.AsObject();
+        var contract = WidgetIntentContracts.SummaryActionV2;
+        var action = manifestFields["intents"]!["requests"]!.AsArray().Single(request =>
+            request!["id"]!.GetValue<string>() == contract.Id && request["version"]!.GetValue<int>() == contract.Version)!.AsObject();
+        Assert.IsTrue(JsonNode.DeepEquals(action["payloadSchema"], JsonNode.Parse(contract.PayloadSchema.GetRawText())));
+        action.Remove("payloadSchema");
+        Assert.IsFalse(manifestFields.ToJsonString().Contains("token", StringComparison.OrdinalIgnoreCase));
 
         var clientSource = File.ReadAllText(Path.Combine(root, "samples",
             "PlayniteLibraryWidget", "PlayniteBridgeClient.cs"));

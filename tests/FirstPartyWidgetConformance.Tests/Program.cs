@@ -244,7 +244,7 @@ static async Task ShippedPackageIconContracts()
         new IconContract("samples/YtMusicWidget",
             WidgetGlyph.Music, "ytmusic.mark", "assets/icons/yt-music.svg", 7),
         new IconContract("samples/PlayniteLibraryWidget",
-            WidgetGlyph.Play, "playnite-library.mark", "assets/icons/playnite-library.svg", 16),
+            WidgetGlyph.Play, "playnite-library.mark", "assets/icons/playnite-library.svg", 17),
         new IconContract("samples/ClockWidget",
             WidgetGlyph.Connection, "clock.mark", "assets/icons/clock.svg"),
         new IconContract("samples/FullApplicationWidget",
