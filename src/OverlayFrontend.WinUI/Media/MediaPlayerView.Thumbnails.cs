@@ -44,6 +44,7 @@ internal sealed partial class MediaPlayerView
     }
     private bool HasThumbnails => galleryDeclaration?.Gallery is { Count: > 1 } items && items[0].PublicThumbnail is not null;
     internal bool UsesInlineThumbnailNavigation => !IsExpanded && galleryDeclaration?.Gallery?[0].PublicThumbnail is not null;
+    internal bool HasInlineThumbnailFocus => UsesInlineThumbnailNavigation && !IsMovingPresentation && !HasOptionsMenu && FocusedThumbnail is not null;
     private Button? FocusedThumbnail => XamlRoot is not null && FocusManager.GetFocusedElement(XamlRoot) is Button button &&
         thumbnailPanel is not null && ReferenceEquals(button.Parent, thumbnailPanel) ? button : null;
     private Button? FindThumbnail(string? id) => thumbnailPanel?.Children.OfType<Button>().FirstOrDefault(button => Equals(button.Tag, id));

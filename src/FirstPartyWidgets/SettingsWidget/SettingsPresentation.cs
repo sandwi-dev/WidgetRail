@@ -221,8 +221,9 @@ internal static partial class SettingsPresentation
                 Card("Introduction", "Controls and a quick tour", "application.introduction", "settings.introduction", "introduction", WidgetGlyph.Play))
                 .Classes("category-grid"))
             .Classes("root-category-list");
-        var utilities = UI.ResponsiveGrid("settings.home.utilities", 120, 4,
+        var utilities = UI.ResponsiveGrid("settings.home.utilities", 164, 3,
             UI.Button("Restart", "application.restart", "settings.restart").Classes("home-utility") with { AccessibilityLabel = "Restart WidgetRail" },
+            UI.Button("Restart silently", "application.restart-silently", "settings.restart-silently").Classes("home-utility"),
             UI.Button("Quit", "application.quit", "settings.quit").Classes("home-utility") with { AccessibilityLabel = "Quit WidgetRail" })
             .Classes("home-utilities");
         return RootView(header,

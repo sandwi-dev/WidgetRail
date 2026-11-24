@@ -124,6 +124,8 @@ internal sealed partial class MediaPlayerView
         if (galleryDeclaration != next && !CanControl || galleryItemId != key) { definition = null; playbackMemory = null; }
         galleryDeclaration = next; galleryItemId = key; galleryOwner = owner;
         galleryResolver = resolveGalleryItem; galleryCurrent = current; galleryRelease = releaseOwned;
+        if (HasGallery && !next.InlineCarousel && galleryImageHost is null)
+            InitializeGalleryImageLayers();
         ApplyGallerySelection();
     }
 

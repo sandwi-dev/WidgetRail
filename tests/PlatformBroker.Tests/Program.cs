@@ -38,6 +38,7 @@ var allTests = new (string Name, Func<Task> Run)[]
     ("Web session microphone consent is interactive owned typed and cancellable", WebSessionMicrophoneTests.Run),
     ("Widget notifications are intrinsic bounded and available in background", NotificationBrokerTests.Authority),
     ("Widget activity is intrinsic scoped and clears", ActivityBrokerTests.Authority),
+    ("Addressed widget summaries respect consent, worker identity and retirement", WidgetSummaryTests.Authority),
     ("Marketplace management is intrinsic narrow and cannot smuggle mutations through reads", MarketplaceBrokerTests.Authority),
     ("Permission requests bind declarations and persist only explicit host decisions", PermissionRequestTests.ConsentAsync),
     ("Permission prompts expire and cancel on interaction loss and worker retirement", PermissionRequestTests.LifetimeAsync),
@@ -522,7 +523,7 @@ static async Task AppLibraryIconsAreBounded()
 
 static Task CapabilityVocabularyIsClosed()
 {
-    Assert.Equal(55, PlatformCapabilities.All.Count);
+    Assert.Equal(58, PlatformCapabilities.All.Count);
     Assert.True(PlatformCapabilities.TryGet(PlatformCapabilities.CaptureLibraryRecycleLinkedV1,out var linkedRecycle));
     Assert.Equal(BrokerCapabilityKind.Control,linkedRecycle.KindForOperation("capture-library.recycle-linked"));
     Assert.True(linkedRecycle.Operations.SetEquals(["capture-library.recycle-linked"])&&!linkedRecycle.AllowsBackground&&!linkedRecycle.AllowsDashboardGesture);

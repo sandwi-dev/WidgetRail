@@ -20,6 +20,7 @@ internal enum BrokerCapabilityDomain
     Marketplace,
     Notifications,
     Activity,
+    Summaries,
     WebSessions,
     Pinning,
     Files,
@@ -33,6 +34,8 @@ internal static class BrokerCapabilityDomains
         if (capabilityId == PlatformCapabilities.WidgetPinningV1) return BrokerCapabilityDomain.Pinning;
         if (capabilityId == PlatformCapabilities.WebSessionsV1) return BrokerCapabilityDomain.WebSessions;
         if (capabilityId == PlatformCapabilities.WidgetActivityV1) return BrokerCapabilityDomain.Activity;
+        if (capabilityId is PlatformCapabilities.WidgetSummaryReadV1 or PlatformCapabilities.WidgetSummaryPublishV1 or PlatformCapabilities.WidgetSummaryServiceV1 ||
+            WidgetRail.WidgetProtocol.WidgetSummaryScope.Provider(capabilityId) is not null) return BrokerCapabilityDomain.Summaries;
         if (capabilityId == PlatformCapabilities.WidgetNotificationsV1) return BrokerCapabilityDomain.Notifications;
         if (capabilityId == PlatformCapabilities.WidgetPermissionsV1) return BrokerCapabilityDomain.Permissions;
         if (capabilityId == PlatformCapabilities.WidgetMarketplaceV1) return BrokerCapabilityDomain.Marketplace;

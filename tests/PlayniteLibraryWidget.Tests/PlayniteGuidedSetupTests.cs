@@ -75,10 +75,14 @@ public sealed partial class PlayniteLibraryTests
             var state = widget.RenderState.Value.Setup;
             var element = LauncherWidget.MissingAddon(state, addon, "fixture.addon");
             Assert.IsNotNull(element);
-            var button = new WidgetView(element).CreateSnapshot("fixture", 1).Root;
+            var nodes = Nodes(new WidgetView(element).CreateSnapshot("fixture", 1).Root).ToArray();
+            var button = nodes.Single(node => node.Id == "fixture.addon.install");
             Assert.AreEqual(achievements ? "Install Playnite Achievements" : "Install GameActivity", button.Text);
             if (achievements)
             {
+                var help = nodes.Single(node => node.Id == "fixture.addon.setup").Text;
+                StringAssert.Contains(help!, "set up your achievement sources");
+                StringAssert.Contains(help!, "start the initial refresh there");
                 await Ready(widget, host);
                 await widget.OnActionAsync(new(PlayniteLibraryActions.AchievementsOpen, "navigation"));
                 await PrivateField<WidgetResource<PlayniteAchievementOverview>>(widget, "achievementHub").WhenIdleAsync();

@@ -34,9 +34,18 @@ public static class ThemeCataloguePublication
     }
 }
 
+public sealed record CatalogueDetail(string Section, string Label, string Value)
+{
+    public bool Matches(string term) => Section.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+        Label.Contains(term, StringComparison.OrdinalIgnoreCase) || Value.Contains(term, StringComparison.OrdinalIgnoreCase);
+}
+
 public sealed record CatalogueTheme(string Id, string Version, string Name, string Publisher, string Creator,
     string Description, string[] Tags, DateOnly Released, string Sha256, int Bytes, string PreviewKey,
-    Dictionary<string, string>? PreviewHashes = null);
+    Dictionary<string, string>? PreviewHashes = null)
+{
+    public IReadOnlyList<CatalogueDetail>? Details { get; init; }
+}
 
 public sealed record ThemeBrowseShelf(string Name, CatalogueTheme[] Items);
 
@@ -46,7 +55,10 @@ public sealed record ThemeBrowsePage(int Page, int Total, CatalogueTheme[] Items
 public sealed record MarketplaceItem(string Id, string Name, string Description,
     IReadOnlyList<string> Screenshots, string? AvailableVersion = null, string? InstalledVersion = null,
     long? DownloadBytes = null, bool IsPrerelease = false, bool AvailableVersionSaved = false, bool RetainedAvailability = false,
-    IReadOnlyList<string>? SetupRequirements = null);
+    IReadOnlyList<string>? SetupRequirements = null)
+{
+    public IReadOnlyList<CatalogueDetail>? Details { get; init; }
+}
 
 public sealed record MarketplaceReview(string Token, string PackageId, string Name, string Version,
     string? InstalledVersion, bool FullTrust, bool Compatible, string Compatibility,

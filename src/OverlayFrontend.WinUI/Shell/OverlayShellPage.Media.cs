@@ -153,6 +153,7 @@ internal sealed partial class OverlayShellPage
 
     private void ShowPresentationStatus(string widgetName)
     {
+        if (BridgeDisconnected) return;
         showingStoppedWidget = false;
         WidgetSurface.Visibility = Visibility.Visible;
         Retry.Content = "Retry";
@@ -180,11 +181,18 @@ internal sealed partial class OverlayShellPage
 
     private void ShowRecovery(string message, bool canRetry, bool stopped = false)
     {
+        var bridgeDisconnected = BridgeDisconnected;
+        if (bridgeDisconnected)
+        {
+            message = BridgeRecoveryMessage;
+            stopped = false;
+            canRetry = true;
+        }
         showingStoppedWidget = stopped;
         // The stopped card is the whole presentation. There is no widget
         // content behind it to justify a second, larger themed panel.
         WidgetSurface.Visibility = stopped ? Visibility.Collapsed : Visibility.Visible;
-        Retry.Content = stopped ? "Reload" : "Retry";
+        Retry.Content = bridgeDisconnected ? "Restart WidgetRail" : stopped ? "Reload" : "Retry";
         CompleteStartupPresentation(failed: !stopped);
         var changed = !RecoveryVisible || Status.Text != message;
         openingIndicator?.Clear();

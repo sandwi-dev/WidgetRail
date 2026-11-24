@@ -6,6 +6,7 @@ public sealed partial class PlayniteLibraryWidget
 {
     private const string InstallGameActivity = SetupPrefix + "install-gameactivity";
     private const string InstallAchievements = SetupPrefix + "install-achievements";
+    private const string AchievementsSetupHelp = "In Playnite, open the add-on, set up your achievement sources, and start the initial refresh there.";
 
     internal static WidgetElement? MissingAddon(PlayniteSetupView setup, PlayniteOptionalAddon addon, string id)
     {
@@ -14,8 +15,13 @@ public sealed partial class PlayniteLibraryWidget
         var button = UI.Button(achievements ? "Install Playnite Achievements" : "Install GameActivity",
             achievements ? InstallAchievements : InstallGameActivity, id + ".install")
             .Disabled(setup.Busy).Classes("playnite-library-control");
-        return setup.AddonMessage is { } message && setup.MessageAddon == addon
-            ? UI.Stack(id, button, UI.Text(message, id + ".status").Classes("playnite-library-details-copy")) : button;
+        var content = new List<WidgetElement>();
+        if (achievements)
+            content.Add(UI.Text(AchievementsSetupHelp, id + ".setup").Classes("playnite-library-details-copy"));
+        content.Add(button);
+        if (setup.AddonMessage is { } message && setup.MessageAddon == addon)
+            content.Add(UI.Text(message, id + ".status").Classes("playnite-library-details-copy"));
+        return content.Count == 1 ? button : UI.Stack(id, content.ToArray());
     }
 
     private async ValueTask<bool> OpenOptionalAddonAsync(PlayniteOptionalAddon addon, CancellationToken token)

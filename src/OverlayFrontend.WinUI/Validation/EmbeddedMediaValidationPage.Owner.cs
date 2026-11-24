@@ -199,7 +199,7 @@ internal sealed partial class EmbeddedMediaValidationPage
         var liveDocument = await session!.ResolveEmbeddedMediaAsync(session.GetState(Descriptor.Id)!.LastGood!.Authority);
         for (var pass = 0; pass < 8; ++pass)
         {
-            var retiringBrowser = new EmbeddedMediaSurface(session, liveDocument, runtime);
+            var retiringBrowser = new EmbeddedMediaSurface(session, liveDocument, session.GetEmbeddedMediaState(liveDocument)!.Declaration, runtime);
             viewport.Children.Add(retiringBrowser.Element);
             retiringBrowser.UpdatePresentation(true, false);
             // Yield a native layout/Loaded opportunity, then retire while its

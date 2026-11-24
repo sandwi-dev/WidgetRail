@@ -78,11 +78,11 @@ public sealed partial class PlayniteLibraryWidget
                 OperationBusy = false,
                 AchievementRefreshBusy = false,
                 AchievementRefreshMessage = state.DetailsExtras.AchievementRefreshBusy
-                    ? "The provider may still be refreshing in Playnite." : state.DetailsExtras.AchievementRefreshMessage,
+                    ? "The add-on may still be syncing in Playnite." : state.DetailsExtras.AchievementRefreshMessage,
                 ConfirmUninstall = false,
                 ChoosingCompletion = false,
                 OperationMessage = state.DetailsExtras.OperationBusy
-                    ? "Request interrupted. Refresh to check its outcome."
+                    ? "Request interrupted. Check its outcome in Playnite."
                     : state.DetailsExtras.OperationMessage,
             },
         });
@@ -154,12 +154,12 @@ public sealed partial class PlayniteLibraryWidget
             catch (Exception)
             {
                 UpdateDetails(generation, value => value with { CompletionStatusesLoading = false,
-                    CompletionStatusesError = "Completion statuses could not be loaded. Refresh to retry." });
+                    CompletionStatusesError = "Completion statuses could not be loaded." });
             }
         }, WidgetOperationLifetime.Active);
         if (!operation.IsAccepted)
             UpdateDetails(generation, value => value with { CompletionStatusesLoading = false,
-                CompletionStatusesError = "Completion statuses could not be loaded. Refresh to retry." });
+                CompletionStatusesError = "Completion statuses could not be loaded." });
     }
 
     private void LoadDetailsSection(PlayniteDetailsTab tab, bool refresh = false)
@@ -217,7 +217,13 @@ public sealed partial class PlayniteLibraryWidget
                 { UpdateDetails(state.DetailsGeneration, value => value with { AchievementRefreshMessage = "Pin management is unavailable on this host." }); }
             return true;
         }
-        if (name == "achievement.refresh-provider") { RefreshAchievementsFromProvider(state); return true; }
+        if (action.ActionId == PlayniteLibraryDetailsPresentation.SyncGameAction)
+        {
+            if (state.DetailsExtras.Tab == PlayniteDetailsTab.Achievements && state.DetailsCapturedTarget?.IsCurrent != false &&
+                !state.DetailsExtras.OperationBusy && !state.OrganizationBusy && state.LaunchingSavedId != item.Value.SavedId)
+                RefreshAchievementsFromProvider(state);
+            return true;
+        }
         if (action.ActionId != PlayniteAchievementBrowse.SearchFocusAction && state.DetailsExtras.AchievementSearchRequest != 0)
             UpdateDetails(state.DetailsGeneration, value => value with { AchievementSearchRequest = 0 });
         if (action.ActionId == PlayniteAchievementBrowse.SearchFocusAction)
@@ -272,14 +278,37 @@ public sealed partial class PlayniteLibraryWidget
             LoadDetailsSection(next);
             return true;
         }
-        if (name == "refresh")
+        if (name.StartsWith("retry.", StringComparison.Ordinal))
         {
-            if (!state.DetailsExtras.OperationBusy && !state.DetailsExtras.AchievementRefreshBusy &&
-                !state.OrganizationBusy && state.LaunchingSavedId is null)
+            var activeTab = state.DetailsExtras.Tab;
+            var key = DetailsKey(state);
+            switch (action.ActionId)
             {
-                OpenDetails(item, preserveTab: true);
-                if (state.DetailsExtras.Tab == PlayniteDetailsTab.Achievements)
-                    RefreshAchievementsFromProvider(WithDetailsResources(_model.Value));
+                case PlayniteLibraryDetailsPresentation.RetryDetailsAction when activeTab is PlayniteDetailsTab.Information or PlayniteDetailsTab.Links:
+                    if (state.DetailsError is not null && !state.DetailsLoading)
+                    {
+                        _model.Update(value => value with { DetailsLoading = true, DetailsError = null });
+                        LoadDetailsOverview(item, state.DetailsGeneration);
+                    }
+                    break;
+                case PlayniteLibraryDetailsPresentation.RetryStatusesAction when activeTab == PlayniteDetailsTab.Information:
+                    LoadCompletionStatuses();
+                    break;
+                case PlayniteLibraryDetailsPresentation.RetryAchievementsAction when activeTab == PlayniteDetailsTab.Achievements:
+                    _detailsAchievements.EnsureLoaded(key, _navigation.Value.RouteCancellationToken, forceRefresh: true);
+                    break;
+                case PlayniteLibraryDetailsPresentation.RetryActivityAction when activeTab == PlayniteDetailsTab.Activity:
+                    _detailsActivity.EnsureLoaded(key, _navigation.Value.RouteCancellationToken, forceRefresh: true);
+                    break;
+                case PlayniteLibraryDetailsPresentation.RetrySessionsAction when activeTab == PlayniteDetailsTab.Activity:
+                    sessionAnalysis.Reset();
+                    break;
+                case PlayniteLibraryDetailsPresentation.RetryTimelineAction when activeTab == PlayniteDetailsTab.Description:
+                    var route = _navigation.Value.RouteCancellationToken;
+                    if (state.DetailsExtras.ActivityError is not null) _detailsActivity.EnsureLoaded(key, route, forceRefresh: true);
+                    if (state.DetailsExtras.AchievementsError is not null) _detailsAchievements.EnsureLoaded(key, route, forceRefresh: true);
+                    if (timelineCaptures.GetSnapshot(key).Error is not null) timelineCaptures.EnsureLoaded(key, route, forceRefresh: true);
+                    break;
             }
             return true;
         }

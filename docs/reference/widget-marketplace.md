@@ -8,6 +8,10 @@ WidgetRail themes. Widget availability depends on published packages.
 
 ## Browse, review, install
 
+Browse opens with Featured, followed by Essentials for in-game controls and
+Performance Monitor. More widgets contains the rest of the catalogue. Search
+matches widgets across all three groups.
+
 The catalog describes setup requirements and shows available and installed
 versions. **Browse**, **Installed** and **Updates** separate discovery from
 management. Opening Catalogue checks releases without hiding existing content
@@ -24,10 +28,26 @@ Failures leave cached information visible with retry guidance. A batch shares it
 release checksum manifest without weakening individual archive verification; a
 new batch checks the manifest again.
 
-Open a listing to view its description, download size and screenshots. LB/RB or
-the screenshot buttons change the preview. YouTube Music has no screenshots in
-the initial catalog. Screenshot URLs are pinned to a repository commit so they
-do not change underneath a published app.
+Listings with several screenshots use the inline gallery. Focus a thumbnail and
+move Left or Right to change the preview, or click a thumbnail. Open the selected
+image for a fullscreen view. A listing with one screenshot displays it directly.
+**Integrations** describes what the listed widgets can do together. Search also
+matches the partner name and the integration description.
+
+Widget listings in `src/WidgetBridge/Marketplace/catalog.json` and theme listings
+in `themes/catalogue.json` accept an optional `details` array. Rows with the same
+`section` appear together in author order. For example,
+
+```json
+"details": [
+  { "section": "Integrations", "label": "Game Help", "value": "Open a help request for the current game." }
+]
+```
+
+Each entry supports up to eight plain-text rows. Section titles allow 48
+characters, labels 80, and values 240. Adding a section or field uses the same
+format. Omitting the array leaves the listing usable. Setup requirements and
+permission review retain their dedicated fields and controls.
 
 Focusing or hovering a listing with setup requirements opens a read-only rich
 preview of those requirements. Listings with no setup requirements have no
@@ -77,7 +97,9 @@ are no accounts, payments, ratings or public submissions in this version.
 ## Browse and try themes
 
 Open **Themes** to see the featured theme and new releases. Search by theme,
-creator, or game tag. A listing shows the selected theme on the radial tray,
+creator, inspiration, or game tag. For example, **GTA 6** finds Afterglow FM.
+The bundled store thumbnails show an Audio Mixer sample
+with the same levels in each theme. A listing shows the selected theme on the radial tray,
 a poster rail and a notification. **Try theme** opens a controller-ready sample
 with a comparison to your current theme. Back returns to the listing.
 Next and Previous bring the first card on the new page into view and focus it.

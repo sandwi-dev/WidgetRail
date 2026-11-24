@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.discord-controls",
   "publisher": "widgetrail.samples",
   "name": "Discord",
-  "version": "0.1.0.79",
+  "version": "0.1.0.80",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -100,6 +100,9 @@
   },
   "intents": {
     "handles": [
+      {"id": "widgetrail.summary.action", "version": 1, "payloadSchema": {"type":"object","additionalProperties":false,"properties":{"token":{"type":"string","minLength":32,"maxLength":32},"reader":{"type":"string","minLength":32,"maxLength":32},"pin":{"type":"boolean"}},"required":["token","reader","pin"]}},
+      {"id":"widgetrail.summary.action","supportsBackgroundDelivery":true,"version":2,"payloadSchema":{"type":"object","additionalProperties":false,"properties":{"token":{"type":"string","minLength":32,"maxLength":32},"reader":{"type":"string","minLength":32,"maxLength":32},"pin":{"type":"boolean"},"microphone":{"type":"boolean"}},"required":["token","reader","pin","microphone"]}},
+      {"id":"widgetrail.summary.open","supportsBackgroundDelivery":true,"version":1,"payloadSchema":{"type":"object","additionalProperties":false,"properties":{"packageId":{"type":"string","minLength":3,"maxLength":128}},"required":["packageId"]}},
       {
         "id": "community.widgetrail.discord.call.open",
         "version": 1,

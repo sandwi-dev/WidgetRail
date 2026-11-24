@@ -18,7 +18,9 @@ public sealed partial class WidgetBridgeServer
         if (message.Type == BridgeMessageTypes.TakePermission)
         {
             var prompt = valid ? new BridgePermissionPrompt(pending!.RequestId, descriptor!.Id, descriptor.Name,
-                pending.CapabilityIds.Select(CapabilityPresentation.CapabilityName).ToArray()) : null;
+                pending.CapabilityIds.Select(id => WidgetSummaryScope.Provider(id) is { } provider &&
+                    catalog.IntentWidgets.FirstOrDefault(widget => widget.PackageId == provider) is { } source
+                        ? $"Read friends, voice status and activity from {source.Name}" : CapabilityPresentation.CapabilityName(id)).ToArray()) : null;
             await ReplyAsync(message.Type, message.RequestId, new BridgePermissionTake(prompt), token).ConfigureAwait(false);
         }
         else if (message.Type == BridgeMessageTypes.CheckPermission)

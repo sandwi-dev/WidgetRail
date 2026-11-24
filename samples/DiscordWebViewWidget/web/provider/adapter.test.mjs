@@ -556,6 +556,25 @@ test('direct receiver acknowledges attachment before presentation can deliver it
  assert.equal(f.videoTracks.get(videoView),f.initial.track);
 });
 
+test('pin playback recovery reuses the selected watch and retries decoding only once',async()=>{
+ const f=fixture(),videoView='d'.repeat(32),args={key:'guild:10:20:2',lease:'a'.repeat(32),videoView};
+ f.videoTracks.set(videoView,null);
+ let pictures=0,restarts=0;
+ const original=f.context.testVideoHost.setVideoTrack;
+ f.context.testVideoHost.setVideoTrack=(id,track,restart)=>{if(restart)restarts++;return original(id,track);};
+ f.context.testVideoHost.videoPlayback=id=>f.videoTracks.has(id)?{width:1280,height:720,totalFrames:pictures}:null;
+ assert.equal((await f.invoke('watch',args)).ok,true);
+ const tick=[...f.timers.values()].find(timer=>timer.interval&&timer.ms===1000).cb;
+ f.state.now+=6000;await tick();await tick();assert.equal(restarts,1);
+ pictures=20;f.state.now+=7000;await tick();
+ assert.equal((await f.invoke('reconnectVideo',{...args,videoView:'e'.repeat(32)})).ok,false);
+ assert.equal((await f.invoke('reconnectVideo',args)).value.reconnected,true);
+ assert.equal(restarts,2);assert.deepEqual(f.events,['watch']);
+ // Frames delivered before the reconnect cannot satisfy its first-picture check.
+ f.state.now+=12000;await f.invoke('keep',args);await tick();
+ assert.equal((await f.invoke('unwatch',args)).value.reason,'video_no_frames');
+});
+
 test('an attached direct receiver without a decoded picture retires after its presentation grace period',async()=>{
  const f=fixture(),videoView='d'.repeat(32),args={key:'guild:10:20:2',lease:'a'.repeat(32),videoView};
  f.videoTracks.set(videoView,null);
@@ -567,6 +586,9 @@ test('an attached direct receiver without a decoded picture retires after its pr
  assert.equal(f.videoTracks.get(videoView),null);
  assert.deepEqual(f.events,['watch','close:'+args.key]);
  assert.equal((await f.invoke('diagnostics')).value.detail,'video_no_frames');
+ assert.equal((await f.invoke('unwatch',{...args,lease:'f'.repeat(32)})).value.reason,undefined);
+ assert.equal((await f.invoke('unwatch',args)).value.reason,'video_no_frames');
+ assert.equal((await f.invoke('unwatch',args)).value.reason,undefined);
 });
 
 test('a muted direct track with no replacement retires after a bounded grace period',async()=>{

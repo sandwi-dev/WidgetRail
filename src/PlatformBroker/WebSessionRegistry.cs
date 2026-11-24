@@ -6,7 +6,7 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.PlatformBroker;
 
 public sealed record HostWebSessionWork(string RequestId, string WidgetId, BrokerWidgetIdentity Identity,
-    WebSessionReference Session, WebSessionCommand Command, bool Cancelled = false, bool CaptureRevoked = false);
+    WebSessionReference Session, WebSessionCommand Command, bool Cancelled = false, bool CaptureRevoked = false, string? IntentTicket = null);
 public sealed record HostWebSessionBatch(IReadOnlyList<HostWebSessionWork> Work, IReadOnlyList<string> LiveSessions,
     IReadOnlyList<string>? LiveRequests = null);
 public sealed record HostWebSessionResult(string RequestId, string? ErrorCode = null, WebSessionMicrophoneResult? Microphone = null, WebCaptureStreamStatus? Capture = null, WebSessionPermissionResult? Permission = null);
@@ -56,10 +56,12 @@ public sealed partial class WebSessionRegistry
         internal Owner(WebSessionRegistry registry, string widgetId, BrokerWidgetIdentity identity, bool local, bool pageBackend)
         { this.registry = registry; WidgetId = widgetId; Identity = identity; AllowsLocalResources = local; AllowsPageBackend = pageBackend; }
         public ValueTask<WebSessionReply> ExecuteAsync(WebSessionCommand command, CancellationToken token) => registry.ExecuteAsync(this, command, token);
+        internal ValueTask<WebSessionReply> RequestIntentMicrophoneAsync(WebSessionReference session, string ticket, CancellationToken token) =>
+            registry.ExecuteAsync(this, new(WebSessionOperation.RequestMicrophone) { Session = session }, token, ticket);
         public void Dispose() => registry.Retire(this);
     }
 
-    private async ValueTask<WebSessionReply> ExecuteAsync(Owner owner, WebSessionCommand command, CancellationToken token)
+    private async ValueTask<WebSessionReply> ExecuteAsync(Owner owner, WebSessionCommand command, CancellationToken token, string? intentTicket = null)
     {
         if (command is null || !Enum.IsDefined(command.Operation) ||
             (command.Operation == WebSessionOperation.RequestPermission
@@ -146,7 +148,7 @@ public sealed partial class WebSessionRegistry
         }
         try
         {
-            var result=await EnqueueAsync(session, command, token).ConfigureAwait(false);
+            var result=await EnqueueAsync(session, command, token, intentTicket).ConfigureAwait(false);
             return new() { Session = session.Reference, Microphone=result.Microphone, Permission=result.Permission };
         }
         catch
@@ -156,11 +158,11 @@ public sealed partial class WebSessionRegistry
         }
     }
 
-    private async Task<HostWebSessionResult> EnqueueAsync(Session session, WebSessionCommand command, CancellationToken token)
+    private async Task<HostWebSessionResult> EnqueueAsync(Session session, WebSessionCommand command, CancellationToken token, string? intentTicket = null)
     {
         var id = Guid.NewGuid().ToString("N");
         var completion = new TaskCompletionSource<HostWebSessionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var item=new HostWebSessionWork(id, session.Owner.WidgetId, session.Owner.Identity, session.Reference, command);
+        var item=new HostWebSessionWork(id, session.Owner.WidgetId, session.Owner.Identity, session.Reference, command, IntentTicket: intentTicket);
         lock (gate)
         {
             if (!sessions.ContainsKey(session.Reference.Id)) throw Failure("session_closed");

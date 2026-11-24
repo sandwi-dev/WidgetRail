@@ -15,6 +15,17 @@ internal static class PlayniteLibraryDetailsPresentation
     internal const string ContentId = Prefix + "content";
     internal const string OptionsId = Prefix + "options";
     internal const int PageSize = 20;
+    internal const string SyncGameAction = Prefix + "achievement.refresh-provider";
+    internal const string RetryDetailsAction = Prefix + "retry.details";
+    internal const string RetryStatusesAction = Prefix + "retry.statuses";
+    internal const string RetryAchievementsAction = Prefix + "retry.achievements";
+    internal const string RetryActivityAction = Prefix + "retry.activity";
+    internal const string RetrySessionsAction = Prefix + "retry.sessions";
+    internal const string RetryTimelineAction = Prefix + "retry.timeline";
+
+    internal static WidgetElement ReadError(string id, string message, string retry) =>
+        UI.Stack(id, UI.Text(message, id + ".message").Classes("playnite-library-details-description"),
+            UI.Button("Try again", retry, id + ".action").Classes("playnite-library-control"));
 
     internal static WidgetView Create(WidgetView parent, PlayniteLibraryItem item, bool current,
         string? launchingSavedId, string status, PlayniteLibraryLaunchState? launchState,
@@ -114,13 +125,15 @@ internal static class PlayniteLibraryDetailsPresentation
         else if (extras.Tab is PlayniteDetailsTab.Information or PlayniteDetailsTab.Links)
         {
             if (loading) tabContent.Add(Loading("Loading game details..."));
-            if (error is not null) tabContent.Add(Copy(error, "load.error"));
+            if (error is not null) tabContent.Add(ReadError(Prefix + "load.error", error, RetryDetailsAction));
             if (extras.Tab == PlayniteDetailsTab.Information)
             {
                 var facts = new List<WidgetElement>();
                 tabContent.Add(CompletionSelect(extras, completion, generation, !current || busy));
                 if (extras.CompletionStatusesError is { } completionError)
-                    tabContent.Add(Copy(completionError, "completion.error"));
+                    tabContent.Add(extras.CompletionStatuses is null
+                        ? ReadError(Prefix + "completion.error", completionError, RetryStatusesAction)
+                        : Copy(completionError, "completion.error"));
                 AddInformation(facts, item, game);
                 tabContent.Add(UI.ResponsiveGrid(Prefix + "information.facts", 240, 2, facts.ToArray()).Classes("playnite-library-details-facts"));
                 tabContent.Add(UI.Divider(Prefix + "information.divider"));
@@ -128,7 +141,7 @@ internal static class PlayniteLibraryDetailsPresentation
             }
             else if (!loading && error is null) AddLinks(tabContent, game, busy);
         }
-        else if (extras.Tab == PlayniteDetailsTab.Achievements) tabContent.Add(PlayniteAchievementPresentation.Page(extras, achievementQuery, achievementList, install));
+        else if (extras.Tab == PlayniteDetailsTab.Achievements) tabContent.Add(PlayniteAchievementPresentation.Page(extras, achievementQuery, achievementList, install, current && !busy));
         else if (extras.Tab == PlayniteDetailsTab.Captures) tabContent.Add(captures?.Invoke(navigation.CompactFocusId("captures")) ?? UI.Text("Loading captures…", Prefix + "captures.loading"));
         else if (sessions is not null) tabContent.Add(sessions.Body);
         else AddActivity(tabContent, extras, install);
@@ -137,10 +150,9 @@ internal static class PlayniteLibraryDetailsPresentation
             ? UI.Grid(Prefix + tabName + ".viewport", [GridTrack.Star()], [GridTrack.Star()], tabContent.ToArray()).Classes("playnite-library-achievement-page")
             : (WidgetElement)UI.VerticalScroll(pageScope + ".scroll", content.ToArray()).Classes("playnite-library-details-scroll");
         var menu = PlayniteLibraryGameOptions.Create(item, favorite, categories, busy || !current)
-            .Take(ProtocolConstants.MaximumContextActionCount - 3)
+            .Take(ProtocolConstants.MaximumContextActionCount - 2)
             .Concat(new WidgetContextAction[] {
                 new(Prefix + "choose-status", "Change completion status\u2026", IsDisabled: busy || !current || extras.CompletionStatuses is not { Count: > 0 }),
-                new(Prefix + "refresh", "Refresh details", IsDisabled: busy || extras.AchievementRefreshBusy || !current),
                 new(Prefix + "uninstall", "Uninstall…", IsDisabled: busy || !current || !installed)
             }).ToArray();
         var options = UI.Row(OptionsId,
@@ -182,15 +194,13 @@ internal static class PlayniteLibraryDetailsPresentation
         var heading = UI.Grid(Prefix + "heading", [GridTrack.Auto()], [GridTrack.Auto(), GridTrack.Star(), GridTrack.Auto()],
             back, UI.Stack(Prefix + "title-block", titleItems.ToArray()).Classes("playnite-details-title-block").InGrid(column: 1),
             UI.Row(Prefix + "header-hints", options,
-                UI.ControllerHint(ControllerButton.Y, extras.AchievementRefreshBusy ? "Refreshing\u2026" : "Refresh", Prefix + "refresh.hint"),
                 UI.ControllerHint(ControllerButton.B, "Back", Prefix + "close.hint"))
                 .Classes("playnite-library-details-header-hints").InGrid(column: 2)).Spacing(0, 16);
         var frame = UI.Grid(Prefix + "frame", [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
             heading, body.InGrid(row: 1)).Spacing(12, 0).Classes("playnite-library-details-layout")
             .RememberChildFocus(media?.Id ?? navigation.CompactFocusId(tabName))
             .Shortcut(ControllerButton.LeftBumper, Prefix + "tab.previous", "Previous details tab")
-            .Shortcut(ControllerButton.RightBumper, Prefix + "tab.next", "Next details tab")
-            .Shortcut(ControllerButton.Y, Prefix + "refresh", "Refresh details");
+            .Shortcut(ControllerButton.RightBumper, Prefix + "tab.next", "Next details tab");
         if (extras.ChoosingCompletion && extras.CompletionStatuses is { Count: > 0 } statuses)
         {
             var choices = statuses.Select(value =>
@@ -256,7 +266,7 @@ internal static class PlayniteLibraryDetailsPresentation
                 MediaPlayerSource.PublicImage(image.Image)) { PublicThumbnail = image.Thumbnail });
         }
         return items.Count == 0 ? null : UI.MediaGallery(items, Prefix + "store.gallery", inlineCarousel: true, gameName + " store media",
-            new(Muted: true)).WithThumbnailAnchor(FocusAnchorPoint.Center, 50).Classes("playnite-store-media");
+            new(Muted: true)).WithThumbnailAnchor(FocusAnchorPoint.Center, 50).FocusDown(PlayId).Classes("playnite-store-media");
     }
 
     private static WidgetElement? HomeSummary(PlayniteDetailsExtras extras, PlaynitePlayWeek? week)
@@ -399,7 +409,7 @@ internal static class PlayniteLibraryDetailsPresentation
     private static void AddActivity(List<WidgetElement> content, PlayniteDetailsExtras state, WidgetElement? install)
     {
         if (state.ActivityLoading) { content.Add(Loading("Loading activity...")); return; }
-        if (state.ActivityError is { } error) { content.Add(Copy(error, "activity.error")); return; }
+        if (state.ActivityError is { } error) { content.Add(ReadError(Prefix + "activity.error", error, RetryActivityAction)); return; }
         if (state.Activity is not { Available: true } data)
         {
             if (install is not null)

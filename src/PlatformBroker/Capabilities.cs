@@ -113,6 +113,9 @@ public static class PlatformCapabilities
     public const string WebSessionsV1 = "web.sessions.v1";
     public const string WidgetPinningV1 = "presentation.pinning.v1";
     public const string WidgetActivityV1 = "widget.activity.v1";
+    public const string WidgetSummaryReadV1 = "widgets.summary.read.v1";
+    public const string WidgetSummaryServiceV1 = "widgets.summary.provider.v1";
+    public const string WidgetSummaryPublishV1 = "widgets.summary.publish.v1";
     public const string WidgetNotificationsV1 = "widget.notifications.v1";
     public const string WidgetPermissionsV1 = "widget.permissions.v1";
     public const string WidgetMarketplaceV1 = "widgets.marketplace.v1";
@@ -350,6 +353,13 @@ public static class PlatformCapabilities
             [WidgetActivityV1] = new(WidgetActivityV1, 1, BrokerCapabilityKind.Control,
                 Set("activity.report"), Set(), AllowsDashboardGesture: false,
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true),
+            [WidgetSummaryReadV1] = new(WidgetSummaryReadV1, 1, BrokerCapabilityKind.Read,
+                Set("summary.read"), Set("summary.changed")),
+            [WidgetSummaryServiceV1] = new(WidgetSummaryServiceV1, 1, BrokerCapabilityKind.Control,
+                Set("summary.publish", "summary.check-reader", "summary.select-pin", "summary.microphone"), Set(),
+                AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true),
+            [WidgetSummaryPublishV1] = new(WidgetSummaryPublishV1, 1, BrokerCapabilityKind.Control,
+                Set("summary.publish", "summary.check-reader", "summary.select-pin"), Set(), AllowsBackground: true, BackgroundOperations: Set("summary.publish")),
             [WidgetNotificationsV1] = new(WidgetNotificationsV1, 1, BrokerCapabilityKind.Control,
                 Set("notifications.publish"), Set(), AllowsDashboardGesture: false,
                 AccessPolicy: BrokerCapabilityAccessPolicy.HostGranted, AllowsBackground: true),
@@ -371,6 +381,11 @@ public static class PlatformCapabilities
     public static bool TryGet(string id, out BrokerCapabilityDefinition definition)
     {
         if (Definitions.TryGetValue(id, out definition!)) return true;
+        if (WidgetRail.WidgetProtocol.WidgetSummaryScope.Provider(id) is not null)
+        {
+            definition = Definitions[WidgetSummaryReadV1] with { Id = id };
+            return true;
+        }
         if (!TryGetLoopbackPort(id, out _)) return false;
         definition = new BrokerCapabilityDefinition(
             id,

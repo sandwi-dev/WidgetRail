@@ -12,10 +12,16 @@ internal static partial class GalleryTests
         fixture.Items[2] = fixture.Items[2] with { Available = false };
         await fixture.Start();
         using var host = WidgetTestHost.CreateIndexedCollectionHost(fixture.Widget, "gallery-card-style", 100); fixture.Host = host;
-        using var lease = await host.AcquireAsync("capture-library.entries", 0, 3);
+        using var lease = await host.AcquireAsync("capture-library.entries", 0, 2);
         var favorite = lease.Range.Items[0].Root;
         var video = lease.Range.Items[1].Root;
-        var unavailable = lease.Range.Items[2].Root;
+        Check(lease.Range.Items.Count == 2, "Default gallery included missing media");
+        await fixture.Action("capture-library.filter.unavailable");
+        await fixture.Until(() => fixture.Collection?.IndexedCollection?.Count == 1);
+        using var recovery = await host.AcquireAsync("capture-library.entries", 0, 1);
+        var unavailable = recovery.Range.Items.Single().Root;
+        await fixture.Action("capture-library.clear");
+        await fixture.Until(() => fixture.Collection?.IndexedCollection?.Count == 2 && fixture.LastQuery?.AvailableOnly == true);
         Check(Flatten(favorite).Single(node => node.StyleClasses.Contains("capture-card-title")).Text == "Boss fight" &&
             Flatten(favorite).Single(node => node.StyleClasses.Contains("capture-card-favorite")).Text == "★",
             "Favorite must not alter or indent the capture title");
@@ -24,8 +30,8 @@ internal static partial class GalleryTests
         Check(Flatten(video).Any(node => node.StyleClasses.Contains("capture-card-info") && node.Text?.Contains(" · ")==true) &&
             Flatten(video).Any(node => node.StyleClasses.Contains("capture-duration-badge") && node.Children.Any(child=>child.Text=="1:01:01")),
             "Compact date/time metadata or long recording duration badge is missing");
-        Check(Flatten(unavailable).Any(node => node.StyleClasses.Contains("capture-thumbnail-placeholder") && node.StyleClasses.Contains("capture-density-1")),
-            "Unavailable media must occupy the same thumbnail extent");
+        Check(Flatten(unavailable).Any(node => node.StyleClasses.Contains("capture-thumbnail-placeholder") && node.StyleClasses.Contains("capture-row-thumbnail")),
+            "Recovery should use compact rows by default");
         Check(lease.Range.Items.All(item => item.Root.ActionId == "capture-library.open-item" && item.Root.NativeContextMenuOnly == true && item.Root.ContextMenuButton is null &&
             item.Root.ContextActions.Count == 1 && item.Root.ContextActions[0].ActionId == "capture-library.item.favorite"),
             "Card primary action or native context-menu ownership changed");

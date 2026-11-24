@@ -153,10 +153,19 @@ internal sealed partial class PinnedWidgetWindow : IDisposable
     {
         DemandAlive();
         if (bounds.Width <= 0 || bounds.Height <= 0) throw new ArgumentOutOfRangeException(nameof(bounds));
-        if (Bounds != bounds) window.MoveAndResize(new(bounds.X, bounds.Y, bounds.Width, bounds.Height));
+        var size = window.Size;
+        if (size.Width != bounds.Width || size.Height != bounds.Height)
+        {
+            window.MoveAndResize(new(bounds.X, bounds.Y, bounds.Width, bounds.Height));
+            SizeIsland();
+        }
+        else
+        {
+            var position = window.Position;
+            if (position.X != bounds.X || position.Y != bounds.Y) window.Move(new(bounds.X, bounds.Y));
+        }
         pointerPlacement?.Place(bounds);
         pointerActivation?.Place(bounds);
-        SizeIsland();
     }
     internal void PrepareContent()
     {

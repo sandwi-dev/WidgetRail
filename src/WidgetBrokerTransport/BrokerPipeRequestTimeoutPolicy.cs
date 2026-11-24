@@ -30,7 +30,8 @@ internal static class BrokerPipeRequestTimeoutPolicy
         }
         if(request.CapabilityId==BrokerTransportOperations.WindowCaptureV1 && request.Operation is "capture.web-prepare" or "capture.web-prepare-constrained")
             return options.RequestTimeout>TimeSpan.FromSeconds(95)?options.RequestTimeout:TimeSpan.FromSeconds(95);
-        if (request.CapabilityId == "web.sessions.v1" && request.Operation is "web-session.microphone" or "web-session.permission")
+        if (request.CapabilityId == "web.sessions.v1" && request.Operation is "web-session.microphone" or "web-session.permission" ||
+            request.CapabilityId == "widgets.summary.provider.v1" && request.Operation == "summary.microphone")
             return options.RequestTimeout > TimeSpan.FromSeconds(95) ? options.RequestTimeout : TimeSpan.FromSeconds(95);
         if (request.CapabilityId == "web.sessions.v1" && request.Operation == "web-session.command")
             return options.RequestTimeout > TimeSpan.FromSeconds(35) ? options.RequestTimeout : TimeSpan.FromSeconds(35);

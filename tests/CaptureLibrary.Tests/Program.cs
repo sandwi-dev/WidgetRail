@@ -53,6 +53,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Hidden captures broker operations retain read and manage admission",HiddenCaptureTests.BrokerAdmission),
     ("Hidden captures isolate damaged canonical snapshots from owned media",HiddenCaptureTests.DamagedSnapshotIsolation),
     ("Hidden captures distinguish edits from physical replacement",HiddenCaptureTests.PhysicalIdentity),
+    ("Linked folder moves, replacement, recovery paging and offline protection", SourceTests.FolderMoveAndReplacementRecovery),
     ("Hidden captures migrate legacy paths conservatively",HiddenCaptureTests.LegacyMigration),
     ("Hidden captures fence unavailable revoked and cancelled work",HiddenCaptureTests.MissingRevokedAndCancellation),
     ("Hidden captures fail closed on canonical loss and preserve old wire",HiddenCaptureTests.CorruptionAndWire),

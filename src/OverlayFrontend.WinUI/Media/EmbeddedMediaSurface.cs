@@ -72,16 +72,16 @@ internal sealed class EmbeddedMediaSurface : IDisposable, IAsyncDisposable
     public event Action? StateChanged;
     internal event Action<Exception>? ObservationFailed;
 
-    public EmbeddedMediaSurface(PresentationSession session, WidgetPresentationEmbeddedMediaDocument document, Web.HostedWebViewEnvironment runtime, MediaStartupTrace? startupTrace = null)
+    public EmbeddedMediaSurface(PresentationSession session, WidgetPresentationEmbeddedMediaDocument document,
+        EmbeddedMediaSession declaration, Web.HostedWebViewEnvironment runtime, MediaStartupTrace? startupTrace = null)
     {
         this.runtime = runtime;
         this.startupTrace = startupTrace ?? new(document.Authority.WidgetId);
         this.session = session;
         this.document = document;
-        var state = session.GetEmbeddedMediaState(document) ?? throw new InvalidOperationException("Retired media document.");
-        policy = new(document, state.Declaration);
+        policy = new(document, declaration);
         transport = new(document.SessionId);
-        AutomationProperties.SetName(browser, state.Declaration.AccessibleName);
+        AutomationProperties.SetName(browser, declaration.AccessibleName);
         AutomationProperties.SetAutomationId(browser, "EmbeddedMedia." + document.SessionId);
         browser.IsTabStop = false; // Controller focus stays with the host-owned MediaViewport.
         browser.IsHitTestVisible = false;

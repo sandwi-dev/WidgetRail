@@ -71,7 +71,19 @@ above. Do not wait for browser startup or network authentication inside a bounde
 availability callback; the chosen widget can accept a cancellable local handoff
 and use its existing resource loading state before offering recipient selection.
 
-## Calculate an intent payload after a click
+## Actions from an addressed widget summary
+
+Use `WidgetIntentContracts.SummaryProvider` with the provider's package ID and `OpenWidget` to open a summary provider. The host checks the exact package and contract against its catalog. Discovery leaves the worker asleep. If the user explicitly stopped the widget, the open action leads to the host’s existing Reload screen. A disabled or uninstalled package supplies no destination.
+
+A summary provider declares a handler for `WidgetIntentContracts.SummaryProvider`. The host gives its authenticated worker access to `WidgetSummaryCapabilities.Publish`. Publish one bounded object to a named recipient, using increasing sequence numbers. The Bridge holds up to 16 KiB in memory and clears the summary and action proofs when the worker retires. Older packages declaring the optional publishing permission continue to use that grant.
+
+Declare `widgets.summary.read.v1:<provider-package-id>` as an optional reader permission. Request it from a user action. Subscribe with `ChangedFrom(provider)` before calling `ReadFrom(provider)`. The host checks the authenticated reader, its current grant, the provider in the request, and the publication's audience. Revocation closes the subscription and invalidates reader proofs.
+
+For actions that keep the caller selected, use `WidgetIntentPresentation.StayInSource` and set `supportsBackgroundDelivery` on the matching receiver manifest handler. This requires protocol 147. The host validates the displayed action and ticket before preparing the selected worker. The receiver retains its ordinary lifecycle. It can accept or reject the action. An action requiring navigation must use an explicit foreground route.
+
+Use `WidgetIntentContracts.SummaryActionV2` to bind a person or stream to a domain token and reader proof. The receiver checks both before acting. The payload declares whether this press can pin a layout or request microphone access. For a pin, call `SelectPin` during delivery with the same proof and token. The host verifies the worker and its current layout before opening the pin. A background voice action can request microphone consent once through `RequestMicrophone` for its own backend document. The host presents the origin-specific decision over the calling widget. Closing the overlay or cancelling the intent retires the pending request.
+
+## Calculate an intent## Calculate an intent payload after a click
 
 Protocol 85 adds optional preparation for destinations that require asynchronous
 work, such as calculating a build-aware search URL. Existing intents are unchanged.

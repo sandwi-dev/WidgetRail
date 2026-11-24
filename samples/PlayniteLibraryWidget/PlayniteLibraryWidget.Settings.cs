@@ -8,14 +8,17 @@ public sealed partial class PlayniteLibraryWidget
     internal const string SettingsOpen = "playnite.settings.open";
     private const string CheckIntegrations = "playnite.settings.check";
 
-    private WidgetView RenderSettings(WidgetNavigationSnapshot<PlayniteLibraryRoute> navigation, PlayniteSetupView setup)
+    private WidgetView RenderSettings(WidgetNavigationSnapshot<PlayniteLibraryRoute> navigation, PlayniteLibraryRenderState state)
     {
         const string id = "playnite.settings";
+        var setup = state.Setup;
         var switches = PlayingCardSwitches();
         var connectionStatus = setup.Connected ? "Connected" : setup.Plan?.Title ?? setup.Message ?? "Connection unavailable";
         var body = UI.VerticalScroll(id + ".content",
             UI.SectionHeader("Currently Playing cards", id + ".cards.title", description: "Show these cards when their content is available."),
             UI.ResponsiveGrid(id + ".cards", 220, 2, switches).Classes("playing-card-switches"),
+            NextActivityCountSetting(),
+            UI.Button("Allow Discord activity", DiscordPermissionAction, id + ".discord-access"),
             UI.SectionHeader("Playnite integrations", id + ".integrations.title"),
             UI.Row(id + ".bridge", UI.Text("WidgetRail for Playnite", id + ".bridge.name").Classes("playnite-library-setup-stage"),
                 UI.Text(connectionStatus, id + ".bridge.status").Classes("playnite-library-setup-hint")).Classes("playnite-settings-heading"),
@@ -29,7 +32,10 @@ public sealed partial class PlayniteLibraryWidget
                 UI.Text("Playnite settings", id + ".title").Classes("playnite-library-title"),
                 UI.Button("Back", navigation.BackActionId!, id + ".back")).Classes("playnite-library-playnite-header"),
                 body).Classes("playnite-library-playnite-shell")).Classes("playnite-library-playnite");
-        var scoped = _navigation.Scope(navigation, root);
+        var content = state.ActionFeedback is { Succeeded: false } feedback && feedback.ScopeId == navigation.InputScopeId
+            ? UI.Stack(id + ".feedback.scope", root, UI.Toast(feedback.Title, feedback.Message, ToastTone.Warning, id + ".feedback"))
+            : root;
+        var scoped = _navigation.Scope(navigation, content);
         return new(scoped, ResolveInitialFocus(scoped, navigation.InitialFocusId, switches[0].Id, navigation.InputScopeId, false),
             ActiveInputScopeId: navigation.InputScopeId, Surface: new WidgetSurfaceHints
             { Mode = WidgetSurfaceMode.Standard, WidthMode = WidgetSurfaceAxisMode.FillAvailable,

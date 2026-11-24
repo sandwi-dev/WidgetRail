@@ -1,4 +1,5 @@
 using WidgetRail.WidgetProtocol;
+using WidgetRail.Samples.Integrations;
 using WidgetRail.WidgetSdk;
 using System.Text;
 
@@ -73,7 +74,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             Load = (input, token) => new(Task.Run(() => new PlayniteSessionHistory(input.Sources.Sessions!, input.All,
                 input.Sources.Unlocks, input.Sources.Captures ?? [], input.Zone, token), token)),
             CacheDuration = TimeSpan.MaxValue,
-            MapError = _ => new("session_analysis", "Session history could not be prepared. Refresh to retry.")
+            MapError = _ => new("session_analysis", "Session history could not be prepared.")
         });
         captureGames = CreateCaptureGames();
         gameChoiceRows = CreateGameChoiceRows();
@@ -145,14 +146,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
             DetailsPrefix + "achievements", new()
             {
                 Load = (query, token) => _application.GetAchievementsAsync(query.SavedId, token),
-                MapError = _ => new("achievements_unavailable", "Achievements could not be loaded. Press Refresh to retry."),
+                MapError = _ => new("achievements_unavailable", "Achievements could not be loaded."),
                 CacheDuration = TimeSpan.MaxValue,
             });
         _detailsActivity = CreateQueryResource<DetailsQuery, PlayniteActivity>(
             DetailsPrefix + "activity", new()
             {
                 Load = (query, token) => _application.GetActivityAsync(query.SavedId, token),
-                MapError = _ => new("activity_unavailable", "Activity could not be loaded. Press Refresh to retry."),
+                MapError = _ => new("activity_unavailable", "Activity could not be loaded."),
                 CacheDuration = TimeSpan.MaxValue,
             });
         _playniteConnection = CreateResource<PlayniteBridgeConnectionResult>(
@@ -250,7 +251,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (local.GameChooser is { } chooser)
             return RenderCaptureGames(RenderListPage(local.DetailsParent ?? navigation, local, isModalBackground: true), chooser);
         if (navigation.Route == PlayniteLibraryRoute.Settings)
-            return RenderSettings(navigation, local.Setup);
+            return RenderSettings(navigation, local);
         if (navigation.Route == PlayniteLibraryRoute.PlayniteConnection)
         {
             var connection = CapturePlayniteConnection(local);
@@ -378,6 +379,9 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 page = page with { FocusGroupEntryRequest = restore };
         }
         if (isModalBackground) return page;
+        if (navigation.Route == PlayniteLibraryRoute.Library && local.DiscordPanelGame is { } panelGame &&
+            PlayingId(local) == panelGame && local.DiscordSummary is { Mode: not "setup" } summary && !HiddenCards.HasFlag(PlayingCardKind.Discord))
+            return page.WithModal(DiscordShelfPanel(Playing + panelGame + ".discord", summary, local.DiscordActionNotice));
         if (local.ManagingPlayingCards) return page.WithModal(PlayingCardManager());
         if (_model.Value.CaptureSettings.Open) return page.WithModal(CaptureSettingsModal());
         if (local.SetupDialogOpen && local.SetupRequired &&
@@ -447,7 +451,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
-        StartPlayniteUpdates();
+        // When the first local event snapshot is ready promptly, present the live
+        // game on the first Home frame alongside the warm library data.
+        var firstHomeRead = _navigation.Value.Route == PlayniteLibraryRoute.Library && _model.Value.RunningGames is null
+            ? new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously) : null;
+        StartPlayniteUpdates(firstHomeRead);
         RefreshSetupAvailability();
         ResumeDetails();
         var activation = _navigation.Value;
@@ -458,8 +466,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (route != PlayniteLibraryRoute.Library && (route == PlayniteLibraryRoute.Hidden
                 ? _hiddenRows.Snapshot.Status != WidgetResourceStatus.NotLoaded
                 : CollectionSnapshot(route).Status != WidgetPagedResourceStatus.NotLoaded))
+        {
+            if (route == PlayniteLibraryRoute.Browse) RefreshCatalogIfChanged();
             return ValueTask.CompletedTask;
-        _ = Operations.RunLatest("playnite-library.warm-state",
+        }
+        var warm = Operations.RunLatest("playnite-library.warm-state",
             async context =>
             {
                 await LoadWarmStateAsync(context.CancellationToken).ConfigureAwait(false);
@@ -484,7 +495,14 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 }
             },
             WidgetOperationLifetime.Active);
-        return ValueTask.CompletedTask;
+        return firstHomeRead is null ? ValueTask.CompletedTask :
+            AwaitInitialHomeAsync(Task.WhenAll(warm.Completion, firstHomeRead.Task), activeLifetime);
+    }
+
+    private static async ValueTask AwaitInitialHomeAsync(Task initial, CancellationToken lifetime)
+    {
+        try { await initial.WaitAsync(TimeSpan.FromMilliseconds(350), lifetime).ConfigureAwait(false); }
+        catch (TimeoutException) { } // A slow provider keeps loading through the normal observer.
     }
 
     protected override ValueTask OnLifecycleStateChangedAsync(
@@ -522,6 +540,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
 
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
+        ClearDiscordShelf();
         SuspendDetails();
         RetirePlayniteConnection(clearPresentation: false);
 
@@ -569,6 +588,28 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (await HandleLaunchPresentationAsync(action, cancellationToken).ConfigureAwait(false)) return;
         if (await HandlePlayingCardPreferenceAsync(action, cancellationToken).ConfigureAwait(false)) return;
         if (await HandlePlayingAsync(action, cancellationToken).ConfigureAwait(false)) return;
+        if (action.ActionId == DiscordReadRetry && discordDemand is not null && _model.Value.DiscordStart == DiscordStartState.ReadFailed)
+        {
+            ClearDiscordShelf();
+            ObserveDiscordShelf();
+            return;
+        }
+        if (action.ActionId == DiscordPermissionAction && (_navigation.Value.Route == PlayniteLibraryRoute.Settings ||
+            discordDemand is not null && _model.Value.DiscordNeedsConsent))
+        {
+            Operations.RunSingleFlight(DiscordPermissionAction, async work =>
+            {
+                var granted = await HostServices.Permissions.RequestAsync([WidgetSummaryScope.ForProvider(DiscordActivityIntegration.Provider)], work.CancellationToken);
+                if (work.IsCurrent && granted == WidgetPermissionOutcome.Granted)
+                {
+                    ClearDiscordShelf();
+                    ObserveDiscordShelf();
+                }
+                if (work.IsCurrent) ShowActionToast("Discord activity", granted == WidgetPermissionOutcome.Granted
+                    ? "Playnite can now show Discord friends and voice activity." : "Activity access was not granted.", granted == WidgetPermissionOutcome.Granted);
+            });
+            return;
+        }
         if (_model.Value.GameChooser is { } chooser) { HandleCaptureGameAction(chooser, action); return; }
         if (HandleCaptureSettings(action)) return;
         if (HandleRelatedCaptures(action)) return;
@@ -649,6 +690,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             {
                 _model.Update(state => state with { PreferLibraryContentFocus = false });
                 LoadPlaying();
+                RefreshCatalogIfChanged();
                 return;
             }
             if (routeBeforeBack == PlayniteLibraryRoute.Browse &&
@@ -674,18 +716,13 @@ public sealed partial class PlayniteLibraryWidget : Widget
         }
         switch (action.ActionId)
         {
-            case PlayniteLibraryActions.RefreshSource:
-                if (LifecycleState != WidgetLifecycleState.Interactive ||
-                    (capturedTarget ?? CaptureActionTarget(action.SourceElementId)) is not { IsCurrent: true }) return;
-                Operations.Cancel("playnite-library.launch-lifecycle");
-                _ = RefreshCollection(_navigation.Value.Route);
-                return;
             case PlayniteLibraryActions.Refresh:
-                Operations.Cancel("playnite-library.launch-lifecycle");
                 ObserveCursorOperation("button-refresh", _navigation.Value.Route, RefreshCollection(_navigation.Value.Route));
                 return;
             case PlayniteLibraryActions.Retry:
-                _ = RefreshCollection(_navigation.Value.Route);
+                var retryRoute = _navigation.Value.Route;
+                if (retryRoute == PlayniteLibraryRoute.Library) _ = RefreshIndexedHome();
+                else if (retryRoute == PlayniteLibraryRoute.Browse) _ = RefreshIndexedBrowse();
                 return;
             case PlayniteLibraryActions.DetailsOpen:
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
@@ -701,6 +738,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 { DetailsItem = null, DetailsParent = null, DetailsCapturedTarget = null, DetailsExtras = new(), DetailsLoading = false, DetailsError = null });
                 if (_navigation.Value.Route == PlayniteLibraryRoute.Achievements) RequestContentEntry();
                 else if (_navigation.Value.Route == PlayniteLibraryRoute.Library) LoadHomeActivity();
+                RefreshCatalogIfChanged();
                 return;
             case PlayniteLibraryActions.SearchFocus:
                 if (LifecycleState != WidgetLifecycleState.Interactive ||
@@ -1231,7 +1269,11 @@ public sealed partial class PlayniteLibraryWidget : Widget
             BrowseInitialFocusId = resetPresentation ? null : state.BrowseInitialFocusId,
             ActiveBrowseReload = resetPresentation ? null : state.ActiveBrowseReload,
         });
-        if (_navigation.Value.Route != PlayniteLibraryRoute.Library) return;
+        if (_navigation.Value.Route != PlayniteLibraryRoute.Library)
+        {
+            RefreshCatalogIfChanged();
+            return;
+        }
         var replacement = RefreshIndexedHome();
         await replacement.Completion.ConfigureAwait(false);
         _model.Update(state => state with { PendingRestoredSavedId = null });
@@ -1489,7 +1531,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
         {
             // Home remains rendered beneath Game Details, including during a late artwork read.
             var awards = _navigation.Value.RootRoute == PlayniteLibraryRoute.Library && PlayingId(_model.Value) is { } game
-                ? playingAwards.GetSnapshot(AwardsQuery(game)).Value : null;
+                ? VisiblePlayingAwards(game) : null;
             var badge = awards?.Badges.FirstOrDefault(b => b.LocalArtwork == handle);
             return ValueTask.FromResult<WidgetArtworkSource?>(badge?.Award.Icon is { } path
                 ? new WidgetFileArtwork(path, handle.Value) : null);
@@ -1649,7 +1691,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
             lock (_gate)
                 if (_launchGeneration.IsCurrent(generation))
                 {
+                    var hadSplash = _model.Value.LaunchSplash is not null;
                     _model.Update(state => state with { LaunchingSavedId = null, LaunchSplash = null });
+                    if (hadSplash && LifecycleState == WidgetLifecycleState.Interactive)
+                        RefreshCatalogIfChanged();
                 }
             Invalidate();
         }
@@ -2119,12 +2164,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
         };
     }
 
-    private void OpenDetails(PlayniteLibraryItem item, bool preserveTab = false,
+    private void OpenDetails(PlayniteLibraryItem item,
         PlayniteLibraryGameTarget? capturedTarget = null, WidgetActionEvent? openingAction = null,
         PlayniteDetailsExtras? initialDetails = null)
     {
         var origin = _navigation.Value.Route == PlayniteLibraryRoute.GameDetails ? _model.Value.DetailsParent : _navigation.Value;
-        if (!preserveTab && _navigation.Value.Route != PlayniteLibraryRoute.GameDetails)
+        if (_navigation.Value.Route != PlayniteLibraryRoute.GameDetails)
         {
             var result = openingAction?.FocusedCollectionItem is { } target && openingAction.InputScopeId is not null
                 ? _navigation.PushFromCollectionAction(PlayniteLibraryRoute.GameDetails, openingAction,
@@ -2133,28 +2178,22 @@ public sealed partial class PlayniteLibraryWidget : Widget
                 : _navigation.Push(PlayniteLibraryRoute.GameDetails, openingAction?.FocusedElementId ?? openingAction?.SourceElementId);
             if (result != WidgetNavigationResult.Changed) return;
         }
-        CancelDetailsOperations(retainReadValues: preserveTab);
-        // Explicit refresh previously invalidated activity even on another tab.
-        if (preserveTab && _model.Value.DetailsExtras.Tab != PlayniteDetailsTab.Activity) _detailsActivity.Reset();
-        var tab = preserveTab ? _model.Value.DetailsExtras.Tab : initialDetails?.Tab ?? PlayniteDetailsTab.Description;
+        CancelDetailsOperations();
+        var tab = initialDetails?.Tab ?? PlayniteDetailsTab.Description;
         var generation = _model.Value.DetailsGeneration + 1;
         _model.Update(state => state with
         {
             DetailsParent = origin, DetailsItem = item, DetailsGeneration = generation,
-            DetailsCapturedTarget = preserveTab ? state.DetailsCapturedTarget : capturedTarget,
-            DetailsOpening = preserveTab ? state.DetailsOpening : state.DetailsOpening + 1,
-            DetailsLoading = initialDetails?.Full is null, DetailsError = null, DetailsExtras = preserveTab ? state.DetailsExtras with
-            {
-                Full = null, CompletionStatuses = null, CompletionStatusesLoading = false,
-                CompletionStatusesError = null, OperationMessage = null, ConfirmedCompletionStatus = null,
-                AchievementSearchRequest = 0, UnavailablePublisherTrailer = null,
-            } : initialDetails ?? new() { Tab = tab },
+            DetailsCapturedTarget = capturedTarget,
+            DetailsOpening = state.DetailsOpening + 1,
+            DetailsLoading = initialDetails?.Full is null, DetailsError = null,
+            DetailsExtras = initialDetails ?? new() { Tab = tab },
         });
         if (initialDetails?.CaptureViewerFromHome == true) return;
         if (initialDetails?.Full is null) LoadDetailsOverview(item, generation);
         else LoadStoreMedia(_model.Value, _navigation.Value.RouteCancellationToken);
         LoadCompletionStatuses();
-        LoadDetailsSection(tab, refresh: preserveTab);
+        LoadDetailsSection(tab);
     }
 
     private void LoadDetailsOverview(PlayniteLibraryItem item, long generation)
@@ -2185,12 +2224,12 @@ public sealed partial class PlayniteLibraryWidget : Widget
             catch (Exception)
             {
                 _model.Update(state => state.DetailsGeneration != generation || state.DetailsItem is null
-                    ? state : state with { DetailsLoading = false, DetailsError = "Game details could not be loaded. Refresh to retry." });
+                    ? state : state with { DetailsLoading = false, DetailsError = "Game details could not be loaded." });
             }
         }, WidgetOperationLifetime.Active);
         if (!operation.IsAccepted)
             _model.Update(state => state.DetailsGeneration != generation || state.DetailsItem is null
-                ? state : state with { DetailsLoading = false, DetailsError = "Game details could not be loaded. Refresh to retry." });
+                ? state : state with { DetailsLoading = false, DetailsError = "Game details could not be loaded." });
     }
 
     internal async Task WhenDetailsIdleAsync(CancellationToken cancellationToken = default)

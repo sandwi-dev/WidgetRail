@@ -921,12 +921,14 @@ public abstract partial class Widget
         if (deliveryId <= 0 || !request.IsWellFormed()) throw new ArgumentException("Invalid intent delivery.");
         lock (_intentGate)
         {
-            if (!IsVisible(LifecycleState) || deliveryId <= _lastIntentDelivery) return WidgetIntentResult.Rejected;
+            if ((!IsVisible(LifecycleState) && !(LifecycleState == WidgetLifecycleState.Background &&
+                request.Presentation == WidgetIntentPresentation.StayInSource)) || deliveryId <= _lastIntentDelivery) return WidgetIntentResult.Rejected;
             // Consume before invoking author code. Failure, cancellation or an
             // unsupported result cannot replay the same delivery into this worker.
             _lastIntentDelivery = deliveryId;
         }
-        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, ActiveCancellationToken);
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken,
+            request.Presentation == WidgetIntentPresentation.StayInSource ? WidgetLifetimeToken : ActiveCancellationToken);
         lifetime.Token.ThrowIfCancellationRequested();
         var accepted = await OnIntentAsync(request with { Payload = request.Payload.Clone() }, lifetime.Token).ConfigureAwait(false);
         lifetime.Token.ThrowIfCancellationRequested();

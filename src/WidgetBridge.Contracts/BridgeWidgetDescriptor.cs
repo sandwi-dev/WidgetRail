@@ -20,7 +20,7 @@ public sealed record BridgePackageIconAssetDescriptor(
     int NormalizedBytes);
 
 public sealed record BridgeCatalogRequest(bool IncludeIntentHandlers);
-public sealed record BridgeIntentSignature(string Id, int Version, string Digest);
+public sealed record BridgeIntentSignature(string Id, int Version, string Digest, string? PackageId = null);
 
 public sealed record BridgeWidgetDescriptor
 {

@@ -31,8 +31,6 @@ internal sealed partial class WidgetStylesValidationPage
             await Wait(() => scene.SelectedButton is { IsLoaded: true, ActualWidth: > 0 });
             if (!scene.SelectedButton!.Focus(FocusState.Keyboard)) throw new InvalidOperationException("Preview focus was unavailable.");
             await Frame();
-            await Save("tray-480.png", 480);
-            await Save("tray-960.png", 960);
             await Save("tray.png", 1920);
             scene.ShowPosters(true);
             await Wait(() => scene.PostersReady);
@@ -41,6 +39,15 @@ internal sealed partial class WidgetStylesValidationPage
             scene.ShowNotification(true);
             await Frame();
             await Save("notification.png", 1920);
+
+            // These two paths are the v1 feed's thumbnail slots. Keep them readable
+            // by older clients while publishing each composition under a new preview key.
+            var mixer = MixerPreview(styles);
+            Content = mixer;
+            await Wait(() => mixer.IsLoaded && mixer.ActualWidth > 0);
+            await Frame();
+            foreach (int width in new[] { 480, 960 })
+                await CaptureEditorBitmapAsync(mixer, Path.Combine(directory, $"tray-{width}.png"), width, width * 9 / 16);
 
             async Task Save(string file, int width)
             {
@@ -60,6 +67,49 @@ internal sealed partial class WidgetStylesValidationPage
         await File.WriteAllTextAsync(Path.Combine(directory, "result.json"),
             JsonSerializer.Serialize(new { passed = failure is null, error = failure?.ToString() }));
         if (failure is not null) throw new InvalidOperationException("Theme preview rendering failed.", failure);
+    }
+
+    private static Grid MixerPreview(IReadOnlyDictionary<string, BridgeNodeRenderStyles> styles)
+    {
+        var palette = ShellChromePalette.Resolve(styles, AppearanceSettings.Default);
+        SolidColorBrush Brush(Windows.UI.Color color) => new(color);
+        TextBlock Label(string text, double size, Windows.UI.Color color) => new()
+        {
+            Text = text, FontSize = size, Foreground = Brush(color), VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var root = new Grid { Width = 960, Height = 540, Background = Brush(palette.Surface) };
+        var panel = new StackPanel { Margin = new(48, 0, 48, 0), Spacing = 12, VerticalAlignment = VerticalAlignment.Center };
+        root.Children.Add(panel);
+        panel.Children.Add(Label("Audio Mixer", 48, palette.Text));
+        panel.Children.Add(new TextBlock { Text = "Application volume", Foreground = Brush(palette.Muted), FontSize = 23,
+            Margin = new(0, 0, 0, 8) });
+        foreach (var (name, level, role, selected) in new[]
+            { ("Game", 84, "data-blue", true), ("Voice chat", 68, "data-green", false), ("Music", 32, "data-gold", false) })
+        {
+            var fill = styles.TryGetValue(role, out var style) && style.Base.GetValueOrDefault("color") is { } value &&
+                NativeComputedStyleAdapter.TryColor(value.Text, out var color) ? color : palette.Focus;
+            var ink = selected ? palette.SelectedText : palette.Text;
+            var row = new Grid { ColumnSpacing = 18 };
+            row.ColumnDefinitions.Add(new() { Width = new(170) });
+            row.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new() { Width = new(75) });
+            row.Children.Add(Label(name, 27, ink));
+            var meter = new Grid { Height = 14, CornerRadius = new(7), Background = Brush(ShellChromePalette.Blend(palette.Surface, ink, .18)) };
+            meter.ColumnDefinitions.Add(new() { Width = new(level, GridUnitType.Star) });
+            meter.ColumnDefinitions.Add(new() { Width = new(100 - level, GridUnitType.Star) });
+            meter.Children.Add(new Border { Background = Brush(fill), CornerRadius = new(7) });
+            Grid.SetColumn(meter, 1);
+            row.Children.Add(meter);
+            var amount = Label(level + "%", 27, ink);
+            amount.HorizontalAlignment = HorizontalAlignment.Right;
+            Grid.SetColumn(amount, 2);
+            row.Children.Add(amount);
+            panel.Children.Add(new Border { Child = row, Padding = new(22, 12, 22, 12), BorderThickness = new(3),
+                CornerRadius = new(12), Background = Brush(selected ? palette.Selected : ShellChromePalette.Blend(palette.Surface, palette.Text, .045)),
+                BorderBrush = Brush(selected ? palette.Focus : ShellChromePalette.Blend(palette.Surface, palette.Text, .13)) });
+        }
+        return root;
     }
 
     private async Task CatalogueThemePreviewAsync(string directory)

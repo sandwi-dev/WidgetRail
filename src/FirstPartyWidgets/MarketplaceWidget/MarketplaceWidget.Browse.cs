@@ -5,6 +5,66 @@ namespace WidgetRail.FirstPartyWidgets.Marketplace;
 
 public sealed partial class MarketplaceWidget
 {
+    private sealed record Feature(string Id, string Summary, string Icon, WidgetGlyph Glyph,
+        WidgetPackageIconColorMode Color = WidgetPackageIconColorMode.OriginalColor);
+
+    private static readonly Feature[] Featured =
+    [
+        new("widgetrail.samples.discord-controls", "Voice, chat and screen sharing", "discord.mark", WidgetGlyph.Connection),
+        new("widgetrail.firstparty.capture-library", "Screenshots, clips and replays", "captures.mark", WidgetGlyph.Fullscreen, WidgetPackageIconColorMode.ThemeTint),
+        new("widgetrail.samples.playnite-library", "Your games and achievements", "playnite-library.mark", WidgetGlyph.Play),
+        new("widgetrail.samples.ytmusic", "Albums, mixes and playlists", "ytmusic.mark", WidgetGlyph.Music),
+        new("widgetrail.samples.spotify", "Your library and playback", "spotify.brand.green", WidgetGlyph.Music),
+        new("widgetrail.samples.youtube-video", "Search, watch and pin videos", "youtube.brand.red", WidgetGlyph.Play),
+    ];
+
+    private static readonly string[] Essentials =
+    [
+        "widgetrail.firstparty.audio-mixer", "widgetrail.firstparty.performance-monitor", "widgetrail.samples.display-profiles",
+        "widgetrail.firstparty.media-sessions", "widgetrail.firstparty.network-controls", "widgetrail.firstparty.games-apps",
+        "widgetrail.firstparty.power",
+    ];
+
+    private static WidgetElement CuratedHome(MarketplaceItem[] items, out string? first)
+    {
+        var remaining = items.ToDictionary(item => item.Id, StringComparer.Ordinal);
+        var shelves = new List<WidgetElement>();
+        var cards = new List<WidgetElement>();
+        foreach (var feature in Featured)
+        {
+            if (!remaining.Remove(feature.Id, out var item)) continue;
+            var id = CardId(item);
+            var mark = WidgetIcon.PackageSvg(feature.Icon, feature.Color, feature.Glyph);
+            cards.Add(BrowseCard(item, id, [
+                UI.Row(id + ".heading", UI.Icon(mark, id + ".mark", item.Name).Classes("feature-mark"),
+                    UI.Text(item.Name, id + ".name").Classes("feature-title")).Classes("feature-heading"),
+                UI.Text(feature.Summary, id + ".summary").Classes("feature-summary"),
+                ItemBadges(item, id)], "feature-card"));
+        }
+        string? firstCard = null;
+        Shelf("featured", "Featured", 265, 3);
+        foreach (var key in Essentials)
+            if (remaining.Remove(key, out var item)) cards.Add(BrowseCard(item, CardId(item)));
+        Shelf("essentials", "Essentials", 310, 3);
+        foreach (var item in items)
+            if (remaining.ContainsKey(item.Id)) cards.Add(BrowseCard(item, CardId(item)));
+        Shelf("more", "More widgets", 310, 3);
+        first = firstCard;
+        return UI.Stack("marketplace.items", shelves.ToArray()).Classes("catalogue-shelves");
+
+        void Shelf(string key, string title, int width, int columns)
+        {
+            if (cards.Count == 0) return;
+            firstCard ??= cards[0].Id;
+            var id = "marketplace.shelf." + key;
+            shelves.Add(UI.Stack(id, UI.Text(title, id + ".title").Classes("catalogue-shelf-title"),
+                UI.ResponsiveGrid(id + ".items", width, columns, cards.ToArray())).Classes("catalogue-shelf"));
+            cards.Clear();
+        }
+    }
+
+    private static string CardId(MarketplaceItem item) => "marketplace.item." + Key(item.Id);
+
     private sealed record BrowseContext(MarketplaceSnapshot Snapshot, Section Section, string Search,
         string? Selected, string? ReviewToken, string SourceKey, MarketplaceItem[] Items, TextSuggestionCatalog Suggestions)
     {
@@ -20,7 +80,8 @@ public sealed partial class MarketplaceWidget
     // these read-only previews; operation progress and check times do not.
     private static bool SameListings(IReadOnlyList<MarketplaceItem> left, IReadOnlyList<MarketplaceItem> right) =>
         ReferenceEquals(left, right) || left.Count == right.Count && left.Zip(right).All(pair =>
-            pair.First with { Screenshots = pair.Second.Screenshots, SetupRequirements = pair.Second.SetupRequirements } == pair.Second &&
+            pair.First with { Screenshots = pair.Second.Screenshots, SetupRequirements = pair.Second.SetupRequirements, Details = pair.Second.Details } == pair.Second &&
+            (pair.First.Details ?? []).SequenceEqual(pair.Second.Details ?? []) &&
             pair.First.Screenshots.SequenceEqual(pair.Second.Screenshots, StringComparer.Ordinal) &&
             (pair.First.SetupRequirements ?? []).SequenceEqual(pair.Second.SetupRequirements ?? [], StringComparer.Ordinal));
 
@@ -44,7 +105,8 @@ public sealed partial class MarketplaceWidget
             var terms = state.Search.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             var items = state.Selected is not null || state.ReviewToken is not null ? [] : inSection.Where(item => terms.All(term =>
                 item.Name.Contains(term, StringComparison.OrdinalIgnoreCase) || item.Description.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                item.SetupRequirements?.Any(text => text.Contains(term, StringComparison.OrdinalIgnoreCase)) == true)).ToArray();
+                item.SetupRequirements?.Any(text => text.Contains(term, StringComparison.OrdinalIgnoreCase)) == true ||
+                item.Details?.Any(detail => detail.Matches(term)) == true)).ToArray();
             browseContext = new(state.Snapshot, state.Section, state.Search, state.Selected, state.ReviewToken,
                 "marketplace.search." + Guid.NewGuid().ToString("N"), items, new(suggestions));
             if (browsePreviews is null)
@@ -79,7 +141,7 @@ public sealed partial class MarketplaceWidget
     private WidgetElement WithBrowsePreviews(WidgetElement grid) =>
         UI.FocusPresentationSurface(grid, UI.Text("", "marketplace.preview.empty"), "marketplace.previews") with
         {
-            Preview = new(Width: 440, Height: 480) { SizeToContentHeight = true },
+            Preview = new(Width: 440, Height: 480, DelayMilliseconds: 1500) { SizeToContentHeight = true },
             PreviewSource = browsePreviews!.Descriptor,
         };
 

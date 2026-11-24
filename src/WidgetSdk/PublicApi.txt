@@ -508,6 +508,8 @@ field const string WidgetRail.WidgetSdk.WidgetNotificationCapabilities.Service =
 field const string WidgetRail.WidgetSdk.WidgetPermissionCapabilities.Service = "widget.permissions.v1"
 field const string WidgetRail.WidgetSdk.WidgetPinningCapabilities.Service = "presentation.pinning.v1"
 field const string WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities.CapabilityId = "storage.private-secrets.v1"
+field const string WidgetRail.WidgetSdk.WidgetSummaryCapabilities.PublishPermission = "widgets.summary.publish.v1"
+field const string WidgetRail.WidgetSdk.WidgetSummaryCapabilities.ReadPermission = "widgets.summary.read.v1"
 field const string WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.PreviewPermission = "system.apps.windows.preview.v1"
 field const string WidgetRail.WidgetSdk.WidgetWebSessionCapabilities.CapabilityId = "web.sessions.v1"
 field static readonly System.TimeSpan WidgetRail.WidgetSdk.UI.DefaultToastDuration
@@ -701,6 +703,7 @@ method WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.GetHashCode() -> int
 method WidgetRail.WidgetSdk.ManageWidgetWifiProfileRequest.ToString() -> string
 method WidgetRail.WidgetSdk.MediaPlayerElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.MediaPlayerElement.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.MediaPlayerElement.FocusDown(string id) -> WidgetRail.WidgetSdk.MediaPlayerElement
 method WidgetRail.WidgetSdk.MediaPlayerElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.MediaPlayerElement.ToString() -> string
 method WidgetRail.WidgetSdk.MediaPlayerElement.WithPoster(WidgetRail.WidgetSdk.WidgetArtworkHandle artwork) -> WidgetRail.WidgetSdk.MediaPlayerElement
@@ -2490,6 +2493,8 @@ method static WidgetRail.WidgetSdk.WidgetScenarioRunResult.op_Equality(WidgetRai
 method static WidgetRail.WidgetSdk.WidgetScenarioRunResult.op_Inequality(WidgetRail.WidgetSdk.WidgetScenarioRunResult? left, WidgetRail.WidgetSdk.WidgetScenarioRunResult? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetScenarioStepResult.op_Equality(WidgetRail.WidgetSdk.WidgetScenarioStepResult? left, WidgetRail.WidgetSdk.WidgetScenarioStepResult? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetScenarioStepResult.op_Inequality(WidgetRail.WidgetSdk.WidgetScenarioStepResult? left, WidgetRail.WidgetSdk.WidgetScenarioStepResult? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetSummaryCapabilities.ChangedFrom(string provider) -> WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement>
+method static WidgetRail.WidgetSdk.WidgetSummaryCapabilities.ReadFrom(string provider) -> WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ReadWidgetSummary,WidgetRail.WidgetProtocol.WidgetSummaryValue>
 method static WidgetRail.WidgetSdk.WidgetTaskWindow.op_Equality(WidgetRail.WidgetSdk.WidgetTaskWindow? left, WidgetRail.WidgetSdk.WidgetTaskWindow? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetTaskWindow.op_Inequality(WidgetRail.WidgetSdk.WidgetTaskWindow? left, WidgetRail.WidgetSdk.WidgetTaskWindow? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetTaskWindowRequest.op_Equality(WidgetRail.WidgetSdk.WidgetTaskWindowRequest? left, WidgetRail.WidgetSdk.WidgetTaskWindowRequest? right) -> bool
@@ -3460,6 +3465,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAvailableWifiNetworksChanged> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.AvailableWifiChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetBluetoothChanged> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.BluetoothChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetDisplayProfilesCapabilities.Changed { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetSummaryCapabilities.Changed { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetMediaSessionsChanged> WidgetRail.WidgetSdk.WidgetMediaCapabilities.Changed { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsChanged> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.ConnectionDetailsChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetNetworkStatusChanged> WidgetRail.WidgetSdk.WidgetNetworkCapabilities.StatusChanged { get; }
@@ -3516,8 +3522,11 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureSessionRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Start { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureSessionRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.RecordClip { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CaptureSessionRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.SaveScreenshot { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.CheckWidgetSummaryReader,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetSummaryCapabilities.CheckReader { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentContent,WidgetRail.WidgetProtocol.ProviderDocumentReference> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Create { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ProviderDocumentReference,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetDocumentCapabilities.Discard { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.PublishWidgetSummary,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetSummaryCapabilities.Publish { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ReadWidgetSummary,WidgetRail.WidgetProtocol.WidgetSummaryValue> WidgetRail.WidgetSdk.WidgetSummaryCapabilities.Read { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ReplayApprovalRemoval,WidgetRail.WidgetProtocol.CaptureReplayControlResult> WidgetRail.WidgetSdk.WidgetCaptureReplayCapabilities.RemoveApproval { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.ReplayApprovalRevision,WidgetRail.WidgetProtocol.CaptureReplayControlResult> WidgetRail.WidgetSdk.WidgetCaptureReplayCapabilities.ChooseApproval { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WebCaptureStreamRequest,WidgetRail.WidgetProtocol.WebCaptureStreamStatus> WidgetRail.WidgetSdk.WidgetWebCaptureCapabilities.Prepare { get; }
@@ -3544,6 +3553,8 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPinCloseRequest,WidgetRail.WidgetProtocol.WidgetPinReceipt> WidgetRail.WidgetSdk.WidgetPinningCapabilities.Close { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPinManageRequest,WidgetRail.WidgetProtocol.WidgetPinReceipt> WidgetRail.WidgetSdk.WidgetPinningCapabilities.Manage { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetPinRequest,WidgetRail.WidgetProtocol.WidgetPinReceipt> WidgetRail.WidgetSdk.WidgetPinningCapabilities.Open { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetSummaryMicrophone,WidgetRail.WidgetProtocol.WebSessionMicrophoneResult> WidgetRail.WidgetSdk.WidgetSummaryCapabilities.RequestMicrophone { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WidgetSummaryPin,WidgetRail.WidgetProtocol.WidgetPinReceipt> WidgetRail.WidgetSdk.WidgetSummaryCapabilities.SelectPin { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WindowCaptureRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.OriginalScreenshot { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WindowCaptureRequest,WidgetRail.WidgetProtocol.WindowCaptureTicket> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Request { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetProtocol.WindowCaptureTicket,WidgetRail.WidgetProtocol.WindowCaptureStatus> WidgetRail.WidgetSdk.WidgetCaptureCapabilities.Status { get; }
@@ -3806,6 +3817,7 @@ property string? WidgetRail.WidgetSdk.ActionSheetItem.AccessibilityLabel { get; 
 property string? WidgetRail.WidgetSdk.ActionSurfaceElement.ActionId { get; set; }
 property string? WidgetRail.WidgetSdk.ActionSurfaceElement.FocusPersistenceId { get; set; }
 property string? WidgetRail.WidgetSdk.ActionSurfaceElement.FocusVisualTargetId { get; set; }
+property string? WidgetRail.WidgetSdk.ActionSurfaceElement.SummaryProviderPackage { get; set; }
 property string? WidgetRail.WidgetSdk.BackgroundSurfaceElement.ForegroundBackgroundProcessKey { get; set; }
 property string? WidgetRail.WidgetSdk.ButtonElement.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.ButtonElement.FocusPersistenceId { get; set; }
@@ -4247,6 +4259,7 @@ type static class WidgetRail.WidgetSdk.WidgetPinningCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPowerCapabilities
 type static class WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities
 type static class WidgetRail.WidgetSdk.WidgetRecentActivityCapabilities
+type static class WidgetRail.WidgetSdk.WidgetSummaryCapabilities
 type static class WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities
 type static class WidgetRail.WidgetSdk.WidgetTestHost
 type static class WidgetRail.WidgetSdk.WidgetTextChunks

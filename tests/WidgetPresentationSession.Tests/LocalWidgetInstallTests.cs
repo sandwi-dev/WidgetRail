@@ -67,15 +67,16 @@ public sealed class LocalWidgetInstallTests
     }
 
     [TestMethod]
-    [DataRow(false)][DataRow(true)]
-    public async Task ApplicationControlsValidateCurrentSettingsFrameWithoutWorkerRoundtrip(bool restart)
+    [DataRow("quit", WidgetApplicationControl.Quit)]
+    [DataRow("restart", WidgetApplicationControl.Restart)]
+    [DataRow("restart-silently", WidgetApplicationControl.RestartSilently)]
+    public async Task ApplicationControlsValidateCurrentSettingsFrameWithoutWorkerRoundtrip(string command, WidgetApplicationControl expected)
     {
-        var action = new WidgetActionEvent(restart ? "application.restart" : "application.quit",
-            restart ? "settings.restart" : "settings.quit", InputScopeId: "settings-root");
+        var action = new WidgetActionEvent("application." + command, "settings." + command, InputScopeId: "settings-root");
         await Run(_ => Task.CompletedTask, (session, frame) =>
         {
-            Assert.AreEqual(restart ? WidgetApplicationControl.Restart : WidgetApplicationControl.Quit,
-                session.ResolveApplicationControl(frame, action));
+            Assert.IsTrue(WidgetPresentationSession.IsApplicationControlAction(action.ActionId));
+            Assert.AreEqual(expected, session.ResolveApplicationControl(frame, action));
             Assert.Throws<WidgetPresentationSessionException>(() => session.ResolveApplicationControl(frame, action with { SourceElementId = "forged" }));
             Assert.Throws<WidgetPresentationSessionException>(() => session.ResolveApplicationControl(frame, action with { Phase = ControllerEventPhase.Repeated }));
             Assert.Throws<WidgetPresentationSessionException>(() => session.ResolveApplicationControl(frame with { Authority = frame.Authority with { WidgetId = "community" } }, action));

@@ -176,7 +176,7 @@ internal sealed partial class BrowserOwner
                     var legacy = request.Command.Operation == WebSessionOperation.RequestMicrophone;
                     var kind = legacy ? WebSessionPermissionKind.Microphone : request.Command.PermissionKind;
                     var decision = kind is { } requested && Enum.IsDefined(requested) && RequestPermission is { } prompt
-                        ? await prompt(entry.Surface, requested, decisionCancellation!.Token)
+                        ? await prompt(entry.Surface, requested, request.IntentTicket, decisionCancellation!.Token)
                         : new WebSessionPermissionResult(WebSessionPermissionState.Unavailable);
                     if (legacy) microphone = new((WebSessionMicrophoneState)decision.State, decision.Remembered);
                     else permission = decision;

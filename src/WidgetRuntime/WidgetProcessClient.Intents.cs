@@ -47,7 +47,8 @@ public sealed partial class WidgetProcessClient
                 catch { session.Terminate(); throw; }
             }
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, session.CancellationToken);
-            deadline.CancelAfter(prepare ? TimeSpan.FromSeconds(65) : _options.RequestTimeout);
+            deadline.CancelAfter(!control && intent.Presentation == WidgetIntentPresentation.StayInSource
+                ? TimeSpan.FromSeconds(95) : prepare ? TimeSpan.FromSeconds(65) : _options.RequestTimeout);
             try
             {
                 var response = await pending.Response.WaitAsync(deadline.Token).ConfigureAwait(false);

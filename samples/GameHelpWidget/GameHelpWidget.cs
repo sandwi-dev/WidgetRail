@@ -12,7 +12,7 @@ public sealed partial class GameHelpWidget : Widget
         internal long LibraryFocusRequest;
         internal bool LibraryOpen, LibraryBusy;
         internal CaptureLibraryQueryPage? LibraryPage;
-        internal CaptureLibraryQuery LibraryQuery = new();
+        internal CaptureLibraryQuery LibraryQuery = new() { AvailableOnly = true };
         internal bool HasKey, KeyReady, Settings, Busy, Capturing, OfferContext, ReviewingDraft, PreviewReadOnly, CaptureOptions, ConfirmNew, ConfirmDelete;
         internal string? FocusGroup;
         internal long FocusRequest;

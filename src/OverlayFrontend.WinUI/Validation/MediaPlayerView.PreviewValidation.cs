@@ -6,6 +6,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Media;
 internal sealed partial class MediaPlayerView
 {
     internal bool ImageDecodedForValidation => image.Source is not null && IsImage;
+    internal Microsoft.UI.Xaml.Controls.Image MainImageForValidation => image;
     internal object ImageGeometryForValidation => new
     {
         viewportWidth = imageViewport.ActualWidth, viewportHeight = imageViewport.ActualHeight,

@@ -8,6 +8,43 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 public sealed partial class PlayniteLibraryTests
 {
     [TestMethod]
+    public async Task PlayniteCatalogEventsRefreshOnlyTheVisibleCollectionAndKeepOccurrenceIdentity()
+    {
+        var provider = new FakeHost(20);
+        var widget = Create(provider, out TestApplicationService application);
+        var events = System.Threading.Channels.Channel.CreateUnbounded<PlayniteEventBatch>();
+        var polling = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        application.EventsHandler = async (after, token) =>
+        {
+            if (after < 0) return new("profile", "process", true, 0, []);
+            polling.TrySetResult();
+            return await events.Reader.ReadAsync(token);
+        };
+        await Interactive(widget);
+        try
+        {
+            await Ready(widget, provider);
+            await Bounded(polling.Task, "initial Playnite event connection");
+            await widget.OnActionAsync(new(PlayniteLibraryActions.BrowseOpen, "home"));
+            await widget.WhenLibraryIdleAsync();
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "live-library");
+            var before = Nodes(host.CurrentSnapshot.Root).Single(node => node.Kind == ViewNodeKind.IndexedCollection).IndexedCollection!;
+            var homeRevision = widget.RenderState.Value.IndexedHome.CatalogRevision;
+            var browseRevision = widget.RenderState.Value.IndexedBrowse.CatalogRevision;
+            var reads = provider.Queries.Count;
+            await events.Writer.WriteAsync(new("profile", "process", false, 1, [new(1, "library-changed", null, null, 1)]));
+            await WaitIndexed(() => widget.RenderState.Value.IndexedBrowse.CatalogRevision > browseRevision);
+            await widget.WhenLibraryIdleAsync();
+            var after = Nodes(host.PublishSnapshot().Root).Single(node => node.Kind == ViewNodeKind.IndexedCollection).IndexedCollection!;
+            Assert.AreEqual(before.QueryGeneration, after.QueryGeneration);
+            Assert.IsGreaterThan(before.ContentRevision, after.ContentRevision);
+            Assert.AreEqual(reads + 1, provider.Queries.Count);
+            Assert.AreEqual(homeRevision, widget.RenderState.Value.IndexedHome.CatalogRevision);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
+    }
+
+    [TestMethod]
     public async Task IndexedBrowseProductionRouteOpensDeepModalAndReturnsToExactOccurrence()
     {
         var provider = new FakeHost(120);

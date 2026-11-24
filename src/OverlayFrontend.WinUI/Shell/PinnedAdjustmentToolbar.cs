@@ -32,6 +32,7 @@ internal sealed class PinnedAdjustmentToolbar:IDisposable
     internal Action<int> CaptureOpacityForValidation()=>OpacityChanged??(_=>{});
 #endif
     private bool updating;
+    private int widthPixels, heightPixels, gapPixels;
     private bool layoutQueued,disposed;
     internal bool LayoutPending=>layoutQueued;
     private ShellChromePalette? lastPalette;
@@ -120,12 +121,16 @@ internal sealed class PinnedAdjustmentToolbar:IDisposable
         var scale=monitor.Scale*appearance.InterfaceScale;
         panel.Width=Math.Min(380*Math.Max(1,appearance.TextScale),Math.Max(1,monitor.WorkArea.Width/scale-24));
         panel.Measure(new(panel.Width,double.PositiveInfinity));
-        Window.Place(PinnedAdjustmentToolbarPlacement.Choose(pin,monitor.WorkArea,(int)Math.Ceiling(panel.Width*scale),
-            (int)Math.Ceiling(panel.DesiredSize.Height*scale),(int)Math.Ceiling(8*scale)));
+        widthPixels=(int)Math.Ceiling(panel.Width*scale);
+        heightPixels=(int)Math.Ceiling(panel.DesiredSize.Height*scale);
+        gapPixels=(int)Math.Ceiling(8*scale);
+        Follow(pin, monitor);
         if(!Window.Interactive)Window.SetInteraction(true);
         if(!Window.IsVisible)Window.Show();
         if(styleChanged)QueueLayout();
     }
+    internal void Follow(PinnedBounds pin, PinnedMonitor monitor) =>
+        Window.Place(PinnedAdjustmentToolbarPlacement.Choose(pin, monitor.WorkArea, widthPixels, heightPixels, gapPixels));
     private void QueueLayout()
     {
         if(disposed||layoutQueued)return;

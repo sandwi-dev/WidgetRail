@@ -20,10 +20,11 @@ public sealed partial class PlayniteLibraryTests
         var snapshot = Snapshot(widget, 240000);
         var tab = Nodes(snapshot.Root).Single(node => node.ActionId == PlayniteLibraryActions.AchievementsOpen);
         var capture = Nodes(snapshot.Root).Single(node => node.Text == "Capture settings");
-        var refresh = Nodes(snapshot.Root).Single(node => node.Id == AchievementHubId + ".refresh");
+        var settings = Nodes(snapshot.Root).Single(node => node.Id == AchievementHubId + ".settings");
+        Assert.IsFalse(Nodes(snapshot.Root).Any(node => node.ActionId == AchievementHubId + ".refresh"));
         var search = Nodes(snapshot.Root).Single(node => node.Id == AchievementHubId + ".search");
         Assert.AreEqual(tab.Id, search.Focus?.Up);
-        foreach (var field in new[] { "clear", "filter", "sort", "refresh.compact" })
+        foreach (var field in new[] { "clear", "filter", "sort" })
             Assert.AreEqual(tab.Id, Nodes(snapshot.Root).Single(n=>n.Id==AchievementHubId+"."+field).Focus?.Up);
 
         var query = new TextSuggestionQuery(search.Id, search.TextEntrySuggestions!.Key, Guid.NewGuid().ToString("N"), 1, "Val", MaximumValueLength:160);
@@ -31,8 +32,8 @@ public sealed partial class PlayniteLibraryTests
         Assert.IsTrue((await widget.OnSuggestTextAsync(query with {SourceKey="stale"}, default)).Unavailable);
         Assert.AreEqual(capture.Id, tab.Focus?.Right);
         Assert.AreEqual(tab.Id, capture.Focus?.Left);
-        Assert.AreEqual(refresh.Id, capture.Focus?.Right);
-        Assert.AreEqual(capture.Id, refresh.Focus?.Left);
+        Assert.AreEqual(settings.Id, capture.Focus?.Right);
+        Assert.AreEqual(capture.Id, settings.Focus?.Left);
         Assert.AreEqual(0, WidgetTestHost.ValidateWinUiPresentation(snapshot).Count);
         if (Environment.GetEnvironmentVariable("WIDGETRAIL_PLAYNITE_HEADER_FIXTURE") is { Length: > 0 } path)
         {
@@ -44,7 +45,7 @@ public sealed partial class PlayniteLibraryTests
         }
         var recent = new PlayniteRecentAchievement(game.Id, game.Name, "first", "First unlock", DateTimeOffset.UtcNow, null);
         app.OverviewHandler = _ => ValueTask.FromResult(new PlayniteAchievementOverview("ready", "profile", "two", DateTimeOffset.UtcNow, [game], [recent]));
-        await widget.OnActionAsync(new(AchievementHubId+".refresh","refresh"));
+        await widget.OnActionAsync(new(PlayniteLibraryActions.AchievementsOpen, "navigation"));
         await PrivateField<WidgetResource<PlayniteAchievementOverview>>(widget, "achievementHub").WhenIdleAsync();
         var populated = Snapshot(widget,240005);
         foreach (var field in new[] { "search", "clear", "filter", "sort" })

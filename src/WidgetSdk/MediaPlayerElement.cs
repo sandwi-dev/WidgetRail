@@ -13,6 +13,9 @@ public sealed record MediaPlayerElement : WidgetElement
     public MediaPlayerDefinition Media { get; init; }
     public string AccessibleName { get; init; }
     public DirectionalScrollAnchor? ThumbnailAnchor { get; private init; }
+    private string? ThumbnailExitDown { get; init; }
+    /// <summary>Sets the Down destination when an inline gallery thumbnail has focus.</summary>
+    public MediaPlayerElement FocusDown(string id) => this with { ThumbnailExitDown = RequireId(id) };
     public MediaPlayerElement WithThumbnailAnchor(FocusAnchorPoint itemPoint, int viewportPercent)
     {
         if (Media.Gallery is not { Count: > 0 } gallery || gallery[0].PublicThumbnail is null)
@@ -33,7 +36,8 @@ public sealed record MediaPlayerElement : WidgetElement
     }
     internal override ViewNode ToProtocolNode() => new()
     { Id = Id, Kind = ViewNodeKind.MediaPlayer, MediaPlayer = Media, AccessibilityLabel = AccessibleName, StyleClasses = StyleClasses,
-        DirectionalAnchor = ThumbnailAnchor, ArtworkHandle = Poster?.Value,ImageSource=PosterSource, ImageIsPublicMedia = PosterSource is not null && Media.Source.IsPublicMedia,
+        DirectionalAnchor = ThumbnailAnchor, Focus = ThumbnailExitDown is { } target ? new(Down: target) : null,
+        ArtworkHandle = Poster?.Value,ImageSource=PosterSource, ImageIsPublicMedia = PosterSource is not null && Media.Source.IsPublicMedia,
         ImageFit = Poster is null && PosterSource is null ? null : WidgetProtocol.ImageFit.Contain };
 }
 public static partial class UI

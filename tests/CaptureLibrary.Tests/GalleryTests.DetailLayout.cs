@@ -96,7 +96,9 @@ internal static partial class GalleryTests
             fixture.Items[0]=fixture.Items[0] with{Available=false};
             fixture.OpenOverride=(_,_)=>throw new WidgetCapabilityException("capture_library_not_found","Unavailable");
             await fixture.Start();using var host=WidgetTestHost.CreateIndexedCollectionHost(fixture.Widget,"missing-detail",100);fixture.Host=host;
-            using(var page=await host.AcquireAsync("capture-library.entries",0,3))
+            await fixture.Action("capture-library.filter.unavailable");
+            await fixture.Until(() => fixture.Collection?.IndexedCollection?.Count == 1);
+            using(var page=await host.AcquireAsync("capture-library.entries",0,1))
                 Check(page.RouteAction(fixture.Items[0].Id,ControllerButton.A) is not null,"Unavailable entry cannot be reviewed");
             await fixture.Until(()=>fixture.Node("capture-library.detail.unavailable") is not null&&!fixture.Busy);
             Check(fixture.Node("capture-library.share") is null&&fixture.Node("capture-library.edit-copy") is null&&

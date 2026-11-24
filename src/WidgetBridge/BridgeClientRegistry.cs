@@ -556,10 +556,16 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         long recoveryOriginSequence,
         CancellationToken sessionCancellation,
         CancellationToken cancellationToken,
-        BridgeTrayPreparation? trayPreparation = null)
+        BridgeTrayPreparation? trayPreparation = null, string? intentTicket = null)
     {
         ValidatePresentationRequest(
             transactionKind, capabilities, baseSequence, recoveryOriginSequence);
+        if (intentTicket is not null)
+        {
+            if (trayPreparation is not null || transactionKind != WidgetPresentationTransactionKind.OrdinaryCheckpoint)
+                throw new BridgeProtocolException("Background intent preparation requires its own checkpoint.");
+            lock (_gate) DemandBackgroundIntent(intentTicket, _catalog.GetConfigured(widgetId));
+        }
         if (trayPreparation is not null)
         {
             if (transactionKind != WidgetPresentationTransactionKind.OrdinaryCheckpoint)
@@ -574,18 +580,22 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             DemandCurrent(registration);
             coldTrayWake = trayPreparation is not null && !registration.Client.IsRunning;
             var preserveIdle = trayPreparation is not null && registration.PreserveOrdinaryIdleDeadline;
+            if (intentTicket is not null)
+            {
+                lock (_gate) DemandBackgroundIntent(intentTicket, registration.Configured);
+            }
             if (trayPreparation is not null)
             {
                 DemandTrayPreparation(registration.Configured, trayPreparation);
                 if (registration.HostLifecycle == WidgetLifecycleState.Interactive)
                     throw new BridgeStaleControllerInputAuthorityException("The caller is no longer in the tray.");
-                if (!registration.Client.IsRunning)
-                    await ExecuteClientOperationAsync(registration, (client, token) =>
-                        client.SetLifecycleStateAsync(WidgetLifecycleState.Background, token), cancellationToken).ConfigureAwait(false);
             }
+            if ((trayPreparation is not null || intentTicket is not null) && !registration.Client.IsRunning)
+                await ExecuteClientOperationAsync(registration, (client, token) =>
+                    client.SetLifecycleStateAsync(WidgetLifecycleState.Background, token), cancellationToken).ConfigureAwait(false);
             var residencyMode = WidgetResidencyPolicies.Resolve(
                 registration.Configured.ResidencyPolicy).Mode;
-            var hiddenAndRestricted = trayPreparation is null &&
+            var hiddenAndRestricted = intentTicket is null && trayPreparation is null &&
                 registration.HostLifecycle == WidgetLifecycleState.Background &&
                 residencyMode is WidgetResidencyMode.SuspendWhenHidden or
                     WidgetResidencyMode.UnloadAfterIdle;

@@ -15,6 +15,7 @@ internal static class PlayniteIcons
     internal static WidgetIcon Activity { get; } = Icon("activity", WidgetGlyph.Rewind);
     internal static WidgetIcon Game { get; } = Icon("game", WidgetGlyph.Play);
     internal static WidgetIcon GameHelp { get; } = WidgetIcon.PackageSvg("playnite.game-help", WidgetPackageIconColorMode.OriginalColor, WidgetGlyph.Connection);
+    internal static WidgetIcon Discord { get; } = WidgetIcon.PackageSvg("playnite.discord", WidgetPackageIconColorMode.OriginalColor, WidgetGlyph.Connection);
     internal static WidgetIcon Back { get; } = Icon("back", WidgetGlyph.Previous);
     internal static WidgetIcon Hidden { get; } = Icon("hidden", WidgetGlyph.Fullscreen);
 

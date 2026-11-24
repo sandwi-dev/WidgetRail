@@ -373,7 +373,7 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task HeaderNavigationRetainsGameEntryAndRefreshInMore()
+    public async Task HeaderNavigationRetainsGameEntryWithoutRoutineRefresh()
     {
         var host = new FakeHost(20);
         var widget = Create(host);
@@ -385,13 +385,8 @@ public sealed partial class PlayniteLibraryTests
             Nodes(header).Where(node => node.ActionId is PlayniteLibraryActions.HomeOpen or PlayniteLibraryActions.BrowseOpen)
                 .Select(node => node.ActionId).ToArray());
         Assert.AreEqual(PlayniteLibraryPresentation.HomeRailId, snapshot.InitialFocusId);
-        var before = host.Queries.Count;
-        host.NextQueryStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Assert.IsTrue(PageNodes(widget, snapshot.Root).Single(node => node.Id == "playnite-library.library.menu").ContextActions.Any(action => action.ActionId == PlayniteLibraryActions.Refresh));
-        await widget.OnActionAsync(new(PlayniteLibraryActions.Refresh, "playnite-library.library.menu"));
-        await Bounded(host.NextQueryStarted.Task, "Y refresh provider query");
-        await Bounded(widget.WhenLibraryIdleAsync(), "Y refresh");
-        Assert.AreEqual(before + 1, host.Queries.Count);
+        Assert.IsFalse(PageNodes(widget, snapshot.Root).Single(node => node.Id == "playnite-library.library.menu")
+            .ContextActions.Any(action => action.ActionId == PlayniteLibraryActions.Refresh));
         await Background(widget);
     }
 
@@ -1098,7 +1093,6 @@ public sealed partial class PlayniteLibraryTests
                     "playnite-library.launch",
                     "playnite-library.favorite",
                     "playnite-library.hide",
-                    "playnite-library.refresh-source",
                     "playnite-library.category." + category.Id,
                 }, poster.ContextActions.Select(action => action.ActionId).ToArray(),
                     phase + " must retain the exact game Menu declarations.");
@@ -2615,6 +2609,7 @@ public sealed partial class PlayniteLibraryTests
             "_launchStates", "_indexedHome", "_indexedBrowse", "homePosts", "homeRecentActivity", "homeCaptures",
             "suggestionOwner", "suggestionSource", "gameSuggestions", "achievementBrowse", "achievementRows", "_hiddenRows", "_model", "_navigation", "_organization",
             "progressPin", "progressData", "playingNews", "playingDetails", "playingAwards", "playingCaptures", "playingAuthority",
+            "discordDemand", // Identifies the subscription visit. The visible roster and modal are model-owned.
             // SDK resource/collection owners and their immutable publication cache; controls live in the model.
             "achievementHub", "achievementGames", "recentAchievements", "publishedAchievementOverview", "publishedAchievementFilter",
             "captureSetup", "relatedCaptures", "capturePicker", "sessionRows", "captureGames", "gameChoiceRows", "gameLinkFeedback", "timelineRows", "timelineCaptures", "sessionHistoryRows", "sessionAnalysis",

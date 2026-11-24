@@ -7,6 +7,25 @@ internal sealed partial class OverlayShellPage
     internal event Action<WidgetApplicationControl>? ApplicationControlRequested;
     private Task? applicationControlPump;
     private bool applicationControlIssued;
+    private const string BridgeRecoveryMessage = "The widget service disconnected. Restart WidgetRail to reconnect.";
+    private bool BridgeDisconnected => owner?.Session.IsTransportClosed == true;
+
+    private void BridgeDiagnosticPublished(object? sender, WidgetPresentationDiagnosticEventArgs args)
+    {
+        if (args.Diagnostic.Code != "transport_closed") return;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!retired && ReferenceEquals(owner?.Session, sender)) ShowBridgeRecovery();
+        });
+    }
+
+    private void ShowBridgeRecovery()
+    {
+        interactionAdmission.Invalidate();
+        switchCancellation?.Cancel();
+        ShowRecovery(BridgeRecoveryMessage, canRetry: true);
+    }
+
     private void RequestApplicationControl(WidgetApplicationControl action)
     {
         if (retired || applicationControlIssued || action == WidgetApplicationControl.None) return;
@@ -35,6 +54,7 @@ internal sealed partial class OverlayShellPage
             }
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception error) when (BridgeDisconnected && error is not OutOfMemoryException) { }
         catch (Exception error) { if (!retired) ReportFailure(error); }
     }
 }

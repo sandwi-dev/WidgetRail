@@ -28,10 +28,10 @@ internal sealed partial class OverlayShellPage
         if (preferences.TrayActions.Get(direction) is not { } binding)
             return null;
         if (!favoriteProviders.TryGetValue(binding.Provider, out var descriptor) || descriptor.PublisherId != binding.Publisher || descriptor.PackageId != binding.Package)
-            return new(binding.Label ?? "Widget unavailable", Reason: "The widget assigned to this shortcut is no longer available.");
+            return new(binding.Label ?? binding.Action, Reason: "The widget assigned to this shortcut is no longer available.");
         var definition = descriptor.AvailableTrayActions.FirstOrDefault(item => item.Id == binding.Action);
         if (definition is null)
-            return new(binding.Label ?? "Action unavailable", Reason: $"{descriptor.Name} no longer provides this action.");
+            return new(binding.Label ?? binding.Action, Reason: $"{descriptor.Name} no longer provides this action.");
         if (descriptor.IsStopped)
             return new(definition.Label, Reason: $"Start {descriptor.Name} to use this action.");
         var alternate = definition.FallbackId == binding.Fallback && binding.Fallback is not null

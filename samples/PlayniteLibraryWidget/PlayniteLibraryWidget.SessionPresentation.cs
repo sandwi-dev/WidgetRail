@@ -6,11 +6,15 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 public sealed partial class PlayniteLibraryWidget
 {
-    private static WidgetElement SessionDashboard(PlayniteSessionHistory history, HistoryContext context, SessionPeriod? period, WidgetElement list, string? error)
+    private static WidgetElement SessionDashboard(PlayniteSessionHistory history, HistoryContext context, SessionPeriod? period, WidgetElement list,
+        string? activityError, string? analysisError)
     {
         var sections = new List<WidgetElement>();
         void Add(WidgetElement section) => sections.Add(section.InGrid(row: sections.Count));
-        if (error is not null) Add(UI.Text(error, Sessions + "warning").Classes("sessions-caption"));
+        if (activityError is not null) Add(PlayniteLibraryDetailsPresentation.ReadError(Sessions + "warning", activityError,
+            PlayniteLibraryDetailsPresentation.RetryActivityAction));
+        if (analysisError is not null) Add(PlayniteLibraryDetailsPresentation.ReadError(Sessions + "analysis-error", analysisError,
+            PlayniteLibraryDetailsPresentation.RetrySessionsAction));
         var charts = new List<WidgetElement>();
         if (history.Periods.Length > 0) charts.Add(PeriodChart(history, period));
         charts.Add(SessionProfile(context).InGrid(column: charts.Count));

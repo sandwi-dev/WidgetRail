@@ -17,7 +17,7 @@ namespace WidgetRail.WidgetBridge;
 internal sealed record BridgeMarketplaceSources(IReadOnlyList<CuratedWidget> Definitions, HttpMessageHandler Http, TimeProvider Clock);
 
 internal sealed record CuratedWidget(string Id, string Publisher, string Name, string Description, IReadOnlyList<string> Screenshots,
-    IReadOnlyList<string>? SetupRequirements = null);
+    IReadOnlyList<string>? SetupRequirements = null, IReadOnlyList<CatalogueDetail>? Details = null);
 
 /// <summary>
 /// Shared trusted-UI jobs. Downloads and mutations never execute in the short
@@ -66,10 +66,11 @@ internal sealed partial class BridgeWidgetMarketplace : IAsyncDisposable
         _definitions = definitions.Select(d => d with
         {
             Screenshots = Array.AsReadOnly(d.Screenshots.ToArray()),
-            SetupRequirements = d.SetupRequirements is { } requirements ? Array.AsReadOnly(requirements.ToArray()) : null
+            SetupRequirements = d.SetupRequirements is { } requirements ? Array.AsReadOnly(requirements.ToArray()) : null,
+            Details = d.Details is { } details ? Array.AsReadOnly(details.ToArray()) : null
         }).ToArray();
         _snapshot = new(0, _definitions.Select(d => new MarketplaceItem(d.Id, d.Name, d.Description, d.Screenshots,
-            SetupRequirements: d.SetupRequirements)).ToArray());
+            SetupRequirements: d.SetupRequirements) { Details = d.Details }).ToArray());
         MarketplaceContract.ValidateSnapshot(_snapshot);
         // Inventory grew to include optional first-party widgets. Preserve
         // room for the independently bounded batch review in broker replies.

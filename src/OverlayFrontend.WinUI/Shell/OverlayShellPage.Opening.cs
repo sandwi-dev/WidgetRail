@@ -15,13 +15,23 @@ internal sealed partial class OverlayShellPage
         openingIndicator.SizeChanged += (_, _) => PositionOpeningIndicator();
     }
 
-    private void BeginOpening(long version, string id)
+    private void BeginOpening(long version, string id, bool overlayReopen)
     {
         if (!visible || retired) return;
-        // Retained content stays drawable; this passive badge grants no input.
+        var descriptor = catalogItems.FirstOrDefault(item => item.Id == id);
+        // This changes feedback timing only. A newer snapshot from the same
+        // owner can be pending and SelectAsync still performs full admission.
+        bool resuming = overlayReopen && id == activeWidget && !RecoveryVisible && !RadialOpen &&
+            descriptor is { IsStopped: false } && retainedSurfaces.TryGetValue(id, out var retained) &&
+            retained.Frame is { } frame && ReferenceEquals(retained.Presenter, surface) &&
+            surface is { IsLoaded: true, Visibility: Visibility.Visible, Opacity: > 0, ActualWidth: > 0, ActualHeight: > 0 } &&
+            owner?.Session.GetState(id) is { Failure: null, LastGood: { } latest } &&
+            SameSurfaceOwner(frame.Descriptor, descriptor) && SameSurfaceOwner(frame.Descriptor, latest.Descriptor) &&
+            frame.Authority.SessionGeneration == latest.Authority.SessionGeneration &&
+            frame.Authority.WorkerRun == latest.Authority.WorkerRun;
         StatusChrome.Visibility = Visibility.Collapsed;
         if (!startupPresentationPending)
-            openingIndicator?.Begin(version, catalogItems.FirstOrDefault(item => item.Id == id));
+            openingIndicator?.Begin(version, descriptor, resuming);
         PositionOpeningIndicator();
     }
 

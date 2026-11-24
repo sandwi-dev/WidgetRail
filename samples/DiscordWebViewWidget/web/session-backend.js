@@ -9,7 +9,7 @@
     let version = null;
     const validQuality=q=>q&&typeof q==='object'&&!Array.isArray(q)&&[480,720,1080].includes(q.resolution)&&
         [15,30,60].includes(q.frameRate)&&(q.resolution!==1080||q.frameRate!==60);
-    const commands = new Set(['enableNotifications', 'joinActivity', 'watchActivity', 'join', 'leave', 'mute', 'deafen', 'streamMute', 'streamVolume', 'streamDiagnostics', 'connectionDiagnostics', 'incomingDiagnostics', 'videoPlayback', 'voiceMute', 'voiceVolume', 'voiceSettings', 'voiceInputDevice', 'voiceOutputDevice', 'voiceInputVolume', 'watch', 'keep', 'unwatch', 'share', 'cancelPendingShare', 'stopShare']);
+    const commands = new Set(['enableNotifications', 'joinActivity', 'watchActivity', 'join', 'leave', 'mute', 'deafen', 'streamMute', 'streamVolume', 'streamDiagnostics', 'connectionDiagnostics', 'incomingDiagnostics', 'videoPlayback', 'voiceMute', 'voiceVolume', 'voiceSettings', 'voiceInputDevice', 'voiceOutputDevice', 'voiceInputVolume', 'watch', 'reconnectVideo', 'keep', 'unwatch', 'share', 'cancelPendingShare', 'stopShare']);
     for(const command of ['messagingState','messageObserve','messageConversations','messageLocateConversation','messageHistory','messageMarkRead','messageChanges','messageRecover','messageOpenDm','messagePrepareAttachments','messageSend','messageReconcile','messageNotificationTarget'])commands.add(command);
     for(const command of ['callStart','callAnswer','callDecline'])commands.add(command);
     async function snapshot(owner) {

@@ -37,6 +37,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             watchAvailable:key=>!!watchDemandApi()&&watchOwnership(key)!==null});
         const relays = new Map(); // One independently renewable lease per display slot.
         const retiringWatches = new Map(); // At most one unsettled close per slot; slot reuse waits below.
+        const watchFailures = new Map(); // At most the latest failed watch in each of the three slots.
         const byLease = lease => Array.from(relays.values()).find(entry => entry.lease === lease);
         let shareEpoch = 0;
         const experimentalCapture=experimentalCaptureFactory?.({store,me,channelId,currentShare,streamKey,currentEpoch:()=>shareEpoch,peekDesktopSource,videoRateLimits});
@@ -916,8 +917,9 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             fail('watch_close_pending');
         }
 
-        function stopRelay(entry) {
+        function stopRelay(entry,reason) {
             if(!entry || relays.get(entry.slot)!==entry)return;
+            if(reason)watchFailures.set(entry.slot,{owner:entry.owner,account:entry.account,lease:entry.lease,reason});
             relays.delete(entry.slot);
             retireRelay(entry);
         }
@@ -1017,28 +1019,45 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 // The widget must publish the receiver before a real remote
                 // decoder may produce frames. Observe after attachment, never
                 // block watch's reply on an as-yet-unpresented WebView.
-                let changing = false, unavailableSince=null, firstPicturePendingSince=Date.now();
+                let changing = false, unavailableSince=null, firstPicturePendingSince=Date.now(), firstPictureBaseline=0, retriedPlayback=false;
+                entry.restartPlayback=()=>{
+                    if(!viewId || !current() || !refreshWatchDemand(entry))return false;
+                    const currentTrack=incomingTrack(entry);
+                    if(!currentTrack || !videoHost.setVideoTrack(viewId,currentTrack,true))return false;
+                    track=currentTrack;
+                    firstPicturePendingSince=Date.now();
+                    firstPictureBaseline=videoHost.videoPlayback(viewId)?.totalFrames??0;
+                    retriedPlayback=false;
+                    return true;
+                };
                 entry.timer = setInterval(async () => {
                   try {
                     if (!current() || !streams(args.channelId).some(s => s.key === stream.key)||
                         watchOwnership(stream.key)?.alreadyWatching!==true) {
-                        stopRelay(entry);
+                        stopRelay(entry,'watch_ended');
                         return;
                     }
                     const replacement = refreshWatchDemand(entry)?incomingTrack(entry):null;
                     if(!replacement){
                         unavailableSince??=Date.now();
-                        if(Date.now()-unavailableSince>=8000){stopRelay(entry);return;}
+                        if(Date.now()-unavailableSince>=8000){stopRelay(entry,'track_unavailable');return;}
                     }else unavailableSince=null;
                     if(viewId){
                         const playback=videoHost.videoPlayback(viewId);
-                        if(!playback||track.readyState==='ended'&&!replacement){stopRelay(entry);return;}
-                        if(playback.width>0&&playback.height>0&&playback.totalFrames>0)firstPicturePendingSince=null;
+                        if(!playback||track.readyState==='ended'&&!replacement){stopRelay(entry,'video_view_unavailable');return;}
+                        if(playback.totalFrames<firstPictureBaseline)firstPictureBaseline=0;
+                        if(playback.width>0&&playback.height>0&&playback.totalFrames>firstPictureBaseline)firstPicturePendingSince=null;
                         else if(firstPicturePendingSince!==null&&Date.now()-firstPicturePendingSince>=12000){
-                            lastFailure={method:'watch',type:'Error',detail:'video_no_frames'};stopRelay(entry);return;
+                            lastFailure={method:'watch',type:'Error',detail:'video_no_frames'};stopRelay(entry,'video_no_frames');return;
+                        }
+                        if(!retriedPlayback && firstPicturePendingSince!==null && Date.now()-firstPicturePendingSince>=6000 && replacement===track){
+                            // The receiver can be bound while its view is still parked offscreen.
+                            // Rearm local playback once without dropping the Discord subscription.
+                            retriedPlayback=true;
+                            if(!videoHost.setVideoTrack(viewId,track,true)){stopRelay(entry,'video_view_unavailable');return;}
                         }
                         if(replacement && replacement!==track){
-                            if(!videoHost.setVideoTrack(viewId,replacement)){stopRelay(entry);return;}
+                            if(!videoHost.setVideoTrack(viewId,replacement)){stopRelay(entry,'video_view_unavailable');return;}
                             track=replacement;
                         }
                     }else if (!changing && replacement && sender.track !== replacement) {
@@ -1048,7 +1067,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                     }
                   }catch(error) {
                     lastFailure={method:'watch',type:'Error',detail:error.adapterCode??'watch_demand_failed'};
-                    stopRelay(entry);
+                    stopRelay(entry,'watch_demand_failed');
                   }
                 }, 1000);
                 return viewId ? {lease:args.lease,videoView:viewId} : { lease: args.lease, offer: pc.localDescription.toJSON() };
@@ -1256,11 +1275,24 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                         if (!relayCurrent(entry)) fail('watch_cancelled');
                         break;
                     }
+                    case 'reconnectVideo': {
+                        if(!relay || relay.owner!==owner || !relayCurrent(relay) || !relay.viewId || relay.viewId!==args.videoView ||
+                            relay.account!==args.account || relay.channelId!==args.channelId || relay.key!==args.key)fail('watch_cancelled');
+                        return {ok:true,value:{reconnected:relay.restartPlayback?.()===true}};
+                    }
                     case 'keep':
                         if (relay?.lease === args.lease && relay.owner===owner && relayCurrent(relay))
                             relay.expires = Date.now() + 12000;
                         break;
-                    case 'unwatch': if (relay?.lease === args.lease && relay.owner===owner) stopRelay(relay); break;
+                    case 'unwatch':
+                        if (relay?.lease === args.lease && relay.owner===owner) stopRelay(relay);
+                        for(const [slot,failure] of watchFailures){
+                            if(failure.owner===owner && failure.account===args.account && failure.lease===args.lease){
+                                watchFailures.delete(slot);
+                                return {ok:true,value:{reason:failure.reason}};
+                            }
+                        }
+                        break;
                     case 'cancelPendingShare':
                         if (shareOwner === owner) { ++shareEpoch; sharePending = false;shareQualityBinding?.dispose(); }
                         break;

@@ -96,6 +96,7 @@ internal sealed partial class WidgetStylesValidationPage
             await Button(ControllerButton.A);
             await Until(()=>media.IsPlaying);
             var decoder=media.PlaybackPlayerForValidation as Windows.Media.Playback.MediaPlayer??throw new InvalidOperationException("Missing resumed decoder");
+            Check(media.PreviewSystemControlsDisabledForValidation, "Manually resumed inline clips keep playback controls local");
             media.PreviewVolumeForValidation.Value=35;
             var positionBefore=decoder.PlaybackSession.Position;
             await Until(()=>decoder.PlaybackSession.Position>positionBefore+TimeSpan.FromMilliseconds(70));

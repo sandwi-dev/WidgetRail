@@ -9,7 +9,7 @@ internal static partial class GalleryTests
         fixture.Items[0] = fixture.Items[0] with { Media = fixture.Items[0].Media with
             { ContentType = "video/mp4", DurationSeconds = 5, Origin = CaptureAttachmentOrigin.SavedLibrary } };
         await fixture.Start();
-        Check(fixture.Node("capture-library.gallery.preview")?.FocusPreview is { AllowMedia: true, EnterButton: ControllerButton.RightStick, DelayMilliseconds: 450 },
+        Check(fixture.Node("capture-library.gallery.preview")?.FocusPreview is { AllowMedia: true, EnterButton: ControllerButton.RightStick, DelayMilliseconds: 1500 },
             "Clip previews lost the shared delayed/explicit-entry policy");
         using var host = WidgetTestHost.CreateIndexedCollectionHost(fixture.Widget, "gallery-clip-preview", 100); fixture.Host = host;
         using (var lease = await host.AcquireAsync("capture-library.entries", 0, 3))

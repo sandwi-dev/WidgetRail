@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.ytmusic",
   "publisher": "widgetrail.samples",
   "name": "YouTube Music",
-  "version": "0.3.50",
+  "version": "0.3.51",
   "trayActions": [
     { "id": "play-pause", "label": "Play or pause" },
     { "id": "previous", "label": "Previous song" },

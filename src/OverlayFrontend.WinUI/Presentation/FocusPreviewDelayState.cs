@@ -14,6 +14,6 @@ internal sealed class FocusPreviewDelayState
     }
     internal void Complete(long now) { if (identity is not null) due = now; }
     internal bool Ready(long now) => identity is not null && now >= due;
-    internal int Remaining(long now) => identity is null ? 0 : (int)Math.Clamp(due - now, 0, 1500);
+    internal int Remaining(long now) => identity is null ? 0 : (int)Math.Clamp(due - now, 0, delay);
     internal void Clear() { identity = null; delay = 0; due = 0; }
 }

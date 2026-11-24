@@ -53,6 +53,17 @@ internal sealed partial class OverlayShellPage
         radialInput.RebasePage();
     }
 
+    private void DismissRadialWhileHidden()
+    {
+        if (visible || !radialRequested) return;
+        radialRequested = false;
+        ClearTrayFocus();
+        // Reopen admits the requested widget and restores its retained focus.
+        // Do not start another selection or activate content while hidden.
+        interactive = requestedWidget is not null;
+        RefreshRadialChooser();
+    }
+
     private async Task BackFromTrayAsync()
     {
         CloseUtilityPanel();

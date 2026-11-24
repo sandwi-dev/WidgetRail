@@ -16,9 +16,10 @@ namespace WidgetRail.OverlayFrontend.WinUI.Media;
 internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
 {
     internal const int MaximumResidentSessions = 7; // Six compact pins and the main media viewport.
-    private sealed class Entry(string widgetId)
+    private sealed class Entry(string widgetId, bool galleryPreview)
     {
         internal string WidgetId { get; } = widgetId;
+        internal bool GalleryPreview { get; } = galleryPreview;
         internal CancellationTokenSource Lifetime { get; } = new();
         internal WidgetPresentationEmbeddedMediaDocument? Document;
         internal EmbeddedMediaSurface? Surface;
@@ -67,6 +68,7 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
         ? stage.SurfaceHost : ordinary.Element.SurfaceHost;
 
     private readonly Web.HostedWebViewEnvironment runtime;
+    private Web.HostedWebViewEnvironment? galleryRuntime;
 
     internal EmbeddedMediaOwner(PresentationSession session, Grid parking, Web.HostedWebViewEnvironment runtime)
     {
@@ -165,12 +167,18 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
                 if (visible && activeWidget is { } active && MatchingViewport(active) is { } target &&
                     session.GetState(active)?.LastGood is { } frame && frame.Snapshot.EmbeddedMediaSession is not null)
                 {
-                    if (!entries.TryGetValue(active, out var entry))
+                    var galleryPreview = target.GalleryItem is not null;
+                    if (entries.TryGetValue(active, out var entry) && entry.GalleryPreview != galleryPreview)
+                    {
+                        Retire(entry);
+                        entry = null;
+                    }
+                    if (entry is null)
                     {
                         if (entries.Count + retirements.Count >= MaximumResidentSessions)
                         { SetFailure(active, "media-session-capacity"); continue; }
                         SetFailure(active, null);
-                        entries.Add(active, entry = new(active));
+                        entries.Add(active, entry = new(active, galleryPreview));
                     }
                     if (entry.Document is null && !entry.IsResolving && entry.AttemptSequence != frame.Authority.SnapshotSequence)
                     {
@@ -239,12 +247,13 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
             var document = await session.ResolveEmbeddedMediaAsync(authority, entry.Lifetime.Token);
             startupTrace.Mark("resources-admitted");
             if (retired || !entries.TryGetValue(entry.WidgetId, out var current) || !ReferenceEquals(current, entry) ||
-                session.GetEmbeddedMediaState(document) is null) return;
+                session.GetEmbeddedMediaState(document) is not { } state) return;
             entry.Document = document;
-            entry.Stage = CreateStage?.Invoke(session.GetEmbeddedMediaState(document)!.Declaration.AspectRatio);
+            entry.Stage = CreateStage?.Invoke(state.Declaration.AspectRatio);
             SetFailure(entry.WidgetId, null);
-            entry.Surface = new(session, document, runtime, startupTrace);
-            if (MatchingViewport(entry.WidgetId)?.GalleryItem is not null)
+            var environment = entry.GalleryPreview ? (galleryRuntime ??= runtime.CreateGalleryPreviewEnvironment()) : runtime;
+            entry.Surface = new(session, document, state.Declaration, environment, startupTrace);
+            if (entry.GalleryPreview)
                 entry.Surface.SelectedGalleryMedia = () => MatchingViewport(entry.WidgetId)?.GalleryItem;
             entry.Surface.InputAuthority = () => CanAcceptInput(entry.WidgetId);
             entry.Surface.PlaybackActivationAuthority = () => CanActivateDashboardPlayback(entry.WidgetId);
@@ -256,12 +265,16 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
             entry.Surface.StateChanged += Reconcile;
             Place(entry, MatchingViewport(entry.WidgetId));
         }
-        catch (OperationCanceledException) when (retired || entry.Lifetime.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (retired || entry.Lifetime.IsCancellationRequested ||
+            session.GetState(entry.WidgetId)?.LastGood?.Authority != authority) { }
         catch (Exception error) when (error is not (OutOfMemoryException or StackOverflowException or AccessViolationException))
         {
             if (!retired && !entry.Lifetime.IsCancellationRequested &&
                 error is not WidgetPresentationSessionException { Code: "presentation_stale" or "snapshot_stale" or "embedded_media_stale" })
+            {
+                Diagnostics.FrontendFailureLog.Current.Write("media-document-admission", error, $"requested={authority.SnapshotSequence} current={session.GetState(entry.WidgetId)?.LastGood?.Authority.SnapshotSequence}");
                 SetFailure(entry.WidgetId, "media-document-admission-failed");
+            }
         }
         finally
         {
@@ -330,7 +343,12 @@ internal sealed partial class EmbeddedMediaOwner : IAsyncDisposable
             try { await retirement; }
             catch (Exception error) when (error is not (OutOfMemoryException or StackOverflowException or AccessViolationException))
             { Diagnostic?.Invoke(entry.WidgetId, "media-retirement-failed"); }
-            finally { retirements.Remove(retirement); if (!retired) Reconcile(); }
+            finally
+            {
+                retirements.Remove(retirement);
+                if (retirements.Count == 0 && !entries.Values.Any(active => active.GalleryPreview)) galleryRuntime = null;
+                if (!retired) Reconcile();
+            }
         }
     }
 

@@ -87,7 +87,7 @@ public sealed partial class PlayniteLibraryTests
         var reads = 0;
         var items = Enumerable.Range(0, 4000).Select(index => new PlayniteAchievement("Achievement " + index,
             "Description " + index, index % 2 == 0, null, index % 100, null, false) { Id = "id." + index }).ToArray();
-        application.AchievementsHandler = (_, _) => { reads++; return ValueTask.FromResult(new PlayniteAchievements(true, 4000, 2000, items)); };
+        application.AchievementsHandler = (_, _) => { reads++; return ValueTask.FromResult(new PlayniteAchievements(true, 4000, 2000, items) { CanRefresh = true }); };
         await Interactive(widget);
         await Ready(widget, provider);
         var game = PageNodes(widget, Snapshot(widget, 160_001).Root).First(node => node.ActionId == PlayniteLibraryActions.DetailsOpen);
@@ -152,7 +152,7 @@ public sealed partial class PlayniteLibraryTests
         Assert.AreEqual(PlayniteAchievementBrowse.SearchGroupId, host.CurrentSnapshot.FocusGroupEntryRequest!.GroupId);
         Assert.AreEqual(1, reads, "Clearing search must reuse loaded achievements.");
         await widget.OnActionAsync(new(DetailAction + "achievement.search", "search") { CommittedText = "Description 3999" });
-        await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
+        await widget.OnActionAsync(new(PlayniteLibraryDetailsPresentation.SyncGameAction, "sync"));
         await Bounded(widget.WhenDetailsIdleAsync(), "refresh");
         host.PublishSnapshot();
         Assert.AreEqual(2, reads);

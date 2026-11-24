@@ -25,7 +25,8 @@ internal sealed partial class OverlayShellPage
         var displayId = await ReadPinnedDisplayAsync(window.Handle);
         var appearance = AppearanceForDisplay(displayId);
         var limits = ResolvePinnedLimits(hints, appearance.InterfaceScale);
-        var placement = PinnedPlacementPolicy.Resolve(PinnedDisplayAreas.Read(), saved, limits,
+        var monitors = PinnedDisplayAreas.Read(window.Handle);
+        var placement = PinnedPlacementPolicy.Resolve(monitors, saved, limits,
             (hints?.PreferredWidth ?? 480) * appearance.InterfaceScale,
             (hints?.PreferredHeight ?? 270) * appearance.InterfaceScale)
             ?? throw new InvalidOperationException("No display has enough room for this pinned layout.");
@@ -34,7 +35,7 @@ internal sealed partial class OverlayShellPage
             displayId = null;
             appearance = AppearanceForDisplay(null);
             limits = ResolvePinnedLimits(hints, appearance.InterfaceScale);
-            placement = PinnedPlacementPolicy.Resolve(PinnedDisplayAreas.Read(), saved, limits,
+            placement = PinnedPlacementPolicy.Resolve(monitors, saved, limits,
                 (hints?.PreferredWidth ?? 480) * appearance.InterfaceScale,
                 (hints?.PreferredHeight ?? 270) * appearance.InterfaceScale)
                 ?? throw new InvalidOperationException("No display has enough room for this pinned layout.");

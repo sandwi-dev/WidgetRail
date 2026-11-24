@@ -130,9 +130,15 @@ internal sealed partial class OverlayShellPage
                 await Button(ControllerButton.A);
                 await Until(() => Node("discord.message.history")?.IndexedCollection?.Count == 20 && FocusId() == "Widget.discord.message.draft");
                 Check(surface.CurrentBinding!.Frame.Authority.ActiveInputScopeId == "discord.conversation.scope", "Opening a conversation establishes the matching native input scope");
-                var audit = Audit();
-                Check(audit.GetProperty("history").GetArrayLength() == 1 && audit.GetProperty("history")[0].GetProperty("limit").GetInt32() == 20,
-                    "Conversation history loads one bounded 20-message page lazily");
+                await Until(() => Audit().GetProperty("history").GetArrayLength() >= 2);
+                var readsAtEntry = Audit().GetProperty("history");
+                Check(readsAtEntry.GetArrayLength() == 2 && readsAtEntry.EnumerateArray().All(read =>
+                    read.GetProperty("channel").GetString() == "10" && read.GetProperty("limit").GetInt32() == 20 &&
+                    read.GetProperty("around").ValueKind == JsonValueKind.Null && read.GetProperty("after").ValueKind == JsonValueKind.Null) &&
+                    readsAtEntry[0].GetProperty("before").ValueKind == JsonValueKind.Null &&
+                    readsAtEntry[1].GetProperty("before").GetString() == "1101" &&
+                    Node("discord.message.history")?.IndexedOccurrenceKeys?.SequenceEqual(Enumerable.Range(1101,20).Select(id => id.ToString())) == true,
+                    "Only the latest 20 messages are published while the selected conversation prepares its adjacent older page");
                 Check(InSurface(Find("discord.message.draft")!) && InSurface(Find("discord.message.send")!), "Composer and Send are within the actual widget viewport");
                 Check(Node("discord.message.send")!.IsDisabled == true, "An empty composer cannot send");
                 await Until(()=>Audit().GetProperty("readAcks").EnumerateArray().Any(ack=>ack.GetProperty("channel").GetString()=="10"&&ack.GetProperty("message").GetString()=="1120"));
@@ -160,7 +166,7 @@ internal sealed partial class OverlayShellPage
                 history.NavigationTrace=value=>{if((value.StartsWith("boundary ",StringComparison.Ordinal)||value.StartsWith("realization-retarget",StringComparison.Ordinal)||value.StartsWith("focused-target",StringComparison.Ordinal))&&boundaryEvents++<100)trace.Add(new{step,collectionNavigation=value});};
                 var historyExtent = WidgetScrollViewport.ContentBounds(historyScroll).Height;
                 trace.Add(new { step, phase = "conversation layout", surface.ActualWidth, surface.ActualHeight, historyExtent,source=Node("discord.message.history")?.IndexedCollection });
-                Check(historyExtent >= 116, $"History has room for at least one estimated message row (content viewport {historyExtent} DIPs)");
+                Check(historyExtent >= Node("discord.message.history")!.CollectionLayout!.EstimatedItemExtent, $"History has room for at least one estimated message row (content viewport {historyExtent} DIPs)");
                 var fixedControls = new[] { "discord.messages.back", "discord.message.draft", "discord.message.attach", "discord.message.send" }
                     .Select(Find).Where(element => element is not null && Displayed(element)).Cast<FrameworkElement>().ToArray();
                 Check(fixedControls.Length == 4 && fixedControls.All(InSurface), "All displayed non-scrolling conversation controls stay inside the widget client");
@@ -220,26 +226,27 @@ internal sealed partial class OverlayShellPage
                 Check(surface.ControllerTextEntry is null,"X focuses composer without sending or implicitly opening keyboard");
                 var priorReads=Audit().GetProperty("history").GetArrayLength();
                 await CheckOlderPageAsync(history,historyScroll,priorReads);
-                await ScrollBoundary(-1,priorReads+1);
-                await Until(() => Audit().GetProperty("history").GetArrayLength() >= priorReads+2 && Node("discord.message.history")?.CollectionBoundaries?.After==true);
+                await ScrollBoundary(-1);
+                await Until(() => Node("discord.message.history")?.CollectionBoundaries?.After==true);
                 Check(Node("discord.message.history")!.IndexedCollection!.Count <= 40, "Older navigation keeps the native history window bounded to 40 messages");
                 var reverseQuery=Node("discord.message.history")!.IndexedCollection!.QueryGeneration;
-                await ScrollBoundary(1,Audit().GetProperty("history").GetArrayLength());
+                await ScrollBoundary(1);
                 await Until(() => Audit().GetProperty("history").EnumerateArray().Any(item => item.GetProperty("after").ValueKind == JsonValueKind.String) &&
                     Node("discord.message.history")!.IndexedCollection!.QueryGeneration>reverseQuery);
                 Check(Node("discord.message.history")!.IndexedCollection!.Count <= 40, "Newer navigation uses the reverse provider cursor without unbounding the window");
                 for(var adjacent=0;adjacent<4 && Node("discord.message.history")?.CollectionBoundaries?.Before==true;adjacent++)
                 {
-                    var reads=Audit().GetProperty("history").GetArrayLength();
                     var generation=Node("discord.message.history")!.IndexedCollection!.QueryGeneration;
-                    await ScrollBoundary(-1,reads);
-                    await Until(()=>Audit().GetProperty("history").GetArrayLength()>reads && Node("discord.message.boundary.status") is null &&
+                    await ScrollBoundary(-1);
+                    await Until(()=>Node("discord.message.boundary.status") is null &&
                         Node("discord.message.history")!.IndexedCollection!.QueryGeneration>generation);
                 }
                 var oldest=Node("discord.message.history")!;
                 Check(Node("discord.message.retry") is null && oldest.IndexedOccurrenceKeys?.FirstOrDefault()=="1001",
                     "Exhaustion reaches the actual oldest provider item without a resource error");
                 Check(oldest.CollectionBoundaries?.Before==false,"Exhausted older history withdraws the loadable edge");
+                await Until(() => history.PresentedQueryForValidation == oldest.IndexedCollection!.QueryGeneration &&
+                    !history.HasPendingWindowForValidation && !history.HasPendingContinuityForValidation);
                 Check(history.Enter(new("discord.message.history",oldest.IndexedCollection!.SourceId,oldest.IndexedCollection.QueryGeneration,"1001",0)),
                     "Oldest message remains a native focus target");
                 await Until(()=>history.CaptureFocusedItem()?.ItemKey=="1001" && !history.HasPendingNativeNavigation);
@@ -318,8 +325,16 @@ internal sealed partial class OverlayShellPage
                     "The synthetic stream cancels exactly once with no provider send or real network upload");
                 step = "conversation return";
                 await Button(ControllerButton.B);
+                await Until(() => RadialOpen && !interactive && Node("discord.message.history") is not null);
+                await RouteButtonAsync(ControllerButton.B,ControllerEventPhase.Pressed);
+                await RouteButtonAsync(ControllerButton.B,ControllerEventPhase.Released);
+                await Until(() => interactive && !switching && !RadialOpen && Node("discord.message.history") is not null);
+                Check(Node("discord.message.file.0") is not null && Node("discord.message.draft")?.TextEntryValue?.ToLowerInvariant()=="hi",
+                    "Radial round trip preserves the conversation, draft and staged attachment");
+                Check(surface.FocusHostTarget("discord.messages.back"), "Conversation list button remains reachable");
+                await Button(ControllerButton.A);
                 await Until(() => Node("discord.messages.page") is not null && FocusId() == "Widget.discord.messages.list.Item.0");
-                Check(true, "Conversation Back restores its invoking inbox row");
+                Check(true, "Conversation list button restores its invoking inbox row");
                 step = "dashboard presentation";
                 await Button(ControllerButton.B);
                 await Until(() => !interactive && !switching && !trayGuide.HasPendingHints && FocusedTrayWidget()?.Id == "widgetrail.tests.discord-ui");
@@ -340,8 +355,12 @@ internal sealed partial class OverlayShellPage
                 Check(guide.Any(hint => hint.Button == ControllerButton.LeftBumper && hint.Label is "Deafen" or "Undeafen") &&
                     guide.Any(hint => hint.Button == ControllerButton.RightBumper && hint.Label == "Leave call"),
                     "Passive dashboard publishes Deafen on LB and Leave call on RB");
-                if (expectedWidth > 800) Check(new[] { ControllerButton.X, ControllerButton.LeftBumper, ControllerButton.RightBumper }
-                    .All(button => trayGuide.DisplayedHints.Any(hint => hint.Button == button)), "Expanded dashboard has room to display all Discord quick actions");
+                if (expectedWidth > 800)
+                {
+                    var quickActions = new[] { ControllerButton.X, ControllerButton.LeftBumper, ControllerButton.RightBumper };
+                    await Until(() => quickActions.All(button => trayGuide.DisplayedHints.Any(hint => hint.Button == button)));
+                    Check(true, "Expanded dashboard displays all Discord quick actions after native layout");
+                }
                 Check(!interactive && Audit().GetProperty("mutationAttempts").GetInt32() == 0,
                     "Dashboard presentation remains passive and never sends or uploads a message");
                 }
@@ -1096,9 +1115,7 @@ internal sealed partial class OverlayShellPage
                 await Until(()=>!history.HasPendingNativeNavigation&&
                     history.NativeView.ContainerFromIndex(19) is FrameworkElement {IsLoaded:true,ActualHeight:>0} last&&
                     last.TransformToVisual(scroll).TransformBounds(new(0,0,last.ActualWidth,last.ActualHeight)).Top<scroll.ViewportHeight);
-                var before=Audit().GetProperty("history").GetArrayLength();
-                await ScrollBoundary(-1,before);
-                await Until(()=>Audit().GetProperty("history").GetArrayLength()>before);
+                await ScrollBoundary(-1);
                 Check(Node("discord.message.retry") is null,"The pending synthetic page has no injected retry state");
                 if(Environment.GetCommandLineArgs().Contains("--discord-history-suspend-preparation"))
                 {
@@ -1347,7 +1364,7 @@ internal sealed partial class OverlayShellPage
                 }
                 try
                 {
-                await ScrollBoundary(-1,priorReads);
+                await ScrollBoundary(-1);
                 pagingAnchor = Enumerable.Range(0, history.NativeView.Items.Count).Select(index => history.NativeView.Items[index])
                     .OfType<IndexedItem<WidgetIndexedRow>>().FirstOrDefault(slot =>
                         history.NativeView.ContainerFromIndex(slot.Index) is FrameworkElement {IsLoaded:true} row &&
@@ -1373,24 +1390,25 @@ internal sealed partial class OverlayShellPage
                     "Older-history prepend preserves the visible native container and its position on every sampled frame");
                 await SaveImage(surface,"older-loaded-"+priorReads+".png");
             }
-            async Task ScrollBoundary(int direction,int previousReads)
+            async Task ScrollBoundary(int direction)
             {
-                // Model held stick input. A single oversized delta only reaches
-                // the current estimated extent; long virtualized rows can enlarge
-                // it after that input has already completed.
-                var pulses=0;
-                int AdjacentReads()=>Audit().GetProperty("history").EnumerateArray().Skip(previousReads).Count(read=>
-                    read.GetProperty(direction<0?"before":"after").ValueKind==JsonValueKind.String &&
-                    read.GetProperty("around").ValueKind==JsonValueKind.Null);
-                while(AdjacentReads()==0 && pulses<64)
+                // Prepared pages can be consumed without another provider read.
+                // Stop driving the stick as soon as the native list requests this edge.
+                var list=Walk(surface!).OfType<WidgetIndexedCollectionView>().Single(view=>
+                    AutomationProperties.GetAutomationId(view)=="Widget.discord.message.history");
+                var edge=direction<0?IndexedCollectionBoundary.Before:IndexedCollectionBoundary.After;
+                var demands=0;
+                list.BoundaryTraceForValidation=value=>{if(value==edge)demands++;};
+                try
                 {
-                    surface!.ScrollBy(0,direction*100000);pulses++;
-                    await Task.Delay(40,lifetime.Token);
+                    for(int pulse=0;demands==0 && pulse<64;pulse++)
+                    {
+                        surface!.ScrollBy(0,direction*100000);
+                        await Task.Delay(40,lifetime.Token);
+                    }
+                    Check(demands>0,"Held scrolling requests the realized "+edge+" history edge");
                 }
-                trace.Add(new{step,phase="held boundary input",direction,pulses,previousReads,
-                    reads=Audit().GetProperty("history").GetArrayLength(),adjacentReads=AdjacentReads()});
-                Check(AdjacentReads()==1,
-                    "Held scrolling admits exactly one adjacent history request at the realized edge");
+                finally { list.BoundaryTraceForValidation=null; }
             }
             async Task Button(ControllerButton button)
             {

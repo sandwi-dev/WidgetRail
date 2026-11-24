@@ -59,7 +59,9 @@ public sealed partial class PlayniteLibraryTests
             Assert.IsFalse(state.DetailsExtras.OperationBusy, "Rejected installation request remained busy.");
             release.SetResult();
             await Task.WhenAll(held.Select(handle => handle.Completion));
-            await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
+            await widget.OnActionAsync(new(DetailAction + "retry.activity", "retry"));
+            await widget.OnActionAsync(new(DetailAction + "tab.information", "tab"));
+            await widget.OnActionAsync(new(DetailAction + "retry.details", "retry"));
             await Bounded(widget.WhenDetailsIdleAsync(), "recovered detail operations");
             Assert.IsNull(widget.RenderState.Value.DetailsError);
             Assert.IsFalse(widget.RenderState.Value.DetailsExtras.ActivityLoading);
@@ -486,19 +488,19 @@ public sealed partial class PlayniteLibraryTests
         await widget.OnActionAsync(new(DetailAction + "uninstall", "options"));
         await widget.OnActionAsync(new(DetailAction + "uninstall.confirm", "confirm"));
         await Bounded(started.Task, "uninstall started");
-        await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
-        Assert.IsTrue(widget.RenderState.Value.DetailsExtras.OperationBusy, "Refresh must not cancel a submitted operation.");
+        await widget.OnActionAsync(new(DetailAction + "retry.timeline", "retry"));
+        Assert.IsTrue(widget.RenderState.Value.DetailsExtras.OperationBusy, "Retry must not cancel a submitted operation.");
         await Background(widget);
         await Interactive(widget);
         await Bounded(widget.WhenDetailsIdleAsync(), "resumed after operation");
         Assert.AreEqual(1, application.InstallationRequests.Count);
         Assert.IsFalse(widget.RenderState.Value.DetailsExtras.OperationBusy);
-        StringAssert.Contains(widget.RenderState.Value.DetailsExtras.OperationMessage!, "Refresh");
+        StringAssert.Contains(widget.RenderState.Value.DetailsExtras.OperationMessage!, "Check its outcome in Playnite");
         await Background(widget);
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task EachOpeningGetsFreshScopeButLoadingRefreshAndTabsKeepIt()
+    public async Task EachOpeningGetsFreshScopeButLoadingAndTabsKeepIt()
     {
         var host = new FakeHost(3);
         var widget = Create(host);
@@ -513,9 +515,6 @@ public sealed partial class PlayniteLibraryTests
         var firstScroll = PageNodes(widget, Snapshot(widget, 123_020).Root).Single(node => node.StyleClasses.Contains("playnite-library-details-scroll")).Id;
         await Bounded(widget.WhenDetailsIdleAsync(), "detail loading");
         Assert.AreEqual(first.ActiveInputScopeId, Snapshot(widget, 123_003).ActiveInputScopeId);
-        await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
-        await Bounded(widget.WhenDetailsIdleAsync(), "detail refresh");
-        Assert.AreEqual(first.ActiveInputScopeId, Snapshot(widget, 123_004).ActiveInputScopeId);
         await widget.OnActionAsync(new(DetailAction + "tab.activity", "tab"));
         await Bounded(widget.WhenDetailsIdleAsync(), "detail tab");
         Assert.AreEqual(first.ActiveInputScopeId, Snapshot(widget, 123_005).ActiveInputScopeId);
@@ -543,7 +542,7 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task HomeAndDedicatedSectionsShareReadsUntilRefresh()
+    public async Task HomeAndDedicatedSectionsShareReads()
     {
         var host = new FakeHost(3);
         var widget = Create(host, out TestApplicationService application);
@@ -587,10 +586,6 @@ public sealed partial class PlayniteLibraryTests
         await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
         await Bounded(widget.WhenDetailsIdleAsync(), "cached achievements");
         Assert.AreEqual(1, achievementReads);
-        Assert.AreEqual(1, activityReads);
-        await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
-        await Bounded(widget.WhenDetailsIdleAsync(), "refreshed achievements");
-        Assert.AreEqual(2, achievementReads);
         Assert.AreEqual(1, activityReads);
         await Background(widget);
     }
@@ -677,7 +672,7 @@ public sealed partial class PlayniteLibraryTests
     {
         var host = new FakeHost(1);
         var widget = Create(host, out TestApplicationService application);
-        var original = new PlayniteAchievements(true, 2, 1, []);
+        var original = new PlayniteAchievements(true, 2, 1, []) { CanRefresh = true };
         var refreshed = original with { Unlocked = 2 };
         var reads = 0;
         application.AchievementsHandler = (_, _) => ++reads switch
@@ -694,13 +689,15 @@ public sealed partial class PlayniteLibraryTests
             await widget.OnActionAsync(new(PlayniteLibraryActions.DetailsOpen, game.Id));
             await widget.OnActionAsync(new(DetailAction + "tab.achievements", "tab"));
             await Bounded(widget.WhenDetailsIdleAsync(), "first achievements");
-            await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
+            await widget.OnActionAsync(new(PlayniteLibraryDetailsPresentation.SyncGameAction, "sync"));
             await Bounded(widget.WhenDetailsIdleAsync(), "failed refresh");
             Assert.AreSame(original, widget.RenderState.Value.DetailsExtras.Achievements);
             Assert.IsFalse(widget.RenderState.Value.DetailsExtras.AchievementsLoading);
             Assert.IsNotNull(widget.RenderState.Value.DetailsExtras.AchievementsError);
             Assert.IsFalse(widget.RenderState.Value.DetailsExtras.AchievementsError!.Contains("private"));
-            await widget.OnActionAsync(new(DetailAction + "refresh", "refresh"));
+            var retry = Nodes(Snapshot(widget, 192_002).Root).Single(node => node.ActionId == PlayniteLibraryDetailsPresentation.RetryAchievementsAction);
+            Assert.AreEqual("Try again", retry.Text);
+            await widget.OnActionAsync(new(retry.ActionId!, retry.Id));
             await Bounded(widget.WhenDetailsIdleAsync(), "retry achievements");
             Assert.AreSame(refreshed, widget.RenderState.Value.DetailsExtras.Achievements);
             Assert.IsNull(widget.RenderState.Value.DetailsExtras.AchievementsError);
@@ -880,7 +877,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual(ControllerButton.X, anchor.ContextMenuButton);
         Assert.AreEqual(0, options.ContextActions.Count);
         Assert.IsTrue(Nodes(header).Any(node => node.Id == anchor.Id));
-        Assert.IsTrue(anchor.ContextActions.Any(action => action.Label == "Refresh details"));
+        Assert.IsFalse(anchor.ContextActions.Any(action => action.Label == "Refresh details"));
         var facts = nodes.Single(node => node.Id == "playnite-library.details.identity");
         var platform = facts.Children.Last();
         Assert.AreEqual("Platform", platform.Children[0].Text);

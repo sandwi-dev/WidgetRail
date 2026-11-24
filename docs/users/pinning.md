@@ -64,7 +64,10 @@ With several pins, **Adjust pin** and **Unpin** open a named chooser.
 **Interact** lists only pins with interactive content.
 Moving the highlight outlines the actual window.
 Press **A** to select it or **B** to cancel. During adjustment, use the left
-stick or D-pad to move, the right stick to resize, and **LB/RB** for opacity.
+stick to move freely. Tilt slightly for fine placement or hold a full tilt to
+cross the screen quickly. Tap D-pad Left or Right to snap to that side, then Up
+or Down to choose the top, middle, or bottom of the work area. Snap stays on the
+current monitor. Use the right stick to resize and **LB/RB** for opacity.
 Press **A** to save, **B** to restore the opening state, or **X** to close the pin.
 At a display edge, continue moving toward an adjacent display to transfer the
 pin. Align the pin with that display first if the displays are offset. The pin

@@ -285,6 +285,11 @@ static async Task SetupRequirements()
     var bounded = item with { SetupRequirements = Enumerable.Repeat(new string('a', 320), 8).ToArray() };
     Check(MarketplaceValidation.SnapshotError(new(0, [bounded])) is null, "Valid requirement bounds rejected");
     var roundTrip = JsonSerializer.Deserialize<MarketplaceItem>(JsonSerializer.Serialize(bounded))!;
+    var editorial = item with { Details = [new("Integrations", "Capture Library", "Browse linked captures.")] };
+    Check(JsonSerializer.Deserialize<MarketplaceItem>(JsonSerializer.Serialize(editorial))!.Details!.SequenceEqual(editorial.Details!) &&
+        MarketplaceValidation.SnapshotError(new(0, [editorial])) is null, "Optional editorial rows failed the wire round trip");
+    Check(MarketplaceValidation.SnapshotError(new(0, [item with { Details = [new("Integrations", "", "Missing label")] }])) is not null,
+        "Malformed editorial data passed validation");
     Check(roundTrip.SetupRequirements!.SequenceEqual(bounded.SetupRequirements!), "Requirements lost on wire roundtrip");
 
     await using var fixture = new Fixture("2.0.0");

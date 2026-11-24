@@ -4,7 +4,7 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.WidgetPresentationSession;
 
-public enum WidgetApplicationControl { None, Quit, Restart }
+public enum WidgetApplicationControl { None, Quit, Restart, RestartSilently }
 
 public sealed partial class WidgetPresentationSession
 {
@@ -22,7 +22,15 @@ public sealed partial class WidgetPresentationSession
         }
     }
 
-    public static bool IsApplicationControlAction(string action) => action is "application.quit" or "application.restart";
+    public static bool IsApplicationControlAction(string action) => ApplicationCommand(action).Control != WidgetApplicationControl.None;
+
+    private static (WidgetApplicationControl Control, string? Source) ApplicationCommand(string action) => action switch
+    {
+        "application.quit" => (WidgetApplicationControl.Quit, "settings.quit"),
+        "application.restart" => (WidgetApplicationControl.Restart, "settings.restart"),
+        "application.restart-silently" => (WidgetApplicationControl.RestartSilently, "settings.restart-silently"),
+        _ => default,
+    };
 
     /// <summary>Validates a currently displayed Settings command without queueing behind widget work.</summary>
     public WidgetApplicationControl ResolveApplicationControl(WidgetPresentationFrame displayed, WidgetActionEvent action)
@@ -30,13 +38,13 @@ public sealed partial class WidgetPresentationSession
         using (_gate.Enter())
         {
             var current = ValidateDisplayedOrdinaryFrameLocked(displayed, action.InputScopeId);
-            var restart = action.ActionId == "application.restart";
-            if (displayed.Authority.WidgetId != "settings" || !IsApplicationControlAction(action.ActionId) ||
-                action.InputScopeId != "settings-root" || action.SourceElementId != (restart ? "settings.restart" : "settings.quit") ||
+            var (control, source) = ApplicationCommand(action.ActionId);
+            if (displayed.Authority.WidgetId != "settings" || control == WidgetApplicationControl.None ||
+                action.InputScopeId != "settings-root" || action.SourceElementId != source ||
                 action.Phase != ControllerEventPhase.Pressed || action.RequestedValue is not null || action.CommittedText is not null ||
                 ResolveDisplayedAction(displayed.Snapshot, action) != ResolveDisplayedAction(current.Snapshot, action))
                 throw OrdinaryInputStale("Application control requires the current Settings command.");
-            return restart ? WidgetApplicationControl.Restart : WidgetApplicationControl.Quit;
+            return control;
         }
     }
 

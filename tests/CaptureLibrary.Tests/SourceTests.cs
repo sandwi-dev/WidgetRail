@@ -100,9 +100,56 @@ internal static partial class SourceTests
         File.Delete(Path.Combine(fixture.Provider, "first.png"));
         await Eventually(async () => !(await fixture.Store.GetMetadataAsync(first.Id, default)).Available);
         fixture.Write("first.png");
-        await Eventually(async () => (await fixture.Store.GetMetadataAsync(first.Id, default)).Available);
+        await Eventually(async () => (await fixture.Store.QueryAsync(new(new() { AvailableOnly = true }), default)).Items.Any(item => item.FileName == "first.png"));
         Check((await fixture.Store.SourcesAsync(Owner, default)).Items.Single().Id == source.Id, "Grant identity changed on restart");
     }
+    internal static async Task FolderMoveAndReplacementRecovery()
+    {
+        using var fixture = new Fixture();
+        const string album = "Album_%";
+        var available = new CaptureLibraryQuery { AvailableOnly = true };
+        var unavailable = new CaptureLibraryQuery { UnavailableOnly = true };
+        for (var i = 0; i < 80; i++) fixture.Write($"{album}/{i}.png");
+        fixture.Write("Album_%2/keep.png");
+        var store = fixture.Store;
+        var source = await store.AddSourceAsync(fixture.Provider, "Photos", Owner, default);
+        await Eventually(async () => (await store.QueryAsync(new(available), default)).TotalCount == 81);
+        var original = (await store.LinkAsync(new(source.Id, album + "/0.png",
+            new("original-game-link", [new(CaptureContextReferenceRole.Subject, "game", "original")])), Owner, default)).Item;
+        await store.UpdateMetadataAsync(new(original.Id, original.MetadataRevision, "Original screenshot", true), default);
+        var moved = Path.Combine(fixture.Root, "moved");
+        Directory.Move(Path.Combine(fixture.Provider, album), moved);
+        await Eventually(async () => (await store.QueryAsync(new(unavailable), default)).TotalCount == 80);
+        var visible = await store.QueryAsync(new(available), default);
+        Check(visible.TotalCount == 1 && visible.Items.Single().FileName == "keep.png", "Folder move matched an adjacent prefix");
+        var missing = await store.QueryAsync(new(unavailable, 40, 20, visible.Revision), default);
+        Check(missing.Items.Count == 20 && missing.Items.All(item => !item.Available) && missing.StoredBytes == 0, "Recovery paging exposed missing bytes or available media");
+        Check((await store.GroupsAsync(new(unavailable), default)).TotalCount == 80 &&
+            (await store.FindAsync(new(available, original.Id), default)).Index is null, "Counts or focus lookup included missing media");
+        await Reject(() => store.QueryAsync(new(available with { UnavailableOnly = true }), default), "invalid_payload");
+        Directory.Move(moved, Path.Combine(fixture.Provider, album));
+        await Eventually(async () => (await store.QueryAsync(new(available), default)).TotalCount == 81);
+        var path = Path.Combine(fixture.Provider, album, "0.png");
+        var backup = Path.Combine(fixture.Root, "original.png");
+        File.Move(path, backup);
+        fixture.Write(album + "/0.png");
+        await Reject(async () => { await using var lease = await store.OpenAsync(original.Id, CaptureImageResolution.Original, default); }, "capture_library_not_found");
+        var fresh = (await store.LinkAsync(new(source.Id, album + "/0.png"), Owner, default)).Item;
+        Check(fresh.Id != original.Id && !fresh.IsFavorite && fresh.Title is null && fresh.ContextCount == 0,
+            "Replacement inherited original annotations or game link");
+        var retained = await store.GetMetadataAsync(original.Id, default);
+        Check(!retained.Available && retained.ContextCount == 1 && retained.IsFavorite, "Missing original lost its metadata");
+        File.Delete(path); File.Move(backup, path);
+        var restored = (await store.LinkAsync(new(source.Id, album + "/0.png"), Owner, default)).Item;
+        Check(restored.Id == original.Id && restored.Title == "Original screenshot" && restored.IsFavorite && restored.ContextCount == 1,
+            "Restoring original media lost annotations or links");
+        Directory.Move(fixture.Provider, moved);
+        await Eventually(async () => (await store.QueryAsync(new(available), default)).TotalCount == 0);
+        await Reject(() => store.RemoveUnavailableAsync(Reference(restored), default), "capture_library_source_unavailable");
+        Directory.Move(moved, fixture.Provider);
+        await Eventually(async () => (await store.QueryAsync(new(available), default)).TotalCount == 81);
+    }
+
     internal static async Task IdentityAndIndexRebuild()
     {
         using var fixture = new Fixture(); fixture.Write("file.png");

@@ -30,6 +30,53 @@ internal sealed partial class WidgetStylesValidationPage
         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         var styles = file.RootElement.GetProperty("renderStyles").Deserialize<Dictionary<string, BridgeNodeRenderStyles>>(options)!;
+        if (HeaderFixtureNodes(snapshot.Root).FirstOrDefault(node => node.StyleClasses.Contains("playnite-capture-grid")) is { } captureGrid)
+        {
+            var tiles = captureGrid.Children.Select(tile => tile with { Focus = null }).ToArray();
+            var grid = captureGrid with { Children = tiles };
+            Exception? failure = null;
+            try
+            {
+                App.Window.AppWindow.ResizeClient(new(1000,820));
+                presenter.Height = 650;
+                if (Shell.FrontendArguments.Value(Environment.GetCommandLineArgs(), "--capture-tile-art") is { } art)
+                {
+                    var photos = Directory.GetFiles(art, "*.jpg").Order(StringComparer.Ordinal).ToArray();
+                    var handles = tiles.Select(tile => HeaderFixtureNodes(tile).Single(node=>node.ArtworkHandle is not null).ArtworkHandle!).ToArray();
+                    presenter.ResolveArtworkAsync = (handle, _) =>
+                    {
+                        var index = Array.IndexOf(handles,handle);
+                        return Task.FromResult<WidgetArtworkSource?>(index<0 ? null : new WidgetFileArtwork(photos[index % photos.Length], "fixture"));
+                    };
+                }
+                presenter.Apply(CreateFrame(grid, styles));
+                foreach (var width in new[] { 700, 330 })
+                {
+                    presenter.Width = width;
+                    var first = await CaptureTile(tiles[0].Id);
+                    var second = await CaptureTile(tiles[1].Id);
+                    await Wait(() => Math.Abs(presenter.ActualWidth-width)<1 &&
+                        (width==700 ? Math.Abs(Position(first).Y-Position(second).Y)<1 && Position(second).X>Position(first).X :
+                            Position(second).Y>Position(first).Y && Math.Abs(Position(first).X-Position(second).X)<1));
+                    Check(first.Focus(FocusState.Keyboard), "Capture tile receives focus at width " + width);
+                    var direction = width == 700 ? FocusNavigationDirection.Right : FocusNavigationDirection.Down;
+                    var next = FocusManager.FindNextElement(direction, new FindNextElementOptions { SearchRoot=presenter });
+                    Check(ReferenceEquals(next,second), "Direction from the first tile reaches the second at width " + width);
+                    await CaptureEditorBitmapAsync(presenter, Path.ChangeExtension(path,width+".png"));
+                }
+            }
+            catch(Exception error){failure=error;}
+            await File.WriteAllTextAsync(Path.ChangeExtension(path,"result.json"),JsonSerializer.Serialize(new {passed=failure is null,checks,error=failure?.ToString()}));
+            if(failure is not null)throw failure;
+            return;
+
+            Windows.Foundation.Point Position(FrameworkElement tile) => tile.TransformToVisual(presenter).TransformPoint(default);
+            async Task<Control> CaptureTile(string id)
+            {
+                await Wait(() => Find<Control>("Widget."+id) is { IsLoaded:true,ActualWidth:>0 });
+                return Find<Control>("Widget."+id)!;
+            }
+        }
         var scale = XamlRoot.RasterizationScale;
         App.Window.AppWindow.Resize(new((int)(1160 * scale), (int)(860 * scale)));
         presenter.ApplyAppearance(AppearanceSettings.Default with { Motion = MotionPreference.Reduced }, false);

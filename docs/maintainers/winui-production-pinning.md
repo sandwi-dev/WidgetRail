@@ -95,7 +95,9 @@ changes. Screenshots were inspected. Evidence:
 ## Controller placement adjustment
 
 The tray's **Adjust pin** command starts a reversible host-owned preview.
-Left stick/D-pad move, right stick resizes, LB/RB changes opacity, A saves,
+The left stick moves continuously using elapsed controller sample time and stick
+deflection. D-pad presses snap to six positions on the current work area.
+The right stick resizes, LB/RB changes opacity, A saves,
 B cancels and X closes the exact pin without committing unfinished edits.
 Keyboard arrows move, Shift+arrows resize, Enter saves and Escape cancels. The
 host owns input through a single floating adjustment toolbar; the pinned content
@@ -109,8 +111,11 @@ mutate a later adjustment. Global, tray and SDK management enter adjustment
 directly after any target chooser. Inactive pins accept right-click adjustment
 only while the overlay is open; active content retains its context menu.
 
-Geometry follows the original 32-DIP step and 250/80ms repeat policy with native
-axis hysteresis. The existing placement policy applies declared min/max sizes,
+Right-stick resize uses 32-DIP steps with a 250 ms initial delay, an 80 ms
+repeat and axis hysteresis. Left-stick movement carries fractional pixels,
+ramps speed over 350 ms at full tilt and caps elapsed time after a stall.
+Position-only updates reuse the measured toolbar and move both windows
+without resizing their XAML islands. The placement policy applies declared min/max sizes,
 monitor DPI and work-area bounds. The preview never writes preferences until A.
 Commit serializes with pin selection/removal and uses the existing atomic store;
 failed persistence restores the starting placement. Cancel, hide, deactivation
@@ -122,6 +127,18 @@ Queued reconciliation therefore does not divide already-scaled HWND pixels by
 the old monitor scale. Monitor/work-area changes cancel an active preview and
 resolve its anchor on the remaining displays. Interface zoom refreshes the
 authored size limits without introducing a second scaling transform.
+
+The pin adjustment input policy is shared by ordinary widget and media pins.
+Widget packages, SDK examples and templates supply size limits and layouts.
+The toolbar and notification windows also use the native peer placement helper.
+They get the position-only move optimization, while snap and stick travel
+apply only to an active pin adjustment.
+
+The isolated Performance Monitor run on November 22, 2026 verified all six
+snap positions, save and cancel. Full stick travel covered 2,160 physical
+pixels in 860 ms over 46 distinct window positions using normalized controller
+samples. The shell suite passed 418 tests. Native evidence is in
+`E:/WidgetRail/interaction-plan/pin-travel/final-result.json`.
 
 The recorded `--validate-pinned-placement=<path>` probe required `--shell-no-controller`
 and an isolated profile with a saved pin. Its startup-pin

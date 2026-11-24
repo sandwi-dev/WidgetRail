@@ -227,13 +227,17 @@ public sealed partial class StandaloneMusicWidget
     {
         var item = input.Entry.Item;
         var index = input.Entry.Index;
+        var action = "item." + index;
+        // A shifted queue occurrence keeps its visual identity. Its commands
+        // still carry the captured index and are checked against the live queue.
+        var rowId = input.Queue ? input.Entry.Key.Value : action;
         var subtitle = string.IsNullOrWhiteSpace(item.Subtitle) ? null : item.Subtitle;
         var label = (item.Kind == "song" ? "Play " : "Open ") + item.Title + ". " + item.Subtitle;
         var row = input.Home
-            ? UI.PosterTile(item.Title, Title(item.Kind), "item." + index, "item." + index,
+            ? UI.PosterTile(item.Title, Title(item.Kind), action, rowId,
                 subtitle: subtitle, artwork: item.Artwork.StartsWith("https://", StringComparison.Ordinal) ? Artwork(item) : null,
                 accessibilityLabel: label).Classes("music-home-poster")
-            : UI.Tile(item.Title, input.Playing ? "Now playing" : Title(item.Kind), "item." + index, "item." + index,
+            : UI.Tile(item.Title, input.Playing ? "Now playing" : Title(item.Kind), action, rowId,
                 subtitle: subtitle, artwork: Artwork(item), accessibilityLabel: label).Classes("music-track");
         row = row.Selected(input.Playing);
         if (input.FocusUp is not null) row = row.FocusUp(input.FocusUp);

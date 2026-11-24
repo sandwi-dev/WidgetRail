@@ -42,7 +42,7 @@ public static class MarketplaceValidation
                     uri.Scheme != "https" || uri.Host != "raw.githubusercontent.com" || uri.Port != 443 || uri.UserInfo.Length != 0 || uri.Fragment.Length != 0 || url.Length > 512) ||
                 item.AvailableVersion is not null && (!Text(item.AvailableVersion,64) || !Version.TryParse(item.AvailableVersion,out _)) ||
                 item.RetainedAvailability && item.AvailableVersion is null ||
-                item.SetupRequirements is { } requirements && (requirements.Count > 8 || requirements.Any(value => !Text(value,320))) ||
+                !ValidDetails(item.Details) || item.SetupRequirements is { } requirements && (requirements.Count > 8 || requirements.Any(value => !Text(value,320))) ||
                 item.InstalledVersion is not null && (!Text(item.InstalledVersion,64) || !Version.TryParse(item.InstalledVersion,out _)) || item.DownloadBytes < 0) ||
             snapshot.Items.Select(i => i.Id).Distinct(StringComparer.Ordinal).Count() != snapshot.Items.Count) return "invalid_marketplace_snapshot";
         if (snapshot.UpdateBatch is { } batch)
@@ -86,11 +86,13 @@ public static class MarketplaceValidation
         Text(item.Version,64) && Version.TryParse(item.Version, out var version) && version.ToString() == item.Version &&
         Text(item.Name,80) && Text(item.Creator,80) && Text(item.Description,240) && item.Tags is { Length: <= 8 } &&
         item.Tags.All(tag => Text(tag,40)) && item.Released != default && Hex(item.Sha256,64) && Hex(item.PreviewKey,64) &&
-        item.Bytes is > 0 and <= 4194304 && (item.PreviewHashes is null ||
+        ValidDetails(item.Details) && item.Bytes is > 0 and <= 4194304 && (item.PreviewHashes is null ||
             item.PreviewHashes.Count == ThemeCataloguePublication.PreviewFiles.Count &&
             ThemeCataloguePublication.PreviewFiles.All(file => item.PreviewHashes.TryGetValue(file, out var hash) && Hex(hash,64)));
     private static bool Token(string? value,int max) => Text(value,max) && value!.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_');
     private static bool Text(string? value,int max) => !string.IsNullOrWhiteSpace(value) && value.Length <= max && !value.Any(char.IsControl);
+    private static bool ValidDetails(IReadOnlyList<CatalogueDetail>? details) => details is null ||
+        details.Count <= 8 && details.All(d => d is not null && Text(d.Section, 48) && Text(d.Label, 80) && Text(d.Value, 240));
     private static bool Hex(string? value,int length) => value is not null && value.Length == length && value.All(char.IsAsciiHexDigit);
     private static bool Permissions(IReadOnlyList<string>? values) => values is not null && values.Count <= 64 && values.All(v => Text(v,160));
 }

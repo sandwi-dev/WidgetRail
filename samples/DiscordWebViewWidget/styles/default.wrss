@@ -199,7 +199,7 @@
 .discord-message-reactions { font-size:12px; padding:4px 0px; }
 .discord-message-reaction { color:var(--text-muted); }
 .discord-message-reaction-own { color:var(--accent-secondary,var(--accent)); font-weight:600; }
-.discord-message-gallery-stage { width:100%; flex-grow:1; min-width:0px; min-height:0px; }
+.discord-message-gallery-stage { background:var(--canvas, var(--surface)); width:100%; flex-grow:1; min-width:0px; min-height:0px; }
 .wrail-modal-overlay { background:transparent; border-width:0px; padding:0px; corner-radius:0px; }
 .discord-message-gallery-media { width:100%; height:100%; min-height:0px; padding:0px; border-width:0px; corner-radius:0px; background:transparent; }
 .discord-text-bold { font-weight:700; }

@@ -109,9 +109,13 @@ internal sealed partial class WidgetIndexedCollectionView
                         pendingWindow=null;
                         applyingPreparedWindow=true;
                         preparedWindow=null;
-                        // Preserve the ordinary range failure/retry behavior.
-                        // A preparation failure must not strand an old window.
-                        failed(error);
+                        // The bridge may already have a newer query while the
+                        // dispatcher still shows this one. An unsuccessful
+                        // speculative read uses ordinary on-demand row loading
+                        // and its retry UI. Keep widget recovery for contract
+                        // and commit errors.
+                        if (error is not WidgetRail.WidgetPresentationSession.WidgetPresentationSessionException)
+                            failed(error);
                         Apply(pending.Binding,pending.Node,pending.Scope);
                         DeferredQueryCommitted?.Invoke(this);
                     }

@@ -12,6 +12,7 @@ namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 internal sealed partial class OverlayShellPage
 {
     private CancellationTokenSource? intentCancellation;
+    private (string Ticket, string Source, WidgetPresentationFrame Receiver)? backgroundDelivery;
     private bool preparingIntent;
     private PinnedSurface? intentPinnedTarget;
     private TaskCompletionSource? intentForegroundAcquired;
@@ -49,6 +50,11 @@ internal sealed partial class OverlayShellPage
             if (notificationCurrent?.Invoke() == false) cancellation.Cancel();
             cancellation.Token.ThrowIfCancellationRequested();
         }
+        Task<WidgetIntentPreparation> Prepare() => prepareNotification is not null ? prepareNotification(cancellation.Token) : request!.IndexedLease is { } lease && request.IndexedItemKey is { } key
+                ? session.PrepareIndexedIntentAsync(lease, request.Displayed, key, request.Action, cancellation.Token)
+                : request.PinnedSelection is { } sourceSelection && request.PinnedProjection is { } sourceProjection
+                    ? session.PreparePinnedIntentAsync(sourceSelection, sourceProjection, request.Action, cancellation.Token)
+                    : session.PrepareIntentAsync(request.Displayed, request.Action, cancellation.Token);
         WidgetIntentPreparation? prepared = null;
         // Notification activation follows a dialog's asynchronous close. That
         // dialog already owns the release, which may have arrived before here.
@@ -57,11 +63,7 @@ internal sealed partial class OverlayShellPage
         {
             DemandNotificationCurrent();
             preparingIntent = true;
-            prepared = prepareNotification is not null ? await prepareNotification(cancellation.Token) : request!.IndexedLease is { } lease && request.IndexedItemKey is { } key
-                ? await session.PrepareIndexedIntentAsync(lease, request.Displayed, key, request.Action, cancellation.Token)
-                : request.PinnedSelection is { } sourceSelection && request.PinnedProjection is { } sourceProjection
-                    ? await session.PreparePinnedIntentAsync(sourceSelection, sourceProjection, request.Action, cancellation.Token)
-                    : await session.PrepareIntentAsync(request.Displayed, request.Action, cancellation.Token);
+            prepared = await Prepare();
             preparingIntent = false;
             DemandNotificationCurrent();
             if (prepared.PreparationFailed) return false;
@@ -73,13 +75,14 @@ internal sealed partial class OverlayShellPage
                 var staysInSourcePin = sourcePin is not null && prepared.Kind == WidgetIntentLaunchKind.Widget &&
                     prepared.Presentation == WidgetIntentPresentation.PreferExistingSurface &&
                     prepared.Destinations.Single() is { SupportsPassiveDelivery: true } only && only.WidgetId == sourcePin.WidgetId;
-                if (sourcePin is not null && !staysInSourcePin) await ReturnIntentToMainAsync(cancellation.Token);
+                if (sourcePin is not null && !staysInSourcePin && prepared.Presentation != WidgetIntentPresentation.StayInSource) await ReturnIntentToMainAsync(cancellation.Token);
                 if (prepared.Kind is WidgetIntentLaunchKind.Rejected or WidgetIntentLaunchKind.Unavailable)
                 {
-                    if (prepareNotification is null) await ShowHostChoiceAsync("Cannot open this item", "No compatible widget is available for this action.", [], cancellation.Token);
+                    if (prepareNotification is null && !(prepared.Presentation == WidgetIntentPresentation.StayInSource && prepared.SourceReportsResult)) await ShowHostChoiceAsync("Cannot open this item", "No compatible widget is available for this action.", [], cancellation.Token);
                     return false;
                 }
                 WidgetPresentationFrame? target = null;
+                WidgetPresentationFrame? committedReceiver = null;
                 WidgetIntentCompletion? completion = null;
                 if (prepared.Kind is WidgetIntentLaunchKind.Widget or WidgetIntentLaunchKind.ChooseHandler)
                 {
@@ -91,10 +94,41 @@ internal sealed partial class OverlayShellPage
                         if (selected is null) return false;
                     }
                     cancellation.Token.ThrowIfCancellationRequested();
+                    if (prepared.Destinations.Single(item => item.WidgetId == selected).OpenStoppedPage &&
+                        session.GetTarget(selected).Descriptor.IsStopped)
+                    {
+                        if (prepared.Presentation == WidgetIntentPresentation.StayInSource)
+                        {
+                            if (await ShowHostChoiceAsync("Start widget?", $"You previously stopped {session.GetTarget(selected).Descriptor.Name}. Start it again?",
+                                (HostDialogChoice[])[new("start", "Start widget")], cancellation.Token, directDecisionButtons: true) != "start") return false;
+                            cancellation.Token.ThrowIfCancellationRequested();
+                            await ChangeWidgetStoppedAsync(selected, stopped: false);
+                            if (session.GetTarget(selected).Descriptor.IsStopped) return false;
+                            // Restart changes the catalogue fingerprint. Re-admit the original displayed action.
+                            await session.CancelIntentAsync(prepared);
+                            prepared = await Prepare();
+                            if (prepared.Kind != WidgetIntentLaunchKind.Widget || prepared.Destinations.Single().WidgetId != selected) return false;
+                        }
+                        else
+                        {
+                            await SelectAsync(selected, preserveIntent: true, selectionCancellation: cancellation.Token);
+                            return !retired && visible && activeWidget == selected && showingStoppedWidget;
+                        }
+                    }
                     var destinationPin=pins.OrderByDescending(pin=>ReferenceEquals(pin,pinned))
                         .FirstOrDefault(pin=>pin.WidgetId==selected && pin.IsCurrent && pin.Window.IsVisible &&
                             pin.Selection is not null && pin.Presenter?.CurrentBinding is not null);
-                    if (prepared.Presentation == WidgetIntentPresentation.PreferExistingSurface &&
+                    if (prepared.Presentation == WidgetIntentPresentation.StayInSource)
+                    {
+                        preparingIntent = true;
+                        committedReceiver = await session.PrepareBackgroundReceiverAsync(prepared, selected, cancellation.Token);
+                        preparingIntent = false;
+                        cancellation.Token.ThrowIfCancellationRequested();
+                        backgroundDelivery = (prepared.TicketId!, prepared.SourceWidgetId, committedReceiver);
+                        try { completion = await session.CommitIntentAsync(prepared, committedReceiver, cancellation.Token); }
+                        finally { backgroundDelivery = null; }
+                    }
+                    else if (prepared.Presentation == WidgetIntentPresentation.PreferExistingSurface &&
                         prepared.Destinations.Single(item => item.WidgetId == selected).SupportsPassiveDelivery &&
                         destinationPin is {Selection:{ } selection,Presenter.CurrentBinding:{ } binding} pin)
                     {
@@ -125,7 +159,12 @@ internal sealed partial class OverlayShellPage
                     else
                     {
                         await SelectAsync(selected, preserveIntent: true,
-                            beforeReveal: async (frame, token) => { DemandNotificationCurrent(); completion = await session.CommitIntentAsync(prepared, frame, token); },
+                            beforeReveal: async (frame, token) =>
+                            {
+                                DemandNotificationCurrent();
+                                completion = await session.CommitIntentAsync(prepared, frame, token);
+                                committedReceiver = frame;
+                            },
                             selectionCancellation: cancellation.Token, retainIntentSource: request?.IsPreviewIntent == true);
                         cancellation.Token.ThrowIfCancellationRequested();
                         if (retired || !visible || !foreground || activeWidget != selected || surface?.CurrentBinding is not { } destination)
@@ -143,9 +182,20 @@ internal sealed partial class OverlayShellPage
                     continue;
                 }
                 var external = completion.ExternalUrl;
+                if (completion.Accepted && completion.RequestedPinLayout is { } layout && committedReceiver is { } receiver)
+                {
+                    var selection = selectionVersion;
+                    var opening = visibleSince;
+                    bool Current() => !retired && visible && foreground && !switching && !IsMediaFullscreen &&
+                        !cancellation.IsCancellationRequested && opening == visibleSince && selection == selectionVersion &&
+                        ReferenceEquals(session, owner?.Session) && activeWidget == (prepared.Presentation == WidgetIntentPresentation.StayInSource ? prepared.SourceWidgetId : receiver.Descriptor.Id) &&
+                        session.GetState(receiver.Descriptor.Id)?.LastGood is { Descriptor.PinningSupported: true } latest &&
+                        latest.Authority.WorkerRun == receiver.Authority.WorkerRun && latest.Authority.SessionGeneration == receiver.Authority.SessionGeneration;
+                    await OpenRequestedLayoutAsync(receiver.Descriptor.Id, layout, Current);
+                }
                 if (!completion.Accepted)
                 {
-                    if (notificationCurrent is not null) return false;
+                    if (notificationCurrent is not null || prepared.Presentation == WidgetIntentPresentation.StayInSource && prepared.SourceReportsResult) return false;
                     if (staysInSourcePin) await ReturnIntentToMainAsync(cancellation.Token);
                     if (completion.BrowserFallbackUrl is { } fallback)
                     {

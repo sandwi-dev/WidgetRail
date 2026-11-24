@@ -1,3 +1,4 @@
+using System.Globalization;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
@@ -7,21 +8,41 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 internal enum PlayingCardKind
 {
     Details = 1, Help = 2, News = 4, Sessions = 8, Achievements = 16, Capture = 32,
-    All = Details | Help | News | Sessions | Achievements | Capture,
+    Discord = 64,
+    All = Details | Help | News | Sessions | Achievements | Capture | Discord,
 }
 
 public sealed partial class PlayniteLibraryWidget
 {
     private const string CardPreferences = "playnite.card-preferences";
+    private const string NextActivityCountAction = CardPreferences + ".next-activity.";
     internal const string ManageCards = CardPreferences + ".open";
     private static readonly (PlayingCardKind Kind, string Label)[] CardChoices =
     [
-        (PlayingCardKind.Details, "Resume playing"), (PlayingCardKind.Capture, "Latest capture"),
+        (PlayingCardKind.Details, "Resume playing"), (PlayingCardKind.Discord, "Discord"),
+        (PlayingCardKind.Capture, "Latest capture"),
         (PlayingCardKind.Achievements, "Achievements"), (PlayingCardKind.News, "Game updates"),
         (PlayingCardKind.Help, "Ask Game Help"), (PlayingCardKind.Sessions, "Sessions"),
     ];
 
     private PlayingCardKind HiddenCards { get { lock (_gate) return _organization.HiddenPlayingCards; } }
+
+    private WidgetElement NextActivityCountSetting()
+    {
+        const string id = CardPreferences + ".next-activity";
+        const string label = "Next activity cards";
+        int selected;
+        lock (_gate) selected = _organization.NextActivityCount;
+        var options = Enumerable.Range(0, PlayniteLibraryPrivateState.MaximumNextActivityCount + 1)
+            .Select(count =>
+            {
+                var value = count.ToString(CultureInfo.InvariantCulture);
+                return new SelectOption(value, count == 0 ? "Off" : value, NextActivityCountAction + value, count == selected);
+            }).ToArray();
+        return UI.SettingsField(id + ".row", label,
+            UI.Select(label, options, id).Classes("playnite-library-control") with { ShowLabel = false },
+            "Limit suggested achievement cards to avoid spoilers.");
+    }
 
     private WidgetElement[] PlayingCardSwitches()
     {
@@ -53,6 +74,17 @@ public sealed partial class PlayniteLibraryWidget
         var route = _navigation.Value;
         var settings = route.Route == PlayniteLibraryRoute.Settings;
         if (LifecycleState != WidgetLifecycleState.Interactive || !settings && route.Route is not (PlayniteLibraryRoute.Library or PlayniteLibraryRoute.Browse)) return true;
+        if (action.ActionId.StartsWith(NextActivityCountAction, StringComparison.Ordinal))
+        {
+            if (!settings || !int.TryParse(action.ActionId.AsSpan(NextActivityCountAction.Length), NumberStyles.None,
+                    CultureInfo.InvariantCulture, out var count) || count > PlayniteLibraryPrivateState.MaximumNextActivityCount)
+                return true;
+            var saved = await SaveStateAsync(state => PlayniteLibraryStateMutation.Apply(state with { NextActivityCount = count }), token);
+            if (!saved.Saved && !route.RouteCancellationToken.IsCancellationRequested)
+                ShowActionToast("Next activity cards", "Could not save this change. Try again.", false);
+            Invalidate();
+            return true;
+        }
         if (action.ActionId == ManageCards)
         {
             if (settings) return true;

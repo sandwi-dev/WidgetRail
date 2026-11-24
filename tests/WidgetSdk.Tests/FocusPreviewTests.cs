@@ -33,14 +33,18 @@ internal static class FocusPreviewTests
         Check(ViewSnapshotValidator.Validate(before with { ProtocolVersion = 91 }).Any(error => error.Code == "feature_requires_version"));
         foreach (var invalid in new[] { new FocusPreviewOptions(Width: double.NaN), new(Height: double.PositiveInfinity),
             new(Width: 159), new(Width: 961), new(Height: 95), new(Height: 801), new(Placement: (AnchorPlacement)99),
-            new(OnFocus: false, OnHover: false), new(DelayMilliseconds: -1), new(DelayMilliseconds: 1501),
+            new(OnFocus: false, OnHover: false), new(DelayMilliseconds: -1), new(DelayMilliseconds: 5001),
             new() { EnterButton = ControllerButton.B }, new() { EnterButton = (ControllerButton)999 } })
         {
             try { Snapshot(invalid); throw new Exception("Invalid preview accepted"); }
             catch (ProtocolValidationException error) when (error.Errors.Any(item => item.Code == "invalid_focus_preview")) { }
         }
         Check(WinUiPresentationContract.Validate(Snapshot(new(DelayMilliseconds: 0, OnFocus: false))).Count == 0);
-        Check(WinUiPresentationContract.Validate(Snapshot(new(DelayMilliseconds: 1500, OnHover: false))).Count == 0);
+        Check(Snapshot(new(DelayMilliseconds: 1500, OnHover: false)).ProtocolVersion == ProtocolConstants.AnchoredPresentationVersion);
+        var extended = Snapshot(new(DelayMilliseconds: 5000));
+        Check(extended.ProtocolVersion == ProtocolConstants.ExtendedFocusPreviewDelayVersion && WinUiPresentationContract.Validate(extended).Count == 0);
+        Check(SnapshotJson.Deserialize(SnapshotJson.Serialize(extended)).Root.FocusPreview?.DelayMilliseconds == 5000);
+        Check(ViewSnapshotValidator.Validate(extended with { ProtocolVersion = 145 }).Any(error => error.Code == "feature_requires_version"));
         try { Snapshot(new(), retain: true); throw new Exception("Stale preview retention accepted"); }
         catch (ProtocolValidationException error) when (error.Errors.Any(item => item.Code == "focus_preview_retention_not_allowed")) { }
         var wrongNode = before with { Root = before.Root.Children[0] with { FocusPresentation = null, FocusPreview = new() } };

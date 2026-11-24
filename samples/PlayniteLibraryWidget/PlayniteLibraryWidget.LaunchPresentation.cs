@@ -60,6 +60,7 @@ public sealed partial class PlayniteLibraryWidget
             var games = ids?.ToHashSet(StringComparer.Ordinal);
             _model.Update(state => state with { RunningGames = games, RunningSince = since, RunningNames = names, RunningProcesses = processes,
                 PlayingEntry = games is { Count: 0 } ? null : state.PlayingEntry,
+                DiscordPanelGame = state.DiscordPanelGame is { } panelGame && games?.Contains(panelGame) == true ? panelGame : null,
                 PlayingGame = games is { Count: > 0 } ? state.PlayingGame is { } selected && games.Contains(selected) ? selected : games.Min(StringComparer.Ordinal) : null,
                 NewsReader = state.NewsReader is { } reader &&
                 games?.Contains(reader.GameId) == true ? reader : null });

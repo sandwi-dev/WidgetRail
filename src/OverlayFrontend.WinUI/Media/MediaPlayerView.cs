@@ -83,6 +83,20 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     private Task playbackRetirement = Task.CompletedTask;
     internal Task PlaybackRetirement => playbackRetirement;
     private bool previewPlayback;
+    internal bool IsModalPlayback { get; set; }
+    private bool systemControlsSuppressed;
+
+    private void ApplySystemMediaPolicy(MediaPlayerDefinition media)
+    {
+        // Fullscreen reuses this player and its originating playback role.
+        bool suppress = previewPlayback || IsModalPlayback || galleryDeclaration is not null ||
+            media.Presentation == MediaPlayerPresentation.Inline || media.Options.IsAnimation ||
+            media.Source.Kind is MediaPlayerSourceKind.Capture or MediaPlayerSourceKind.SavedCapture;
+        if (player is null || systemControlsSuppressed == suppress) return;
+        player.CommandManager.IsEnabled = !suppress;
+        player.SystemMediaTransportControls.IsEnabled = !suppress;
+        systemControlsSuppressed = suppress;
+    }
     internal Func<bool>? RequestPreviewInteraction { get; set; }
     private bool ForcePreviewMute => previewPlayback && !input;
     internal void SetPreviewPlayback(bool enabled)
@@ -229,6 +243,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         if (!input) { adjustingVolume = false; ClosePlaybackOptions(); expandedHost?.Close(restoreFocus: false); }
         if (!active)
         {
+            StopGalleryImageTransition();
             CloseEmbedded();
             ForgetInlineResume();
             if (IsInlineVideo) SuspendInlineVideo();
@@ -262,19 +277,24 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         ImageSource? initialPoster = null, bool preserveExpanded = false)
     {
         if (disposed || previewPlayback && !active) return;
-        var retainImage = (galleryDeclaration?.InlineCarousel != true || initialPoster is null) &&
+        var keepGalleryImage = CanBridgeGallerySelection(owner);
+        var retainImage = keepGalleryImage || (galleryDeclaration is null || galleryDeclaration.InlineCarousel && initialPoster is null) &&
             Equals(resourceOwner, owner) && image.Source is BitmapImage { PixelWidth: > 0 } &&
             (next.Source.Attachment?.ContentType == "image/png" || next.Source.Kind == MediaPlayerSourceKind.WebImage);
         if (!Equals(resourceOwner, owner))
         { resourceOwner = owner; playbackMemory = null; definition = null; lifetime.Cancel(); ReleasePlayer(); video.PosterSource = null; }
         resolveAuthority = resolve; currentAuthority = current;
         resolvePlaybackLease = resolveOwned; releasePlaybackLease = releaseOwned;
-        if (next == definition) return;
+        if (next == definition)
+        {
+            ApplySystemMediaPolicy(next);
+            return;
+        }
         ForgetInlineResume();
         if (definition is { } previous && previous.Source == next.Source && previous.Revision == next.Revision &&
             previous.Presentation == next.Presentation && previous.Options.IsAnimation == next.Options.IsAnimation &&
             (player is not null || image.Source is not null && !imageReplacementPending))
-        { definition = next; if (resolved is not null) resolved = resolved with { Media = next }; if (player is not null) ApplyOptions(next.Options); return; }
+        { definition = next; if (resolved is not null) resolved = resolved with { Media = next }; if (player is not null) { ApplySystemMediaPolicy(next); ApplyOptions(next.Options); } return; }
         if (!preserveExpanded) expandedHost?.Close(restoreFocus: false);
         ParkSourceFocus();
         ResetMediaEntry();
@@ -290,13 +310,13 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         // same owner. It is presentation only: input and authority belong to the
         // new source, and failed resolution clears it. Never retain across owners.
         imageReplacementPending = true;
-        if (!retainImage) { image.Source = null; imageViewport.Visibility = imageTools.Visibility = Visibility.Collapsed; }
+        if (!retainImage) { displayedGalleryImage = null; image.Source = null; imageViewport.Visibility = imageTools.Visibility = Visibility.Collapsed; }
         video.Visibility = video.PosterSource is not null ? Visibility.Visible : Visibility.Collapsed;
         toolbar.Visibility = videoControls.Visibility = Visibility.Collapsed;
         rememberedControl = null;
         ShowLoading(!PassiveAnimation && !retainImage && video.PosterSource is null);
         SetActive(active, requestedInput);
-        if (retainImage) _ = ShowImageLoadingAsync(next, lifetime.Token);
+        if (retainImage) _ = ShowImageLoadingAsync(next, keepGalleryImage, lifetime.Token);
         if (!IsInlineVideo && next.Source.Kind == MediaPlayerSourceKind.SavedCapture && resolveOwned is not null && releaseOwned is not null)
         { playbackLeaseId = Guid.NewGuid().ToString("N"); currentPlaybackRelease = releaseOwned; }
         if (next.Source.Kind == MediaPlayerSourceKind.EmbeddedSession) OpenEmbedded();
@@ -318,13 +338,24 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
         try { IsTabStop=true; Focus(FocusState.Programmatic); }
         finally { IsTabStop=tabStop; parkingSourceFocus=false; }
     }
-    private async Task ShowImageLoadingAsync(MediaPlayerDefinition expected, CancellationToken token)
+    private async Task ShowImageLoadingAsync(MediaPlayerDefinition expected, bool keepGalleryImage, CancellationToken token)
     {
         try
         {
             await Task.Delay(200, token);
-            if (!disposed && !token.IsCancellationRequested && definition == expected && imageReplacementPending)
-            { image.Source = null; ShowLoading(); }
+            if (disposed || token.IsCancellationRequested || definition != expected || !imageReplacementPending) return;
+            if (!keepGalleryImage || galleryCurrent?.Invoke() != true) image.Source = null;
+            ShowLoading();
+            // A retained image remains subject to its own authorization deadline.
+            if (keepGalleryImage && galleryImageExpiry != long.MaxValue)
+            {
+                while (imageReplacementPending && definition == expected && !token.IsCancellationRequested)
+                {
+                    var remaining = galleryImageExpiry - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    if (remaining <= 0) { image.Source = null; return; }
+                    await Task.Delay((int)Math.Min(remaining, int.MaxValue), token);
+                }
+            }
         }
         catch (OperationCanceledException) { }
     }
@@ -363,11 +394,8 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
                 // Keep the existing unavailable-controls state while checked
                 // acquisition/metadata is pending; no second readiness flag.
                 player = new MediaPlayer { AutoPlay = false };
-                if (previewPlayback || next.Options.IsAnimation)
-                {
-                    player.CommandManager.IsEnabled = false;
-                    player.SystemMediaTransportControls.IsEnabled = false;
-                }
+                systemControlsSuppressed = false;
+                ApplySystemMediaPolicy(next);
                 ApplyOptions(next.Options);
                 player.MediaFailed += (failedPlayer, _) => DispatcherQueue.TryEnqueue(() =>
                 {
@@ -451,7 +479,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
                 resolved = value;
                 video.Visibility = Visibility.Collapsed;
                 imageReplacementPending = false;
-                image.Source = bitmap;
+                PresentGalleryImage(bitmap);
                 StartImageAnimation(bitmap);
                 imageViewport.Visibility = Visibility.Visible;
                 RefreshImageChrome();
@@ -860,6 +888,7 @@ internal sealed partial class MediaPlayerView : ContentControl, IDisposable
     }
     private void ReleasePlayer()
     {
+        StopGalleryImageTransition();
         CloseEmbedded();
         // Clear owned references before calling WinRT: detach/close can deliver
         // layout and media callbacks synchronously. They must not close the same

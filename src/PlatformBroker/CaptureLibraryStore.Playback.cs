@@ -11,6 +11,8 @@ public sealed partial class CaptureLibraryStore
         // refresh a hidden snapshot onto a different physical file and thereby
         // accidentally transfer the old exclusion to the replacement.
         if (ReleaseReplacedHidden(saved.Item.Id, pinned.Identity)) throw Error("capture_library_not_found");
+        if (HasStableFileIdentity(saved.ExternalIdentity) && !SamePhysicalFile(saved.ExternalIdentity, pinned.Identity))
+            throw Error("capture_library_not_found");
         if (saved.ExternalIdentity == pinned.Identity && saved.Item.Media.ByteLength == pinned.Stream.Length) return saved;
         var media = await inspect(path, saved.Item.Media, token).ConfigureAwait(false);
         if (!media.IsWellFormed() || media.Id != saved.Item.Id || media.Origin != CaptureAttachmentOrigin.SavedLibrary ||

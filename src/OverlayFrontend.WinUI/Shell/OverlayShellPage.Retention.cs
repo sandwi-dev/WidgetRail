@@ -47,10 +47,11 @@ internal sealed partial class OverlayShellPage
         // suspended. Collapsing it sends focus to the tray before the next show.
     }
 
-    private async Task<RetainedWidgetSurface> PrepareWidgetSurfaceAsync(string id, CancellationToken cancellationToken)
+    private async Task<RetainedWidgetSurface> PrepareWidgetSurfaceAsync(string id, CancellationToken cancellationToken, bool replaceDisplayed = false)
     {
         var descriptor = owner!.Session.GetTarget(id).Descriptor;
         retainedSurfaces.TryGetValue(id, out var retained);
+        if (replaceDisplayed && ReferenceEquals(surface, retained?.Presenter)) retained = null;
         if (retained is not null && !SameSurfaceOwner(retained.Descriptor, descriptor))
         {
             if (!ReferenceEquals(surface, retained.Presenter)) await RetireWidgetSurfaceAsync(id);
@@ -58,7 +59,7 @@ internal sealed partial class OverlayShellPage
         }
         if (retained is null)
         {
-            while (retainedSurfaces.Count >= RetainedSurfaceLimit)
+            while (!retainedSurfaces.ContainsKey(id) && retainedSurfaces.Count >= RetainedSurfaceLimit)
             {
                 var oldest = retainedSurfaces.Where(pair => !ReferenceEquals(pair.Value.Presenter, surface))
                     .MinBy(pair => pair.Value.LastUse);

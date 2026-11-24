@@ -158,6 +158,12 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 ForegroundDelegationDiagnostic = message => WindowActivationDiagnostic?.Invoke(message),
                 ProcessOwnerJobName = options.Development?.JobName,
             }, lifetime.Token);
+            owner.Session.DiagnosticPublished += BridgeDiagnosticPublished;
+            if (BridgeDisconnected)
+            {
+                ShowBridgeRecovery();
+                return;
+            }
             Phase("bridge-connected");
             InitializeMediaOwner();
             owner.Session.PresentationChanged += Changed;
@@ -307,7 +313,10 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     }
 
     private void Changed(object? sender, WidgetPresentationChangedEventArgs args) => DispatcherQueue.TryEnqueue(() =>
-    { ApplyPinnedState(args.State); ApplyState(args.State); ObserveWidgetStatusState(args.State); ObserveRememberedAvailability(args.State); });
+    {
+        if (BridgeDisconnected) return;
+        ApplyPinnedState(args.State); ApplyState(args.State); ObserveWidgetStatusState(args.State); ObserveRememberedAvailability(args.State);
+    });
 
     private void ApplyState(WidgetPresentationState state)
     {
@@ -507,6 +516,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     internal void SetVisible(bool value, bool retainExitPresentation = false)
     {
         if (retired || visible == value) return;
+        // An entrance can reverse the exit before the HWND is physically hidden.
+        if (value) DismissRadialWhileHidden();
         retainingExitPresentation = !value && retainExitPresentation;
         ProductionRoot.IsHitTestVisible = value;
         if (!value)
@@ -561,6 +572,9 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     internal void CompleteExitPresentation()
     {
+        // The outgoing frame can keep the wheel through its fade. Retire it
+        // after physical hide, including the immediate/reduced-motion path.
+        DismissRadialWhileHidden();
         if (!retainingExitPresentation) return;
         retainingExitPresentation = false;
         CloseUtilityPanel(cancelSwitch: false);
@@ -611,7 +625,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     {
         if (restore && visible && requestedWidget is { } requested)
         {
-            await SelectAsync(requested, interactive);
+            await SelectAsync(requested, interactive, overlayReopen: true);
             return;
         }
         var failureCurrent = CapturePresentationFailureGuard();
@@ -629,7 +643,16 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 if (desired != WidgetLifecycleState.Background && retainedSurfaces.TryGetValue(activeWidget, out var retained))
                 {
                     if (retained.PresentedLifecycle != desired)
-                        await EstablishWidgetPresentationAsync(retained, desired, lifetime.Token);
+                    {
+                        // A hide/foreground reconciliation may be in flight as a new selection
+                        // starts. Only the selection may replace the visible tree from then on.
+                        if (visible && switching) return;
+                        var selection = selectionVersion;
+                        var next = await owner.Session.EstablishPresentationAsync(target, desired, lifetime.Token);
+                        if (visible && (switching || selectionVersion != selection)) return;
+                        ApplyWidgetSurfaceFrame(retained, next);
+                        retained.PresentedLifecycle = desired;
+                    }
                 }
                 else
                 {
@@ -796,6 +819,11 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
 
     private async Task RetryPresentationAsync()
     {
+        if (BridgeDisconnected)
+        {
+            RequestApplicationControl(WidgetApplicationControl.Restart);
+            return;
+        }
         if (showingStoppedWidget && requestedWidget is { } stoppedId)
         {
             if (retrying) return;
@@ -974,6 +1002,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         {
             if (owner is not null)
             {
+                owner.Session.DiagnosticPublished -= BridgeDiagnosticPublished;
                 owner.Session.PresentationChanged -= Changed;
                 owner.Session.CatalogChanged -= CatalogChanged;
                 owner.Session.AppearanceChanged -= AppearanceChanged;

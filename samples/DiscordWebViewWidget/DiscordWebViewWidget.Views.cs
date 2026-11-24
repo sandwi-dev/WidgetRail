@@ -27,6 +27,7 @@ public sealed partial class DiscordWebViewWidget
                 UI.Row("discord.account.header",UI.Icon(DiscordIcons.Mark,"discord.account.brand","Discord").Classes("discord-brand"),
                     UI.Text("Discord","discord.account.title").Classes("discord-title","discord-copy"),
                     UI.IconButton(WidgetGlyph.Back,route.BackActionId!,"discord.account.back","Back").Classes("discord-control")).Classes("discord-header"),
+
                 client?.Reference is { } reference?UI.WebView(reference,"discord.account.browser","Discord sign-in and account setup",BrowserInteractionMode.ActivateToInteract).Classes("discord-body"):
                     Empty("discord.account.wait","Connecting to Discord","Go back and try Refresh.",DiscordIcons.Account)).Classes("discord-page");
             first="discord.account.back";
@@ -342,10 +343,12 @@ public sealed partial class DiscordWebViewWidget
 
     private void PublishActivities(DiscordState data)
     {
-        var ordered=data.Activities.OrderBy(row=>row.CanWatch?0:row.CanJoinVoice?1:2)
-            .ThenBy(row=>row.Name,StringComparer.OrdinalIgnoreCase).ThenBy(row=>row.UserId,StringComparer.Ordinal).ToArray();
-        activities.Publish(data.Account,data.Account,ordered);
+        activities.Publish(data.Account,data.Account,OrderActivities(data).ToArray());
     }
+
+    private static IEnumerable<DiscordFriendActivity> OrderActivities(DiscordState data) =>
+        data.Activities.OrderBy(row=>row.CanWatch?0:row.CanJoinVoice?1:2)
+            .ThenBy(row=>row.Name,StringComparer.OrdinalIgnoreCase).ThenBy(row=>row.UserId,StringComparer.Ordinal);
 
     private WidgetElement ActivityPanel(DiscordState data,string listId,bool compact)
     {
@@ -432,9 +435,8 @@ public sealed partial class DiscordWebViewWidget
         return UI.Stack(id+".controls",UI.Stack(id+".summary",summary.ToArray()).Classes("discord-voice-summary"),controls).Classes("discord-voice-pin");
     }
 
-    private static WidgetElement ActivityRow(DiscordFriendActivity activity,string id)
+    private static string ActivityDescription(DiscordFriendActivity activity)
     {
-        var action=activity.CanWatch?"activity.watch":activity.CanJoinVoice?"activity.join":null;
         var activityLabel=activity.Kind switch{"playing"=>"Playing","streaming"=>"Streaming","listening"=>"Listening to","watching"=>"Watching","competing"=>"Competing in",_=>"In voice"};
         var destination=string.Join(" · ",new[]{activity.ChannelName,activity.GuildName}.Where(value=>!string.IsNullOrWhiteSpace(value)));
         var detail=activity.Kind=="voice"?"Voice"+(destination.Length>0?" · "+destination:""):activityLabel+(activity.Title.Length==0?"":" "+activity.Title);
@@ -443,6 +445,13 @@ public sealed partial class DiscordWebViewWidget
             if(activity.CanJoinVoice&&destination.Length>0)detail+="\nVoice · "+destination;
             else if(activity.Details.Length>0)detail+=" · "+activity.Details;
         }
+        return detail;
+    }
+
+    private static WidgetElement ActivityRow(DiscordFriendActivity activity,string id)
+    {
+        var action=activity.CanWatch?"activity.watch":activity.CanJoinVoice?"activity.join":null;
+        var detail=ActivityDescription(activity);
         var presence=activity.Status switch{"idle"=>"Away","dnd"=>"Do not disturb","offline"=>"Offline",_=>"Online"};
         var children=new List<WidgetElement>{UI.Row(id+".header",Avatar(activity.AvatarUrl,id+".avatar",activity.Name),
             UI.Text(activity.Name,id+".name").Classes("discord-row-title","discord-copy")).Classes("discord-actions","discord-activity-header"),UI.Text(detail,id+".detail").Classes("discord-secondary","discord-activity-copy")};

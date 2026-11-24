@@ -109,7 +109,8 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         Func<WidgetRail.WidgetProtocol.WidgetNotificationCommand, CancellationToken, ValueTask<WidgetRail.WidgetProtocol.WidgetNotificationReceipt>>? notifications = null,
         Func<WidgetRail.WidgetProtocol.WidgetActivity, CancellationToken, ValueTask<WidgetRail.WidgetProtocol.WidgetActivityReceipt>>? activity = null,
         Func<WidgetRail.WidgetProtocol.WebSessionCommand, CancellationToken, ValueTask<WidgetRail.WidgetProtocol.WebSessionReply>>? webSessions = null,
-        WebSessionRegistry.Owner? webSessionOwner = null)
+        WebSessionRegistry.Owner? webSessionOwner = null,
+        WidgetSummaryExchange? summaries = null)
     {
         BrokerPipeNames.Validate(pipeName);
         BrokerPipeNames.ValidateAppContainerSid(isolatedClientAppContainerSid);
@@ -137,7 +138,7 @@ public sealed class BrokerPipeServer : IAsyncDisposable
         {
             _broker = new PlatformCapabilityBroker(
                 _identity, _declaredCapabilities, consentStore, backend,
-                _hostGrantedCapabilities, AppLibrarySavedIdIssuer.Shared, artworkSession, marketplace, notifications, activity, webSessions, webSessionOwner);
+                _hostGrantedCapabilities, AppLibrarySavedIdIssuer.Shared, artworkSession, marketplace, notifications, activity, webSessions, webSessionOwner, summaries);
         }
         catch
         {

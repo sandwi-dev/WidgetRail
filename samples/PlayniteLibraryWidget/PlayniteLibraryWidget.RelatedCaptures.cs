@@ -43,10 +43,10 @@ public sealed partial class PlayniteLibraryWidget
             var permissions=await HostServices.Permissions.CheckAsync([WidgetCaptureLibraryCapabilities.ReadPermission, WidgetCaptureLibraryCapabilities.ManagePermission],token);
             bool Granted(string id) => permissions.Any(p => p.CapabilityId == id && p.State == WidgetPermissionState.Granted);
             if(!Granted(WidgetCaptureLibraryCapabilities.ReadPermission))return new(query,kind,reference,[],0,true);
-            var filter = new CaptureLibraryQuery { OriginPackageId = PlaynitePackage, Reference = new(kind,reference) };
+            var filter = new CaptureLibraryQuery { AvailableOnly = true, OriginPackageId = PlaynitePackage, Reference = new(kind,reference) };
             var canLink = Granted(WidgetCaptureLibraryCapabilities.ManagePermission);
             var picker = !query.BrowseLinked && query.Achievement is null && canLink ? query.PickerOffset : null;
-            if (picker is not null) filter = filter with { ExcludeReference = true, AvailableOnly = true };
+            if (picker is not null) filter = filter with { ExcludeReference = true };
             if (picker is { } offset)
             {
                 var process = Organization.CaptureProcesses.FirstOrDefault(entry => entry.Game == reference)?.Process;
@@ -60,7 +60,7 @@ public sealed partial class PlayniteLibraryWidget
             if (query.PickerOffset is null && query.Achievement is null && page.TotalCount > 0)
             {
                 // Keep the ordinary gallery usable if a new capture arrives between the two reads.
-                var runs = await ReadRunsAsync(new(filter with { AvailableOnly = true }, Count: 4), token);
+                var runs = await ReadRunsAsync(new(filter, Count: 4), token);
                 if (runs?.Revision == page.Revision)
                 {
                     linkedRuns = runs.Items;
@@ -73,7 +73,7 @@ public sealed partial class PlayniteLibraryWidget
                 ReconcileGameCaptures(query, filter, integration.Sessions);
             return new(query,kind,reference,items,page.TotalCount) { CanLink = canLink, Connection = integration.ConnectionId, Revision = page.Revision, LinkedRuns = linkedRuns };
         },
-        MapError=_=>new("related_captures_unavailable","Captures could not be loaded. Refresh to try again."),
+        MapError=_=>new("related_captures_unavailable","Captures could not be loaded."),
         CacheDuration=TimeSpan.FromSeconds(10),RetainLastGoodValue=true,
     });
     private async ValueTask<CaptureLibraryRunsPage?> ReadRunsAsync(CaptureLibraryRunsRequest request, CancellationToken token)
@@ -111,6 +111,11 @@ public sealed partial class PlayniteLibraryWidget
         var state=WithDetailsResources(_model.Value);
         if(state.DetailsItem is null||state.DetailsExtras.Tab!=PlayniteDetailsTab.Captures||LifecycleState!=WidgetLifecycleState.Interactive)return true;
         if (HandleSessionReview(action.ActionId,state) || HandleCaptureViewer(action.ActionId,state) || HandleCaptureLinkChange(action.ActionId, state) || HandleCaptureLink(action.ActionId, state)) return true;
+        if (action.ActionId == RelatedCapturePrefix + ".retry")
+        {
+            LoadDetailsSection(PlayniteDetailsTab.Captures, refresh: true);
+            return true;
+        }
         if(action.ActionId==RelatedCapturePrefix+".all")
         {
             UpdateDetails(state.DetailsGeneration,value=>value with{CaptureAchievementId=null,CaptureAchievementName=null});

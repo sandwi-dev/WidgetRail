@@ -1,9 +1,17 @@
 {
   "manifestVersion": 1, "id": "widgetrail.firstparty.marketplace", "publisher": "widgetrail.firstparty",
-  "name": "WidgetRail Catalogue", "version": "0.2.0", "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
+  "name": "WidgetRail Catalogue", "version": "0.2.2", "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
   "entrypoint": { "runtime": "dotnet-worker", "assembly": "payload/MarketplaceWidget.dll", "type": "WidgetRail.FirstPartyWidgets.Marketplace.MarketplaceWidget" },
   "presentation": { "icon": "settings", "packageIcon": { "assetId": "marketplace.mark", "colorMode": "themeTint" } },
-  "iconAssets": { "marketplace.mark": { "path": "assets/icons/marketplace.svg" } },
+  "iconAssets": {
+    "marketplace.mark": { "path": "assets/icons/marketplace.svg" },
+    "discord.mark": { "path": "assets/icons/discord.svg" },
+    "playnite-library.mark": { "path": "assets/icons/playnite-library.svg" },
+    "spotify.brand.green": { "path": "assets/icons/spotify-green.svg" },
+    "youtube.brand.red": { "path": "assets/icons/youtube-red.svg" },
+    "ytmusic.mark": { "path": "assets/icons/yt-music.svg" },
+    "captures.mark": { "path": "assets/icons/captures.svg" }
+  },
   "permissions": [], "optionalPermissions": [],
   "intents": {
     "requests": [{ "id": "widgetrail.settings.widget.open", "version": 1,

@@ -120,7 +120,8 @@ internal sealed partial class OverlayShellPage
 
     private IReadOnlyList<ControllerGuideHint> PinnedPlacementHints() =>
     (ControllerGuideHint[])[
-        new(ControllerPrompt.LeftStickMove, "Move · D-pad", Required: true),
+        new(ControllerPrompt.LeftStickMove, "Move", Required: true),
+        new(ControllerPrompt.DPad, "Snap", Required: true),
         new(ControllerPrompt.RightStickMove, "Resize", Required: true),
         new(ControllerPrompt.A, savingPinnedAdjustment ? "Saving…" : "Save", ControllerButton.A, Required: true),
         new(ControllerPrompt.B, "Cancel", ControllerButton.B, Required: true),
@@ -162,14 +163,16 @@ internal sealed partial class OverlayShellPage
         shellGestures.CaptureFrame(frame);
         if (savingPinnedAdjustment) return true;
         var sample = frame.State;
+        if (pinnedAdjustment is not { } adjustment) return true;
         var changes = pinnedPlacementInput.Sample(sample.Buttons, sample.LeftThumbX, sample.LeftThumbY,
-            sample.RightThumbX, sample.RightThumbY, Environment.TickCount64);
-        if(pinnedAdjustment is {} controllerAdjustment && (changes.Dpad!=PinnedPlacementDirection.None ||
-            changes.Move!=PinnedPlacementDirection.None || changes.Resize!=PinnedPlacementDirection.None))
-            controllerAdjustment.ControllerDriven=true;
-        StepPinnedPlacement(changes.Dpad, resize: false);
-        StepPinnedPlacement(changes.Move, resize: false);
-        StepPinnedPlacement(changes.Resize, resize: true);
+            sample.RightThumbX, sample.RightThumbY, Environment.TickCount64, adjustment.Placement.Monitor);
+        if (changes.Dpad != PinnedPlacementDirection.None || changes.X != 0 || changes.Y != 0 ||
+            changes.Resize != PinnedPlacementDirection.None) adjustment.ControllerDriven = true;
+        var placement = adjustment.Placement;
+        bool changed = placement.Step(changes.Resize, resize: true);
+        changed |= placement.Snap(changes.Dpad);
+        changed |= placement.Move(changes.X, changes.Y, adjustment.Monitors);
+        if (changed) ApplyPinnedGeometry(adjustment);
         if(lessOpaque)StepPinnedOpacity(PinnedPlacementDirection.Left);
         if(moreOpaque)StepPinnedOpacity(PinnedPlacementDirection.Right);
         if(closePressed){_ = CloseAdjustedPinAsync();return true;}
@@ -197,14 +200,18 @@ internal sealed partial class OverlayShellPage
         if (pinnedAdjustment is not { } adjustment || !ReferenceEquals(pinned, adjustment.Surface) ||
             !adjustment.Surface.IsCurrent || direction == PinnedPlacementDirection.None) return;
         if (!adjustment.Placement.Step(direction, resize, adjustment.Monitors)) return;
+        ApplyPinnedGeometry(adjustment);
+    }
+
+    private void ApplyPinnedGeometry(PinnedAdjustment adjustment)
+    {
         var changedMonitor = adjustment.Surface.Monitor.Id != adjustment.Placement.Monitor.Id;
         adjustment.Surface.Monitor = adjustment.Placement.Monitor;
         adjustment.Surface.LogicalPlacement = PinnedPlacementPolicy.Capture(adjustment.Placement.Current, adjustment.Surface.Monitor,
             adjustment.Surface.Limits, adjustment.Surface.LayoutId, adjustment.Surface.Window.OpacityPercent);
         adjustment.Surface.Window.Place(adjustment.Placement.Current);
-        RefreshPinnedAdjustmentToolbar();
+        FollowAdjustedPin(adjustment, changedMonitor);
         if (changedMonitor) _ = RefreshPinnedDisplayAsync(adjustment.Surface);
-        UpdateDiagnostics();
     }
 
     private PinnedBounds PreviewPinnedPointerPlacement(PinnedSurface current,PinnedBounds bounds,int edge)
@@ -217,10 +224,16 @@ internal sealed partial class OverlayShellPage
         var changedMonitor=current.Monitor.Id!=adjustment.Placement.Monitor.Id;
         current.Monitor=adjustment.Placement.Monitor;
         current.LogicalPlacement=PinnedPlacementPolicy.Capture(next,current.Monitor,current.Limits,current.LayoutId,current.Window.OpacityPercent);
-        RefreshPinnedAdjustmentToolbar();
+        FollowAdjustedPin(adjustment, changedMonitor);
         if(changedMonitor)_=RefreshPinnedDisplayAsync(current);
-        UpdateDiagnostics();
         return next;
+    }
+
+    private void FollowAdjustedPin(PinnedAdjustment adjustment, bool changedMonitor)
+    {
+        if (changedMonitor) RefreshPinnedAdjustmentToolbar();
+        else pinAdjustmentToolbar?.Follow(adjustment.Placement.Current, adjustment.Placement.Monitor);
+        if (options.LayoutDiagnosticsPath is not null) UpdateDiagnostics();
     }
 
     private void StepPinnedOpacity(PinnedPlacementDirection direction)
@@ -300,7 +313,7 @@ internal sealed partial class OverlayShellPage
     {
         var current = adjustment.Surface;
         current.Window.SetOpacity(adjustment.Placement.Original.OpacityPercent);
-        var placement = PinnedPlacementPolicy.Resolve(PinnedDisplayAreas.Read(), adjustment.Placement.Original, current.Limits);
+        var placement = PinnedPlacementPolicy.Resolve(PinnedDisplayAreas.Read(current.Window.Handle), adjustment.Placement.Original, current.Limits);
         if (placement is null) { current.Window.Hide(); return; }
         current.Monitor = placement.Monitor;
         current.Window.Place(placement.Bounds);
@@ -357,7 +370,7 @@ internal sealed partial class OverlayShellPage
         // interpreting those new physical pixels with the preceding monitor DPI.
         var saved = current.LogicalPlacement ?? PinnedPlacementPolicy.Capture(current.Window.Bounds, current.Monitor, current.Limits,
             current.LayoutId, current.Window.OpacityPercent);
-        var placement = PinnedPlacementPolicy.Resolve(PinnedDisplayAreas.Read(), saved, current.Limits);
+        var placement = PinnedPlacementPolicy.Resolve(PinnedDisplayAreas.Read(current.Window.Handle), saved, current.Limits);
         if (placement is null) { current.Window.Hide(); return; }
         current.Monitor = placement.Monitor;
         current.Window.Place(placement.Bounds);

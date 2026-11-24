@@ -54,7 +54,8 @@ internal sealed partial class WidgetStylesValidationPage
                 var theme = compiled.Theme ?? throw new InvalidOperationException("Invalid preview fixture theme");
                 var contentSized = Environment.GetCommandLineArgs().Contains("--content-sized-previews");
                 var mouseOnly = Environment.GetCommandLineArgs().Contains("--mouse-preview-only");
-                var options = new FocusPreviewOptions(360, 220, DelayMilliseconds: mouseOnly ? 40 : 180) { SizeToContentHeight = contentSized };
+                var longDelay = Environment.GetCommandLineArgs().Contains("--long-preview-delay");
+                var options = new FocusPreviewOptions(360, 220, DelayMilliseconds: longDelay ? 2500 : mouseOnly ? 40 : 180) { SizeToContentHeight = contentSized };
                 var caption = "Adjust this setting without leaving your current page.";
                 var busy = false;
                 var showFirst = true;
@@ -64,6 +65,26 @@ internal sealed partial class WidgetStylesValidationPage
                 await Wait(() => Find<Button>("Widget.preview.first", root) is { IsLoaded: true });
                 var first = Find<Button>("Widget.preview.first", root)!;
                 var second = Find<Button>("Widget.preview.second", root)!;
+                if (longDelay)
+                {
+                    var started = Environment.TickCount64;
+                    first.Focus(FocusState.Keyboard);
+                    await Task.Delay(1750);
+                    Check(!page.IsFocusPreviewOpen, "The preview stays closed past the old delay limit");
+                    await Wait(() => page.IsFocusPreviewOpen);
+                    Check(Environment.TickCount64 - started >= 2500, "Settled focus opens the preview after 2500 ms");
+                    page.SetPreviewPointerTarget(second);
+                    await Wait(() => !page.IsFocusPreviewOpen);
+                    await Task.Delay(450);
+                    page.SetPreviewPointerTarget(null);
+                    await Task.Delay(2250);
+                    Check(!page.IsFocusPreviewOpen, "Leaving a hovered source cancels its pending preview");
+                    var hoverStarted = Environment.TickCount64;
+                    page.SetPreviewPointerTarget(second);
+                    await Wait(() => Find<TextBlock>("Widget.preview.second.details", root) is { ActualHeight: > 0 });
+                    Check(Environment.TickCount64 - hoverStarted >= 2500, "Settled hover opens the preview after 2500 ms");
+                    break;
+                }
                 first.Focus(FocusState.Keyboard);
                 if (mouseOnly)
                 {

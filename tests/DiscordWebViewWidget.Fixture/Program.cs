@@ -63,9 +63,11 @@ if(File.Exists(Path.Combine(AppContext.BaseDirectory,"fixture-messages.enabled")
     await SyntheticMessagesWorker.RunAsync(fixtureArgs);
     return;
 }
-Environment.ExitCode=await WidgetApplicationBootstrap.RunAsync(fixtureArgs,()=>
+Environment.ExitCode=await WidgetApplicationBootstrap.RunAsync(fixtureArgs,services=>
 {
     var session=new SyntheticDiscordSession(audioMode,voicePinMode,voiceControlsMode);
+    if (File.Exists(Path.Combine(AppContext.BaseDirectory, "fixture-summary-microphone.js")))
+        session.UseSummaryMicrophoneFixture(services.WebSessions);
     return new DiscordWebViewWidget(session,uploadAttachment:session.UploadMessagesFixtureAsync);
 });
 static IEnumerable<ViewNode> Nodes(ViewNode root)=>new[]{root}.Concat(root.Children.SelectMany(Nodes));
@@ -104,15 +106,29 @@ internal sealed partial class SyntheticDiscordSession:IDiscordSession
             Sharing=true,OutgoingViewers=new("guild:100:10:1",["2"]),
             Streams=state.Streams.Select((stream,index)=>stream with{Watching=index==0}).ToArray()};
     }
+    private WidgetWebSessionService? fixtureWeb;
+    private WidgetWebSession? fixtureBackend;
+    internal void UseSummaryMicrophoneFixture(WidgetWebSessionService web)
+    {
+        fixtureWeb = web;
+        state = state with { ChannelId = null, ChannelName = "", VoiceConnection = "disconnected", Participants = [], Streams = [],
+            Activities = state.Activities.Select(friend => friend with { CanWatch = false }).ToArray() };
+    }
     // Navigation-only sentinel: deliberately never registered with the broker.
     // The account route can be entered/backed out without any page, network or login.
-    public WebSessionReference? Reference=>new("00000000000000000000000000000000");
-    public ValueTask<DiscordState> ReadAsync(CancellationToken token)
+    public WebSessionReference? Reference=>fixtureWeb is null ? new("00000000000000000000000000000000") : fixtureBackend?.Reference;
+    public async ValueTask<DiscordState> ReadAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        if (fixtureWeb is not null && fixtureBackend is null)
+            fixtureBackend = await fixtureWeb.OpenAsync(new("test.voice", "Test voice", WebSessionSource.Remote("https://example.org/"))
+            {
+                PageAdapter = new() { Mode = WebSessionPageAdapterMode.SessionBackend,
+                    ScriptAsset = "payload/fixture-summary-microphone.js", Origins = ["https://example.org"] }
+            }, token);
         ApplyCallDockFixturePhase();
         if(speakingMode)state=state with{Participants=state.Participants.Select(person=>person.Id=="2"?person with{Speaking=!person.Speaking}:person).ToArray()};
-        return ValueTask.FromResult(state);
+        return state;
     }
     public ValueTask<WebSessionPermissionResult> RequestNotificationsAsync(CancellationToken token) =>
         ValueTask.FromResult(new WebSessionPermissionResult(WebSessionPermissionState.Unavailable));
@@ -196,7 +212,7 @@ internal sealed partial class SyntheticDiscordSession:IDiscordSession
         if(!audioMode)throw new NotSupportedException("Synthetic fixture has no media.");
         return ValueTask.FromResult<IDiscordReceiver>(new SyntheticAudioReceiver());
     }
-    public async ValueTask DisposeAsync(){leases.Clear();callLifetime.Cancel();await callSchedule;callLifetime.Dispose();}
+    public async ValueTask DisposeAsync(){if(fixtureBackend is not null)await fixtureBackend.DisposeAsync();leases.Clear();callLifetime.Cancel();await callSchedule;callLifetime.Dispose();}
 }
 
 // A protocol-shaped receiver only. This session is never registered with the

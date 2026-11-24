@@ -225,7 +225,7 @@ internal sealed partial class OverlayShellPage
         }
         if (retired || !visible) return;
         if (RouteIntroductionButton(button, phase)) return;
-        if (preparingIntent && button == ControllerButton.B)
+        if ((preparingIntent || backgroundDelivery is not null && !HostChoiceActive) && button == ControllerButton.B)
         {
             if (phase == ControllerEventPhase.Pressed) { shellGestures.Claim(button); intentCancellation?.Cancel(); }
             return;

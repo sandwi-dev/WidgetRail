@@ -87,6 +87,18 @@ public sealed partial class WidgetPresentationSession
         return await CommitIntentCoreAsync(prepared, target, null, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<WidgetPresentationFrame> PrepareBackgroundReceiverAsync(WidgetIntentPreparation prepared, string receiver, CancellationToken token)
+    {
+        if (prepared.Presentation != WidgetIntentPresentation.StayInSource || !Guid.TryParseExact(prepared.TicketId, "N", out _) ||
+            !prepared.Destinations.Any(item => item.WidgetId == receiver))
+            throw OrdinaryInputStale("The background intent is no longer available.");
+        var target = GetTarget(receiver);
+        var generation = ValidateTarget(target);
+        var response = await RequestAsync(BridgeMessageTypes.GetSnapshot, new BridgePresentationRequest(receiver) { IntentTicket = prepared.TicketId },
+            BridgeMessageTypes.Snapshot, token).ConfigureAwait(false);
+        return PublishSnapshot(target.Descriptor, generation, response.Payload);
+    }
+
     /// <summary>Delivers through a current host-selected pin without transferring focus.</summary>
     public async Task<WidgetIntentCompletion> CommitPinnedIntentAsync(WidgetIntentPreparation prepared,
         WidgetPinnedSelection selection, WidgetPinnedProjection projection, CancellationToken cancellationToken = default)
@@ -140,6 +152,9 @@ public sealed partial class WidgetPresentationSession
                 new BridgeIntentCommitRequest(prepared.SourceWidgetId, prepared.TicketId!, target?.Authority.WidgetId,
                     target?.Authority.WorkerRun, pinnedTarget), BridgeMessageTypes.IntentCompleted, cancellationToken).ConfigureAwait(false);
             var result = BridgeJson.FromElement<WidgetIntentCompletion>(response.Payload);
+            if (result.RequestedPinLayout is { } layout && (!result.Accepted || target is null || pinnedTarget is not null ||
+                !target.Descriptor.PinningSupported || !new WidgetPinRequest(layout).IsWellFormed()))
+                throw new BridgeProtocolException("Invalid summary pin request.");
             if (!Enum.IsDefined(result.Status)) throw new BridgeProtocolException("Invalid intent status.");
             if (!Enum.IsDefined(result.Failure) || result.Failure != WidgetIntentFailure.None &&
                 (result.Accepted || result.Status != WidgetIntentStatus.Rejected || result.ExternalUrl is not null || result.BrowserFallbackUrl is not null))

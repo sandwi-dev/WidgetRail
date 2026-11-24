@@ -39,7 +39,6 @@ internal static partial class GalleryTests
             fixture.Items.Clear();
             fixture.Items.AddRange(Enumerable.Range(1, count).Select(i =>
                 seed with { Id = i.ToString("x32"), Title = $"Generated {i}", SavedAtUnixMilliseconds = i }));
-            if (lostReply) fixture.Items[20] = fixture.Items[20] with { Available = false };
             var remaining = fixture.Items.Skip(256).Select(item => item.Id).ToArray();
             await fixture.Start();
             await fixture.Action("capture-library.selection.toggle");
@@ -51,6 +50,7 @@ internal static partial class GalleryTests
             if (lostReply) fixture.LoseRecycleReplyOnAttempt = 2;
             await fixture.Action("capture-library.batch.recycle");
             await fixture.Until(() => !fixture.Busy && fixture.Node("capture-library.batch.confirm") is not null);
+            if (lostReply) fixture.Items[5] = fixture.Items[5] with { Available = false };
             await fixture.Action("capture-library.batch.confirm");
             await fixture.RecycleEntered.Task.WaitAsync(TimeSpan.FromSeconds(4));
             await fixture.Action("capture-library.batch.confirm");
@@ -69,11 +69,11 @@ internal static partial class GalleryTests
                 Check(fixture.Recycled == 0 && fixture.RecycleAttempts == 1, "Stop sent another chunk or ignored cancellation");
             else if (lostReply)
             {
-                Check(fixture.RecycleAttempts == 2 && fixture.Recycled == 32, "An ambiguous batch was dispatched again");
+                Check(fixture.RecycleAttempts == 2 && fixture.Recycled == 31, "An ambiguous batch was dispatched again");
                 await fixture.Action("capture-library.batch.failures");
                 Check(fixture.Nodes.Count(n => n.Text?.Contains("No completion receipt") == true) == 16 &&
                     fixture.Nodes.Count(n => n.Text?.Contains("Missing or unreadable.") == true) == 1 &&
-                    fixture.Nodes.Count(n => n.Text?.Contains("Skipped after") == true) == 256 - 33 &&
+                    fixture.Nodes.Count(n => n.Text?.Contains("Skipped after") == true) == 256 - 32 &&
                     ViewSnapshotValidator.Validate(fixture.View()).Count == 0,
                     "Confirmed, unconfirmed and untouched items were conflated");
             }
@@ -98,7 +98,6 @@ internal static partial class GalleryTests
     {
         await using var fixture = new GalleryFixture();
         fixture.Items[0] = fixture.Items[0] with { SourceId = new string('b', 32) };
-        fixture.Items[2] = fixture.Items[2] with { Available = false };
         await fixture.Start();
         await SelectAll();
         var row = fixture.Node("capture-library.selection.actions")!;
@@ -121,6 +120,7 @@ internal static partial class GalleryTests
             "Cancel preserves both the files and selection");
         await fixture.Action("capture-library.batch.recycle");
         await fixture.Until(() => fixture.Node("capture-library.batch.confirmation") is not null && !fixture.Busy);
+        fixture.Items[2] = fixture.Items[2] with { Available = false };
         await fixture.Action("capture-library.batch.confirm");
         await fixture.Until(() => !fixture.Busy && fixture.Recycled == 2);
         Check(fixture.Unlinked == 0 && fixture.Items.Count == 1 && !fixture.Items[0].Available,

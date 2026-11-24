@@ -40,7 +40,7 @@ internal sealed partial class WidgetViewPresenter
             if (binding.Element is WidgetIndexedCollectionView collection) collection.SetRowAppearance(value, animationsEnabled);
         foreach (var binding in bindings.Values)
             if (binding.Element is Media.MediaPlayerView media)
-                media.SetAnimationsAllowed(!Motion.WidgetMotionOptions.From(value, animationsEnabled).Reduced);
+                media.SetMediaMotion(Motion.WidgetMotionOptions.From(value, animationsEnabled));
             else if (binding.Element is WidgetFocusRevealGrid reveal)
                 reveal.ReducedMotion = Motion.WidgetMotionOptions.From(value, animationsEnabled).Reduced;
         previewMotion?.ApplyAppearance(value, animationsEnabled);

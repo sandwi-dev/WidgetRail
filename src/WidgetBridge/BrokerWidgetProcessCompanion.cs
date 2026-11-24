@@ -32,7 +32,8 @@ internal sealed class BrokerWidgetProcessCompanion :
         Func<MarketplaceCommand,CancellationToken,ValueTask<MarketplaceSnapshot>>? marketplace = null,
         Func<WidgetNotificationCommand, CancellationToken, ValueTask<WidgetNotificationReceipt>>? notifications = null,
         Func<WidgetActivity, CancellationToken, ValueTask<WidgetActivityReceipt>>? activity = null,
-        string? webSessionWidgetId = null)
+        string? webSessionWidgetId = null,
+        WidgetSummaryExchange? summaries = null, bool publishesSummary = false)
     {
         ArgumentNullException.ThrowIfNull(context);
         var identity = new BrokerWidgetIdentity(packageId, publisherId, instanceId);
@@ -46,6 +47,8 @@ internal sealed class BrokerWidgetProcessCompanion :
         _webSessions = webSessionWidgetId is null ? null : WebSessionRegistry.Shared.CreateOwner(webSessionWidgetId, identity, !_isolated, allowsPageBackend: !_isolated);
         var intrinsic = new List<string> { PlatformCapabilities.FilesReadV1, PlatformCapabilities.WidgetActivityV1, PlatformCapabilities.WidgetNotificationsV1,
             PlatformCapabilities.PrivateStateV1, PlatformCapabilities.WidgetPermissionsV1, PlatformCapabilities.WidgetPinningV1 };
+        if (publishesSummary && !declaredCapabilities.Contains(PlatformCapabilities.WidgetSummaryPublishV1))
+            intrinsic.Add(PlatformCapabilities.WidgetSummaryServiceV1);
         if (marketplace is not null) intrinsic.Add(PlatformCapabilities.WidgetMarketplaceV1);
         if (_webSessions is not null) intrinsic.Add(PlatformCapabilities.WebSessionsV1);
         var pipeName = $"wrail-broker-{Environment.ProcessId}-{Guid.NewGuid():N}";
@@ -65,7 +68,7 @@ internal sealed class BrokerWidgetProcessCompanion :
                 contextualHostEffectSink: _hostEffects.Register,
                 actionExecutionAdmission: _hostEffects.Admit,
                 marketplace: marketplace, notifications: notifications, activity: activity,
-                webSessions: _webSessions is null ? null : _webSessions.ExecuteAsync, webSessionOwner: _webSessions);
+                webSessions: _webSessions is null ? null : _webSessions.ExecuteAsync, webSessionOwner: _webSessions, summaries: summaries);
         }
         catch
         {

@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.game-help",
   "publisher": "widgetrail.samples",
   "name": "Game Help",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "pinningSupported": true,
   "fullWidgetPinningSupported": true,
   "hostApi": {

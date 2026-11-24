@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.playnite-library",
   "publisher": "widgetrail.samples",
   "name": "Playnite Library",
-  "version": "0.4.94",
+  "version": "0.4.100",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
@@ -45,6 +45,7 @@
     "playnite.game-help": {
       "path": "assets/icons/game-help.svg"
     },
+    "playnite.discord": { "path": "assets/icons/discord.svg" },
     "playnite.game": {
       "path": "assets/icons/gamepad-2.svg"
     },
@@ -72,12 +73,15 @@
   },
   "permissions": [],
   "optionalPermissions": [
+    "widgets.summary.read.v1:widgetrail.samples.discord-controls",
     "system.apps.windows.switch.v1",
     "media.capture-library.read.v1",
     "media.capture-library.manage.v1"
   ],
   "intents": {
     "requests": [
+      {"id":"widgetrail.summary.action","version":2,"payloadSchema":{"type":"object","additionalProperties":false,"properties":{"token":{"type":"string","minLength":32,"maxLength":32},"reader":{"type":"string","minLength":32,"maxLength":32},"pin":{"type":"boolean"},"microphone":{"type":"boolean"}},"required":["token","reader","pin","microphone"]}},
+      {"id":"widgetrail.summary.open","version":1,"payloadSchema":{"type":"object","additionalProperties":false,"properties":{"packageId":{"type":"string","minLength":3,"maxLength":128}},"required":["packageId"]}},
       {"id": "widgetrail.game.help", "version": 1, "payloadSchema": {"type": "object", "additionalProperties": false, "properties": {"gameName": {"type": "string", "minLength": 1, "maxLength": 256}}, "required": ["gameName"]}},
       {
         "id": "widgetrail.web.open",

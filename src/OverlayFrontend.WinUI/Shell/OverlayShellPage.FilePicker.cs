@@ -22,6 +22,7 @@ internal sealed partial class OverlayShellPage
                     if (next.Prompt is { } request) choosingWidgetFiles = ChooseWidgetFilesAsync(request);
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { break; }
+                catch (Exception error) when (BridgeDisconnected && error is not OutOfMemoryException) { break; }
                 catch (Exception error) when (error is not OutOfMemoryException)
                 { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("file-picker-pump", error); }
             }

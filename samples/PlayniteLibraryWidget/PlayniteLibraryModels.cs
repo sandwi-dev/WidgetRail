@@ -45,6 +45,7 @@ internal sealed record PlayniteLibraryQueryCount(long Generation, int? Count);
 
 internal sealed record PlayniteLibraryIndexedBrowseState
 {
+    internal long CatalogRevision { get; init; }
     internal PlayniteLibraryBrowseContent? Publication { get; init; }
     internal WidgetPagedResourceStatus Status { get; init; } = WidgetPagedResourceStatus.NotLoaded;
     internal WidgetResourceError? Error { get; init; }
@@ -55,6 +56,7 @@ internal sealed record PlayniteLibraryIndexedBrowseState
 
 internal sealed record PlayniteLibraryIndexedHomeState
 {
+    internal long CatalogRevision { get; init; }
     internal PlayniteLibraryHomeContent? Publication { get; init; }
     internal WidgetPagedResourceStatus Status { get; init; } = WidgetPagedResourceStatus.NotLoaded;
     internal WidgetResourceError? Error { get; init; }
@@ -74,8 +76,18 @@ internal sealed class PlayniteLibraryActionFeedback(
     internal string ScopeId { get; } = scopeId;
 }
 
+internal enum DiscordStartState { Idle, Starting, Retry, ReadFailed }
+
 internal sealed record PlayniteLibraryRenderState
 {
+    internal Integrations.DiscordActivitySummary? DiscordSummary { get; init; }
+    internal string? DiscordActionNotice { get; init; }
+    internal string? DiscordPanelGame { get; init; }
+    internal DiscordStartState DiscordStart { get; init; }
+    internal bool DiscordWide { get; init; }
+    internal bool DiscordSummaryChecked { get; init; }
+    internal bool DiscordProviderRunning { get; init; }
+    internal bool DiscordNeedsConsent { get; init; }
     internal CaptureGameChooser? GameChooser { get; init; }
     internal PlayniteCaptureDraft CaptureSettings { get; init; } = new(false, new Dictionary<string, System.Text.Json.JsonElement>());
     internal PlayniteProgressState Progress { get; init; } = new();
@@ -89,6 +101,7 @@ internal sealed record PlayniteLibraryRenderState
     internal required PlayniteLibraryCollectionState BrowseCollection { get; init; }
     internal PlayniteLibraryIndexedHomeState IndexedHome { get; init; } = new();
     internal PlayniteLibraryIndexedBrowseState IndexedBrowse { get; init; } = new();
+    internal long CatalogChangeRevision { get; init; }
     internal required WidgetAppLibraryQuery HiddenQuery { get; init; }
     internal PlayniteLibraryFixedRows FixedRows { get; init; } =
         PlayniteLibraryFixedRows.Empty;

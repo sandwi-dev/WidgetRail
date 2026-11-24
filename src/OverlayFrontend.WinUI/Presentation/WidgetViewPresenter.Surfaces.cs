@@ -102,6 +102,8 @@ internal sealed partial class WidgetViewPresenter
         }
         PresentationSourceId? focusedSource = null;
         var focused = FocusedBinding();
+        if (focused is not null) preparingForegroundReturn = null;
+        else focused = PreparedForegroundSource();
         if (focused?.Element is WidgetIndexedCollectionView indexed && indexed.FocusedRow() is { } row)
         {
             focusedSource = RowIdentity(row);

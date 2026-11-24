@@ -240,6 +240,9 @@ internal static class ThemeFeedTests
             {
                 var seed = await feed.BrowseAsync(new(), false, token);
                 Require(seed.Total == 3 && seed.Refreshing, "First entry waited for network or lost the bundled index");
+                foreach (var query in new[] { "GTA 6", "Grand Theft Auto", "afterglow inspiration" })
+                    Require((await feed.BrowseAsync(new(query), false, token)).Items.Single().Id == "local.widgetrail.afterglow-fm",
+                        "Theme inspiration search did not match " + query);
                 var parallel = await Task.WhenAll(Enumerable.Range(0, 8).Select(i => feed.BrowseAsync(new(), true, token).AsTask()));
                 Require(parallel.All(p => p.Total == 3), "Concurrent readers saw partial publication");
                 firstResponse.SetResult();

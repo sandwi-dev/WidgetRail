@@ -11,6 +11,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Application\**\*.cs" />
+    <Compile Include="../Shared/DiscordActivityIntegration.cs" Link="Integrations/DiscordActivityIntegration.cs" />
     <Compile Include="..\YouTubeWidget\YouTubeLinkParser.cs" Link="Providers\YouTubeLinkParser.cs" />
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />

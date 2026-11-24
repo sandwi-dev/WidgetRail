@@ -283,7 +283,7 @@ internal static partial class FullTrustCommunityScenarios
             "The packaged Playnite Library application failed ordinary catalog admission.");
         var configured = load.Catalog.GetConfigured(installed.Id);
         AssertFullTrust(configured, "PlayniteLibraryApplication.exe",
-            "system.apps.windows.switch.v1",
+            WidgetSummaryScope.ForProvider("widgetrail.samples.discord-controls"), WidgetTaskSwitcherCapabilities.Switch.CapabilityId,
             WidgetCaptureLibraryCapabilities.ReadPermission, WidgetCaptureLibraryCapabilities.ManagePermission);
 
         var variable = "WRAIL_PLAYNITE_LIBRARY_DATA_ROOT";

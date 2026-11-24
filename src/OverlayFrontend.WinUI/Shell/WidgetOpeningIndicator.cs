@@ -66,7 +66,7 @@ internal sealed partial class WidgetOpeningIndicator : ContentControl, IDisposab
         foreach (var child in new FrameworkElement[] { plate, row, mark, halo, icon, applicationIcon, text, name, status })
             AutomationProperties.SetAccessibilityView(child, AccessibilityView.Raw);
         delay = DispatcherQueue.CreateTimer();
-        delay.Interval = TimeSpan.FromMilliseconds(200); delay.IsRepeating = false;
+        delay.IsRepeating = false;
         delay.Tick += Show;
         Unloaded += (_, _) => { if (!IsLoaded) Clear(); };
     }
@@ -78,15 +78,16 @@ internal sealed partial class WidgetOpeningIndicator : ContentControl, IDisposab
         protected override string GetClassNameCore() => nameof(WidgetOpeningIndicator);
     }
 
-    internal void Begin(long version, BridgeWidgetDescriptor? descriptor)
+    internal void Begin(long version, BridgeWidgetDescriptor? descriptor, bool resuming = false)
     {
         if (disposed) return;
         Clear(); selection = version; pending = true;
         name.Text = descriptor?.Name ?? "Widget";
         status.MinWidth = 0;
-        status.Text = "Opening…";
+        status.Text = resuming ? "Resuming…" : "Opening…";
         icon.SetItem(descriptor);
-        AutomationProperties.SetName(this, "Opening " + name.Text);
+        AutomationProperties.SetName(this, (resuming ? "Resuming " : "Opening ") + name.Text);
+        delay.Interval = TimeSpan.FromMilliseconds(resuming ? 1500 : 200);
         delay.Start();
     }
 

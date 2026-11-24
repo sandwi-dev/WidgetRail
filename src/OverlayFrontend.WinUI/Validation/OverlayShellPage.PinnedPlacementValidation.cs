@@ -25,6 +25,56 @@ internal sealed partial class OverlayShellPage
             try
             {
                 if (startup is not null) await startup;
+                if (FrontendArguments.Value(Environment.GetCommandLineArgs(), "--pin-travel-layout") is { } layout)
+                {
+                    await Until(() => activeWidget is not null && foreground && !switching);
+                    await PinAsync(activeWidget!, layout);
+                    var pin = pinned ?? throw new InvalidOperationException("Pin creation failed.");
+                    var start = pin.Window.Bounds;
+                    await BeginPinnedAdjustmentAsync();
+                    void Tap(ushort direction) { Receive(Sample(direction, pressed: direction)); Receive(Sample()); }
+                    Tap(4); Tap(1); Tap(1);
+                    var area = pin.Monitor.WorkArea;
+                    var left = pin.Window.Bounds;
+                    Check(left.X == area.X && left.Y == area.Y, "D-pad reaches the upper left");
+                    var timer = System.Diagnostics.Stopwatch.StartNew();
+                    int moves = 0, last = left.X;
+                    var stick = Sample();
+                    stick.State.LeftThumbX = short.MaxValue;
+                    int right = area.X + (area.Width - left.Width);
+                    while (last < right && timer.ElapsedMilliseconds < 3000)
+                    {
+                        await Task.Delay(15);
+                        Receive(stick);
+                        int x = pin.Window.Bounds.X;
+                        if (x > last) moves++;
+                        last = x;
+                    }
+                    Receive(Sample());
+                    Check(last == right && moves >= 10,
+                        $"Moved {right-left.X} physical pixels in {timer.ElapsedMilliseconds} ms with {moves} distinct window positions");
+                    Tap(2);
+                    Check(pin.Window.Bounds.Y == area.Y + (area.Height-left.Height)/2, "D-pad selects middle right");
+                    Tap(2);
+                    Check(pin.Window.Bounds.Y == area.Y + area.Height-left.Height, "D-pad selects bottom right");
+                    Tap(4);
+                    Check(pin.Window.Bounds == left with { Y = area.Y + area.Height-left.Height }, "Left preserves the bottom row");
+                    Tap(1);
+                    Check(pin.Window.Bounds == left with { Y = area.Y + (area.Height-left.Height)/2 }, "Up selects middle left");
+                    Tap(1); Tap(8);
+                    Check(pin.Window.Bounds == left with { X = right }, "Right preserves the top row");
+                    Tap(0x2000);
+                    Check(pinnedAdjustment is null && pin.Window.Bounds == start, "B restores exact starting bounds");
+                    await BeginPinnedAdjustmentAsync();
+                    Tap(8); Tap(2); Tap(2);
+                    var saved = pin.Window.Bounds;
+                    Tap(0x1000);
+                    await Until(() => !savingPinnedAdjustment && pinnedAdjustment is null);
+                    var prefs = await new PinnedPreferencesStore(options.SettingsRoot).LoadAsync(lifetime.Token);
+                    Check(prefs.Find(pin.WidgetId, pin.LayoutId) == PinnedPlacementPolicy.Capture(saved, pin.Monitor, pin.Limits,
+                        pin.LayoutId, pin.Window.OpacityPercent), "A saves the snapped position in the isolated profile");
+                    return;
+                }
                 tested = pinned ?? throw new InvalidOperationException("The isolated validation profile must contain an existing saved pin.");
                 await SelectAsync(tested.WidgetId, enterWidget: false);
                 FocusTray();

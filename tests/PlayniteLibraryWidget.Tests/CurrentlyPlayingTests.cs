@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Threading.Channels;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
@@ -7,6 +8,190 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 
 public sealed partial class PlayniteLibraryTests
 {
+    [TestMethod, Timeout(30000)]
+    public async Task DiscordStartKeepsCardUntilProviderRespondsAndLetsUserRetry()
+    {
+        var providerEvents = Channel.CreateUnbounded<WidgetCapabilityAcknowledgement>();
+        var gameEvents = Channel.CreateUnbounded<PlayniteEventBatch>();
+        var reply = new WidgetSummaryValue(null);
+        var host = new FakeHost(1) { ConfigureServices = builder => builder
+            .WithEventStream(WidgetSummaryCapabilities.ChangedFrom("widgetrail.samples.discord-controls"),
+                token => providerEvents.Reader.ReadAllAsync(token))
+            .WithHandler(WidgetSummaryCapabilities.ReadFrom("widgetrail.samples.discord-controls"),
+                (_, _) => ValueTask.FromResult(reply)) };
+        var widget = Create(host, out var app);
+        var game = Item(0).SavedId;
+        var id = "playnite.playing." + game + ".discord";
+        var sequence = 50;
+        ViewNode Card() => Nodes(Snapshot(widget, ++sequence).Root).Single(n => n.Id == id);
+        app.EventsHandler = async (_, token) => await gameEvents.Reader.ReadAsync(token);
+        await Interactive(widget);
+        try
+        {
+            await Ready(widget, host);
+            gameEvents.Writer.TryWrite(new("profile", "instance", true, 1, [], [game]));
+            await WaitFor(() => widget.RenderState.Value.DiscordSummaryChecked, "stopped Discord");
+            Assert.AreEqual("Start Discord", Card().AccessibilityLabel);
+            var start = Card().Intent!;
+            Assert.IsTrue(start.ReportsResult);
+            foreach (var status in new[] { WidgetIntentStatus.Cancelled, WidgetIntentStatus.Failed, WidgetIntentStatus.Accepted })
+            {
+                Assert.IsNotNull(await widget.OnPrepareIntentAsync(start.PreparationKey!, start));
+                var pending = Card();
+                Assert.AreEqual("Connecting to Discord", pending.AccessibilityLabel);
+                Assert.IsTrue(start.Matches(pending.Intent));
+                await widget.OnIntentCompletedAsync(new(Guid.NewGuid().ToString("N"), start with { PreparationKey = null }, status));
+                Assert.AreEqual(status == WidgetIntentStatus.Accepted ? "Connecting to Discord" : "Retry Discord connection",
+                    Card().AccessibilityLabel);
+            }
+            reply = new(null) { ProviderRunning = true };
+            providerEvents.Writer.TryWrite(new(true));
+            await WaitFor(() => widget.RenderState.Value.DiscordProviderRunning, "worker started");
+            Assert.AreEqual("Connecting to Discord", Card().AccessibilityLabel);
+            reply = new(JsonSerializer.SerializeToElement(new { Session = Guid.NewGuid().ToString("N"), Mode = "friends",
+                Title = "Friends active", Count = 0, Truncated = false, People = Array.Empty<object>() }), new string('f', 32))
+                { ProviderRunning = true };
+            providerEvents.Writer.TryWrite(new(true));
+            await WaitFor(() => widget.RenderState.Value.DiscordSummary?.Mode == "friends", "activity ready");
+            Assert.AreEqual("Discord, Friends active", Card().AccessibilityLabel);
+            Assert.IsNull(Card().Intent);
+            reply = new(JsonSerializer.SerializeToElement(new { Session = Guid.NewGuid().ToString("N"), Mode = "unavailable",
+                Title = "Discord unavailable", Count = 0, Truncated = false, ConnectionFailed = true, People = Array.Empty<object>() }),
+                new string('e', 32)) { ProviderRunning = true };
+            providerEvents.Writer.TryWrite(new(true));
+            await WaitFor(() => widget.RenderState.Value.DiscordSummary?.ConnectionFailed == true, "provider failure");
+            Assert.AreEqual("Retry Discord connection", Card().AccessibilityLabel);
+            var retry = Card().Intent!;
+            Assert.IsNotNull(await widget.OnPrepareIntentAsync(retry.PreparationKey!, retry));
+            Assert.AreEqual("Connecting to Discord", Card().AccessibilityLabel);
+            await widget.OnIntentCompletedAsync(new(Guid.NewGuid().ToString("N"), retry, WidgetIntentStatus.Rejected));
+            Assert.AreEqual("Retry Discord connection", Card().AccessibilityLabel);
+        }
+        finally { await Background(widget); }
+    }
+
+    [TestMethod, Timeout(30000)]
+    public async Task DiscordShelfResizesInPlaceAndClosesPanelWhenAuthorityChanges()
+    {
+        var events = Channel.CreateUnbounded<WidgetCapabilityAcknowledgement>();
+        var gameEvents = Channel.CreateUnbounded<PlayniteEventBatch>();
+        var session = Guid.NewGuid().ToString("N");
+        var count = 2;
+        var everyAvatar = false;
+        var mode = "friends";
+        var names = new[] { "Alex", "Maya", "Jules", "Nora", "Sam", "Ellis" };
+        var statuses = new[] { "Speaking", "Muted", "Listening", "Deafened", "Listening", "Muted for you" };
+        var host = new FakeHost(2) { ConfigureServices = builder => builder
+            .WithEventStream(WidgetSummaryCapabilities.ChangedFrom("widgetrail.samples.discord-controls"), token => events.Reader.ReadAllAsync(token))
+            .WithHandler(WidgetSummaryCapabilities.ReadFrom("widgetrail.samples.discord-controls"), (_, _) => ValueTask.FromResult(new WidgetSummaryValue(
+                JsonSerializer.SerializeToElement(new { Session = session, Mode = mode, Title = mode switch
+                    {
+                        "call" => "Game Night",
+                        "setup" => "Sign in from the Discord widget",
+                        _ => "Friends active"
+                    },
+                    Count = count, Truncated = false, People = Enumerable.Range(0, Math.Min(6, count)).Select(i => new
+                    {
+                        Key = (100 + i).ToString(), Name = names[i], Detail = mode == "call" ? statuses[i] :
+                            i == 0 ? "Streaming 007 First Light" : "Playing Hades II",
+                        Avatar = everyAvatar || i is 1 or 4 ? $"https://cdn.discordapp.com/embed/avatars/{i}.png" : null, Streaming = i == 0,
+                        Action = i == 0 ? (int?)WidgetRail.Samples.Integrations.DiscordSummaryAction.WatchAndPin : null,
+                        Token = i == 0 ? new string('a', 32) : null
+                    }).ToArray() }), new string('b', 32)))) };
+        var widget = Create(host, out var app);
+        var game = Item(0).SavedId;
+        var card = "playnite.playing." + game + ".discord";
+        app.EventsHandler = async (_, token) => await gameEvents.Reader.ReadAsync(token);
+        await Interactive(widget);
+        try
+        {
+            await Ready(widget, host);
+            await gameEvents.Writer.WriteAsync(new("profile", "instance", true, 1, [], [game],
+                new Dictionary<string,long> { [game] = DateTimeOffset.UtcNow.AddMinutes(-25).ToUnixTimeMilliseconds() }));
+            await WaitFor(() => widget.RenderState.Value.DiscordSummary?.Count == 2, "initial Discord subscription");
+            ViewSnapshot Check(string name, int size, bool wide)
+            {
+                var snapshot = Snapshot(widget, 100 + size);
+                var tile = Nodes(snapshot.Root).Single(n => n.Id == card);
+                Assert.IsTrue(tile.StyleClasses.Contains(wide ? "playing-discord-wide" : "playing-discord-compact"));
+                Assert.AreEqual(Math.Min(size, 4), Nodes(tile).Count(n => n.Id.EndsWith(".name", StringComparison.Ordinal)));
+                Assert.AreEqual(ControllerButton.X, tile.ContextMenuButton);
+                Export(name, snapshot);
+                return snapshot;
+            }
+            void Export(string name, ViewSnapshot snapshot)
+            {
+                if (Environment.GetEnvironmentVariable("WRAIL_DISCORD_SHELF_FIXTURES") is not { Length: > 0 } output) return;
+                Directory.CreateDirectory(output);
+                RendererFixtureExporter.Write(Path.Combine(output, name + ".json"), snapshot,
+                    RendererFixtureExporter.CompileTheme(Path.Combine(AppContext.BaseDirectory, "styles"), "default.wrss"));
+            }
+            Check("two", 2, false);
+            foreach (var size in new[] { 3, 2, 6 })
+            {
+                count = size;
+                if (size == 6) mode = "call";
+                events.Writer.TryWrite(new(true));
+                await WaitFor(() => widget.RenderState.Value.DiscordSummary?.Count == size, "updated roster");
+                Check(size == 6 ? "call" : size.ToString(), size, size > 2);
+            }
+            await widget.OnActionAsync(new(card, card));
+            var panel = Snapshot(widget, 201);
+            Assert.IsTrue(Nodes(panel.Root).Any(n => n.Id == card + ".panel"));
+            var intent = Nodes(panel.Root).Single(n => n.Intent?.ContractId == "widgetrail.summary.action").Intent!;
+            Assert.AreEqual(WidgetIntentPresentation.StayInSource, intent.Presentation);
+            Assert.IsTrue(intent.ReportsResult && intent.Payload.GetProperty("pin").GetBoolean() && !intent.Payload.GetProperty("microphone").GetBoolean());
+            await widget.OnIntentCompletedAsync(new("test", intent, WidgetIntentStatus.Rejected));
+            Assert.IsTrue(Nodes(Snapshot(widget, 202).Root).Any(n => n.Text == "This stream could not be pinned."));
+            Export("panel", panel);
+            await widget.OnActionAsync(new(card + ".close", card + ".close"));
+            Assert.IsNull(widget.RenderState.Value.DiscordPanelGame);
+            await widget.OnActionAsync(new(card, card));
+            var replacement = session = Guid.NewGuid().ToString("N");
+            events.Writer.TryWrite(new(true));
+            await WaitFor(() => widget.RenderState.Value.DiscordSummary?.Session == replacement, "replacement session");
+            Assert.IsNull(widget.RenderState.Value.DiscordPanelGame);
+            mode = "friends";
+            count = 0;
+            events.Writer.TryWrite(new(true));
+            await WaitFor(() => widget.RenderState.Value.DiscordSummary?.Count == 0, "empty activities");
+            Check("empty", 0, false);
+            await widget.OnActionAsync(new(card, card));
+            var empty = Snapshot(widget, 203);
+            Assert.AreEqual(card + ".close", empty.InitialFocusId);
+            Export("empty-panel", empty);
+            names[0] = "Alexandra With A Very Long Display Name";
+            count = 4;
+            events.Writer.TryWrite(new(true));
+            await WaitFor(() => widget.RenderState.Value.DiscordSummary?.Count == 4, "updated open panel");
+            var longPanel = Snapshot(widget, 204);
+            Assert.IsTrue(Nodes(longPanel.Root).Any(n => n.Text == names[0]));
+            Export("long-panel", longPanel);
+            everyAvatar = true; count = 6;
+            await widget.OnActionAsync(new(card + ".close", card + ".close"));
+            events.Writer.TryWrite(new(true));
+            await WaitFor(() => widget.RenderState.Value.DiscordSummary?.Count == 6, "all avatars");
+            var complete = Check("portraits", 6, true);
+            Assert.AreEqual(6, Nodes(Nodes(complete.Root).Single(n => n.Id == card)).Count(n => n.ImageIsPublicMedia));
+            await widget.OnActionAsync(new(card, card));
+            mode = "setup"; count = 0;
+            events.Writer.TryWrite(new(true));
+            await WaitFor(() => widget.RenderState.Value.DiscordSummary?.Mode == "setup", "sign-in required");
+            Assert.IsNull(widget.RenderState.Value.DiscordPanelGame);
+            var signedOut = Nodes(Snapshot(widget, 205).Root).Single(n => n.Id == card);
+            Assert.AreEqual("Sign in from the Discord widget", signedOut.AccessibilityLabel);
+            Assert.IsNull(signedOut.Intent);
+            await widget.OnActionAsync(new(card, card));
+            Assert.IsNull(widget.RenderState.Value.DiscordPanelGame);
+            session = Guid.NewGuid().ToString("N");
+            mode = "friends"; count = 2;
+            events.Writer.TryWrite(new(true));
+            await WaitFor(() => widget.RenderState.Value.DiscordSummary?.Session == session, "new account after sign-in");
+            Check("signed-back-in", 2, false);
+        }
+        finally { await Background(widget); }
+    }
+
     [TestMethod]
     public async Task ShelfOptionsHideRestoreAndPersistAcrossWorkerRestart()
     {
@@ -37,7 +222,7 @@ public sealed partial class PlayniteLibraryTests
         await widget.OnActionAsync(new(tile.ContextActions[0].ActionId, tile.Id));
         Assert.IsNull(Find(card));
         await widget.OnActionAsync(new(WidgetRail.Samples.PlayniteLibrary.PlayniteLibraryWidget.ManageCards, "playnite-library.library.menu"));
-        foreach (var kind in new[] { "Help", "News", "Sessions", "Achievements", "Capture" }) await Set(kind, false);
+        foreach (var kind in new[] { "Help", "News", "Sessions", "Achievements", "Capture", "Discord" }) await Set(kind, false);
         await widget.OnActionAsync(new(prefs + ".close", prefs + ".back"));
         Assert.IsNull(Find("playnite-library.home.playing.sections"));
         await Background(widget);
@@ -83,18 +268,92 @@ public sealed partial class PlayniteLibraryTests
     }
 
     [TestMethod]
-    public void MostEarnedUsesHighestKnownLockedPercentAndShowsTheTrackedChoiceOnce()
+    public void NextActivityUsesHighestKnownLockedPercentAndShowsTheTrackedChoiceOnce()
     {
         var items = Enumerable.Range(1, 8).Select(i => new PlayniteAchievement("Award " + i, "Task", false, null,
             i * 10, 50, false) { Id = "id" + i }).ToArray();
         var secret = items[0] with { Id = "secret", Percent = 99, Hidden = true };
         var unknown = items[0] with { Id = "unknown", Percent = null };
         var data = new PlayniteAchievements(true, 10, 0, [.. items, secret, unknown]) { ConnectionId = "profile" };
-        var choice = new TrackedAchievement("game", "profile", data.Provider, items[6].Id!);
+        var choice = new TrackedAchievement("game", "profile", data.Provider, items[7].Id!);
         var awards = PlayingAwards.From("game", data, choice);
-        CollectionAssert.AreEqual(new[] { "id7", "id8", "id6", "id5", "id4" }, awards.Badges.Select(b => b.Award.Id).ToArray());
+        CollectionAssert.AreEqual(new[] { "id8", "id7", "id6", "id5", "id4", "id3" }, awards.Badges.Select(b => b.Award.Id).ToArray());
         Assert.AreEqual("Tracked", awards.Badges[0].Group);
         Assert.IsTrue(awards.Badges.Skip(1).All(b => b.Group == "Next activity"));
+        CollectionAssert.AreEqual(new[] { "id8", "id7" }, awards.LimitNextActivity(1).Badges.Select(b => b.Award.Id).ToArray());
+        Assert.AreEqual("id8", awards.LimitNextActivity(0).Badges.Single().Award.Id);
+    }
+
+    [TestMethod, Timeout(30000)]
+    public async Task NextActivitySettingLimitsTheShelfAndPersistsAcrossWorkerRestart()
+    {
+        var host = new FakeHost(2);
+        var game = Item(0).SavedId;
+        var suggested = Enumerable.Range(1, 5).Select(i => new PlayniteAchievement("Candidate " + i, "",
+            false, null, 100 - i, null, false) { Id = "candidate" + i }).ToArray();
+        var unlocked = suggested[0] with { Id = "earned", Name = "Earned", Unlocked = true, UnlockedAt = DateTimeOffset.UtcNow };
+        var data = new PlayniteAchievements(true, 6, 1, [unlocked, .. suggested]);
+        const string settingId = "playnite.card-preferences.next-activity";
+        var previousState = JsonSerializer.Deserialize<PlayniteLibraryPrivateState>(
+            "{\"Version\":5,\"Items\":[]}");
+        Assert.AreEqual(1, PlayniteLibraryOrganizationPolicy.Normalize(previousState).NextActivityCount);
+        var reads = 0;
+        var widget = Create(host, out var app);
+
+        async Task OpenShelf()
+        {
+            var feed = Channel.CreateUnbounded<PlayniteEventBatch>();
+            feed.Writer.TryWrite(new("profile", "instance", true, 1, [], [game]));
+            app.EventsHandler = async (_, token) => await feed.Reader.ReadAsync(token);
+            app.AchievementsHandler = (_, _) =>
+            {
+                Interlocked.Increment(ref reads);
+                return ValueTask.FromResult(data);
+            };
+            await Interactive(widget);
+            await Ready(widget, host);
+            await WaitFor(() => ShelfCards("Recent unlock").Length == 1, "recent achievement");
+        }
+
+        ViewNode[] ShelfCards(string label) => Nodes(Snapshot(widget, 1).Root).Where(node =>
+            node.Kind == ViewNodeKind.ActionSurface &&
+            node.AccessibilityLabel?.StartsWith(label + ". ", StringComparison.Ordinal) == true).ToArray();
+
+        async Task SetCount(string label, string previous, int expectedCount)
+        {
+            await widget.OnActionAsync(new(WidgetRail.Samples.PlayniteLibrary.PlayniteLibraryWidget.SettingsOpen, "playnite-library.library.menu"));
+            var snapshot = Snapshot(widget, 2);
+            Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
+            var control = Nodes(snapshot.Root).Single(node => node.Id == settingId);
+            Assert.AreEqual(previous, control.SelectOptions.Single(option => option.IsSelected).Label);
+            if (previous == "1" && Environment.GetEnvironmentVariable("WIDGETRAIL_PLAYNITE_NEXT_ACTIVITY_FIXTURE") is { Length: > 0 } path)
+                RendererFixtureExporter.Write(path, snapshot,
+                    RendererFixtureExporter.CompileTheme(Path.Combine(AppContext.BaseDirectory, "styles"), "default.wrss"));
+            var choice = control.SelectOptions.Single(option => option.Label == label);
+            await widget.OnActionAsync(new(choice.ActionId, control.Id, InputScopeId: snapshot.ActiveInputScopeId));
+            var saved = Snapshot(widget, 3);
+            Assert.AreEqual(label, Nodes(saved.Root).Single(node => node.Id == settingId).AccessibilityValue);
+            var back = Nodes(saved.Root).Single(node => node.Id == "playnite.settings.back");
+            await widget.OnActionAsync(new(back.ActionId!, back.Id, InputScopeId: saved.ActiveInputScopeId));
+            Assert.AreEqual(expectedCount, ShelfCards("Next activity").Length);
+            Assert.AreEqual(1, ShelfCards("Recent unlock").Length);
+        }
+
+        try
+        {
+            await OpenShelf();
+            StringAssert.Contains(ShelfCards("Next activity").Single().AccessibilityLabel!, "Candidate 1");
+            var initialReads = Volatile.Read(ref reads);
+            await SetCount("3", "1", 3);
+            await SetCount("Off", "3", 0);
+            Assert.AreEqual(initialReads, Volatile.Read(ref reads), "Changing the display limit must reuse the cached achievements.");
+            await WidgetTestHost.DestroyAsync(widget);
+            widget = Create(host, out app);
+            await OpenShelf();
+            Assert.AreEqual(0, ShelfCards("Next activity").Length);
+            await SetCount("1", "Off", 1);
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
     }
 
     [TestMethod]

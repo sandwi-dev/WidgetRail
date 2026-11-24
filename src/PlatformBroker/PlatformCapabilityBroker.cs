@@ -135,6 +135,10 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
     private readonly MarketplaceCapabilityDomain _marketplaceDomain;
     private readonly NotificationCapabilityDomain _notificationDomain;
     private readonly ActivityCapabilityDomain _activityDomain;
+    private readonly WidgetSummaryExchange? _summaries;
+    private readonly WebSessionRegistry.Owner? _summaryWebOwner;
+    private readonly WidgetSummaryExchange.Publication? _publication;
+    private readonly WidgetSummaryExchange.Reader? _summaryReader;
     private readonly WebSessionCapabilityDomain _webSessionDomain;
     private readonly object _gate = new();
     private readonly List<BrokerEventSubscription> _subscriptions = [];
@@ -172,7 +176,8 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
         Func<WidgetNotificationCommand, CancellationToken, ValueTask<WidgetNotificationReceipt>>? notifications = null,
         Func<WidgetActivity, CancellationToken, ValueTask<WidgetActivityReceipt>>? activity = null,
         Func<WebSessionCommand, CancellationToken, ValueTask<WebSessionReply>>? webSessions = null,
-        WebSessionRegistry.Owner? webSessionOwner = null)
+        WebSessionRegistry.Owner? webSessionOwner = null,
+        WidgetSummaryExchange? summaries = null)
     {
         _identity = authenticatedIdentity ?? throw new ArgumentNullException(nameof(authenticatedIdentity));
         _identity.Validate();
@@ -208,6 +213,15 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
         _marketplaceDomain = new(marketplace);
         _notificationDomain = new(notifications);
         _activityDomain = new(activity);
+        _summaries = summaries;
+        _summaryWebOwner = webSessionOwner;
+        if (_declaredCapabilities.Contains(PlatformCapabilities.WidgetSummaryPublishV1) || _hostGrantedCapabilities.Contains(PlatformCapabilities.WidgetSummaryServiceV1))
+            _publication = summaries?.Register(_identity);
+        if (summaries is not null && _declaredCapabilities.Any(id => id == PlatformCapabilities.WidgetSummaryReadV1 || WidgetSummaryScope.Provider(id) is not null))
+        {
+            _summaryReader = new(_identity);
+            summaries.Changed += OnSummaryChanged;
+        }
         _webSessionDomain = new(webSessions);
         _backend.EventPublished += OnBackendEvent;
         if (_backend.CaptureLibrary is { } captureLibrary) captureLibrary.Changed += OnCaptureLibraryChanged;
@@ -241,6 +255,11 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
             }
         }
         foreach (var lease in canceled) lease.SignalCancellation();
+        if (lifecycle == BrokerLifecycleState.Destroying)
+        {
+            _summaries?.Clear(_publication, retire: true);
+            _summaries?.Forget(_summaryReader);
+        }
     }
 
     /// <summary>
@@ -389,6 +408,16 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
             BrokerCapabilityDomain.Files => await (_fileDomain??throw new BrokerException("permission_denied","File references are unavailable.")).ExecuteAsync(request.Operation,request.Payload,requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.WebSessions => await _webSessionDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Activity => await _activityDomain.ExecuteAsync(request.Payload, requestToken).ConfigureAwait(false),
+            BrokerCapabilityDomain.Summaries when _summaries is not null && _summaryReader is not null && request.Operation == "summary.read" =>
+                _summaries.Read(_summaryReader, request.CapabilityId, request.Payload, requestToken),
+            BrokerCapabilityDomain.Summaries when _summaries is not null && _publication is not null && request.Operation == "summary.check-reader" =>
+                await _summaries.CheckReaderAsync(_publication, request.Payload, _consentStore, requestToken).ConfigureAwait(false),
+            BrokerCapabilityDomain.Summaries when _summaries is not null && _publication is not null && request.Operation == "summary.select-pin" =>
+                _summaries.SelectPin(_publication, request.Payload),
+            BrokerCapabilityDomain.Summaries when request.Operation == "summary.microphone" =>
+                await RequestSummaryMicrophoneAsync(request.Payload, requestToken).ConfigureAwait(false),
+            BrokerCapabilityDomain.Summaries when _summaries is not null && _publication is not null && request.Operation == "summary.publish" =>
+                _summaries.Publish(_publication, request.Payload, requestToken),
             BrokerCapabilityDomain.Notifications => await _notificationDomain.ExecuteAsync(request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Permissions => await _permissionDomain.ExecuteAsync(request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Marketplace => await _marketplaceDomain.ExecuteAsync(request.Operation,request.Payload,requestToken).ConfigureAwait(false),
@@ -505,6 +534,8 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
         if (!granted.Contains(PlatformCapabilities.CaptureLibraryReadV1)) _captureDomain.Revoke(PlatformCapabilities.CaptureLibraryReadV1);
         if (!granted.Contains(PlatformCapabilities.CaptureLibrarySaveV1)) _captureDomain.Revoke(PlatformCapabilities.CaptureLibrarySaveV1);
         if (!granted.Contains(PlatformCapabilities.ProviderDocumentsV1)) _documentDomain.Revoke();
+        if (_declaredCapabilities.Contains(PlatformCapabilities.WidgetSummaryPublishV1) && !granted.Contains(PlatformCapabilities.WidgetSummaryPublishV1)) _summaries?.Clear(_publication);
+        _summaries?.Forget(_summaryReader, granted);
     }
 
     internal void RevokeSubscriptions()
@@ -527,6 +558,8 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
         _fileDomain?.Dispose();
         _documentDomain.Revoke();
         _permissionDomain.CancelPending();
+        _summaries?.Clear(_publication);
+        _summaries?.Forget(_summaryReader);
     }
 
     private async Task<BrokerCapabilityDefinition> AuthorizeAsync(
@@ -845,14 +878,35 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
         PublishCaptureReadEvent("capture.replay.encoding-changed", BrokerJson.ToElement(change));
     }
     private void PublishCaptureReadEvent(string eventType, JsonElement payload)
+        => PublishChangedEvent(PlatformCapabilities.CaptureLibraryReadV1, eventType, payload);
+
+    private async Task<JsonElement> RequestSummaryMicrophoneAsync(JsonElement payload, CancellationToken token)
+    {
+        var request = BrokerJson.ParsePayload<WidgetSummaryMicrophone>(payload);
+        if (request.Session?.IsWellFormed() != true || _summaryWebOwner is null || _publication is null ||
+            _summaries?.ConsumeMicrophoneRequest(_publication, request) is not { } ticket)
+            throw new BrokerException("permission_denied", "No current voice action requested microphone consent.");
+        var reply = await _summaryWebOwner.RequestIntentMicrophoneAsync(request.Session, ticket, token).ConfigureAwait(false);
+        return BrokerJson.ToElement(reply.Microphone ?? new(WebSessionMicrophoneState.Unavailable));
+    }
+
+    private void OnSummaryChanged(string audience, string provider)
+    {
+        if (audience != _identity.PackageId) return;
+        foreach (var id in _declaredCapabilities)
+            if (id == PlatformCapabilities.WidgetSummaryReadV1 || WidgetSummaryScope.Provider(id) == provider)
+                PublishChangedEvent(id, "summary.changed", BrokerCapabilityDomains.Acknowledged());
+    }
+
+    private void PublishChangedEvent(string capabilityId, string eventType, JsonElement payload)
     {
         var envelope = new BrokerEventEnvelope(BrokerJson.ProtocolVersion, Interlocked.Increment(ref _eventSequence),
-            PlatformCapabilities.CaptureLibraryReadV1, eventType, payload);
+            capabilityId, eventType, payload);
         BrokerEventSubscription[] subscribers;
         lock (_gate)
         {
             if (_disposed) return;
-            subscribers = _subscriptions.Where(subscription => subscription.CapabilityId == PlatformCapabilities.CaptureLibraryReadV1 &&
+            subscribers = _subscriptions.Where(subscription => subscription.CapabilityId == capabilityId &&
                 subscription.EventType == eventType).ToArray();
         }
         foreach (var subscriber in subscribers) subscriber.Publish(envelope);
@@ -932,6 +986,12 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
         _fileDomain?.Dispose();
         _documentDomain.Dispose();
         _permissionDomain.Dispose();
+        if (_summaries is not null)
+        {
+            _summaries.Changed -= OnSummaryChanged;
+            _summaries.Forget(_summaryReader);
+            _summaries.Clear(_publication, retire: true);
+        }
         return ValueTask.CompletedTask;
     }
 }

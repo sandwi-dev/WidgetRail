@@ -72,14 +72,30 @@ public sealed partial class WidgetPresentationSession : IAsyncDisposable
     /// <summary>Signals a newer appearance revision; does not contain theme/settings values.</summary>
     public event EventHandler<WidgetRevisionChangedEventArgs>? AppearanceChanged;
 
+    /// <summary>Whether the connection has failed permanently and needs a new session.</summary>
+    public bool IsTransportClosed { get { using (_gate.Enter()) return _terminalFailure is not null; } }
+
     private bool legacyCatalogRequest;
     private long intentHandlerRevision;
     public long IntentHandlerRevision { get { using (_gate.Enter()) return intentHandlerRevision; } }
     private HashSet<BridgeIntentSignature> registeredIntentHandlers = [];
-    public bool HasRegisteredIntentHandler(WidgetIntentRequest request)
+    private static readonly string summaryProviderDigest = CompiledWidgetIntentContract.Create(WidgetIntentContracts.SummaryProvider).SchemaDigest;
+    public bool HasSummaryProvider(string package)
     {
         using (_gate.Enter()) return !_disposed && _terminalFailure is null &&
-            registeredIntentHandlers.Contains(new(request.ContractId, request.Version, request.SchemaDigest));
+            registeredIntentHandlers.Contains(new(WidgetIntentContracts.OpenSummaryProvider, 1, summaryProviderDigest, package));
+    }
+
+    public bool HasRegisteredIntentHandler(WidgetIntentRequest request)
+    {
+        string? package = null;
+        if (request.ContractId == WidgetIntentContracts.OpenSummaryProvider)
+        {
+            if (request.Payload.ValueKind != JsonValueKind.Object || !request.Payload.TryGetProperty("packageId", out var value) ||
+                value.ValueKind != JsonValueKind.String || !WidgetManifestValidator.IsValidPackageIdentity(package = value.GetString())) return false;
+        }
+        using (_gate.Enter()) return !_disposed && _terminalFailure is null &&
+            registeredIntentHandlers.Contains(new(request.ContractId, request.Version, request.SchemaDigest, package));
     }
 
     public long LatestCatalogNotificationRevision { get { using (_gate.Enter()) return _notifiedCatalogRevision; } }

@@ -34,7 +34,9 @@ public sealed partial class PlayniteLibraryWidget
     private WidgetOperationHandle EnsureIndexedBrowse()
     {
         lock (_gate)
-            if (BrowseState.Publication is not null && IndexedBrowseSelectionIsCurrent() || Operations.IsBusy(IndexedBrowseOperation))
+            if (Operations.IsBusy(IndexedBrowseOperation) ||
+                BrowseState.Publication is not null && IndexedBrowseSelectionIsCurrent() &&
+                BrowseState.CatalogRevision == _model.Value.CatalogChangeRevision)
                 return new(WidgetOperationAdmission.Completed, Task.FromResult(new WidgetOperationResult(WidgetOperationStatus.Succeeded)));
         return RefreshIndexedBrowse();
     }
@@ -48,13 +50,14 @@ public sealed partial class PlayniteLibraryWidget
         WidgetAppLibraryQuery query;
         PlayniteLibraryQueryContext queryContext;
         string? categoryId;
-        long attempt, authorityRevision, authorityGeneration;
+        long attempt, authorityRevision, authorityGeneration, revision;
         WidgetPagedResourceStatus before;
         lock (_gate)
         {
             before = BrowseState.Status;
             attempt = BrowseState.Attempt + 1;
             var local = _model.Value;
+            revision = local.CatalogChangeRevision;
             selection = local.BrowseCollection;
             categoryId = local.ActiveCategoryId;
             query = EffectiveQueryLocked(PlayniteLibraryRoute.Browse, local);
@@ -103,7 +106,8 @@ public sealed partial class PlayniteLibraryWidget
                     _model.Update(state => state with
                     {
                         IndexedBrowse = state.IndexedBrowse with { Publication = content, Selection = selection,
-                            Category = categoryId, Status = WidgetPagedResourceStatus.Ready },
+                            Category = categoryId, Status = WidgetPagedResourceStatus.Ready, CatalogRevision = revision,
+                            Error = captured.RetainedLastGood ? StaleLibraryError : null },
                         BrowseGameCount = new(authorityGeneration, projected.Count),
                         SourceObservations = PlayniteLibrarySourceCatalog.RetainObservations(state.SourceObservations, captured.Sources),
                         ActiveBrowseReload = null,

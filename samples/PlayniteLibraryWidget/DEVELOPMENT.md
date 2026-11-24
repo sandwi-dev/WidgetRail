@@ -17,7 +17,7 @@ fallback; a valid empty primary-provider result stays empty. Hidden/filtered dat
 retains provider semantics. Current metadata includes progress, rarity, points,
 category, trophy, goal and capstone fields.
 
-Opening/scrolling reads cache only. **Refresh / Y** on the Achievements tab admits a
+Opening or scrolling reads the cache. **Sync this game / Y** on the detail Achievements tab admits a
 UUID-keyed operation through the public refresh method. Concurrent refreshes for
 one game share provider work; cancelling a widget wait does not undo that work.
 The client observes operation status for up to two minutes without resubmitting.
@@ -49,7 +49,7 @@ There is no achievement preview provider or secondary details page. L3 enters th
 search field through a one-shot remembered-group request; tab changes and suspension
 retire that request. The shared local `TextSuggestionCatalog` searches every revealed
 name regardless of the active filter, without fetching data or committing the input.
-Filter/search/sort and the current data survive Refresh while the next read is in
+Filter/search/sort and the current data survive a sync or retry while the next read is in
 flight. Queries within the host's 512-key continuity budget preserve surviving focus
 and viewport across reordering. Rows never authorize actions from a retired query.
 

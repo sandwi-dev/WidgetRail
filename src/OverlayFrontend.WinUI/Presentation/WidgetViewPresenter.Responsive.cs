@@ -33,6 +33,8 @@ internal sealed partial class WidgetViewPresenter
                 ResponsiveVisibility.ExpandedOnly => !compact,
                 _ => true,
             };
+            if (visible && declaration.Node.SummaryProviderPackage is { } provider)
+                visible = Session?.HasSummaryProvider(provider) ?? presentationOnly;
             if (visible && declaration.Node.Intent is { } intent &&
                 ComputedStyle(declaration.Node, "intent-visibility")?.Text == "when-handler-installed")
                 visible = Session?.HasRegisteredIntentHandler(intent) == true;

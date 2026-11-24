@@ -20,7 +20,8 @@ internal static class SettingsUsabilityScenarios
             var errors = ViewSnapshotValidator.Validate(snapshot);
             if (errors.Count != 0) throw new Exception(string.Join("; ", errors));
             var nodes = Walk(snapshot.Root).ToDictionary(node => node.Id);
-            if (nodes.ContainsKey("settings.quit") || nodes.ContainsKey("settings.restart")) throw new Exception("App actions leaked into subpage focus.");
+            if (nodes.ContainsKey("settings.quit") || nodes.ContainsKey("settings.restart") || nodes.ContainsKey("settings.restart-silently"))
+                throw new Exception("App actions leaked into subpage focus.");
             if (nodes["settings.back"].ActionId != "back") throw new Exception("Subpage lacks header Back.");
             foreach (var node in nodes.Values)
                 foreach (var target in new[] { node.Focus?.Up, node.Focus?.Down, node.Focus?.Left, node.Focus?.Right }.OfType<string>())

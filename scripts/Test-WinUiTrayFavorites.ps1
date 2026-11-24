@@ -31,6 +31,8 @@ if (!$CaptureActionsOnly) {
 }
 if ($UnavailableReasonsOnly) {
     $slots.Left = @{Provider=$CaptureProvider; Action='stop-replay'; Publisher='widgetrail.firstparty'; Package='widgetrail.firstparty.capture-library'; Label='Stop replay'}
+    $slots.Right = @{Provider='removed-widget'; Action='toggle-mute'; Publisher='example'; Package='example.removed'; Label='Toggle mute'}
+    $slots.Down = @{Provider='removed-widget'; Action='deafen'; Publisher='example'; Package='example.removed'}
 }
 if ($ReplayFixtureTarget) {
     if (!$DesktopOnly -or $CaptureVisible) { throw 'The live fallback test requires a background provider and desktop retries.' }
@@ -100,6 +102,9 @@ try {
     Ui @('send-keys','ENTER','--via','send-input')
     Ui @('wait-for','Favorite.Menu.Edit','-t','4000')
     if ($UnavailableReasonsOnly) {
+        Ui @('wait-for','Favorite.Menu.Right','-p','Name','--contains','--value','Toggle mute, Right','-t','4000')
+        Ui @('wait-for','Favorite.Menu.Down','-p','Name','--contains','--value','deafen, Down','-t','4000')
+        Ui @('wait-for','Favorite.Menu.Right','-p','IsEnabled','--value','False','-t','2000')
         Ui @('wait-for','Favorite.Menu.Left','-p','Name','--contains','--value','Replay recording is off.','-t','4000')
         Ui @('wait-for','Favorite.Menu.Left','-p','IsEnabled','--value','False','-t','2000')
         Ui @('wait-for','Favorite.Menu.Up','-p','Name','--contains','--value','Start replay','-t','4000')

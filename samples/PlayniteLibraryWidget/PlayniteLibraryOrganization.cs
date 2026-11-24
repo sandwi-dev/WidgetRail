@@ -41,10 +41,13 @@ internal sealed record PlayniteLibraryPrivateState(
     internal const int MaximumTitleLength = 96;
     internal const int MaximumProvenSources = 32;
     internal const int MaximumSourceNameLength = 64;
+    internal const int DefaultNextActivityCount = 1;
+    internal const int MaximumNextActivityCount = 5;
     internal static readonly PlayniteLibraryPrivateState Empty = new(CurrentVersion, []);
 
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
     public PlayingCardKind HiddenPlayingCards { get; init; }
+    public int NextActivityCount { get; init; } = DefaultNextActivityCount;
     public IReadOnlyList<TrackedAchievement> TrackedAchievements { get; init; } = [];
     internal TrackedAchievement? TrackedFor(string game, PlayniteAchievements? data) =>
         TrackedAchievements.FirstOrDefault(track => track.Matches(game, data));
@@ -133,6 +136,8 @@ internal static class PlayniteLibraryOrganizationPolicy
         {
             Items = state.Items.ToArray(),
             HiddenPlayingCards = state.HiddenPlayingCards & PlayingCardKind.All,
+            NextActivityCount = state.NextActivityCount is >= 0 and <= PlayniteLibraryPrivateState.MaximumNextActivityCount
+                ? state.NextActivityCount : PlayniteLibraryPrivateState.DefaultNextActivityCount,
             TrackedAchievements = (state.TrackedAchievements ?? []).Where(track =>
                 track is { Connection.Length: > 0, Id.Length: > 0 and <= 256 } && ValidSavedId(track.Game) && Enum.IsDefined(track.Provider))
                 .DistinctBy(track => (track.Game, track.Connection)).ToArray(),

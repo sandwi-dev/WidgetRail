@@ -14,7 +14,8 @@ internal sealed record IndexedQueryIdentity(CollectionAuthority Authority, long 
 internal readonly record struct IndexedRangeRequest(IndexedQueryIdentity Query, long RequestId, int StartIndex, int Count,
     long ContentRevision = 0);
 internal sealed record IndexedRangeResult<T>(IndexedQueryIdentity Query, long RequestId, int StartIndex,
-    IReadOnlyList<KeyedCollectionItem<T>> Items, long ContentRevision = 0, IAsyncDisposable? Lifetime = null) where T : notnull;
+    IReadOnlyList<KeyedCollectionItem<T>> Items, long ContentRevision = 0, IAsyncDisposable? Lifetime = null,
+    Func<bool>? IsCurrent = null) where T : notnull;
 
 /// <summary>
 /// One query and one native items control's demand. Complete counts are fixed;
@@ -118,7 +119,8 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
     internal bool IsDemanded(int index) => index >= 0 && index < Count && demandedPages.Contains(index / pageSize);
     internal bool DemandIsSettled => !ownedFetches.Any(fetch => fetch.Request.Query == Query && fetch.Request.ContentRevision == ContentRevision) &&
         demandedPages.All(page => failedPages.Contains(page) || pages.TryGetValue(page, out var loaded) &&
-            loaded.Query == Query && loaded.ContentRevision == ContentRevision && loaded.Items.Count >= Math.Min(pageSize, Count - page * pageSize));
+            loaded.Query == Query && loaded.ContentRevision == ContentRevision && loaded.Items.Count >= Math.Min(pageSize, Count - page * pageSize) &&
+            loaded.IsCurrent?.Invoke() != false);
     public event EventHandler? StateChanged;
 
     public IndexedItemsSource(IndexedQueryIdentity query, int count, DispatcherQueue dispatcher,
@@ -343,7 +345,8 @@ internal sealed partial class IndexedItemsSource<T> : IList, INotifyCollectionCh
             var start = page * pageSize;
             var length = Math.Min(pageSize, Count - start);
             if (fetching.ContainsKey(page) || failedPages.Contains(page) ||
-                pages.TryGetValue(page, out var loaded) && loaded.ContentRevision == ContentRevision && loaded.Items.Count >= length) continue;
+                pages.TryGetValue(page, out var loaded) && loaded.ContentRevision == ContentRevision && loaded.Items.Count >= length &&
+                    loaded.IsCurrent?.Invoke() != false) continue;
             var fetch = new Fetch(new(Query, ++requestId, start, length, ContentRevision));
             fetching.Add(page, fetch);
             ownedFetches.Add(fetch);

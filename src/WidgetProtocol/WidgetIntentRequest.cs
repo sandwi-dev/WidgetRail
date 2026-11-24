@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 namespace WidgetRail.WidgetProtocol;
 
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentPresentation>))]
-public enum WidgetIntentPresentation { PreferExistingSurface, OpenWidget }
+public enum WidgetIntentPresentation { PreferExistingSurface, OpenWidget, StayInSource }
 
 [JsonConverter(typeof(JsonStringEnumConverter<WidgetIntentRouting>))]
 public enum WidgetIntentRouting { WidgetPreferred, Windows }
@@ -54,6 +54,7 @@ public sealed record WidgetIntentRequest(string ContractId, int Version, string 
 
     public bool IsWellFormed()
     {
+        if (Presentation == WidgetIntentPresentation.StayInSource && (Routing != WidgetIntentRouting.WidgetPreferred || Fallback is not null)) return false;
         if (PreparationKey is { } key && (key.Length is < 1 or > 128 || key.Any(char.IsControl) || Fallback is not null)) return false;
         if (Fallback is { } fallback && (!ReportsResult || fallback.Fallback is not null || fallback.PreparationKey is not null || !fallback.IsWellFormed())) return false;
         if (!Enum.IsDefined(Presentation) || !Enum.IsDefined(Routing) || !WidgetIntentContracts.IsValidId(ContractId) || Version is < 1 or > 65535 ||

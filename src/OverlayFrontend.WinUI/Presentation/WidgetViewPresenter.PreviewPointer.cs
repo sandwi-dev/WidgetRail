@@ -96,7 +96,12 @@ internal sealed partial class WidgetViewPresenter
         previewPointerIntent = true;
         var point = args.GetCurrentPoint(this).Position;
         previewPointerPosition = (point.X, point.Y);
-        if (IsFocusPreviewOpen && RetainPreviewPointer())
+        if (!IsFocusPreviewOpen)
+        {
+            SetPreviewPointerTarget(null, point);
+            return;
+        }
+        if (RetainPreviewPointer())
         { CancelPreviewPointerExit(); previewHoverRetained = true; return; }
         SchedulePreviewPointerExit();
     }

@@ -5,6 +5,7 @@
     <AssemblyName>DiscordWebViewWidget</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Shared/DiscordActivityIntegration.cs" Link="Integrations/DiscordActivityIntegration.cs" />
     <ProjectReference Include="../../src/WidgetApplicationRuntime/WidgetApplicationRuntime.csproj" />
   </ItemGroup>
 </Project>

@@ -4,6 +4,9 @@ Reviewed November 22, 2026, against the working tree based on `c26a6ea8`. The ta
 
 ## Repair verification
 
+- Foreground acquisition was tested through the production native export with a separate fixture owning foreground. Windows denied direct activation in both cases. The existing attachment path confirmed focus in 43.6 ms with the peer responsive and 3,213.5 ms when the peer stopped pumping messages for 3.2 seconds. Both attempts detached successfully. The fallback remains in service.
+- Pin placement reads destination scale through `GetScaleFactorForMonitor` and uses `GetDpiForWindow` on the pin's actual monitor. Both connected displays reported 125% and 120 DPI for a hidden per-monitor-aware window. Mixed-scale monitor movement remains covered by placement policy tests and needs native verification on mixed-DPI hardware.
+
 - Exclusive control now stops the X360 reader, cancels and drains its pending request, and joins it before releasing the target and client. The callback timeout that could terminate the overlay was removed. The native policy suite passed, including 64 local overlapped-I/O cancellation cycles. Physical disconnect under rumble still requires a hardware test. Device discovery now releases the enumeration list once, checks allocations and closes a rejected bus handle.
 - The main overlay, desktop dimmer and pinned windows now share a backdrop that pairs window DC acquisition with release and deletes each DWM region. After six warm-up windows, the WinUI fixture measured 50 GDI objects before and 52 after 24 pin create/close cycles with six DWM reconfigurations per cycle.
 

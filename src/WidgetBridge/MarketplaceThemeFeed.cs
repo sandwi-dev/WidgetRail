@@ -19,6 +19,7 @@ internal sealed class MarketplaceThemeFeed : IAsyncDisposable
     private Task? refresh;
     private Task? initialize;
     private Inventory inventory = null!;
+    private readonly Dictionary<(string Id, string Version, string Digest), IReadOnlyList<CatalogueDetail>> bundledDetails = new();
     private string? etag;
     private DateTimeOffset checkedAt;
     private DateTimeOffset nextCheck;
@@ -62,7 +63,8 @@ internal sealed class MarketplaceThemeFeed : IAsyncDisposable
         var terms = query.Search.Split(' ', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
         var matches = terms.Length == 0 ? current.Ordered : current.Ordered.Where(theme => terms.All(term =>
             theme.Name.Contains(term, StringComparison.OrdinalIgnoreCase) || theme.Creator.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-            theme.Tags.Any(tag => tag.Contains(term, StringComparison.OrdinalIgnoreCase)))).ToArray();
+            theme.Tags.Any(tag => tag.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+            theme.Details?.Any(detail => detail.Matches(term)) == true)).ToArray();
         var page = Math.Min(query.Page, Math.Max(0, (matches.Length - 1) / 8));
         bool curated = terms.Length == 0 && page == 0;
         return new(page, matches.Length, matches.Skip(page * 8).Take(8).ToArray(), curated ? current.Featured : null,
@@ -105,6 +107,11 @@ internal sealed class MarketplaceThemeFeed : IAsyncDisposable
 
     private async Task LoadAsync(CancellationToken token)
     {
+        using var seed = typeof(MarketplaceThemeFeed).Assembly.GetManifestResourceStream("WidgetRail.ThemeCatalogue.index.json")!;
+        using var document = await JsonDocument.ParseAsync(seed, cancellationToken: token).ConfigureAwait(false);
+        inventory = Validate(document.RootElement);
+        foreach (var theme in inventory.Ordered)
+            if (theme.Details is { } details) bundledDetails.Add((theme.Id, theme.Version, theme.Sha256), details);
         try
         {
             using var stream = File.OpenRead(cacheFile);
@@ -117,9 +124,7 @@ internal sealed class MarketplaceThemeFeed : IAsyncDisposable
         }
         catch (Exception error) when (Recoverable(error))
         {
-            using var stream = typeof(MarketplaceThemeFeed).Assembly.GetManifestResourceStream("WidgetRail.ThemeCatalogue.index.json")!;
-            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: token).ConfigureAwait(false);
-            inventory = Validate(document.RootElement);
+            // The bundled inventory remains available until a valid feed arrives.
         }
     }
 
@@ -163,7 +168,7 @@ internal sealed class MarketplaceThemeFeed : IAsyncDisposable
         }
     }
 
-    private static Inventory Validate(JsonElement element)
+    private Inventory Validate(JsonElement element)
     {
         var index = element.Deserialize<Index>(Json);
         if (index is not { SchemaVersion: 1, Themes.Length: <= 1000, Collections.Length: <= 32 })
@@ -173,7 +178,8 @@ internal sealed class MarketplaceThemeFeed : IAsyncDisposable
         {
             if (!MarketplaceValidation.ValidTheme(theme) || !ThemeIdentity.IsValid(theme.Id) || ThemeIdentity.IsBuiltIn(theme.Id) ||
                 !ThemeIdentity.IsValidPublisher(theme.Publisher) || !(theme.Id == theme.Publisher || theme.Id.StartsWith(theme.Publisher + ".", StringComparison.Ordinal)) ||
-                !byId.TryAdd(theme.Id, theme)) throw new InvalidDataException("Invalid theme listing.");
+                !byId.TryAdd(theme.Id, theme.Details is null && bundledDetails.TryGetValue((theme.Id, theme.Version, theme.Sha256), out var details)
+                    ? theme with { Details = details } : theme)) throw new InvalidDataException("Invalid theme listing.");
         }
         CatalogueTheme? featured = null;
         if (index.Featured is not null && !byId.TryGetValue(index.Featured, out featured))
@@ -187,7 +193,7 @@ internal sealed class MarketplaceThemeFeed : IAsyncDisposable
             if (collection.Themes.Length > 0 && shelves.Count < 2)
                 shelves.Add(new(collection.Name, collection.Themes.Take(4).Select(id => byId[id]).ToArray()));
         }
-        return new(index.Themes.OrderByDescending(theme => theme.Released).ThenBy(theme => theme.Name, StringComparer.OrdinalIgnoreCase)
+        return new(byId.Values.OrderByDescending(theme => theme.Released).ThenBy(theme => theme.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(theme => theme.Id, StringComparer.Ordinal).ToArray(), featured, shelves.ToArray());
     }
 

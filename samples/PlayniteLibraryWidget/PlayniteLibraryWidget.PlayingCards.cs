@@ -4,17 +4,24 @@ using WidgetRail.WidgetSdk;
 namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal sealed record PlayingBadge(string Key, string RowKey, string Group, PlayniteAchievement Award, WidgetArtworkHandle? LocalArtwork, bool Latest);
-internal sealed record PlayingAwards(int Total, int Unlocked, IReadOnlyList<PlayingBadge> Badges)
+internal sealed record PlayingAwards(int Total, int Unlocked, IReadOnlyList<PlayingBadge> Badges, int NextActivityStart)
 {
     internal const string ArtworkPrefix = "playnite.playing-award.";
     private static readonly WidgetIdScope Ids = WidgetIds.Scope("playnite.playing-award");
     private static readonly WidgetIdScope Keys = WidgetIds.Scope("a");
     internal PlayingBadge? Tracked => Badges.FirstOrDefault(b => b.Group == "Tracked");
 
+    internal PlayingAwards LimitNextActivity(int count)
+    {
+        // Tracked and recent cards precede the ranked suggestions.
+        var visibleCount = NextActivityStart + count;
+        return visibleCount >= Badges.Count ? this : this with { Badges = Badges.Take(visibleCount).ToArray() };
+    }
+
     internal static PlayingAwards From(string game, PlayniteAchievements data, TrackedAchievement? tracked = null)
     {
-        if (!data.Available || data.Total == 0) return new(0, 0, []);
-        var badges = new List<PlayingBadge>(7);
+        if (!data.Available || data.Total == 0) return new(0, 0, [], 0);
+        var badges = new List<PlayingBadge>(PlayniteLibraryPrivateState.MaximumNextActivityCount + 2);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var latest = data.Items.Where(a => a.Unlocked).MaxBy(a => a.UnlockedAt ?? DateTimeOffset.MinValue);
         if (tracked?.Matches(game, data) == true &&
@@ -22,10 +29,15 @@ internal sealed record PlayingAwards(int Total, int Unlocked, IReadOnlyList<Play
             (match.Unlocked || PlayniteAchievementPresentation.CanTrack(match)))
             Add(match, "Tracked");
         if (latest is not null) Add(latest, "Recent unlock");
+        var nextActivityStart = badges.Count;
+        var limit = nextActivityStart + PlayniteLibraryPrivateState.MaximumNextActivityCount;
         foreach (var award in data.Items.Where(a => !a.Unlocked && !a.Hidden && a.Percent is >= 0 and <= 100)
-            .OrderByDescending(a => a.Percent).ThenBy(a => a.Name, StringComparer.Ordinal).Take(5))
+            .OrderByDescending(a => a.Percent).ThenBy(a => a.Name, StringComparer.Ordinal))
+        {
             Add(award, "Next activity");
-        return new(data.Total, data.Unlocked, badges);
+            if (badges.Count == limit) break;
+        }
+        return new(data.Total, data.Unlocked, badges, nextActivityStart);
 
         void Add(PlayniteAchievement award, string group)
         {

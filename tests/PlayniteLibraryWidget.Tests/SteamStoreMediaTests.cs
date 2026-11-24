@@ -148,6 +148,7 @@ public sealed partial class PlayniteLibraryTests
             var snapshot = Snapshot(widget, 160002);
             Assert.AreEqual(0, ViewSnapshotValidator.Validate(snapshot).Count);
             var stage = Nodes(snapshot.Root).Single(node => node.Id == DetailAction + "store.gallery");
+            Assert.AreEqual(DetailAction + "play", stage.Focus?.Down);
             var gallery = stage.MediaPlayer!.Gallery!;
             CollectionAssert.AreEqual(new[] { "movie-2", "image-2" }, gallery.Select(item => item.Id).ToArray());
             Assert.IsTrue(gallery[0].Source.IsAdaptiveDash);

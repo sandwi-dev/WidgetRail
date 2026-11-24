@@ -6,22 +6,25 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 internal static class PlayniteAchievementPresentation
 {
     private const string Prefix = PlayniteAchievementBrowse.Prefix;
-    internal static WidgetElement Page(PlayniteDetailsExtras state, PlayniteAchievementBrowse? query, WidgetElement? list, WidgetElement? install = null)
+    internal static WidgetElement Page(PlayniteDetailsExtras state, PlayniteAchievementBrowse? query, WidgetElement? list, WidgetElement? install = null,
+        bool canSyncGame = true)
     {
         if (state.Achievements is not { Available: true } data)
         {
+            if (!state.AchievementsLoading && state.AchievementsError is { } error)
+                return PlayniteLibraryDetailsPresentation.ReadError(Prefix + "achievements.error", error, PlayniteLibraryDetailsPresentation.RetryAchievementsAction);
             if (install is not null)
                 return UI.Stack(Prefix + "achievements.setup", UI.Text("Playnite Achievements tracks this game’s unlocks.",
                     Prefix + "achievements.unavailable").Classes("playnite-library-details-copy"), install);
-            return UI.Text(state.AchievementsLoading ? "Loading achievements…" : state.AchievementsError ??
-                "No achievement data is available. Sync this game in PlayniteAchievements or SuccessStory, then refresh here.", Prefix + "achievements.unavailable")
+            return UI.Text(state.AchievementsLoading ? "Loading achievements…" :
+                "No achievement data yet. Set up achievement sources and sync this game in Playnite.", Prefix + "achievements.unavailable")
                 .Classes("playnite-library-details-copy");
         }
         var summary = UI.Row(Prefix + "achievements.summary-row",
             UI.Text($"{data.Unlocked} / {data.Total} unlocked · {(data.Total == 0 ? 0 : 100.0 * data.Unlocked / data.Total):0}%", Prefix + "achievements.summary")
                 .Classes("playnite-library-achievement-summary"),
             UI.Progress(data.Unlocked, Math.Max(1, data.Total), Prefix + "achievements.progress").Classes("playnite-library-achievement-total-progress"),
-            UI.Text(state.AchievementsLoading ? "Refreshing…" : state.AchievementsError is not null ? "Refresh failed · Try again" : data.ProviderName, Prefix + "achievements.provider").Classes("playnite-library-details-meta"))
+            UI.Text(state.AchievementsLoading ? "Loading…" : data.ProviderName, Prefix + "achievements.provider").Classes("playnite-library-details-meta"))
             .Classes("playnite-library-achievement-summary-row");
         var filters = Enum.GetValues<AchievementFilter>().Select(filter => new SelectOption(filter.ToString(), filter.ToString(),
             Prefix + "achievement.filter." + filter, IsSelected: state.AchievementFilter == filter)).ToArray();
@@ -46,13 +49,15 @@ internal static class PlayniteAchievementPresentation
                 "No " + state.AchievementFilter.ToString().ToLowerInvariant() + " achievements match. Select All to search every achievement.", Prefix + "achievements.no-matches") :
             list ?? UI.Text("Loading achievements…", Prefix + "achievements.loading");
         var providerTools = new List<WidgetElement>();
+        if (data.CanRefresh)
+            providerTools.Add(UI.Button(state.AchievementRefreshBusy ? "Syncing…" : "Sync this game",
+                PlayniteLibraryDetailsPresentation.SyncGameAction, Prefix + "achievement.sync")
+                .Disabled(!canSyncGame || state.AchievementRefreshBusy).Classes("playnite-library-control"));
         if (state.ProgressPinSelectionId is { } selection)
         {
             providerTools.Add(UI.Button("Adjust progress pin", Prefix + "achievement.manage." + selection, Prefix + "achievement.manage"));
             providerTools.Add(UI.Button("Unpin progress", Prefix + "achievement.unpin." + selection, Prefix + "achievement.unpin"));
         }
-        var freshness = UI.Text(state.AchievementRefreshMessage ?? "Cached achievements · Right-click or press X to track unfinished achievements.",
-            Prefix + "achievements.freshness").Classes("playnite-library-details-meta");
         var rows = new List<GridTrackDefinition> { GridTrack.Auto() };
         var content = new List<WidgetElement> { summary };
         if (providerTools.Count > 0)
@@ -60,11 +65,24 @@ internal static class PlayniteAchievementPresentation
             content.Add(UI.ResponsiveGrid(Prefix + "achievements.provider-tools", 170, 4, providerTools.ToArray()).InGrid(row: rows.Count));
             rows.Add(GridTrack.Auto());
         }
-        content.Add(freshness.InGrid(row: rows.Count)); rows.Add(GridTrack.Auto());
+        if (!state.AchievementsLoading && state.AchievementsError is { } readError)
+        {
+            content.Add(PlayniteLibraryDetailsPresentation.ReadError(Prefix + "achievements.error", readError,
+                PlayniteLibraryDetailsPresentation.RetryAchievementsAction).InGrid(row: rows.Count));
+            rows.Add(GridTrack.Auto());
+        }
+        if (state.AchievementRefreshMessage is { } message)
+        {
+            content.Add(UI.Text(message, Prefix + "achievements.freshness").Classes("playnite-library-details-meta").InGrid(row: rows.Count));
+            rows.Add(GridTrack.Auto());
+        }
         content.Add(toolbar.InGrid(row: rows.Count)); rows.Add(GridTrack.Auto());
         content.Add(results.InGrid(row: rows.Count)); rows.Add(GridTrack.Star());
-        return UI.Grid(Prefix + "achievements.page", rows.ToArray(), [GridTrack.Star()], content.ToArray()).Spacing(8, 0).Classes("playnite-library-achievement-page")
+        var page = UI.Grid(Prefix + "achievements.page", rows.ToArray(), [GridTrack.Star()], content.ToArray()).Spacing(8, 0).Classes("playnite-library-achievement-page")
             .Shortcut(ControllerButton.LeftStick, PlayniteAchievementBrowse.SearchFocusAction, "Search achievements");
+        return data.CanRefresh && canSyncGame && !state.AchievementRefreshBusy
+            ? page.Shortcut(ControllerButton.Y, PlayniteLibraryDetailsPresentation.SyncGameAction, "Sync this game")
+            : page;
     }
 
     internal static bool CanTrack(PlayniteAchievement item) =>
