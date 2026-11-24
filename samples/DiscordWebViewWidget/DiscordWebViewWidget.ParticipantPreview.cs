@@ -41,7 +41,7 @@ public sealed partial class DiscordWebViewWidget
         }
         else children.Add(UI.Text("Voice audio controls are unavailable in this Discord version.",root+".unavailable").Classes("discord-secondary"));
         if(context.NoticeUser==person.Id&&context.Notice.Length>0)
-            children.Add(UI.Text(context.Notice,root+".notice").Classes("discord-notice"));
+            children.Add(UI.Text(context.Notice,root+".notice").Classes("discord-notice","discord-notice-compact"));
         return UI.Stack(root,children.ToArray()).Classes("discord-participant-preview");
     }
     private async ValueTask HandleParticipantPreviewAsync(ParticipantContext context,DiscordParticipant person,WidgetActionEvent action,CancellationToken token)

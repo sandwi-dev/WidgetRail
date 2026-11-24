@@ -1,6 +1,6 @@
 // WidgetRail hosted Discord adapter, v1. No Discord credentials cross this boundary.
 // Internal Discord APIs are feature-probed and may disappear after Discord updates.
-function initializeWidgetRailDiscordAdapter(build,videoHost=null) {
+function initializeWidgetRailDiscordAdapter(build,videoHost=null,experimentalCaptureFactory=null) {
 if(!Number.isSafeInteger(build)||build<1)throw new Error('invalid_adapter_build');
 if(globalThis.WidgetRailDiscordPrototype?.build>build)throw new Error('adapter_newer');
 if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
@@ -39,6 +39,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
         const retiringWatches = new Map(); // At most one unsettled close per slot; slot reuse waits below.
         const byLease = lease => Array.from(relays.values()).find(entry => entry.lease === lease);
         let shareEpoch = 0;
+        const experimentalCapture=experimentalCaptureFactory?.({store,me,channelId,currentShare,streamKey,currentEpoch:()=>shareEpoch,peekDesktopSource,videoRateLimits});
         let sharePending = false;
         let shareError = null;
         let shareQualityWarning = null;
@@ -352,7 +353,8 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
         }
 
         const captureResolutions=[480,720,1080],captureFrameRates=[15,30,60];
-        const isCaptureQuality=quality=>quality&&captureResolutions.includes(quality.resolution)&&captureFrameRates.includes(quality.frameRate);
+        const isCaptureQuality=quality=>quality&&captureResolutions.includes(quality.resolution)&&captureFrameRates.includes(quality.frameRate)&&
+            (quality.resolution!==1080||quality.frameRate!==60);
         function shareQualityPolicy(expectedAccount=me()?.id,expectedChannel=channelId()) {
             const baseline=[{resolution:480,frameRate:15},{resolution:480,frameRate:30},
                 {resolution:720,frameRate:15},{resolution:720,frameRate:30}];
@@ -367,7 +369,10 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 const update=code('"STREAM_UPDATE_SETTINGS"'),settings=store('ApplicationStreamingSettingsStore');
                 if(user?.id!==expectedAccount||selected!==expectedChannel)return fallback();
                 if(Number.isSafeInteger(presets?.PRESET_CUSTOM)&&typeof settings?.getState==='function') {
-                    const saved=settings.getState(),candidate={resolution:saved?.resolution===1440?1080:saved?.resolution,frameRate:saved?.fps};
+                    const saved=settings.getState();
+                    const resolution=saved?.resolution===1440?1080:saved?.resolution;
+                    const frameRate=resolution===1080&&saved?.fps===60?30:saved?.fps;
+                    const candidate={resolution,frameRate};
                     if(saved?.preset===presets.PRESET_CUSTOM&&isCaptureQuality(candidate))preferred=candidate;
                 }
                 if(!user?.id||!selected||channel?.id!==selected||typeof canStream!=='function'||typeof update!=='function'||
@@ -378,6 +383,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 // baseline. It owns account/server entitlement; no tier arithmetic
                 // or premium bypass is duplicated here. SOURCE/4K is not offered.
                 for(const resolution of captureResolutions)for(const frameRate of captureFrameRates) {
+                    if(!isCaptureQuality({resolution,frameRate}))continue;
                     const allowed=canStream(presets.PRESET_CUSTOM,resolution,frameRate,user,tier,channel);
                     if(typeof allowed!=='boolean')return fallback();
                     if(allowed)qualities.push({resolution,frameRate});
@@ -450,7 +456,8 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             try{
                 const native=globalThis.WidgetRailNativeMedia?.status?.();
                 if(native?.active===true){
-                    if(native.contentPreference==='detail'&&track.contentHint==='detail')contentHint='detail';
+                    if(['detail','motion'].includes(native.contentPreference)&&track.contentHint===native.contentPreference)
+                        contentHint=native.contentPreference;
                     else contentPreferenceUnavailable=true;
                 }
             }catch{contentPreferenceUnavailable=true;}
@@ -573,6 +580,34 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
             return binding;
         }
 
+        function videoRateLimits(description,mid,payload) {
+            const sdp=description?.sdp;
+            if(typeof sdp!=='string'||sdp.length>131072||!Number.isInteger(payload)||payload<0||payload>127)return {};
+            const video=sdp.split(/\r?\nm=/).filter(section=>{
+                const lines=section.split(/\r?\n/);
+                const header=lines[0].split(' ');
+                return header[0]==='video'&&header.slice(3).includes(String(payload))&&
+                    (mid==null||lines.includes('a=mid:'+mid));
+            });
+            if(video.length!==1)return {};
+            const prefix='a=fmtp:'+payload+' ';
+            const videoLines=video[0].split(/\r?\n/);
+            const codecLines=videoLines.filter(line=>line.startsWith(prefix));
+            const fmtp=codecLines.length===1?codecLines[0]:null;
+            const match=fmtp?.slice(prefix.length).match(/(?:^|;)\s*x-google-max-bitrate\s*=\s*(\d{1,6})\s*(?:;|$)/i);
+            const bitsPerSecond=Number(match?.[1])*1000;
+            const profile=fmtp?.slice(prefix.length).match(/(?:^|;)\s*profile-level-id\s*=\s*42e0([0-9a-f]{2})(?=;|$)/i);
+            const h264Level=profile?parseInt(profile[1],16):null;
+            const mediaLines=video[0].match(/^b=TIAS:(\d+)\r?$/gm);
+            const media=mediaLines?.length===1?Number(mediaLines[0].slice(7)):null;
+            const otherBandwidth=/^b=/m.test(sdp.split(/\r?\nm=/,1)[0])||
+                videoLines.some(line=>line.startsWith('b=')&&!/^b=TIAS:\d+$/.test(line))||
+                (mediaLines?.length??0)>1||(media!==null&&!(media>0&&media<=100_000_000))||
+                /(?:^|;)\s*max-br\s*=/i.test(fmtp?.slice(prefix.length)??'');
+            return {hint:bitsPerSecond>0&&bitsPerSecond<=100_000_000?bitsPerSecond:null,
+                media:media>0&&media<=100_000_000?media:null,h264Level,otherBandwidth};
+        }
+
         async function streamDiagnostics(args) {
             try {
                 sameCall(args);
@@ -612,6 +647,9 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                     fail('stream_diagnostics_unavailable');
                 const dimension=value=>Number.isInteger(value)&&value>=2&&value<=8192?value:null;
                 const rate=value=>Number.isFinite(value)&&value>=0&&value<=240?value:null;
+                const bitrate=value=>Number.isFinite(value)&&value>0&&value<=100_000_000?value:null;
+                const count=value=>Number.isSafeInteger(value)&&value>=0?value:null;
+                const pc=connection.pc;
                 const outbound=[];let inspected=0;
                 for(const report of raw.values()) {
                     if(++inspected>256)fail('stream_diagnostics_unavailable');
@@ -620,26 +658,60 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                     const codecReport=typeof raw.get==='function'?raw.get(report.codecId):null;
                     const codec=({'video/vp8':'VP8','video/vp9':'VP9','video/h264':'H264','video/av1':'AV1','video/h265':'H265'})[
                         typeof codecReport?.mimeType==='string'?codecReport.mimeType.toLowerCase():''];
+                    const transport=raw.get?.(report.transportId);
+                    const pair=raw.get?.(transport?.selectedCandidatePairId);
+                    const target=bitrate(report.targetBitrate),available=bitrate(pair?.availableOutgoingBitrate);
+                    const mid=report.mid??connection.videoTransceiver?.mid;
+                    const local=videoRateLimits(pc?.localDescription,mid,codecReport?.payloadType);
+                    const remote=videoRateLimits(pc?.remoteDescription,mid,codecReport?.payloadType);
+                    const sourceReport=raw.get?.(report.mediaSourceId);
+                    const sourceFps=rate(sourceReport?.framesPerSecond);
+                    const cadence={};
+                    for(const [name,value] of Object.entries({sourceFrames:sourceReport?.frames,framesEncoded:report.framesEncoded,
+                        framesSent:report.framesSent,keyFramesEncoded:report.keyFramesEncoded,pliCount:report.pliCount,firCount:report.firCount,
+                        nackCount:report.nackCount,bytesSent:report.bytesSent,packetsSent:report.packetsSent,
+                        retransmittedBytesSent:report.retransmittedBytesSent})){
+                        const observed=count(value);
+                        if(observed!==null)cadence[name]=observed;
+                    }
+                    if(Number.isFinite(report.totalEncodeTime)&&report.totalEncodeTime>=0)cadence.totalEncodeTime=report.totalEncodeTime;
+                    if(Number.isFinite(report.totalPacketSendDelay)&&report.totalPacketSendDelay>=0)
+                        cadence.totalPacketSendDelay=report.totalPacketSendDelay;
+                    if(typeof report.powerEfficientEncoder==='boolean')cadence.powerEfficientEncoder=report.powerEfficientEncoder;
                     outbound.push({width:dimension(report.frameWidth),height:dimension(report.frameHeight),framesPerSecond:rate(report.framesPerSecond),
                         qualityLimitationReason:['none','cpu','bandwidth','other'].includes(report.qualityLimitationReason)?report.qualityLimitationReason:null,
+                        ...(target!==null?{targetBitrate:target}:{}),...(available!==null?{availableOutgoingBitrate:available}:{}),
+                        ...(local.hint?{localCodecMax:local.hint}:{}),...(remote.hint?{remoteCodecMax:remote.hint}:{}),
+                        ...(remote.media?{remoteMediaMax:remote.media}:{}),
+                        ...(sourceFps!==null?{sourceFps}:{}),
+                        ...(Object.keys(cadence).length?{cadence}:{}),
                         ...(codec?{codec}:{})});
                 }
                 const parameters=readParameters.call(connection);
                 if(!Array.isArray(parameters)||parameters.length>4||parameters.some(item=>!item||typeof item!=='object'))
                     fail('stream_diagnostics_unavailable');
                 const advertised=parameters.map(item=>({width:dimension(item.maxResolution?.width),height:dimension(item.maxResolution?.height),frameRate:rate(item.maxFrameRate)}));
+                let viewerPixels=null;
+                const primary=parameters.filter(item=>item.quality===100&&Number.isInteger(item.ssrc)&&item.ssrc>0);
+                if(primary.length===1&&typeof connection.getRemoteVideoSinkPixelCount==='function'){
+                    try{
+                        const pixels=connection.getRemoteVideoSinkPixelCount(primary[0].ssrc);
+                        if(Number.isSafeInteger(pixels)&&pixels>0&&pixels<=268435456)viewerPixels=pixels;
+                    }catch{ /* Optional receiver demand is unavailable. */ }
+                }
                 const observedNative=typeof globalThis.WidgetRailNativeMedia?.status==='function'?globalThis.WidgetRailNativeMedia.status():null;
                 const native=observedNative?.active===true?observedNative:null;
                 const source={width:dimension(native?.width),height:dimension(native?.height),browserWidth:dimension(native?.browserWidth),
                     browserHeight:dimension(native?.browserHeight),targetFrameRate:rate(native?.targetFrameRate)};
+                const desktopTrack=connection.input?.desktop?.stream?.getVideoTracks?.()[0];
                 let senderInfo;
                 const sender=connection.videoTransceiver?.sender;
-                if(sender?.track?.kind==='video'&&typeof sender.getParameters==='function'){
+                if(typeof sender?.getParameters==='function'){
                     const parameters=sender.getParameters();
                     if(parameters&&Array.isArray(parameters.encodings)&&parameters.encodings.length<=4){
                         const positive=(value,max)=>Number.isFinite(value)&&value>0&&value<=max?value:null;
                         senderInfo={degradationPreference:['maintain-framerate','maintain-resolution','balanced'].includes(parameters.degradationPreference)?parameters.degradationPreference:null,
-                            ...(['detail','motion','text'].includes(sender.track.contentHint)?{contentHint:sender.track.contentHint}:{}),
+                            ...(['detail','motion','text'].includes((sender.track??desktopTrack)?.contentHint)?{contentHint:(sender.track??desktopTrack).contentHint}:{}),
                             encodings:parameters.encodings.map(e=>({active:typeof e?.active==='boolean'?e.active:null,
                                 maxBitrate:positive(e?.maxBitrate,100000000),maxFramerate:positive(e?.maxFramerate,240),
                                 scaleResolutionDownBy:positive(e?.scaleResolutionDownBy,64)}))};
@@ -648,8 +720,6 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 }
                 if(!exact())fail('stream_diagnostics_stale');
                 const track=connection.input?.stream?.getVideoTracks?.()[0];
-                const desktopTrack=connection.input?.desktop?.stream?.getVideoTracks?.()[0];
-                const pc=connection.pc;
                 const trackState=value=>['live','ended'].includes(value?.readyState)?value.readyState:null;
                 const attachment={nativeFrames:Number.isSafeInteger(native?.frames)&&native.frames>=0?native.frames:null,
                     videoSupported:typeof connection.videoSupported==='boolean'?connection.videoSupported:null,
@@ -659,7 +729,14 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                     qualityBinding:shareQualityBinding?.observe?.()??null,
                     qualityCheck:qualityWarningForSnapshot()?shareQualityWarning?.check??null:null};
                 if(!exact())fail('stream_diagnostics_stale');
-                return {source,outbound,advertised,...(senderInfo?{sender:senderInfo}:{}),attachment};
+                const candidate=experimentalCapture?.sample(connection);
+                const measured=candidate?.externalEncoder;
+                const externalEncoder=measured?{allocated:measured.allocated,configured:measured.configured,
+                    encodedBitrate:measured.encodedBitrate,ceiling:measured.ceiling,encoderPath:measured.encoderPath,
+                    nativeFallback:measured.nativeFallback}:null;
+                return {source,outbound,advertised,...(viewerPixels?{viewerPixels}:{}),...(senderInfo?{sender:senderInfo}:{}),
+                    ...(externalEncoder?{externalEncoder}:{}),...(candidate?{encoderPath:candidate.encoderPath,
+                        encoderFallback:candidate.encoderFallback,presetBitrateActive:candidate.presetBitrateActive}:{}),attachment};
             }catch(error) {
                 if(['account_changed','call_changed','stream_diagnostics_unavailable','stream_diagnostics_busy','stream_diagnostics_timeout','stream_diagnostics_stale'].includes(error?.adapterCode))throw error;
                 fail('stream_diagnostics_unavailable');
@@ -1042,6 +1119,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                         }
                     }
                     if(!current())return;
+                    experimentalCapture?.prepare(args,quality,engine,source,epoch);
                     start(guild, args.channelId, { pid: null, sourceId: source, sourceName: null });
                     if(shareQualityWarning?.epoch===epoch&&shareQualityWarning.stream===null)shareQualityWarning.stream=currentShare()??null;
                     handedOff = true;
@@ -1051,7 +1129,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 }
                 finally {
                     clearTimeout(timer);
-                    if (source != null && !handedOff) { qualityBinding?.dispose();try { engine.desktopInputPool?.get?.(source)?.destroy?.(); } catch {} }
+                    if (source != null && !handedOff) { if(epoch===shareEpoch)experimentalCapture?.dispose();qualityBinding?.dispose();try { engine.desktopInputPool?.get?.(source)?.destroy?.(); } catch {} }
                     if (epoch === shareEpoch) sharePending = false;
                 }
             })();
@@ -1205,7 +1283,7 @@ if (globalThis.WidgetRailDiscordPrototype?.build !== build) {
                 return { ok: false, code: error.adapterCode ?? 'adapter_incompatible' };
             }
         }
-        return Object.freeze({ revision, build, invoke, dispose() { messaging?.dispose(); calls?.dispose(); ++shareEpoch; sharePending = false;shareQualityBinding?.dispose();shareQualityWarning=null;shareError=null;shareErrorOwner=null; stopAllRelays(); } });
+        return Object.freeze({ revision, build, invoke, dispose() { messaging?.dispose(); calls?.dispose(); ++shareEpoch; sharePending = false;experimentalCapture?.dispose();shareQualityBinding?.dispose();shareQualityWarning=null;shareError=null;shareErrorOwner=null; stopAllRelays(); } });
     })();
 }
 

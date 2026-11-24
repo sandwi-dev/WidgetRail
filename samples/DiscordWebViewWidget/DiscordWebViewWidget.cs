@@ -196,6 +196,8 @@ public sealed partial class DiscordWebViewWidget : Widget
         }
         if(selected.Outgoing is not null&&data is {ChannelId:not null,Sharing:true}&&action.ActionId==ShareDetailsAction(data,selected,session))
         {ReadShareDetails(data,selected,session);return ValueTask.CompletedTask;}
+        if(selected.Outgoing is not null&&data is {ChannelId:not null,Sharing:true}&&action.ActionId==ShareSampleAction(data,selected,session))
+        {SampleShareCadence(data,selected,session);return ValueTask.CompletedTask;}
         if(TryStreamAudioAction(action,data,session,cancellationToken,out var audioAction))return audioAction;
         foreach(var slot in watches)
         {

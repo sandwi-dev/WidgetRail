@@ -33,8 +33,28 @@ function setup(origin='https://discord.com'){
         chrome:{webview:{postMessage:m=>messages.push(m),releaseBuffer:b=>released.push(b),addEventListener:(type,f)=>listeners[type]=f}},setInterval:f=>timers.push(f)};
     context.window=context;context.top=context;vm.createContext(context);vm.runInContext(source,context);
     context.initializeWidgetRailNativeCapture(['https://discord.com','https://capture-probe.widgetrail.test']);
-    return {context,messages,tracks,released,writes,timers,setNow:n=>now=n,frame:(epoch=1,kind=1,metadata={})=>listeners.sharedbufferreceived({getBuffer:()=>new ArrayBuffer(metadata.bytes??16),additionalData:{epoch,kind,width:2,height:2,time:1,bytes:16,...metadata}})};
+    return {context,messages,tracks,released,writes,timers,setNow:n=>now=n,frame:(epoch=1,kind=1,metadata={},buffer)=>listeners.sharedbufferreceived({getBuffer:()=>buffer??new ArrayBuffer(metadata.bytes??16),additionalData:{epoch,kind,width:2,height:2,time:1,bytes:16,...metadata}})};
 }
+test('native H264 uses independent reader generations and preserves the raw track after reader failure',async()=>{
+    const s=setup(),api=s.context.WidgetRailNativeMedia,open=async(id,opt)=>{
+        api.start(id,false,'720p30','detail',opt);
+        assert.equal(api.openH264(()=>{}),null);
+        const pending=s.context.navigator.mediaDevices.getDisplayMedia();await s.frame(id);await pending;
+    };
+    await open(1,false);assert.equal(api.openH264(()=>{}),null);
+    await open(2,true);
+    const seen=[],a=api.openH264(u=>seen.push(u));
+    a.update(2500000,true);assert.equal(s.messages.at(-1).captureEncoder,a.generation);
+    const buf=new ArrayBuffer(43),h=new DataView(buf,16);h.setUint32(0,a.generation,true);h.setUint32(4,2,true);
+    h.setUint32(8,3,true);h.setBigInt64(16,100n,true);new Uint8Array(buf).set([1,2,3],40);
+    await s.frame(2,1,{},buf);new Uint8Array(buf)[40]=9;
+    assert.deepEqual([...new Uint8Array(seen[0].data)],[1,2,3]);assert.equal(seen[0].time,100);
+    a.close();const b=api.openH264(()=>{throw Error('consumer retired');});
+    await s.frame(2,1,{},buf);assert.equal(seen.length,1);
+    h.setUint32(0,b.generation,true);await s.frame(2,1,{},buf);
+    assert.equal(api.status().active,true);assert.equal(s.messages.some(m=>m.captureError),false);
+    const before=s.messages.length;a.update(9,true);b.update(9,true);assert.equal(s.messages.length,before);
+});
 test('inactive request does not open browser chooser',async()=>{const s=setup();await assert.rejects(s.context.navigator.mediaDevices.getDisplayMedia(),{name:'NotAllowedError'});});
 test('explicit start is one-shot and audio is optional',async()=>{const s=setup();assert.equal(s.context.WidgetRailNativeMedia.start(1,false),true);const pending=s.context.navigator.mediaDevices.getDisplayMedia();await s.frame();const stream=await pending;assert.equal(stream.getTracks().length,1);await assert.rejects(s.context.navigator.mediaDevices.getDisplayMedia());});
 test('audio start produces distinct audio and video tracks',async()=>{const s=setup();s.context.WidgetRailNativeMedia.start(1,true);const pending=s.context.navigator.mediaDevices.getDisplayMedia();await s.frame();const stream=await pending;assert.deepEqual(Array.from(stream.getTracks(),t=>t.kind),['video','audio']);});

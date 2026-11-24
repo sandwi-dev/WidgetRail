@@ -26,7 +26,7 @@ export async function minifySource(source) {
     return result.code;
 }
 
-async function build(destination) {
+async function build(destination, experimentalEncodedSource) {
     const repo = fileURLToPath(new URL('../../', import.meta.url));
     const read = relative => readFile(path.join(repo, relative), 'utf8');
     const contract = JSON.parse(await read('samples/DiscordWebViewWidget/web/provider/adapter-contract.json'));
@@ -36,7 +36,9 @@ async function build(destination) {
         await read('samples/DiscordWebViewWidget/web/provider/activity-provider.js'),
         await read('samples/DiscordWebViewWidget/web/provider/messaging-provider.js'),
         await read('samples/DiscordWebViewWidget/web/provider/call-provider.js'), adapter,
-        `initializeWidgetRailDiscordAdapter(${contract.build},host);`,
+        ...(experimentalEncodedSource ? [await read('tools/DiscordWebViewPrototype/encoded-source-worker.js'),
+            await read('samples/DiscordWebViewWidget/web/provider/experimental-encoded-source.js')] : []),
+        `initializeWidgetRailDiscordAdapter(${contract.build},host${experimentalEncodedSource ? ',createExperimentalCapture' : ''});`,
         await read('tools/DiscordWebViewPrototype/discord-commands.js'),
         await read('samples/DiscordWebViewWidget/web/provider/observations.js'),
         await read('samples/DiscordWebViewWidget/web/session-backend.js')].join('\n');
@@ -47,6 +49,8 @@ async function build(destination) {
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
-    if (process.argv.length !== 3) throw new Error('Usage: node Build-Backend.mjs <output-file>');
-    await build(path.resolve(process.argv[2]));
+    const [, , destination, flag, ...extra] = process.argv;
+    if (!destination || extra.length || (flag && flag !== '--experimental-encoded-source'))
+        throw new Error('Usage: node Build-Backend.mjs <output-file> [--experimental-encoded-source]');
+    await build(path.resolve(destination), flag === '--experimental-encoded-source');
 }

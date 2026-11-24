@@ -97,8 +97,12 @@ public sealed partial class DiscordWebViewWidget
                 }
                 else
                 {
-                    primary=UI.VerticalScroll("discord.primary",CallPage(data,busy).AddClasses("discord-main-content"),
-                        ActivityPanel(data,"discord.activities.compact",true).VisibleWhen(ResponsiveVisibility.CompactOnly));
+                    var callContent=new List<WidgetElement>();
+                    if(current.Outgoing is not null&&current.Notice.Length>0)
+                        callContent.Add(UI.Text(current.Notice,"discord.notice").Classes("discord-notice","discord-stream-notice"));
+                    callContent.Add(CallPage(data,busy).AddClasses("discord-main-content"));
+                    callContent.Add(ActivityPanel(data,"discord.activities.compact",true).VisibleWhen(ResponsiveVisibility.CompactOnly));
+                    primary=UI.VerticalScroll("discord.primary",callContent.ToArray());
                 }
                 body=UI.Row("discord.unified",primary.AddClasses("discord-primary-pane"),
                     ActivityPanel(data,"discord.activities",false).VisibleWhen(ResponsiveVisibility.ExpandedOnly)).Classes("discord-body","discord-columns");
@@ -109,7 +113,7 @@ public sealed partial class DiscordWebViewWidget
             if (page == Route.Home && NeedsNotificationSetup(data) && client?.Reference is { } session)
                 children.Add(UI.Button("Enable notifications", DomainAction("notifications", session.Id, data.Account), "discord.notifications.enable")
                     .Classes("discord-control", "discord-quiet"));
-            if(current.Notice.Length>0)children.Add(UI.Text(current.Notice,"discord.notice").Classes("discord-notice"));
+            if(current.Notice.Length>0&&(page!=Route.Home||data?.ChannelId is null||current.Outgoing is null))children.Add(UI.Text(current.Notice,"discord.notice").Classes("discord-notice","discord-notice-compact"));
             // The region owns section changes, not individual conversations.
             // Source/query identity still scopes each chat's viewport and data.
             var sectionKey=(IsMessageRoute(page)?"messages":page.ToString().ToLowerInvariant())+
@@ -124,8 +128,15 @@ public sealed partial class DiscordWebViewWidget
         // A dialog route retains the Home background scope. WithModal supplies
         // the dialog scope registered with the navigator, so Back and indexed
         // return focus use the same SDK-owned visit without duplicate scopes.
-        ContainerElement root=route.Route==Route.MessageMedia?bodyRoot.InputScope("discord.conversation.scope"):
-            route.Route is Route.VoiceSettings or Route.ConnectionDetails?bodyRoot.InputScope("discord.root"):navigation.Scope(route,bodyRoot);
+        ContainerElement root = route.Route switch
+        {
+            // Keep this visit for the on-screen conversation-list button and
+            // attachment return focus. An ordinary chat leaves B to the shell.
+            Route.Conversation => bodyRoot.InputScope(route.InputScopeId),
+            Route.MessageMedia => bodyRoot.InputScope("discord.conversation.scope"),
+            Route.VoiceSettings or Route.ConnectionDetails => bodyRoot.InputScope("discord.root"),
+            _ => navigation.Scope(route,bodyRoot),
+        };
         var messageEntry=route.Route==Route.Conversation && CurrentMessageEntry(messages.Value.InitialReveal);
         if(ready && route.Route is Route.Home or Route.Messages or Route.Conversation)
         {

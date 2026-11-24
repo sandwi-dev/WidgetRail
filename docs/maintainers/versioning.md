@@ -7,9 +7,7 @@ community package.
 ## The version a user installs
 
 The **application version** identifies a complete WidgetRail release. Its source
-is `eng/WidgetRailRelease.props`; the current local candidate is `0.1.0-preview.40.local.1`.
-The latest published release remains `0.1.0-preview.40`. The local suffix sorts
-after preview.40 and before a future preview.41, so normal updates can resume.
+is `eng/WidgetRailRelease.props`. The release is `0.1.0-preview.42`.
 Both Production and Bare use this version. Their contents differ, not
 their stability channel.
 
@@ -20,7 +18,7 @@ manifests use the application release settings. Optional checks notify after the
 overlay's first initialization. Users explicitly download and install updates
 from Settings, or run a newer installer themselves; installation is never automatic.
 
-The Windows numeric file version is `0.1.0.41` for this local candidate. A source commit
+The Windows numeric file version is `0.1.0.43` for this release. A source commit
 distinguishes local candidates with the same preview label. Never replace a
 published release's bytes: advance its version before distributing a correction.
 

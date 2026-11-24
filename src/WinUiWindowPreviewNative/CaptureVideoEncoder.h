@@ -213,11 +213,15 @@ public:
         winrt::check_hresult(output->SetUINT32(MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, 0x29));
         return output;
     }
-    static ComPtr<IMFMediaType> VideoOutputType(UINT width,UINT height,const WrailCaptureOptions& options,const CaptureEncodingProfile* encoding=nullptr) {
+    static ComPtr<IMFMediaType> VideoOutputType(UINT width,UINT height,const WrailCaptureOptions& options,const CaptureEncodingProfile* encoding=nullptr,UINT liveH264Level=0) {
         ComPtr<IMFMediaType> output;winrt::check_hresult(MFCreateMediaType(&output));
         winrt::check_hresult(output->SetGUID(MF_MT_MAJOR_TYPE,MFMediaType_Video));
         winrt::check_hresult(output->SetGUID(MF_MT_SUBTYPE,encoding?encoding->OutputSubtype():MFVideoFormat_H264));
         if(encoding)winrt::check_hresult(output->SetUINT32(MF_MT_MPEG2_PROFILE,encoding->Profile()));
+        if(liveH264Level){
+            winrt::check_hresult(output->SetUINT32(MF_MT_MPEG2_PROFILE,eAVEncH264VProfile_Base));
+            winrt::check_hresult(output->SetUINT32(MF_MT_MPEG2_LEVEL,liveH264Level));
+        }
         winrt::check_hresult(output->SetUINT32(MF_MT_AVG_BITRATE,options.bitrate));
         winrt::check_hresult(output->SetUINT32(MF_MT_INTERLACE_MODE,MFVideoInterlace_Progressive));
         winrt::check_hresult(MFSetAttributeSize(output.Get(),MF_MT_FRAME_SIZE,width,height));
@@ -229,7 +233,7 @@ public:
     // A null path probes initialization into a tiny in-memory MP4, without
     // capturing a screen or creating a persistent file.
     VideoEncoder(const wchar_t* path, UINT width, UINT height, const WrailCaptureOptions& options, ID3D11Device* device=nullptr, bool includeAudio=false,
-        IMFMediaSink* encodedSink=nullptr,IMFMediaSink* encodedAudioSink=nullptr,const CaptureEncodingProfile* encoding=nullptr)
+        IMFMediaSink* encodedSink=nullptr,IMFMediaSink* encodedAudioSink=nullptr,const CaptureEncodingProfile* encoding=nullptr,UINT liveH264Level=0)
         : fps(options.framesPerSecond),encoderWidth(width),encoderHeight(height), hardware(options.encoder==2), audioEnabled(includeAudio),explicitProfile(encoding!=nullptr),profile(encoding?*encoding:CaptureEncodingProfile{}) {
         if(encoding&&(!encoding->Valid()||!hardware))throw winrt::hresult_error(E_INVALIDARG);
         phase=L"MFStartup";winrt::check_hresult(MFStartup(MF_VERSION));started=true;
@@ -259,7 +263,7 @@ public:
             phase=L"CreateSinkWriter";
             if(encodedSink)winrt::check_hresult(MFCreateSinkWriterFromMediaSink(encodedSink,attributes.Get(),&writer));
             else winrt::check_hresult(MFCreateSinkWriterFromURL(path,bytes.Get(),attributes.Get(),&writer));
-            auto output=VideoOutputType(width,height,options,encoding);
+            auto output=VideoOutputType(width,height,options,encoding,liveH264Level);
             phase=L"AddStream";
             if(encodedSink) {
                 ComPtr<IMFStreamSink> destination;winrt::check_hresult(encodedSink->GetStreamSinkByIndex(0,&destination));
@@ -280,8 +284,19 @@ public:
                 winrt::check_hresult(input->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE,MFNominalRange_16_235));
             }
             phase=L"SetInputMediaType";
-            winrt::check_hresult(writer->SetInputMediaType(stream,input.Get(),nullptr));
-            if(encodedSink)ConfigureReplayCadence();
+            ComPtr<IMFAttributes> liveSettings;
+            if(liveH264Level){
+                if(!hardware||!encodedSink||encoding||audioEnabled)throw winrt::hresult_error(E_INVALIDARG);
+                liveSettings=LiveRateParameters(options.bitrate);
+                winrt::check_hresult(liveSettings->SetUINT32(CODECAPI_AVEncCommonRateControlMode,eAVEncCommonRateControlMode_CBR));
+                winrt::check_hresult(liveSettings->SetUINT32(CODECAPI_AVEncMPVGOPSize,4*fps));
+                winrt::check_hresult(liveSettings->SetUINT32(CODECAPI_AVEncMPVDefaultBPictureCount,0));
+                winrt::check_hresult(liveSettings->SetUINT32(CODECAPI_AVLowLatencyMode,TRUE));
+            }
+            winrt::check_hresult(writer->SetInputMediaType(stream,input.Get(),liveSettings.Get()));
+            if(liveH264Level){
+                if(LiveBufferBytes()!=std::max(1u,options.bitrate/80u))throw winrt::hresult_error(MF_E_INVALIDMEDIATYPE);
+            }else if(encodedSink)ConfigureReplayCadence();
             if(explicitProfile){phase=L"ConfigureProfile";ConfigureProfile(options.bitrate);}
             if (audioEnabled) { phase=L"InitializeAudio"; InitializeAudio(encodedAudioSink); }
             phase=L"BeginWriting";
@@ -319,6 +334,29 @@ public:
         winrt::check_hresult(buffer->Unlock());winrt::check_hresult(buffer->SetCurrentLength(static_cast<DWORD>(bytes.size())));
         ComPtr<IMFSample> sample;winrt::check_hresult(MFCreateSample(&sample));winrt::check_hresult(sample->AddBuffer(buffer.Get()));
         Timestamp(sample.Get(),index);winrt::check_hresult(writer->WriteSample(stream,sample.Get()));
+    }
+    static ComPtr<IMFAttributes> LiveRateParameters(UINT bitrate) {
+        ComPtr<IMFAttributes> parameters;winrt::check_hresult(MFCreateAttributes(&parameters,6));
+        winrt::check_hresult(parameters->SetUINT32(CODECAPI_AVEncCommonMeanBitRate,bitrate));
+        // H.264 HRD is expressed in bytes. Budget 100 ms at the allocated rate.
+        winrt::check_hresult(parameters->SetUINT32(CODECAPI_AVEncCommonBufferSize,std::max(1u,bitrate/80u)));
+        return parameters;
+    }
+    void UpdateLiveH264(UINT bitrate,bool keyframe) {
+        auto parameters=LiveRateParameters(bitrate);
+        if(keyframe)winrt::check_hresult(parameters->SetUINT32(CODECAPI_AVEncVideoForceKeyFrame,1));
+        ComPtr<IMFSinkWriterEncoderConfig> config;winrt::check_hresult(writer.As(&config));
+        winrt::check_hresult(config->PlaceEncodingParameters(stream,parameters.Get()));
+    }
+    UINT LiveBufferBytes() {
+        auto transform=EncoderTransform();
+        ComPtr<ICodecAPI> codec;
+        winrt::check_hresult(transform.As(&codec));
+        VARIANT actual{};
+        winrt::check_hresult(codec->GetValue(&CODECAPI_AVEncCommonBufferSize,&actual));
+        const auto bytes=actual.vt==VT_UI4?actual.ulVal:0u;
+        VariantClear(&actual);
+        return bytes;
     }
     bool TryWriteTexture(ID3D11Texture2D* texture, UINT index) {
         if(!hardware || !texture || !surfaces)throw winrt::hresult_error(E_INVALIDARG);

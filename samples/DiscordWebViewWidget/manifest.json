@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.discord-controls",
   "publisher": "widgetrail.samples",
   "name": "Discord",
-  "version": "0.1.0.48",
+  "version": "0.1.0.79",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",

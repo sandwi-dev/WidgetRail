@@ -2,6 +2,7 @@
 #include "CapturePacer.h"
 #include "CaptureAudioQueue.h"
 #include "CaptureQpcClock.h"
+#include "LiveH264Source.h"
 #include <vector>
 #include <cstring>
 #include <memory>
@@ -9,6 +10,9 @@
 
 extern "C" int32_t __stdcall WrailLiveCaptureRunV2(uint64_t,uint32_t,uint64_t,const wchar_t*,uint32_t,
     uint32_t,uint32_t,uint32_t,capture_worker::Continue,capture_worker::Frame) noexcept;
+using VideoTap=void(__stdcall*)(uint32_t,uint32_t,uint32_t,uint32_t,int64_t,ID3D11Texture2D*);
+extern "C" int32_t __stdcall WrailLiveCaptureRunWithEncodingTap(uint64_t,uint32_t,uint64_t,const wchar_t*,uint32_t,
+    uint32_t,uint32_t,uint32_t,capture_worker::Continue,capture_worker::Frame,VideoTap) noexcept;
 namespace {
 using namespace capture_worker;
 struct Mapping {
@@ -20,6 +24,7 @@ struct Worker {
     Control* control;uint8_t* video;uint8_t* audio;HANDLE pipe;HANDLE dataReady;
     uint64_t sequence{};uint32_t dropped{};
     LiveAudioQueue queue;
+    std::unique_ptr<LiveH264Source> encoder;
     bool Send(Kind kind,uint32_t width,uint32_t height,int64_t time,uint32_t bytes,int32_t result=0) {
         Packet packet;packet.kind=kind;packet.width=width;packet.height=height;packet.microseconds=time;packet.bytes=bytes;
         packet.epoch=control->configuration.epoch;packet.sequence=++sequence;packet.result=result;packet.flags=dropped;
@@ -55,7 +60,9 @@ struct Worker {
             if(InterlockedCompareExchange(&control->videoCredit,0,1)!=1){++dropped;return;}
             // Native pixels are copied directly to WebView's mapping. There is
             // no managed frame array, Marshal.Copy, stream copy or JSON pixels.
-            memcpy(video,bytes,length);Send(Kind::Video,width,height,time,length);
+            memcpy(video,bytes,length);
+            if(encoder)encoder->WriteSideData(video+length);
+            Send(Kind::Video,width,height,time,length);
         }else if(kind==2&&audio){
             if(!queue.Push(bytes,length,time,CaptureQpcMicroseconds())){
                 InterlockedExchange(&control->reason,ERROR_BUFFER_OVERFLOW);InterlockedExchange(&control->stop,1);return;
@@ -65,6 +72,9 @@ struct Worker {
     }
 };
 thread_local Worker* active;
+void __stdcall Encode(uint32_t width,uint32_t height,uint32_t,uint32_t,int64_t time,ID3D11Texture2D* texture){
+    active->encoder->Submit(width,height,time,texture);
+}
 int32_t __stdcall Current(){return active&&active->Current()?1:0;}
 void __stdcall Deliver(uint32_t k,uint32_t w,uint32_t h,int64_t t,const void* p,uint32_t n){
     try{active->Deliver(k,w,h,t,p,n);}
@@ -81,7 +91,8 @@ int wmain(int argc,wchar_t** argv) {
         auto control=static_cast<capture_worker::Control*>(controlMap.data);
         if(control->magic!=capture_worker::Magic||control->version!=capture_worker::Version||!capture_worker::Valid(control->configuration))return ERROR_INVALID_DATA;
         const auto& c=control->configuration;
-        Mapping videoMap(Handle(argv[2]),size_t(c.maximumWidth)*c.maximumHeight*4);
+        const bool native=(c.flags&capture_worker::NativeH264)!=0;
+        Mapping videoMap(Handle(argv[2]),size_t(c.maximumWidth)*c.maximumHeight*4+(native?capture_worker::H264Extra:0));
         std::unique_ptr<Mapping> audioMap;
         if(c.includeAudio)audioMap=std::make_unique<Mapping>(Handle(argv[3]),capture_worker::AudioBytes);
         auto pipe=reinterpret_cast<HANDLE>(Handle(argv[4]));
@@ -107,7 +118,14 @@ int wmain(int argc,wchar_t** argv) {
             }
         }else
 #endif
-        result=WrailLiveCaptureRunV2(c.window,c.processId,c.created,c.className,c.includeAudio,
+        if(native){
+            winrt::init_apartment(winrt::apartment_type::multi_threaded);
+            worker.encoder=std::make_unique<LiveH264Source>(control);
+            result=WrailLiveCaptureRunWithEncodingTap(c.window,c.processId,c.created,c.className,c.includeAudio,
+                c.maximumWidth,c.maximumHeight,c.framesPerSecond,Current,Deliver,Encode);
+            worker.encoder.reset();
+            winrt::uninit_apartment();
+        }else result=WrailLiveCaptureRunV2(c.window,c.processId,c.created,c.className,c.includeAudio,
             c.maximumWidth,c.maximumHeight,c.framesPerSecond,Current,Deliver);
 #ifdef CAPTURE_WORKER_VALIDATION
         if(c.flags&capture_worker::TestBlockedExit)Sleep(INFINITE); // Deterministic teardown-hang fixture only.

@@ -1058,7 +1058,7 @@ const hdQuality={resolution:1080,frameRate:30};
 
 test('quality inspection leaves the source for the provider single ownership transfer',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;
-    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+    await f.invoke('share',{captureQuality:hdQuality});await settle();f.pending[0]('capture');await settle();
     assert.equal(f.state.poolTakes,1,'Only Discord takes the source');
     assert.equal(f.engine.desktopInputPool.pool.capture,undefined,'Discord consumed its queued source');
     assert.equal(f.state.ownRtc._connection.input.desktop,f.source);
@@ -1081,21 +1081,25 @@ test('quality discovery delegates account and guild eligibility to the exact pro
     assert.equal(read.preset,3);assert.equal(read.resolution,1080);assert.equal(read.fps,30);
     assert.equal(read.user.id,'1');assert.equal(read.tier,0);assert.equal(read.channel.id,'20');
     f.state.entitled1080=true;snapshot=(await f.invoke('snapshot')).value;
-    assert.equal(snapshot.shareQualities.length,9);
-    assert.deepEqual(JSON.parse(JSON.stringify(snapshot.shareQualities.at(-1))),{resolution:1080,frameRate:60});
+    assert.equal(snapshot.shareQualities.length,8);
+    assert.deepEqual(JSON.parse(JSON.stringify(snapshot.shareQualities.at(-1))),hdQuality);
     f.state.entitled1080=false;f.state.guildTier=2;
-    assert.equal((await f.invoke('snapshot')).value.shareQualities.length,9);
+    assert.equal((await f.invoke('snapshot')).value.shareQualities.length,8);
     f.state.guildTier=1;assert.equal((await f.invoke('snapshot')).value.shareQualities.length,6);
     assert.deepEqual(f.qualityWrites,[]);assert.deepEqual(f.events,[]);
 });
 
-test('saved 1440p uses 1080p at the saved frame rate without changing provider settings during discovery',async()=>{
-    const f=qualityFixture(); f.state.entitled1080=true;
-    f.state.qualitySettings={...f.state.qualitySettings,resolution:1440,fps:60};
-    const snapshot=(await f.invoke('snapshot')).value;
-    assert.deepEqual({...snapshot.preferredShareQuality},{resolution:1080,frameRate:60});
-    assert.ok(snapshot.shareQualities.every(mode=>mode.resolution<=1080));
-    assert.deepEqual(f.qualityWrites,[]);
+test('saved 1080p60 and 1440p60 fall back to 1080p30 without changing provider settings during discovery',async()=>{
+    for(const resolution of [1080,1440]){
+        const f=qualityFixture();f.state.entitled1080=true;
+        f.state.qualitySettings={...f.state.qualitySettings,resolution,fps:60};
+        const snapshot=(await f.invoke('snapshot')).value;
+        assert.deepEqual({...snapshot.preferredShareQuality},hdQuality);
+        assert.ok(snapshot.shareQualities.every(mode=>mode.resolution<=1080));
+        assert.ok(f.qualityReads.every(mode=>mode.resolution!==1080||mode.fps!==60));
+        assert.equal(f.state.qualitySettings.fps,60);
+        assert.deepEqual(f.qualityWrites,[]);
+    }
 });
 
 test('missing or malformed quality discovery retains baseline without guessing premium eligibility',async()=>{
@@ -1114,20 +1118,20 @@ test('missing or malformed quality discovery retains baseline without guessing p
 test('quality discovery retries missing loaded APIs without mounting provider UI or caching failure',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;f.state.qualityAvailable=false;
     assert.equal((await f.invoke('snapshot')).value.shareQualities.length,4);
-    f.state.qualityAvailable=true;assert.equal((await f.invoke('snapshot')).value.shareQualities.length,9);
+    f.state.qualityAvailable=true;assert.equal((await f.invoke('snapshot')).value.shareQualities.length,8);
     assert.deepEqual(f.events,[]);assert.deepEqual(f.qualityWrites,[]);
 });
 
 test('only bounded resolutions and frame rates are considered even for eligible accounts',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;
     for(const captureQuality of [{resolution:2160,frameRate:30},{resolution:0,frameRate:30},
-        {resolution:1080,frameRate:120},{resolution:1080,frameRate:5},{resolution:1600,frameRate:30}])
+        {resolution:1080,frameRate:60},{resolution:1080,frameRate:120},{resolution:1080,frameRate:5},{resolution:1600,frameRate:30}])
         assert.equal((await f.invoke('share',{captureQuality})).code,'share_quality_unsupported');
     assert.equal(f.pending.length,0);assert.deepEqual(f.qualityWrites,[]);
 });
 
-test('all twelve custom quality pairs are advertised and applied only when provider permits them',async()=>{
-    for(const resolution of [480,720,1080])for(const frameRate of [15,30,60]){
+test('all eight supported quality pairs are advertised and applied only when the provider permits them',async()=>{
+    for(const resolution of [480,720,1080])for(const frameRate of resolution===1080?[15,30]:[15,30,60]){
         const f=qualityFixture();f.state.entitled1080=true;
         assert.equal((await f.invoke('share',{captureQuality:{resolution,frameRate}})).ok,true);await settle();
         f.pending[0]('capture');await settle();
@@ -1139,16 +1143,16 @@ test('saved custom preference comes from provider persisted settings and survive
     const f=qualityFixture();f.state.qualitySettings={preset:3,resolution:1440,fps:60,soundshareEnabled:true};
     let snapshot=(await f.invoke('snapshot')).value;
     assert.equal(snapshot.shareQualities.length,4);
-    assert.deepEqual(JSON.parse(JSON.stringify(snapshot.preferredShareQuality)),{resolution:1080,frameRate:60});
+    assert.deepEqual(JSON.parse(JSON.stringify(snapshot.preferredShareQuality)),hdQuality);
     f.state.entitled1080=true;snapshot=(await f.invoke('snapshot')).value;
-    assert.equal(snapshot.shareQualities.length,9);assert.equal(snapshot.preferredShareQuality.resolution,1080);
+    assert.equal(snapshot.shareQualities.length,8);assert.equal(snapshot.preferredShareQuality.resolution,1080);
     assert.deepEqual(f.qualityWrites,[]);
     // Adapter recreation has no private copy of this preference to restore.
     const previous=f.context.WidgetRailDiscordPrototype;
     vm.runInContext(source.replace(`initializeWidgetRailDiscordAdapter(${build},globalThis.testVideoHost)`,
         `initializeWidgetRailDiscordAdapter(${build+1},globalThis.testVideoHost)`),f.context);
     assert.notEqual(f.context.WidgetRailDiscordPrototype,previous);
-    assert.deepEqual(JSON.parse(JSON.stringify((await f.invoke('snapshot')).value.preferredShareQuality)),{resolution:1080,frameRate:60});
+    assert.deepEqual(JSON.parse(JSON.stringify((await f.invoke('snapshot')).value.preferredShareQuality)),hdQuality);
     for(const saved of [null,{}, {preset:1,resolution:1080,fps:60},{preset:3,resolution:2160,fps:60},{preset:3,resolution:720,fps:120}]){
         f.state.qualitySettings=saved;assert.equal((await f.invoke('snapshot')).value.preferredShareQuality,null);
     }
@@ -1272,6 +1276,38 @@ test('stream diagnostics include only admitted codec names and the effective sen
     f.reports.get('private-codec').mimeType='video/private';f.connection.videoTransceiver.sender.track.contentHint='private';
     const unknown=(await f.invoke('streamDiagnostics')).value;
     assert.equal(unknown.outbound[0].codec,undefined);assert.equal(unknown.sender.contentHint,undefined);
+});
+
+test('stream diagnostics report bounded cadence and transport counters for the active outgoing video',async()=>{
+    const f=diagnosticsFixture();
+    Object.assign(f.reports.get('outgoing'),{mid:'video',targetBitrate:2_400_000,transportId:'transport',mediaSourceId:'source',
+        framesEncoded:350,framesSent:348,keyFramesEncoded:27,pliCount:2,firCount:0,nackCount:7,bytesSent:3_100_000,
+        packetsSent:3_800,retransmittedBytesSent:14_000,totalEncodeTime:1.025,totalPacketSendDelay:4.5,powerEfficientEncoder:true});
+    f.reports.set('private-codec',{type:'codec',mimeType:'video/H264',payloadType:102});
+    f.reports.set('transport',{type:'transport',selectedCandidatePairId:'pair'});
+    f.reports.set('pair',{type:'candidate-pair',availableOutgoingBitrate:3_000_000,privateField:'private-value'});
+    f.reports.set('source',{type:'media-source',kind:'video',framesPerSecond:30,frames:358});
+    const description=maximum=>({sdp:[
+        'v=0','m=audio 9 UDP/TLS/RTP/SAVPF 102','a=fmtp:102 x-google-max-bitrate=9999',
+        'm=video 9 UDP/TLS/RTP/SAVPF 102 103','b=TIAS:3500000','a=mid:video',
+        'a=fmtp:102 profile-level-id=42001f;x-google-max-bitrate='+maximum,
+        'a=fmtp:103 x-google-max-bitrate=7777','a=ice-ufrag:private-value',
+        'm=video 9 UDP/TLS/RTP/SAVPF 102','a=mid:other','a=fmtp:102 x-google-max-bitrate=8888',
+    ].join('\r\n')});
+    f.connection.pc={localDescription:description(3500),remoteDescription:description(2500)};
+    const result=await f.invoke('streamDiagnostics');
+    assert.equal(result.ok,true);
+    const video=result.value.outbound[0];
+    assert.equal(video.localCodecMax,3_500_000);
+    assert.equal(video.remoteCodecMax,2_500_000);
+    assert.equal(video.remoteMediaMax,3_500_000);
+    assert.equal(video.targetBitrate,2_400_000);
+    assert.equal(video.availableOutgoingBitrate,3_000_000);
+    assert.equal(video.sourceFps,30);
+    assert.deepEqual(JSON.parse(JSON.stringify(video.cadence)),{sourceFrames:358,framesEncoded:350,framesSent:348,
+        keyFramesEncoded:27,pliCount:2,firCount:0,nackCount:7,bytesSent:3_100_000,packetsSent:3_800,retransmittedBytesSent:14_000,
+        totalEncodeTime:1.025,totalPacketSendDelay:4.5,powerEfficientEncoder:true});
+    assert.equal(JSON.stringify(result.value).includes('private'),false);
 });
 
 test('stream diagnostics fail before reading unless the exact current self connection can be established',async()=>{
@@ -1493,11 +1529,11 @@ test('malformed and oversized device lists are unavailable, never truncated into
 });
 
 test('selected stream quality is configured and advertised before the first provider Video event',async()=>{
-    const f=qualityFixture();f.state.entitled1080=true;await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();
+    const f=qualityFixture();f.state.entitled1080=true;await f.invoke('share',{captureQuality:{resolution:720,frameRate:60}});await settle();
     f.pending[0]('capture');await settle();
     assert.equal(f.state.started,1);assert.equal((await f.invoke('snapshot')).value.shareError,null);
-    const observed=f.qualityObserved[0];assert.deepEqual(observed.quality,{capture:{width:1920,height:1080,framerate:60},encode:{width:1920,height:1080,framerate:60}});
-    assert.deepEqual(observed.parameters[0].maxResolution,{type:'fixed',width:1920,height:1080});assert.equal(observed.parameters[0].maxFrameRate,60);
+    const observed=f.qualityObserved[0];assert.deepEqual(observed.quality,{capture:{width:1280,height:720,framerate:60},encode:{width:1280,height:720,framerate:60}});
+    assert.deepEqual(observed.parameters[0].maxResolution,{type:'fixed',width:1280,height:720});assert.equal(observed.parameters[0].maxFrameRate,60);
     assert.equal(f.state.ownRtc._connection.setDesktopInput.name,'setDesktopInput','Instance wrapper is restored immediately after its source handoff');
     assert.equal(f.listeners.size,1);await f.invoke('stopShare');assert.equal(f.listeners.size,0);
 });
@@ -1522,6 +1558,18 @@ test('host-selected Clarity survives the provider motion experiment on first and
     connection.setStream(f.source.stream);assert.equal(f.sourceTrack.contentHint,'detail');
     assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,null);
     await f.invoke('stopShare');assert.equal(connection.setStream.name,'setStream');
+});
+
+test('the exact owned source also retains a host-selected Smoothness hint',async()=>{
+    const f=qualityFixture();
+    f.sourceTrack.contentHint='motion';
+    f.state.duringStream=connection=>{connection.streamVideoTrack.contentHint='detail';};
+    f.context.WidgetRailNativeMedia={status:()=>({active:true,contentPreference:'motion'})};
+    await f.invoke('share',{captureQuality:{resolution:720,frameRate:30}});await settle();f.pending[0]('capture');await settle();
+    assert.equal(f.sourceTrack.contentHint,'motion');
+    assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,null);
+    await f.invoke('stopShare');
+    assert.equal(f.state.ownRtc._connection.setStream.name,'setStream');
 });
 
 async function clarityFixture(defer=false){
@@ -1593,7 +1641,7 @@ test('content hook retirement preserves a later provider method replacement',asy
 test('optional native-status failure warns without rejecting supported high quality',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;
     f.context.WidgetRailNativeMedia={status(){throw Error('Unavailable optional observation');}};
-    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+    await f.invoke('share',{captureQuality:hdQuality});await settle();f.pending[0]('capture');await settle();
     const snapshot=(await f.invoke('snapshot')).value;
     assert.equal(snapshot.shareQualityWarning,'share_content_preference_unconfirmed');
     assert.equal(snapshot.shareError,null);assert.equal(snapshot.sharing,true);
@@ -1620,7 +1668,7 @@ test('an asynchronous provider attachment warns and preserves its returned promi
 
 test('quality hook ignores unrelated connections and preserves source aspect ratio',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;f.sourceTrack.getConstraints=()=>({width:{max:3440},height:{max:1080}});
-    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+    await f.invoke('share',{captureQuality:hdQuality});await settle();f.pending[0]('capture');await settle();
     assert.equal(f.qualityObserved[0].parameters[0].maxResolution.width,3440);
     const other={context:'stream',userId:'1',streamUserId:'2',setDesktopInput(){}};f.engine.connections.push(other);
     const original=other.setDesktopInput;for(const listener of f.listeners)listener(other);assert.equal(other.setDesktopInput,original);
@@ -1629,7 +1677,7 @@ test('quality hook ignores unrelated connections and preserves source aspect rat
 test('stopped, replaced and changed-owner quality hooks cannot rewrite a later connection',async()=>{
     for(const change of ['stop','account','channel','source','share']){
         const f=qualityFixture();f.state.entitled1080=true;f.state.deferDesktop=true;
-        await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+        await f.invoke('share',{captureQuality:hdQuality});await settle();f.pending[0]('capture');await settle();
         const old=f.state.ownRtc._connection,held=old.setDesktopInput;
         if(change==='stop')await f.invoke('stopShare');else if(change==='account')f.state.account='3';else if(change==='channel')f.state.channel='21';
         else if(change==='source')f.engine.desktopInputPool.set('capture',{});else{f.state.share={channelId:'99',ownerId:'1',guildId:'10'};}
@@ -1640,10 +1688,10 @@ test('stopped, replaced and changed-owner quality hooks cannot rewrite a later c
 
 test('missing or changed quality APIs fail clearly without changing an unknown provider connection',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;f.engine.on=undefined;
-    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+    await f.invoke('share',{captureQuality:hdQuality});await settle();f.pending[0]('capture');await settle();
     assert.equal(f.state.started,0);assert.equal(f.state.destroyed,1);assert.equal((await f.invoke('snapshot')).value.shareError,'share_quality_unavailable');
     const delayed=qualityFixture();delayed.state.entitled1080=true;delayed.state.deferDesktop=true;
-    await delayed.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();delayed.pending[0]('capture');await settle();
+    await delayed.invoke('share',{captureQuality:hdQuality});await settle();delayed.pending[0]('capture');await settle();
     delayed.state.ownRtc._connection.videoQualityManager.setGoliveQuality=()=>{};
     delayed.state.ownRtc._connection.setDesktopInput(delayed.source);
     assert.equal((await delayed.invoke('snapshot')).value.shareQualityWarning,'share_quality_unconfirmed');
@@ -1655,9 +1703,9 @@ test('missing or changed quality APIs fail clearly without changing an unknown p
 test('late abandoned source cleanup cannot retire a newer quality binding',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;let abandonedDestroyed=0;
     f.engine.desktopInputPool.set('abandoned',{destroy(){abandonedDestroyed++;}});
-    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();
+    await f.invoke('share',{captureQuality:hdQuality});await settle();
     await f.invoke('stopShare');
-    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();
+    await f.invoke('share',{captureQuality:hdQuality});await settle();
     f.pending[1]('capture');await settle();assert.equal(f.listeners.size,1);
     f.pending[0]('abandoned');await settle();
     assert.equal(abandonedDestroyed,1);assert.equal(f.listeners.size,1);assert.equal(f.state.started,1);
@@ -1666,7 +1714,7 @@ test('late abandoned source cleanup cannot retire a newer quality binding',async
 
 test('quality configuration never overwrites a later user preference',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;f.state.deferDesktop=true;
-    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+    await f.invoke('share',{captureQuality:hdQuality});await settle();f.pending[0]('capture');await settle();
     f.state.qualitySettings={preset:3,resolution:720,fps:30};f.state.ownRtc._connection.setDesktopInput(f.source);
     assert.equal(f.state.ownRtc._connection.videoStreamParameters[0].maxResolution.height,720);
     assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,'share_quality_unconfirmed');assert.equal(f.listeners.size,0);
@@ -1691,10 +1739,20 @@ test('cold RTC modules may become available at exact source attachment without e
     delete f.stores.StreamRTCConnectionStore;
     f.context.WidgetRailWebWebpack.findByProps=(...names)=>names.includes('SOURCE')&&!f.state.started?undefined:findProps(...names);
     f.context.WidgetRailWebWebpack.findByCode=pattern=>pattern==='"STREAM_START",streamType'?((...args)=>{f.stores.StreamRTCConnectionStore=rtc;return find(pattern)(...args);}):find(pattern);
-    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();assert.equal(f.state.started,0);
+    await f.invoke('share',{captureQuality:hdQuality});await settle();assert.equal(f.state.started,0);
     f.pending[0]('capture');await settle();const state=(await f.invoke('snapshot')).value;
     assert.equal(f.state.started,1);assert.equal(state.shareError,null);assert.equal(state.shareQualityWarning,null);
     assert.equal(f.qualityObserved[0].parameters[0].maxResolution.height,1080);
+});
+
+test('viewer demand is read for the unique primary stream without exposing its SSRC',async()=>{
+    const f=diagnosticsFixture();f.parameters[0].quality=100;
+    f.connection.getRemoteVideoSinkPixelCount=ssrc=>ssrc===123?101468:0;
+    const {value}=await f.invoke('streamDiagnostics');
+    assert.equal(value.viewerPixels,101468);
+    assert.equal(JSON.stringify(value).includes('ssrc'),false);
+    f.parameters.push({...f.parameters[0],ssrc:456});
+    assert.equal((await f.invoke('streamDiagnostics')).value.viewerPixels,undefined);
 });
 
 test('safe sender diagnostics report real encoding controls without codec SDP or identity data',async()=>{
@@ -1727,7 +1785,7 @@ test('quality warnings retire with account call source and exact stream instead 
 
 test('post-attachment warning survives binding cleanup but not a later stream',async()=>{
     const f=qualityFixture();f.state.entitled1080=true;f.state.deferDesktop=true;
-    await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+    await f.invoke('share',{captureQuality:hdQuality});await settle();f.pending[0]('capture');await settle();
     f.state.ownRtc._connection.videoQualityManager.setGoliveQuality=()=>{};f.state.ownRtc._connection.setDesktopInput(f.source);
     assert.equal(f.listeners.size,0);assert.equal((await f.invoke('snapshot')).value.shareQualityWarning,'share_quality_unconfirmed');
     f.state.share={channelId:'20',guildId:'10',ownerId:'1'};
@@ -1737,7 +1795,7 @@ test('post-attachment warning survives binding cleanup but not a later stream',a
 test('fatal share errors also clear on account or call departure',async()=>{
     for(const change of ['account','call']){
         const f=qualityFixture();f.state.entitled1080=true;f.engine.on=undefined;
-        await f.invoke('share',{captureQuality:{resolution:1080,frameRate:60}});await settle();f.pending[0]('capture');await settle();
+        await f.invoke('share',{captureQuality:hdQuality});await settle();f.pending[0]('capture');await settle();
         assert.equal((await f.invoke('snapshot')).value.shareError,'share_quality_unavailable');
         f.state[change==='account'?'account':'channel']='99';assert.equal((await f.invoke('snapshot')).value.shareError,null);
         f.state.account='1';f.state.channel='20';assert.equal((await f.invoke('snapshot')).value.shareError,null);

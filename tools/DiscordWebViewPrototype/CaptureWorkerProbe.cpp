@@ -207,6 +207,30 @@ struct SourceWindow {
     ~SourceWindow(){if(process.value&&WaitForSingleObject(process.value,0)!=WAIT_OBJECT_0){TerminateProcess(process.value,0);WaitForSingleObject(process.value,500);}}
     void Close(){Require(TerminateProcess(process.value,0),"Close exact synthetic source");Require(WaitForSingleObject(process.value,500)==WAIT_OBJECT_0,"Source process exit");}
 };
+void StaticWindowCadence() {
+    SourceWindow source(true);
+    for (uint32_t fps : {15u, 30u, 60u}) {
+        Owner owner(fps, 0, false, source.window);
+        int64_t first{}, last{};
+        uint32_t frames{};
+        while (last - first < 2'000'000) {
+            const auto packet = owner.Read();
+            Require(packet.kind != Kind::Ended, "Static share ended before cadence measurement");
+            if (packet.kind != Kind::Video) continue;
+            if (!frames) first = packet.microseconds;
+            else Require(packet.microseconds > last, "Static share timestamps must advance");
+            last = packet.microseconds;
+            ++frames;
+            owner.Ack(packet);
+        }
+        const auto rate = (frames - 1) * 1'000'000.0 / double(last - first);
+        std::printf("Static window, selected %u FPS: %.2f delivered FPS\n", fps, rate);
+        Require(rate >= fps * 0.90 && rate <= fps * 1.10, "Static share must keep its selected cadence");
+        StopResult stopped;
+        Success(WrailCaptureWorkerStop(owner.session, 600, &stopped), "Static share stop");
+        Require(stopped.exited && !stopped.forced, "Static share did not stop cooperatively");
+    }
+}
 void StaticWindowResize(){
     SourceWindow source(true);Owner owner(30,0,false,source.window);
     const auto picture=[&](const Packet& packet){
@@ -217,8 +241,11 @@ void StaticWindowResize(){
     uint32_t previousWidth{},previousHeight{};uint64_t sequence{};
     for(;;){const auto packet=owner.Read();if(packet.kind!=Kind::Video)continue;
         Require(picture(packet),"Initial static source picture");previousWidth=packet.width;previousHeight=packet.height;sequence=packet.sequence;owner.Ack(packet);break;}
+    // Keep the sampled color bands on the same display after growing the window.
+    MONITORINFO monitor{sizeof(MONITORINFO)};
+    Require(GetMonitorInfoW(MonitorFromWindow(source.window, MONITOR_DEFAULTTONEAREST), &monitor), "Fixture monitor bounds");
     for(const auto shape: {std::pair{800,600},std::pair{2400,1200}}){
-        Require(SetWindowPos(source.window,nullptr,0,0,shape.first,shape.second,SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE)!=0,"Owned static source resize");
+        Require(SetWindowPos(source.window,nullptr,monitor.rcWork.left,monitor.rcWork.top,shape.first,shape.second,SWP_NOZORDER|SWP_NOACTIVATE)!=0,"Owned static source resize");
         const auto deadline=GetTickCount64()+5000;bool changed=false;
         while(GetTickCount64()<deadline){const auto packet=owner.Read();Require(packet.kind!=Kind::Ended,"Static resize ended streaming session");if(packet.kind!=Kind::Video)continue;
             const auto matches=(packet.width!=previousWidth||packet.height!=previousHeight)&&picture(packet);
@@ -251,6 +278,7 @@ void WindowCapture(){
 int wmain(int argc,wchar_t** argv){
     try{
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        if(argc==2&&wcscmp(argv[1],L"--static-cadence")==0){StaticWindowCadence();return 0;}
         if(argc==2&&wcscmp(argv[1],L"--static-resize")==0){StaticWindowResize();return 0;}
         if(argc==3&&wcscmp(argv[1],L"--parent-death-parent")==0)return ParentDeathChild(argv[2]);
         if(argc==2&&wcscmp(argv[1],L"--production-flags")==0){ProductionFlags();return 0;}

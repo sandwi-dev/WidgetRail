@@ -8,7 +8,8 @@ internal sealed record DiscordStream(string Key, string UserId, string Name, Dis
 internal sealed record DiscordOutgoingViewers(string Key,string[] UserIds);
 internal sealed record DiscordShareQuality(int Resolution,int FrameRate)
 {
-    internal bool IsSupported=>Resolution is 480 or 720 or 1080 && FrameRate is 15 or 30 or 60;
+    internal bool IsSupported=>Resolution is 480 or 720 or 1080 && FrameRate is 15 or 30 or 60 &&
+        (Resolution!=1080||FrameRate!=60);
     internal static DiscordShareQuality[] Baseline=>[new(480,15),new(480,30),new(720,15),new(720,30)];
 }
 internal sealed record DiscordState(int Revision, bool Ready, string Account, DiscordCapabilities Capabilities,
@@ -45,7 +46,7 @@ internal sealed record DiscordState(int Revision, bool Ready, string Account, Di
         if(VoiceConnection is not("disconnected" or "connecting" or "connected" or "reconnecting" or "unavailable") ||
             VoiceConnection is "connected" or "connecting" or "reconnecting" && ChannelId is null)
             throw new InvalidDataException("invalid_voice_connection_state");
-        if(ShareQualities is null || ShareQualities.Length>9 || ShareQualities.Any(q=>q is null||!q.IsSupported) ||
+        if(ShareQualities is null || ShareQualities.Length>8 || ShareQualities.Any(q=>q is null||!q.IsSupported) ||
             ShareQualities.Distinct().Count()!=ShareQualities.Length || ShareQualityAvailability is not("ready" or "unavailable") ||
             ShareQualityAvailability=="unavailable" && ShareQualities.Any(q=>!DiscordShareQuality.Baseline.Contains(q)) ||
             PreferredShareQuality is {IsSupported:false})

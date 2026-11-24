@@ -56,6 +56,8 @@ internal static class CaptureWorkerNative
     [DllImport(Library,ExactSpelling=true,CallingConvention=CallingConvention.StdCall)]
     internal static extern int WrailCaptureWorkerHeartbeat(WorkerHandle worker,ulong epoch);
     [DllImport(Library,ExactSpelling=true,CallingConvention=CallingConvention.StdCall)]
+    internal static extern int WrailCaptureWorkerEncoding(WorkerHandle worker,ulong epoch,uint generation,uint bitrate,uint requestKeyframe);
+    [DllImport(Library,ExactSpelling=true,CallingConvention=CallingConvention.StdCall)]
     internal static extern int WrailCaptureWorkerStop(WorkerHandle worker,uint timeoutMilliseconds,out StopResult result);
     [DllImport(Library,ExactSpelling=true,CallingConvention=CallingConvention.StdCall)]
     internal static extern uint WrailCaptureWorkerProcessId(WorkerHandle worker);

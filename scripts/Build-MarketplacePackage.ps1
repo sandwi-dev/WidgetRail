@@ -23,7 +23,7 @@ New-Item -ItemType Directory -Path $logs -Force | Out-Null
 if ($Widget -eq 'Discord') {
     # This package composes a pinned, minified web backend in addition to managed
     # publication. Reuse its source builder, then the common review/pack path.
-    & (Join-Path $source 'Build-Package.ps1') -Configuration $Configuration -OutputDirectory (Join-Path $work 'discord')
+    & (Join-Path $source 'Build-Package.ps1') -Configuration $Configuration -OutputDirectory (Join-Path $work 'discord') -ExperimentalEncodedSource
     if ($LASTEXITCODE -ne 0) { throw 'Discord package preparation failed.' }
 } else {
     New-Item -ItemType Directory -Path "$stage/payload" -Force | Out-Null

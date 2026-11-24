@@ -501,7 +501,8 @@ public sealed partial class DiscordWebViewWidget
         reveal=null;
         first="discord.messages.back";
         var current=messages.Value;
-        var back=UI.IconButton(WidgetGlyph.Back,navigation.Value.BackActionId??"discord.section.call","discord.messages.back","Back").Classes("discord-control","discord-message-back");
+        var back=UI.IconButton(WidgetGlyph.Back,navigation.Value.BackActionId??"discord.section.call","discord.messages.back",
+            route==Route.Conversation?"Conversation list":"Back").Classes("discord-control","discord-message-back");
         if(current.Query is not {} query || !MessageAccountCurrent(query.Account,query.Session))
             return UI.Stack("discord.messages.unavailable",back,UI.Text("Messages are unavailable.","discord.messages.status"));
         if(route==Route.Messages)

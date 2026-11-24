@@ -70,7 +70,9 @@ internal sealed partial class BrowserOwner : IAsyncDisposable
 #if ENABLE_WIDGET_VALIDATION
         if (FixtureBrowserArguments is { } arguments) environmentOptions.AdditionalBrowserArguments = arguments;
 #endif
-        Runtime = new(profileRoot, environmentOptions);
+        var encodedSource = Web.HostedWebViewEnvironment.NativeEncodingEnabled &&
+            string.IsNullOrEmpty(environmentOptions.AdditionalBrowserArguments);
+        Runtime = new(profileRoot, environmentOptions, enableEncodedSource: encodedSource);
         Extensions = new(Runtime, settingsRoot);
         InitializeProfileLifecycle(settingsRoot);
         ownsNotifications = notifications is null;

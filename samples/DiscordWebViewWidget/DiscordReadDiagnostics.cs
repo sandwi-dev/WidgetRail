@@ -1,4 +1,5 @@
 using System.Diagnostics.Tracing;
+using System.Text.Json;
 
 namespace WidgetRail.Samples.DiscordWebView;
 
@@ -34,4 +35,13 @@ internal sealed class DiscordReadDiagnostics : EventSource
 
     [Event(1,Level=EventLevel.Warning)]
     public void ReadFailed(string operation,string reason)=>WriteEvent(1,operation,reason);
+
+    [NonEvent]
+    internal void RecordStreamSample(DiscordWebViewWidget.ShareCadenceSample sample)
+    {
+        if(IsEnabled(EventLevel.Informational,EventKeywords.None))StreamSample(JsonSerializer.Serialize(sample));
+    }
+
+    [Event(2,Level=EventLevel.Informational)]
+    public void StreamSample(string metrics)=>WriteEvent(2,metrics);
 }

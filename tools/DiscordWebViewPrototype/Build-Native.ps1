@@ -43,7 +43,7 @@ try{
  & "$($vc.FullName)/bin/Hostx64/x64/cl.exe" /nologo /MT /std:c++20 /utf-8 /EHsc /W4 /WX /O2 @includes "$PSScriptRoot/CadenceProbe.cpp" "/Fo:$OutputDirectory/CadenceProbe.obj" "/Fe:$OutputDirectory/CadenceProbe.exe" /link @libraries
  if($LASTEXITCODE){throw 'Cadence probe build failed'}
  }
- & "$($vc.FullName)/bin/Hostx64/x64/cl.exe" /nologo /MT /std:c++20 /utf-8 /EHsc /W4 /WX /O2 /DNOMINMAX @validationDefines @includes "$PSScriptRoot/CaptureWorker.cpp" "/Fo:$OutputDirectory/CaptureWorker.obj" "/Fe:$OutputDirectory/WebRtcCaptureWorker.exe" /link @libraries "$OutputDirectory/WebRtcCapturePrototype.lib" windowsapp.lib ole32.lib
+ & "$($vc.FullName)/bin/Hostx64/x64/cl.exe" /nologo /MT /std:c++20 /utf-8 /EHsc /W4 /WX /O2 /DNOMINMAX @validationDefines @includes "$PSScriptRoot/CaptureWorker.cpp" "/Fo:$OutputDirectory/CaptureWorker.obj" "/Fe:$OutputDirectory/WebRtcCaptureWorker.exe" /link @libraries /DELAYLOAD:MF.dll /DELAYLOAD:MFPlat.DLL /DELAYLOAD:MFReadWrite.dll delayimp.lib "$OutputDirectory/WebRtcCapturePrototype.lib" d3d11.lib dxgi.lib mf.lib mfplat.lib mfreadwrite.lib mfuuid.lib oleaut32.lib windowsapp.lib ole32.lib
  if($LASTEXITCODE){throw 'Capture worker build failed'}
  & "$($vc.FullName)/bin/Hostx64/x64/cl.exe" /nologo /MT /std:c++20 /utf-8 /EHsc /W4 /WX /O2 /DNOMINMAX /LD @validationDefines @includes "/I$webViewPackage/build/native/include" "/I$webViewPackage/build/native/include-winrt" "$PSScriptRoot/CaptureWorkerHost.cpp" "/Fo:$OutputDirectory/CaptureWorkerHost.obj" "/Fe:$OutputDirectory/CaptureWorkerHost.dll" /link @libraries windowsapp.lib ole32.lib
  if($LASTEXITCODE){throw 'Capture worker host build failed'}

@@ -93,7 +93,7 @@ try{
     $targetWidth=@{480=1706;720=2560;1080=3840;1440=5120}[$targetHeight]
     $measuredWidth=if($SourceKind -eq 'Browser'){$source.Identity.captureWidth}else{$SourceWidth}
     $measuredHeight=if($SourceKind -eq 'Browser'){$source.Identity.captureHeight}else{$SourceHeight}
-    $expectedScale=if($measuredWidth -gt 0){[Math]::Min(1,[Math]::Min($targetWidth/$measuredWidth,$targetHeight/$measuredHeight))}else{0}
+    $expectedScale=if($measuredWidth -gt 0){[Math]::Min(1.0,[Math]::Min($targetWidth/$measuredWidth,$targetHeight/$measuredHeight))}else{0}
     $geometryOkay=$last.value.receiver.quality -eq $Quality -and $last.value.receiver.width -gt 0 -and $last.value.receiver.height -gt 0 -and $last.value.receiver.width -le $targetWidth -and $last.value.receiver.height -le $targetHeight
     if($measuredWidth -gt 0){$geometryOkay=$geometryOkay -and $last.value.receiver.width -eq ([int][Math]::Floor($measuredWidth*$expectedScale/2)*2) -and $last.value.receiver.height -eq ([int][Math]::Floor($measuredHeight*$expectedScale/2)*2)}
     $sourceCadence=if($SourceKind -eq 'Browser'){Measure-SyntheticSourceCadence $sourceBefore $sourceLast}else{$null}

@@ -69,7 +69,9 @@ function initializeWidgetRailNativeCapture(allowedOrigins) {
         try{Promise.resolve(writer.abort()).then(()=>{if(track.readyState==='ended')finished();},fallback);}
         catch{fallback();}
     };
+    let nativeH264=false,encoderGeneration=0,encodedReader=null;
     const stop=()=>{
+        encodedReader?.close();encodedReader=null;nativeH264=false;
         const oldVideo=video,oldAudio=audio,oldVideoWriter=vw,oldAudioWriter=aw;
         epoch=null;armed=false;resolveFirst?.(false);resolveFirst=null;resolveRetired?.();resolveRetired=null;
         video=audio=vw=aw=stream=null;readSettings=readConstraints=()=>({});
@@ -129,11 +131,12 @@ function initializeWidgetRailNativeCapture(allowedOrigins) {
         }
     };
     globalThis.WidgetRailNativeMedia={
-        start(id,withAudio,preset='720p30',contentPreference='detail'){
+        start(id,withAudio,preset='720p30',contentPreference='detail',allowH264=false){
             // Validate before stopping an existing session. No unrecognized or
             // unbounded setting can be introduced by a page-authored object.
             if(!Number.isSafeInteger(id)||id<=lastEpoch||typeof withAudio!=='boolean'||typeof preset!=='string'||!Object.hasOwn(presets,preset)||!['detail','motion'].includes(contentPreference))return false;
             stop();lastEpoch=id;quality=presets[preset];const selectedQuality=quality;epoch=id;frames=samples=width=height=0;lease=Date.now()+10000;
+            nativeH264=allowH264===true&&contentPreference==='detail';
             firstFrame=new Promise(resolve=>resolveFirst=resolve);sourceRetired=new Promise(resolve=>resolveRetired=resolve);
             sourceDimensions={width:0,height:0};const observedDimensions=sourceDimensions;
             video=new MediaStreamTrackGenerator({kind:'video'});vw=video.writable.getWriter();
@@ -151,6 +154,17 @@ function initializeWidgetRailNativeCapture(allowedOrigins) {
             if(withAudio){audio=new MediaStreamTrackGenerator({kind:'audio'});aw=audio.writable.getWriter();}
             stream=new MediaStream([video,...(audio?[audio]:[])]);armed=true;deadline=Date.now()+15000;
             return true;
+        },
+        openH264(onUnit){
+            if(!nativeH264||!stream||armed||encodedReader||typeof onUnit!=='function'||encoderGeneration>=2147483647)return null;
+            const owner=epoch,generation=++encoderGeneration;
+            const send=(bitrate,keyframe)=>chrome.webview.postMessage({captureEpoch:owner,captureEncoder:generation,bitrate,keyframe});
+            const reader={
+                generation,onUnit,
+                update(bitrate,keyframe){if(encodedReader===reader&&epoch===owner&&Number.isSafeInteger(bitrate)&&bitrate>=0&&bitrate<=2147483647)send(bitrate,keyframe===true);},
+                close(){if(encodedReader!==reader)return;encodedReader=null;if(epoch===owner)send(-1,false);}
+            };
+            encodedReader=reader;return reader;
         },
         stop(expectedEpoch){if(expectedEpoch!==epoch)return false;stop();return true;},
         keep(expectedEpoch){if(expectedEpoch!==epoch)return false;lease=Date.now()+10000;return this.status();},
@@ -172,6 +186,18 @@ function initializeWidgetRailNativeCapture(allowedOrigins) {
                 if(!Number.isInteger(m.width)||!Number.isInteger(m.height)||m.width<2||m.height<2||
                     m.width>quality.maximumWidth||m.height>quality.maximumHeight||m.width%2||m.height%2||m.bytes!==m.width*m.height*4||buffer.byteLength<m.bytes)
                     throw new RangeError('Frame exceeds selected capture quality');
+                const reader=encodedReader;
+                if(reader&&buffer.byteLength>=m.bytes+24){
+                    const h=new DataView(buffer,m.bytes,24),generation=h.getUint32(0,true),kind=h.getUint32(4,true),length=h.getUint32(8,true);
+                    if(generation===reader.generation&&kind!==0){
+                        try{
+                            if((kind===1||kind===2)&&length>0&&length<=524288&&length<=buffer.byteLength-m.bytes-24){
+                                const data=buffer.slice(m.bytes+24,m.bytes+24+length);
+                                reader.onUnit({type:kind===2?'key':'delta',width:m.width,height:m.height,time:Number(h.getBigInt64(16,true)),data});
+                            }else reader.onUnit(null);
+                        }catch{reader.close();}
+                    }
+                }
                 frame=new VideoFrame(buffer,{format:'BGRA',codedWidth:m.width,codedHeight:m.height,timestamp:m.time});width=m.width;height=m.height;sourceDimensions.width=m.width;sourceDimensions.height=m.height;
                 await vw.write(frame);if(m.epoch===epoch){frames++;resolveFirst?.(true);resolveFirst=null;}
             }
