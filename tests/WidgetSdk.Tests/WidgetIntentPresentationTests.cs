@@ -32,10 +32,10 @@ internal static class WidgetIntentPresentationTests
         foreach (var presentation in Enum.GetValues<WidgetIntentPresentation>())
         {
             var intent = WidgetIntentRequest.Create(WidgetIntentContracts.Web,
-                Json("""{"url":"https://example.com/guide"}"""), routing) with { Presentation = presentation };
+                Json("""{"url":"https://example.com/guide"}"""), routing, presentation);
             var action = new ComponentAction("Read guide", "read-guide") { Intent = intent };
             var icon = WidgetIcon.Glyph(WidgetGlyph.Connection);
-            var components = new WidgetView(UI.Stack("components",
+            var view = new WidgetView(UI.Stack("components",
                 UI.SettingsRow("Guide", action, "setting"),
                 UI.SettingsRow(icon, "Guide", action, "icon-setting"),
                 UI.Alert("Guide", "Read more", AlertTone.Info, "alert", action: action),
@@ -44,8 +44,23 @@ internal static class WidgetIntentPresentationTests
                 UI.EmptyState(icon, "No results", "Read more", "icon-empty", action),
                 UI.ActionSheet("Links", "links", "links.scope", "back",
                     [new ActionSheetItem("links.open", "Read guide", "read-guide") { Intent = intent }]),
-                UI.SettingsRow("Local action", new ComponentAction("Refresh", "refresh"), "local")))
-                .CreateSnapshot("intent.components", 1);
+                UI.SettingsRow("Local action", new ComponentAction("Refresh", "refresh"), "local")));
+            if (routing == WidgetIntentRouting.Windows && presentation == WidgetIntentPresentation.StayInSource)
+            {
+                // Opening an external Windows handler cannot keep the action inside its source widget.
+                try
+                {
+                    view.CreateSnapshot("intent.components", 1);
+                    throw new InvalidOperationException("Windows routing accepted a stay-in-source intent.");
+                }
+                catch (ProtocolValidationException error)
+                {
+                    Check(error.Errors.Count == 7 && error.Errors.All(e => e.Code == "invalid_intent"));
+                    Check(error.Errors.Select(e => e.Path).Distinct().Count() == 7);
+                }
+                continue;
+            }
+            var components = view.CreateSnapshot("intent.components", 1);
             Check(ViewSnapshotValidator.Validate(components).Count == 0);
             var restored = SnapshotJson.Deserialize(SnapshotJson.Serialize(components));
             var declarations = Flatten(restored.Root).Where(node => node.Intent is not null).ToArray();

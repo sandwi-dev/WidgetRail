@@ -1,7 +1,7 @@
 # Current platform status
 
-Reviewed against source on 2026-11-18: application preview `0.1.0-preview.42`, SDK/CLI
-`0.4.8-dev`. The current refinement source uses presentation protocol 145, including preferred collection entry and
+Reviewed against source on 2026-11-24: application preview `0.1.0-preview.42`, SDK/CLI
+`0.4.8-dev`. The current refinement source uses presentation protocol 147, including addressed widget activity summaries, background intent delivery, preferred collection entry and
 remote-image/media galleries and explicit passive video animation in addition to backend web
 sessions, native capture, explicit modal dismissal, exact pin-selection identities,
 interactive/passive pin declarations, desktop acrylic surfaces, opted-in pin
@@ -15,24 +15,9 @@ capability-qualified recording settings and opted-in held-trigger selection. The
 branch supports up to six pins with shared adjustment controls, three incoming
 Discord streams, and the independent local Playnite integration; see
 [implementation and qualification](../input-discord-refinements-plan.md).
-These are source versions, not a claim that
-a corresponding release has been published or that every workflow is qualified.
-See [versioning](versioning.md) for the authoritative version files.
-Public release remains preview.40; the current installers are for local testing.
-Discord's accepted WebView2 integration is now Catalogue package
-`widgetrail.samples.discord-controls` `0.1.0.20`, with a separate full-access identity
-and client-modification Terms of Service warning. It needs a published asset before
-Catalogue can download it; the local candidate is supplied as a `.wrwidget` file.
-The user accepted continued use, with further platform/device coverage to develop
-through testing. The desktop-client migration and later codec/bitrate experiments
-are not included. See the [Discord guide](../users/discord.md).
+The [GitHub releases page](https://github.com/sandwi-dev/WidgetRail/releases) lists published installers and widget packages. See [versioning](versioning.md) for the source version files.
 
-The unmerged navigation candidate prepares Discord `0.1.0.22` and Capture Library
-`0.2.1`: integrated Call/Messages navigation, scoped read acknowledgments, truthful
-authentication states, transient toast feedback and shared L2/LT held selection.
-See its [implementation and qualification plan](../discord-navigation-selection-plan.md)
-for native evidence and remaining live acceptance checks. These packages are not
-a published release or an update to the accepted package version above.
+Discord Controls `0.1.0.80` is a full-access Catalogue package. Its web client integration supports calls, messages and stream pins. Playnite `0.4.100` can request access to its friend and voice activity and open a stream pin from the Currently Playing shelf. Discord's guide covers the supported streaming modes and the client-modification Terms of Service warning. [Discord guide](../users/discord.md)
 
 ## Frontend and distribution
 
