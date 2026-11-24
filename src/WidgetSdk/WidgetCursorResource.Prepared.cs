@@ -63,8 +63,7 @@ public sealed partial class WidgetCursorResource<TItem> where TItem : notnull
                     {
                         var result = await _options.LoadPage(page.Cursor, direction, _options.PageSize,
                             context.CancellationToken).ConfigureAwait(false);
-                        lock (_gate)
-                            if (context.IsCurrent && IsPreparedCurrent(page)) loaded = Normalize(result);
+                        loaded = NormalizePreparedPage(page, result, context);
                     }
                     // Speculation never turns a readable window into an error.
                     // A real demand retries through the normal observable path.
@@ -75,6 +74,15 @@ public sealed partial class WidgetCursorResource<TItem> where TItem : notnull
                 handle.Completion.GetAwaiter().OnCompleted(() => page.Completion.TrySetResult(null));
             }
         }
+    }
+
+    // Validation may throw for malformed provider pages. Release the monitor
+    // in a synchronous frame before the speculative operation handles failure.
+    private WidgetCursorPage<TItem>? NormalizePreparedPage(PreparedPage page, WidgetCursorPage<TItem> result,
+        WidgetOperationContext context)
+    {
+        lock (_gate)
+            return context.IsCurrent && IsPreparedCurrent(page) ? Normalize(result) : null;
     }
 
     private async ValueTask<WidgetCursorPage<TItem>> LoadPreparedOrFreshAsync(Request request, CancellationToken token)
