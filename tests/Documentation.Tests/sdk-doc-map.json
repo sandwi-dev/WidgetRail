@@ -1,4 +1,6 @@
 {
+  "src/WidgetSdk/CaptureStrip.cs": "docs/reference/widget-media-player.md",
+  "src/WidgetSdk/WidgetCursorResource.Prepared.cs": "docs/reference/collections.md",
   "src/WidgetSdk/WidgetCursorResource.Live.cs": "docs/reference/collections.md",
   "src/WidgetSdk/WidgetCursorResource.Recovery.cs": "docs/reference/collections.md",
   "src/WidgetSdk/WidgetLoadedCollection.Viewport.cs": "docs/reference/collections.md",

@@ -587,7 +587,7 @@ static Task CapabilityVocabularyIsClosed()
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.WindowCaptureV1)
         .InFlightContinuationOperations!.SetEquals(["capture.web-prepare", "capture.web-prepare-constrained", "capture.replay.configure", "capture.replay.start", "capture.replay.save"]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.CaptureLibraryManageV1)
-        .InFlightContinuationOperations!.SetEquals(["capture-library.open-folder", "capture-library.reveal", "capture-library.copy", "capture-library.save-copy", "capture-library.choose-source"]));
+        .InFlightContinuationOperations!.SetEquals(["capture-library.open-folder", "capture-library.reveal", "capture-library.copy", "capture-library.save-copy", "capture-library.choose-source", "capture-library.change-destination"]));
     var copyOptions = new BrokerPipeTransportOptions { RequestTimeout = TimeSpan.FromSeconds(10) };
     var defaultCopy = BrokerJson.ParseRequest(Request(Identity(), PlatformCapabilities.CaptureLibraryManageV1, "capture-library.save-copy", new { }));
     Assert.Equal(TimeSpan.FromSeconds(BrokerTransportLimits.CaptureCopyTimeoutSeconds + 5), BrokerPipeRequestTimeoutPolicy.Resolve(copyOptions, defaultCopy));

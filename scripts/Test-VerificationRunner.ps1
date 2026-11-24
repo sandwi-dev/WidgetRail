@@ -58,6 +58,9 @@ if ($manifest.schemaVersion -ne 1 -or $duplicateIds.Count -ne 0) {
     throw 'Verification manifest schema or step IDs are invalid.'
 }
 $expectedDefaultStepIds = @(
+    'capture-replay-tests',
+    'replay-backend-tests',
+    'remote-media-transport-tests',
     'nuget-build-execution-contract',
     'installer-contract-selftest',
     'release-packaging-selftest',

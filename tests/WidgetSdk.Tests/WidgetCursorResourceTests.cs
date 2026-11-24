@@ -5,38 +5,47 @@ internal static partial class WidgetCursorResourceTests
 {
     public static async Task Run()
     {
-        await PreparedPagesStaySeparateAndBounded();
-        await PreparedDemandJoinsAndRejectsStaleResults();
-        await PreparedFailuresStayQuietAndDemandRetries();
-        await PreparedPagesRespectVisibilityAndProtectedEviction();
-        await PreparedDeferralRetainsBothDirections();
-        await PreparedDeferralStillValidatesIncomingWindow();
-        await PreparedLiveChangesAndReversal();
-        await PreparedMalformedAndHiddenResults();
-        await LiveMutations();
-        await ViewportRecovery();
-        await CommittedGenerationDistinguishesIdenticalRefreshedWindows();
-        await RefreshRejectsStalePaginationAndResumesAfterReopen();
-        await PendingLoadRetainsVirtualExtent();
-        await ErrorRetryCancellationAdvancesWindowMetadata();
-        await CanceledReplacementRestoresSettledState();
-        await EqualVisibleDemandJoinsPendingPage();
-        await CapturedPresentationSurvivesConcurrentEviction();
-        await PendingPagePreservesNewAnchor();
-        await FailedFocusMappingDoesNotCommitSegments();
-        await VisibleItemsCanExceedEvictionTarget();
-        await NearbyPagesSurviveReversalWithinCapacity();
-        await TraversesTenThousandItemsWithinBound();
-        await ProjectsVersionedTenThousandItemVirtualWindow();
-        await HandlesEmptySparseFinalAndLastGoodError();
-        await PreservesAnchorDuringPagingAndResetsItOnRefresh();
-        await DirectionChangeAllowsEvictedRefetch();
-        await TraversalHistoryFailsClosedAndRefreshResetsIt();
-        await RejectsLateDuplicateAndLoopResults();
-        await IdenticalIntentJoinsOneLoad();
-        await DifferentIntentReplacesCurrentLoad();
-        await ResetCancelsJoinedLoadAndAllowsFreshWork();
-        await ActiveLifecycleDrainsJoinedLoad();
+        Func<Task>[] scenarios =
+        [
+            PreparedPagesStaySeparateAndBounded,
+            PreparedDemandJoinsAndRejectsStaleResults,
+            PreparedFailuresStayQuietAndDemandRetries,
+            PreparedPagesRespectVisibilityAndProtectedEviction,
+            PreparedDeferralRetainsBothDirections,
+            PreparedDeferralStillValidatesIncomingWindow,
+            PreparedLiveChangesAndReversal,
+            PreparedMalformedAndHiddenResults,
+            LiveMutations,
+            ViewportRecovery,
+            CommittedGenerationDistinguishesIdenticalRefreshedWindows,
+            RefreshRejectsStalePaginationAndResumesAfterReopen,
+            PendingLoadRetainsVirtualExtent,
+            ErrorRetryCancellationAdvancesWindowMetadata,
+            CanceledReplacementRestoresSettledState,
+            EqualVisibleDemandJoinsPendingPage,
+            CapturedPresentationSurvivesConcurrentEviction,
+            PendingPagePreservesNewAnchor,
+            FailedFocusMappingDoesNotCommitSegments,
+            VisibleItemsCanExceedEvictionTarget,
+            NearbyPagesSurviveReversalWithinCapacity,
+            TraversesTenThousandItemsWithinBound,
+            ProjectsVersionedTenThousandItemVirtualWindow,
+            HandlesEmptySparseFinalAndLastGoodError,
+            PreservesAnchorDuringPagingAndResetsItOnRefresh,
+            DirectionChangeAllowsEvictedRefetch,
+            TraversalHistoryFailsClosedAndRefreshResetsIt,
+            RejectsLateDuplicateAndLoopResults,
+            IdenticalIntentJoinsOneLoad,
+            DifferentIntentReplacesCurrentLoad,
+            ResetCancelsJoinedLoadAndAllowsFreshWork,
+            ActiveLifecycleDrainsJoinedLoad,
+        ];
+        foreach (var scenario in scenarios)
+        {
+            try { await scenario().WaitAsync(TimeSpan.FromSeconds(45)); }
+            catch (TimeoutException error)
+            { throw new TimeoutException($"Cursor resource scenario {scenario.Method.Name} timed out.", error); }
+        }
         ContractIsVersionedOpaqueAndBounded();
     }
 

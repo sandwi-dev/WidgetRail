@@ -39,7 +39,7 @@ test('the external encoder defers to WebRTC for a smaller size or rate',()=>{
 });
 
 test('explicit downscale returns the original track and full-size demand can attach again', async () => {
-    let nextCheck, attachments = 0, terminations = 0;
+    let nextCheck, attachments = 0, terminations = 0, rejectAttach = false;
     const track = Object.assign(new EventTarget(), {readyState: 'live', getConstraints: () => ({width:1280,height:720})});
     const encoding = {active: true, scaleResolutionDownBy: 2};
     class Sender {
@@ -49,7 +49,7 @@ test('explicit downscale returns the original track and full-size demand can att
         }
         async getStats() { return new Map(); }
         async replaceTrack(value) { this.track = value; }
-        async createEncodedSource() { attachments++; }
+        async createEncodedSource() { attachments++; if (rejectAttach) throw Error('Encoder unavailable'); }
     }
     const selected = {stream: {getVideoTracks: () => [track]}};
     const sender = new Sender();
@@ -88,6 +88,15 @@ test('explicit downscale returns the original track and full-size demand can att
     encoding.scaleResolutionDownBy = 1;
     await observe();
     assert.equal(attachments, 2);
+    encoding.scaleResolutionDownBy = 2;
+    await observe();
+    rejectAttach = true;
+    encoding.scaleResolutionDownBy = 1;
+    await observe();
+    assert.equal(sender.track, track, 'a runtime failure after detachment restores the live raw track');
+    await observe();
+    assert.equal(attachments, 3, 'the failed encoder is not repeatedly reattached');
+    assert.equal(capture.sample(connection).encoderFallback, 'encoder_failed');
     capture.dispose();
 });
 

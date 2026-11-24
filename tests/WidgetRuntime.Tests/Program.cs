@@ -3159,7 +3159,7 @@ static async Task CompanionSessionsFollowWorkerRestarts()
         Assert.True(sessions[0].RunStartedAfterBinding,
             "Companion started accepting IPC before its worker PID was bound.");
         Assert.SequenceEqual(
-            new[] { WidgetLifecycleState.Visible },
+            new[] { WidgetLifecycleState.Background, WidgetLifecycleState.Visible },
             sessions[0].LifecycleStates);
 
         var failed = new TaskCompletionSource<WidgetFailure>(
@@ -3205,6 +3205,7 @@ static async Task IntentionalUnloadIsReusable()
     Assert.SequenceEqual(
         new[]
         {
+            WidgetLifecycleState.Background,
             WidgetLifecycleState.Visible,
             WidgetLifecycleState.Background,
             WidgetLifecycleState.Destroying,
