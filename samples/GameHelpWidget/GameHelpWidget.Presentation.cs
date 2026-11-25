@@ -15,13 +15,15 @@ public sealed partial class GameHelpWidget
                 UI.Stack("help.new-confirm.content",
                     UI.Text("This clears this conversation and its captures. Your preferences are kept.", "help.new-confirm.copy"),
                     UI.Row("help.new-confirm.actions", UI.Button("Keep chatting", "new.cancel", "help.new-cancel"),
-                        UI.Button("Start new chat", "new.confirm", "help.new-proceed"))), "help.new-cancel", "new.cancel"));
+                        UI.Button("Start new chat", "new.confirm", "help.new-proceed"))), "help.new-cancel", "new.cancel")
+                { StyleClass = "help-confirm-dialog" });
         if (state.ConfirmDelete)
             return view.WithModal(new("help.delete-confirm", "Remove your API key?",
                 UI.Stack("help.delete-confirm.content",
                     UI.Text("You'll need to add a key before asking another question. This does not delete your Google account or API key at Google.", "help.delete-confirm.copy"),
                     UI.Row("help.delete-confirm.actions", UI.Button("Keep key", "key.delete.cancel", "help.delete-cancel"),
-                        UI.Button("Remove key", "key.delete.confirm", "help.delete-proceed"))), "help.delete-cancel", "key.delete.cancel"));
+                        UI.Button("Remove key", "key.delete.confirm", "help.delete-proceed"))), "help.delete-cancel", "key.delete.cancel")
+                { StyleClass = "help-confirm-dialog" });
         if (state.Settings) return SettingsView(view, state);
         if (state.LibraryOpen) return LibraryView(view, state);
         if (state.CaptureOptions) return CaptureOptionsView(view, state);
@@ -255,7 +257,7 @@ public sealed partial class GameHelpWidget
         };
         if (state.Error is { } error) content.Add(ErrorPanel(error, "help.options.error"));
         return view.WithModal(new("help.options", "Chat options", UI.Stack("help.options-content", content.ToArray()).Classes("help-dialog"),
-            "help.spoilers", "settings.close"));
+            "help.spoilers", "settings.close") { StyleClass = "help-options-dialog" });
     }
 
     private static WidgetView CaptureOptionsView(WidgetView view, State state)
@@ -274,7 +276,7 @@ public sealed partial class GameHelpWidget
         content.Add(UI.Button("Choose saved capture", "library.open", "help.add-library").Busy(state.Busy || state.Capturing || state.LibraryBusy));
         if (state.Error is { } actionError) content.Add(ErrorPanel(actionError, "help.capture.error"));
         return view.WithModal(new("help.capture-options", "Add game context", UI.Stack("help.capture-options.content", content.ToArray()).Classes("help-dialog"),
-            "help.add-image", "context.close"));
+            "help.add-image", "context.close") { StyleClass = "help-context-dialog" });
     }
 
     private static WidgetView PreviewView(WidgetView view, State state, CaptureAttachment? preview)
@@ -312,7 +314,7 @@ public sealed partial class GameHelpWidget
         }
         return view.WithModal(new("help.preview", state.ReviewingDraft ? "Review your question" : "Review your capture", content,
             ready ? "help.preview-send" : "help.preview-question", "preview.close")
-            { StyleClass = preview is null ? "help-question-dialog" : null }) with
+            { StyleClass = preview is null ? "help-question-dialog" : "help-media-dialog" }) with
         {
             FocusGroupEntryRequest = state.FocusGroup == "help.preview-question-group" && !state.Busy
                 ? new() { RequestId = state.FocusRequest, GroupId = "help.preview-question-group" } : null,

@@ -42,4 +42,9 @@
 .help-library-search { min-width: 0px; flex-grow: 1; }
 .help-library-kind { width: 180px; }
 
-.wrail-modal.help-question-dialog { width:600px; height:auto; max-height:500px; }
+.wrail-modal.help-confirm-dialog { width: 480px; height: auto; }
+.wrail-modal.help-context-dialog { width: 600px; height: auto; }
+.wrail-modal.help-question-dialog { width: 600px; height: auto; max-height: 500px; }
+.wrail-modal.help-options-dialog { width: 680px; height: auto; max-height: 640px; }
+.wrail-modal.help-library-dialog { width: 760px; height: auto; max-height: 640px; }
+.wrail-modal.help-media-dialog { width: 760px; height: auto; max-height: 640px; }

@@ -142,7 +142,8 @@ public sealed partial class GameHelpWidget
             if (pages.Offset + pages.Items.Count < pages.TotalCount) content = content.Shortcut(ControllerButton.RightBumper, "library.next", "Next page");
         }
         return view.WithModal(new("help.library", "Saved captures", content,
-            state.LibraryPage?.Items.FirstOrDefault() is { } first ? "help.library.item." + first.Id : "help.library.back", "library.close")) with
+            state.LibraryPage?.Items.FirstOrDefault() is { } first ? "help.library.item." + first.Id : "help.library.back", "library.close")
+            { StyleClass = "help-library-dialog" }) with
         {
             FocusGroupEntryRequest = state.LibraryPage?.Items.Count > 0 && state.LibraryFocusRequest > 0
                 ? new() { RequestId = state.LibraryFocusRequest, GroupId = "help.library.items" } : null,
