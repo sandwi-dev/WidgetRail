@@ -202,12 +202,12 @@ public sealed partial class CaptureLibraryWidget
         if (status is { Issue: CaptureReplayIssue.AudioUnavailable, Phase: CaptureReplayPhase.Recording or CaptureReplayPhase.Paused })
             content.Add(UI.Text("Reconnecting application audio. Replay is still recording video.",
                 "capture-library.replay.audio-warning").Classes("capture-replay-warning"));
-        if(state.ReplayNotice is {} notice)content.Add(UI.Text(notice,"capture-library.replay.notice").Classes("capture-help","capture-replay-warning"));
+        if(!state.Settings && state.ReplayNotice is {} notice)content.Add(UI.Text(notice,"capture-library.replay.notice").Classes("capture-help","capture-replay-warning"));
         return UI.Stack("capture-library.replay.panel",content.ToArray()).Classes("capture-replay-deck");
     }
-    private WidgetElement ReplaySettings(State state)
+    private IReadOnlyList<WidgetElement> ReplaySettings(State state)
     {
-        var items=new List<WidgetElement>{UI.Text("Replay recording","capture-library.replay.heading").Classes("capture-heading"),ReplayToolbar(state)};
+        var items=new List<WidgetElement>{ReplayToolbar(state)};
         if(state.Replay is {} status)
         {
             var settings=status.Settings;var locked=Operations.IsBusy(ReplayOperation)||ReplaySettingsLocked(status);
@@ -238,6 +238,6 @@ public sealed partial class CaptureLibraryWidget
             items.Add(UI.Text("Recording continues when Capture Library closes. Save replay keeps a clip in the capture folder; Stop ends recording.","capture-library.replay.help").Classes("capture-help"));
         }
         else items.Add(UI.Button("Refresh recording status","capture-library.replay.refresh","capture-library.replay.refresh"));
-        return UI.Stack("capture-library.settings.replay",items.ToArray()).Classes("capture-settings-section");
+        return items;
     }
 }

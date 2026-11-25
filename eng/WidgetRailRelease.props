@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <WidgetRailReleaseVersion>0.1.0-preview.43</WidgetRailReleaseVersion>
-    <WidgetRailFileVersion>0.1.0.44</WidgetRailFileVersion>
+    <WidgetRailReleaseVersion>0.1.0-preview.44</WidgetRailReleaseVersion>
+    <WidgetRailFileVersion>0.1.0.45</WidgetRailFileVersion>
   </PropertyGroup>
 </Project>

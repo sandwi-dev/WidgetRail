@@ -4,7 +4,11 @@ using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.PlayniteLibrary;
 
-internal sealed record PlayniteCaptureDraft(bool Open,IReadOnlyDictionary<string,JsonElement> Changes,string? Message=null);
+[Flags]
+internal enum CaptureSettingsSections { Screenshots = 1, Clips = 2, Folders = 4 }
+
+internal sealed record PlayniteCaptureDraft(bool Open,IReadOnlyDictionary<string,JsonElement> Changes,string? Message=null,
+    CaptureSettingsSections Expanded = CaptureSettingsSections.Screenshots, AlertTone FeedbackTone = AlertTone.Success);
 
 public sealed partial class PlayniteLibraryWidget
 {
@@ -58,7 +62,16 @@ public sealed partial class PlayniteLibraryWidget
             UpdateCaptureDraft(value=>value with{Open=false});
             captureSetup.Cancel();return true;
         }
-        if(!_model.Value.CaptureSettings.Open||LifecycleState!=WidgetLifecycleState.Interactive||Operations.IsBusy(CaptureWork))return true;
+        if (!_model.Value.CaptureSettings.Open) return true;
+        if (name.StartsWith("section.", StringComparison.Ordinal))
+        {
+            var parts = name.Split('.');
+            if (parts.Length == 3 && Enum.TryParse<CaptureSettingsSections>(parts[1], out var section) &&
+                Enum.IsDefined(section) && parts[2] is "open" or "close")
+                UpdateCaptureDraft(draft => draft with { Expanded = parts[2] == "open" ? draft.Expanded | section : draft.Expanded & ~section });
+            return true;
+        }
+        if (Operations.IsBusy(CaptureWork)) return true;
         if(name=="refresh"){UpdateCaptureDraft(value=>value with{Changes=new Dictionary<string,JsonElement>(),Message=null});captureSetup.Refresh();return true;}
         if(captureSetup.Snapshot.Value is not { } current)return true;
         if(name.StartsWith("disconnect.",StringComparison.Ordinal)&&current.Sources?.SingleOrDefault(source=>name=="disconnect."+source.Id) is { } removing)
@@ -67,12 +80,13 @@ public sealed partial class PlayniteLibraryWidget
             {
                 await HostServices.CaptureLibrary.RemoveSourceAsync(removing.Id,context.CancellationToken);
                 var message="Folder disconnected. Original files were kept.";
+                var tone=AlertTone.Success;
                 if(current.Integration is { } integration&&integration.Roots.Contains(removing.CanonicalFolderPath,StringComparer.OrdinalIgnoreCase))
                     try{await _application.ConfigureCaptureIntegrationAsync(integration,removing.CanonicalFolderPath,false,context.CancellationToken);}
                     catch(Exception error)when(error is not(OutOfMemoryException or StackOverflowException or AccessViolationException))
-                    {message="Folder disconnected. Playnite metadata setup could not be updated; reconnect that profile to finish.";}
+                    {tone=AlertTone.Warning;message="Folder disconnected. Playnite metadata setup could not be updated; reconnect that profile to finish.";}
                 CommitCaptureSetup(context,current,current with{Sources=current.Sources!.Where(source=>source.Id!=removing.Id).ToArray()},
-                    ()=>UpdateCaptureDraft(value=>value with{Message=message}));
+                    ()=>UpdateCaptureDraft(value=>value with{Message=message, FeedbackTone=tone}));
             });return true;
         }
         if(current.Settings is not {Availability:"ready",Editing:false})return true;
@@ -174,17 +188,17 @@ public sealed partial class PlayniteLibraryWidget
     private void StartCaptureWork(Func<WidgetOperationContext,Task> work)
     {
         var owner=captureSetup.Snapshot.Value;
-        UpdateCaptureDraft(value=>value with{Message=null});
+        UpdateCaptureDraft(value=>value with{Message=null, FeedbackTone=AlertTone.Success});
         _=Operations.RunLatest(CaptureWork,async context=>
         {
             try{await work(context);}
             catch(OperationCanceledException)when(context.CancellationToken.IsCancellationRequested){ }
             catch(Exception error)when(error is not(OutOfMemoryException or StackOverflowException or AccessViolationException))
             {
-                lock(_gate)if(context.IsCurrent&&ReferenceEquals(captureSetup.Snapshot.Value,owner))UpdateCaptureDraft(value=>value with{Message=error switch
+                lock(_gate)if(context.IsCurrent&&ReferenceEquals(captureSetup.Snapshot.Value,owner))UpdateCaptureDraft(value=>value with{FeedbackTone=AlertTone.Danger,Message=error switch
                 {
                     WidgetCapabilityUnavailableException=>"Update WidgetRail to link capture folders.",
-                    WidgetCapabilityException{ErrorCode:"capture_library_source_overlap"}=>"This folder overlaps an existing capture-folder connection. Disconnect it from the widget that linked it, then link it here for Playnite captures.",
+                    WidgetCapabilityException{ErrorCode:"capture_library_source_overlap"}=>"Choose a separate folder for Playnite captures. This folder overlaps WidgetRail storage or another linked folder.",
                     PlayniteCaptureSettingsRejectedException{Code:"capture_settings_editing"}=>"Close Playnite’s settings window, then try again.",
                     PlayniteCaptureSettingsRejectedException{Code:"capture_settings_changed"}=>"Settings changed in Playnite. Refresh before saving again.",
                     _=>"Could not complete the change. Refresh to check the current settings; close Playnite’s settings window if it is open.",
@@ -197,8 +211,16 @@ public sealed partial class PlayniteLibraryWidget
         var snapshot=captureSetup.Snapshot;var data=snapshot.Value;var draft=_model.Value.CaptureSettings;
         var busy=captureSetup.IsBusy||Operations.IsBusy(CaptureWork);
         var items=new List<WidgetElement>();
+        var feedback=new List<WidgetElement>();
+        var header=new List<WidgetElement>();
+        WidgetElement Section(CaptureSettingsSections section, string key, string label, Func<IReadOnlyList<WidgetElement>> content) =>
+            UI.Disclosure(Captures+"."+key, label, draft.Expanded.HasFlag(section),
+                Captures+".section."+section+".open", Captures+".section."+section+".close", content).Classes("playnite-capture-disclosure");
+        if (draft.Message is { } message) feedback.Add(UI.Alert(draft.FeedbackTone switch {
+            AlertTone.Danger => "Capture settings need attention", AlertTone.Warning => "Check capture settings", _ => "Capture settings updated" },
+            message, draft.FeedbackTone, Captures+".message"));
         if(data?.Settings.Availability!="ready")
-            items.Add(UI.Text(snapshot.Error?.Message??(busy?"Loading capture settings…":data?.Settings.Availability switch
+            feedback.Add(UI.Text(snapshot.Error?.Message??(busy?"Loading capture settings…":data?.Settings.Availability switch
             {
                 "missing"=>"Install or enable PlayniteAchievements in Playnite to set up achievement captures.",
                 "unavailable"=>"Playnite is unavailable. Linked folders can still be disconnected below.",
@@ -208,7 +230,7 @@ public sealed partial class PlayniteLibraryWidget
         {
             var settings=data.Settings;
             items.Add(UI.Text("Folder choices and disconnects apply immediately. Use Save changes for capture options.",Captures+".save-help").Classes("playnite-ink-muted"));
-            if(settings.Editing)items.Add(UI.Alert("Settings are open in Playnite","Close that settings window before editing captures here.",AlertTone.Info,Captures+".editing"));
+            if(settings.Editing)feedback.Add(UI.Alert("Settings are open in Playnite","Close that settings window before editing captures here.",AlertTone.Info,Captures+".editing"));
             var enabled=!busy&&!settings.Editing;
             JsonElement Value(string key)=>draft.Changes.TryGetValue(key,out var changed)?changed:settings.Values.GetValueOrDefault(key);
             WidgetElement Choice(string key,string label)
@@ -242,38 +264,66 @@ public sealed partial class PlayniteLibraryWidget
             WidgetElement Folder(bool recording)
             {
                 var key=recording?"recordingDirectory":"screenshotDirectory";var value=Value(key);var path=value.ValueKind==JsonValueKind.String?value.GetString():null;
-                return UI.Stack(Captures+"."+key+".group",UI.Text(string.IsNullOrWhiteSpace(path)?recording?"Uses screenshot folder":"Choose a screenshot folder":path,Captures+"."+key+".path").Classes("playnite-library-setup-path"),
+                var location = string.IsNullOrWhiteSpace(path)
+                    ? recording ? "Uses the screenshot folder" : "Choose a folder to save and link screenshots for games without their own folder."
+                    : path;
+                return UI.Stack(Captures+"."+key+".group",UI.Text(location,Captures+"."+key+".path").Classes("playnite-library-setup-path"),
                     UI.Button(recording?"Choose clip folder…":"Choose screenshot folder…",Captures+".folder."+(recording?"recordings":"screenshots"),Captures+"."+key+".choose").Disabled(!enabled||data.Integration is null));
             }
-            items.Add(UI.Stack(Captures+".screenshots",UI.Text("Screenshots",Captures+".screenshots.title").Classes("playnite-capture-title","playnite-capture-screenshots-title"),Choice("screenshotsEnabled","Save achievement screenshots"),
+            bool On(string key) => Value(key).ValueKind == JsonValueKind.True;
+            bool HasPath(string key) => Value(key) is { ValueKind: JsonValueKind.String } value && !string.IsNullOrWhiteSpace(value.GetString());
+            var imageFolder = HasPath("screenshotDirectory");
+            var clipFolder = HasPath("recordingDirectory");
+            var missingImages = On("screenshotsEnabled") && !imageFolder;
+            var missingClips = On("recordingsEnabled") && !clipFolder && !imageFolder;
+            if (missingImages || missingClips)
+            {
+                var title = missingImages && missingClips ? "Screenshots and clips need a default folder" :
+                    missingImages ? "Screenshots need a default folder" : "Clips need a default folder";
+                var warning = UI.Row(Captures+".folder-warning",
+                    UI.Icon(WidgetGlyph.Warning, Captures+".warning.icon", "Warning"),
+                    UI.Stack(Captures+".warning.copy",
+                        UI.Text(title, Captures+".warning.title").Classes("playnite-capture-group-title"),
+                        UI.Text("For games without their own capture folder.", Captures+".warning.detail").Classes("playnite-ink-muted")));
+                var choices = new List<ButtonElement>();
+                if (missingImages) choices.Add(UI.Button("Choose screenshot folder…", Captures+".folder.screenshots", Captures+".warning.screenshots"));
+                if (missingClips) choices.Add(UI.Button("Choose clip folder…", Captures+".folder.recordings", Captures+".warning.clips"));
+                feedback.Add(UI.ResponsiveGrid(Captures+".folder-warning.bar", 350, 2, warning,
+                    UI.Row(Captures+".folder-warning.actions", choices.Select(button => button.Disabled(!enabled || data.Integration is null)).ToArray()))
+                    .Classes("playnite-capture-warning"));
+            }
+            string Summary(string label, bool on, string destination) => $"{label} · {(on ? "On" : "Off")}" + (on ? " · "+destination : "");
+            items.Add(Section(CaptureSettingsSections.Screenshots,"screenshots",Summary("Screenshots", On("screenshotsEnabled"),
+                imageFolder ? "Folder set" : "No default folder"), () => [Choice("screenshotsEnabled","Save achievement screenshots"),
                 Group("screenshot.versions","Versions to save",UI.ResponsiveGrid(Captures+".screenshot.variants",200,3,Choice("screenshotClean","Clean"),Choice("screenshotWithToast","With notification"),Choice("screenshotFramed","Framed"))),
                 Group("screenshot.picture","Picture and timing",UI.ResponsiveGrid(Captures+".screenshot.quality",240,2,Choice("screenshotResolution","Resolution"),Number("screenshotDelaySeconds","Capture delay","s",0,10,.5))),
-                Group("screenshot.location","Save location",Folder(false))).Classes("playnite-capture-section"));
-            items.Add(UI.Stack(Captures+".recordings",UI.Text("Video clips",Captures+".recordings.title").Classes("playnite-capture-title","playnite-capture-recordings-title"),Choice("recordingsEnabled","Save achievement clips"),
+                Group("screenshot.location","Save location",Folder(false))]));
+            items.Add(Section(CaptureSettingsSections.Clips,"recordings",Summary("Video clips", On("recordingsEnabled"),
+                clipFolder ? "Folder set" : imageFolder ? "Uses screenshot folder" : "No default folder"), () => [Choice("recordingsEnabled","Save achievement clips"),
                 Group("recording.versions","Versions to save",UI.ResponsiveGrid(Captures+".recording.variants",200,3,Choice("recordingClean","Clean"),Choice("recordingWithToast","With notification"),Choice("recordingFramed","Framed"))),
                 Group("recording.picture","Picture and timing",
                     UI.ResponsiveGrid(Captures+".recording.quality",240,2,Choice("recordingResolution","Resolution"),Choice("recordingQuality","Quality")),
                     UI.ResponsiveGrid(Captures+".recording.timing",240,2,Number("recordingSeconds","Time before unlock","s",5,60,5),Number("recordingFps","Frame rate","fps",10,60,10))),
                 Group("recording.sound","Audio",UI.ResponsiveGrid(Captures+".recording.audio",220,3,Choice("recordingAudio","Record audio"),Choice("recordingMicrophone","Include microphone"),Choice("recordingAudioSource","Audio source"))),
-                Group("recording.location","Save location",Folder(true))).Classes("playnite-capture-section"));
-            items.Add(UI.Button("Save changes",Captures+".save",Captures+".save").Disabled(!enabled||draft.Changes.Count==0).Classes("playnite-capture-save"));
+                Group("recording.location","Save location",Folder(true))]));
+            header.Add(UI.Button("Save changes",Captures+".save",Captures+".save").Disabled(!enabled||draft.Changes.Count==0).Classes("playnite-capture-save"));
         }
         if(data?.Sources is {Count:>0} sources)
         {
-            items.Add(UI.Text("Linked capture folders",Captures+".sources.title").Classes("playnite-capture-title","playnite-capture-folders-title"));
-            foreach(var source in sources)
-                items.Add(UI.Stack(Captures+".source."+source.Id,
+            items.Add(Section(CaptureSettingsSections.Folders,"sources",$"Linked folders · {sources.Count}", () =>
+                sources.Select(source => (WidgetElement)UI.Stack(Captures+".source."+source.Id,
                     UI.Text(source.CanonicalFolderPath,Captures+".source."+source.Id+".path").Classes("playnite-library-setup-path"),
-                    UI.Button("Disconnect",Captures+".disconnect."+source.Id,Captures+".source."+source.Id+".disconnect").Disabled(busy)).Classes("playnite-capture-section"));
+                    UI.Button("Disconnect",Captures+".disconnect."+source.Id,Captures+".source."+source.Id+".disconnect").Disabled(busy))).ToArray()));
         }
-        if(draft.Message is { } message)items.Add(UI.Text(message,Captures+".message"));
         items.Add(UI.Button("Refresh",Captures+".refresh",Captures+".refresh").Disabled(busy));
-        var header = new List<WidgetElement>();
         if (draft.Changes.Count > 0 && data?.Settings.Availability == "ready")
             header.Add(UI.Text("Unsaved changes", Captures+".unsaved").Classes("playnite-capture-unsaved"));
         header.Add(UI.Button("Close", Captures+".close", Captures+".modal.close"));
-        return new(Captures+".modal","Achievement captures",UI.Stack(Captures+".content",items.ToArray()).Classes("playnite-capture-content"),Captures+".modal.close",Captures+".close")
-        { StyleClass = "playnite-capture-settings-dialog", HeaderActions = UI.Row(Captures+".header-actions",header.ToArray()).Classes("playnite-capture-header-actions") };
+        var body = UI.Grid(Captures+".content", [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
+            UI.Stack(Captures+".feedback",feedback.ToArray()),
+            UI.VerticalScroll(Captures+".settings-scroll",UI.Stack(Captures+".sections",items.ToArray()).Classes("playnite-capture-content")).InGrid(row:1));
+        return new(Captures+".modal","Achievement captures",body,Captures+".modal.close",Captures+".close")
+        { ScrollContent = false, StyleClass = "playnite-capture-settings-dialog", HeaderActions = UI.Row(Captures+".header-actions",header.ToArray()).Classes("playnite-capture-header-actions") };
     }
 }
 

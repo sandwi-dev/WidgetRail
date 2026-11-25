@@ -110,7 +110,6 @@ public sealed partial class PlayniteLibraryWidget
         else { relatedCaptures.Reset(); capturePicker.Reset(); }
         Operations.Cancel(ReviewLinkWork);
         if (!retainReadValues && _model.Value.DetailsExtras.ReviewSession is not null) sessionRows.EndSelection();
-        Operations.Cancel(RelatedCaptureWatch);
         Operations.Cancel(SessionLinks(_model.Value.DetailsOpening));
         if (!retainReadValues) ClearSessionHistory();
         if (retainReadValues) { _detailsAchievements.Cancel(); _detailsActivity.Cancel(); }
@@ -170,7 +169,6 @@ public sealed partial class PlayniteLibraryWidget
         var route = _navigation.Value.RouteCancellationToken;
         if (tab != PlayniteDetailsTab.Captures)
         {
-            Operations.Cancel(RelatedCaptureWatch);
             Operations.Cancel(SessionLinks(state.DetailsOpening));
         }
         if (tab is PlayniteDetailsTab.Description or PlayniteDetailsTab.Activity)
@@ -179,6 +177,7 @@ public sealed partial class PlayniteLibraryWidget
             _detailsAchievements.EnsureLoaded(key, route, refresh);
             _detailsActivity.EnsureLoaded(key, route, refresh);
             timelineCaptures.EnsureLoaded(key, route, refresh);
+            WatchRelatedCaptures();
         }
         else if (tab == PlayniteDetailsTab.Achievements)
             _detailsAchievements.EnsureLoaded(key, route, refresh);

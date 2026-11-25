@@ -131,14 +131,20 @@ internal sealed partial class OverlayShellPage
     }
     private async Task<ReplayCaptureDecision> ChooseReplayAsync(HostReplayWork work, CancellationToken token)
     {
-        if (work.Command is not { } command || work.WidgetId is null || retired || !visible || !foreground ||
-            HostChoiceActive || LocalInstallActive || SystemFilePickerOpen || owner is null) return new(false);
-        bool OwnsSource() => command.RequestedFromTray ? !interactive && !PinnedInputActive :
+        if (work.Command is not { } command || work.WidgetId is null || retired || owner is null) return new(false);
+        var trayStart = command.RequestedFromTray ? runningFavorites.Values.FirstOrDefault(
+            item => item.ReplayVisibility.HasValue && item.Binding.Provider == work.WidgetId) : null;
+        var hiddenStart = trayStart is { Hidden: true } ? trayStart : null;
+        if (HostChoiceActive || LocalInstallActive || SystemFilePickerOpen) return new(false);
+        if (hiddenStart is null ? !visible || !foreground : visible || visibleSince != hiddenStart.ReplayVisibility) return new(false);
+        bool OwnsSource() => command.RequestedFromTray ? !PinnedInputActive && (!interactive || trayStart?.Keyboard == true) :
             interactive && activeWidget == work.WidgetId;
         if (!OwnsSource()) return new(false);
         var selection = selectionVersion;
+        var visibility = visibleSince;
         var requestOwner = owner;
-        bool Current() => !retired && visible && foreground && OwnsSource() &&
+        bool Current() => !retired && visibility == visibleSince && (hiddenStart is null ? visible && foreground && OwnsSource() :
+            !visible && runningFavorites.Values.Contains(hiddenStart)) &&
             selectionVersion == selection && ReferenceEquals(owner, requestOwner) && !token.IsCancellationRequested;
         if (!await requestOwner.Session.IsReplayCommandCurrentAsync(command.Id, token) || !Current()) return new(false);
         var recording = command.Settings.Recording;
@@ -157,8 +163,15 @@ internal sealed partial class OverlayShellPage
             .Where(item => item.ApplicationIdentity is not null && !OwnsBrowserUiProcess(item.Target.ProcessId)).ToArray();
         if (choices.Length == 0) return new(false, Issue: CaptureReplayIssue.TargetUnavailable);
         var approved = command.Approvals;
-        var focused = WebCaptureSourcePolicy.FocusedApprovedTarget(choices, approved, ForegroundBeforeOverlay?.Invoke());
+        var target = hiddenStart is null ? ForegroundBeforeOverlay?.Invoke() :
+            hiddenStart.ReplayTarget == CurrentExternalCaptureTarget?.Invoke() ? hiddenStart.ReplayTarget : null;
+        var focused = WebCaptureSourcePolicy.FocusedApprovedTarget(choices, approved, target);
         if (focused is not null) return new(true, focused.Target, focused.ApplicationIdentity, focused.ApplicationName);
+        if (hiddenStart is not null)
+        {
+            await ShowReplayNoticeAsync("Open WidgetRail to choose the application to record.", "tray-action", "Start replay");
+            return new(false);
+        }
         HostChoiceDialog? chooser = null;
         var rows = choices.Select(item => new HostDialogChoice(item.Id, item.Label,
             Value: approved.Contains(item.ApplicationIdentity) ? "Approved" : null)).ToArray();

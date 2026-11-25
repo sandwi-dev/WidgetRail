@@ -11,7 +11,7 @@ namespace WidgetRail.PlatformBroker;
 /// An in-process gate limits contention; an adjacent exclusive lock file is the
 /// cross-process serialization authority for read/CAS/write/clear.
 /// </summary>
-internal class PrivateStateStore
+internal partial class PrivateStateStore
 {
     internal const int WriteBurstCapacity = 8;
     internal const int WriteTokenUnits = 1_000;
@@ -19,7 +19,7 @@ internal class PrivateStateStore
     private const int MaximumEnvelopeBytes = 96 * 1024;
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> ProcessGates =
         new(StringComparer.OrdinalIgnoreCase);
-    private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
+    private static readonly StoreJsonContext Serializer = new(CreateJsonOptions());
     private readonly string _root;
     private readonly TimeProvider _timeProvider;
 
@@ -208,10 +208,10 @@ internal class PrivateStateStore
         try
         {
             BrokerJson.RejectDuplicateProperties(bytes);
-            var document = JsonSerializer.Deserialize<StoreDocument>(bytes, JsonOptions) ??
+            var document = JsonSerializer.Deserialize(bytes, Serializer.StoreDocument) ??
                 throw new JsonException("Private state envelope was null.");
             Validate(document);
-            var canonical = JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions);
+            var canonical = JsonSerializer.SerializeToUtf8Bytes(document, Serializer.StoreDocument);
             if (!bytes.AsSpan().SequenceEqual(canonical)) throw new JsonException(
                 "Private state envelope was not canonical.");
             return document;
@@ -229,7 +229,7 @@ internal class PrivateStateStore
     private async Task WriteAtomicAsync(
         string path, StoreDocument document, CancellationToken cancellationToken)
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(document, JsonOptions);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(document, Serializer.StoreDocument);
         if (bytes.Length > MaximumEnvelopeBytes) throw new BrokerException(
             "state_store_unavailable", "Private state envelope exceeds its host bound.");
         var temporary = Path.Combine(_root,
@@ -344,6 +344,9 @@ internal class PrivateStateStore
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         MaxDepth = 8,
     };
+
+    [JsonSerializable(typeof(StoreDocument))]
+    private sealed partial class StoreJsonContext : JsonSerializerContext;
 
     private sealed record StoreDocument(
         [property: JsonRequired] int SchemaVersion,

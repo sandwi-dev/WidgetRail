@@ -13,7 +13,8 @@ public sealed partial class MarketplaceWidget : Widget
     private sealed record State(MarketplaceSnapshot Snapshot, string? Selected = null,
         string? ReviewToken = null, Section Section = Section.Browse, bool Busy = false, string? Error = null, string? LastSelected = null, string Search = "", long FocusRequest = 0, bool SearchFocusRequested = false,
         string ThemeSearch = "", int ThemePage = 0, CatalogueTheme? SelectedTheme = null, string? ThemeReturnId = null, int ThemeImage = 0,
-        WidgetFocusRequest? ThemePageFocus = null, WidgetFocusRequest? ReturnFocus = null);
+        WidgetFocusRequest? ThemePageFocus = null, WidgetFocusRequest? ReturnFocus = null, IReadOnlyList<string>? StartingUpdates = null,
+        WidgetNavigationOperation Navigation = WidgetNavigationOperation.Replace);
     private readonly WidgetModel<State> model;
     private static readonly CompiledWidgetIntentContract open = CompiledWidgetIntentContract.Create(WidgetIntentContracts.Marketplace);
     private readonly WidgetQueryResource<ThemeBrowseQuery, ThemeBrowsePage> themePages;
@@ -78,7 +79,7 @@ public sealed partial class MarketplaceWidget : Widget
         if (!IsActive || !request.IsWellFormed() || request.ContractId != open.Id || request.Version != open.Version ||
             request.SchemaDigest != open.SchemaDigest || !open.Accepts(request.Payload)) return ValueTask.FromResult(WidgetIntentResult.Rejected);
         model.Update(s => s with { Selected = null, SelectedTheme = null, ReviewToken = null, Section = Section.Browse,
-            SearchFocusRequested = false, ThemePageFocus = null, ReturnFocus = null });
+            SearchFocusRequested = false, ThemePageFocus = null, ReturnFocus = null, Navigation = WidgetNavigationOperation.Replace });
         return ValueTask.FromResult(WidgetIntentResult.Accepted);
     }
     public override ValueTask OnActionAsync(WidgetActionEvent action,CancellationToken cancellationToken = default)
@@ -90,7 +91,7 @@ public sealed partial class MarketplaceWidget : Widget
         if (action.ActionId == "marketplace.search.focus")
         {
             if (state.ReviewToken is null)
-                model.Update(s => s with { Selected = null, SearchFocusRequested = true, FocusRequest = CreateFocusRequest().Id, ThemePageFocus = null });
+                model.Update(s => s with { Selected = null, SearchFocusRequested = true, FocusRequest = CreateFocusRequest().Id, Navigation = s.Selected is null ? WidgetNavigationOperation.Replace : WidgetNavigationOperation.Back, ThemePageFocus = null });
             return ValueTask.CompletedTask;
         }
         if (state.SearchFocusRequested) model.Update(s => s with { SearchFocusRequested = false });
@@ -98,11 +99,11 @@ public sealed partial class MarketplaceWidget : Widget
         {
             if (state.Selected is null && state.ReviewToken is null &&
                 (action.ActionId == "marketplace.search.clear" || action.CommittedText is not null))
-                model.Update(s => s with { Search = action.ActionId == "marketplace.search.clear" ? "" : action.CommittedText!.Trim(), LastSelected = null });
+                model.Update(s => s with { Search = action.ActionId == "marketplace.search.clear" ? "" : action.CommittedText!.Trim(), LastSelected = null, Navigation = WidgetNavigationOperation.Replace });
             return ValueTask.CompletedTask;
         }
         if (action.ActionId == "marketplace.back") { model.Update(s => s with { Selected = null, ReviewToken = null,
-            ReturnFocus = s.Selected is null ? null : CreateFocusRequest() }); return ValueTask.CompletedTask; }
+            Navigation = WidgetNavigationOperation.Back, ReturnFocus = s.Selected is null ? null : CreateFocusRequest() }); return ValueTask.CompletedTask; }
         if (action.ActionId == "marketplace.review.cancel") { model.Update(s => s with { ReviewToken = null }); return ValueTask.CompletedTask; }
         if (action.ActionId.StartsWith("marketplace.tab.", StringComparison.Ordinal))
         {
@@ -110,7 +111,7 @@ public sealed partial class MarketplaceWidget : Widget
                 "marketplace.tab.updates" => Section.Updates, "marketplace.tab.themes" => Section.Themes, _ => (Section?)null };
             if (section is not null && state.Selected is null && state.SelectedTheme is null && state.ReviewToken is null)
             {
-                model.Update(s => s with { Section = section.Value, Selected = null, ReviewToken = null, ThemePageFocus = null });
+                model.Update(s => s with { Section = section.Value, Navigation = WidgetNavigationOperation.Replace, Selected = null, ReviewToken = null, ThemePageFocus = null });
                 if (section == Section.Themes) LoadThemePage(model.Value);
             }
             return ValueTask.CompletedTask;
@@ -118,14 +119,14 @@ public sealed partial class MarketplaceWidget : Widget
         if (action.ActionId.StartsWith("marketplace.select.",StringComparison.Ordinal))
         {
             var selected = state.Snapshot.Items.FirstOrDefault(i => Key(i.Id) == action.ActionId["marketplace.select.".Length..]);
-            if (selected is not null) model.Update(s => s with { Selected = selected.Id, LastSelected = selected.Id, ReviewToken = null });
+            if (selected is not null) model.Update(s => s with { Selected = selected.Id, LastSelected = selected.Id, ReviewToken = null, Navigation = WidgetNavigationOperation.Forward });
             return ValueTask.CompletedTask;
         }
         if (state.Busy) return ValueTask.CompletedTask;
         if (action.ActionId.StartsWith("marketplace.update.", StringComparison.Ordinal) && operation?.State is not ("running" or "review"))
         {
             var updating = state.Snapshot.Items.FirstOrDefault(item => UpdateAvailable(item) && Key(item.Id) == action.ActionId["marketplace.update.".Length..]);
-            if (updating is not null) Work(ct => ReadAsync(new("download-updates", PackageIds: [updating.Id]), ct));
+            if (updating is not null) StartUpdates([updating.Id]);
             return ValueTask.CompletedTask;
         }
         switch (action.ActionId)
@@ -134,7 +135,7 @@ public sealed partial class MarketplaceWidget : Widget
                 var retry = state.Snapshot.UpdateBatch?.Items.Where(item => item.State is "failed" or "cancelled").Select(item => item.PackageId).ToHashSet(StringComparer.Ordinal);
                 var ids = state.Snapshot.Items.Where(item => UpdateAvailable(item) &&
                     (action.ActionId == "marketplace.update-all" || retry?.Contains(item.Id) == true)).Select(item => item.Id).Take(16).ToArray();
-                if (ids.Length > 0) Work(ct => ReadAsync(new("download-updates", PackageIds: ids), ct));
+                if (ids.Length > 0) StartUpdates(ids);
                 break;
             case "marketplace.batch.review" when operation is { Kind: "download-updates", State: "review" } && state.Snapshot.UpdateBatch is { ReviewToken: { } batchToken }:
                 model.Update(s => s with { ReviewToken = batchToken }); break;
@@ -158,9 +159,11 @@ public sealed partial class MarketplaceWidget : Widget
         }
         return ValueTask.CompletedTask;
     }
-    private void Work(Func<CancellationToken,Task> work)
+    private void StartUpdates(IReadOnlyList<string> ids) =>
+        Work(ct => ReadAsync(new("download-updates", PackageIds: ids), ct), ids);
+    private void Work(Func<CancellationToken,Task> work, IReadOnlyList<string>? startingUpdates = null)
     {
-        model.Update(s => s with { Busy = true, Error = null });
+        model.Update(s => s with { Busy = true, Error = null, StartingUpdates = startingUpdates });
         Operations.RunLatest("marketplace.work",async context =>
         {
             try { await work(context.CancellationToken); }
@@ -171,7 +174,7 @@ public sealed partial class MarketplaceWidget : Widget
                 "marketplace_busy" => "Another catalogue operation is in progress.",
                 _ => "WidgetRail Catalogue is unavailable. Check status before retrying. You can still manage installed widgets in Settings." }, ReviewToken = null }); }
             catch (OperationCanceledException) when(context.CancellationToken.IsCancellationRequested) { }
-            finally { if(context.IsCurrent) model.Update(s => s with { Busy = false }); }
+            finally { if(context.IsCurrent) model.Update(s => s with { Busy = false, StartingUpdates = null }); }
         });
     }
     private async Task ReadAsync(MarketplaceCommand command,CancellationToken token)
@@ -204,6 +207,8 @@ public sealed partial class MarketplaceWidget : Widget
         var header = new List<WidgetElement> { UI.Text(selected?.Name ?? "WidgetRail Catalogue","marketplace.title").Classes("page-heading") };
         var items = new List<WidgetElement>();
         var commands = new List<WidgetElement>();
+        var retryRemaining = state.Section == Section.Updates && state.Snapshot.UpdateBatch?.Items.Any(result =>
+            result.State is "failed" or "cancelled" && state.Snapshot.Items.Any(item => item.Id == result.PackageId && UpdateAvailable(item))) == true;
         string initial;
         if (selected is null)
         {
@@ -218,8 +223,8 @@ public sealed partial class MarketplaceWidget : Widget
                 UI.ControllerGlyph(ControllerButton.RightBumper, "marketplace.section.next.hint", "Next section").Classes("marketplace-bumper-key"))
                 .Classes("marketplace-section-navigation"));
             if (state.Section == Section.Themes) return RenderThemes(state, header);
-            if (state.Section == Section.Updates && updates > 0)
-                commands.Add(UI.Button(updates > 16 ? "Update next 16" : $"Update all ({updates})", "marketplace.update-all", "marketplace.update-all").Busy(busy).Classes("primary-button"));
+            if (state.Section == Section.Updates && updates > 0 && !retryRemaining && operation?.State != "review" && state.Error is null)
+                commands.Add(UI.Button(state.StartingUpdates is not null ? "Starting updates…" : running && operation?.Kind is "download-updates" or "install-updates" ? (operation.Kind == "download-updates" ? "Downloading…" : "Installing…") : updates > 16 ? "Update next 16" : $"Update all ({updates})", "marketplace.update-all", "marketplace.update-all").Busy(busy).Classes("primary-button"));
             var visible = browse!.Items;
             WidgetElement ListingCard(MarketplaceItem item)
             {
@@ -229,11 +234,12 @@ public sealed partial class MarketplaceWidget : Widget
                     var result = state.Snapshot.UpdateBatch?.Items.FirstOrDefault(result => result.PackageId == item.Id && result.Version == item.AvailableVersion);
                     var batchReview = operation is { Kind: "download-updates", State: "review" } && result?.State == "review";
                     var reviewing = operation is { State: "review", Review: not null } && operation.PackageId == item.Id;
-                    var updating = operation is { State: "running" } && operation.PackageId == item.Id;
+                    var pending = state.StartingUpdates?.Contains(item.Id) == true;
+                    var updating = running && (operation?.PackageId == item.Id || result?.State is "queued" or "downloading" or "installing");
                     var status = result is null ? ItemStatus(item) : $"{result.Version} · {BatchItemStatus(result.State)}" +
                         (result.Message is null ? "" : "\n" + result.Message);
                     var actions = new List<WidgetElement>();
-                    if (UpdateAvailable(item)) actions.Add(UI.Button(batchReview || reviewing ? "Review update" : updating ? "Updating…" :
+                    if (UpdateAvailable(item)) actions.Add(UI.Button(pending ? "Starting…" : batchReview || reviewing ? "Review update" : updating ? BatchItemStatus(result?.State ?? "downloading") + "…" :
                             result?.State is "failed" or "cancelled" ? "Retry update" : "Download update",
                             batchReview ? "marketplace.batch.review" : reviewing ? "marketplace.review.open" : "marketplace.update." + Key(item.Id), id + ".update")
                             .Busy(batchReview || reviewing ? state.Busy : busy));
@@ -306,36 +312,38 @@ public sealed partial class MarketplaceWidget : Widget
         if (operation is { Kind: "download-updates", State: "review" } && state.Snapshot.UpdateBatch is { } readyBatch)
         {
             var count = readyBatch.Items.Count(item => item.State == "review");
-            items.Add(UI.Button($"Review {count} {(count == 1 ? "update" : "updates")}", "marketplace.batch.review", "marketplace.batch.review.open").Busy(state.Busy));
+            commands.Add(UI.Button($"Review {count} {(count == 1 ? "update" : "updates")}", "marketplace.batch.review", "marketplace.batch.review.open").Busy(state.Busy));
         }
-        if (state.Section == Section.Updates && state.Snapshot.UpdateBatch?.Items.Any(result => result.State is "failed" or "cancelled" &&
-            state.Snapshot.Items.Any(item => item.Id == result.PackageId && UpdateAvailable(item))) == true)
-            items.Add(UI.Button("Retry remaining updates", "marketplace.retry-updates", "marketplace.retry-updates").Busy(busy));
-        if (operation is { State: "review", Review: not null } && operation.PackageId != selected?.Id &&
-            (state.Section != Section.Updates || !state.Snapshot.Items.Any(item => item.Id == operation.PackageId && UpdateAvailable(item))))
-            items.Add(UI.Button("Review downloaded widget","marketplace.review.open","marketplace.review.open").Busy(state.Busy));
-        if ((state.Error ?? operation?.Message) is { } message) items.Add(UI.Text(message,"marketplace.status").Classes(state.Error is not null || operation?.State == "failed" ? "diagnostic-error" : "page-help"));
+        if (retryRemaining && operation?.State is not ("review" or "running") && state.Error is null)
+            commands.Add(UI.Button("Retry remaining updates", "marketplace.retry-updates", "marketplace.retry-updates").Busy(busy));
+        if (operation is { State: "review", Review: not null } && operation.PackageId != selected?.Id)
+            commands.Add(UI.Button("Review downloaded widget","marketplace.review.open","marketplace.review.open").Busy(state.Busy));
+        var summary = state.Error ?? (state.StartingUpdates is { } pending ? $"Preparing {pending.Count} {(pending.Count == 1 ? "update" : "updates")}…" :
+            UpdateSummary(state.Snapshot) ?? operation?.Message);
+        if (summary is { } message) header.Add((UI.Text(message,"marketplace.status") with { AnnounceChanges = true }).Classes(state.Error is not null || operation?.State == "failed" ? "diagnostic-error" : "page-help"));
         if (operation is { State: "running", Kind: "download" or "download-updates" })
         {
-            items.Add(UI.Text($"Downloaded {operation.DownloadedBytes / 1048576d:0.0} MiB","marketplace.progress.label").Classes("page-help"));
-            if(operation.TotalBytes is > 0) items.Add(UI.Progress(Math.Min(operation.DownloadedBytes,operation.TotalBytes.Value),operation.TotalBytes.Value,"marketplace.progress","Download progress"));
+            header.Add(UI.Text($"Downloaded {operation.DownloadedBytes / 1048576d:0.0} MiB","marketplace.progress.label").Classes("page-help"));
+            if(operation.TotalBytes is > 0) header.Add(UI.Progress(Math.Min(operation.DownloadedBytes,operation.TotalBytes.Value),operation.TotalBytes.Value,"marketplace.progress","Download progress"));
         }
-        if(operation?.State is "running" or "review") items.Add(UI.Button(operation.Kind is "download-updates" or "install-updates"
+        if(operation?.State is "running" or "review") commands.Add(UI.Button(operation.Kind is "download-updates" or "install-updates"
             ? operation.State == "review" ? "Discard downloads" : "Cancel remaining updates"
             : operation.State == "review" ? "Discard download" : "Cancel operation", "marketplace.cancel", "marketplace.cancel").Busy(state.Busy || operation.Message == "Cancelling…"));
-        if(state.Error is not null) items.Add(UI.Button("Check status","marketplace.status","marketplace.status.retry").Busy(state.Busy));
+        if(state.Error is not null) commands.Add(UI.Button("Check status","marketplace.status","marketplace.status.retry").Busy(state.Busy));
         var tools = UI.Row("marketplace.commands", commands.ToArray()).Classes("marketplace-commands");
         if (selected is null && state.Snapshot.CheckedAtUtc is { } checkedAt)
         {
             var checkedLabel = UI.Text("Last checked " + checkedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture), "marketplace.checked").Classes("page-help");
-            if (state.Section == Section.Browse && state.Error is null && operation?.State != "failed") items.Add(checkedLabel);
+            if (state.Section == Section.Browse && state.Error is null && operation?.State != "failed" && commands.Count == 0) items.Add(checkedLabel);
             else header.Add(commands.Count > 0 ? UI.ResponsiveGrid("marketplace.toolbar", 340, 2, tools, checkedLabel) : checkedLabel);
         }
         else if (commands.Count > 0) header.Add(tools);
+        var scope = selected is null ? "marketplace.list." + state.Section.ToString().ToLowerInvariant() : "marketplace.details";
+        var pageKey = selected is null ? scope + "." + Key(state.Search) : "detail." + Key(selected.Id);
         var root = UI.Grid("marketplace.page", [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
             UI.Stack("marketplace.header", header.ToArray()).Classes("marketplace-header"),
             UI.VerticalScroll("marketplace.content", items.ToArray()).Classes("marketplace-content").InGrid(row: 1))
-            .Spacing(12, 0).InputScope("marketplace.page").Classes("marketplace-widget");
+            .Spacing(12, 0).InputScope(scope).Classes("marketplace-widget");
         if (selected is not null) root = root.Shortcut(ControllerButton.B,"marketplace.back",label: "Catalogue");
         else root = root.Shortcut(ControllerButton.X,"marketplace.tab.updates",label: "Updates");
         if (state.ReviewToken is null) root = root.Shortcut(ControllerButton.LeftStick, "marketplace.search.focus", label: "Search");
@@ -349,7 +357,7 @@ public sealed partial class MarketplaceWidget : Widget
             root = root.Shortcut(ControllerButton.LeftBumper, "marketplace.tab." + previous, label: "Previous section")
                 .Shortcut(ControllerButton.RightBumper, "marketplace.tab." + next, label: "Next section");
         }
-        var view = new WidgetView(root,initial, Surface: new WidgetSurfaceHints
+        var view = new WidgetView(root.TransitionPage("marketplace.pages", pageKey, state.Navigation),initial, ActiveInputScopeId: scope, Surface: new WidgetSurfaceHints
         {
             PreferredWidth = 1000, PreferredHeight = 640, MinimumWidth = 520, MinimumHeight = 400,
             Appearance = WidgetSurfaceAppearance.DesktopAcrylic,
@@ -409,6 +417,25 @@ public sealed partial class MarketplaceWidget : Widget
         if (item.IsPrerelease) badges.Add(UI.StatusBadge("Preview", StatusTone.Warning, id + ".badge.preview"));
         if (item.SetupRequirements is { Count: > 0 }) badges.Add(UI.StatusBadge("Setup required", StatusTone.Warning, id + ".badge.setup"));
         return UI.Row(id + ".badges", badges.ToArray()).Classes("marketplace-badges");
+    }
+
+    private static string? UpdateSummary(MarketplaceSnapshot snapshot)
+    {
+        if (snapshot.Operation is not { Kind: "download-updates" or "install-updates" } operation ||
+            snapshot.UpdateBatch is not { Items.Count: > 0 } batch) return null;
+        var total = batch.Items.Count;
+        var ready = batch.Items.Count(item => item.State == "review");
+        var completed = batch.Items.Count(item => item.State == "completed");
+        var failed = batch.Items.Count(item => item.State == "failed");
+        var cancelled = batch.Items.Count(item => item.State == "cancelled");
+        if (operation.State == "review") return $"{ready} of {total} ready to review";
+        if (operation.State == "running") return operation.Kind == "install-updates"
+            ? $"Installing updates · {completed} of {total} finished" : $"Downloading updates · {ready} of {total} ready";
+        if (completed + failed + cancelled == 0) return operation.Message;
+        var counts = new List<string> { $"{completed} of {total} updated" };
+        if (failed > 0) counts.Add($"{failed} failed");
+        if (cancelled > 0) counts.Add($"{cancelled} cancelled");
+        return string.Join(" · ", counts);
     }
 
     private static string BatchItemStatus(string state) => state switch

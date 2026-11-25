@@ -4,7 +4,8 @@ using WidgetRail.WidgetProtocol;
 namespace WidgetRail.PlatformBroker;
 
 internal sealed class PermissionCapabilityDomain(BrokerWidgetIdentity identity, IReadOnlySet<string> declarations,
-    ConsentStore consent, Func<CancellationToken, Task> refresh, PermissionRequestRegistry? registry = null) : IDisposable
+    ConsentStore consent, Func<CancellationToken, Task> refresh, PermissionRequestRegistry? registry = null,
+    Func<string, bool>? locallyRevoked = null) : IDisposable
 {
     private readonly PermissionRequestRegistry requests = registry ?? PermissionRequestRegistry.Shared;
     private readonly object gate = new();
@@ -34,7 +35,14 @@ internal sealed class PermissionCapabilityDomain(BrokerWidgetIdentity identity, 
             !declarations.Contains(id) || !PlatformCapabilities.IsManifestDeclarable(id) ? WidgetPermissionState.Unavailable :
             current.Entries.FirstOrDefault(e => e.PackageId == identity.PackageId && e.PublisherId == identity.PublisherId && e.CapabilityId == id)?.Decision switch
             { ConsentDecision.Grant => WidgetPermissionState.Granted, ConsentDecision.Deny => WidgetPermissionState.Denied, _ => WidgetPermissionState.NotDecided })).ToArray();
-        if (operation == "permissions.check") return BrokerJson.ToElement(new WidgetPermissionStatuses(states));
+        if (operation == "permissions.check")
+        {
+            // A grant from Settings may be on disk before the consent watcher wakes.
+            // Reconcile before telling a new invocation it can use that grant.
+            if (locallyRevoked is not null && states.Any(state => state.State == WidgetPermissionState.Granted && locallyRevoked(state.CapabilityId)))
+                await refresh(token).ConfigureAwait(false);
+            return BrokerJson.ToElement(new WidgetPermissionStatuses(states));
+        }
         if (operation != "permissions.request") throw new BrokerException("unsupported_operation", "Unknown permission operation.");
         if (states.All(s => s.State == WidgetPermissionState.Granted)) await refresh(token).ConfigureAwait(false);
         lock (gate)

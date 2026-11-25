@@ -553,6 +553,10 @@ static async Task ReviewedPermissionContinuity()
     var rawIdentity = new BrokerWidgetIdentity(id, InstalledWidgetAuthority.PublisherId(raw), "raw");
     Assert.Equal<ConsentDecision?>(null, await consent.GetDecisionAsync(rawIdentity, read));
     Assert.Equal(rawIdentity, await continuity.ResolveAsync(rawIdentity, default));
+    Assert.Equal(true, await ReviewedWidgetPreferences.SharesScopeAsync(consent.RootDirectory, id,
+        source.PublisherId, InstalledWidgetAuthority.PublisherId(previous), default));
+    Assert.Equal(false, await ReviewedWidgetPreferences.SharesScopeAsync(consent.RootDirectory, id,
+        source.PublisherId, rawIdentity.PublisherId, default));
     // Failure to read consent blocks publication without selecting the replacement.
     await File.WriteAllTextAsync(consent.DocumentFile, "{broken");
     await using var failed = File.OpenRead(CreatePackage(temp.Path, id, "dev.test", "6.0.0", permissions: [read]));

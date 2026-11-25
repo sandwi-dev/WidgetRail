@@ -171,6 +171,14 @@ internal static class Program
                     .Cast<object>().Any(), "Reopening after exit recovers an empty running set");
                 var activity = await dispatcher.DispatchAsync(Request("GET", "/v1/games/" + game.Id + "/activity"), default);
                 Check(activity.Status == 200 && !(bool)Json(activity)["installed"], "Absent GameActivity is unavailable without breaking library reads");
+                var withoutActivity = await dispatcher.DispatchAsync(Request("GET", "/v1/activity/recent",
+                    query: new NameValueCollection { ["ids"] = game.Id.ToString("D") }), default);
+                Check(withoutActivity.Status == 200 && !((System.Collections.IEnumerable)Json(withoutActivity)["sessions"]).Cast<object>().Any(),
+                    "Home can read an empty activity feed without the GameActivity plugin or its files");
+                var captureEvidence = await dispatcher.DispatchAsync(Request("GET", "/v1/capture-integration",
+                    query: new NameValueCollection { ["gameId"] = game.Id.ToString("D") }), default);
+                Check(captureEvidence.Status == 200 && (string)Json(captureEvidence)["sessionGameId"] == game.Id.ToString("D"),
+                    "Home can request independent capture session evidence without GameActivity");
                 var overview = await dispatcher.DispatchAsync(Request("GET", "/v1/achievements/overview"), default);
                 Check(overview.Status == 200 && (string)Json(overview)["availability"] == "missing" && Convert.ToInt32(Json(overview)["totalGames"]) == 0,
                     "Achievement destination can distinguish a missing addon without failing the library");
@@ -305,6 +313,13 @@ internal static class Program
                 Check((await dispatcher.DispatchAsync(Request("PUT","/v1/capture-integration",captureBody,Guid.NewGuid().ToString("D")),default)).Status==409,"Unconfigured directories cannot become provider companion roots");
                 captureBody=new JavaScriptSerializer().Serialize(new{path=captureRoot,enabled=false});
                 Check((await dispatcher.DispatchAsync(Request("PUT","/v1/capture-integration",captureBody,Guid.NewGuid().ToString("D")),default)).Status==200,"Capture root disable is an explicit retained mutation");
+                plugins.Remove(provider);
+                plugins.Add(new VisibleAchievements(api, game.Id, second.Id));
+                var modern = Json(await dispatcher.DispatchAsync(Request("GET", "/v1/achievements/overview"), default));
+                Check((string)modern["availability"] == "ready" && Convert.ToInt32(modern["totalGames"]) == 1 &&
+                    Convert.ToInt32(modern["totalAchievements"]) == 1 && Convert.ToInt32(modern["unlockedAchievements"]) == 1 &&
+                    ((System.Collections.IEnumerable)modern["recent"]).Cast<object>().Count() == 1,
+                    "Visible-only provider honors both game and achievement summary exclusions");
             }
         }
         finally
@@ -378,7 +393,25 @@ internal static class Program
             return new FakeAchievementData { Achievements = Empty ? Array.Empty<FakeAchievement>() : new[] { new FakeAchievement() } };
         }
     }
-    public sealed class FakeAchievementData { public FakeAchievement[] Achievements { get; set; } = Array.Empty<FakeAchievement>();public string EffectiveProviderKey=>"steam"; }
+    public sealed class VisibleAchievements : GenericPlugin
+    {
+        public override Guid Id => new Guid("e6aad2c9-6e06-4d8d-ac55-ac3b252b5f7b");
+        public VisibleData AchievementDataService { get; }
+        public VisibleAchievements(IPlayniteAPI api, Guid kept, Guid excluded) : base(api)
+        { AchievementDataService = new VisibleData(kept, excluded); }
+    }
+    public sealed class VisibleData
+    {
+        private readonly Guid kept, excluded;
+        public VisibleData(Guid kept, Guid excluded) { this.kept = kept; this.excluded = excluded; }
+        public string[] GetCachedGameIds() => new[] { kept.ToString("D"), excluded.ToString("D") };
+        public FakeAchievementData GetVisibleGameAchievementData(Guid id) => new FakeAchievementData
+        {
+            ExcludedFromSummaries = id == excluded,
+            Achievements = new[] { new FakeAchievement(), new FakeAchievement { IsFilteredFromSummaries = true } }
+        };
+    }
+    public sealed class FakeAchievementData { public bool ExcludedFromSummaries { get; set; } public FakeAchievement[] Achievements { get; set; } = Array.Empty<FakeAchievement>();public string EffectiveProviderKey=>"steam"; }
     public sealed class FakeCaptureOptions {public FakeCapturePersisted Persisted {get;}=new FakeCapturePersisted();}
     public sealed class FakeCapturePersisted
     {
@@ -397,6 +430,7 @@ internal static class Program
     public sealed class FakeCaptureOverride {public string CaptureDirectory {get;set;}="";}
     public sealed class FakeAchievement
     {
+        public bool IsFilteredFromSummaries { get; set; }
         public string ApiName => "fixture-achievement";
         public string DisplayName => "Fixture achievement";
         public string Description => "Description";

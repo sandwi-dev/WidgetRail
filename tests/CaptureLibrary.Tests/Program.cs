@@ -761,7 +761,7 @@ static async Task SettingsFlow()
     async Task Start() { await WidgetTestHost.InitializeAsync(widget); await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive); await Until(() => Node("capture-library.empty") is not null && !Walk(View().Root).Any(n => n.IsBusy == true)); }
     try
     {
-        await Start(); await Action("capture-library.settings");
+        await Start(); await Action("capture-library.settings"); await Action("capture-library.section.Recording.open");
         Check(View().Surface?.Appearance == WidgetSurfaceAppearance.DesktopAcrylic && View().Root.StyleClasses.Contains("capture-library-base"), "Settings must expose a desktop acrylic base");
         Check(View().Surface is { PreferredWidth: 1180, PreferredHeight: 700, WidthMode: WidgetSurfaceAxisMode.Preferred, HeightMode: WidgetSurfaceAxisMode.Preferred }, "Material changes must preserve the library, preview and settings extent");
         Check(View().ProtocolVersion >= ProtocolConstants.DesktopAcrylicVersion, "Settings must declare desktop acrylic protocol support");
@@ -777,7 +777,7 @@ static async Task SettingsFlow()
             "Settings should retain the library recording limit");
         await WidgetTestHost.DestroyAsync(widget);
         capabilities = capabilities with { RecordingProfiles = [], AudioModes = [CaptureAudioMode.None] };
-        widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), client); await Start(); await Action("capture-library.settings");
+        widget = WidgetTestHost.Attach(new CaptureLibraryWidget(), client); await Start(); await Action("capture-library.settings"); await Action("capture-library.section.Recording.open");
         await Until(()=>Node("capture-library.recording.manual.resolution") is not null);
         Check(savedState.Revision == 2 && Node("capture-library.settings.no-encoder") is not null &&
             Node("capture-library.setting.audio")!.SelectOptions.Single(option=>option.IsSelected).IsDisabled,

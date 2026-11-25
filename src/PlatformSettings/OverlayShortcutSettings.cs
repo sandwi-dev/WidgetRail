@@ -2,7 +2,13 @@ using System.Text.Json.Serialization;
 
 namespace WidgetRail.PlatformSettings;
 
-public enum HostKeyboardShortcutKind { Overlay, SaveReplay }
+public enum HostKeyboardShortcutKind { Overlay, SaveReplay, TrayUp, TrayRight, TrayDown, TrayLeft }
+
+public sealed record TrayKeyboardShortcuts(OverlayShortcutSettings? Up = null, OverlayShortcutSettings? Right = null,
+    OverlayShortcutSettings? Down = null, OverlayShortcutSettings? Left = null)
+{
+    public bool IsWellFormed() => new[] { Up, Right, Down, Left }.All(value => value is null || value.IsWellFormed());
+}
 
 [Flags]
 public enum OverlayShortcutModifiers { None = 0, Alt = 1, Control = 2, Shift = 4, Windows = 8 }
@@ -15,6 +21,18 @@ public sealed record OverlayShortcutSettings
     public OverlayShortcutModifiers Modifiers { get; init; }
     public static OverlayShortcutSettings Default { get; } = new();
     public static OverlayShortcutSettings ReplayDefault { get; } = new() { Key=0x79, Modifiers=OverlayShortcutModifiers.Control|OverlayShortcutModifiers.Shift };
+
+    public static OverlayShortcutSettings DefaultFor(HostKeyboardShortcutKind kind) => kind switch
+    {
+        HostKeyboardShortcutKind.Overlay => Default,
+        HostKeyboardShortcutKind.SaveReplay => ReplayDefault,
+        _ => new() { Modifiers = OverlayShortcutModifiers.Control | OverlayShortcutModifiers.Alt, Key = kind switch
+        {
+            HostKeyboardShortcutKind.TrayUp => 0x26, HostKeyboardShortcutKind.TrayRight => 0x27,
+            HostKeyboardShortcutKind.TrayDown => 0x28, HostKeyboardShortcutKind.TrayLeft => 0x25,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        } }
+    };
 
     public bool IsWellFormed() => ((int)Modifiers & ~15) == 0 && IsPrimaryKey(Key);
     public static bool IsPrimaryKey(int key) => key is

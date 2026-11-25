@@ -125,9 +125,15 @@ internal static partial class BridgeClientRegistryScenarios
         await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => Send(input, run));
         await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
         target = target with { TargetKey = "replacement-device" };
-        _ = await fixture.GetSnapshotAsync(configured.Id);
+        var updatedTray = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
         await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() => Send(input with { Sequence = 2 }, run));
         RegistryAssert.Equal(1, fixture.Clients.Single().ControllerInputs.Count);
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Interactive);
+        var focused = input with { TrayOffer = target, Sequence = 3, SnapshotSequence = updatedTray.Sequence, Origin = ControllerInputOrigin.AccessibilityAutomation };
+        await RegistryAssert.ThrowsAsync<BridgeStaleControllerInputAuthorityException>(() => Send(focused, run));
+        using var accepted = await fixture.Registry.SendControllerInputAsync(configured.Id, focused with { Sequence = 4 }, generation,
+            default, default, expectedWorkerRun: run, interactiveShortcut: true);
+        RegistryAssert.True(accepted.Value);
     }
 
     internal static async Task DashboardRevalidatesCompatiblePublication()

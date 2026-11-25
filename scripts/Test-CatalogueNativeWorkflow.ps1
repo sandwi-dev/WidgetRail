@@ -149,6 +149,7 @@ try{
     $entry=Installed $pm '2.0.0' $false
     $versions=@(Get-ChildItem -LiteralPath "$output/profile/widgets/packages/$pm" -Directory)
     Check ($versions.Count -eq 2) 'Ordinary re-update selects the retained version without duplicate history and keeps disabled state'
+    $null=Ready 'Widget.marketplace.primary' 'Manage in Settings'
     foreach($i in 1..3){Reopen 'Widget.marketplace.primary' "completed-reopen-$i"}
     Reopen 'Overlay.Widget.marketplace' 'idle-reopen' 125000
     (Catalog)|ConvertTo-Json -Depth 8|Set-Content "$output/final-catalog.json"

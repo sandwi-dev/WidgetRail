@@ -27,6 +27,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
     private OwnedBridgeProcess? owner;
     private WidgetViewPresenter? surface;
     private Task? startup;
+    private string? deferredStartupWidget;
     private Task? disposal;
     private string? requestedWidget;
     private string? activeWidget;
@@ -213,7 +214,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         }
         finally { transitions.Release(); }
         Phase(catalog.IsComplete ? "initial-catalog-complete" : "initial-widget-admitted");
-        SetCatalog(catalog);
+        await SetCatalogAsync(catalog);
         var explicitInitial = catalog.Widgets.FirstOrDefault(widget => widget.Id == options.InitialWidgetId);
         if (options.Development is { } development && (explicitInitial is null || explicitInitial.InstanceId != development.InstanceId))
             throw new InvalidDataException("The development catalog does not contain the requested widget instance.");
@@ -223,7 +224,8 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             ?? catalogItems.FirstOrDefault();
         if (startupSelection == selectionVersion)
         {
-            if (explicitInitial is not null) await SelectAsync(explicitInitial.Id);
+            if (!visible && initial is not null) deferredStartupWidget = initial.Id;
+            else if (explicitInitial is not null) await SelectAsync(explicitInitial.Id);
             else if (initial is not null) await SelectStartupHomeAsync(initial.Id);
             else ShowRecovery("No installed widgets are available.", false);
         }
@@ -243,13 +245,13 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 try { catalog = await startupOwner.Session.ListWidgetsAsync(deadline.Token); }
                 finally { transitions.Release(); }
             } while (!catalog.IsComplete);
-            SetCatalog(catalog);
+            await SetCatalogAsync(catalog);
             Phase("catalog-complete");
         }
     }
 
     private long observedIntentHandlerRevision;
-    private void SetCatalog(WidgetPresentationCatalog catalog)
+    private async Task SetCatalogAsync(WidgetPresentationCatalog catalog)
     {
         if (owner?.Session is { } session && session.IntentHandlerRevision != observedIntentHandlerRevision)
         {
@@ -292,6 +294,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
         if (trayMenu is { } menu && !TrayOwnerCurrent(menu.Owner, menu.Selection)) CloseTrayMenu(false);
         ReconcileMediaHostState();
         UpdateDiagnostics();
+        await ReconcileTrayAssignmentsAsync();
     }
 
     private async void TrayItemClicked(object sender, ItemClickEventArgs args)
@@ -395,7 +398,7 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
                 {
                     catalogDirty = false;
                     var catalog = await owner.Session.ListWidgetsAsync(lifetime.Token);
-                    SetCatalog(catalog);
+                    await SetCatalogAsync(catalog);
                     foreach (var retained in retainedSurfaces.Values.ToArray())
                     {
                         var current = catalog.Widgets.FirstOrDefault(widget => widget.Id == retained.Descriptor.Id);
@@ -548,7 +551,16 @@ internal sealed partial class OverlayShellPage : Page, IAsyncDisposable
             retained.Visibility = Visibility.Visible;
             if (interactive) retained.RestoreRetainedFocusPresentation();
         }
-        if (value) { ResumeUtilityPanel(); EnsureStarted(); }
+        if (value)
+        {
+            ResumeUtilityPanel();
+            EnsureStarted();
+            if (deferredStartupWidget is { } initial)
+            {
+                deferredStartupWidget = null;
+                if (activeWidget is null && !switching) _ = SelectStartupHomeAsync(initial);
+            }
+        }
         if (!value)
         {
             switchCancellation?.Cancel();

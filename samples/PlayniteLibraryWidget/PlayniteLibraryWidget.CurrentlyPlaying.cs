@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using WidgetRail.Playnite;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
@@ -25,7 +26,8 @@ public sealed partial class PlayniteLibraryWidget
     {
         lock (_gate) return playingAwards.GetSnapshot(AwardsQuery(game)).Value?.LimitNextActivity(_organization.NextActivityCount);
     }
-    private readonly WidgetQueryResource<string, IReadOnlyList<CaptureLibraryItem>> playingCaptures;
+    private sealed record PlayingCapturePage(CaptureLibraryItem? Latest, string? Profile, IReadOnlyList<HomeCapture> Pending);
+    private readonly WidgetQueryResource<string, PlayingCapturePage> playingCaptures;
 
     private static string? PlayingId(PlayniteLibraryRenderState state) =>
         state.RunningGames is { Count: > 0 } games ? state.PlayingGame is { } selected && games.Contains(selected)
@@ -42,7 +44,8 @@ public sealed partial class PlayniteLibraryWidget
         if (!hidden.HasFlag(PlayingCardKind.Achievements)) playingAwards.EnsureLoaded(AwardsQuery(id), route);
         playingDetails.EnsureLoaded(id, route);
         if (!hidden.HasFlag(PlayingCardKind.News)) playingNews.EnsureLoaded(id, route);
-        if (!hidden.HasFlag(PlayingCardKind.Capture)) playingCaptures.EnsureLoaded(id, route);
+        if (!hidden.HasFlag(PlayingCardKind.Capture))
+            playingCaptures.EnsureLoaded(id, route);
     }
 
     private async ValueTask<SteamAnnouncements> ReadPlayingNewsAsync(string id, CancellationToken token)
@@ -168,17 +171,46 @@ public sealed partial class PlayniteLibraryWidget
 
     }
 
-    private async ValueTask<IReadOnlyList<CaptureLibraryItem>> ReadPlayingCapturesAsync(string game, CancellationToken token)
+    private async ValueTask<PlayingCapturePage> ReadPlayingCapturesAsync(string game, CancellationToken token)
     {
-        await homeCaptures.EnsureLoaded().Completion.WaitAsync(token).ConfigureAwait(false);
-        token.ThrowIfCancellationRequested();
-        if (homeCaptures.Snapshot is not { Status: WidgetResourceStatus.Ready, Value: { Profile: { } profile } page }) return [];
-        if (page.Items.FirstOrDefault(c => c.GameId == game) is { } latest) return [latest.Item];
-        if (!page.HasMore || !Guid.TryParseExact(game, "D", out var gameId)) return [];
-        return await QueryGameCapturesAsync(profile, gameId, 1, token).ConfigureAwait(false);
+        if (!Guid.TryParseExact(game, "D", out var gameId)) return new(null, null, []);
+        var access = await HostServices.Permissions.CheckAsync(
+            [WidgetCaptureLibraryCapabilities.ReadPermission, WidgetCaptureLibraryCapabilities.ManagePermission], token);
+        bool Granted(string id) => access.Any(p => p.CapabilityId == id && p.State == WidgetPermissionState.Granted);
+        if (!Granted(WidgetCaptureLibraryCapabilities.ReadPermission) ||
+            await _application.GetCaptureIntegrationAsync(token, game) is not { } integration) return new(null, null, []);
+        bool Current() => !token.IsCancellationRequested && PlayingId(_model.Value) == game &&
+            _navigation.Value.Route == PlayniteLibraryRoute.Library && LifecycleState == WidgetLifecycleState.Interactive;
+        var name = _model.Value.RunningNames?.GetValueOrDefault(game) ?? PlayingItem(game)?.Presentation.DisplayName;
+        HomeCapture[] pending = [];
+        if (integration.Sessions.Count > 0 && Granted(WidgetCaptureLibraryCapabilities.ManagePermission) && !string.IsNullOrWhiteSpace(name))
+        {
+            var related = new CaptureLibraryQuery { OriginPackageId = PlaynitePackage,
+                Reference = new(CaptureRelatedIdentity.GameKind, CaptureRelatedIdentity.Game(integration.ProfileId, gameId)) };
+            try
+            {
+                if (Current())
+                    await LinkSessionCapturesAsync(related, integration.Sessions, RelatedCaptureLabel(name, 160), Current, token);
+            }
+            catch (WidgetCapabilityException error) when (error.ErrorCode == "lifecycle_denied" && LifecycleState == WidgetLifecycleState.Visible)
+            {
+                // The tray took focus between the session query and its link write.
+            }
+            // Tray focus permits reads. Show the same exact matches the interactive widget can link.
+            if (LifecycleState == WidgetLifecycleState.Visible)
+            {
+                var matches = await HostServices.CaptureLibrary.QueryAsync(UnlinkedSessionCaptures(related, integration.Sessions),
+                    count: HomeCaptureLimit, cancellationToken: token);
+                pending = matches.Items.Select(item => new HomeCapture(game, name, item)).ToArray();
+            }
+        }
+        var linked = await QueryGameCapturesAsync(integration.ProfileId, gameId, 1, token);
+        var latest = linked.Concat(pending.Select(row => row.Item)).Where(item => item.Available)
+            .MaxBy(item => item.CapturedAtUnixMilliseconds ?? item.SavedAtUnixMilliseconds);
+        return new(latest, integration.ProfileId, pending);
     }
 
-    private CaptureLibraryItem? LatestPlayingCapture(string id) => playingCaptures.GetSnapshot(id).Value?.FirstOrDefault(c => c.Available) ?? homeCaptures.Snapshot.Value?.Items
+    private CaptureLibraryItem? LatestPlayingCapture(string id) => playingCaptures.GetSnapshot(id).Value?.Latest ?? homeCaptures.Snapshot.Value?.Items
         .Where(c => c.GameId == id).MaxBy(c => c.Item.CapturedAtUnixMilliseconds ?? c.Item.SavedAtUnixMilliseconds)?.Item;
 
     private async ValueTask<bool> HandlePlayingAsync(WidgetActionEvent action, CancellationToken token)

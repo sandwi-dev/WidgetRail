@@ -1,7 +1,9 @@
 # Overlay keyboard shortcut ownership
 
-The user configures a single global chord through Settings → Controllers → Overlay
-keyboard shortcut. The host-owned dialog records keys and exposes enable, reset,
+Settings → Controllers includes the global overlay shortcut. Each of the four
+tray directions also has an optional keyboard shortcut in its assignment menu.
+The dedicated replay shortcut can be configured independently. The host-owned
+dialog records keys and exposes enable, reset,
 Save and Cancel. Settings declares the entry action and reloads the committed
 document afterward; it never registers Windows keys or saves an untested chord.
 
@@ -30,7 +32,25 @@ active recorder. No low-level keyboard hook is used.
 and Modifiers. Its absence preserves the legacy `f1ShortcutEnabled` setting;
 an explicit disabled record wins over legacy true. Invalid key/modifier values
 use the existing strict settings failure path. Fresh profiles default to disabled
-F1. Windows-reserved or externally registered combinations are rejected at Save.
+F1. The optional `controllers.trayShortcuts` records use the same format.
+Each defaults to disabled. Windows-reserved, conflicting or externally
+registered combinations are rejected at Save.
+
+Directional shortcuts resolve the current tray assignment on each press. An
+eligible background action follows the tray's normal permission and availability
+checks. Widgets supply the current command, target and provider-specific reason
+when unavailable. The host handles permission review, remembered confirmations,
+source selection and foreground ownership. A hidden invocation that reaches
+one of those UI decisions displays a notification explaining the next step.
+
+| Tray consumer | Behavior when the overlay is closed |
+| --- | --- |
+| Capture Library screenshot | With permission and remembered screenshot confirmation, save directly. Zero delay pins the foreground window at the press. A configured delay captures the foreground window at the end of the countdown. |
+| Capture Library one-off clip | Uses the independent recording confirmation, preparation settings, encoding and stop behavior of the normal recorder. |
+| Capture Library replay | Save and Stop apply to the current session. Start (including the optional Save fallback) can use the approved foreground target. A new source requires the application chooser. Automatic replay remains independent. |
+| Media Sessions, Spotify, YouTube and YouTube Music | Existing transport offers target the current player, session or device. Their availability and stale-target checks also apply to global shortcuts. |
+| Discord | Mute and deafen use the current account and call. A disconnected or changed call yields its own reason. |
+| Other widgets and templates | No tray action declaration means there is no assignable action. |
 
 ## Consumer matrix and checks
 

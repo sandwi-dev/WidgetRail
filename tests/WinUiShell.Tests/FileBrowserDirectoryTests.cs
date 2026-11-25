@@ -7,6 +7,46 @@ namespace WinUiShell.Tests;
 public sealed class FileBrowserDirectoryTests
 {
     [TestMethod]
+    public void NewFolderRequiresAValidUniqueChildName()
+    {
+        var root = Directory.CreateTempSubdirectory("wr-create-folder-");
+        try
+        {
+            var path = FileBrowserDirectory.CreateFolder(root.FullName, "Game captures");
+            Assert.IsTrue(Directory.Exists(path));
+            Assert.ThrowsExactly<IOException>(() => FileBrowserDirectory.CreateFolder(root.FullName, "game captures"));
+            foreach (var invalid in new[] { "", ".", "..", @"..\outside", "a/b", "name.", "NUL", "a:b" })
+                Assert.ThrowsExactly<ArgumentException>(() => FileBrowserDirectory.CreateFolder(root.FullName, invalid));
+            Assert.AreEqual(1, root.EnumerateFileSystemInfos().Count());
+        }
+        finally { root.Delete(true); }
+    }
+
+    [TestMethod]
+    public void NewFolderExplainsWriteDenialWithoutCreatingAnEntry()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var root = Directory.CreateTempSubdirectory("wr-folder-access-");
+        var original = root.GetAccessControl();
+        try
+        {
+            var acl = root.GetAccessControl();
+            using var current = System.Security.Principal.WindowsIdentity.GetCurrent();
+            acl.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(current.User!,
+                System.Security.AccessControl.FileSystemRights.CreateDirectories, System.Security.AccessControl.AccessControlType.Deny));
+            root.SetAccessControl(acl);
+            var error = Assert.ThrowsExactly<UnauthorizedAccessException>(() => FileBrowserDirectory.CreateFolder(root.FullName, "Game captures"));
+            StringAssert.Contains(error.Message, "permission");
+            Assert.IsFalse(root.EnumerateFileSystemInfos().Any());
+        }
+        finally
+        {
+            root.SetAccessControl(original);
+            root.Delete();
+        }
+    }
+
+    [TestMethod]
     public async Task SearchIsFolderLocalAndTypedPagesAreBoundedAndStable()
     {
         var root=Directory.CreateTempSubdirectory("wr-files-");

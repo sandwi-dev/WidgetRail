@@ -160,6 +160,32 @@ public sealed record ControllerSettings
     public bool F1ShortcutEnabled { get; init; }
     public OverlayShortcutSettings? OverlayShortcut { get; init; }
     public OverlayShortcutSettings? ReplaySaveShortcut { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TrayKeyboardShortcuts? TrayShortcuts { get; init; }
+
+    public OverlayShortcutSettings GetShortcut(HostKeyboardShortcutKind kind) => kind switch
+    {
+        HostKeyboardShortcutKind.Overlay => EffectiveOverlayShortcut,
+        HostKeyboardShortcutKind.SaveReplay => EffectiveReplaySaveShortcut,
+        HostKeyboardShortcutKind.TrayUp => TrayShortcuts?.Up ?? OverlayShortcutSettings.DefaultFor(kind),
+        HostKeyboardShortcutKind.TrayRight => TrayShortcuts?.Right ?? OverlayShortcutSettings.DefaultFor(kind),
+        HostKeyboardShortcutKind.TrayDown => TrayShortcuts?.Down ?? OverlayShortcutSettings.DefaultFor(kind),
+        HostKeyboardShortcutKind.TrayLeft => TrayShortcuts?.Left ?? OverlayShortcutSettings.DefaultFor(kind),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind))
+    };
+    public ControllerSettings WithShortcut(HostKeyboardShortcutKind kind, OverlayShortcutSettings shortcut)
+    {
+        var slots = TrayShortcuts ?? new();
+        return kind switch {
+            HostKeyboardShortcutKind.Overlay => this with { OverlayShortcut = shortcut, F1ShortcutEnabled = false },
+            HostKeyboardShortcutKind.SaveReplay => this with { ReplaySaveShortcut = shortcut },
+            HostKeyboardShortcutKind.TrayUp => this with { TrayShortcuts = slots with { Up = shortcut } },
+            HostKeyboardShortcutKind.TrayRight => this with { TrayShortcuts = slots with { Right = shortcut } },
+            HostKeyboardShortcutKind.TrayDown => this with { TrayShortcuts = slots with { Down = shortcut } },
+            HostKeyboardShortcutKind.TrayLeft => this with { TrayShortcuts = slots with { Left = shortcut } },
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
+    }
     [JsonIgnore]
     public OverlayShortcutSettings EffectiveOverlayShortcut => OverlayShortcut ?? new() { Enabled = F1ShortcutEnabled };
     [JsonIgnore]
@@ -284,6 +310,8 @@ public static class PlatformSettingsValidator
             Add("$.controllers.openShortcut", "invalid_enum", "Controller shortcut is invalid.");
         if (document.Controllers?.OverlayShortcut is { } shortcut && !shortcut.IsWellFormed())
             Add("$.controllers.overlayShortcut", "invalid_shortcut", "Keyboard shortcut requires a supported key and modifier combination.");
+        if (document.Controllers?.TrayShortcuts is { } slots && !slots.IsWellFormed())
+            Add("$.controllers.trayShortcuts", "invalid_shortcut", "Tray shortcut requires a supported key and modifier combination.");
         if (document.Controllers?.ReplaySaveShortcut is { } replayShortcut && !replayShortcut.IsWellFormed())
             Add("$.controllers.replaySaveShortcut", "invalid_shortcut", "Replay shortcut requires a supported key and modifier combination.");
         if (document.Appearance is null)

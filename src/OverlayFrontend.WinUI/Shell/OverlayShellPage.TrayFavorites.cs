@@ -1,3 +1,4 @@
+using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetPresentationSession;
 using WidgetRail.WidgetProtocol;
@@ -14,14 +15,51 @@ internal sealed partial class OverlayShellPage
     private static readonly TrayDirection[] Directions = Enum.GetValues<TrayDirection>();
     private readonly Favorite?[] displayedFavorites = new Favorite?[4];
     private readonly Dictionary<string, BridgeWidgetDescriptor> favoriteProviders = new(StringComparer.Ordinal);
-    private sealed class FavoriteInvocation(TrayActionBinding binding, string label)
+    private sealed class FavoriteInvocation(TrayActionBinding binding, string label, bool keyboard, bool hidden)
     {
         internal TrayActionBinding Binding { get; } = binding;
         internal string Label { get; } = label;
+        internal bool Keyboard { get; } = keyboard;
+        internal bool Hidden { get; } = hidden;
+        internal long? ReplayVisibility { get; set; }
+        internal WidgetRail.PlatformBroker.NativeWindowPreviewTarget? ReplayTarget { get; set; }
         internal bool ShowProgress { get; set; }
     }
     private readonly Dictionary<TrayDirection, FavoriteInvocation> runningFavorites = [];
     private ushort favoriteHeld;
+
+    private async Task ReconcileTrayAssignmentsAsync()
+    {
+        var changed = false;
+        foreach (var direction in Directions)
+        {
+            var binding = preferences.TrayActions.Get(direction);
+            if (binding?.Publisher is not { } prior || binding.Provider != binding.Package ||
+                !favoriteProviders.TryGetValue(binding.Provider, out var provider) || provider.PackageId != binding.Package ||
+                provider.PublisherId is not { } current || current == prior ||
+                !provider.AvailableTrayActions.Any(definition => definition.Id == binding.Action))
+                continue;
+            try
+            {
+                if (!await WidgetRail.PlatformBroker.ReviewedWidgetPreferences.SharesScopeAsync(
+                    Path.Combine(options.SettingsRoot, "consent"), binding.Provider, prior, current, lifetime.Token)) continue;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or WidgetRail.PlatformBroker.BrokerException)
+            {
+                Diagnostics.FrontendFailureLog.Current.Write("tray-shortcut-update", error);
+                continue;
+            }
+            if (retired || preferences.TrayActions.Get(direction) != binding ||
+                !favoriteProviders.TryGetValue(binding.Provider, out var selected) || selected != provider) continue;
+            preferences = preferences with { TrayActions = preferences.TrayActions.Assign(direction, binding with { Publisher = current }) };
+            changed = true;
+        }
+        if (changed)
+        {
+            RefreshFavoriteHints();
+            await SavePreferencesAsync();
+        }
+    }
 
     private Favorite? ResolveFavorite(TrayDirection direction, WidgetPresentationFrame? prepared = null)
     {
@@ -108,7 +146,51 @@ internal sealed partial class OverlayShellPage
         }
     }
 
-    private async Task InvokeFavoriteAsync(TrayDirection direction, Favorite? captured, ControllerInputOrigin origin)
+    private static HostKeyboardShortcutKind KeyboardSlot(TrayDirection direction) => direction switch
+    {
+        TrayDirection.Up => HostKeyboardShortcutKind.TrayUp, TrayDirection.Right => HostKeyboardShortcutKind.TrayRight,
+        TrayDirection.Down => HostKeyboardShortcutKind.TrayDown, TrayDirection.Left => HostKeyboardShortcutKind.TrayLeft,
+        _ => throw new ArgumentOutOfRangeException(nameof(direction))
+    };
+
+    internal async Task InvokeKeyboardFavoriteAsync(HostKeyboardShortcutKind kind)
+    {
+        if (retired || !serviceEnabled || HostChoiceActive || reordering || switching) return;
+        var direction = Directions.Single(slot => KeyboardSlot(slot) == kind);
+        var wasVisible = visible;
+        var visibility = visibleSince;
+        // Bind zero-delay captures to the foreground at the keypress, before a cold provider wakes.
+        var target = !wasVisible ? CurrentExternalCaptureTarget?.Invoke() : null;
+        try
+        {
+            // A registered shortcut is an explicit invocation, including before the first overlay open.
+            await (startup ??= StartAsync());
+            if (retired || visible != wasVisible || visibility != visibleSince || !preferencesLoaded) return;
+            var favorite = ResolveFavorite(direction);
+            if (favorite is null)
+            {
+                await ShowFavoriteNoticeAsync($"Assign an action to {direction} in tray quick actions.");
+                return;
+            }
+            if (HostChoiceActive || LocalInstallActive || SystemFilePickerOpen || PinnedInputActive) return;
+            if (visible && !foreground)
+            {
+                await ShowFavoriteNoticeAsync("Use the quick action from the tray.");
+                return;
+            }
+            await InvokeFavoriteAsync(direction, favorite, ControllerInputOrigin.AccessibilityAutomation, hiddenShortcut: !wasVisible,
+                keyboard: true, targetAtPress: target);
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            Diagnostics.FrontendFailureLog.Current.Write("tray-shortcut", error);
+            if (!retired) await ShowFavoriteNoticeAsync("Quick actions are unavailable. Open WidgetRail to check the connection.");
+        }
+    }
+
+    private async Task InvokeFavoriteAsync(TrayDirection direction, Favorite? captured, ControllerInputOrigin origin, bool hiddenShortcut = false,
+        bool keyboard = false, WidgetRail.PlatformBroker.NativeWindowPreviewTarget? targetAtPress = null)
     {
         if (IntroductionRunning && introduction.Step == "commands" && foreground && visible && !retired)
         {
@@ -118,7 +200,10 @@ internal sealed partial class OverlayShellPage
             return;
         }
         if (runningFavorites.TryGetValue(direction, out var currentWork) && currentWork.Binding == preferences.TrayActions.Get(direction)) return;
-        if (interactive || !foreground || !visible || retired || reordering || HostChoiceActive)
+        bool ContextCurrent() => !retired && !reordering && !HostChoiceActive &&
+            !LocalInstallActive && !SystemFilePickerOpen && !PinnedInputActive &&
+            (hiddenShortcut ? !visible : visible && foreground && (keyboard || !interactive));
+        if (!ContextCurrent())
             return;
         FavoriteInvocation? invocation = null;
         long? captureSequence = null;
@@ -126,7 +211,7 @@ internal sealed partial class OverlayShellPage
         {
             if (captured is null && preferences.TrayActions.Get(direction) is null)
             {
-                await AssignFavoriteAsync(direction);
+                if (!hiddenShortcut) await AssignFavoriteAsync(direction);
                 return;
             }
             if (owner is null)
@@ -141,33 +226,30 @@ internal sealed partial class OverlayShellPage
                 return;
             }
             var slot = preferences.TrayActions.Get(direction)!;
-            invocation = new(slot, captured.Label);
+            invocation = new(slot, captured.Label, keyboard, hiddenShortcut);
             runningFavorites[direction] = invocation;
-            if (RadialOpen) radialView?.PressFavorite(direction, FavoriteMotion);
-            else DesktopFeedback.Press(FavoriteMotion);
-            _ = RevealFavoriteProgressAsync(direction, invocation);
+            if (!hiddenShortcut)
+            {
+                if (RadialOpen) radialView?.PressFavorite(direction, FavoriteMotion);
+                else DesktopFeedback.Press(FavoriteMotion);
+                _ = RevealFavoriteProgressAsync(direction, invocation);
+            }
             var frame = captured.Frame;
             var action = captured.Action;
             var fallbackFor = captured.FallbackFor;
             var provider = captured.Prepare ?? frame?.Descriptor;
+            var interactiveShortcut = keyboard && !hiddenShortcut && interactive && activeWidget == provider?.Id;
             if (provider?.AvailableTrayActions.Any(def => def.Id == slot.Action && def.WakeOnInvoke) == true)
             {
                 var selection = selectionVersion;
                 var visibility = visibleSince;
-                frame = await owner.Session.PrepareTrayActionAsync(owner.Session.GetTarget(provider.Id), slot.Action, lifetime.Token);
-                if (retired || !visible || !foreground || interactive || HostChoiceActive || reordering || selection != selectionVersion ||
+                frame = await owner.Session.PrepareTrayActionAsync(owner.Session.GetTarget(provider.Id), slot.Action, lifetime.Token, interactiveShortcut);
+                if (!ContextCurrent() || selection != selectionVersion ||
                     visibility != visibleSince || preferences.TrayActions.Get(direction) != slot || !SameSurfaceOwner(provider, frame.Descriptor)) return;
                 var current = ResolveFavorite(direction, frame);
                 if (current?.Action?.TrayOffer is { NeedsPermission: true } && (current.Command == captured.Command || current.Command == slot.Action))
                 {
-                    runningFavorites.Remove(direction);
-                    RefreshFavoriteProgress();
-                    var choice = await ShowHostChoiceAsync("Permission needed", $"Open {provider.Name} to review access for {current.Label}.",
-                        (HostDialogChoice[])[new("open", "Open " + provider.Name)], lifetime.Token, directDecisionButtons: true);
-                    if (choice == "open" && visible && foreground && visibleSince == visibility && selectionVersion == selection &&
-                        preferences.TrayActions.Get(direction) == slot && favoriteProviders.TryGetValue(provider.Id, out var installed) &&
-                        SameSurfaceOwner(provider, installed) && !installed.IsStopped)
-                        await SelectAsync(provider.Id);
+                    await ReviewPermissionAsync(provider, slot, current.Label);
                     return;
                 }
                 // A cold slot displays both labels when the user explicitly assigned a fallback.
@@ -182,14 +264,25 @@ internal sealed partial class OverlayShellPage
                 action = current.Action;
                 fallbackFor = current.FallbackFor;
             }
+            if (action?.TrayOffer?.NeedsPermission == true && provider is not null)
+            {
+                await ReviewPermissionAsync(provider, slot, captured.Label);
+                return;
+            }
             var sequence = ++dashboardInputSequence;
+            if (action?.TrayOffer?.CaptureCommand?.Operation == "capture.replay.start")
+            {
+                if (runningFavorites.Values.Any(item => item.ReplayVisibility.HasValue && item.Binding.Provider == slot.Provider)) return;
+                invocation.ReplayVisibility = visibleSince;
+                invocation.ReplayTarget = targetAtPress;
+            }
             if (frame is not null && action?.TrayOffer?.CaptureCommand?.Operation is "capture.save-screenshot" or "capture.record-clip")
             {
                 captureSequence = sequence;
-                pendingTrayCaptures[sequence] = (frame.Descriptor.Id, visibleSince, selectionVersion);
+                pendingTrayCaptures[sequence] = new(frame.Descriptor.Id, visibleSince, selectionVersion, keyboard, hiddenShortcut, targetAtPress);
             }
             var result = frame is null || action is null ? default :
-                await owner.Session.RunTrayActionAsync(frame, action, sequence, origin, lifetime.Token, fallbackFor);
+                await owner.Session.RunTrayActionAsync(frame, action, sequence, origin, lifetime.Token, fallbackFor, interactiveShortcut);
             if (!result.Handled && !retired && preferences.TrayActions.Get(direction) == slot)
                 await ShowFavoriteNoticeAsync(result.Reason ?? "The action changed. Try again with the current target.");
         }
@@ -206,6 +299,24 @@ internal sealed partial class OverlayShellPage
                 runningFavorites.Remove(direction);
             if (!retired) RefreshFavoriteHints();
         }
+        async Task ReviewPermissionAsync(BridgeWidgetDescriptor provider, TrayActionBinding slot, string label)
+        {
+            if (hiddenShortcut)
+            {
+                await ShowReplayNoticeAsync("Open WidgetRail to review permission for this action.", "tray-action", label);
+                return;
+            }
+            var selection = selectionVersion;
+            var visibility = visibleSince;
+            runningFavorites.Remove(direction);
+            RefreshFavoriteProgress();
+            var choice = await ShowHostChoiceAsync("Permission needed", $"Open {provider.Name} to review access for {label}.",
+                (HostDialogChoice[])[new("open", "Open " + provider.Name)], lifetime.Token, directDecisionButtons: true);
+            if (choice == "open" && visible && foreground && visibleSince == visibility && selectionVersion == selection &&
+                preferences.TrayActions.Get(direction) == slot && favoriteProviders.TryGetValue(provider.Id, out var installed) &&
+                SameSurfaceOwner(provider, installed) && !installed.IsStopped)
+                await SelectAsync(provider.Id);
+        }
     }
 
     private Task ShowFavoriteNoticeAsync(string text) => ShowReplayNoticeAsync(text, "tray-action", "Quick actions");
@@ -214,11 +325,24 @@ internal sealed partial class OverlayShellPage
     {
         while (!retired && visible && foreground)
         {
-            var rows = Directions.Select(d => new HostDialogChoice(d.ToString(), d.ToString(),
-                Value: ResolveFavorite(d)?.Label ?? "Assign action…")).ToList();
-            var selected = await ShowHostChoiceAsync("Assign quick action", "", rows, lifetime.Token,
+            var controllers = (await new PlatformSettingsStore(new(options.SettingsRoot)).LoadAsync(lifetime.Token)).Controllers;
+            var rows = Directions.Select(direction =>
+            {
+                var binding = controllers.GetShortcut(KeyboardSlot(direction));
+                var action = ResolveFavorite(direction)?.Label ?? "Unassigned";
+                return new HostDialogChoice(direction.ToString(), direction.ToString(),
+                    Value: action + (binding.Enabled ? " · " + binding.DisplayName : ""));
+            }).ToList();
+            var selected = await ShowHostChoiceAsync("Tray quick actions", "", rows, lifetime.Token,
                 configure: dialog => dialog.ConfigurePreferenceList());
-            if (!Enum.TryParse<TrayDirection>(selected, out var direction) || await AssignFavoriteAsync(direction)) return;
+            if (!Enum.TryParse<TrayDirection>(selected, out var direction)) return;
+            var kind = KeyboardSlot(direction);
+            var shortcut = controllers.GetShortcut(kind);
+            var choice = await FavoriteChoiceAsync(direction + " quick action", (HostDialogChoice[])[
+                new HostDialogChoice("assign", "Assigned action", Value: ResolveFavorite(direction)?.Label ?? "Unassigned"),
+                new HostDialogChoice("shortcut", "Global keyboard shortcut", Value: shortcut.Enabled ? shortcut.DisplayName : "Off") ]);
+            if (choice == "shortcut") await EditKeyboardShortcutAsync(kind, direction + " quick action shortcut");
+            else if (choice == "assign") await AssignFavoriteAsync(direction);
         }
     }
 

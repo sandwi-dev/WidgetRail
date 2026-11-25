@@ -24,7 +24,7 @@ internal sealed partial class AchievementAdapter : IDisposable
     private readonly Queue<string> unlockOrder = new Queue<string>();
     private readonly HashSet<string> unlocks = new HashSet<string>(StringComparer.Ordinal);
     private object? plugin, service;
-    private MethodInfo? read, refresh;
+    private MethodInfo? read, refresh, overviewRead;
     private long revision = 1, useSequence;
     private volatile bool disposed;
     private sealed class Cached
@@ -65,6 +65,7 @@ internal sealed partial class AchievementAdapter : IDisposable
         if (plugin == null || service == null) return;
         read = service.GetType().GetMethod("GetVisibleGameAchievementData", new[] { typeof(string) }) ??
             service.GetType().GetMethod("GetGameAchievementData", new[] { typeof(string) });
+        overviewRead = FindOverviewRead(service.GetType());
         refresh = plugin.GetType().GetMethod("RequestSingleGameRefreshAsync", new[] { typeof(Guid) }) ??
             plugin.GetType().GetMethod("RequestSingleGameScanAsync", new[] { typeof(Guid) });
         if (refresh != null && !typeof(Task).IsAssignableFrom(refresh.ReturnType)) refresh = null;
@@ -177,7 +178,7 @@ internal sealed partial class AchievementAdapter : IDisposable
     {
         foreach (var action in unsubscribe)
             try { action(); } catch (Exception error) when (error is TargetInvocationException || error is ArgumentException || error is InvalidOperationException) { }
-        unsubscribe.Clear(); read = refresh = null;
+        unsubscribe.Clear(); read = refresh = overviewRead = null;
     }
     public void Dispose() { if (disposed) return; disposed = true; Detach(); cached.Clear(); properties.Clear(); }
 }

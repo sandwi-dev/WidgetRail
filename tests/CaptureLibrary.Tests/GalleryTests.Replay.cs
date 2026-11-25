@@ -30,7 +30,7 @@ internal static partial class GalleryTests
                 "Replay button and shortcut use the same session");
         }
         CheckHints();
-        await fixture.Action("capture-library.settings");
+        await fixture.Action("capture-library.settings"); await fixture.Action("capture-library.section.Replay.open");
         await fixture.Until(() => fixture.Node("capture-library.settings.back") is not null && Shortcut(ControllerButton.RightBumper) is not null);
         CheckHints();
         await fixture.Action("capture-library.settings.back");
@@ -129,7 +129,7 @@ internal static partial class GalleryTests
 
     internal static async Task ReplaySettingsPreserveHostRevision()
     {
-        await using var fixture=new GalleryFixture();await fixture.Start();await fixture.Action("capture-library.settings");
+        await using var fixture=new GalleryFixture();await fixture.Start();await fixture.Action("capture-library.settings"); await fixture.Action("capture-library.section.Replay.open");
         await fixture.Until(()=>fixture.Node("capture-library.recording.replay.resolution") is not null&&!fixture.Busy);
         Check(fixture.Node("capture-library.recording.replay.resolution")!.SelectOptions.Single(option=>option.IsSelected).Label.Contains("1280",StringComparison.Ordinal),
             "Replay default must show its actual720p setting, not the larger1080p qualification envelope");

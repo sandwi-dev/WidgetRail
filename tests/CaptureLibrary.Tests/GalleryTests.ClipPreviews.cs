@@ -35,7 +35,7 @@ internal static partial class GalleryTests
             Check(fixture.Node("capture-library.gallery.preview") is null && selection.Range.Items.All(item => item.Root.FocusPresentation is null),
                 "Batch selection retained automatic clip playback demand");
         await fixture.Action("capture-library.selection.toggle");
-        await fixture.Action("capture-library.settings");
+        await fixture.Action("capture-library.settings"); await fixture.Action("capture-library.section.Gallery.open");
         await fixture.Until(() => fixture.Node("capture-library.settings.previews") is not null && !fixture.Busy);
         await fixture.Action("capture-library.option.previews.off");
         await fixture.Until(() => !fixture.Busy && fixture.Node("capture-library.settings.previews")!.SelectOptions.Any(option => option.ActionId == "capture-library.option.previews.off" && option.IsSelected));

@@ -84,26 +84,70 @@ public sealed partial class PlayniteLibraryWidget
     }
     private void WatchRelatedCaptures()
     {
-        if(Operations.IsBusy(RelatedCaptureWatch))return;
-        Operations.RunLatest(RelatedCaptureWatch,async context=>
+        var navigation = _navigation.Value;
+        var route = navigation.RouteCancellationToken;
+        Operations.RunSingleFlight(RelatedCaptureWatch + "." + navigation.Revision, async context=>
         {
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, route);
+            var token = lifetime.Token;
             try
             {
-                var permissions=await HostServices.Permissions.CheckAsync([WidgetCaptureLibraryCapabilities.ReadPermission],context.CancellationToken);
+                var permissions=await HostServices.Permissions.CheckAsync([WidgetCaptureLibraryCapabilities.ReadPermission],token);
                 if(permissions.Any(item=>item.State!=WidgetPermissionState.Granted))return;
-                await using var changes=await HostServices.CaptureLibrary.OpenChangesAsync(context.CancellationToken);
-                Refresh();
-                await foreach(var _ in changes.ReadAllAsync(context.CancellationToken))Refresh();
-                void Refresh()
+                await using var changes=await HostServices.CaptureLibrary.OpenChangesAsync(token);
+                await Refresh();
+                await foreach(var _ in changes.ReadAllAsync(token)) await Refresh();
+                async Task Refresh()
                 {
+                    if (!context.IsCurrent || token.IsCancellationRequested) return;
                     var state=WithDetailsResources(_model.Value);
-                    if(context.IsCurrent&&state.DetailsItem is not null&&state.DetailsExtras.Tab==PlayniteDetailsTab.Captures)
-                        RefreshCaptureResources(state, true);
+                    if (_navigation.Value.Route == PlayniteLibraryRoute.GameDetails && state.DetailsItem is not null &&
+                        LifecycleState == WidgetLifecycleState.Interactive)
+                    {
+                        if (state.DetailsExtras.Tab == PlayniteDetailsTab.Captures)
+                            RefreshCaptureResources(state, true);
+                        else if (state.DetailsExtras.Tab is PlayniteDetailsTab.Activity or PlayniteDetailsTab.Description)
+                        {
+                            var key = DetailsKey(state);
+                            await timelineCaptures.WhenIdleAsync(token);
+                            await timelineCaptures.EnsureLoaded(key, route, forceRefresh: true).Completion.WaitAsync(token);
+                        }
+                        return;
+                    }
+                    if (_navigation.Value.Route != PlayniteLibraryRoute.Library) return;
+                    await RefreshHomeCaptureViewsAsync(token);
                 }
             }
             catch(OperationCanceledException){ }
             catch(WidgetCapabilityException){ }
+            catch(WidgetCapabilityUnavailableException){ }
         },WidgetOperationLifetime.Active);
+    }
+    private void ResumeHomeCaptureLinks(CancellationToken stateLifetime)
+    {
+        if (PlayingId(_model.Value) is not { } game) return;
+        var captures = playingCaptures.GetSnapshot(game);
+        if (captures.Value?.Pending.Count is not > 0 && captures.Status is not (WidgetResourceStatus.Loading or WidgetResourceStatus.Refreshing)) return;
+        var route = _navigation.Value.RouteCancellationToken;
+        Operations.RunLatest(RelatedCapturePrefix + ".resume-home", async context =>
+        {
+            using var scope = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, stateLifetime, route);
+            await RefreshHomeCaptureViewsAsync(scope.Token);
+        });
+    }
+
+    private async Task RefreshHomeCaptureViewsAsync(CancellationToken token)
+    {
+        if (PlayingId(_model.Value) is { } game)
+        {
+            await playingCaptures.WhenIdleAsync(token);
+            if (PlayingId(_model.Value) == game)
+                await playingCaptures.EnsureLoaded(game, token, forceRefresh: true).Completion.WaitAsync(token);
+        }
+        // Read the feed after the session matches and any older feed read have settled.
+        await homeCaptures.WhenIdleAsync(token);
+        token.ThrowIfCancellationRequested();
+        await homeCaptures.Refresh().Completion.WaitAsync(token);
     }
     private bool HandleRelatedCaptures(WidgetActionEvent action)
     {

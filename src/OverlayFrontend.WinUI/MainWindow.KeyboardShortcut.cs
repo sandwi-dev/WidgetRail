@@ -10,18 +10,34 @@ public sealed partial class MainWindow
     private Action? replaySaveCommand;
     private readonly SemaphoreSlim keyboardUpdateGate = new(1, 1);
 
-    private Input.OverlayKeyboardShortcut? KeyboardRegistration(HostKeyboardShortcutKind kind)=>kind==HostKeyboardShortcutKind.Overlay?keyboardShortcut:replaySaveShortcut;
-    private void SetKeyboardRegistration(HostKeyboardShortcutKind kind,Input.OverlayKeyboardShortcut? value)
-    {if(kind==HostKeyboardShortcutKind.Overlay)keyboardShortcut=value;else replaySaveShortcut=value;}
-    private static OverlayShortcutSettings KeyboardPreference(ControllerSettings settings,HostKeyboardShortcutKind kind)=>
-        kind==HostKeyboardShortcutKind.Overlay?settings.EffectiveOverlayShortcut:settings.EffectiveReplaySaveShortcut;
+    private readonly Dictionary<HostKeyboardShortcutKind, Input.OverlayKeyboardShortcut> trayKeyboardShortcuts = [];
+    private Action<HostKeyboardShortcutKind>? trayShortcutCommand;
+    private Input.OverlayKeyboardShortcut? KeyboardRegistration(HostKeyboardShortcutKind kind) => kind switch {
+        HostKeyboardShortcutKind.Overlay => keyboardShortcut, HostKeyboardShortcutKind.SaveReplay => replaySaveShortcut,
+        _ => trayKeyboardShortcuts.GetValueOrDefault(kind)
+    };
+    private void SetKeyboardRegistration(HostKeyboardShortcutKind kind, Input.OverlayKeyboardShortcut? value)
+    {
+        if (kind == HostKeyboardShortcutKind.Overlay) keyboardShortcut = value;
+        else if (kind == HostKeyboardShortcutKind.SaveReplay) replaySaveShortcut = value;
+        else if (value is null) trayKeyboardShortcuts.Remove(kind);
+        else trayKeyboardShortcuts[kind] = value;
+    }
+    private void DisposeTrayShortcuts()
+    {
+        foreach (var shortcut in trayKeyboardShortcuts.Values) shortcut.Dispose();
+        trayKeyboardShortcuts.Clear();
+        trayShortcutCommand = null;
+    }
     private Input.OverlayKeyboardShortcut CreateKeyboardShortcut(OverlayShortcutSettings settings,HostKeyboardShortcutKind kind=HostKeyboardShortcutKind.Overlay)
     {
         var registration = new Input.OverlayKeyboardShortcut(WinRT.Interop.WindowNative.GetWindowHandle(this), () =>
         {
             if (cleanupStarted || keyboardEditorOpen) return;
             input?.TraceInput("Keyboard shortcut received: "+kind);
-            if(kind==HostKeyboardShortcutKind.Overlay)ToggleOverlay();else replaySaveCommand?.Invoke();
+            if (kind == HostKeyboardShortcutKind.Overlay) ToggleOverlay();
+            else if (kind == HostKeyboardShortcutKind.SaveReplay) replaySaveCommand?.Invoke();
+            else trayShortcutCommand?.Invoke(kind);
         }, settings);
         registration.CapturedWhileSuppressed = value => keyboardCapture?.Invoke(value);
         registration.SetSuppressed(keyboardEditorOpen);
@@ -33,6 +49,7 @@ public sealed partial class MainWindow
         keyboardEditorOpen = value;
         keyboardShortcut?.SetSuppressed(value);
         replaySaveShortcut?.SetSuppressed(value);
+        foreach (var shortcut in trayKeyboardShortcuts.Values) shortcut.SetSuppressed(value);
         if (!value) keyboardCapture = null;
     }
 
@@ -56,11 +73,9 @@ public sealed partial class MainWindow
             }
             await new PlatformSettingsStore(new(root)).UpdateAsync(document =>
             {
-                if (KeyboardPreference(document.Controllers,kind) != expected)
+                if (document.Controllers.GetShortcut(kind) != expected)
                     throw new InvalidOperationException("The shortcut changed while this editor was open. Cancel and open it again.");
-                return document with { Controllers = kind==HostKeyboardShortcutKind.Overlay?
-                    document.Controllers with { OverlayShortcut = requested, F1ShortcutEnabled = false }:
-                    document.Controllers with { ReplaySaveShortcut = requested } };
+                return document with { Controllers = document.Controllers.WithShortcut(kind, requested) };
             }, token);
             // Save is the commit point. Even if dismissal races completion, adopt the
             // committed preference so disk and Windows never disagree about our owner.

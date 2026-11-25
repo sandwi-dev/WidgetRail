@@ -40,6 +40,7 @@ public sealed partial class PlayniteLibraryWidget
                         // A Playnite restart also changes the instance. Retire the
                         // shelf reads without disturbing the user's current route.
                         ResetPlayingResources();
+                        Operations.Cancel(RecentSessionLinks);
                         homeCaptures.Reset(invalidate: false);
                         homeRecentActivity.Reset(invalidate: false);
                     }

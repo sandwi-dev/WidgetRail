@@ -1,4 +1,5 @@
 #include "CaptureVideoEncoder.h"
+#include "CaptureSdrColor.h"
 #include <cstdio>
 #include <chrono>
 #include <thread>
@@ -10,6 +11,74 @@ using widgetrail::capture::VideoEncoder;
 static double CpuMilliseconds(){FILETIME created{},exited{},kernel{},user{};GetProcessTimes(GetCurrentProcess(),&created,&exited,&kernel,&user);
     return double((uint64_t(kernel.dwHighDateTime)<<32|kernel.dwLowDateTime)+(uint64_t(user.dwHighDateTime)<<32|user.dwLowDateTime))/10000;}
 static size_t Memory(){PROCESS_MEMORY_COUNTERS counters{};counters.cb=sizeof(counters);GetProcessMemoryInfo(GetCurrentProcess(),&counters,sizeof(counters));return counters.WorkingSetSize;}
+static void CheckHdrToSdr(ID3D11Device* device, ID3D11DeviceContext* immediate, const wchar_t* outputDirectory) {
+    // Linear scRGB grays: black, 20, 80, 160, 320, 640 and 1000 nits.
+    const uint16_t grays[]{0,0x3400,0x3c00,0x4000,0x4400,0x4800,0x4a40};
+    constexpr UINT width = ARRAYSIZE(grays);
+    uint16_t rgba[width][4]{};
+    for (UINT i=0;i<width;++i) {
+        rgba[i][0]=rgba[i][1]=rgba[i][2]=grays[i];
+        rgba[i][3]=0x3c00;
+    }
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width=width;desc.Height=desc.ArraySize=desc.MipLevels=desc.SampleDesc.Count=1;
+    desc.Format=DXGI_FORMAT_R16G16B16A16_FLOAT;desc.BindFlags=D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA init{rgba,sizeof(rgba),0};
+    ComPtr<ID3D11Texture2D> source,dest,read;
+    winrt::check_hresult(device->CreateTexture2D(&desc,&init,&source));
+    desc.Format=DXGI_FORMAT_B8G8R8A8_UNORM;desc.BindFlags=D3D11_BIND_RENDER_TARGET;
+    winrt::check_hresult(device->CreateTexture2D(&desc,nullptr,&dest));
+    desc.Usage=D3D11_USAGE_STAGING;desc.BindFlags=0;desc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;
+    winrt::check_hresult(device->CreateTexture2D(&desc,nullptr,&read));
+    ComPtr<IDXGIDevice> dxgi;winrt::check_hresult(device->QueryInterface(IID_PPV_ARGS(&dxgi)));
+    ComPtr<ID2D1Factory1> factory;winrt::check_hresult(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,IID_PPV_ARGS(&factory)));
+    ComPtr<ID2D1Device> d2d;winrt::check_hresult(factory->CreateDevice(dxgi.Get(),&d2d));
+    ComPtr<ID2D1DeviceContext> dc;winrt::check_hresult(d2d->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE,&dc));
+    ComPtr<IDXGISurface> srcSurface,destSurface;winrt::check_hresult(source.As(&srcSurface));winrt::check_hresult(dest.As(&destSurface));
+    const auto props=D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET|D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+        D2D1::PixelFormat(desc.Format,D2D1_ALPHA_MODE_PREMULTIPLIED),96,96);
+    ComPtr<ID2D1Bitmap1> target;winrt::check_hresult(dc->CreateBitmapFromDxgiSurface(destSurface.Get(),&props,&target));
+    widgetrail::capture::CaptureSdrColor color;
+    for (const auto white : {80.f,200.f,400.f}) {
+        color.Configure(1000.f,white);
+        const auto bounds=D2D1::RectF(0,0,float(width),1);
+        dc->SetTarget(target.Get());dc->BeginDraw();dc->Clear();
+        color.Draw(dc.Get(),srcSurface.Get(),bounds,bounds);
+        winrt::check_hresult(dc->EndDraw());dc->SetTarget(nullptr);color.ReleaseInput();
+        immediate->CopyResource(read.Get(),dest.Get());
+        D3D11_MAPPED_SUBRESOURCE mapped{};winrt::check_hresult(immediate->Map(read.Get(),0,D3D11_MAP_READ,0,&mapped));
+        const auto bytes=static_cast<const uint8_t*>(mapped.pData);
+        bool valid=bytes[0]<=2 && bytes[4*(width-1)]>=240;
+        std::printf("HDR to SDR, white=%.0f nits:",white);
+        for (UINT i=0;i<width;++i) {
+            const auto pixel=bytes+4*i;
+            valid=valid && (!i || pixel[0]>pixel[-4]) && std::abs(pixel[0]-pixel[2])<=2;
+            std::printf(" %u",pixel[0]);
+        }
+        std::printf("\n");immediate->Unmap(read.Get(),0);
+        if (!valid)throw winrt::hresult_error(E_UNEXPECTED);
+    }
+    // Send the tone-mapped GPU output through the same hardware encoder as a
+    // one-off clip, so the gray ramp can also be checked in a decoded MP4.
+    constexpr UINT videoWidth=448, videoHeight=256;
+    desc.Width=videoWidth;desc.Height=videoHeight;desc.Usage=D3D11_USAGE_DEFAULT;
+    desc.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;desc.CPUAccessFlags=0;
+    ComPtr<ID3D11Texture2D> canvas;ComPtr<IDXGISurface> surface;ComPtr<ID2D1Bitmap1> videoTarget;
+    winrt::check_hresult(device->CreateTexture2D(&desc,nullptr,&canvas));winrt::check_hresult(canvas.As(&surface));
+    winrt::check_hresult(dc->CreateBitmapFromDxgiSurface(surface.Get(),&props,&videoTarget));
+    dc->SetTarget(videoTarget.Get());dc->BeginDraw();dc->Clear();
+    color.Draw(dc.Get(),srcSurface.Get(),D2D1::RectF(0,0,float(width),1),D2D1::RectF(0,0,videoWidth,videoHeight));
+    winrt::check_hresult(dc->EndDraw());dc->SetTarget(nullptr);color.ReleaseInput();
+    WrailCaptureOptions options;options.kind=2;options.maximumWidth=videoWidth;options.maximumHeight=videoHeight;
+    options.framesPerSecond=30;options.durationSeconds=1;options.encoder=2;options.bitrate=3000000;
+    const auto path=std::wstring(outputDirectory)+L"/hdr-ramp.mp4";
+    VideoEncoder encoder(path.c_str(),videoWidth,videoHeight,options,device);
+    for (UINT index=0;index<8;++index) {
+        if(!encoder.TryWriteTexture(canvas.Get(),index))throw winrt::hresult_error(E_UNEXPECTED);
+        std::this_thread::sleep_for(std::chrono::milliseconds(33));
+    }
+    encoder.Finish();
+}
 static void Readback(const wchar_t* path,UINT width,UINT height,UINT expectedFrames){
     winrt::check_hresult(MFStartup(MF_VERSION));
     try {
@@ -59,6 +128,7 @@ int wmain(int argc,wchar_t** argv){
         ComPtr<ID3D11Device> device;ComPtr<ID3D11DeviceContext> immediate;
         winrt::check_hresult(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,D3D11_CREATE_DEVICE_BGRA_SUPPORT|D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
             nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&immediate));
+        CheckHdrToSdr(device.Get(),immediate.Get(),argv[1]);
         struct Profile {UINT width,height,fps,bitrate,encoder;};
         const Profile profiles[]={{1280,720,15,3000000,1},{1280,720,15,3000000,2},{1920,1080,30,8000000,2},
             {1920,1080,60,12000000,2},{3840,2160,30,20000000,2}};

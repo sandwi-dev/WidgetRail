@@ -8,6 +8,7 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 public sealed partial class PlayniteLibraryWidget
 {
     internal const string HomeActivityList = "playnite-library.home.activity.list";
+    private const int HomeCaptureLimit = 16;
     private sealed record HomeCapture(string GameId, string GameName, CaptureLibraryItem Item);
     private sealed record HomeCapturePage(IReadOnlyList<HomeCapture> Items, string? Profile, bool HasMore);
     private sealed record HomeEvents(PlayniteRecentActivity? Activity, IReadOnlyList<HomeCapture>? Captures, PlayniteLibraryHomeQuery? Catalog = null);
@@ -30,11 +31,16 @@ public sealed partial class PlayniteLibraryWidget
 
     private void LoadHomeActivity()
     {
-        if (_navigation.Value.Route != PlayniteLibraryRoute.Library || LifecycleState != WidgetLifecycleState.Interactive ||
-            HomeState.Publication is not { Query.IsWarmDisplayOnly: false }) return;
-        LoadPlaying();
-        homeRecentActivity.EnsureLoaded();
-        homeCaptures.EnsureLoaded();
+        if (_navigation.Value.Route != PlayniteLibraryRoute.Library || !IsActive ||
+            HomeState.Publication is not { Query.IsWarmDisplayOnly: false } publication) return;
+        if (LifecycleState == WidgetLifecycleState.Interactive)
+        {
+            LoadPlaying();
+            homeRecentActivity.EnsureLoaded();
+            homeCaptures.EnsureLoaded();
+            CatchUpRecentGameCaptures(publication.Query.Source);
+        }
+        WatchRelatedCaptures();
     }
 
     private async ValueTask<HomeCapturePage> ReadHomeCapturesAsync(CancellationToken token)
@@ -43,7 +49,7 @@ public sealed partial class PlayniteLibraryWidget
         if (!access.Any(p => p.CapabilityId == WidgetCaptureLibraryCapabilities.ReadPermission && p.State == WidgetPermissionState.Granted)) return new([], null, false);
         if (await _application.GetCaptureIntegrationAsync(token) is not { } integration) return new([], null, false);
         var page = await HostServices.CaptureLibrary.QueryAsync(new() { OriginPackageId = PlaynitePackage, AvailableOnly = true },
-            count: 16, cancellationToken: token);
+            count: HomeCaptureLimit, cancellationToken: token);
         var result = new List<HomeCapture>();
         foreach (var item in page.Items.Where(item => item.ContextCount > 0))
         {
@@ -61,6 +67,12 @@ public sealed partial class PlayniteLibraryWidget
                 if (contexts.Items.Count == 0 || offset >= contexts.TotalCount) break;
                 revision = contexts.Revision;
             }
+        }
+        if (PlayingId(_model.Value) is { } gameId && playingCaptures.GetSnapshot(gameId).Value is { Pending.Count: > 0 } playing &&
+            playing.Profile == integration.ProfileId)
+        {
+            var known = result.Select(row => (row.GameId, row.Item.Id)).ToHashSet();
+            result.AddRange(playing.Pending.Where(row => known.Add((row.GameId, row.Item.Id))));
         }
         return new(result, integration.ProfileId, page.Items.Count < page.TotalCount);
     }

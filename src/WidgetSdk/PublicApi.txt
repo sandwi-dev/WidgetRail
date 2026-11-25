@@ -3225,6 +3225,7 @@ property bool WidgetRail.WidgetSdk.SetWidgetAudioSessionMutedRequest.IsMuted { g
 property bool WidgetRail.WidgetSdk.SetWidgetBluetoothRadioRequest.Enabled { get; set; }
 property bool WidgetRail.WidgetSdk.SetWidgetWifiAutoConnectRequest.Enabled { get; set; }
 property bool WidgetRail.WidgetSdk.SetWidgetWifiRadioRequest.Enabled { get; set; }
+property bool WidgetRail.WidgetSdk.TextElement.AnnounceChanges { get; set; }
 property bool WidgetRail.WidgetSdk.TextEntryElement.IsDisabled { get; set; }
 property bool WidgetRail.WidgetSdk.Widget.IsActive { get; }
 property bool WidgetRail.WidgetSdk.WidgetAppLaunchObservation.SupportsEnded { get; set; }

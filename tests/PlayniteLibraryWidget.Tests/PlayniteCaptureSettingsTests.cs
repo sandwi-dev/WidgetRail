@@ -43,9 +43,15 @@ public sealed partial class PlayniteLibraryTests
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(file))!);
             var theme=WidgetRail.Tests.RendererFixtureExporter.CompileTheme(Path.Combine(AppContext.BaseDirectory,"styles"),"default.wrss");
-            var modal=(WidgetModal)typeof(WidgetRail.Samples.PlayniteLibrary.PlayniteLibraryWidget).GetMethod("CaptureSettingsModal",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(widget,null)!;
-            var view=new WidgetView(UI.Stack("capture-settings.parent",UI.Button("Capture settings","open","capture-settings.open"))).WithModal(modal);
-            WidgetRail.Tests.RendererFixtureExporter.Write(file,new CaptureModalFixture(view).RenderSnapshot("playnite.capture-settings.fixture",1),theme);
+            Export(file, 1);
+            await widget.OnActionAsync(new(CaptureSettingsPrefix+".section.Clips.open", CaptureSettingsPrefix+".recordings.header"));
+            Export(file+".expanded", 2);
+            void Export(string path, int sequence)
+            {
+                var modal=(WidgetModal)typeof(WidgetRail.Samples.PlayniteLibrary.PlayniteLibraryWidget).GetMethod("CaptureSettingsModal",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(widget,null)!;
+                var view=new WidgetView(UI.Stack("capture-settings.parent",UI.Button("Capture settings","open","capture-settings.open"))).WithModal(modal);
+                WidgetRail.Tests.RendererFixtureExporter.Write(path,new CaptureModalFixture(view).RenderSnapshot("playnite.capture-settings.fixture",sequence),theme);
+            }
         }
         await widget.OnActionAsync(new(CaptureSettingsPrefix+".save","save"));await widget.WhenCaptureSettingsIdleAsync();
         Assert.AreEqual(1,saved!.Count);Assert.IsTrue(saved["screenshotsEnabled"].GetBoolean());
@@ -54,6 +60,37 @@ public sealed partial class PlayniteLibraryTests
         Assert.IsTrue(await Route(widget,Snapshot(widget,900006),ControllerButton.B,CaptureSettingsPrefix+".modal.close"));
         await WaitIndexed(()=>!widget.RenderState.Value.CaptureSettings.Open);
         await WidgetTestHost.DestroyAsync(widget);
+    }
+    [TestMethod]
+    public async Task MissingEffectiveFoldersWarnOutsideScrollAndRespectInheritance()
+    {
+        var provider = new FakeHost(1);
+        var widget = Create(provider, out var app);
+        var settings = CaptureSettingsFixture("binding");
+        app.CaptureSettingsHandler = _ => ValueTask.FromResult(settings);
+        try
+        {
+            await Interactive(widget); await Ready(widget, provider);
+            async Task Action(string name) => await widget.OnActionAsync(new(CaptureSettingsPrefix+"."+name, "test"));
+            async Task Open() { await Action("open"); await widget.WhenCaptureSettingsIdleAsync(); }
+            ViewNode? Node(string name) => Nodes(Snapshot(widget, 900020).Root).FirstOrDefault(n => n.Id == CaptureSettingsPrefix+"."+name);
+            await Open();
+            Assert.IsNull(Node("folder-warning"));
+            await Action("set.screenshotsEnabled.on"); await Action("set.recordingsEnabled.on");
+            Assert.IsNotNull(Node("warning.screenshots")); Assert.IsNotNull(Node("warning.clips"));
+            await Action("section.Screenshots.close");
+            Assert.IsNull(Node("screenshotsEnabled"));
+            Assert.IsTrue(Nodes(Node("feedback")!).Any(n => n.Id == CaptureSettingsPrefix+".folder-warning"));
+            Assert.IsFalse(Nodes(Node("settings-scroll")!).Any(n => n.Id == CaptureSettingsPrefix+".folder-warning"));
+            await Action("close");
+            settings = settings with { Values = settings.Values.ToDictionary(pair => pair.Key, pair => pair.Key switch {
+                "screenshotDirectory" => JsonSerializer.SerializeToElement(@"C:\Achievement captures"),
+                "recordingsEnabled" => JsonSerializer.SerializeToElement(true), _ => pair.Value }) };
+            await Open();
+            Assert.IsNull(Node("folder-warning"));
+            StringAssert.Contains(Node("recordings.header")!.Text!, "Uses screenshot folder");
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
     }
     [TestMethod]
     public async Task CaptureSettingsOldProfileReplyCannotReplaceReconnectedProfile()
@@ -149,6 +186,7 @@ public sealed partial class PlayniteLibraryTests
         Assert.AreEqual(0,removed,"Choosing an existing root cannot make it a cleanup candidate.");
         app.CaptureSettingsHandler=_=>ValueTask.FromException<PlayniteCaptureSettings>(new PlayniteBridgeTransportException(false));
         await widget.OnActionAsync(new(CaptureSettingsPrefix+".refresh","refresh"));await widget.WhenCaptureSettingsIdleAsync();
+        await widget.OnActionAsync(new(CaptureSettingsPrefix+".section.Folders.open",CaptureSettingsPrefix+".sources.header"));
         Assert.IsTrue(Nodes(Snapshot(widget,900007).Root).Any(node=>node.ActionId==CaptureSettingsPrefix+".disconnect."+source.Id));
         await widget.OnActionAsync(new(CaptureSettingsPrefix+".disconnect."+source.Id,"disconnect"));await widget.WhenCaptureSettingsIdleAsync();
         Assert.AreEqual(1,removed);Assert.AreEqual(0,sources.Count);

@@ -57,6 +57,7 @@ internal sealed partial class OverlayShellPage
                     step = "open approved applications";
                     await SelectAsync("capture-replay-fixture", true);
                     await Choose("capture-library.more", "settings");
+                    await Activate("capture-library.section.Replay.header");
                     await Activate("capture-library.approvals.open");
                     await Until(() => Node("capture-library.approvals.empty") is not null);
                     step = "choose generated application";
@@ -205,6 +206,7 @@ internal sealed partial class OverlayShellPage
                 Check(backend.Starts == 0, "Controller cancellation of the real source chooser creates no native worker");
                 step="recording settings";
                 await Choose("capture-library.more","settings");
+                await Activate("capture-library.section.Replay.header");
                 await Until(()=>Node("capture-library.recording.replay.fps") is not null);
                 Check(ReplayStatusForHost?.Settings.Recording.Selection==new CaptureRecordingSelection(),"Fresh host preferences are Auto without rewriting explicit legacy settings");
                 var settingsRevision=ReplayStatusForHost!.SettingsRevision;

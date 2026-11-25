@@ -366,6 +366,8 @@ public sealed partial class MainWindow
             page.ControllerControlPreferenceReceived += exclusiveControlValidationInput.ApplyControllerControlPreference;
             page.EnableExclusiveControlValidation(exclusiveResult, exclusiveControlValidationInput, backend);
         }
+        if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-hidden-slots") is { } slotResult)
+            EnableHiddenSlotValidation(page, slotResult);
         if (arguments.Contains("--shell-no-controller") && Shell.FrontendArguments.Value(arguments, "--validate-f1") is { } f1Result)
             EnableKeyboardShortcutValidation(page, f1Result);
         if (arguments.Contains("--shell-no-controller") &&

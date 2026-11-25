@@ -94,6 +94,10 @@ static async Task ExportNative(string directory)
     await Write("completed");
     await ExportEdgeStates(directory);
     await ScreenshotNavigation(directory);
+    var theme = WidgetRail.Tests.RendererFixtureExporter.CompileTheme(Path.Combine(AppContext.BaseDirectory, "fixture"), "default.wrss");
+    foreach (var file in Directory.EnumerateFiles(directory, "*.snapshot.json"))
+        WidgetRail.Tests.RendererFixtureExporter.Write(file[..^".snapshot.json".Length] + ".json",
+            SnapshotJson.Deserialize(await File.ReadAllBytesAsync(file)), theme);
     async Task Write(string name) => await File.WriteAllBytesAsync(Path.Combine(directory, name + ".snapshot.json"), SnapshotJson.Serialize(fixture.View()));
 }
 

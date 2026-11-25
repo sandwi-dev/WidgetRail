@@ -1,7 +1,7 @@
 # Current platform status
 
-Reviewed against source on 2026-11-24: application preview `0.1.0-preview.43`, SDK/CLI
-`0.4.8-dev`. The current refinement source uses presentation protocol 147, including addressed widget activity summaries, background intent delivery, preferred collection entry and
+Reviewed against source on 2026-11-25: application preview `0.1.0-preview.44`, SDK/CLI
+`0.4.9-dev`. The current refinement source uses presentation protocol 148, including opt-in live status text, addressed widget activity summaries, background intent delivery, preferred collection entry and
 remote-image/media galleries and explicit passive video animation in addition to backend web
 sessions, native capture, explicit modal dismissal, exact pin-selection identities,
 interactive/passive pin declarations, desktop acrylic surfaces, opted-in pin

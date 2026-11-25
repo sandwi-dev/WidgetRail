@@ -18,7 +18,7 @@ internal static partial class GalleryTests
 
     internal static async Task RecordingAutoAndDraftQualification()
     {
-        await using var f=new GalleryFixture();await f.Start();await f.Action("capture-library.settings");
+        await using var f=new GalleryFixture();await f.Start();await f.Action("capture-library.settings"); await f.Action("capture-library.section.Recording.open");
         await f.Until(()=>f.Node("capture-library.recording.manual.codec") is not null&&!f.Busy);
         Check(f.EncodingQueries.Count==1&&f.EncodingQueries[0].DiscoverAlternatives&&f.EncodingQueries[0].Recording?.Selection==new CaptureRecordingSelection(),"Settings opened duplicate or legacy encoder surveys");
         Check(f.Node("capture-library.recording.manual.resolution")!.SelectOptions.Single(value=>value.IsSelected).Label=="Auto (recommended)","New manual preferences did not default to Auto");
@@ -40,7 +40,7 @@ internal static partial class GalleryTests
             f.Node("capture-library.recording.manual.resolution")!.SelectOptions.Single(value=>value.IsSelected).Label=="Auto (recommended)","One manual choice overwrote independent Auto constraints");
         Check(ViewSnapshotValidator.Validate(f.View()).Count==0,"Recording settings declaration invalid");
         await using var restored=new GalleryFixture(privateState:new(f.PrivateState.Json!,f.PrivateState.Revision));
-        await restored.Start();await restored.Action("capture-library.settings");
+        await restored.Start();await restored.Action("capture-library.settings"); await restored.Action("capture-library.section.Recording.open");
         await restored.Until(()=>restored.Node("capture-library.recording.manual.fps") is not null&&!restored.Busy);
         Check(restored.Node("capture-library.recording.manual.fps")!.SelectOptions.Single(value=>value.IsSelected).Label=="60 fps",
             "Schema-two Auto constraints did not round trip");
@@ -49,7 +49,7 @@ internal static partial class GalleryTests
     internal static async Task RecordingDraftRejectsLateAndExternalChanges()
     {
         await using var f=new GalleryFixture();f.Replay=f.Replay with{Settings=f.Replay.Settings with{Recording=f.Replay.Settings.Recording with{Audio=CaptureAudioMode.None}}};
-        await f.Start();await f.Action("capture-library.settings");await f.Until(()=>f.Node("capture-library.recording.replay.fps") is not null&&!f.Busy);
+        await f.Start();await f.Action("capture-library.settings"); await f.Action("capture-library.section.Replay.open");await f.Until(()=>f.Node("capture-library.recording.replay.fps") is not null&&!f.Busy);
         var entered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var release=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         f.EncodingOverride=async(query,_)=>{entered.TrySetResult();await release.Task;return RecordingCapabilities(query);};
         await f.Action(f.Node("capture-library.recording.replay.fps")!.SelectOptions.Single(value=>value.Label=="60 fps").ActionId);

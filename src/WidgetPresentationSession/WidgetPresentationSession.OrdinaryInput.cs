@@ -7,7 +7,7 @@ namespace WidgetRail.WidgetPresentationSession;
 public sealed partial class WidgetPresentationSession
 {
     public async Task<WidgetPresentationFrame> PrepareTrayActionAsync(WidgetPresentationTarget target,
-        string actionId, CancellationToken token)
+        string actionId, CancellationToken token, bool interactiveShortcut = false)
     {
         var generation = ValidateTarget(target);
         var descriptor = target.Descriptor;
@@ -15,7 +15,7 @@ public sealed partial class WidgetPresentationSession
             throw OrdinaryInputStale("The selected action does not support background preparation.");
         var request = new BridgePresentationRequest(descriptor.Id)
         {
-            TrayPreparation = new(actionId, descriptor.RuntimeGeneration, descriptor.PresentationGeneration)
+            TrayPreparation = new(actionId, descriptor.RuntimeGeneration, descriptor.PresentationGeneration) { InteractiveShortcut = interactiveShortcut }
         };
         var response = await RequestAsync(BridgeMessageTypes.GetSnapshot, request, BridgeMessageTypes.Snapshot, token).ConfigureAwait(false);
         return PublishSnapshot(descriptor, generation, response.Payload);
@@ -28,11 +28,11 @@ public sealed partial class WidgetPresentationSession
         (await DispatchTrayAsync(displayed, command, sequence, origin, token, fallbackFor, false).ConfigureAwait(false)).Handled;
 
     public Task<TrayActionResult> RunTrayActionAsync(WidgetPresentationFrame displayed, WidgetQuickAction command,
-        long sequence, ControllerInputOrigin origin, CancellationToken token, string? fallbackFor) =>
-        DispatchTrayAsync(displayed, command, sequence, origin, token, fallbackFor, true);
+        long sequence, ControllerInputOrigin origin, CancellationToken token, string? fallbackFor, bool interactiveShortcut = false) =>
+        DispatchTrayAsync(displayed, command, sequence, origin, token, fallbackFor, true, interactiveShortcut);
 
     private async Task<TrayActionResult> DispatchTrayAsync(WidgetPresentationFrame displayed, WidgetQuickAction command,
-        long sequence, ControllerInputOrigin origin, CancellationToken token, string? fallbackFor, bool waitForCompletion)
+        long sequence, ControllerInputOrigin origin, CancellationToken token, string? fallbackFor, bool waitForCompletion, bool interactiveShortcut = false)
     {
         if (!TrayActionContract.ValidOffer(command.TrayOffer)) return default;
         using (_gate.Enter())
@@ -61,7 +61,7 @@ public sealed partial class WidgetPresentationSession
         try
         {
             var request = new BridgeControllerInputRequest(key.WidgetId, input, displayed.Authority.RuntimeGeneration,
-                WorkerRun: key.WorkerRun) { ObserveTrayCompletion = waitForCompletion };
+                WorkerRun: key.WorkerRun) { ObserveTrayCompletion = waitForCompletion, InteractiveShortcut = interactiveShortcut };
             var reply = await RequestAsync(BridgeMessageTypes.ControllerInput, request, BridgeMessageTypes.ControllerInputResult, token).ConfigureAwait(false);
             RequireObjectProperties(reply.Payload, "handled");
             var handled = reply.Payload.GetProperty("handled").GetBoolean();

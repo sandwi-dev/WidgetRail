@@ -7,7 +7,48 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 public sealed partial class PlayniteLibraryWidget
 {
     private const string OpenCapturePickerWork = RelatedCapturePrefix + ".open-picker";
+    private const string RecentSessionLinks = RelatedCapturePrefix + ".recent-sessions";
     private static string SessionLinks(long opening) => RelatedCapturePrefix + ".session-links." + opening;
+
+    private void CatchUpRecentGameCaptures(PlayniteLibraryCapturedQuery catalog)
+    {
+        if (catalog.RetainedLastGood || catalog.RecentCaptureGames.Count == 0) return;
+        var route = _navigation.Value.RouteCancellationToken;
+        var state = StateLifetimeToken;
+        Operations.RunLatest(RecentSessionLinks, async operation =>
+        {
+            using var scope = CancellationTokenSource.CreateLinkedTokenSource(route, state, operation.CancellationToken);
+            var token = scope.Token;
+            bool Current() => !token.IsCancellationRequested && operation.IsCurrent && LifecycleState == WidgetLifecycleState.Interactive &&
+                ReferenceEquals(HomeState.Publication?.Query.Source, catalog) && _navigation.Value.Route == PlayniteLibraryRoute.Library;
+            if (!Current()) return;
+            var access = await HostServices.Permissions.CheckAsync(
+                [WidgetCaptureLibraryCapabilities.ReadPermission, WidgetCaptureLibraryCapabilities.ManagePermission], token);
+            bool Granted(string id) => access.Any(p => p.CapabilityId == id && p.State == WidgetPermissionState.Granted);
+            if (!Granted(WidgetCaptureLibraryCapabilities.ReadPermission) || !Granted(WidgetCaptureLibraryCapabilities.ManagePermission)) return;
+            var connection = await _application.GetCaptureIntegrationAsync(token);
+            if (connection is null) return;
+            var changed = false;
+            foreach (var candidate in catalog.RecentCaptureGames)
+            {
+                if (!Current()) return;
+                if (_model.Value.RunningGames?.Contains(candidate.Id) == true ||
+                    !Guid.TryParseExact(candidate.Id, "D", out var game) || string.IsNullOrWhiteSpace(candidate.Name)) continue;
+                var evidence = await _application.GetCaptureIntegrationAsync(token, candidate.Id);
+                if (evidence is null) continue;
+                if (evidence.ProfileId != connection.ProfileId || evidence.ConnectionId != connection.ConnectionId) return;
+                if (evidence.Sessions.Count == 0) continue;
+                var related = new CaptureLibraryQuery { OriginPackageId = PlaynitePackage,
+                    Reference = new(CaptureRelatedIdentity.GameKind, CaptureRelatedIdentity.Game(connection.ProfileId, game)) };
+                changed |= await LinkSessionCapturesAsync(related, evidence.Sessions, RelatedCaptureLabel(candidate.Name, 160), Current, token);
+            }
+            if (changed && Current())
+            {
+                await homeCaptures.WhenIdleAsync(token);
+                if (Current()) await homeCaptures.Refresh().Completion.WaitAsync(token);
+            }
+        });
+    }
 
     private void ReconcileGameCaptures(CaptureQuery query, CaptureLibraryQuery related, IReadOnlyList<CaptureProcessInterval> sessions)
     {
@@ -15,26 +56,12 @@ public sealed partial class PlayniteLibraryWidget
             RelatedCaptureKey(WithDetailsResources(_model.Value)) == query;
         if (!Current()) return;
         var generation = _model.Value.DetailsGeneration;
-        var filter = related with { SourceIntervals = sessions, ExcludeReference = true, ExcludeDetachedReference = true, AvailableOnly = true };
         Operations.RunSingleFlight(SessionLinks(query.Opening),async operation =>
         {
-            var changed = false;
             try
             {
-                // Successful links leave this query. Publish existing gallery rows while a backlog drains.
-                while (Current() && operation.IsCurrent)
-                {
-                    var page = await HostServices.CaptureLibrary.QueryAsync(filter, count: 8, cancellationToken: operation.CancellationToken);
-                    var progressed = false;
-                    foreach (var item in page.Items)
-                    {
-                        if (!Current() || !operation.IsCurrent) return;
-                        progressed |= await AttachGameAsync(item, related.Reference!.Id, query.Name, operation.CancellationToken)
-                            == CaptureContextSaveOutcome.Saved;
-                    }
-                    changed |= progressed;
-                    if (!progressed || page.TotalCount <= page.Items.Count) break;
-                }
+                var changed = await LinkSessionCapturesAsync(related, sessions, query.Name,
+                    () => Current() && operation.IsCurrent, operation.CancellationToken);
                 if (changed && Current() && operation.IsCurrent)
                     relatedCaptures.EnsureLoaded(query,_navigation.Value.RouteCancellationToken,true);
             }
@@ -45,6 +72,30 @@ public sealed partial class PlayniteLibraryWidget
             }
         },WidgetOperationLifetime.Active);
     }
+
+    private async Task<bool> LinkSessionCapturesAsync(CaptureLibraryQuery related, IReadOnlyList<CaptureProcessInterval> sessions,
+        string name, Func<bool> current, CancellationToken token)
+    {
+        var filter = UnlinkedSessionCaptures(related, sessions);
+        var changed = false;
+        while (current())
+        {
+            var page = await HostServices.CaptureLibrary.QueryAsync(filter, count: 8, cancellationToken: token);
+            var progressed = false;
+            foreach (var item in page.Items)
+            {
+                token.ThrowIfCancellationRequested();
+                if (!current()) return changed;
+                progressed |= await AttachGameAsync(item, related.Reference!.Id, name, token) == CaptureContextSaveOutcome.Saved;
+            }
+            changed |= progressed;
+            if (!progressed || page.TotalCount <= page.Items.Count) break;
+        }
+        return changed;
+    }
+
+    private static CaptureLibraryQuery UnlinkedSessionCaptures(CaptureLibraryQuery related, IReadOnlyList<CaptureProcessInterval> sessions) =>
+        related with { SourceIntervals = sessions, ExcludeReference = true, ExcludeDetachedReference = true, AvailableOnly = true };
 
     private static string GameLinkKey(string captureId, string reference) =>
         "game-link." + CaptureRelatedIdentity.Hash(captureId + "/" + reference);

@@ -36,12 +36,14 @@ public sealed partial class PackageRuntimeTests
         using var directory = new TestDirectory();
         var client = new FakeLibraryClient(2);
         client.Games[0] = client.Games[0] with { IsInstalled = true, CompletionStatus = null };
-        client.Games[1] = client.Games[1] with { IsInstalled = false, Favorite = true, CompletionStatus = null };
+        client.Games[1] = client.Games[1] with { IsInstalled = false, Favorite = true, CompletionStatus = null, LastActivityUnixMilliseconds = 2000 };
         await using var service = Service(directory.Path, client);
         var query = await service.CaptureQueryAsync(AllGames, new(PlayniteLibraryQueryScope.Home), true, default);
         Assert.IsFalse(query.CanReuseOnTabEntry!(), "An unversioned catalog must be checked on return.");
         Assert.AreEqual(1, query.Count);
         Assert.AreEqual(client.Games[0].Id, query.Games[0].Id);
+        Assert.IsTrue(query.RecentCaptureGames.Any(game => game.Id == client.Games[1].Id),
+            "A recent game's recorded sessions remain eligible after uninstalling it.");
         Assert.IsTrue(query.Authority.ContainsGame(client.Games[0].Id));
         Assert.IsTrue(query.Authority.ContainsGame(client.Games[1].Id));
         Assert.IsNull(query.Authority.CompletionStatuses[client.Games[1].Id]);

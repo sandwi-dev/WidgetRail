@@ -106,6 +106,33 @@ internal sealed partial class FileBrowserDialog
                 d.Keyboard!.Hide(); await Until(()=>d.Keyboard is null && d.body.IsLoaded);
                 d.Cancel(); Check(d.Result.Length==0,"Keyboard dismissal and picker cancellation produce no selection");
             });
+            await Run(new(FileBrowserMode.Folder, "Choose captures folder", "Choose", data.FullName), async d =>
+            {
+                d.newFolder.Focus(FocusState.Keyboard);
+                Press(d, 0x1000);
+                await Until(() => d.Keyboard is { IsLoaded: true });
+                d.Keyboard!.Handle(WidgetRail.WidgetProtocol.ControllerButton.B, WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed);
+                await Until(() => d.Keyboard is null && d.newFolder.IsLoaded);
+                await Until(() => ReferenceEquals(FocusManager.GetFocusedElement(d.XamlRoot), d.newFolder));
+                Check(true, "Folder-name cancel restores its button after the dialog reopens");
+                Check(!Directory.Exists(Path.Combine(data.FullName, "New folder")), "Cancelling the folder name returns focus without creating anything");
+                d.BeginNewFolder();
+                await Until(() => d.Keyboard is { IsLoaded: true });
+                var first = d.Keyboard!;
+                SetName(first, folder.Name);
+                first.Handle(WidgetRail.WidgetProtocol.ControllerButton.RightTrigger, WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed);
+                await Until(() => d.Keyboard is { IsLoaded: true } retry && !ReferenceEquals(first, retry));
+                Check(d.Keyboard!.TakeValue() == folder.Name, "A duplicate folder name stays available for correction");
+                SetName(d.Keyboard!, "Saved clips");
+                d.Keyboard!.Handle(WidgetRail.WidgetProtocol.ControllerButton.RightTrigger, WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed);
+                var created = Path.Combine(data.FullName, "Saved clips");
+                await Until(() => d.Keyboard is null && d.reading is null && d.FocusedRow()?.Entry.Path == created);
+                Check(Directory.Exists(created) && d.Result.Length == 0, "Creating a folder focuses it without committing the picker");
+                Press(d, 0x1000);
+                await Until(() => d.page?.Directory == created && d.reading is null);
+                await d.CommitAsync();
+                Check(d.Result.SequenceEqual([created]), "The created folder can be chosen normally");
+            });
             if (!Environment.GetCommandLineArgs().Contains("--file-picker-compact"))
             {
                 var many=data.CreateSubdirectory("Large directory");
@@ -160,6 +187,19 @@ internal sealed partial class FileBrowserDialog
             var showing=dialog.PresentAsync(origin,deadline.Token);
             try {await Until(()=>dialog.page is not null && dialog.reading is null && dialog.IsLoaded);await test(dialog);}
             finally {if(!dialog.closed)dialog.Cancel();await showing;}
+        }
+        static void SetName(DependencyObject root, string value)
+        {
+            if (root is TextBox box) { box.Text = value; return; }
+            var queue = new Queue<DependencyObject>();
+            queue.Enqueue(root);
+            while (queue.TryDequeue(out var node))
+            {
+                if (node is TextBox editor) { editor.Text = value; return; }
+                for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(node); i++)
+                    queue.Enqueue(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(node, i));
+            }
+            throw new InvalidOperationException("The folder name editor was not realized.");
         }
         void Check(bool ok,string label){if(!ok)throw new InvalidOperationException(label);checks.Add(label);}
         static async Task Until(Func<bool> predicate)

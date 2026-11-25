@@ -56,11 +56,11 @@ internal static partial class NativeWindowCapture
     {
         var window = GetAncestor(GetForegroundWindow(), 2); // GA_ROOT: capture the application's top-level window.
         if (window == 0 || window == GetDesktopWindow() || window == GetShellWindow())
-            throw new InvalidOperationException("No foreground application is available.");
+            throw new BrokerException("capture_target_unavailable", "No foreground application is available.");
         var identity = new NativePreviewTarget { Size = (uint)sizeof(NativePreviewTarget), Version = 1 };
         Marshal.ThrowExceptionForHR(PreviewNative.ReadIdentity((ulong)window, ref identity));
         if (identity.ProcessId == (uint)Environment.ProcessId)
-            throw new InvalidOperationException("WidgetRail cannot be its own capture target.");
+            throw new BrokerException("capture_target_unavailable", "WidgetRail cannot be its own capture target.");
         return identity;
     }
     [StructLayout(LayoutKind.Sequential)]
@@ -100,9 +100,9 @@ internal static partial class NativeWindowCapture
         internal CaptureMediaProperties? Properties { get; init; }
         internal CaptureRecordingConfiguration? ResolvedRecording { get; init; }
     }
-    internal sealed record OverlayScreenshot(NativeWindowPreviewTarget Target, nint Overlay);
+    internal sealed record FixedCaptureTarget(NativeWindowPreviewTarget Target, nint Overlay);
     internal static async Task<CapturedResult> RunAsync(HostWindowCapture request, CancellationToken token, CancellationToken stop = default,
-        OverlayScreenshot? screenshot = null)
+        FixedCaptureTarget? fixedTarget = null)
     {
         if (request.Options is { } options)
         {
@@ -110,14 +110,14 @@ internal static partial class NativeWindowCapture
             var validation = available.Validate(options);
             if (!validation.Supported) throw new BrokerException(validation.ErrorCode!, "The requested capture settings are unavailable.");
         }
-        return await Task.Run(() => Run(request, token, stop, screenshot), token).ConfigureAwait(false);
+        return await Task.Run(() => Run(request, token, stop, fixedTarget), token).ConfigureAwait(false);
     }
-    private static NativePreviewTarget SelectCaptureTarget(OverlayScreenshot? screenshot)
+    private static NativePreviewTarget SelectCaptureTarget(FixedCaptureTarget? fixedTarget)
     {
 #if ENABLE_WIDGET_VALIDATION
-        if (TryGetFixtureCaptureTarget(out var fixture, screenshot)) return fixture;
+        if (TryGetFixtureCaptureTarget(out var fixture, fixedTarget)) return fixture;
 #endif
-        return screenshot is null ? ForegroundTarget() : ToNative(screenshot.Target);
+        return fixedTarget is null ? ForegroundTarget() : ToNative(fixedTarget.Target);
     }
 
     private static NativePreviewTarget ToNative(NativeWindowPreviewTarget target)
@@ -126,13 +126,13 @@ internal static partial class NativeWindowCapture
             Convert.ToUInt64(target.ProcessCreated, 16), target.ClassName));
     }
 
-    private static unsafe CapturedResult Run(HostWindowCapture request, CancellationToken token, CancellationToken stop, OverlayScreenshot? screenshot)
+    private static unsafe CapturedResult Run(HostWindowCapture request, CancellationToken token, CancellationToken stop, FixedCaptureTarget? fixedTarget)
     {
         token.ThrowIfCancellationRequested();
-        if (screenshot is not null && (request.Kind != WindowCaptureKind.Screenshot ||
-            request.Options?.Preparation.DelaySeconds != 0 || screenshot.Overlay == 0))
+        if (fixedTarget is { Overlay: not 0 } && (request.Kind != WindowCaptureKind.Screenshot ||
+            request.Options?.Preparation.DelaySeconds != 0))
             throw new InvalidOperationException("Invalid immediate screenshot request.");
-        var target = SelectCaptureTarget(screenshot);
+        var target = SelectCaptureTarget(fixedTarget);
         var root = GCHandle.Alloc(new Control(token, stop));
         try
         {
@@ -163,8 +163,8 @@ internal static partial class NativeWindowCapture
                     AudioMode = (uint)(video?.Audio ?? CaptureAudioMode.None) };
                 var output = new ConfiguredResult { Size = (uint)sizeof(ConfiguredResult), Version = 3 };
                 int code;
-                if (screenshot is not null)
-                    code = CaptureOverlayScreenshot(in target, screenshot.Overlay, request.OutputPath, in options,
+                if (fixedTarget is { Overlay: not 0 })
+                    code = CaptureOverlayScreenshot(in target, fixedTarget.Overlay, request.OutputPath, in options,
                         (nint)(delegate* unmanaged[Stdcall]<nint, int>)&Current, GCHandle.ToIntPtr(root), ref output);
                 else if(resolved is null)
                     code = settings.OutputPurpose == CaptureOutputPurpose.LibraryRecording

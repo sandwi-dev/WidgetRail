@@ -8,6 +8,67 @@ namespace WidgetRail.Tests.PlayniteLibrary;
 
 public sealed partial class PlayniteLibraryTests
 {
+    [TestMethod, Timeout(30000)]
+    public async Task RecentActivityUpdatesLinkedClipsWithReadOnlyAccessAndNoRunningGame()
+    {
+        var game = Guid.NewGuid().ToString("D");
+        var profile = Guid.NewGuid().ToString("D");
+        var changes = System.Threading.Channels.Channel.CreateUnbounded<CaptureLibraryChanged>();
+        var firstRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var count = 0;
+        var provider = new FakeHost(1) { ItemFactory = i => Item(i) with { SavedId = game } };
+        provider.SetCompletionStatus(game, "Playing");
+        var clips = Enumerable.Range(1, 4).Select(i =>
+        {
+            var id = i.ToString("x32");
+            return new CaptureLibraryItem(id, new(id, "video/mp4", 640, 360, 1024, 5, long.MaxValue), 1_795_593_000_000 + i)
+                { ContextCount = 1, Revision = 1 };
+        }).ToArray();
+        provider.ConfigureServices = builder => builder
+            .WithHandler(WidgetPermissionCapabilities.Check, (request, _) => ValueTask.FromResult(new WidgetPermissionStatuses(
+                request.CapabilityIds.Select(id => new WidgetPermissionStatus(id, id == WidgetCaptureLibraryCapabilities.ReadPermission
+                    ? WidgetPermissionState.Granted : WidgetPermissionState.Denied)).ToArray())))
+            .WithEventStream(WidgetCaptureLibraryCapabilities.Changed, token => changes.Reader.ReadAllAsync(token))
+            .WithHandler(WidgetCaptureLibraryCapabilities.Query, async (request, token) =>
+            {
+                Assert.AreEqual("widgetrail.samples.playnite-library", request.Query.OriginPackageId);
+                var items = clips.Take(Volatile.Read(ref count)).Reverse().ToArray();
+                if (firstRead.TrySetResult()) await release.Task.WaitAsync(token);
+                return new CaptureLibraryQueryPage(items, 0, items.Length, items.Length * 1024, "1");
+            })
+            .WithHandler(WidgetCaptureLibraryCapabilities.GetDestinations, (_, _) => ValueTask.FromResult(
+                new CaptureLibraryDestinationsPage([new("widgetrail.samples.playnite-library", "playnite.game",
+                    profile + "/" + game, "007 First Light", true)], 0, 1, "1")));
+        var widget = Create(provider, out var app);
+        app.CaptureIntegrationHandler = _ => ValueTask.FromResult<PlayniteCaptureIntegration?>(new(profile, [], [], "binding"));
+        try
+        {
+            await Interactive(widget); await Ready(widget, provider);
+            await firstRead.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Volatile.Write(ref count, 3);
+            await changes.Writer.WriteAsync(new(1));
+            release.SetResult();
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(widget, "recent-clips");
+            async Task CheckGroup(int expected)
+            {
+                await WaitFor(() => Nodes(host.PublishSnapshot().Root).Any(n => n.Id == LibraryWidget.HomeActivityList
+                    && n.IndexedGroups?.Any(g => g.Header.Contains("Captures", StringComparison.Ordinal)) == true), "Recent activity captures");
+                using var range = await host.AcquireAsync(LibraryWidget.HomeActivityList, 0, 1);
+                StringAssert.StartsWith(range.Range.Items[0].Root.AccessibilityLabel!, expected + " clips");
+            }
+            await CheckGroup(3);
+            await Visible(widget);
+            var generation = Nodes(host.CurrentSnapshot.Root).Single(n => n.Id == LibraryWidget.HomeActivityList).IndexedCollection!.ContentRevision;
+            Volatile.Write(ref count, 4);
+            await changes.Writer.WriteAsync(new(2));
+            await WaitFor(() => Nodes(host.PublishSnapshot().Root).Single(n => n.Id == LibraryWidget.HomeActivityList)
+                .IndexedCollection!.ContentRevision != generation, "fourth clip published while Home is open");
+            await CheckGroup(4);
+        }
+        finally { release.TrySetResult(); await WidgetTestHost.DestroyAsync(widget); }
+    }
+
     [TestMethod]
     public async Task EmptyInstalledShelfRetainsLibraryEntryWhenHistoryArrives()
     {

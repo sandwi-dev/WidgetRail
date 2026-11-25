@@ -8,7 +8,7 @@ internal static partial class NativeWindowCapture
 {
     // An end-to-end fixture may capture only its own generated external window.
     // If the fixture disappears, fail before entering native capture.
-    private static bool TryGetFixtureCaptureTarget(out NativePreviewTarget target, OverlayScreenshot? screenshot)
+    private static bool TryGetFixtureCaptureTarget(out NativePreviewTarget target, FixedCaptureTarget? fixedTarget)
     {
         var args = Environment.GetCommandLineArgs();
         var window = FrontendArguments.Value(args, "--library-fixture-window");
@@ -17,10 +17,10 @@ internal static partial class NativeWindowCapture
         if (!ulong.TryParse(window, out var handle) || handle == 0 ||
             !uint.TryParse(FrontendArguments.Value(args, "--library-fixture-pid"), out var pid) || pid == Environment.ProcessId)
             throw new InvalidOperationException("Invalid library capture fixture.");
-        if (screenshot is not null)
+        if (fixedTarget is not null)
         {
             // Keep the original identity for native stale-window checks, including closure during consent.
-            target = ToNative(screenshot.Target);
+            target = ToNative(fixedTarget.Target);
             if (target.Window != handle || target.ProcessId != pid) throw new InvalidOperationException("Unexpected screenshot fixture target.");
             return true;
         }

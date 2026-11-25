@@ -40,6 +40,8 @@ try{
  if($Validation){
  & "$($vc.FullName)/bin/Hostx64/x64/cl.exe" /nologo /MT /std:c++20 /utf-8 /EHsc /W4 /WX /O2 /DUNICODE /D_UNICODE @includes "$PSScriptRoot/MediaFixture.cpp" "/Fo:$OutputDirectory/CaptureFixture.obj" "/Fe:$OutputDirectory/WindowCaptureFixture.exe" /link @libraries user32.lib gdi32.lib winmm.lib
  if($LASTEXITCODE){throw 'Capture fixture build failed'}
+ & "$($vc.FullName)/bin/Hostx64/x64/cl.exe" /nologo /MT /std:c++20 /utf-8 /EHsc /W4 /WX /O2 /DUNICODE /D_UNICODE @includes "$PSScriptRoot/../ReplayCapturePrototype/HdrRampFixture.cpp" "/Fo:$OutputDirectory/HdrRampFixture.obj" "/Fe:$OutputDirectory/HdrRampFixture.exe" /link @libraries user32.lib d3d11.lib dxgi.lib winmm.lib windowsapp.lib
+ if($LASTEXITCODE){throw 'HDR capture fixture build failed'}
  & "$($vc.FullName)/bin/Hostx64/x64/cl.exe" /nologo /MT /std:c++20 /utf-8 /EHsc /W4 /WX /O2 @includes "$PSScriptRoot/CadenceProbe.cpp" "/Fo:$OutputDirectory/CadenceProbe.obj" "/Fe:$OutputDirectory/CadenceProbe.exe" /link @libraries
  if($LASTEXITCODE){throw 'Cadence probe build failed'}
  }

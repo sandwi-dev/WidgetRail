@@ -127,8 +127,10 @@ internal static partial class GalleryTests
             "Delete must recycle both available originals without hiding or removing unavailable entries");
         Check(fixture.PermissionRequests.Any(ids => ids.Contains("media.capture-library.recycle-linked.v1")),
             "Linked originals require the existing explicit recycle permission");
-        Check(fixture.Node("capture-library.batch.failures") is not null,
-            "An unavailable original is reported as a partial result");
+        var page = fixture.Node("capture-library.page")!.Children;
+        Check(page[0].Id == "capture-library.header" && page[1].Id == "capture-library.batch.failures" &&
+            page[1].Text?.Contains("(1)") == true,
+            "The partial result and its failure count must be immediately below Search");
 
         async Task SelectAll()
         {

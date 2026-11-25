@@ -3,22 +3,37 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 
 namespace WidgetRail.Playnite;
 
 internal sealed partial class AchievementAdapter
 {
-    // Public provider APIs only. The overview projection deliberately skips icon/note
-    // hydration and respects the provider's summary exclusions and visible rows.
+    private static MethodInfo? FindOverviewRead(Type serviceType)
+    {
+        var signature = new[] { typeof(Guid) };
+        var overview = serviceType.GetMethod("GetGameAchievementDataForOverview", signature);
+        if (overview != null) return overview;
+        // Newer providers expose their summary exclusions on the visible game
+        // and achievement models instead of applying them in a separate reader.
+        var visible = serviceType.GetMethod("GetVisibleGameAchievementData", signature);
+        var model = visible?.ReturnType;
+        var rows = model?.GetProperty("Achievements")?.PropertyType;
+        var enumerable = rows?.GetInterfaces().Concat(new[] { rows }).FirstOrDefault(type =>
+            type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>));
+        var row = enumerable?.GetGenericArguments()[0];
+        return model?.GetProperty("ExcludedFromSummaries")?.PropertyType == typeof(bool) &&
+            row?.GetProperty("IsFilteredFromSummaries")?.PropertyType == typeof(bool) ? visible : null;
+    }
+
     internal AchievementOverviewCatalog OverviewCatalog()
     {
         EnsureBinding();
         if (plugin == null) return new AchievementOverviewCatalog("missing", Interlocked.Read(ref revision), Array.Empty<Guid>());
         if (service == null) return new AchievementOverviewCatalog("unavailable", Interlocked.Read(ref revision), Array.Empty<Guid>());
         var ids = service.GetType().GetMethod("GetCachedGameIds", Type.EmptyTypes);
-        var overview = service.GetType().GetMethod("GetGameAchievementDataForOverview", new[] { typeof(Guid) });
-        if (ids == null || overview == null) return new AchievementOverviewCatalog("unsupported", Interlocked.Read(ref revision), Array.Empty<Guid>());
+        if (ids == null || overviewRead == null) return new AchievementOverviewCatalog("unsupported", Interlocked.Read(ref revision), Array.Empty<Guid>());
         var generation = Interlocked.Read(ref revision);
         if (!(ids.Invoke(service, Array.Empty<object>()) is IEnumerable source))
             return new AchievementOverviewCatalog("unavailable", generation, Array.Empty<Guid>());
@@ -45,9 +60,8 @@ internal sealed partial class AchievementAdapter
         if (!OverviewIsCurrent(expected)) throw new ApiException(409, "achievements_changed");
         var game = api.Database.Games.Get(id);
         if (game == null || game.Hidden) return null;
-        var method = service?.GetType().GetMethod("GetGameAchievementDataForOverview", new[] { typeof(Guid) });
-        var data = method?.Invoke(service, new object[] { id });
-        if (data == null) return null; // Summary-excluded or no cached data.
+        var data = overviewRead?.Invoke(service, new object[] { id });
+        if (data == null || Value(data, "ExcludedFromSummaries") is true) return null;
         if (!(Value(data, "Achievements") is IEnumerable source)) throw new ApiException(502, "achievement_overview_invalid");
         var result = new AchievementOverviewGame
         {
@@ -58,7 +72,7 @@ internal sealed partial class AchievementAdapter
         foreach (var item in source)
         {
             if (++visited > 4000) throw new ApiException(413, "achievement_limit");
-            if (Value(item, "IsFiltered") is bool filtered && filtered) continue;
+            if (Value(item, "IsFiltered") is true || Value(item, "IsFilteredFromSummaries") is true) continue;
             if (!(Value(item, "Unlocked") is bool unlocked) || !(Value(item, "Hidden") is bool hidden))
                 throw new ApiException(502, "achievement_overview_invalid");
             result.total++;

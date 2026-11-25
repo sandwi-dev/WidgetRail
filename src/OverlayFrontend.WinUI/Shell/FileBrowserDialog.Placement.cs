@@ -11,12 +11,12 @@ internal sealed partial class FileBrowserDialog
     private Size? popupArea;
     internal override bool PositionsOwnPopup => popupArea is not null;
 
-    private async Task ShowPickerAsync(FrameworkElement origin)
+    private async Task WithPickerStageAsync(FrameworkElement origin, Func<Task> present)
     {
         var root = XamlRoot;
         if (root.Size.Width >= 440 && root.Size.Height >= 440)
         {
-            await ShowAsync();
+            await present();
             return;
         }
 
@@ -45,7 +45,7 @@ internal sealed partial class FileBrowserDialog
         {
             stage.Children.Add(this);
             popup.IsOpen = true;
-            await ShowAsync(ContentDialogPlacement.InPlace);
+            await present();
         }
         finally
         {

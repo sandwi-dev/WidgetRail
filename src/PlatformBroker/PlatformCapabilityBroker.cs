@@ -209,7 +209,8 @@ public sealed partial class PlatformCapabilityBroker : IAsyncDisposable
         _captureDomain = new(_identity, _backend.CaptureLibrary, webSessionOwner, _backend.CaptureReplay);
         if (_hostGrantedCapabilities.Contains(PlatformCapabilities.FilesReadV1)) _fileDomain = new(_identity,_captureDomain.ResolveForHost);
         _documentDomain = new(_identity);
-        _permissionDomain = new(_identity, _declaredCapabilities, _consentStore, RefreshConsentAsync);
+        _permissionDomain = new(_identity, _declaredCapabilities, _consentStore, RefreshConsentAsync,
+            locallyRevoked: id => { lock (_gate) return _revokedCapabilities.Contains(id); });
         _marketplaceDomain = new(marketplace);
         _notificationDomain = new(notifications);
         _activityDomain = new(activity);

@@ -63,7 +63,7 @@ try {
     if ($TestEncoding) {
         $encoding = @('/nologo','/MT','/std:c++20','/utf-8','/EHsc','/W4','/permissive-','/DNOMINMAX','/DUNICODE','/D_UNICODE','/O2') + $includes + @(
             (Join-Path $repositoryRoot 'src\WinUiWindowPreviewNative\WindowCaptureEncodingTests.cpp'), "/Fo:$objectDirectory\EncodingTests.obj", "/Fe:$OutputDirectory\WindowCaptureEncodingTests.exe", '/link') +
-            $libraries + @('d3d11.lib','dxgi.lib','ole32.lib','oleaut32.lib','windowsapp.lib','mf.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','evr.lib','psapi.lib')
+            $libraries + @('d3d11.lib','dxgi.lib','d2d1.lib','user32.lib','ole32.lib','oleaut32.lib','windowsapp.lib','mf.lib','mfplat.lib','mfreadwrite.lib','mfuuid.lib','evr.lib','psapi.lib')
         & $compiler @encoding
         if ($LASTEXITCODE -ne 0) { throw 'Capture encoding probe build failed.' }
         & (Join-Path $OutputDirectory 'WindowCaptureEncodingTests.exe') $OutputDirectory

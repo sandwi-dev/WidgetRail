@@ -31,7 +31,7 @@ public sealed partial class PlayniteLibraryWidget
             var title = snapshot.Error is not null ? "Achievements unavailable" : busy || snapshot.Status == WidgetResourceStatus.NotLoaded ? "Loading achievements…" : availability switch
             {
                 "missing" => "Add PlayniteAchievements",
-                "unsupported" => "Update PlayniteAchievements",
+                "unsupported" => "Achievement overview unavailable",
                 "update-required" => "Update WidgetRail for Playnite",
                 _ => "Achievements unavailable",
             };
@@ -39,7 +39,7 @@ public sealed partial class PlayniteLibraryWidget
             {
                 "missing" when install is not null => "Install Playnite Achievements to see progress and recent unlocks.",
                 "missing" => "Check that Playnite Achievements is enabled in Playnite.",
-                "unsupported" => "Update Playnite Achievements in Playnite to see your progress here.",
+                "unsupported" => "WidgetRail couldn’t read the overview from this version of Playnite Achievements. This overview was built for versions 4.1.1 and 4.3.3.",
                 "update-required" => "The installed WidgetRail plugin does not support the achievement overview yet. Open Playnite connection to update it.",
                 _ => "Open Playnite and check that Playnite Achievements is enabled.",
             });

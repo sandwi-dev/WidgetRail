@@ -20,6 +20,9 @@ using WidgetRail.Samples.SdkGalleryWidget;
 if (args is ["--export-gallery-scroll", var galleryDirectory, var galleryStylePath])
 { await GalleryScrollFixture.ExportAsync(galleryDirectory, galleryStylePath); return 0; }
 
+if (args is ["--seed-batch-gallery", var batchRoot, var png])
+{ await ReplayUiFixture.SeedBatchGalleryAsync(batchRoot, png); return 0; }
+
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
     return await RunWorkerAsync(args);
 if (args is ["--serve-animation-validation", var animationPipe])

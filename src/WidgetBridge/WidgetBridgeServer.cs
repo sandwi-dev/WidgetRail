@@ -456,8 +456,12 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
             return;
         case BridgeMessageTypes.ControllerControl:
             _controllers.Report(BridgeJson.FromElement<ControllerControlStatus>(request.Payload));
+            var controllerPreference = await _controllers.ReadPreferenceAsync(cancellationToken).ConfigureAwait(false);
+            // Keyboard registrations are owned by the frontend. Keep the controller-pump reply
+            // compatible when new registration preferences are added to the settings document.
             await ReplyAsync(BridgeMessageTypes.ControllerControl, request.RequestId,
-                await _controllers.ReadPreferenceAsync(cancellationToken).ConfigureAwait(false),
+                new { controllerPreference.ExclusiveControl, controllerPreference.Revision, controllerPreference.OpenShortcut,
+                    controllerPreference.HoldDpadToScroll, controllerPreference.F1ShortcutEnabled, controllerPreference.OverlayShortcut },
                 cancellationToken).ConfigureAwait(false);
             break;
         case BridgeMessageTypes.ListWidgets:
@@ -1001,6 +1005,9 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                     "Expected Select option action authority is invalid.");
             if (controllerRequest.ObserveTrayCompletion && (controllerRequest.Input.Context != ControllerInputContext.TrayQuickAction || controllerRequest.WorkerRun is null))
                 throw new BridgeProtocolException("Only tray actions expose completion.");
+            if (controllerRequest.InteractiveShortcut && (!controllerRequest.ObserveTrayCompletion ||
+                controllerRequest.Input.Origin != ControllerInputOrigin.AccessibilityAutomation))
+                throw new BridgeProtocolException("Interactive shortcuts require a host tray invocation.");
             Task<TrayActionResult>? trayCompletion = null;
             using var controllerPublication = await _registry.SendControllerInputAsync(
                     controllerRequest.WidgetId,
@@ -1011,7 +1018,7 @@ public sealed partial class WidgetBridgeServer : IAsyncDisposable
                     controllerRequest.ExpectedActionId,
                     controllerRequest.ExpectedSelectOptionActionId,
                     controllerRequest.WorkerRun,
-                    controllerRequest.ObserveTrayCompletion ? work => trayCompletion = work : null)
+                    controllerRequest.ObserveTrayCompletion ? work => trayCompletion = work : null, controllerRequest.InteractiveShortcut)
                 .ConfigureAwait(false);
             var handled = controllerPublication.Value;
             await ReplyAsync(BridgeMessageTypes.ControllerInputResult, request.RequestId,

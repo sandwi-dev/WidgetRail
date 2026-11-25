@@ -98,6 +98,16 @@ internal sealed partial class WidgetStylesValidationPage
                         Check(status.ActualHeight > 0 && !status.IsTextTrimmed && InsidePresenter(status),
                             $"Stale error at {width}: full recovery message is reachable by scrolling");
                     }
+                    if (name == "completed")
+                    {
+                        var summary = Find<TextBlock>("Widget.marketplace.status");
+                        Check(summary is not null && Microsoft.UI.Xaml.Automation.AutomationProperties.GetLiveSetting(summary) ==
+                            Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite, "Completion summary exposes a polite UIA live region");
+                        var viewport = Find<ScrollViewer>("Widget.marketplace.content")!;
+                        viewport.ChangeView(null, viewport.ScrollableHeight, null, true);
+                        await Task.Delay(100);
+                        Check(InsidePresenter(summary!), "Completion and its next action stay above the scrolled update list");
+                    }
                     if (name == "requirements-long")
                     {
                         var requirements = Enumerable.Range(0, 4).Select(index => Find<TextBlock>("Widget.marketplace.requirement." + index)).ToArray();
@@ -217,7 +227,10 @@ internal sealed partial class WidgetStylesValidationPage
                 Apply("back");
                 await Wait(()=>FocusManager.GetFocusedElement(XamlRoot) is DependencyObject focused&&
                     Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(focused)=="Widget."+cardId);
-                Check(InsidePresenter(Find<Button>("Widget."+cardId)!)&&VisibleInScrolls(Find<Button>("Widget."+cardId)!),"Screenshot Back restores the exact visible catalogue card");
+                await Wait(() => Find<Button>("Widget."+cardId) is { IsLoaded: true } restored &&
+                    InsidePresenter(restored) && VisibleInScrolls(restored));
+                Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), Find<Button>("Widget."+cardId)),
+                    "Screenshot Back restores the exact visible catalogue card");
             }
             finally { NativeArtworkStream.ValidationPublicImage = null; presenter.ValidationMediaResolver = null; }
 

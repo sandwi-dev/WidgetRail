@@ -108,7 +108,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             MapError = _ => new("captures_unavailable", "Recent captures could not be loaded."),
         });
         homePosts = CreateHomePosts();
-        playingCaptures = CreateQueryResource<string, IReadOnlyList<CaptureLibraryItem>>("playnite.now-playing.capture", new()
+        playingCaptures = CreateQueryResource<string, PlayingCapturePage>("playnite.now-playing.capture", new()
         {
             Load = ReadPlayingCapturesAsync, CacheDuration = TimeSpan.FromSeconds(30),
             MapError = _ => new("capture_unavailable", "Capture unavailable.")
@@ -518,7 +518,10 @@ public sealed partial class PlayniteLibraryWidget : Widget
         if (current == WidgetLifecycleState.Interactive)
         {
             if (_navigation.Value.Route == PlayniteLibraryRoute.Library)
+            {
                 _model.Update(state => state with { PlayingEntry = CreateFocusRequest(), HiddenCardFocusOrigin = null });
+                if (previous == WidgetLifecycleState.Visible) ResumeHomeCaptureLinks(stateLifetime);
+            }
             LoadHomeActivity();
         }
         if (current == WidgetLifecycleState.Interactive && _model.Value.GameChooser is { Captures.Count: > 0, Destination: null } chooser)

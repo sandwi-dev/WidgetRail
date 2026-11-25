@@ -465,12 +465,14 @@ public sealed record TextElement : WidgetElement
         AccessibilityLabel = accessibilityLabel;
     }
 
+    public bool AnnounceChanges { get; init; }
     public string Text { get; init; }
     public string? AccessibilityLabel { get; init; }
 
     internal override ViewNode ToProtocolNode() => new()
     {
         Id = Id,
+        AnnounceChanges = AnnounceChanges,
         Kind = ViewNodeKind.Text,
         Text = Text,
         AccessibilityLabel = AccessibilityLabel,

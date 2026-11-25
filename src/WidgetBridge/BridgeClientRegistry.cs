@@ -587,8 +587,8 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             if (trayPreparation is not null)
             {
                 DemandTrayPreparation(registration.Configured, trayPreparation);
-                if (registration.HostLifecycle == WidgetLifecycleState.Interactive)
-                    throw new BridgeStaleControllerInputAuthorityException("The caller is no longer in the tray.");
+                if (trayPreparation.InteractiveShortcut != (registration.HostLifecycle == WidgetLifecycleState.Interactive))
+                    throw new BridgeStaleControllerInputAuthorityException("The shortcut target's input context changed.");
             }
             if ((trayPreparation is not null || intentTicket is not null) && !registration.Client.IsRunning)
                 await ExecuteClientOperationAsync(registration, (client, token) =>
@@ -994,7 +994,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
         string? expectedActionId = null,
         string? expectedSelectOptionActionId = null,
         BridgeWorkerRun? expectedWorkerRun = null,
-        Action<Task<TrayActionResult>>? observeTrayCompletion = null)
+        Action<Task<TrayActionResult>>? observeTrayCompletion = null, bool interactiveShortcut = false)
     {
         ClientRegistration registration;
         if (input.Context == ControllerInputContext.TrayQuickAction)
@@ -1066,7 +1066,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             if (admitted is null) return AdmitInputPublication(registration, false, pinnedInput);
             var revalidated = admitted.SnapshotSequence != input.SnapshotSequence &&
                 input.Context is ControllerInputContext.OpenWidget or ControllerInputContext.PinnedSurface;
-            input = RevalidateDashboardInput(registration, admitted);
+            input = RevalidateDashboardInput(registration, admitted, interactiveShortcut);
             var preserveIdle = input.TrackTrayWork && registration.PreserveOrdinaryIdleDeadline;
             if (!preserveIdle) registration.CancelIdleUnload();
             if (revalidated)
@@ -2346,7 +2346,7 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
 
     private void DemandNotDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 
-    private static ControllerInputEvent RevalidateDashboardInput(ClientRegistration registration, ControllerInputEvent input)
+    private static ControllerInputEvent RevalidateDashboardInput(ClientRegistration registration, ControllerInputEvent input, bool interactiveShortcut)
     {
         if (input.Context == ControllerInputContext.TrayQuickAction)
         {
@@ -2356,7 +2356,8 @@ internal sealed partial class BridgeClientRegistry : IAsyncDisposable
             var first = seen?.QuickActions.SingleOrDefault(action => action.TrayOffer == offer);
             var latestOffer = snapshot?.QuickActions.SingleOrDefault(action => action.TrayOffer == offer);
             if (!TrayActionContract.ValidOffer(offer) || !registration.HasCurrentSnapshotWorker || snapshot is null ||
-                registration.HostLifecycle is not (WidgetLifecycleState.Background or WidgetLifecycleState.Visible) ||
+                (interactiveShortcut ? registration.HostLifecycle != WidgetLifecycleState.Interactive :
+                    registration.HostLifecycle is not (WidgetLifecycleState.Background or WidgetLifecycleState.Visible)) ||
                 !registration.Configured.TrayActions.Any(def => def.Id == offer!.Id) ||
                 latestOffer is null || first != latestOffer || input.Button != latestOffer.Button ||
                 input.TrayFallbackFor is { } primary && (!registration.Configured.TrayActions.Any(def => def.Id == primary && def.FallbackId == offer!.Id) ||

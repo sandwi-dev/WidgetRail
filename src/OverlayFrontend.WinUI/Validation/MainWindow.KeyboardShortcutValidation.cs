@@ -138,6 +138,29 @@ public sealed partial class MainWindow
                     Check(replayCalls==1,"Keyboard recording suppresses replay saves as well as overlay toggles");
                     Check(await SaveKeyboardShortcutAsync(root,replay,replay with{Enabled=false},default,HostKeyboardShortcutKind.SaveReplay) is null&&replaySaveShortcut is null&&keyboardShortcut?.Shortcut==custom,
                         "Disabling replay releases only its own registration");
+                    SetKeyboardEditorOpen(false);
+                    var received = new List<HostKeyboardShortcutKind>();
+                    var originalCommand = trayShortcutCommand;
+                    try
+                    {
+                        trayShortcutCommand = received.Add;
+                        foreach (var kind in new[] { HostKeyboardShortcutKind.TrayUp, HostKeyboardShortcutKind.TrayRight,
+                            HostKeyboardShortcutKind.TrayDown, HostKeyboardShortcutKind.TrayLeft })
+                        {
+                            var previous = (await store.LoadAsync()).Controllers.GetShortcut(kind);
+                            var chord = previous with { Enabled = true, Key = 0x7C + received.Count };
+                            var conflict = await SaveKeyboardShortcutAsync(root, previous, custom, default, kind);
+                            Check(conflict is not null && KeyboardRegistration(kind) is null, kind + " cannot steal the overlay shortcut");
+                            Check(await SaveKeyboardShortcutAsync(root, previous, chord, default, kind) is null, kind + " reserved independently");
+                            InjectKey(0x11,false); InjectKey(0x12,false); InjectKey((ushort)chord.Key,false);
+                            InjectKey((ushort)chord.Key,true); InjectKey(0x12,true); InjectKey(0x11,true);
+                            await Until(() => received.LastOrDefault() == kind);
+                            Check(overlayVisibilityVersion == unchangedVisibility && (await store.LoadAsync()).Controllers.GetShortcut(kind) == chord,
+                                kind + " dispatches the assigned direction without toggling visibility and persists");
+                        }
+                        Check(received.Count == 4, "Exactly one dispatch for each direction");
+                    }
+                    finally { trayShortcutCommand = originalCommand; }
                 }
                 finally
                 {

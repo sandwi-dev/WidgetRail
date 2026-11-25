@@ -120,6 +120,7 @@ public sealed partial class PlayniteLibraryWidget
         Operations.Cancel("playnite-library.launch");
         Operations.Cancel("playnite-library.launch-lifecycle");
         Operations.Cancel(CaptureWork);
+        Operations.Cancel(RecentSessionLinks);
         captureSetup.Reset();
         CancelDetailsOperations();
         lock (_gate) playingAuthority = null;

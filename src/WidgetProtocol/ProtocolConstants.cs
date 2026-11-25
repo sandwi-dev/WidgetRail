@@ -26,7 +26,8 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 147;
+    public const int CurrentVersion = 148;
+    public const int LiveStatusTextVersion = 148;
     public const int BackgroundIntentVersion = 147;
     public const int ExtendedFocusPreviewDelayVersion = 146;
     public const int ScrollContainerAnchorVersion = 145;

@@ -7,12 +7,18 @@ internal sealed partial class OverlayShellPage
     // This is presentation consent only. The broker's capture permission and current
     // request checks remain authoritative for both remembered and prompted requests.
     private async Task<bool> ConfirmCaptureAsync(string widgetId, bool recording, string description,
-        Func<Task<bool>> current, CancellationToken token)
+        Func<Task<bool>> current, CancellationToken token, bool hidden = false)
     {
         var store = new PlatformSettingsStore(new(options.SettingsRoot));
         var preferences = (await store.LoadAsync(token)).CaptureConfirmations;
         if (!await current()) return false;
         if (!preferences.ShouldConfirm(widgetId, recording)) return true;
+        if (hidden)
+        {
+            await ShowReplayNoticeAsync(recording ? "Open WidgetRail to confirm recording this clip." : "Open WidgetRail to confirm taking this screenshot.",
+                "tray-action", recording ? "Record clip" : "Take screenshot");
+            return false;
+        }
         HostChoiceDialog? confirmation = null;
         var selected = await ShowHostChoiceAsync(recording ? "Record application?" : "Take screenshot?", description,
             (HostDialogChoice[])[new("proceed", "Proceed")], token, directDecisionButtons: true,

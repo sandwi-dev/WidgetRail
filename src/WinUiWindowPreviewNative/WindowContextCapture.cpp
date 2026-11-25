@@ -1,5 +1,6 @@
 #include "WindowContextCapture.h"
 #include "CaptureGeometry.h"
+#include "CaptureSdrColor.h"
 #include "CaptureVideoEncoder.h"
 #include "CaptureAudioTimeline.h"
 #include "CaptureEncodingProbe.h"
@@ -184,7 +185,9 @@ static int32_t RunConfiguredCapture(const WrailPreviewTarget* target,const wchar
         auto targetProperties=D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET|D2D1_BITMAP_OPTIONS_CANNOT_DRAW,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),96,96);
         ComPtr<ID2D1Bitmap1> outputBitmap;winrt::check_hresult(drawing->CreateBitmapFromDxgiSurface(outputSurface.Get(),&targetProperties,&outputBitmap));
         auto signal=std::make_shared<Event>();if(!signal->value) throw winrt::hresult_error(E_OUTOFMEMORY);
-        capture.pool=Direct3D11CaptureFramePool::CreateFreeThreaded(captureDevice,DirectXPixelFormat::B8G8R8A8UIntNormalized,2,size);
+        widgetrail::capture::CaptureSdrColor color;
+        color.Update(sourceWindow);
+        capture.pool=Direct3D11CaptureFramePool::CreateFreeThreaded(captureDevice,color.PoolFormat(),2,size);
         capture.arrived=capture.pool.FrameArrived([signal](auto&&,auto&&){SetEvent(signal->value);});
         capture.session=capture.pool.CreateCaptureSession(capture.item);capture.session.IsCursorCaptureEnabled(options->includeCursor!=0);
         std::unique_ptr<Video> video;
@@ -223,10 +226,15 @@ static int32_t RunConfiguredCapture(const WrailPreviewTarget* target,const wchar
                 frame.Close();frame=latest;
             }
             if(frame) {
+                if(color.Update(sourceWindow)) {
+                    frame.Close();capture.pool.Recreate(captureDevice,color.PoolFormat(),2,size);
+                    continue;
+                }
                 struct FrameGuard {Direct3D11CaptureFrame& frame;~FrameGuard(){try{if(frame)frame.Close();}catch(...){}}} guard{frame};
                 if(frame.ContentSize().Width!=size.Width || frame.ContentSize().Height!=size.Height) throw winrt::hresult_error(HRESULT_FROM_WIN32(ERROR_RETRY));
                 auto access=frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
-                if(selection&&static_cast<UINT>(size.Width)<=width&&static_cast<UINT>(size.Height)<=height){
+                const bool nativeSize=selection&&static_cast<UINT>(size.Width)<=width&&static_cast<UINT>(size.Height)<=height;
+                if(nativeSize&&!color.Hdr()){
                     ComPtr<ID3D11Texture2D> source;winrt::check_hresult(access->GetInterface(IID_PPV_ARGS(&source)));
                     if(static_cast<UINT>(size.Width)!=width||static_cast<UINT>(size.Height)!=height){
                         drawing->SetTarget(outputBitmap.Get());drawing->BeginDraw();drawing->Clear(D2D1::ColorF(0.f,0.f,0.f,1.f));
@@ -236,18 +244,18 @@ static int32_t RunConfiguredCapture(const WrailPreviewTarget* target,const wchar
                     immediate->CopySubresourceRegion(output.Get(),0,(width-static_cast<UINT>(size.Width))/2,(height-static_cast<UINT>(size.Height))/2,0,source.Get(),0,&pixelsBox);
                 }else {
                     ComPtr<IDXGISurface> source;winrt::check_hresult(access->GetInterface(IID_PPV_ARGS(&source)));
-                    auto properties=D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),96,96);
-                    ComPtr<ID2D1Bitmap1> bitmap;winrt::check_hresult(drawing->CreateBitmapFromDxgiSurface(source.Get(),&properties,&bitmap));
                     drawing->SetTarget(outputBitmap.Get());drawing->BeginDraw();drawing->Clear(D2D1::ColorF(0.f,0.f,0.f,1.f));
                     auto destination=D2D1::RectF(0,0,float(width),float(height));
                     if(selection){
-                        const auto scale=std::min(float(width)/float(size.Width),float(height)/float(size.Height));
+                        const auto scale=nativeSize?1.f:std::min(float(width)/float(size.Width),float(height)/float(size.Height));
                         const auto drawnWidth=scale*float(size.Width),drawnHeight=scale*float(size.Height);
-                        const auto left=(float(width)-drawnWidth)/2,top=(float(height)-drawnHeight)/2;
+                        const auto left=nativeSize?float((width-size.Width)/2):(float(width)-drawnWidth)/2;
+                        const auto top=nativeSize?float((height-size.Height)/2):(float(height)-drawnHeight)/2;
                         destination=D2D1::RectF(left,top,left+drawnWidth,top+drawnHeight);
                     }
-                    drawing->DrawBitmap(bitmap.Get(),destination,1,D2D1_INTERPOLATION_MODE_LINEAR,D2D1::RectF(0,0,float(size.Width),float(size.Height)));
+                    color.Draw(drawing.Get(),source.Get(),D2D1::RectF(0,0,float(size.Width),float(size.Height)),destination);
                     auto hr=drawing->EndDraw();drawing->SetTarget(nullptr);winrt::check_hresult(hr);
+                    color.ReleaseInput();
                 }
                 if(!gpuVideo) {
                     immediate->CopyResource(staging.Get(),output.Get());D3D11_MAPPED_SUBRESOURCE mapped{};

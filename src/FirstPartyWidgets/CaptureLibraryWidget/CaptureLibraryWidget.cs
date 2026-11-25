@@ -6,10 +6,12 @@ namespace WidgetRail.FirstPartyWidgets.CaptureLibrary;
 
 public sealed partial class CaptureLibraryWidget : Widget
 {
+    [Flags]
+    private enum SettingsSection { None = 0, Gallery = 1, Storage = 2, Screenshots = 4, Recording = 8, Preparation = 16, Replay = 32 }
     private sealed record State(CaptureLibraryPage? Page = null, CaptureAttachment? Preview = null,
         string? SelectedId = null, bool Detail = false, bool Busy = false, bool Copying = false, bool ConfirmDelete = false, string? Message = null,
         WidgetNavigationOperation Navigation = WidgetNavigationOperation.Forward, bool Settings = false, CapturePreferences? Preferences = null, CaptureCapabilities? Capabilities = null, long PreferencesRevision = 0,
-        CaptureReplayStatus? Replay = null, string? ReplayNotice = null, double? ReplaySavedSeconds = null, bool RecycleLinkedOriginal = false, bool PermissionRequired = false);
+        CaptureReplayStatus? Replay = null, string? ReplayNotice = null, double? ReplaySavedSeconds = null, bool RecycleLinkedOriginal = false, bool PermissionRequired = false, SettingsSection ExpandedSettings = SettingsSection.None, FocusGroupEntryRequest? SettingsFocus = null);
     // Before declaring material, all library routes used the host's 1180 x 700
     // legacy extent. An appearance-only hint would otherwise select 880 x 520.
     private static WidgetSurfaceHints Surface(WidgetSurfaceAppearance appearance) => new()
@@ -58,6 +60,7 @@ public sealed partial class CaptureLibraryWidget : Widget
     public override ValueTask OnActionAsync(WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
         var state = model.Value;
+        if (state.Settings && HandleSettingsSection(action.ActionId)) return ValueTask.CompletedTask;
         if (HandleApprovalAction(action.ActionId, state)) return ValueTask.CompletedTask;
         if (HandleRecordingChoiceAction(action)) return ValueTask.CompletedTask;
         if (HandleReplayAction(action)) return ValueTask.CompletedTask;
@@ -71,7 +74,16 @@ public sealed partial class CaptureLibraryWidget : Widget
             return ValueTask.CompletedTask;
         }
         if (action.ActionId == "capture-library.settings.back")
-        { model.Update(s => s with { Settings = false, Navigation = WidgetNavigationOperation.Back, Message = null }); return ValueTask.CompletedTask; }
+        { model.Update(s => s with { Settings = false, SettingsFocus = null, Navigation = WidgetNavigationOperation.Back, Message = null }); return ValueTask.CompletedTask; }
+        if (action.ActionId == "capture-library.focus-controls" && !state.Detail && state.Preview is null && !state.Settings &&
+            (!state.Busy || state.Copying) && !showSources && !showContexts && !showBatchFailures && pendingBatch is not { Started: false })
+        {
+            lock (galleryGate) galleryReturn = state.Copying
+                ? CreateFocusRequest().FocusElement("capture-library.copy.progress", "capture-library.copy.cancel")
+                : CreateFocusRequest().FocusElement("capture-library.search-row", "capture-library.search");
+            Invalidate();
+            return ValueTask.CompletedTask;
+        }
         if (state.Busy) return ValueTask.CompletedTask;
         if (action.ActionId == "capture-library.focus-actions" && (state.Preview is not null || state.Detail) && !showSources && !showContexts && !state.ConfirmDelete)
         { detailEntry = CreateFocusRequest().EnterGroup("capture-library.actions"); Invalidate(); return ValueTask.CompletedTask; }
@@ -200,6 +212,7 @@ public sealed partial class CaptureLibraryWidget : Widget
         if (state.Preview is not null || state.Detail)
         {
             items.Add(DetailHeader(state));
+            items.AddRange(CaptureActionFeedback(state));
             items.Add(DetailBody(state));
             initial = state.Preview is not null ? "capture-library.share" : "capture-library.back";
         }
@@ -208,20 +221,6 @@ public sealed partial class CaptureLibraryWidget : Widget
             items.AddRange(GalleryControls(state));
             initial = "capture-library.photo";
         }
-        if (state.Copying)
-        {
-            items.Add(UI.Text("Saving copies. Completed copies are kept if you cancel.", "capture-library.copy.status").Classes("capture-help"));
-            items.Add(UI.Button("Cancel copying", "capture-library.batch.stop", "capture-library.copy.cancel"));
-        }
-        if (state.Message is { } message && state.PermissionRequired)
-        {
-            items.Insert(1, UI.Stack("capture-library.permission-feedback",
-                UI.Text(message, "capture-library.status").Classes("capture-help"),
-                UI.Button("Allow capture and library access", "capture-library.allow", "capture-library.allow").Busy(state.Busy),
-                PermissionsButton()));
-        }
-        if (batchFailures.Count > 0)
-            items.Add(UI.Button("Review batch results", "capture-library.batch.failures", "capture-library.batch.failures"));
         ContainerElement root = UI.Stack("capture-library.page", items.ToArray());
         root = root.InputScope(galleryNavigation.Value.InputScopeId).Classes("capture-library");
         if (state.Preview is null && !state.Detail) root = root.AddClasses("capture-library-base");
@@ -242,7 +241,7 @@ public sealed partial class CaptureLibraryWidget : Widget
                 .Shortcut(ControllerButton.X, "capture-library.video", label: "Record clip");
             root = ReplayShortcuts(root, state);
         }
-        if (state.Preview is null && !state.Detail && !state.Busy && !showSources && !showContexts && !showBatchFailures && pendingBatch is null)
+        if (state.Preview is null && !state.Detail && (!state.Busy || state.Copying) && !showSources && !showContexts && !showBatchFailures && pendingBatch is not { Started: false })
             root = root.Shortcut(ControllerButton.LeftStick, "capture-library.focus-controls", label: "Library controls");
         var view = new WidgetView(root.TransitionPage("capture-library.pages", state.Preview is not null || state.Detail ? "preview" : "home", state.Navigation), initial)
         {

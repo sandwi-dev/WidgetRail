@@ -407,6 +407,8 @@ public static class ViewSnapshotValidator
         HashSet<string>? disclosureContentIds = null;
         foreach (var (_, entry) in ids)
         {
+            if (entry.Node.AnnounceChanges && entry.Node.Kind != ViewNodeKind.Text)
+                Add(entry.Path+".announceChanges", "invalid_live_status", "Only a text element can announce status changes.");
             if(entry.Node.IndexedPreferredEntryKey is {} preferred &&
                 (!ProtocolValidationIdentifierContext.IsSafeIdentifier(preferred) || entry.Node.Kind!=ViewNodeKind.IndexedCollection ||
                  entry.Node.IndexedCollection?.CanLocateItems!=true || entry.Node.IndexedDirectionalEntry!=IndexedDirectionalEntryMode.Remembered))

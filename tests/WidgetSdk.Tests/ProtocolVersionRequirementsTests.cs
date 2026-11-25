@@ -33,6 +33,12 @@ internal static class ProtocolVersionRequirementsTests
         var baseline = new WidgetView(UI.Text("Ready", "root"))
             .CreateSnapshot("requirements.baseline", 1);
         Equal(ProtocolConstants.BaselineVersion, baseline.ProtocolVersion);
+        var live = new WidgetView(UI.Text("Ready for review", "status") with { AnnounceChanges = true })
+            .CreateSnapshot("requirements.status", 1);
+        Equal(ProtocolConstants.LiveStatusTextVersion, live.ProtocolVersion);
+        True(SnapshotJson.Deserialize(SnapshotJson.Serialize(live)).Root.AnnounceChanges, "The status lost its announcement setting");
+        True(ViewSnapshotValidator.Validate(live with { ProtocolVersion = live.ProtocolVersion - 1 }).Any(error => error.Code == "feature_requires_version"),
+            "An older host was asked to render live status");
         var offered = new WidgetView(UI.Text("Ready", "root"), QuickActions:
             [new WidgetQuickAction(ControllerButton.X, "play", "Play") { TrayOffer = new("play", "current-device") }])
             .CreateSnapshot("requirements.tray", 1);

@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
 internal enum FileBrowserMode
@@ -14,7 +16,7 @@ internal sealed record FileBrowserItem(string Path, string Name, bool Folder, lo
 internal sealed record FileBrowserPage(string Directory, FileBrowserItem[] Items, bool HasMore);
 
 /// <summary>Enumerate one directory, never file contents. Keep only a bounded sorted window even on large shares.</summary>
-internal static class FileBrowserDirectory
+internal static partial class FileBrowserDirectory
 {
     internal const int PageSize = 128;
     private static readonly SemaphoreSlim readers = new(3);
@@ -116,15 +118,39 @@ internal static class FileBrowserDirectory
             return new FileBrowserPage(location, items.Take(PageSize).ToArray(), items.Count > PageSize);
         }, token);
 
-    internal static string SavePath(string directory, string name, string? extension)
+    // Create exactly one directory and surface collisions, including races with another creator.
+    [LibraryImport("kernel32.dll", EntryPoint = "CreateDirectoryW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    private static partial int CreateDirectoryNative(string path, nint securityAttributes);
+
+    internal static string CreateFolder(string parent, string name)
+    {
+        ValidateName(name, "folder");
+        var path = FullPath(Path.Combine(FullPath(parent), name));
+        if (CreateDirectoryNative(path, 0) != 0) return path;
+        var error = Marshal.GetLastPInvokeError();
+        throw error switch
+        {
+            80 or 183 => new IOException("That name is already in use. Enter a different folder name."),
+            5 => new UnauthorizedAccessException("You don’t have permission to create a folder here."),
+            3 => new DirectoryNotFoundException("The current folder is no longer available."),
+            _ => new IOException(new System.ComponentModel.Win32Exception(error).Message)
+        };
+    }
+
+    private static void ValidateName(string name, string kind)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 255 || name != name.Trim() || name.EndsWith('.') ||
             name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || name is "." or "..")
-            throw new ArgumentException("Enter a valid file name.");
+            throw new ArgumentException($"Enter a valid {kind} name.");
         var stem = name.Split('.')[0].TrimEnd().ToUpperInvariant();
         if (stem is "CON" or "PRN" or "AUX" or "NUL" or "CONIN$" or "CONOUT$" ||
             stem.Length == 4 && (stem.StartsWith("COM") || stem.StartsWith("LPT")) && "0123456789¹²³".Contains(stem[3]))
-            throw new ArgumentException("Windows reserves this file name.");
+            throw new ArgumentException($"Windows reserves this {kind} name.");
+    }
+
+    internal static string SavePath(string directory, string name, string? extension)
+    {
+        ValidateName(name, "file");
         if (extension is not null && Path.GetExtension(name).Length == 0)
             name += extension;
         if (name.Length > 255)

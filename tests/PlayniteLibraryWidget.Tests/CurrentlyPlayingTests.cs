@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.Samples.PlayniteLibrary;
+using LibraryWidget = WidgetRail.Samples.PlayniteLibrary.PlayniteLibraryWidget;
 
 namespace WidgetRail.Tests.PlayniteLibrary;
 
@@ -472,6 +473,99 @@ public sealed partial class PlayniteLibraryTests
         await WaitFor(() => widget.RenderState.Value.RunningGames?.Count == 0, "exit reconciliation");
         Assert.IsFalse(Nodes(Snapshot(widget, 4).Root).Any(n => n.Id == entry));
         await Background(widget);
+    }
+
+    [TestMethod, Timeout(30000)]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(true, true)]
+    public async Task SavingReplayWhilePlayingLinksExactSessionAndRefreshesShelf(bool fromTray, bool restartAfterGameExit)
+    {
+        var game = Guid.NewGuid().ToString("D");
+        var profile = Guid.NewGuid().ToString("D");
+        var interval = new CaptureProcessInterval(new string('a', 64), 1000, 2000);
+        var id = new string('b', 32);
+        var replay = new CaptureLibraryItem(id, new(id, "video/mp4", 640, 480, 1024, 5, long.MaxValue)
+            { SourceProcess = interval }, 2000) { Revision = 1 };
+        var saved = false;
+        var linked = false;
+        var library = Channel.CreateUnbounded<CaptureLibraryChanged>();
+        var games = Channel.CreateUnbounded<PlayniteEventBatch>();
+        var host = new FakeHost(1) { ItemFactory = i => Item(i) with { SavedId = game }, ConfigureServices = builder => builder
+            .WithEventStream(WidgetCaptureLibraryCapabilities.Changed, token => library.Reader.ReadAllAsync(token))
+            .WithHandler(WidgetPermissionCapabilities.Check, (request, _) => ValueTask.FromResult(new WidgetPermissionStatuses(
+                request.CapabilityIds.Select(cap => new WidgetPermissionStatus(cap, WidgetPermissionState.Granted)).ToArray())))
+            .WithHandler(WidgetCaptureLibraryCapabilities.Query, (request, _) =>
+            {
+                var include = saved && (request.Query.ExcludeReference ? !linked : linked);
+                if (request.Query.ExcludeReference)
+                {
+                    Assert.IsTrue(request.Query.ExcludeDetachedReference);
+                    Assert.AreEqual(interval, request.Query.SourceIntervals!.Single());
+                }
+                return ValueTask.FromResult(new CaptureLibraryQueryPage(include ? [replay with { ContextCount = linked ? 1 : 0 }] : [],
+                    0, include ? 1 : 0, 1024, "1"));
+            })
+            .WithHandler(WidgetCaptureLibraryCapabilities.GetDestinations, (_, _) => ValueTask.FromResult(
+                new CaptureLibraryDestinationsPage([new("widgetrail.samples.playnite-library", "playnite.game",
+                    profile + "/" + game, "007 First Light", true)], 0, 1, "1")))
+            .WithHandler(WidgetCaptureLibraryCapabilities.EnsureSubject, (request, _) =>
+            {
+                Assert.AreEqual(id, request.CaptureId);
+                Assert.AreEqual(profile + "/" + game, request.Subject.Id);
+                Assert.IsFalse(request.RestoreDetached);
+                linked = true;
+                return ValueTask.FromResult(new CaptureLibrarySubjectResult(CaptureContextSaveOutcome.Saved));
+            }) };
+        var widget = Create(host, out var app);
+        host.SetCompletionStatus(game, "Playing");
+        app.CaptureIntegrationHandler = _ => ValueTask.FromResult<PlayniteCaptureIntegration?>(new(profile, [], [], "binding") { Sessions = [interval] });
+        app.EventsHandler = async (_, token) => await games.Reader.ReadAsync(token);
+        try
+        {
+            await Interactive(widget); await Ready(widget, host);
+            await games.Writer.WriteAsync(new("binding", "instance", true, 1, [], [game],
+                RunningNames: new Dictionary<string,string> { [game] = "007 First Light" }));
+            var shelf = "playnite.playing." + game;
+            bool Has(string action) => Nodes(Snapshot(widget, 1).Root).Any(n => n.Id == shelf + action);
+            await WaitFor(() => Has(".resume"), "running game on home");
+            Assert.IsFalse(Has(".capture"));
+            if (fromTray) await Visible(widget);
+            saved = true;
+            await library.Writer.WriteAsync(new(2));
+            if (fromTray)
+            {
+                await WaitFor(() => Has(".capture"), "latest replay visible while the tray owns input");
+                Assert.IsFalse(linked, "The visible widget cannot commit a game link.");
+                using var feed = WidgetTestHost.CreateIndexedCollectionHost(widget, "tray-replay");
+                await WaitFor(() => Nodes(feed.PublishSnapshot().Root).Any(n => n.Id == LibraryWidget.HomeActivityList &&
+                    n.IndexedGroups?.Any(group => group.Header.Contains("Captures", StringComparison.Ordinal)) == true),
+                    "recent activity shows the session match while still in the tray");
+                if (restartAfterGameExit)
+                {
+                    await WidgetTestHost.DestroyAsync(widget);
+                    host.ItemFactory = i => WithLastPlayed(Item(i) with { SavedId = game }, 2000);
+                    var evidence = app.CaptureIntegrationHandler;
+                    widget = Create(host, out app);
+                    app.CaptureIntegrationHandler = evidence;
+                    // No running game, pending widget state, new library event, or GameActivity provider.
+                    app.RecentActivityHandler = _ => ValueTask.FromResult(PlayniteRecentActivity.Empty);
+                    await Visible(widget);
+                    await Ready(widget, host);
+                    Assert.IsFalse(linked);
+                    await Interactive(widget);
+                    using var coldFeed = WidgetTestHost.CreateIndexedCollectionHost(widget, "restarted-home");
+                    await WaitFor(() => linked && Nodes(coldFeed.PublishSnapshot().Root).Any(n => n.Id == LibraryWidget.HomeActivityList &&
+                        n.IndexedGroups?.Any(group => group.Header.Contains("Captures", StringComparison.Ordinal)) == true),
+                        "cold Home links a saved clip after game exit without GameActivity");
+                    Assert.IsFalse(Has(".resume"));
+                    return;
+                }
+                await Interactive(widget);
+            }
+            await WaitFor(() => linked && Has(".capture"), "saved replay shown without opening Captures");
+        }
+        finally { await WidgetTestHost.DestroyAsync(widget); }
     }
 
     [TestMethod, Timeout(30000)]

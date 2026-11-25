@@ -10,7 +10,9 @@ internal sealed partial class OverlayShellPage
     internal Func<CancellationToken, Task<bool>>? HideForCaptureRequested { get; set; }
     internal Func<NativeWindowPreviewTarget?>? ForegroundBeforeOverlay { get; set; }
     private Task? capturePump, capturing;
-    private readonly Dictionary<long, (string Widget, long VisibleSince, long Selection)> pendingTrayCaptures = [];
+    internal Func<NativeWindowPreviewTarget?>? CurrentExternalCaptureTarget { get; set; }
+    private sealed record TrayCaptureAdmission(string Widget, long VisibleSince, long Selection, bool Keyboard, bool Hidden, NativeWindowPreviewTarget? Target);
+    private readonly Dictionary<long, TrayCaptureAdmission> pendingTrayCaptures = [];
     private string? nativeCaptureActivityWidget;
     private readonly HashSet<string> captureDiscoveries = [];
     internal Func<string,string?,Func<Task<bool>>,CancellationToken,Task<bool>>? OpenCaptureFolderRequested { get; set; }
@@ -144,16 +146,20 @@ internal sealed partial class OverlayShellPage
         var captureSelection = selectionVersion;
         var visibleSession = visibleSince;
         bool SameOverlay() => !retired && visible && foreground && visibleSession == visibleSince && captureSelection == selectionVersion;
+        bool SameHiddenSession() => !retired && !visible && visibleSession == visibleSince && captureSelection == selectionVersion;
+        var hidden = false;
         var committed = false;
         var recording = false;
         try
         {
             var widgetId = next.WidgetId ?? throw new OperationCanceledException();
-            var fromTray = request.TraySequence is { } sequence && request.SaveToLibrary &&
-                pendingTrayCaptures.TryGetValue(sequence, out var admission) && admission == (widgetId, visibleSession, captureSelection);
+            var admission = request.TraySequence is { } sequence ? pendingTrayCaptures.GetValueOrDefault(sequence) : null;
+            var fromTray = request.SaveToLibrary && admission?.Widget == widgetId &&
+                admission.VisibleSince == visibleSession && admission.Selection == captureSelection;
             if (request.TraySequence.HasValue && !fromTray) throw new OperationCanceledException();
-            bool Current() => SameOverlay() &&
-                (fromTray ? !interactive && !PinnedInputActive : interactive && activeWidget == widgetId);
+            hidden = fromTray && admission!.Hidden;
+            bool Current() => hidden ? SameHiddenSession() : SameOverlay() &&
+                (fromTray ? (!interactive || admission!.Keyboard) && !PinnedInputActive : interactive && activeWidget == widgetId);
             if (!Current() || HostChoiceActive || LocalInstallActive || SystemFilePickerOpen) throw new OperationCanceledException();
             var video = request.Kind == WindowCaptureKind.Video;
             var delay = preparation.DelaySeconds == 0 ? "after WidgetRail hides" : $"after a {preparation.DelaySeconds}-second countdown";
@@ -162,16 +168,20 @@ internal sealed partial class OverlayShellPage
             var encoding = request.Options?.Recording is { } settings ? "\n"+CaptureRecordingSummary.Video(settings) : "";
             var applicationAudio = request.Options?.Recording?.Audio == CaptureAudioMode.Application;
             var audioDescription = applicationAudio ? "Application audio will be recorded. The microphone will not be recorded." : "No audio will be recorded.";
-            NativeWindowCapture.OverlayScreenshot? screenshot = null;
+            NativeWindowCapture.FixedCaptureTarget? targetOverride = null;
             string? confirmedApplication = null;
             string description;
-            if (immediate)
+            if (hidden)
+            {
+                description = "";
+            }
+            else if (immediate)
             {
                 var target = ForegroundBeforeOverlay?.Invoke();
                 var application = target is null ? null : await TaskWindows.GetCaptureApplicationNameAsync(target, token);
                 if (target is null || application is null)
                     throw new BrokerException("capture_target_unavailable", "Open the application you want to capture, then reopen WidgetRail.");
-                screenshot = new(target, (nint)hostWindow);
+                targetOverride = new(target, (nint)hostWindow);
                 confirmedApplication = application;
                 description = $"Take a {imageSize} screenshot of {application} while WidgetRail stays open." +
                     (request.SaveToLibrary ? " The screenshot saves to Capture Library." : "");
@@ -184,9 +194,15 @@ internal sealed partial class OverlayShellPage
                         ? video ? "\n\nReopen WidgetRail to finish early. The clip saves to Capture Library." : "\n\nThe screenshot saves to Capture Library."
                         : video && request.Options is not null ? "\n\nReopen WidgetRail to finish recording and review it." : "\n\nReopen WidgetRail when finished to review your capture.");
             if (!Current() || !await ConfirmCaptureAsync(widgetId, video, description,
-                    async () => Current() && await session.IsCaptureCurrentAsync(request.RequestId, token), token) ||
+                    async () => Current() && await session.IsCaptureCurrentAsync(request.RequestId, token), token, hidden) ||
                 !await session.IsCaptureCurrentAsync(request.RequestId, token) || !Current()) throw new OperationCanceledException();
-            if (!immediate && (HideForCaptureRequested is null || !await HideForCaptureRequested(token)))
+            if (hidden && preparation.DelaySeconds == 0)
+            {
+                if (admission!.Target is not { } target || target != CurrentExternalCaptureTarget?.Invoke())
+                    throw new BrokerException("capture_target_unavailable", "The foreground capture target changed.");
+                targetOverride = new(target, 0);
+            }
+            if (!hidden && !immediate && (HideForCaptureRequested is null || !await HideForCaptureRequested(token)))
                 throw new OperationCanceledException();
             renewal = RenewAsync();
             CaptureIndicator? indicator = null;
@@ -197,7 +213,7 @@ internal sealed partial class OverlayShellPage
                 for (var seconds = preparation.DelaySeconds; seconds > 0; --seconds)
                 {
                     token.ThrowIfCancellationRequested();
-                    if (visible) throw new OperationCanceledException();
+                    if (visible || hidden && !SameHiddenSession()) throw new OperationCanceledException();
                     if (preparation.ShowCountdown) indicator?.Show((video ? "Recording starts in " : "Screenshot in ") + seconds + "…");
                     await Task.Delay(1000, token);
                 }
@@ -206,8 +222,8 @@ internal sealed partial class OverlayShellPage
                 nativeCaptureActivityWidget=next.WidgetId;
                 QueueWidgetStatusRefresh();
                 indicator?.Show(video ? $"Recording · up to {duration}s · {(applicationAudio ? "application audio" : "no audio")}" : "Taking screenshot…");
-                var result = await NativeWindowCapture.RunAsync(request, token, stop.Token, screenshot);
-                if (immediate && !Current()) throw new OperationCanceledException();
+                var result = await NativeWindowCapture.RunAsync(request, token, stop.Token, targetOverride);
+                if ((immediate || hidden && !video) && !Current()) throw new OperationCanceledException();
                 await renewing.CancelAsync();
                 await renewal;
                 var receipt = await session.CompleteCaptureWithResultAsync(new(request.RequestId, (int)result.Width, (int)result.Height, result.DurationSeconds, Target: result.Target)
@@ -233,8 +249,8 @@ internal sealed partial class OverlayShellPage
                     error.HResult == unchecked((int)0x800700DF) ? "capture_too_large" : "capture_target_unavailable"), lifetime.Token); }
                 catch (Exception report) when (report is not OutOfMemoryException) { Diagnostics.FrontendFailureLog.Current.Write("capture-report", report); }
                 if (request.SaveToLibrary && error is not OperationCanceledException && next.WidgetId is { } widget)
-                    await ShowCaptureResultAsync(widget, request.RequestId, immediate && (error is BrokerException { Code: "capture_target_unavailable" } ||
-                        error is UnauthorizedAccessException) ? "Open the application you want to capture, then reopen WidgetRail." : "Capture could not be saved.");
+                    await ShowCaptureResultAsync(widget, request.RequestId, error is BrokerException { Code: "capture_target_unavailable" } ||
+                        immediate && error is UnauthorizedAccessException ? "Bring the application you want to capture to the foreground and try again." : "Capture could not be saved.");
             }
         }
         finally
@@ -255,7 +271,7 @@ internal sealed partial class OverlayShellPage
                     var state = await session.GetCaptureStateAsync(request.RequestId, renewing.Token);
                     if (retired || !state.Current) { cancellation.Cancel(); return; }
                     if (state.StopRequested || visible && recording && request.Options?.Recording is not null) stop.Cancel();
-                    else if (immediate ? !SameOverlay() : visible) { cancellation.Cancel(); return; }
+                    else if (hidden ? !SameHiddenSession() : immediate ? !SameOverlay() : visible) { cancellation.Cancel(); return; }
                 }
             }
             catch (OperationCanceledException) when (renewing.IsCancellationRequested) { }

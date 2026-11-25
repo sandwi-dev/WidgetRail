@@ -100,7 +100,7 @@ internal sealed partial class OverlayShellPage
                 while (!deadline.IsCancellationRequested)
                 {
                     var catalog = await owner.Session.ListWidgetsAsync(deadline.Token);
-                    if (catalog.Widgets.Any(app => app.Id == saved.Id)) { SetCatalog(catalog); await SelectAsync(saved.Id, true); return; }
+                    if (catalog.Widgets.Any(app => app.Id == saved.Id)) { await SetCatalogAsync(catalog); await SelectAsync(saved.Id, true); return; }
                     await Task.Delay(100, deadline.Token);
                 }
             }

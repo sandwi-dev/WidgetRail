@@ -50,6 +50,8 @@ internal sealed partial class PlayniteLibraryApplicationService
                 }, (game, handle, cancellation) => ResolveCapturedArtworkAsync(game, handle, generation, cancellation),
                 (game, handle, cancellation) => ResolveCapturedArtworkSourceAsync(game, handle, generation, cancellation))
             {
+                RecentCaptureGames = !stale && context.Scope is (PlayniteLibraryQueryScope.Home or PlayniteLibraryQueryScope.RecentlyPlayed)
+                    ? PlayniteLibraryCapturedQuery.SelectRecentCaptureGames(catalog.Games) : [],
                 CanReuseOnTabEntry = () => !stale && !_disposed && providerRevision is not null &&
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - retrievedAt is >= 0 and < 30_000 &&
                     generation == Interlocked.Read(ref _connectionGeneration) &&

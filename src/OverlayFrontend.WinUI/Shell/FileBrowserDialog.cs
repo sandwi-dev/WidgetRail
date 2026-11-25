@@ -26,6 +26,10 @@ internal sealed partial class FileBrowserDialog : FrameworkDialog
     };
     private readonly TextBox location = new() { PlaceholderText = "Location", IsSpellCheckEnabled = false };
     private readonly BreadcrumbBar crumbs = new();
+    private readonly Button newFolder = new() { Content = "New folder" };
+    private readonly TextBox folderName = new() { PlaceholderText = "New folder name" };
+    private string? createdFolder;
+    private bool returnToNewFolder;
     private readonly Button editLocation = new() { Content = new SymbolIcon(Symbol.Edit), MinWidth = 36 };
     private readonly TextBox search = new() { PlaceholderText = "Search this folder", IsSpellCheckEnabled = false };
     private readonly ComboBox typeFilter = new() { MinWidth = 80, MaxWidth = 124, HorizontalAlignment = HorizontalAlignment.Right };
@@ -99,7 +103,7 @@ internal sealed partial class FileBrowserDialog : FrameworkDialog
         AutomationProperties.SetAutomationId(this, "Host.Files");
         foreach (var (element, id, label) in new (FrameworkElement, string, string)[]
         {
-            (up,"Parent","Parent folder"), (places,"Places","Places"), (choosePlace,"ShowPlaces","Choose location"),
+            (newFolder,"NewFolder","New folder"), (up,"Parent","Parent folder"), (places,"Places","Places"), (choosePlace,"ShowPlaces","Choose location"),
             (location,"Location","Location"), (crumbs,"Breadcrumb","Current folder"), (editLocation,"EditLocation","Enter or paste a location"),
             (search,"Search","Search this folder"), (typeFilter,"Type","Filter by file type"), (filename,"Name","File name"),
             (files,"List","Folder contents"), (review,"Selection","Review selected files"), (windows,"System","Browse in Windows"),
@@ -198,6 +202,8 @@ internal sealed partial class FileBrowserDialog : FrameworkDialog
             Height = GridLength.Auto
         });
         var tools = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        tools.Children.Add(newFolder);
+        newFolder.Click += (_, _) => BeginNewFolder();
         tools.Children.Add(review);
         tools.Children.Add(clear);
         tools.Children.Add(previous);
@@ -268,6 +274,21 @@ internal sealed partial class FileBrowserDialog : FrameworkDialog
                 initialized = true;
                 _ = LoadPlacesAsync();
                 Go(request.StartFolder, false);
+            }
+            else if (createdFolder is { } child)
+            {
+                createdFolder = null;
+                pages.Clear();
+                _ = NavigateAsync(Path.GetDirectoryName(child)!, "", null, child, false, true);
+            }
+            else if (returnToNewFolder)
+            {
+                returnToNewFolder = false;
+                // ContentDialog applies its default focus as the reopened popup is attached.
+                DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                {
+                    if (!closed && newFolder.IsLoaded && Keyboard is null) newFolder.Focus(FocusState.Keyboard);
+                });
             }
         };
         Closed += (_, _) =>

@@ -203,6 +203,9 @@ internal sealed class ProtocolVersionRequirements
             if (node.FocusPreview?.AllowMedia == true || node.MediaPlayer?.Source.Kind == MediaPlayerSourceKind.SavedCapture ||
                 node.Kind == ViewNodeKind.MediaPlayer && node.ArtworkHandle is not null)
                 Add("preview-media", ProtocolConstants.PreviewMediaVersion, path, "Saved capture sources and native preview media require protocol version 116 or later.");
+            if (node.AnnounceChanges)
+                Add("live-status-text", ProtocolConstants.LiveStatusTextVersion, path + ".announceChanges",
+                    "Live status announcements require protocol version 148 or later.");
             if (node.Disclosure is not null)
                 Add("controlled-disclosure", ProtocolConstants.DisclosureVersion, path + ".disclosure",
                     "Controlled disclosure requires protocol version 100 or later.");

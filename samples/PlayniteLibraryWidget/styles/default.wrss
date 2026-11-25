@@ -615,3 +615,7 @@
 .playing-award-progress { gap:4px; align:stretch; }
 .playing-award-description { font-size:15px; color:var(--text); max-lines:3; text-overflow:ellipsis; }
 .playing-award-facts { font-size:14px; color:var(--text-secondary, var(--text)); max-lines:2; text-overflow:ellipsis; }
+
+.playnite-capture-disclosure { width:100%; min-width:0; gap:8px; }
+
+.playnite-capture-warning { padding:8px; corner-radius:8px; background:var(--surface); }

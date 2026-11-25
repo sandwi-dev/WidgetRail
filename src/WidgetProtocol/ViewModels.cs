@@ -457,6 +457,9 @@ public sealed record ViewNode
     /// </summary>
     public ResponsiveVisibility? VisibleWhen { get; init; }
     public string? Text { get; init; }
+    /// <summary>Announce a changed text label politely when its interactive surface is visible.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool AnnounceChanges { get; init; }
     public string? AccessibilityLabel { get; init; }
     /// <summary>A localized, human-readable value announced for value controls.</summary>
     public string? AccessibilityValue { get; init; }

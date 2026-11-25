@@ -51,7 +51,7 @@ internal static partial class GalleryTests
         {
             await initial.Start();
             await TrayScreenshot(initial, 0);
-            await initial.Action("capture-library.settings");
+            await initial.Action("capture-library.settings"); await initial.Action("capture-library.section.Preparation.open");
             await initial.Until(() => initial.Node("capture-library.setting.image.delay") is not null && !initial.Busy);
             await initial.Action("capture-library.option.countdown.off");
             await initial.Until(() => state.Revision == 1 && !initial.Busy);
@@ -97,7 +97,7 @@ internal static partial class GalleryTests
         fixture.Replay = new(2, 1, new() { Enabled = true }, CaptureReplayPhase.Recording)
             { SessionId = new string('b', 32), TargetName = game.Name };
         await fixture.Start();
-        await fixture.Action("capture-library.settings");
+        await fixture.Action("capture-library.settings"); await fixture.Action("capture-library.section.Replay.open");
         await fixture.Until(() => !fixture.Busy && fixture.Node("capture-library.approvals.open") is { IsDisabled: not true });
         Check(reads == 0, "Opening general settings queried the list");
         await fixture.Action("capture-library.approvals.open");

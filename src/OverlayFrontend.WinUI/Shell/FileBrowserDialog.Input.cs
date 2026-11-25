@@ -49,45 +49,77 @@ internal sealed partial class FileBrowserDialog
         try
         {
             using var cancel = token.Register(() => DispatcherQueue.TryEnqueue(Cancel));
-            while (!closed)
+            await WithPickerStageAsync(origin, async () =>
             {
-                token.ThrowIfCancellationRequested();
-                await ShowPickerAsync(origin);
-                token.ThrowIfCancellationRequested();
-                if (editField is not { } field || closed)
-                    break;
-                editField = null;
-                var accepted = false;
-                WidgetTextEntryDialog? keyboard = null;
-                keyboard = new(new ViewNode
+                while (!closed)
                 {
-                    Id = "files.edit",
-                    Kind = ViewNodeKind.TextEntry,
-                    AccessibilityLabel = field.PlaceholderText,
-                    TextEntryValue = field.Text,
-                    TextEntryMaximumLength = field == location ? 32760 : field == filename ? 255 : 256
-                },
-                    commit => { accepted = commit; keyboard!.Hide(); });
-                keyboard.BindRoot(origin.XamlRoot);
-                keyboard.ThemeLease = NativePopupTheme.Dialog(keyboard, origin);
-                Keyboard = keyboard;
-                keyboard.GuideChanged = () => GuideChanged?.Invoke();
-                GuideChanged?.Invoke();
-                try
-                {
-                    await keyboard.ShowKeyboardAsync(origin);
-                    if (accepted && !closed && !token.IsCancellationRequested)
+                    token.ThrowIfCancellationRequested();
+                    await ShowAsync(popupArea is null ? ContentDialogPlacement.Popup : ContentDialogPlacement.InPlace);
+                    token.ThrowIfCancellationRequested();
+                    if (editField is not { } field || closed)
+                        break;
+                    editField = null;
+                    var parent = field == folderName ? page?.Directory : null;
+                    var prompt = field.PlaceholderText;
+                    while (!closed)
                     {
-                        field.Text = keyboard.TakeValue();
-                        if (field == location)
-                            Go(location.Text);
+                        var value = await PromptAsync(field, prompt, origin);
+                        if (closed || token.IsCancellationRequested) break;
+                        if (value is null)
+                        {
+                            returnToNewFolder = field == folderName;
+                            break;
+                        }
+                        field.Text = value;
+                        if (parent is null)
+                        {
+                            if (field == location) Go(value);
+                            break;
+                        }
+                        try
+                        {
+                            createdFolder = await FileBrowserDirectory.InspectAsync(() => FileBrowserDirectory.CreateFolder(parent, value), lifetime.Token);
+                            break;
+                        }
+                        catch (Exception error) when (FileError(error))
+                        {
+                            prompt = $"New folder name · {error.Message}";
+                        }
                     }
                 }
-                finally { Keyboard = null; keyboard.Erase(); GuideChanged?.Invoke(); }
-            }
+            });
         }
         finally { Retire(); }
     }
+    private async Task<string?> PromptAsync(TextBox field, string prompt, FrameworkElement origin)
+    {
+        var accepted = false;
+        WidgetTextEntryDialog? keyboard = null;
+        keyboard = new(new ViewNode
+        {
+            Id = "files.edit", Kind = ViewNodeKind.TextEntry, AccessibilityLabel = prompt,
+            TextEntryValue = field.Text, TextEntryMaximumLength = field == location ? 32760 : field == filename || field == folderName ? 255 : 256
+        }, commit => { accepted = commit; keyboard!.Hide(); });
+        keyboard.BindRoot(origin.XamlRoot);
+        keyboard.ThemeLease = NativePopupTheme.Dialog(keyboard, origin);
+        Keyboard = keyboard;
+        keyboard.GuideChanged = () => GuideChanged?.Invoke();
+        GuideChanged?.Invoke();
+        try
+        {
+            await keyboard.ShowKeyboardAsync(origin);
+            return accepted ? keyboard.TakeValue() : null;
+        }
+        finally { Keyboard = null; keyboard.Erase(); GuideChanged?.Invoke(); }
+    }
+
+    private void BeginNewFolder()
+    {
+        if (!newFolder.IsEnabled || closed || page is null) return;
+        folderName.Text = "";
+        Edit(folderName);
+    }
+
     private void Edit(TextBox field)
     {
         if (closed || committing)

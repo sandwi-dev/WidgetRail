@@ -6,6 +6,7 @@
 #include "CaptureFrameSchedule.h"
 #include "CaptureQuality.h"
 #include "../../src/WinUiWindowPreviewNative/CaptureEncodingEnvironment.h"
+#include "../../src/WinUiWindowPreviewNative/CaptureSdrColor.h"
 #include <d3d11.h>
 #include <d2d1_1.h>
 #include <dxgi1_2.h>
@@ -122,7 +123,9 @@ static int32_t RunLiveCapture(uint64_t window, uint32_t pid, uint64_t created,
             deliver(1,width,height,time,pixels.data(),static_cast<uint32_t>(pixels.size()));
         };
         configureOutput();
-        capture.pool=Direct3D11CaptureFramePool::CreateFreeThreaded(captureDevice,DirectXPixelFormat::B8G8R8A8UIntNormalized,2,size);
+        widgetrail::capture::CaptureSdrColor color;
+        if(textureFrame)color.Update(hwnd);
+        capture.pool=Direct3D11CaptureFramePool::CreateFreeThreaded(captureDevice,color.PoolFormat(),2,size);
         auto frameAvailable=std::make_shared<widgetrail::capture::CaptureEvent>();
         auto arrival=capture.pool.FrameArrived(winrt::auto_revoke,[frameAvailable](auto&&,auto&&){frameAvailable->Signal();});
         auto closed=capture.item.Closed(winrt::auto_revoke,[frameAvailable](auto&&,auto&&){frameAvailable->Signal();});
@@ -283,7 +286,8 @@ static int32_t RunLiveCapture(uint64_t window, uint32_t pid, uint64_t created,
                 continue;
             }
             while(auto newer=capture.pool.TryGetNextFrame()){frame.Close();frame=newer;}
-            if(frame.ContentSize().Width!=size.Width||frame.ContentSize().Height!=size.Height){
+            const bool colorChanged=textureFrame && color.Update(hwnd);
+            if(colorChanged || frame.ContentSize().Width!=size.Width||frame.ContentSize().Height!=size.Height){
                 const auto resized=frame.ContentSize();
 #ifdef CAPTURE_WORKER_VALIDATION
                 std::fprintf(stderr,"CAPTURE resize observed=%dx%d previous=%dx%d rendered=%ux%u\n",resized.Width,resized.Height,size.Width,size.Height,renderedSourceWidth,renderedSourceHeight);
@@ -298,14 +302,15 @@ static int32_t RunLiveCapture(uint64_t window, uint32_t pid, uint64_t created,
                     arrival.revoke();capture.session.Close();capture.pool.Close();
                     if(!current())return S_OK; // Preserve the caller's cooperative stop/error reason.
                     if(!Valid(hwnd,pid,created,className))return HRESULT_FROM_WIN32(ERROR_INVALID_WINDOW_HANDLE);
-                    capture.pool=Direct3D11CaptureFramePool::CreateFreeThreaded(captureDevice,DirectXPixelFormat::B8G8R8A8UIntNormalized,2,size);
+                    capture.pool=Direct3D11CaptureFramePool::CreateFreeThreaded(captureDevice,color.PoolFormat(),2,size);
                     arrival=capture.pool.FrameArrived(winrt::auto_revoke,[frameAvailable](auto&&,auto&&){frameAvailable->Signal();});
                     configureSession();capture.session.StartCapture();
                 }
                 continue;
             }
             auto access=frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
-            if(textureFrame && static_cast<UINT>(size.Width)<=width && static_cast<UINT>(size.Height)<=height) {
+            const bool nativeSize=textureFrame && static_cast<UINT>(size.Width)<=width && static_cast<UINT>(size.Height)<=height;
+            if(nativeSize && !color.Hdr()) {
                 // Exact pixels, including odd native sizes padded for chroma.
                 // A resized smaller source stays at 1:1 inside the fixed canvas.
                 ComPtr<ID3D11Texture2D> source;winrt::check_hresult(access->GetInterface(IID_PPV_ARGS(&source)));
@@ -315,14 +320,15 @@ static int32_t RunLiveCapture(uint64_t window, uint32_t pid, uint64_t created,
                 immediate->CopySubresourceRegion(output.Get(),0,(width-static_cast<UINT>(size.Width))/2,(height-static_cast<UINT>(size.Height))/2,0,source.Get(),0,&pixelsBox);
             }else {
                 ComPtr<IDXGISurface> surface;winrt::check_hresult(access->GetInterface(IID_PPV_ARGS(&surface)));
-                auto props=D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_NONE,D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,D2D1_ALPHA_MODE_PREMULTIPLIED),96,96);
-                ComPtr<ID2D1Bitmap1> bitmap;winrt::check_hresult(drawing->CreateBitmapFromDxgiSurface(surface.Get(),&props,&bitmap));
                 drawing->SetTarget(targetBitmap.Get());drawing->BeginDraw();drawing->Clear(D2D1::ColorF(0.f,0.f,0.f,1.f));
-                const auto scale=std::min(float(width)/float(size.Width),float(height)/float(size.Height));
+                const auto scale=nativeSize?1.f:std::min(float(width)/float(size.Width),float(height)/float(size.Height));
                 const auto drawnWidth=scale*float(size.Width),drawnHeight=scale*float(size.Height);
-                const auto left=(float(width)-drawnWidth)/2,top=(float(height)-drawnHeight)/2;
-                drawing->DrawBitmap(bitmap.Get(),D2D1::RectF(left,top,left+drawnWidth,top+drawnHeight),1,D2D1_INTERPOLATION_MODE_LINEAR,D2D1::RectF(0,0,float(size.Width),float(size.Height)));
+                const auto left=nativeSize?float((width-size.Width)/2):(float(width)-drawnWidth)/2;
+                const auto top=nativeSize?float((height-size.Height)/2):(float(height)-drawnHeight)/2;
+                color.Draw(drawing.Get(),surface.Get(),D2D1::RectF(0,0,float(size.Width),float(size.Height)),
+                    D2D1::RectF(left,top,left+drawnWidth,top+drawnHeight));
                 auto hr=drawing->EndDraw();drawing->SetTarget(nullptr);winrt::check_hresult(hr);
+                color.ReleaseInput();
             }
 #ifdef CAPTURE_WORKER_VALIDATION
             if(renderedSourceWidth!=static_cast<uint32_t>(size.Width)||renderedSourceHeight!=static_cast<uint32_t>(size.Height))

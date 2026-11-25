@@ -2,6 +2,7 @@ using PresentationSession = WidgetRail.WidgetPresentationSession.WidgetPresentat
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
@@ -689,7 +690,25 @@ internal sealed partial class WidgetViewPresenter : ContentControl, IAsyncDispos
         if (element is Media.MediaPlayerView captured)
         { UpdateMediaPlayer(captured, node, binding.Identity.Scope); UpdateMediaPoster(binding, captured, node); }
         if (element is Previews.WidgetWindowPreview preview) preview.Configure(presentationOnly || !presentationActive ? null : WindowPreviews, frame!, node);
-        AutomationProperties.SetName(element, node.AccessibilityLabel ?? node.Text ?? node.Id);
+        var accessibleName = node.AccessibilityLabel ?? node.Text ?? node.Id;
+        if (node.Kind == ViewNodeKind.Text && element is TextBlock status)
+        {
+            if (node.AnnounceChanges)
+            {
+                AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
+                if (!presentationOnly && presentationActive && presentationInputEnabled && AutomationProperties.GetName(status) != accessibleName &&
+                    AutomationPeer.ListenerExists(AutomationEvents.LiveRegionChanged))
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (presentationActive && presentationInputEnabled && status.IsLoaded && !disposed &&
+                            AutomationProperties.GetLiveSetting(status) == AutomationLiveSetting.Polite && AutomationProperties.GetName(status) == accessibleName)
+                            FrameworkElementAutomationPeer.CreatePeerForElement(status)?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+                    });
+            }
+            else if (AutomationProperties.GetLiveSetting(status) != AutomationLiveSetting.Off)
+                AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Off);
+        }
+        AutomationProperties.SetName(element, accessibleName);
         if (element is WidgetValueButton valueButton)
         {
             valueButton.IsCommandMenu = node.IsCommandMenu == true;

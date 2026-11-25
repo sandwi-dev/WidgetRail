@@ -127,6 +127,20 @@ public sealed partial class CaptureLibraryWidget
     private static readonly int[] Delays = [0, 3, 5, 10];
     private static SelectOption Option(string key, string label, bool selected) => new(key, label, "capture-library.option." + key, selected);
 
+    private const string SectionAction = "capture-library.section.";
+    private bool HandleSettingsSection(string action)
+    {
+        if (!action.StartsWith(SectionAction, StringComparison.Ordinal)) return false;
+        var parts = action[SectionAction.Length..].Split('.');
+        if (parts.Length != 2 || !Enum.TryParse<SettingsSection>(parts[0], out var section) ||
+            section == SettingsSection.None || !Enum.IsDefined(section) || parts[1] is not ("open" or "close" or "show")) return true;
+        var focus = parts[1] == "show" ? CreateFocusRequest().FocusElement("capture-library.settings.sections",
+            "capture-library.section." + section + ".header") : null;
+        model.Update(value => value with { ExpandedSettings = parts[1] == "close" ? value.ExpandedSettings & ~section :
+            value.ExpandedSettings | section, SettingsFocus = focus });
+        return true;
+    }
+
     private WidgetView RenderSettings(State state)
     {
         state=RecordingState(state);
@@ -140,86 +154,116 @@ public sealed partial class CaptureLibraryWidget
         if (pendingManual || pendingReplay)
         {
             var where = pendingManual && pendingReplay ? "Recording and Replay" : pendingReplay ? "Replay" : "Recording";
-            heading.Add(UI.Alert("Unsaved changes", $"Save or cancel your changes in {where}.",
+            var manualIssue = CurrentRecordingDraft(false, state) is { } manualDraft ? DraftValidation(manualDraft, false).Issue : null;
+            var replayIssue = CurrentRecordingDraft(true, state) is { } replayDraft ? DraftValidation(replayDraft, true).Issue : null;
+            var issue = manualIssue ?? replayIssue;
+            heading.Add(UI.Alert(issue is null ? "Unsaved changes" : (manualIssue is null ? "Check replay settings" : "Check recording settings"),
+                issue ?? $"Save or cancel your changes in {where}.",
                 AlertTone.Warning, "capture-library.settings.unsaved"));
+            if (issue is not null)
+            {
+                var section = manualIssue is null ? SettingsSection.Replay : SettingsSection.Recording;
+                heading.Add(UI.Button("Edit " + section.ToString().ToLowerInvariant() + " settings", SectionAction + section + ".show", "capture-library.settings.draft.open"));
+            }
         }
-        items.Add(ReplaySettings(state));
+        WidgetElement Section(SettingsSection section, string label, Func<IReadOnlyList<WidgetElement>> content) =>
+            UI.Disclosure(SectionAction + section, label, state.ExpandedSettings.HasFlag(section), SectionAction + section + ".open",
+                SectionAction + section + ".close", content).Classes("capture-settings-section");
+        var replaySummary = state.Replay is { } replay ? replay.Settings.Enabled ? $"{replay.Settings.ReplayDurationSeconds} s buffer" : "Off" : "Checking…";
+        items.Add(Section(SettingsSection.Replay, "Replay recording · " + replaySummary, () => ReplaySettings(state)));
+        if (state.Replay is { Phase: CaptureReplayPhase.Error } failedReplay)
+        {
+            heading.Add(UI.Alert("Replay recording needs attention", state.ReplayNotice ?? ReplayIssue(failedReplay.Issue), AlertTone.Warning, "capture-library.settings.replay.issue"));
+            heading.Add(UI.Button("Check replay recording", SectionAction + "Replay.show", "capture-library.settings.replay.attention"));
+        }
+        else if (state.ReplayNotice is { } notice)
+            heading.Add(UI.Text(notice, "capture-library.settings.replay.notice").Classes("capture-help"));
         if (state.Preferences is { } galleryPreferences)
-            items.Add(UI.Stack("capture-library.settings.gallery",
-                UI.Text("Gallery", "capture-library.settings.gallery.title").Classes("capture-heading"),
+            items.Add(Section(SettingsSection.Gallery, $"Gallery · Previews {(galleryPreferences.ClipPreviews ? "on" : "off")}", () => [
                 UI.SettingsField("capture-library.settings.previews.row", "Capture previews",
                     UI.Select("Capture previews", new SelectOption[] {
                         Option("previews.on", "On", galleryPreferences.ClipPreviews),
                         Option("previews.off", "Off", !galleryPreferences.ClipPreviews) }, "capture-library.settings.previews").Disabled(state.Busy||pendingManual),
-                    "Preview screenshots and play muted clips after focus or hover settles."))
-                .Classes("capture-settings-section"));
-        if(state.Page is { } library) items.Add(UI.Stack("capture-library.settings.storage",
-            UI.Text("Storage","capture-library.settings.storage.title").Classes("capture-heading"),
+                    "Preview screenshots and play muted clips after focus or hover settles.")]));
+        if(state.Page is { } library) items.Add(Section(SettingsSection.Storage, $"Storage · {library.TotalCount:N0} captures", () => [
             UI.Text($"{library.TotalCount} saved captures · {library.StoredBytes / 1048576d:0.0} MiB","capture-library.settings.storage.usage").Classes("capture-help"),
             UI.Text("Pictures → WidgetRail → Captures. Saved captures have no fixed item or storage quota.","capture-library.settings.storage.location").Classes("capture-help"),
-            UI.Button("Open folder","capture-library.folder","capture-library.settings.folder").Busy(state.Busy)).Classes("capture-settings-section"));
+            UI.Button("Open folder","capture-library.folder","capture-library.settings.folder").Busy(state.Busy)]));
         if (state.Capabilities is { } capabilities && state.Preferences is { } preferences)
         {
             var image = preferences.Image ?? new(); var video = preferences.Video ?? RecommendedVideo(); var prep = preferences.Preparation ?? new();
             WidgetElement Field(string name, string label, IEnumerable<SelectOption> options, string? description = null) =>
                 UI.SettingsField("capture-library.setting." + name + ".row", label,
                     UI.Select(label, options.ToArray(), "capture-library.setting." + name).Disabled(state.Busy||pendingManual), description);
-            items.Add(UI.Stack("capture-library.settings.image", UI.Text("Screenshots", "capture-library.settings.image.title").Classes("capture-heading"),
+            items.Add(Section(SettingsSection.Screenshots, $"Screenshots · {image.Format.ToString().ToUpperInvariant()}", () => [
                 Field("resolution", "Resolution", [Option("image.original", "Original resolution", image.MaximumWidth is null),
                     Option("image.1080", "Up to 1080p", image.MaximumHeight == 1080), Option("image.1440", "Up to 1440p", image.MaximumHeight == 1440),
                     Option("image.2160", "Up to 4K", image.MaximumHeight == 2160)], "Keeps the window's proportions; never enlarges a smaller image."),
-                Field("format", "Image format", capabilities.ImageFormats.Select(f => Option("format." + f, f.ToString().ToUpperInvariant(), image.Format == f))))
-                .Classes("capture-settings-section"));
-            var fields = new List<WidgetElement> { UI.Text("Recording", "capture-library.settings.video.title").Classes("capture-heading") };
-            if (capabilities.RecordingProfiles.Count == 0) fields.Add(UI.Text("No compatible hardware recording options are currently available.", "capture-library.settings.no-encoder").Classes("capture-help"));
-            if(capabilities.MaximumRecordingSeconds>0)
+                Field("format", "Image format", capabilities.ImageFormats.Select(f => Option("format." + f, f.ToString().ToUpperInvariant(), image.Format == f)))]));
+            items.Add(Section(SettingsSection.Recording, $"Recording · {video.MaximumDurationSeconds} s maximum", () =>
             {
-                fields.Add(RecordingFields("manual",state,video,state.Busy));
-                fields.Add(Field("duration", "Maximum duration", Durations.Where(d => d <= capabilities.MaximumRecordingSeconds).Select(d => Option("duration." + d, $"{d} seconds", d == video.MaximumDurationSeconds))));
-                fields.Add(UI.Text("Reopen WidgetRail to finish a clip early. Every recording stops at its maximum duration.",
-                    "capture-library.settings.stop-help").Classes("capture-help"));
-                var audioChoices=capabilities.AudioModes.Select(a=>Option("audio."+a,
-                    a==CaptureAudioMode.None?"No audio":a==CaptureAudioMode.Application?"Application audio":a.ToString(),video.Audio==a)).ToList();
-                if(!audioChoices.Any(option=>option.IsSelected))audioChoices.Insert(0,new("current",video.Audio+" (unavailable)","capture-library.option.current",true,IsDisabled:true));
-                fields.Add(Field("audio", "Audio", audioChoices,
-                    "Records audio from the captured application. Microphone audio is not recorded. Only available modes are listed."));
-                fields.Add(UI.Text(video.Selection is not null?"Auto values resolve for the selected source. Each clip is limited to 2 GiB.":
-                    $"Estimated recording size: {((long)video.Bitrate+(video.Audio==CaptureAudioMode.None?0:CaptureLimits.AudioBitrate))*video.MaximumDurationSeconds/8/1048576d:0.0} MiB + container overhead · limit 2 GiB.","capture-library.settings.estimate").Classes("capture-help"));
-            }
-            items.Add(UI.Stack("capture-library.settings.video", fields.ToArray()).Classes("capture-settings-section"));
-            var preparation = new List<WidgetElement> {
-                UI.Text("Preparation", "capture-library.settings.preparation.title").Classes("capture-heading"),
-                Field("image.delay", "Screenshot delay", Delays.Select(d => Option("image.delay." + d, d == 0 ? "Immediately" : $"{d} seconds", preferences.PreparationFor(WindowCaptureKind.Screenshot).DelaySeconds == d))),
-                Field("delay", "Clip delay", Delays.Select(d => Option("delay." + d, d == 0 ? "Immediately" : $"{d} seconds", prep.DelaySeconds == d))),
-                Field("countdown", "Show countdown", [Option("countdown.on", "On", prep.ShowCountdown), Option("countdown.off", "Off", !prep.ShowCountdown)]),
-            };
-            if (capabilities.CursorSupported) preparation.Add(Field("cursor", "Include mouse pointer", [Option("cursor.on", "On", preferences.IncludeCursor), Option("cursor.off", "Off", !preferences.IncludeCursor)]));
-            items.Add(UI.Stack("capture-library.settings.preparation", preparation.ToArray()).Classes("capture-settings-section"));
+                var fields = new List<WidgetElement>();
+
+                if(capabilities.MaximumRecordingSeconds>0)
+                {
+                    fields.Add(RecordingFields("manual",state,video,state.Busy));
+                    fields.Add(Field("duration", "Maximum duration", Durations.Where(d => d <= capabilities.MaximumRecordingSeconds).Select(d => Option("duration." + d, $"{d} seconds", d == video.MaximumDurationSeconds))));
+                    fields.Add(UI.Text("Reopen WidgetRail to finish a clip early. Every recording stops at its maximum duration.",
+                        "capture-library.settings.stop-help").Classes("capture-help"));
+                    var audioChoices=capabilities.AudioModes.Select(a=>Option("audio."+a,
+                        a==CaptureAudioMode.None?"No audio":a==CaptureAudioMode.Application?"Application audio":a.ToString(),video.Audio==a)).ToList();
+                    if(!audioChoices.Any(option=>option.IsSelected))audioChoices.Insert(0,new("current",video.Audio+" (unavailable)","capture-library.option.current",true,IsDisabled:true));
+                    fields.Add(Field("audio", "Audio", audioChoices,
+                        "Records audio from the captured application. Microphone audio is not recorded. Only available modes are listed."));
+                    fields.Add(UI.Text(video.Selection is not null?"Auto values resolve for the selected source. Each clip is limited to 2 GiB.":
+                        $"Estimated recording size: {((long)video.Bitrate+(video.Audio==CaptureAudioMode.None?0:CaptureLimits.AudioBitrate))*video.MaximumDurationSeconds/8/1048576d:0.0} MiB + container overhead · limit 2 GiB.","capture-library.settings.estimate").Classes("capture-help"));
+                }
+                return fields;
+            }));
+            if (capabilities.RecordingProfiles.Count == 0)
+                heading.Add(UI.Alert("Recording unavailable", "No compatible hardware recording options are currently available.",
+                    AlertTone.Warning, "capture-library.settings.no-encoder"));
+            items.Add(Section(SettingsSection.Preparation, "Preparation · " + (prep.ShowCountdown ? "Countdown on" : "Countdown off"), () =>
+            {
+                var preparation = new List<WidgetElement> {
+                    Field("image.delay", "Screenshot delay", Delays.Select(d => Option("image.delay." + d, d == 0 ? "Immediately" : $"{d} seconds", preferences.PreparationFor(WindowCaptureKind.Screenshot).DelaySeconds == d))),
+                    Field("delay", "Clip delay", Delays.Select(d => Option("delay." + d, d == 0 ? "Immediately" : $"{d} seconds", prep.DelaySeconds == d))),
+                    Field("countdown", "Show countdown", [Option("countdown.on", "On", prep.ShowCountdown), Option("countdown.off", "Off", !prep.ShowCountdown)]),
+                };
+                if (capabilities.CursorSupported) preparation.Add(Field("cursor", "Include mouse pointer", [Option("cursor.on", "On", preferences.IncludeCursor), Option("cursor.off", "Off", !preferences.IncludeCursor)]));
+                return preparation;
+            }));
             if(video.Selection is null && video.Encoding is not null)
             {
                 var validation=capabilities.Validate(preferences.Request(WindowCaptureKind.Video));
-                if(!validation.Supported)items.Add(UI.Text("Your saved explicit settings will be checked when recording starts.","capture-library.settings.validation").Classes("capture-help"));
+                if (!validation.Supported)
+                {
+                    heading.Add(UI.Alert("Check recording settings", Explain(validation.ErrorCode!), AlertTone.Warning, "capture-library.settings.validation"));
+                    heading.Add(UI.Button("Open recording settings", SectionAction + "Recording.show", "capture-library.settings.validation.open"));
+                }
             }
         }
         else if(recordingCatalog.Snapshot.Error is {} error)
         {
-            items.Add(UI.Text(error.Message,"capture-library.settings.loading").Classes("capture-help"));
-            items.Add(UI.Button("Check recording options","capture-library.recording.refresh","capture-library.recording.refresh"));
-            if(error.Code=="permission_denied")items.Add(PermissionsButton());
+            heading.Add(UI.Alert("Recording options unavailable", error.Message, AlertTone.Warning, "capture-library.settings.loading"));
+            heading.Add(UI.Button("Check recording options","capture-library.recording.refresh","capture-library.recording.refresh"));
+            if(error.Code=="permission_denied" && !state.PermissionRequired)heading.Add(PermissionsButton());
         }
         else items.Add(UI.Text("Checking supported capture options…", "capture-library.settings.loading").Classes("capture-help"));
         if (state.Capabilities is not null) items.Add(UI.Button("Reset capture settings", "capture-library.option.reset", "capture-library.settings.reset").Disabled(state.Busy||pendingManual));
         if (state.Message is { } message && state.PermissionRequired)
         {
-            items.Add(UI.Text(message, "capture-library.settings.status").Classes("capture-help"));
-            items.Add(PermissionsButton());
+            heading.Add(UI.Alert("Permission needed", message, AlertTone.Warning, "capture-library.settings.status"));
+            heading.Add(PermissionsButton());
         }
+        else if (state.Message is { } result)
+            heading.Add(UI.Text(result, "capture-library.settings.status").Classes("capture-help"));
         var root = UI.Grid("capture-library.settings.page", [GridTrack.Auto(), GridTrack.Star()], [GridTrack.Star()],
             UI.Stack("capture-library.settings.header", heading.ToArray()),
-            UI.VerticalScroll("capture-library.settings.scroll", items.ToArray()).InGrid(row:1)).InputScope("capture-library.settings.page")
+            UI.VerticalScroll("capture-library.settings.scroll", UI.Stack("capture-library.settings.sections", items.ToArray()).RememberChildFocus("capture-library.settings.back")).InGrid(row:1)).InputScope("capture-library.settings.page")
             .Shortcut(ControllerButton.B, "capture-library.settings.back", label: "Library").Classes("capture-library", "capture-library-base");
         return new(ReplayShortcuts(root, state), "capture-library.settings.back",
-            Surface: Surface(WidgetSurfaceAppearance.DesktopAcrylic));
+            Surface: Surface(WidgetSurfaceAppearance.DesktopAcrylic)) { FocusGroupEntryRequest = state.SettingsFocus };
     }
 
     private static WidgetElement PermissionsButton() => UI.Button("Open permissions", "unused", "capture-library.permissions")

@@ -4467,10 +4467,11 @@ public sealed partial class PlayniteLibraryTests
             var games = result.Page.Items.Select(item => new PlayniteBridgeGame(item.SavedId,
                 item.Presentation.DisplayName, item.Presentation.Source.DisplayName,
                 item.Presentation.Availability.State == WidgetAppLibraryAvailabilityState.Installed,
-                false, false, null, [], [], [], 0, null)).ToArray();
+                false, false, null, [], [], [], 0, item.Presentation.Metadata?.LastPlayedAtUnixMilliseconds)).ToArray();
             return new(query, context, games, result.Authority, result.Page.Sources, result.Page.Revision,
                 0, result.RetainedLastGood, game => PlayniteLibraryItem.From(items[game.Id]),
-                (_, _, _) => ValueTask.FromResult<WidgetEncodedArtwork?>(null));
+                (_, _, _) => ValueTask.FromResult<WidgetEncodedArtwork?>(null))
+                { RecentCaptureGames = PlayniteLibraryCapturedQuery.SelectRecentCaptureGames(games) };
         }
         internal List<(string Id, string Status)> CompletionRequests { get; } = [];
         internal Func<CancellationToken, ValueTask<IReadOnlyList<string>>>? CompletionStatusesHandler { get; set; }

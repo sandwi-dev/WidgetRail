@@ -36,6 +36,13 @@ internal sealed class PlayniteLibraryCapturedQuery
     // Supplied only by a provider that can check profile and catalog validity
     // without taking its I/O gate. Other providers revalidate on tab entry.
     internal Func<bool>? CanReuseOnTabEntry { get; init; }
+    // Drawn from the full Playnite catalog, before the user's Home filters.
+    internal IReadOnlyList<(string Id, string Name)> RecentCaptureGames { get; init; } = [];
+
+    internal static (string Id, string Name)[] SelectRecentCaptureGames(IEnumerable<PlayniteBridgeGame> catalog) =>
+        catalog.Where(game => !game.Hidden && game.LastActivityUnixMilliseconds is > 0)
+            .OrderByDescending(game => game.LastActivityUnixMilliseconds).ThenBy(game => game.Id, StringComparer.Ordinal)
+            .Take(8).Select(game => (game.Id, game.Name)).ToArray();
 
     /// <summary>Random access to 1–64 rows. Empty queries never require a range read.</summary>
     internal IReadOnlyList<PlayniteLibraryCapturedItem> ReadRange(int start, int count, CancellationToken token = default)

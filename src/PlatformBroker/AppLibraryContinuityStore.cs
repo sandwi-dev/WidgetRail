@@ -5,7 +5,7 @@ namespace WidgetRail.PlatformBroker;
 
 // Host-only metadata, separate from widget-writable private state. Approved
 // replacements share app-library IDs and registrations, never security identity.
-internal sealed class AppLibraryContinuityStore(string consentRoot)
+internal sealed partial class AppLibraryContinuityStore(string consentRoot)
 {
     private readonly PrivateStateStore _store = new(Path.Combine(consentRoot, "app-library-scopes"));
 
@@ -15,8 +15,8 @@ internal sealed class AppLibraryContinuityStore(string consentRoot)
         if (!snapshot.Exists) return identity;
         try
         {
-            var scope = JsonSerializer.Deserialize<Scope>(Convert.FromBase64String(snapshot.CanonicalJsonBase64!),
-                BrokerJson.StrictOptions);
+            var scope = JsonSerializer.Deserialize(Convert.FromBase64String(snapshot.CanonicalJsonBase64!),
+                ScopeSerializer.Scope);
             if (scope is null || scope.Version != 1)
                 throw new JsonException("Invalid app-library scope.");
             var resolved = identity with { PublisherId = scope.PublisherId };
@@ -47,9 +47,13 @@ internal sealed class AppLibraryContinuityStore(string consentRoot)
         }
         var origin = destinationHasState ? destination : await ResolveAsync(source, token).ConfigureAwait(false);
         var json = PrivateStateJsonCodec.CanonicalBase64(
-            JsonSerializer.SerializeToUtf8Bytes(new Scope(1, origin.PublisherId), BrokerJson.StrictOptions), "invalid_app_library_scope");
+            JsonSerializer.SerializeToUtf8Bytes(new Scope(1, origin.PublisherId), ScopeSerializer.Scope), "invalid_app_library_scope");
         await _store.WriteAsync(destination, new WritePrivateStateRequest(json, existing.Revision), token).ConfigureAwait(false);
     }
+
+    private static readonly ScopeJsonContext ScopeSerializer = new(new JsonSerializerOptions(BrokerJson.StrictOptions));
+    [JsonSerializable(typeof(Scope))]
+    private sealed partial class ScopeJsonContext : JsonSerializerContext;
 
     private sealed record Scope([property: JsonRequired] int Version, [property: JsonRequired] string PublisherId);
 }

@@ -470,6 +470,21 @@ public sealed partial class CaptureLibraryWidget
         ? (gallery.Selection is { IsActive: true } selection ? $"{selection.Count:N0} selected / " : "") + $"{page.TotalCount:N0} capture{(page.TotalCount == 1 ? "" : "s")}"
         : "Loading captures...";
 
+    private IEnumerable<WidgetElement> CaptureActionFeedback(State state)
+    {
+        if (batchFailures.Count > 0)
+            yield return UI.Button($"Review batch failures ({batchFailures.Count})", "capture-library.batch.failures", "capture-library.batch.failures");
+        if (state.Copying)
+            yield return UI.Row("capture-library.copy.progress",
+                UI.Text("Saving copies…", "capture-library.copy.status").Classes("capture-help"),
+                UI.Button("Cancel copying", "capture-library.batch.stop", "capture-library.copy.cancel")).RememberChildFocus("capture-library.copy.cancel");
+        if (state.Message is { } message && state.PermissionRequired)
+            yield return UI.Stack("capture-library.permission-feedback",
+                UI.Text(message, "capture-library.status").Classes("capture-help"),
+                UI.Button("Allow capture and library access", "capture-library.allow", "capture-library.allow").Busy(state.Busy),
+                PermissionsButton());
+    }
+
     private IEnumerable<WidgetElement> GalleryControls(State state)
     {
         GalleryQuery query; lock (galleryGate) query = galleryQuery;
@@ -496,6 +511,7 @@ public sealed partial class CaptureLibraryWidget
             UI.Stack("capture-library.heading-row",UI.Text("Capture Library","capture-library.title").Classes("capture-title"),
                 UI.Text(GalleryCount(state),"capture-library.count").Classes("capture-gallery-count")).Classes("capture-library-heading").InGrid(),
             controls.InGrid(column:1)).Spacing(0,16).Classes("capture-library-header");
+        foreach (var feedback in CaptureActionFeedback(state)) yield return feedback;
         if (state.Replay is {} replay && (replay.Settings.Enabled || ReplaySettingsLocked(replay) || replay.Phase==CaptureReplayPhase.Error))
             yield return ReplayToolbar(state);
         else if (state.ReplayNotice is {} notice) yield return UI.Text(notice,"capture-library.replay.notice").Classes("capture-help");
@@ -641,9 +657,6 @@ public sealed partial class CaptureLibraryWidget
         {
             switch(action.ActionId)
             {
-                case "capture-library.focus-controls" when !showSources && !showContexts && !showBatchFailures && pendingBatch is null:
-                    galleryReturn = CreateFocusRequest().FocusElement("capture-library.search-row", "capture-library.search");
-                    Invalidate(); return true;
                 case "capture-library.selection.toggle":
                     if(gallery.Selection!.IsActive)gallery.EndSelection();else gallery.BeginSelection();
                     return true;

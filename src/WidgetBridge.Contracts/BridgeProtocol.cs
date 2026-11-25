@@ -155,7 +155,11 @@ internal sealed record WidgetIdRequest(string WidgetId);
 internal sealed record BridgeEmptyPayload;
 internal sealed record BridgeDisplayIdentity(string Id, string Name, IReadOnlyList<string> DevicePaths);
 internal sealed record BridgeAppearanceRequest(BridgeDisplayIdentity Display);
-internal sealed record BridgeTrayPreparation(string ActionId, string RuntimeGeneration, string PresentationGeneration);
+internal sealed record BridgeTrayPreparation(string ActionId, string RuntimeGeneration, string PresentationGeneration)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool InteractiveShortcut { get; init; }
+}
 internal sealed record BridgePresentationRequest(
     string WidgetId,
     PresentationUpdateCapabilities? Capabilities = null,
@@ -254,6 +258,8 @@ internal sealed record BridgeControllerInputRequest(
     BridgeWorkerRun? WorkerRun = null)
 {
     public bool ObserveTrayCompletion { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool InteractiveShortcut { get; init; }
 }
 internal sealed record BridgeTrayActionFinished(string WidgetId, long Sequence, BridgeWorkerRun WorkerRun, [property: JsonRequired] TrayActionResult Result);
 internal sealed record BridgeProtectedWifiRequest(

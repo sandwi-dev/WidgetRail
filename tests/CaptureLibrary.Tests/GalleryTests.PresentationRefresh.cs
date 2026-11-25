@@ -23,7 +23,7 @@ internal static partial class GalleryTests
                 await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
                 if (previewPreference)
                 {
-                    await fixture.Action("capture-library.settings");
+                    await fixture.Action("capture-library.settings"); await fixture.Action("capture-library.section.Gallery.open");
                     await fixture.Until(() => !fixture.Busy && fixture.Node("capture-library.settings.previews") is not null);
                     await fixture.Action("capture-library.option.previews.off");
                     await fixture.Until(() => !fixture.Busy && fixture.Node("capture-library.settings.previews")!.SelectOptions

@@ -240,7 +240,9 @@ internal sealed partial class FileBrowserDialog
         clear.Visibility = reviewing && picked.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         previous.Visibility = !reviewing && pages.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         next.Visibility = !reviewing && page?.HasMore == true ? Visibility.Visible : Visibility.Collapsed;
-        footer.Visibility = request.Mode == FileBrowserMode.Multiple || previous.Visibility == Visibility.Visible ||
+        newFolder.Visibility = !reviewing ? Visibility.Visible : Visibility.Collapsed;
+        newFolder.IsEnabled = page is not null && reading is null && !committing && !reviewing;
+        footer.Visibility = newFolder.Visibility == Visibility.Visible || request.Mode == FileBrowserMode.Multiple || previous.Visibility == Visibility.Visible ||
             next.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
         up.IsEnabled = !reviewing && page is not null && Path.GetDirectoryName(page.Directory) is not null;
         IsPrimaryButtonEnabled = !committing && reading is null && page is not null && request.Mode switch

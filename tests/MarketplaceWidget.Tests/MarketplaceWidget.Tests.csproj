@@ -3,4 +3,10 @@
   <ItemGroup><ProjectReference Include="../../src/FirstPartyWidgets/MarketplaceWidget/MarketplaceWidget.csproj" /><ProjectReference Include="../../src/WidgetStyling/WidgetStyling.csproj" /></ItemGroup>
   <ItemGroup><None Include="../../src/FirstPartyWidgets/MarketplaceWidget/manifest.json" Link="fixture/manifest.json" CopyToOutputDirectory="PreserveNewest" /><None Include="../../src/FirstPartyWidgets/MarketplaceWidget/styles/default.wrss" Link="fixture/default.wrss" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup><None Include="../../src/WidgetBridge/Marketplace/catalog.json" Link="fixture/catalog.json" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup>
+    <Compile Include="../Shared/RendererFixtureExporter.cs" Link="fixture/RendererFixtureExporter.cs" />
+    <Compile Include="../Shared/RendererFixtureBridgeProtocolException.cs" Link="fixture/RendererFixtureBridgeProtocolException.cs" />
+    <Compile Include="../../src/WidgetBridge.Contracts/BridgeRenderStyles.cs" Link="fixture/BridgeRenderStyles.cs" />
+    <Compile Include="../../src/WidgetBridge/BridgeRenderStyleResolver.cs" Link="fixture/BridgeRenderStyleResolver.cs" />
+  </ItemGroup>
 </Project>

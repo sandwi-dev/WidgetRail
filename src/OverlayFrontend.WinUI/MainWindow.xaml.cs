@@ -117,7 +117,7 @@ public sealed partial class MainWindow : Window
             controllerTrace?.Dispose();
             gamepadKeys?.Dispose();
             keyboardShortcut?.Dispose(); keyboardShortcut = null;
-            replaySaveShortcut?.Dispose(); replaySaveShortcut = null; replaySaveCommand=null;
+            replaySaveShortcut?.Dispose(); replaySaveShortcut = null; replaySaveCommand=null; DisposeTrayShortcuts();
             input?.Dispose();
             RetireValidation();
         };
@@ -177,6 +177,9 @@ public sealed partial class MainWindow : Window
         // decorative exit motion. Guide, keyboard and gap dismissal animate.
         page.HideRequested += HideOverlay;
         page.HideForCaptureRequested = token => HideForCaptureAsync(page, token);
+        page.CurrentExternalCaptureTarget = () => new WidgetRail.WindowsWindowActivation.WindowsTaskWindowActivation().CaptureForegroundTarget() is { } target &&
+            !page.OwnsBrowserUiProcess(target.ProcessId)
+            ? new(target.Handle.ToString("X"), target.ProcessId, target.ProcessCreated.ToString("X16"), target.ClassName) : null;
         page.ForegroundBeforeOverlay = () => Volatile.Read(ref foregroundReturnTarget) is { } target
             ? new(target.Handle.ToString("X"), target.ProcessId, target.ProcessCreated.ToString("X16"), target.ClassName) : null;
         page.ImmediateHideRequested += HideOverlayImmediately;
@@ -250,6 +253,7 @@ public sealed partial class MainWindow : Window
             if (!open) _ = LoadKeyboardShortcutSettingsAsync(options.SettingsRoot);
         };
         page.KeyboardShortcutCaptureChanged = callback => keyboardCapture = callback;
+        trayShortcutCommand = kind => _ = page.InvokeKeyboardFavoriteAsync(kind);
         replaySaveCommand=()=>_ = page.SaveReplayFromHostAsync();
         page.KeyboardShortcutAvailable = (kind,shortcut) => KeyboardRegistration(kind) is { IsRegistered: true } current &&
             current.Shortcut.Key == shortcut.Key && current.Shortcut.Modifiers == shortcut.Modifiers;
@@ -278,7 +282,7 @@ public sealed partial class MainWindow : Window
         foreach(var kind in Enum.GetValues<WidgetRail.PlatformSettings.HostKeyboardShortcutKind>())Apply(kind);
         void Apply(WidgetRail.PlatformSettings.HostKeyboardShortcutKind kind)
         {
-        var shortcut = KeyboardPreference(settings,kind);
+        var shortcut = settings.GetShortcut(kind);
         if (!shortcut.IsWellFormed()) return;
         if (!shortcut.Enabled)
         {
@@ -366,7 +370,7 @@ public sealed partial class MainWindow : Window
         RetireDevelopment();
         CancelTaskHandoff();
         keyboardShortcut?.Dispose(); keyboardShortcut = null;
-        replaySaveShortcut?.Dispose(); replaySaveShortcut = null; replaySaveCommand=null;
+        replaySaveShortcut?.Dispose(); replaySaveShortcut = null; replaySaveCommand=null; DisposeTrayShortcuts();
         input?.SetVisible(false);
         (RootFrame.Content as Shell.OverlayShellPage)?.PrepareNativeShutdown();
         AppWindow.Hide();

@@ -41,6 +41,17 @@ internal static class PermissionRequestTests
             Check(!await registry.CompleteAsync(ticket.RequestId!, WidgetPermissionOutcome.Denied, default), "Replayed decision changed consent");
             var already = BrokerJson.ParsePayload<WidgetPermissionRequestState>(await Call("permissions.request", new WidgetPermissionQuery([read])));
             Check(already.Outcome == WidgetPermissionOutcome.Granted && already.RequestId is null && registry.Take() is null, "Already granted request prompted");
+            var revokedInWorker = true;
+            var reconciliations = 0;
+            using var lagging = new PermissionCapabilityDomain(identity, new HashSet<string> { read }, store,
+                _ => { revokedInWorker = false; reconciliations++; return Task.CompletedTask; }, registry, id => id == read && revokedInWorker);
+            for (var i = 0; i < 2; i++)
+            {
+                var checkedGrant = await lagging.ExecuteAsync("permissions.check", BrokerJson.ToElement(new WidgetPermissionQuery([read])), default);
+                Check(BrokerJson.ParsePayload<WidgetPermissionStatuses>(checkedGrant).Permissions.Single().State == WidgetPermissionState.Granted &&
+                    !revokedInWorker && registry.Take() is null, "A fresh grant must be usable immediately without showing a prompt");
+            }
+            Check(reconciliations == 1, "An unchanged grant must not trigger another refresh");
             await store.SetDecisionAsync(identity, manage, ConsentDecision.Deny);
             var deny = BrokerJson.ParsePayload<WidgetPermissionRequestState>(await Call("permissions.request", new WidgetPermissionQuery([read, manage])));
             Check(registry.Take()!.CapabilityIds.SequenceEqual([manage]), "Dialog included already granted access");

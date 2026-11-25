@@ -57,7 +57,7 @@ public sealed partial class PlayniteLibraryTests
     }
     [TestMethod]
     [DataRow("missing", "Add PlayniteAchievements")]
-    [DataRow("unsupported", "Update PlayniteAchievements")]
+    [DataRow("unsupported", "Achievement overview unavailable")]
     [DataRow("update-required", "Update WidgetRail for Playnite")]
     [DataRow("unavailable", "Achievements unavailable")]
     public async Task AchievementDestinationExplainsUnavailableProviderWithoutBreakingNavigation(string availability, string title)
@@ -69,6 +69,8 @@ public sealed partial class PlayniteLibraryTests
         await PrivateField<WidgetResource<PlayniteAchievementOverview>>(widget, "achievementHub").WhenIdleAsync();
         var snapshot = Snapshot(widget, 240001);
         Assert.IsTrue(Nodes(snapshot.Root).Any(node => node.Text == title));
+        if (availability == "unsupported")
+            StringAssert.Contains(Nodes(snapshot.Root).Single(node => node.Id == AchievementHubId + ".empty.description").Text!, "4.1.1 and 4.3.3");
         Assert.IsTrue(Nodes(snapshot.Root).Any(node => node.ActionId == PlayniteLibraryActions.HomeOpen));
         Assert.IsTrue(Nodes(snapshot.Root).Any(node => node.ActionId == PlayniteLibraryActions.BrowseOpen));
         Assert.AreEqual(0, WidgetTestHost.ValidateWinUiPresentation(snapshot).Count);

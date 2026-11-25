@@ -43,6 +43,16 @@ public sealed partial class CaptureLibraryWidget
         var draft=replay?recordingChoices.Value.Replay:recordingChoices.Value.Manual;
         return draft?.Revision==(replay?state.Replay?.SettingsRevision:state.PreferencesRevision)?draft:null;
     }
+    private (bool Supported, string? Issue) DraftValidation(RecordingDraft draft, bool replay)
+    {
+        var check = (replay ? replayRecordingCheck : manualRecordingCheck).GetSnapshot(draft);
+        if (check.Error is { } error) return (false, error.Message);
+        if (check.Status != WidgetResourceStatus.Ready || check.Value is null) return (false, null);
+        var recording = replay ? draft.Recording with { MaximumDurationSeconds = 5 } : draft.Recording;
+        var available = check.Value.Validate(new() { Recording = recording }).Supported;
+        return (available, available ? null : "Choose another format, resolution or frame rate.");
+    }
+
     private bool HandleRecordingChoiceAction(WidgetActionEvent action)
     {
         if(action.ActionId=="capture-library.settings.back")
@@ -194,8 +204,8 @@ public sealed partial class CaptureLibraryWidget
         if(draft is not null)
         {
             var snapshot=(replay?replayRecordingCheck:manualRecordingCheck).GetSnapshot(draft);
-            var valid=snapshot.Status==WidgetResourceStatus.Ready&&snapshot.Value?.Validate(new(){Recording=replay?draft.Recording with{MaximumDurationSeconds=5}:draft.Recording}).Supported==true;
-            var text=snapshot.Error?.Message??(snapshot.Status is WidgetResourceStatus.Loading or WidgetResourceStatus.NotLoaded?"Checking this combination…":valid?"This combination is available. Source size is checked at start.":"This combination isn't available. Choose another format, resolution or frame rate.");
+            var (valid, issue) = DraftValidation(draft, replay);
+            var text = issue ?? (valid ? "This combination is available. Source size is checked at start." : "Checking this combination…");
             items.Add(UI.Text(text,id+".validation").Classes("capture-help"));
             items.Add(UI.Row(id+".actions",UI.Button("Save changes",Action("save"),id+".save").Disabled(locked||!valid).Classes("capture-primary"),
                 UI.Button("Cancel",Action("cancel"),id+".cancel").Disabled(state.Busy||Operations.IsBusy(ReplayOperation))));
