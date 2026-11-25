@@ -206,10 +206,14 @@ internal sealed partial class WidgetStylesValidationPage
                     .Min(fill => (Math.Max(Luminance(textInk), Luminance(fill)) + .05) /
                         (Math.Min(Luminance(textInk), Luminance(fill)) + .05));
                 var point = frame.TransformToVisual(page).TransformPoint(new());
-                Check(point.X >= frame.ShadowInset - .1 && point.Y >= frame.ShadowInset - .1 &&
-                    point.X + frame.ActualWidth + frame.ShadowInset <= page.ActualWidth + .1 &&
-                    point.Y + frame.ActualHeight + frame.ShadowInset <= page.ActualHeight + .1,
-                    "Preview placement reserves the native shadow gutter");
+                // Compare displayed pixels: at 125% a 29-DIP inset lands at 36 device pixels.
+                double Pixels(double dips) => Math.Round(dips * scale);
+                var insetPixels = Pixels(frame.ShadowInset);
+                Check(Pixels(point.X) >= insetPixels && Pixels(point.Y) >= insetPixels &&
+                    Pixels(page.ActualWidth - point.X - frame.ActualWidth) >= insetPixels &&
+                    Pixels(page.ActualHeight - point.Y - frame.ActualHeight) >= insetPixels,
+                    $"Preview placement reserves the native shadow gutter (frame {point.X},{point.Y} " +
+                    $"{frame.ActualWidth}×{frame.ActualHeight}, inset {frame.ShadowInset}, viewport {page.ActualWidth}×{page.ActualHeight})");
                 Check(contrast >= 4.5, "Preview text contrasts with native chrome in " + themeId);
                 await Capture(Path.Combine(directory, themeId + ".png"));
                 var colors = new Dictionary<string, BridgeNodeRenderStyles>();

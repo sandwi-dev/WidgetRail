@@ -67,6 +67,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Slow bulk recycling preserves 150 receipts across the broker pipe", LinkedRecycleTests.SlowLargeBatchOverPipe),
     ("Linked recycling widget separates original recycle from library removal",GalleryTests.LinkedOriginalRecycleIsSeparateFromRemoval),
     ("Linked recycling widget retains preview after denial or failure",GalleryTests.LinkedRecycleFailureKeepsExactPreview),
+    ("Removing a detail waits for the surviving neighbor or focuses empty gallery search",GalleryTests.RemovedDetailReturnsToNeighbor),
+    ("Ordinary Back preserves detail scope until it returns to the original capture and viewport",GalleryTests.BackPublishesScopeWithPage),
     ("Detail action focus survives delayed capture reopening",GalleryTests.DetailFocusSurvivesReopen),
     ("Detail actions retain inline controller bindings and media authority",GalleryTests.DetailActionsAndInlineBindings),
     ("Detail actions preserve busy admission and unavailable-media safety",GalleryTests.DetailBusyAndUnavailableActions),

@@ -88,8 +88,19 @@ public sealed partial class CaptureLibraryWidget : Widget
             case "capture-library.video": Capture(WindowCaptureKind.Video); break;
             case "capture-library.refresh": Work(async token => { await HostServices.CaptureLibrary.RefreshAsync(cancellationToken: token); await RefreshAsync(token); WatchLibrary(); WatchReplay(); }); break;
             case "capture-library.back":
-                galleryNavigation.Back();
-                Work(async token => { await ReleaseAsync(state, token); model.Update(s => s with { Preview = null, Detail = false, Navigation = WidgetNavigationOperation.Back, ConfirmDelete = false }); await RefreshAsync(token); }); break;
+                Work(async token =>
+                {
+                    await ReleaseAsync(state, token);
+                    token.ThrowIfCancellationRequested();
+                    lock (galleryGate)
+                    {
+                        galleryNavigation.Back();
+                        model.Update(s => s with { Preview = null, Detail = false,
+                            Navigation = WidgetNavigationOperation.Back, ConfirmDelete = false });
+                    }
+                    await RefreshGalleryAsync(token);
+                });
+                break;
             case "capture-library.folder":
                 Work(async token => { await RequirePermissionsAsync([WidgetCaptureLibraryCapabilities.ManagePermission], token); await HostServices.CaptureLibrary.OpenFolderAsync(token); }); break;
             case "capture-library.edit-copy": EditCaptureCopy(state); break;
@@ -235,7 +246,7 @@ public sealed partial class CaptureLibraryWidget : Widget
         {
             Surface = Surface(WidgetSurfaceAppearance.DesktopAcrylic),
             FocusGroupEntryRequest = state.Preview is null && !state.Detail
-                ? galleryReturn ?? galleryNavigation.Value.CollectionReturnFocus?.Resolve(GalleryId, gallery.Descriptor) : detailEntry,
+                ? GalleryReturnFocus() : detailEntry,
         };
         if (showContexts) view = view.WithModal(ContextDetails()) with { FocusGroupEntryRequest = destinationFocus };
         else if (showBatchFailures) view = view.WithModal(BatchFailures());

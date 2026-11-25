@@ -3,7 +3,7 @@
   "id": "widgetrail.firstparty.capture-library",
   "publisher": "widgetrail.firstparty",
   "name": "Capture Library",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "trayActions": [
     { "id": "screenshot", "label": "Take screenshot", "wakeOnInvoke": true },
     { "id": "record-clip", "label": "Record clip", "wakeOnInvoke": true },

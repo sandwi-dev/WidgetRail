@@ -136,3 +136,15 @@ Checkpoints: native media baseline113/lifetime19/content36/dialog36/interactive6
 Final qualification: ordinary focus/scroll16, protected preview/recovery26, replay UI14 and final actual gallery30 pass. Candidate staging and normal launch are complete in `artifacts/capture-chat-candidate-20261117`; Capture0.2.0.13 and Discord0.1.0.35 preserve settings through reviewed local CLI updates. First launch exposed an omitted Settings integrity seal in candidate assembly; restored through the existing seal tool, without bypassing checks. PID27708 is the successful normal launch. No test fixture remains open.
 
 Narrowed/deferred scope: automatic read acknowledgments require exact viewed-message evidence; reactions/polls are read-only and some animated Discord content has fallback. Replay auto-start uses the explicitly approved application, hardware SDR/application audio, and a strict duration upper bound with keyframe shortening. Acquisition code is reused; independent bounded raw-streaming/replay workers are qualified, not a new cross-authority shared-frame service. Real-game performance across hardware, physical PC sleep, hardware IME and notification-area menu drawing were not exercised; controlled native capture/audio, injected power transitions, editor guards and overlay tray/hotkey paths were. Thumbnail scrub generation remains deferred. Historical preview-lease failure evidence was ambiguous; the corrected actual-preview assertion passes without broad observer effects. These limits are recorded rather than represented as universal runtime/performance proof.
+
+## November 24 follow-up · Gallery return and preview ownership
+
+Capture Library now publishes the detail route and its input scope together. On ordinary Back, the gallery requests its original indexed item and viewport. After removal it waits for the revised query, then targets a surviving neighbor or Search. The host already supports these policies through its page cache and one-shot focus requests.
+
+| Shared preview consumer | Applicability |
+| --- | --- |
+| Capture Library | Uses centered card previews. Tested a scrolled 45-capture gallery with native mouse and keyboard input, including recycling a disposable capture. |
+| Discord, Playnite, PoB Companion, Catalogue, SDK Gallery | Use the shared presenter. Real pointer movement can take over from focus, and interactive side previews retain the pointer travel grace. Covered by shared native preview fixtures. Individual widget sessions were not exercised for this change. |
+| Other shipping widgets and templates | No rich-preview declarations found at their entry points. No migration required. |
+
+The original native trace showed a stationary mouse reclaiming the preview after focus had moved. The corrected trace kept each keyboard-focused card's preview until mouse movement. An ordinary return to the 38th capture reported a home cache hit and retained the same native collection. The host reacquired current row leases. After deletion, the next surviving capture took focus at the deleted capture's index. These checks used an isolated profile.

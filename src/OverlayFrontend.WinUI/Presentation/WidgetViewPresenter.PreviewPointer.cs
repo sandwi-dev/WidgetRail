@@ -7,6 +7,19 @@ namespace WidgetRail.OverlayFrontend.WinUI.Presentation;
 internal sealed partial class WidgetViewPresenter
 {
     private IDisposable? previewOutsidePressInput;
+    private Point? lastPreviewPointerRootPosition;
+
+    private bool AcceptPreviewPointer(PointerRoutedEventArgs args)
+    {
+        if (args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch ||
+            Input.OverlayMouseSession.SuppressesHover(XamlRoot)) return false;
+        // WinUI can retarget a stationary mouse when focus closes a popup or a
+        // recycled row moves underneath it. Only movement takes back ownership.
+        var point = args.GetCurrentPoint(null).Position;
+        var moved = lastPreviewPointerRootPosition != point;
+        lastPreviewPointerRootPosition = point;
+        return previewPointerIntent || moved;
+    }
 
     private void ObservePreviewOutsidePresses()
     {
@@ -35,12 +48,11 @@ internal sealed partial class WidgetViewPresenter
         PointerEventHandler moved = (_, args) =>
         {
             if (!IsFocusPreviewOpen || previewEntered ||
-                args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch ||
-                Input.OverlayMouseSession.SuppressesHover(XamlRoot) ||
                 previewSurface?.Fragment?.FocusedMediaPlayer is { IsExpanded: true } or { IsMovingPresentation: true }) return;
             var target = args.OriginalSource as DependencyObject;
             if (IsWithin(target, this) || previewChrome is { } chrome && IsWithin(target, chrome) ||
                 FindBinding(target) is not null) return;
+            if (!AcceptPreviewPointer(args)) return;
             // An overlapping sibling can receive movement without a presenter
             // exit. Feed that real routed position into the existing corridor
             // and bounded exit timer; leave ordinary controls and clicks alone.
@@ -58,7 +70,7 @@ internal sealed partial class WidgetViewPresenter
 
     private void PreviewPointerMoved(object sender, PointerRoutedEventArgs args)
     {
-        if (args.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch) return;
+        if (!AcceptPreviewPointer(args)) return;
         SetPreviewPointerTarget(args.OriginalSource as DependencyObject, args.GetCurrentPoint(this).Position);
     }
     internal void SetPreviewPointerTarget(DependencyObject? target, Point? position = null)
@@ -66,20 +78,27 @@ internal sealed partial class WidgetViewPresenter
         if (Input.OverlayMouseSession.SuppressesHover(XamlRoot)) return;
         previewPointerIntent = true;
         if (position is { } point) previewPointerPosition = (point.X, point.Y);
-        if (IsFocusPreviewOpen && previewSource is { } previous && RetainPreviewSource(previous) is { } source)
+        var hovered = PreviewSourceFromTarget(target);
+        if (IsFocusPreviewOpen && previewSource is { } previous && PreviewEnterButton(previous) is not null &&
+            RetainPreviewSource(previous) is { } source)
         {
-            if (previewEntered || position is not null && RetainPreviewPointer())
+            // A centered preview overlaps its own card. A routed hit on a
+            // different exposed card is already a destination, not a gap.
+            var otherCard = source.Options.Placement == WidgetRail.WidgetProtocol.AnchorPlacement.CenterOnAnchor &&
+                source.Row is not null && hovered?.Row is not null && hovered.Source.Token == source.Source.Token &&
+                hovered.Row.Item.Key != source.Row.Item.Key;
+            if (previewEntered || !otherCard && position is not null && RetainPreviewPointer())
             { CancelPreviewPointerExit(); previewHoverRetained = true; return; }
             // A bound layout element is not necessarily a preview source. Give
             // the pointer the same grace across those gaps as across empty space.
-            if (PreviewSourceFromTarget(target) is null)
+            if (hovered is null)
             { SchedulePreviewPointerExit(); return; }
         }
         CancelPreviewPointerExit(); previewHoverRetained = false;
         // A hovered label/image can be replaced while its logical row remains.
         // Retain the already-resolved native anchor, not that transient child.
         // Resolution still requires a current, visible occurrence here.
-        previewPointerTarget = PreviewSourceFromTarget(target)?.Anchor ?? target;
+        previewPointerTarget = hovered?.Anchor ?? target;
         previewPointerFocus = XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot);
         QueueSurfaceUpdate();
     }
@@ -92,11 +111,11 @@ internal sealed partial class WidgetViewPresenter
     }
     private void PreviewPointerExited(object sender, PointerRoutedEventArgs args)
     {
-        if (Input.OverlayMouseSession.SuppressesHover(XamlRoot)) return;
+        if (!AcceptPreviewPointer(args)) return;
         previewPointerIntent = true;
         var point = args.GetCurrentPoint(this).Position;
         previewPointerPosition = (point.X, point.Y);
-        if (!IsFocusPreviewOpen)
+        if (!IsFocusPreviewOpen || PreviewEnterButton(previewSource) is null)
         {
             SetPreviewPointerTarget(null, point);
             return;
@@ -107,21 +126,21 @@ internal sealed partial class WidgetViewPresenter
     }
     private void PreviewChromeEntered(object sender, PointerRoutedEventArgs args)
     {
-        if (Input.OverlayMouseSession.SuppressesHover(XamlRoot)) return;
-        CancelPreviewPointerExit(); previewPointerIntent = true; previewPointerOverChrome = true; previewHoverRetained = true;
         PreviewChromeMoved(sender, args);
     }
     private void PreviewChromeMoved(object sender, PointerRoutedEventArgs args)
     {
-        if (Input.OverlayMouseSession.SuppressesHover(XamlRoot)) return;
+        if (!AcceptPreviewPointer(args)) return;
+        CancelPreviewPointerExit(); previewPointerIntent = true; previewPointerOverChrome = true; previewHoverRetained = true;
         var point = args.GetCurrentPoint(this).Position;
         previewPointerPosition = (point.X, point.Y); RetainPreviewPointer();
     }
     private void PreviewChromeExited(object sender, PointerRoutedEventArgs args)
     {
-        if (Input.OverlayMouseSession.SuppressesHover(XamlRoot)) return;
+        if (!AcceptPreviewPointer(args)) return;
         previewPointerOverChrome = false;
-        PreviewChromeMoved(sender, args);
+        var point = args.GetCurrentPoint(this).Position;
+        previewPointerPosition = (point.X, point.Y);
         if (RetainPreviewPointer()) { CancelPreviewPointerExit(); previewHoverRetained = true; }
         else SchedulePreviewPointerExit();
     }

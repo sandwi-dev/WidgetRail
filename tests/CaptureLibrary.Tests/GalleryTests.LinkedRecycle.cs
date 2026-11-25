@@ -3,6 +3,84 @@ using WidgetRail.WidgetSdk;
 
 internal static partial class GalleryTests
 {
+    internal static async Task RemovedDetailReturnsToNeighbor()
+    {
+        foreach (var (count, index) in new[] { (3, 0), (3, 1), (3, 2), (1, 0) })
+        {
+            await using var fixture = new GalleryFixture();
+            fixture.Items.RemoveRange(count, fixture.Items.Count - count);
+            await fixture.Start();
+            using var host = WidgetTestHost.CreateIndexedCollectionHost(fixture.Widget, "delete-focus", 100);
+            fixture.Host = host;
+            using (var lease = await host.AcquireAsync("capture-library.entries", 0, count))
+                Check(lease.RouteAction(fixture.Items[0].Id, ControllerButton.A) is not null, "Could not open capture");
+            await fixture.Until(() => Preview(fixture) is not null && !fixture.Busy);
+            for (int step = 0; step < index; step++)
+            {
+                await fixture.Action("capture-library.viewer.next");
+                await fixture.Until(() => !fixture.Busy);
+            }
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            fixture.GroupsOverride = async (request, token) =>
+            {
+                entered.TrySetResult();
+                await release.Task.WaitAsync(token);
+                var remaining = fixture.Items.Count;
+                return new(remaining == 0 ? [] : [new("unknown", remaining)], remaining, request.Revision!);
+            };
+            await fixture.Action("capture-library.delete");
+            await fixture.Action("capture-library.delete.confirm");
+            try
+            {
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Check(fixture.View().FocusGroupEntryRequest is null, "Published stale focus before the post-delete query completed");
+            }
+            finally { release.TrySetResult(); }
+            await fixture.Until(() => !fixture.Busy);
+            var focus = fixture.View().FocusGroupEntryRequest;
+            if (count == 1)
+                Check(focus?.TargetId == "capture-library.search", "Empty gallery lost toolbar focus");
+            else
+            {
+                var nearest = Math.Min(index, count - 2);
+                Check(focus?.IndexedItem is { } item && item.Index == nearest && item.ItemKey == fixture.Items[nearest].Id,
+                    "Removal did not focus the surviving neighbor of the capture on screen");
+            }
+        }
+    }
+
+    internal static async Task BackPublishesScopeWithPage()
+    {
+        await using var fixture = new GalleryFixture();
+        await fixture.Start();
+        var home = fixture.View();
+        using var host = await OpenEditingSource(fixture);
+        var detail = fixture.View();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.ReleaseOverride = async (_, token) =>
+        {
+            started.TrySetResult();
+            await release.Task.WaitAsync(token);
+            return new(true);
+        };
+        await fixture.Action("capture-library.back");
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var waiting = fixture.View();
+            Check(waiting.Root.Transition?.Key == detail.Root.Transition?.Key &&
+                waiting.ActiveInputScopeId == detail.ActiveInputScopeId, "Pending release changed the displayed detail's scope");
+        }
+        finally { release.TrySetResult(); }
+        await fixture.Until(() => !fixture.Busy);
+        var back = fixture.View();
+        Check(back.ActiveInputScopeId == home.ActiveInputScopeId && back.Root.Transition?.Key == home.Root.Transition?.Key &&
+            back.FocusGroupEntryRequest is { RestoreViewport: true, IndexedItem: { } row } && row.ItemKey == fixture.Items[0].Id,
+            "Back lost the home page, original capture, or saved viewport");
+    }
+
     internal static async Task LinkedOriginalRecycleIsSeparateFromRemoval()
     {
         foreach(var recycle in new[]{false,true})

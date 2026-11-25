@@ -28,8 +28,20 @@ public sealed partial class CaptureLibraryWidget
     private static readonly CaptureLibraryQuery DefaultGalleryFilter = new() { AvailableOnly = true };
     private GalleryQuery galleryQuery = new(DefaultGalleryFilter);
     private CaptureLibraryItem? selectedCapture;
+    private int? detailIndex;
     private FocusGroupEntryRequest? galleryReturn;
     private string dateFilter = "all";
+
+    private FocusGroupEntryRequest? GalleryReturnFocus()
+    {
+        if (galleryReturn is not null) return galleryReturn;
+        // A return request is consumed once. Only use the navigator's immediate
+        // target if it's still the capture we're leaving. After removal, wait
+        // for the revised query to publish a surviving neighbor or Search.
+        var original = galleryNavigation.Value.CollectionReturnFocus;
+        return original is not null && original.Item.ItemKey == selectedCapture?.Id
+            ? original.Resolve(GalleryId, gallery.Descriptor) : null;
+    }
 
     private WidgetIndexedCollection<GalleryQuery, CaptureLibraryItem> CreateGallery() =>
         CreateIndexedCollection<GalleryQuery, CaptureLibraryItem>("capture-library.gallery-source", galleryQuery, 0, new()
@@ -112,8 +124,8 @@ public sealed partial class CaptureLibraryWidget
 
     private async Task ReadGallerySnapshotAsync(CancellationToken token)
     {
-        GalleryQuery request; CaptureLibraryItem? selected; WidgetNavigationSnapshot<GalleryRoute> navigation;
-        lock (galleryGate) { request = galleryQuery; selected = selectedCapture; navigation = galleryNavigation.Value; }
+        GalleryQuery request; CaptureLibraryItem? selected; int? priorIndex; WidgetNavigationSnapshot<GalleryRoute> navigation;
+        lock (galleryGate) { request = galleryQuery; selected = selectedCapture; priorIndex = detailIndex; navigation = galleryNavigation.Value; }
         var anchor = selected?.Id;
         // Index revision keeps every demanded range in one ordering. A concurrent
         // external edit is retried once; continued churn is reported for retry.
@@ -132,7 +144,7 @@ public sealed partial class CaptureLibraryWidget
                 var returnKey = anchor;
                 if (returnIndex is null && navigation.CollectionReturnFocus is { } previousFocus && page.TotalCount > 0)
                 {
-                    var nearest = Math.Min(previousFocus.Item.Index, page.TotalCount - 1);
+                    var nearest = Math.Min(priorIndex ?? previousFocus.Item.Index, page.TotalCount - 1);
                     var neighbor = nearest < page.Items.Count ? page.Items[nearest] :
                         (await HostServices.CaptureLibrary.QueryAsync(request.Filter, nearest, 1, page.Revision, token)).Items.SingleOrDefault();
                     returnIndex = neighbor is null ? null : nearest;
@@ -162,6 +174,7 @@ public sealed partial class CaptureLibraryWidget
                     var current = galleryQuery;
                     if (!ReferenceEquals(current.Filter, request.Filter) || current.Revision != request.Revision) return;
                     var ownsPreview = ReferenceEquals(selectedCapture, selected) && galleryNavigation.Value.Revision == navigation.Revision;
+                    if (ownsPreview && position?.Index is { } currentIndex) detailIndex = currentIndex;
                     if (latest is not null && notice is null && ownsPreview) selectedCapture = latest;
                     if (request.Revision != page.Revision || gallery.Descriptor.Count != page.TotalCount)
                     {
@@ -187,7 +200,9 @@ public sealed partial class CaptureLibraryWidget
                         (galleryReturn is null || galleryReturn.RequestId == returning.RequestId) &&
                         ReferenceEquals(galleryNavigation.Value.CollectionReturnFocus, returning))
                         galleryReturn = returnIndex is { } index
-                            ? gallery.Enter(GalleryId, returning.RequestId, gallery.FocusTarget(GalleryId,new(returnKey!),index)) : null;
+                            ? gallery.Enter(GalleryId, returning.RequestId, gallery.FocusTarget(GalleryId,new(returnKey!),index))
+                                with { RestoreViewport = returnKey == returning.Item.ItemKey }
+                            : new() { RequestId = returning.RequestId, GroupId = "capture-library.search-row", TargetId = "capture-library.search" };
                     model.Update(s => s with { Page = new(page.Items, 0, page.TotalCount, page.StoredBytes),
                         Message = ownsPreview ? notice ?? s.Message : s.Message,
                         PermissionRequired = ownsPreview && notice is not null ? false : s.PermissionRequired });
@@ -216,6 +231,8 @@ public sealed partial class CaptureLibraryWidget
                     galleryNavigation.PushFromCollectionAction(GalleryRoute.Preview, action, gallery.Descriptor) != WidgetNavigationResult.Changed)
                     return ValueTask.CompletedTask;
                 selectedCapture = item; galleryReturn = null;
+                detailIndex = action.FocusedCollectionItem!.Index;
+                model.Update(s => s with { Detail = true, SelectedId = item.Id, Navigation = WidgetNavigationOperation.Forward });
             }
         }
         if (favorite) ToggleGalleryFavorite(query, item);
@@ -245,7 +262,6 @@ public sealed partial class CaptureLibraryWidget
     private void OpenCapture(CaptureLibraryItem item) => Work(async token =>
     {
         await ReleaseAsync(model.Value, token);
-        model.Update(s => s with { Preview = null, Detail = true, SelectedId = item.Id, Navigation = WidgetNavigationOperation.Forward });
         if (!item.Available) return;
         var media = await HostServices.CaptureLibrary.OpenAsync(item.Id, cancellationToken: token);
         model.Update(s => s with { Preview = media });
@@ -293,8 +309,7 @@ public sealed partial class CaptureLibraryWidget
                 throw;
             }
             token.ThrowIfCancellationRequested();
-            galleryNavigation.Back(); selectedCapture = null; galleryReturn = null;
-            model.Update(s => s with { SelectedId = null, Preview = null, Detail = false, Navigation = WidgetNavigationOperation.Back, ConfirmDelete = false });
+            ReturnAfterRemoval();
             await RefreshAsync(token);
             UpdateFeedback(s => s with { Message = recycleLinkedOriginal ? "Moved the original to the Windows Recycle Bin." : selected.SourceId is not null ? "Hidden from library. Find it under Type → Hidden." : selected.Available ? "Moved to the Windows Recycle Bin." : "Removed the unavailable capture." });
         });
@@ -310,12 +325,22 @@ public sealed partial class CaptureLibraryWidget
             await HostServices.CaptureLibrary.UnhideAsync(new(selected.Id, selected.Revision, selected.MetadataRevision), token);
             token.ThrowIfCancellationRequested();
             await ReleaseAsync(state, token);
-            galleryNavigation.Back(); selectedCapture = null; galleryReturn = null;
-            model.Update(value => value with { Preview = null, Detail = false, SelectedId = null,
-                Navigation = WidgetNavigationOperation.Back });
+            ReturnAfterRemoval();
             await RefreshGalleryAsync(token);
             UpdateFeedback(value => value with { Message = "Capture unhidden." });
         });
+    }
+
+    private void ReturnAfterRemoval()
+    {
+        lock (galleryGate)
+        {
+            selectedCapture = null;
+            galleryReturn = null;
+            galleryNavigation.Back();
+            model.Update(s => s with { SelectedId = null, Preview = null, Detail = false,
+                Navigation = WidgetNavigationOperation.Back, ConfirmDelete = false });
+        }
     }
 
     private void ChangeCaptureMetadata(string? title, bool toggleFavorite)
@@ -348,11 +373,11 @@ public sealed partial class CaptureLibraryWidget
             if (position.Index is not { } index || index + direction < 0 || index + direction >= position.TotalCount) return;
             var page = await HostServices.CaptureLibrary.QueryAsync(query.Filter, index + direction, 1, query.Revision, token);
             var next = page.Items.Single();
-            await ReplacePreviewAsync(next, original, token);
+            await ReplacePreviewAsync(next, original, token, index + direction);
         });
     }
 
-    private async Task ReplacePreviewAsync(CaptureLibraryItem next, State original, CancellationToken token)
+    private async Task ReplacePreviewAsync(CaptureLibraryItem next, State original, CancellationToken token, int? index = null)
     {
         CaptureAttachment? unclaimed = null;
         try
@@ -366,6 +391,7 @@ public sealed partial class CaptureLibraryWidget
             {
                 if (!SamePreviewSource(original)) return;
                 selectedCapture = next;
+                detailIndex = index;
                 galleryReturn = null;
                 contexts = null; contextError = null; showContexts = false;
                 model.Update(s => s with { Preview = unclaimed, Detail = true, SelectedId = next.Id });

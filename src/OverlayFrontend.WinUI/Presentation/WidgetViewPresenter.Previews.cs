@@ -129,7 +129,7 @@ internal sealed partial class WidgetViewPresenter
         previewTimer = null; previewPointerTarget = null; previewPointerFocus = null;
         previewExitTimer?.Stop();
         if (previewExitTimer is not null) previewExitTimer.Tick -= PreviewPointerExitElapsed;
-        previewExitTimer = null; previewTransit.Reset(); previewPointerPosition = null;
+        previewExitTimer = null; previewTransit.Reset(); previewPointerPosition = null; lastPreviewPointerRootPosition = null;
         if (!previewEventsAttached) return;
         previewEventsAttached = false;
         PointerMoved -= PreviewPointerMoved; PointerExited -= PreviewPointerExited;
@@ -218,7 +218,7 @@ internal sealed partial class WidgetViewPresenter
     private void UseFocusedPreviewSource()
     {
         if (!previewPointerIntent) return;
-        CancelPreviewPointerExit(); previewHoverRetained = false; previewTransit.Reset();
+        CancelPreviewPointerExit(); previewPointerOverChrome = false; previewHoverRetained = false; previewTransit.Reset();
         previewPointerIntent = false; previewPointerTarget = null; previewPointerFocus = null; QueueSurfaceUpdate();
     }
     private void PreviewUnloaded(object sender, RoutedEventArgs args)

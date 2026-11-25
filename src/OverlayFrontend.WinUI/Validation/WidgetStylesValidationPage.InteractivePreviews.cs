@@ -98,6 +98,21 @@ internal sealed partial class WidgetStylesValidationPage
                 await page.HandleControllerButtonAsync(ControllerButton.B);
                 await Wait(()=>ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot),source));
                 Check(ReferenceEquals(page.FocusPreviewChrome,chrome),"Centered preview entry and Back preserve its existing owner");
+                await NativeContextProbeInput.HoverAsync(source, async () =>
+                {
+                    var neighbor = Find<Button>("Widget.preview.neighbor", root)!;
+                    page.MoveFocus(FocusNavigationDirection.Down);
+                    await Wait(() => ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), neighbor) &&
+                        Find<TextBlock>("Widget.preview.neighbor-content", root) is { ActualWidth: > 0 });
+                    // Give WinUI time to retarget the stationary mouse when the
+                    // first popup disappears and the neighbor's popup opens.
+                    await Task.Delay(350);
+                    Check(ReferenceEquals(FocusManager.GetFocusedElement(XamlRoot), neighbor) &&
+                        Find<TextBlock>("Widget.preview.neighbor-content", root) is { ActualWidth: > 0 },
+                        "A stationary mouse cannot reclaim the previous preview after directional navigation");
+                });
+                source.Focus(FocusState.Keyboard);
+                await Wait(() => page.IsFocusPreviewOpen && Find<Button>("Widget.preview.apply", root) is { IsLoaded: true });
                 var outside=new Button{Content="Outside",Width=130,Height=40,HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Bottom};
                 var clicks=0;outside.Click+=(_,_)=>clicks++;root.Children.Add(outside);
                 await Wait(()=>outside.IsLoaded && outside.ActualWidth>0);
