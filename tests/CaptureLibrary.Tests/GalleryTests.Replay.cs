@@ -9,53 +9,53 @@ internal static partial class GalleryTests
         await fixture.Start();
         await fixture.Until(() => fixture.ReplayReads >= 1);
         string? Shortcut(ControllerButton button) => fixture.View().Root.Shortcuts.SingleOrDefault(item => item.Button == button)?.ActionId;
-        Check(Shortcut(ControllerButton.LeftBumper) is null, "An empty replay cannot be saved");
-        Check(Shortcut(ControllerButton.RightBumper) == "capture-library.replay.start", "RB starts replay recording on the home page");
-        await fixture.Action(Shortcut(ControllerButton.RightBumper)!);
-        await fixture.Until(() => fixture.ReplayStarts == 1 && Shortcut(ControllerButton.RightBumper) is not null);
-        Check(Shortcut(ControllerButton.RightBumper) == "capture-library.replay.start", "Cancelled source selection retains Start");
+        Check(Shortcut(ControllerButton.RightBumper) is null, "An empty replay cannot be saved");
+        Check(Shortcut(ControllerButton.LeftBumper) == "capture-library.replay.start", "LB starts replay recording on the home page");
+        await fixture.Action(Shortcut(ControllerButton.LeftBumper)!);
+        await fixture.Until(() => fixture.ReplayStarts == 1 && Shortcut(ControllerButton.LeftBumper) is not null);
+        Check(Shortcut(ControllerButton.LeftBumper) == "capture-library.replay.start", "Cancelled source selection retains Start");
         fixture.ReplayStartOutcome = CaptureReplayOutcome.Accepted;
-        await fixture.Action(Shortcut(ControllerButton.RightBumper)!);
-        await fixture.Until(() => fixture.Node("capture-library.replay.stop") is not null && Shortcut(ControllerButton.RightBumper)?.Contains("stop.") == true);
-        var staleStop = Shortcut(ControllerButton.RightBumper)!;
+        await fixture.Action(Shortcut(ControllerButton.LeftBumper)!);
+        await fixture.Until(() => fixture.Node("capture-library.replay.stop") is not null && Shortcut(ControllerButton.LeftBumper)?.Contains("stop.") == true);
+        var staleStop = Shortcut(ControllerButton.LeftBumper)!;
         fixture.NotifyReplay(fixture.Replay with { Revision = 10, SessionId = new string('b', 32), BufferedDurationSeconds = 5 });
-        await fixture.Until(() => Shortcut(ControllerButton.LeftBumper)?.EndsWith(new string('b', 32)) == true);
+        await fixture.Until(() => Shortcut(ControllerButton.RightBumper)?.EndsWith(new string('b', 32)) == true);
         void CheckHints()
         {
-            Check(fixture.Node("capture-library.replay.save.hint")?.ControllerPrompt == ControllerPrompt.LeftBumper &&
-                fixture.Node("capture-library.replay.stop.hint")?.ControllerPrompt == ControllerPrompt.RightBumper,
+            Check(fixture.Node("capture-library.replay.save.hint")?.ControllerPrompt == ControllerPrompt.RightBumper &&
+                fixture.Node("capture-library.replay.stop.hint")?.ControllerPrompt == ControllerPrompt.LeftBumper,
                 "Save and Stop show the same bumper glyphs that invoke them");
-            Check(Shortcut(ControllerButton.LeftBumper) == fixture.Node("capture-library.replay.save")?.ActionId &&
-                Shortcut(ControllerButton.RightBumper) == fixture.Node("capture-library.replay.stop")?.ActionId,
+            Check(Shortcut(ControllerButton.RightBumper) == fixture.Node("capture-library.replay.save")?.ActionId &&
+                Shortcut(ControllerButton.LeftBumper) == fixture.Node("capture-library.replay.stop")?.ActionId,
                 "Replay button and shortcut use the same session");
         }
         CheckHints();
         await fixture.Action("capture-library.settings");
-        await fixture.Until(() => fixture.Node("capture-library.settings.back") is not null && Shortcut(ControllerButton.LeftBumper) is not null);
+        await fixture.Until(() => fixture.Node("capture-library.settings.back") is not null && Shortcut(ControllerButton.RightBumper) is not null);
         CheckHints();
         await fixture.Action("capture-library.settings.back");
-        await fixture.Until(() => fixture.Node("capture-library.settings.back") is null && Shortcut(ControllerButton.LeftBumper) is not null);
+        await fixture.Until(() => fixture.Node("capture-library.settings.back") is null && Shortcut(ControllerButton.RightBumper) is not null);
         await fixture.Action(staleStop);
         Check(fixture.ReplayStops == 0, "A stale shortcut cannot stop the replacement recording");
         fixture.ReplaySaveGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        var save = Shortcut(ControllerButton.LeftBumper)!;
+        var save = Shortcut(ControllerButton.RightBumper)!;
         await fixture.Action(save); await fixture.Until(() => fixture.ReplaySaves == 1);
-        Check(Shortcut(ControllerButton.LeftBumper) is null && Shortcut(ControllerButton.RightBumper) is null,
+        Check(Shortcut(ControllerButton.RightBumper) is null && Shortcut(ControllerButton.LeftBumper) is null,
             "Pending replay commands remove duplicate controller bindings");
         await fixture.Action(save);
         Check(fixture.ReplaySaves == 1, "Repeated save cannot dispatch twice");
         fixture.ReplaySaveGate.SetResult();
-        await fixture.Until(() => Shortcut(ControllerButton.RightBumper) is not null);
+        await fixture.Until(() => Shortcut(ControllerButton.LeftBumper) is not null);
         Check(fixture.ReplayStops == 0, "Saving replay keeps recording active");
         await fixture.Action("capture-library.selection.toggle");
-        Check(Shortcut(ControllerButton.LeftBumper) is null && Shortcut(ControllerButton.RightBumper) is null,
+        Check(Shortcut(ControllerButton.RightBumper) is null && Shortcut(ControllerButton.LeftBumper) is null,
             "Selection mode owns the main gallery controls");
         Check(fixture.Node("capture-library.replay.save.hint") is null && fixture.Node("capture-library.replay.stop.hint") is null,
             "Selection mode hides inactive bumper hints");
         await fixture.Action("capture-library.selection.toggle");
-        await fixture.Action(Shortcut(ControllerButton.RightBumper)!);
-        await fixture.Until(() => fixture.ReplayStops == 1 && Shortcut(ControllerButton.RightBumper) == "capture-library.replay.start");
-        Check(Shortcut(ControllerButton.LeftBumper) is null, "Stopped recording cannot offer Save replay");
+        await fixture.Action(Shortcut(ControllerButton.LeftBumper)!);
+        await fixture.Until(() => fixture.ReplayStops == 1 && Shortcut(ControllerButton.LeftBumper) == "capture-library.replay.start");
+        Check(Shortcut(ControllerButton.RightBumper) is null, "Stopped recording cannot offer Save replay");
         Check(fixture.View().Root.Shortcuts.Any(item => item.Button == ControllerButton.X && item.ActionId == "capture-library.video"),
             "Manual Record clip keeps its existing X shortcut");
     }

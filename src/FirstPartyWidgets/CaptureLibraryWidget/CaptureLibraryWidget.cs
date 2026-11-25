@@ -95,10 +95,12 @@ public sealed partial class CaptureLibraryWidget : Widget
                     lock (galleryGate)
                     {
                         galleryNavigation.Back();
-                        model.Update(s => s with { Preview = null, Detail = false,
+                        // The detail lease is released. Publish the ready gallery in
+                        // one frame so its replay controls match the retained page.
+                        model.Update(s => s with { Preview = null, Detail = false, Busy = false,
                             Navigation = WidgetNavigationOperation.Back, ConfirmDelete = false });
                     }
-                    await RefreshGalleryAsync(token);
+                    QueueGalleryRefresh();
                 });
                 break;
             case "capture-library.folder":

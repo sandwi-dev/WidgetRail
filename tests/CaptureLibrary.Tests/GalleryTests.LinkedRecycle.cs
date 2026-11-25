@@ -53,7 +53,9 @@ internal static partial class GalleryTests
     internal static async Task BackPublishesScopeWithPage()
     {
         await using var fixture = new GalleryFixture();
+        fixture.Replay = fixture.Replay with { Phase = CaptureReplayPhase.Error, Settings = fixture.Replay.Settings with { Enabled = true } };
         await fixture.Start();
+        await fixture.Until(() => fixture.Node("capture-library.replay.stop.hint") is not null);
         var home = fixture.View();
         using var host = await OpenEditingSource(fixture);
         var detail = fixture.View();
@@ -65,6 +67,14 @@ internal static partial class GalleryTests
             await release.Task.WaitAsync(token);
             return new(true);
         };
+        var refreshing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishRefresh = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.GroupsOverride = async (request, token) =>
+        {
+            refreshing.TrySetResult();
+            await finishRefresh.Task.WaitAsync(token);
+            return new([new("unknown", fixture.Items.Count)], fixture.Items.Count, request.Revision!);
+        };
         await fixture.Action("capture-library.back");
         try
         {
@@ -74,7 +84,13 @@ internal static partial class GalleryTests
                 waiting.ActiveInputScopeId == detail.ActiveInputScopeId, "Pending release changed the displayed detail's scope");
         }
         finally { release.TrySetResult(); }
-        await fixture.Until(() => !fixture.Busy);
+        try
+        {
+            await refreshing.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(!fixture.Busy && fixture.Node("capture-library.replay.stop.hint")?.ControllerPrompt == ControllerPrompt.LeftBumper,
+                "Back published an intermediate busy gallery without its replay hint");
+        }
+        finally { finishRefresh.TrySetResult(); }
         var back = fixture.View();
         Check(back.ActiveInputScopeId == home.ActiveInputScopeId && back.Root.Transition?.Key == home.Root.Transition?.Key &&
             back.FocusGroupEntryRequest is { RestoreViewport: true, IndexedItem: { } row } && row.ItemKey == fixture.Items[0].Id,

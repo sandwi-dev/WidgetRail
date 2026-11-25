@@ -128,14 +128,14 @@ public sealed partial class CaptureLibraryWidget
         if (state.Busy || Operations.IsBusy(ReplayOperation)) return root;
         var status = state.Replay;
         if (status is not null && CanSaveReplay(status))
-            root = root.Shortcut(ControllerButton.LeftBumper, ReplayAction("save", status), label: "Save replay");
+            root = root.Shortcut(ControllerButton.RightBumper, ReplayAction("save", status), label: "Save replay");
         if (status is not null && (status.Settings.Enabled || ReplaySettingsLocked(status)))
         {
             if (status.Phase != CaptureReplayPhase.Stopping)
-                root = root.Shortcut(ControllerButton.RightBumper, ReplayAction("stop", status), label: "Stop recording");
+                root = root.Shortcut(ControllerButton.LeftBumper, ReplayAction("stop", status), label: "Stop recording");
         }
         else if (CurrentRecordingDraft(true, RecordingState(state)) is null)
-            root = root.Shortcut(ControllerButton.RightBumper, "capture-library.replay.start", label: "Start recording");
+            root = root.Shortcut(ControllerButton.LeftBumper, "capture-library.replay.start", label: "Start recording");
         return root;
     }
     private static bool ReplaySettingsLocked(CaptureReplayStatus status)=>status.Saving||status.Phase is CaptureReplayPhase.Starting or CaptureReplayPhase.Recording or CaptureReplayPhase.Paused or CaptureReplayPhase.Stopping;
@@ -183,16 +183,16 @@ public sealed partial class CaptureLibraryWidget
         }
         if(status is not null && (status.Settings.Enabled || ReplaySettingsLocked(status)))
         {
-            if(status.Phase is CaptureReplayPhase.Error or CaptureReplayPhase.Waiting)controls.Add(UI.Button(status.Phase==CaptureReplayPhase.Error?"Try again":"Start now","capture-library.replay.start","capture-library.replay.start").Disabled(busy||draft));
             var hints = !state.Busy && (state.Settings || gallery.Selection?.IsActive != true);
             var canStop = !busy && status.Phase != CaptureReplayPhase.Stopping;
-            controls.Add(HintedAction("Stop", ReplayAction("stop", status), canStop && hints ? ControllerButton.RightBumper : null,
+            controls.Add(HintedAction("Stop", ReplayAction("stop", status), canStop && hints ? ControllerButton.LeftBumper : null,
                 busy, id: "capture-library.replay.stop").Disabled(!canStop).AddClasses("capture-replay-command"));
+            if(status.Phase is CaptureReplayPhase.Error or CaptureReplayPhase.Waiting)controls.Add(UI.Button(status.Phase==CaptureReplayPhase.Error?"Try again":"Start now","capture-library.replay.start","capture-library.replay.start").Disabled(busy||draft));
             if(status.Saving||status.Phase is CaptureReplayPhase.Recording or CaptureReplayPhase.Paused)
             {
                 var canSave = !busy && CanSaveReplay(status);
                 controls.Add(HintedAction(status.Saving ? "Saving…" : "Save replay", ReplayAction("save", status),
-                    canSave && hints ? ControllerButton.LeftBumper : null, busy, id: "capture-library.replay.save")
+                    canSave && hints ? ControllerButton.RightBumper : null, busy, id: "capture-library.replay.save")
                     .Disabled(!canSave).AddClasses("capture-primary", "capture-replay-command"));
             }
         }

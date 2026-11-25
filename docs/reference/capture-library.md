@@ -19,8 +19,8 @@ not need to initialize every quality/audio combination before confirmation.
 - **X / Record clip** uses the saved recording settings and shared library-output
   mode. It is independent of continuous replay's Enabled switch. One-off clips
   retain Windows' yellow capture border.
-- On the main library, **LB / Save replay** saves the current buffer when ready;
-  **RB / Start recording** or **Stop recording** controls continuous replay.
+- On the main library, **RB / Save replay** saves the current buffer when ready;
+  **LB / Start recording** or **Stop recording** controls continuous replay.
   These shortcuts are inactive during selection. Capture details keep LB/RB for
   previous/next capture, and dialogs and media controls retain their own input.
 - In **Assign quick action**, choose a direction and expand **Capture Library**. Its five actions are **Take screenshot**, **Record clip**, **Start replay**, **Save replay** and **Stop replay**. Pressing an assigned direction can wake the widget in the background. When access is needed, the tray offers to open the widget.
