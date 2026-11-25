@@ -95,14 +95,18 @@ internal sealed class TextSuggestionController : IDisposable
                     work = pending;
                     wait = (int)Math.Max(0, Math.Max(work.ChangedAt + debounce, lastStart + interval) - Environment.TickCount64);
                 }
-                if (wait > 0) await Task.Delay(wait, lifetime.Token).ConfigureAwait(false);
+                if (wait > 0)
+                {
+                    await Task.Delay(wait, lifetime.Token).ConfigureAwait(false);
+                    continue;
+                }
                 CancellationTokenSource request;
                 TextSuggestionView loading;
                 lock (gate)
                 {
                     if (disposed) return;
                     if (pending != work || revision != work.Revision) continue;
-                    pending = null; lastStart = Environment.TickCount64;
+                    pending = null;
                     RetireDeadline(); // Once dispatched, the request has its own full provider deadline.
                     demand = request = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
                     loading = view = new(work.Revision, work.Text, view.Items, Loading: true, Stale: view.Items.Count > 0);
@@ -111,8 +115,16 @@ internal sealed class TextSuggestionController : IDisposable
                 Task<TextSuggestionResult>? operation = null;
                 try
                 {
-                    operation = query(new(fieldId, source.Key, sessionId, work.Revision, work.Text, source.MaximumResults, Math.Min(maximumLength, TextSuggestionContract.MaximumQueryLength))
-                        { TimeoutMilliseconds = source.TimeoutMilliseconds }, request.Token);
+                    try
+                    {
+                        operation = query(new(fieldId, source.Key, sessionId, work.Revision, work.Text, source.MaximumResults, Math.Min(maximumLength, TextSuggestionContract.MaximumQueryLength))
+                            { TimeoutMilliseconds = source.TimeoutMilliseconds }, request.Token);
+                    }
+                    finally
+                    {
+                        // Pace from provider dispatch, including providers that throw synchronously.
+                        lastStart = Environment.TickCount64;
+                    }
                     var result = await operation.WaitAsync(TimeSpan.FromMilliseconds(timeout), lifetime.Token).ConfigureAwait(false);
                     if (!TextSuggestionContract.IsValid(result, source.MaximumResults, maximumLength)) result = TextSuggestionResult.NotAvailable;
                     Complete(work, result);

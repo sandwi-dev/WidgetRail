@@ -162,7 +162,8 @@ public sealed class TextSuggestionControllerTests
     {
         var times = new ConcurrentQueue<long>();
         using var owner = new TextSuggestionController("search", new("catalog"), 100,
-            (_, _) => { times.Enqueue(Environment.TickCount64); return Task.FromResult(Result("Gem")); }, _ => { });
+            (_, _) => { times.Enqueue(Environment.TickCount64); return Task.FromResult(Result("Gem")); },
+            view => { if (view.Loading && times.IsEmpty) Thread.Sleep(80); });
         for (var i = 0; i < 5; i++)
         {
             owner.Update("gem" + i);
