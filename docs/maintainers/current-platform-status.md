@@ -1,6 +1,6 @@
 # Current platform status
 
-Reviewed against source on 2026-11-24: application preview `0.1.0-preview.42`, SDK/CLI
+Reviewed against source on 2026-11-24: application preview `0.1.0-preview.43`, SDK/CLI
 `0.4.8-dev`. The current refinement source uses presentation protocol 147, including addressed widget activity summaries, background intent delivery, preferred collection entry and
 remote-image/media galleries and explicit passive video animation in addition to backend web
 sessions, native capture, explicit modal dismissal, exact pin-selection identities,
