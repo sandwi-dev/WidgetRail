@@ -852,7 +852,7 @@ public sealed partial class PlayniteLibraryLayoutTests
         Assert.AreEqual("playnite-library.details.overview-header", options.Children[0].Id);
         Assert.AreEqual(ViewNodeKind.Grid, section.Children[0].Kind);
         Assert.IsTrue(Nodes(options.Children[1]).Any(node => node.StyleClasses.Contains("playnite-library-details-tabs")));
-        var strip = options.Children[1];
+        var strip = Nodes(options.Children[1]).Single(node => node.StyleClasses.Contains("playnite-library-details-tabs"));
         Assert.AreEqual(5, strip.Children.Count(node => node.StyleClasses.Contains("wrail-navigation-shell__separator")));
         for (var i = 2; i < strip.Children.Count - 1; i += 2)
         {

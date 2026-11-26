@@ -48,11 +48,6 @@ internal static class PlayniteLibraryDetailsPresentation
                 uninstalled ? Prefix + "install" : PlayniteLibraryActions.Launch, PlayId)
             .Disabled(!current || (!availability.Launchable && !uninstalled))
             .Busy(busy).Classes("playnite-library-details-play");
-        var buttons = UI.Row(Prefix + "actions", play,
-            UI.IconButton(PlayniteLibraryPresentation.FavoriteIcon(favorite), PlayniteLibraryActions.Favorite,
-                FavoriteId, favorite ? "Remove favorite" : "Add favorite", size: IconButtonSize.Medium)
-                .Selected(favorite).Busy(organizationBusy).Disabled(!current))
-            .Classes("playnite-library-details-buttons");
         var artwork = presentation.Artwork.Find(WidgetAppLibraryArtworkRole.Tile);
         WidgetElement poster = artwork is { Handle.Length: > 0 }
             ? UI.Artwork(new WidgetArtworkHandle(artwork.Handle), Prefix + "poster", presentation.DisplayName, ImageFit.Cover)
@@ -105,8 +100,15 @@ internal static class PlayniteLibraryDetailsPresentation
             UI.Stack(Prefix + "navigation.unused"), tabs,
             compactLeadingAdornment: UI.ControllerGlyph(ControllerButton.LeftBumper, Prefix + "previous.key").Classes("playnite-library-tab-key"),
             compactTrailingAdornment: UI.ControllerGlyph(ControllerButton.RightBumper, Prefix + "next.key").Classes("playnite-library-tab-key")).WithTransitions();
-        var navigationRail = navigation.CompactNavigation.VisibleWhen(ResponsiveVisibility.Always)
-            .AddClasses("playnite-library-details-tabs");
+        var activeTab = navigation.CompactFocusId(tabName);
+        var navigationRail = UI.Stack(Prefix + "tab-entry",
+            navigation.CompactNavigation.VisibleWhen(ResponsiveVisibility.Always).AddClasses("playnite-library-details-tabs"))
+            .RememberChildFocus(activeTab);
+        var buttons = UI.Row(Prefix + "actions", play.FocusDown(navigationRail.Id),
+            UI.IconButton(PlayniteLibraryPresentation.FavoriteIcon(favorite), PlayniteLibraryActions.Favorite,
+                FavoriteId, favorite ? "Remove favorite" : "Add favorite", size: IconButtonSize.Medium)
+                .Selected(favorite).Busy(organizationBusy).Disabled(!current).FocusDown(navigationRail.Id))
+            .Classes("playnite-library-details-buttons");
         var content = new List<WidgetElement>();
         if (extras.OperationMessage is { } message) content.Add(Copy(message, "operation.message"));
         var tabContent = new List<WidgetElement>();

@@ -33,6 +33,8 @@ if (args is ["--serve-animation-reading-validation", var animationReadingPipe])
 { await AnimationPresentationFixture.ServeAsync(animationReadingPipe, readingGroup: true); return 0; }
 if (args is ["--serve-reading-group-validation", var readingPipe])
 { await ReadingGroupPresentationFixture.ServeAsync(readingPipe); return 0; }
+if (args is ["--serve-capture-rails", var captureRailPipe, var captureProfile])
+{ await ReadingGroupPresentationFixture.ServeAsync(captureRailPipe, captureProfile); return 0; }
 if (args.Contains("--host-pipe", StringComparer.Ordinal) && File.Exists(Path.Combine(AppContext.BaseDirectory, "replay-ui-fixture.marker")))
 {
     await ReplayUiFixture.ServeAsync(RequiredValue(args, "--host-pipe"), RequiredValue(args, "--settings-root"));
@@ -565,6 +567,7 @@ static async Task<int> RunWorkerAsync(string[] arguments)
             : instance == "animation-reading-fixture.instance" ? new AnimationPresentationFixture.Probe(readingGroup: true)
             : instance == "inline-video-fixture.instance" ? new AnimationPresentationFixture.Probe(inlineVideo: true)
             : instance == "reading-fixture.instance" ? new ReadingGroupPresentationFixture.Probe()
+            : instance == "capture-rails.instance" ? new CaptureRailFocusFixture()
             : instance == "media-preview.instance" ? new MediaPreviewPipeScenarios.Probe()
             : instance == "browser.instance" ? new WidgetRail.Samples.Browser.BrowserWidget()
             : instance == "browser-modes.instance" ? new ActivationBrowserFixture()

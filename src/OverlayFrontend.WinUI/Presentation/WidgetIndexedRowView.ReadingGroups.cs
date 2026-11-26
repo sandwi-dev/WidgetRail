@@ -11,6 +11,7 @@ public sealed partial class WidgetIndexedRowView
     internal ViewNode? FocusedReadingAction => readingGroup?presenter?.FocusedReadingAction:null;
     internal bool HasReadingActions => readingGroup && presenter?.HasReadingActions==true;
     internal FrameworkElement? ReadingEntryControl => readingGroup ? presenter?.ReadingEntryControl : null;
+    internal Control? RailEntryControl => IsActionRail ? presenter?.RailEntryControl : null;
     internal Control? SelectedReadingControl => readingGroup ? presenter?.SelectedReadingControl : null;
     internal Control? FocusedReadingControl => FocusedReadingAction is not null && XamlRoot is not null
         ? FocusManager.GetFocusedElement(XamlRoot) as Control : null;

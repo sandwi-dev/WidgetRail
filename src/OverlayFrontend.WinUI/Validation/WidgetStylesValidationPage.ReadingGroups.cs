@@ -46,12 +46,31 @@ internal sealed partial class WidgetStylesValidationPage
             catch(Exception error){failure=error;}
         });
         session.PresentationChanged+=Changed;
-        try
+        try { await RunScenario(); }
+        catch(Exception error)
+        {
+            failure=failure is null ? error : new AggregateException(failure, error);
+            await File.WriteAllTextAsync(Path.Combine(directory,"collection-state.json"), JsonSerializer.Serialize(
+                Walk(page).OfType<WidgetIndexedCollectionView>().Select(view => view.NavigationDiagnosticState())));
+            await File.WriteAllTextAsync(Path.Combine(directory,"focus-state.json"),page.FocusDiagnostics());
+        }
+        finally{retired=true;session.PresentationChanged-=Changed;await page.DisposeAsync();host.Children.Remove(layout);}
+        await File.WriteAllLinesAsync(Path.Combine(directory,"focus-trace.jsonl"),focusTrace);
+        await File.WriteAllTextAsync(Path.Combine(directory,"result.json"),JsonSerializer.Serialize(new{passed=failure is null,checks,intents,error=failure?.ToString(),scope="Native indexed presenter, real bridge/worker, synthetic data and intercepted web intent; no Discord or network."}));
+        if(failure is not null)throw failure;
+
+        async Task RunScenario()
         {
             await session.ListWidgetsAsync(timeout.Token);
             await session.EstablishPresentationAsync(session.GetTarget("reading-fixture"),WidgetLifecycleState.Interactive,timeout.Token);
             await Until(()=>Walk(page).OfType<WidgetIndexedCollectionView>().FirstOrDefault()?.NativeView.ContainerFromIndex(0) is Control);
             var list=Walk(page).OfType<WidgetIndexedCollectionView>().Single();
+            if (Environment.GetCommandLineArgs().Contains("--capture-rail-navigation"))
+            {
+                list.NavigationTrace = value => { if (focusTrace.Count < 1000) focusTrace.Add(value); };
+                await CheckCaptureRailNavigation(page, list);
+                return;
+            }
             Check(page.FocusHostTarget("reading.list"),"Explicit page entry reaches the reading collection");
             await Until(()=>list.CaptureFocusedItem()?.ItemKey=="message.0");
             await Until(()=>list.FocusedReadingAction?.ActionId=="open");
@@ -117,15 +136,6 @@ internal sealed partial class WidgetStylesValidationPage
             Check(Text("reading.status")=="4 / secondary:0","A retired native child command cannot dispatch through a replaced row lease");
             Check(!page.IsFocusPreviewOpen,"Inline controls never create a focus preview");
         }
-        catch(Exception error)
-        {
-            failure=error;
-            await File.WriteAllTextAsync(Path.Combine(directory,"focus-state.json"),page.FocusDiagnostics());
-        }
-        finally{retired=true;session.PresentationChanged-=Changed;await page.DisposeAsync();host.Children.Remove(layout);}
-        await File.WriteAllLinesAsync(Path.Combine(directory,"focus-trace.jsonl"),focusTrace);
-        await File.WriteAllTextAsync(Path.Combine(directory,"result.json"),JsonSerializer.Serialize(new{passed=failure is null,checks,intents,error=failure?.ToString(),scope="Native indexed presenter, real bridge/worker, synthetic data and intercepted web intent; no Discord or network."}));
-        if(failure is not null)throw failure;
         string? Text(string id)=>Find<TextBlock>("Widget."+id,layout)?.Text;
         string? FocusedId()=>FocusManager.GetFocusedElement(page.XamlRoot) is DependencyObject value?AutomationProperties.GetAutomationId(value):null;
         async Task Until(Func<bool> predicate,

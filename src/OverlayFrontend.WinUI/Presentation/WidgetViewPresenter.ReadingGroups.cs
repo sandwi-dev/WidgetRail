@@ -67,16 +67,18 @@ internal sealed partial class WidgetViewPresenter
     internal bool HasReadingActions => IndexedActionDispatch is not null && bindings.Values.Any(binding =>
         Eligible(binding) && binding.Element is Control {IsEnabled:true} && ReadingGroupContentContract.IsInlineControl(declarations[binding.Identity.Id].Node));
 
-    private Binding? ReadingEntry(Binding? group)
+    private Binding? ReadingEntry(Binding? group, bool actionsOnly = false)
     {
         bool Available(Binding child) => child.Element is Control { IsEnabled: true } && Eligible(child) &&
             (group is null || IsDescendant(child.Identity.Id, group.Identity.Id)) &&
-            ReadingGroupContentContract.IsInlineControl(declarations[child.Identity.Id].Node);
+            (actionsOnly ? ReadingGroupContentContract.IsInlineAction(declarations[child.Identity.Id].Node) :
+                ReadingGroupContentContract.IsInlineControl(declarations[child.Identity.Id].Node));
         if (RememberedBinding() is { } last && Available(last)) return last;
         return bindings.Values.FirstOrDefault(child => declarations[child.Identity.Id].Node.IsSelected == true && Available(child)) ??
             bindings.Values.FirstOrDefault(Available);
     }
     internal FrameworkElement? ReadingEntryControl => ReadingEntry(null)?.Element;
+    internal Control? RailEntryControl => ReadingEntry(null, actionsOnly: true)?.Element as Control;
     internal Control? SelectedReadingControl => bindings.Values.FirstOrDefault(child =>
         declarations[child.Identity.Id].Node is { IsSelected: true } node && ReadingGroupContentContract.IsInlineControl(node)
         && child.Element is Control { IsEnabled: true } && Eligible(child))?.Element as Control;

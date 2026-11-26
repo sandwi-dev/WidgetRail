@@ -51,6 +51,11 @@ public sealed partial class PlayniteLibraryTests
                     await Bounded(widget.WhenDetailsIdleAsync(), "details " + expected);
                 var after = Snapshot(widget, sequence++);
                 Assert.AreEqual(initial.ActiveInputScopeId, after.ActiveInputScopeId);
+                var play = Nodes(after.Root).Single(node => node.Id == PlayniteLibraryDetailsPresentation.PlayId);
+                var tabGroup = Nodes(after.Root).Single(node => node.Id == play.Focus?.Down);
+                var tab = Nodes(tabGroup).Single(node => node.Id == tabGroup.InitialChildFocusId);
+                Assert.AreEqual(DetailAction + "tab." + expected.ToString().ToLowerInvariant(), tab.ActionId,
+                    "Down from Play returns to the active tab across content changes.");
                 CollectionAssert.AreEqual(ancestry, Path(after.Root, PlayniteLibraryDetailsPresentation.PlayId),
                     "Optional results must never reparent retained native focus.");
                 Assert.AreEqual(0, ViewSnapshotValidator.Validate(after).Count);

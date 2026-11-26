@@ -1,4 +1,5 @@
 using System.Text.Json;
+using WidgetRail.PlatformSettings;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
@@ -34,16 +35,20 @@ internal static class ReadingGroupPresentationFixture
         await serving.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
-    internal static async Task ServeAsync(string pipe)
+    internal static async Task ServeAsync(string pipe, string? captureProfile = null)
     {
-        var styles=WrssParser.Parse(".probe-root{width:100%;height:100%;gap:8px;} .probe-list{width:100%;min-height:0px;flex-grow:1;} "+
+        var railStyles = captureProfile is null ? "" : ".probe-play{height:100px;} ";
+        var styles=WrssParser.Parse(railStyles + ".probe-root{width:100%;height:100%;gap:8px;} .probe-list{width:100%;min-height:0px;flex-grow:1;} "+
             ".probe-message{padding:12px;gap:10px;min-height:100px;background:var(--surface-raised);} .probe-actions{gap:12px;} "+
             ".probe-control{padding:8px;min-height:38px;} .probe-copy{font-size:15px;}","reading-fixture.wrss").Document;
-        var widget=new ConfiguredWidget{Id="reading-fixture",Name="Reading group fixture",InstanceId="reading-fixture.instance",
+        var widget=new ConfiguredWidget{Id="reading-fixture",Name="Reading group fixture",InstanceId=captureProfile is null ? "reading-fixture.instance" : "capture-rails.instance",
             PackageId="dev.reading",PublisherId="dev",WorkerExecutable=Environment.ProcessPath!,
             WorkerFingerprint=new('b',64),CatalogFingerprint=new('b',64),StylePackage=new([styles],[]),
             Intents=new(){Requests=[WidgetIntentContracts.Web]}};
-        await using var server=new WidgetBridgeServer(pipe,new([widget]));
+        var paths = captureProfile is null ? null : new PlatformSettingsPaths(Path.GetFullPath(captureProfile));
+        await using var appearance = paths is null ? null : new PlatformAppearanceService(paths, new ThemeManager(new PlatformSettingsStore(paths), new ThemeCatalog(paths)));
+        if (appearance is not null) await appearance.StartAsync();
+        await using var server=new WidgetBridgeServer(pipe,new([widget]), appearance: appearance);
         await server.RunAsync(TimeSpan.FromSeconds(30),CancellationToken.None);
     }
     internal sealed class Probe:Widget

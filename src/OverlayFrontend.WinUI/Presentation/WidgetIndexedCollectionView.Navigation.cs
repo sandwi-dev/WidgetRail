@@ -376,7 +376,12 @@ internal sealed partial class WidgetIndexedCollectionView
                     // A saved return viewport owns reveal. Realized rows need
                     // no panel ScrollIntoView command that can outlive focus;
                     // unrealized rows still use native bounded realization.
-                    if (!(preserveEntryViewport || AnchorDirectionalMove) || view.ContainerFromIndex(index) is not FrameworkElement { IsLoaded: true })
+                    var realized = view.ContainerFromIndex(index) as SelectorItem;
+                    var actionRail = !scrollOnly && ReadingActionsEnabled && realized is { IsLoaded: true } && containers.TryGetValue(realized, out var bound) &&
+                        bound.LayoutOwner?.IsActionRail == true && bound.Slot.Value?.Lease.IsCurrent == true;
+                    // The rail may be below a taller-than-viewport preview. A queued
+                    // whole-row reveal competes with the precise thumbnail reveal.
+                    if (realized is not { IsLoaded: true } || !(preserveEntryViewport || AnchorDirectionalMove || actionRail))
                         view.ScrollIntoView(view.Items[index], ScrollIntoViewAlignment.Default);
                     navigationRequestExtent=NavigationExtent();
                     QueueNavigation(scrollIntoView: false);
@@ -473,6 +478,8 @@ internal sealed partial class WidgetIndexedCollectionView
         if (target is not Microsoft.UI.Xaml.Controls.Primitives.SelectorItem selector ||
             !containers.TryGetValue(selector, out var bound) || !ReferenceEquals(bound.Slot, slot) ||
             target.IsEnabled != (row.Item.Root.IsDisabled != true)) return;
+        var railEntry = !scrollOnly && ReadingActionsEnabled && bound.LayoutOwner is { IsActionRail: true } rail
+            ? (entering && entryRequestId.HasValue ? rail.SelectedReadingControl : null) ?? rail.RailEntryControl : null;
         if (scrollOnly || target.IsEnabled)
         {
             // Focus and passive reveal must use the same current row geometry.
@@ -482,6 +489,14 @@ internal sealed partial class WidgetIndexedCollectionView
             var bounds = LayoutBoundsInScroll(target, scroll);
             var visible = WidgetScrollViewport.ContentBounds(scroll);
             var horizontal = axis == ScrollAxis.Horizontal;
+            // A tall expanded preview and its action rail cannot always fit together.
+            // Reveal the control that will receive input when the row is oversized.
+            FrameworkElement revealTarget = target;
+            if (!horizontal && bounds.Height > visible.Height && railEntry is { IsLoaded: true, ActualHeight: > 0 })
+            {
+                revealTarget = railEntry;
+                bounds = LayoutBoundsInScroll(railEntry, scroll);
+            }
             var itemStart = horizontal ? bounds.Left : bounds.Top;
             var itemEnd = horizontal ? bounds.Right : bounds.Bottom;
             var viewportStart = horizontal ? visible.Left : visible.Top;
@@ -509,7 +524,7 @@ internal sealed partial class WidgetIndexedCollectionView
                         ? 0 : viewportEnd - viewportStart - (itemEnd - itemStart);
                 var memory = new IndexedViewportMemento(new(source.ActiveScope, source.Declaration.Id, ViewNodeKind.IndexedCollection, ""),
                     query.SourceId, query.QueryGeneration, layoutKind!.Value, axis!.Value, index, slot.Key!, 0, desiredLeading);
-                if (!RestoreViewportGeometry(memory,target,scroll,ref revealPendingOffset)) return;
+                if (!RestoreViewportGeometry(memory,revealTarget,scroll,ref revealPendingOffset)) return;
             }
             if(scrollOnly){CancelNavigation();return;}
         }
@@ -529,8 +544,8 @@ internal sealed partial class WidgetIndexedCollectionView
         else
         {
             if (AnchorDirectionalMove || preserveEntryViewport || entering && entryFallbackStep < 0) PrepareReturnFocusReveal(target);
-            var focusTarget = entering && entryRequestId.HasValue && ReadingActionsEnabled
-                ? bound.LayoutOwner?.SelectedReadingControl ?? target : target;
+            var focusTarget = railEntry ?? (entering && entryRequestId.HasValue && ReadingActionsEnabled
+                ? bound.LayoutOwner?.SelectedReadingControl ?? target : target);
             if (!ReferenceEquals(focusTarget, target) && !preserveEntryViewport)
                 RestoreRailAnchor(row, target, focusTarget);
             CommittingDirection = pendingDirection;
