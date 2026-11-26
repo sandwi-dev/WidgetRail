@@ -8,7 +8,7 @@ public static class IntegrationIdentity
     public const string PluginId = "950de770-1c2f-4a48-ac2a-b62d866f7503";
     public const string ExtensionId = "WidgetRail_Playnite_950de770";
     public const string ModuleName = "WidgetRail.Playnite.dll";
-    public const string Version = "1.3.10";
+    public const string Version = "1.3.11";
     public const int ProtocolVersion = 1;
     public const string DescriptorFile = "connection.json";
     public const string CredentialFile = "auth.json";

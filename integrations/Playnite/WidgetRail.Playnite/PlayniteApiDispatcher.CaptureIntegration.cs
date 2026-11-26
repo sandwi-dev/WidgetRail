@@ -31,6 +31,7 @@ internal sealed partial class PlayniteApiDispatcher
     internal void CaptureGameStarted(Guid game, int pid, string? installDirectory = null)
     {
         var captureRequested = launches.TryRemove(game, out var requested);
+        var remembered = ReadWindowRule(game);
         var processId = 0;
         long created = 0;
         try
@@ -40,7 +41,7 @@ internal sealed partial class PlayniteApiDispatcher
             var started = new DateTimeOffset(process.StartTime.ToUniversalTime());
             created = started.UtcDateTime.ToFileTimeUtc();
             processId = process.Id;
-            if (!captureRequested) return;
+            if (!captureRequested || remembered != null) return;
             // Framework UtcNow can lag the kernel's process timestamp by a clock tick.
             // Reading StartTime on the live process itself establishes this lower bound.
             var observed = Math.Max(UtcNow, started.ToUnixTimeMilliseconds());
@@ -48,7 +49,7 @@ internal sealed partial class PlayniteApiDispatcher
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException or System.Management.ManagementException or System.Runtime.Serialization.SerializationException)
         { global::Playnite.SDK.LogManager.GetLogger().Warn("Capture session could not be identified (" + error.GetType().Name + ")."); }
-        finally { launchTracker.Started(game, processId, created); }
+        finally { TrackGameWindow(game, processId, created, remembered); }
     }
     internal void CaptureGameStopped(Guid game)
     {

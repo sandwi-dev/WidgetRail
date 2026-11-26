@@ -6,7 +6,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>WidgetRail.Playnite</AssemblyName>
     <RootNamespace>WidgetRail.Playnite</RootNamespace>
-    <Version>1.3.10</Version>
+    <Version>1.3.11</Version>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="PlayniteSDK" Version="6.15.0" />

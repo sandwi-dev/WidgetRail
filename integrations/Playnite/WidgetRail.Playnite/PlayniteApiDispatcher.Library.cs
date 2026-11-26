@@ -11,6 +11,11 @@ namespace WidgetRail.Playnite;
 
 internal sealed partial class PlayniteApiDispatcher
 {
+    private static readonly Lazy<string?> steamMediaRoot = new(() =>
+    {
+        try { return Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) as string; }
+        catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException) { return null; }
+    });
     private readonly SemaphoreSlim snapshotsGate = new SemaphoreSlim(1, 1);
     private readonly List<LibrarySnapshot> snapshots = new List<LibrarySnapshot>();
     private sealed class LibrarySnapshot

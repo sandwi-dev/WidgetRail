@@ -15,13 +15,16 @@ using Playnite.SDK.Models;
 using Playnite.SDK.Plugins;
 using WidgetRail.Playnite;
 
-internal static class Program
+internal static partial class Program
 {
     private static int result, checks;
+    private static bool verifyWindows;
     [STAThread]
     private static int Main(string[] args)
     {
         if (args.SequenceEqual(new[] { "--capture-session-child" })) { Console.ReadLine(); return 0; }
+        if (args.SequenceEqual(new[] { "--game-window-child" })) return RunGameWindowChild();
+        verifyWindows = args.Contains("--verify-game-windows");
         var ui = Dispatcher.CurrentDispatcher;
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(ui));
         ui.BeginInvoke(new Action(async () =>
@@ -93,6 +96,7 @@ internal static class Program
             {
                 var connection = await dispatcher.DispatchAsync(Request("GET", "/v1/connection"), default);
                 Check(connection.Status == 200 && (string)Json(connection)["pluginId"] == IntegrationIdentity.PluginId, "Typed handshake works without optional providers");
+                if (verifyWindows) await VerifyGameWindows(dispatcher, second.Id);
                 dispatcher.CaptureGameStarting(game.Id);
                 using (var child = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
                     System.Reflection.Assembly.GetExecutingAssembly().Location, "--capture-session-child") {

@@ -23,16 +23,16 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
     internal PlayniteApiDispatcher(IPlayniteAPI api, ConnectionDescriptor connection)
     {
         this.api = api; this.connection = connection;
-        foreach (var game in api.Database.Games.Where(game => game.IsRunning || game.IsLaunching))
-        {
-            launchTracker.Starting(game.Id, game.Name);
-            if (game.IsRunning) launchTracker.Started(game.Id, 0, 0);
-        }
         achievements = new AchievementAdapter(api, changes);
         optionalData = new OptionalPluginData(api.Paths.ExtensionsDataPath);
         api.Database.Games.ItemUpdated += GamesUpdated;
         api.Database.Games.ItemCollectionChanged += GamesChanged;
         StartCaptureCompanions();
+        foreach (var game in api.Database.Games.Where(game => game.IsRunning || game.IsLaunching))
+        {
+            launchTracker.Starting(game.Id, game.Name);
+            if (game.IsRunning) TrackGameWindow(game.Id, 0, 0, ReadWindowRule(game.Id));
+        }
     }
     private void GamesUpdated(object sender, ItemUpdatedEventArgs<Game> args) => LibraryChanged();
     private void GamesChanged(object sender, ItemCollectionChangedEventArgs<Game> args) => LibraryChanged();
@@ -59,7 +59,7 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
                     paths = new { application = api.Paths.ApplicationPath, configuration = api.Paths.ConfigurationPath },
                     commandRetentionSeconds = CommandRegistry<LocalApiResponse>.RetentionSeconds,
                     providers = new { playniteAchievements = provider },
-                    capabilities = IntegrationIdentity.RequiredCapabilities.Concat(new[] { "events.v1", "achievements.v1", "achievements.overview.v1", "achievements.capture-settings.v1", "achievements.capture-integration.v1", "activity.v1", "activity.recent.v1", "diagnostics.v1" }).ToArray(),
+                    capabilities = IntegrationIdentity.RequiredCapabilities.Concat(new[] { "events.v1", "achievements.v1", "achievements.overview.v1", "achievements.capture-settings.v1", "achievements.capture-integration.v1", "activity.v1", "activity.recent.v1", "diagnostics.v1", "game-window.v1" }).ToArray(),
                 });
             }
             if (request.Method == "GET" && request.Path == "/v1/diagnostics")
@@ -98,7 +98,7 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
                         .ToDictionary(pair => pair.Key.ToString("D"), pair => pair.Value.ProcessKey),
                     runningNames = running.Where(pair => !string.IsNullOrWhiteSpace(pair.Value.Name)).ToDictionary(pair => pair.Key.ToString("D"), pair => WireJson.Text(pair.Value.Name, 256)),
                     runningSince = running.Where(pair => pair.Value.CreatedFileTime > 0).ToDictionary(pair => pair.Key.ToString("D"),
-                        pair => new DateTimeOffset(DateTime.FromFileTimeUtc(pair.Value.CreatedFileTime)).ToUnixTimeMilliseconds()), resetRequired = batch.ResetRequired,
+                        pair => Math.Max(pair.Value.SessionStart, new DateTimeOffset(DateTime.FromFileTimeUtc(pair.Value.CreatedFileTime)).ToUnixTimeMilliseconds())), resetRequired = batch.ResetRequired,
                     nextSequence = batch.NextSequence, events = batch.Events.Select(item => new { sequence = item.Sequence,
                         kind = item.Kind, gameId = item.GameId, provider = item.Provider, achievementId = item.AchievementId, observedAt = item.ObservedAt }).ToArray() });
             }
@@ -121,13 +121,24 @@ internal sealed partial class PlayniteApiDispatcher : ILocalApiDispatcher, IDisp
                 var parts = request.Path.Substring(10).Split('/');
                 if (parts.Length == 0 || !Guid.TryParseExact(parts[0], "D", out var id)) throw new ApiException(400, "invalid_game_id");
                 if (parts.Length == 1 && request.Method == "GET")
-                    return WireJson.Response(await OnUiAsync(() => ProjectGame(RequireGame(id), true), linked.Token).ConfigureAwait(false));
+                {
+                    var detail = await OnUiAsync(() => ProjectGame(RequireGame(id), true), linked.Token).ConfigureAwait(false);
+                    var media = PlayniteGameMedia.Find(api.Paths.ConfigurationPath, id, steamMediaRoot.Value, detail["steamAppId"] as uint?);
+                    detail["localMedia"] = new { logo = media.Logo, logoRevision = media.LogoRevision, trailer = media.Trailer, microtrailer = media.Microtrailer };
+                    if (launchTracker.Running(id) is { } run)
+                        detail["gameWindow"] = new { session = run.SessionId.ToString("N"), remembered = ReadWindowRule(id) != null };
+                    return WireJson.Response(detail);
+                }
                 if (parts.Length == 3 && parts[1] == "launch-status" && request.Method == "GET")
                 {
                     var result = launchTracker.Read(id, parts[2]);
                     return result is null ? LocalApiResponse.Error(404, "unknown_launch") :
-                        WireJson.Response(new { state = result.State, processId = result.ProcessId, createdFileTime = result.CreatedFileTime });
+                        WireJson.Response(new { state = result.State, processId = result.ProcessId, createdFileTime = result.CreatedFileTime, windowHandle = result.WindowHandle });
                 }
+                if (parts.Length == 2 && parts[1] == "window" && request.Method == "GET")
+                    return WireJson.Response(await OnUiAsync(() => GameWindowStatus(id), linked.Token).ConfigureAwait(false));
+                if (parts.Length == 2 && parts[1] == "window" && request.Method == "PUT")
+                    return await RunMutationAsync(request, () => ChooseGameWindow(id, WireJson.Body(request)), linked.Token).ConfigureAwait(false);
                 if (parts.Length == 3 && parts[1] == "artwork" && request.Method == "GET")
                     return await ReadArtworkAsync(id, parts[2], linked.Token).ConfigureAwait(false);
                 if (parts.Length == 2 && request.Method == "GET" && (parts[1] == "achievements" || parts[1] == "activity"))
