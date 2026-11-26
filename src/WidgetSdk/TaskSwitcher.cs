@@ -9,6 +9,8 @@ public sealed record WidgetTaskWindow(
     [property: JsonRequired] bool IsMinimized);
 
 public sealed record WidgetTaskWindowRequest([property: JsonRequired] string WindowId);
+public sealed record WidgetWindowChoiceRequest(string Title);
+public sealed record WidgetWindowChoice(string? Match);
 
 public sealed record WidgetLaunchHandoffTicket(string Ticket);
 public sealed record WidgetLaunchHandoffTarget(string Ticket, uint ProcessId, long CreatedFileTime, long WindowHandle);
@@ -22,6 +24,8 @@ public static class WidgetTaskSwitcherCapabilities
         new("system.apps.windows.read.v1", "apps.windows.list");
     public static WidgetCapabilityOperation<WidgetTaskWindowRequest, WidgetCapabilityAcknowledgement> Switch { get; } =
         new("system.apps.windows.switch.v1", "apps.windows.switch");
+    public static WidgetCapabilityOperation<WidgetWindowChoiceRequest, WidgetWindowChoice> Choose { get; } =
+        new("system.apps.windows.switch.v1", "apps.windows.choose");
     public static WidgetCapabilityOperation<WidgetCapabilityQuery, WidgetLaunchHandoffTicket> BeginLaunch { get; } =
         new("system.apps.windows.switch.v1", "apps.windows.launch.begin");
     public static WidgetCapabilityOperation<WidgetLaunchHandoffTarget, WidgetLaunchHandoffResult> CompleteLaunch { get; } =
@@ -35,6 +39,17 @@ public sealed class WidgetTaskSwitcherService
 {
     private readonly IWidgetCapabilityClient _client;
     internal WidgetTaskSwitcherService(IWidgetCapabilityClient client) => _client = client;
+
+    /// <summary>Ask the user to identify a running window. The result identifies one live window to an external integration.
+    /// It grants no activation, image or file access. Null means the picker was dismissed.</summary>
+    public async ValueTask<string?> ChooseWindowAsync(string title, CancellationToken cancellationToken = default)
+    {
+        if (!ValidText(title, 120)) throw new ArgumentException("Invalid window picker title.", nameof(title));
+        var result = await _client.InvokeAsync(WidgetTaskSwitcherCapabilities.Choose, new(title), cancellationToken).ConfigureAwait(false);
+        if (result == null || result.Match is { } match && (match.Length != 64 || match.Any(c => !(c is >= '0' and <= '9' or >= 'a' and <= 'f'))))
+            throw new WidgetCapabilityException("malformed_response", "Window selection is unavailable.");
+        return result.Match;
+    }
 
     /// <summary>Start a bounded handoff during the interactive Play action, before dispatching the launch.</summary>
     public async ValueTask<WidgetLaunchHandoffTicket> BeginLaunchAsync(CancellationToken cancellationToken = default)

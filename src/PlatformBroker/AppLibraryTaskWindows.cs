@@ -4,6 +4,8 @@ namespace WidgetRail.PlatformBroker;
 
 internal sealed partial class AppLibraryCapabilityDomain
 {
+    private sealed record WindowChoiceRequest(string Title);
+    private bool _windowPickerRetired;
     private Dictionary<string, string> _windowTargets = new(StringComparer.Ordinal);
 
     private async Task<JsonElement> TaskWindowsAsync(

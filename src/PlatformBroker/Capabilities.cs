@@ -133,6 +133,7 @@ public static class PlatformCapabilities
     public const string TaskWindowsSwitchV1 = "system.apps.windows.switch.v1";
     public const string TaskWindowsCloseV1 = "system.apps.windows.close.v1";
     public const string TaskWindowsList = "apps.windows.list";
+    public const string TaskWindowsChoose = "apps.windows.choose";
     public const string TaskWindowsSwitch = "apps.windows.switch";
     public const string LaunchHandoffBegin = "apps.windows.launch.begin";
     public const string LaunchHandoffReady = "apps.windows.launch.ready";
@@ -304,8 +305,8 @@ public static class PlatformCapabilities
             [TaskWindowsReadV1] = new(TaskWindowsReadV1, 1, BrokerCapabilityKind.Read,
                 Set(TaskWindowsList), Set()),
             [TaskWindowsSwitchV1] = new(TaskWindowsSwitchV1, 1, BrokerCapabilityKind.Control,
-                Set(TaskWindowsSwitch, LaunchHandoffBegin, LaunchHandoffReady), Set(), AllowsDashboardGesture: false,
-                InFlightContinuationOperations: Set(TaskWindowsSwitch)),
+                Set(TaskWindowsSwitch, TaskWindowsChoose, LaunchHandoffBegin, LaunchHandoffReady), Set(), AllowsDashboardGesture: false,
+                InFlightContinuationOperations: Set(TaskWindowsSwitch, TaskWindowsChoose)),
             [TaskWindowsCloseV1] = new(TaskWindowsCloseV1, 1, BrokerCapabilityKind.Control,
                 Set(TaskWindowsClose), Set(), AllowsDashboardGesture: false),
             [AppRunningReadV1] = new(AppRunningReadV1, 1,

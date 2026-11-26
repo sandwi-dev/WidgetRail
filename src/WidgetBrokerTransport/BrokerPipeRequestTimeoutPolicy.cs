@@ -13,7 +13,8 @@ internal static class BrokerPipeRequestTimeoutPolicy
             return options.RequestTimeout > TimeSpan.FromSeconds(50) ? options.RequestTimeout : TimeSpan.FromSeconds(50);
         if (request.CapabilityId == BrokerTransportOperations.WindowCaptureV1 && request.Operation == "capture.replay.stop")
             return options.RequestTimeout > TimeSpan.FromSeconds(15) ? options.RequestTimeout : TimeSpan.FromSeconds(15);
-        if (request.CapabilityId == "files.references.v1" && request.Operation == "files.choose")
+        if (request.CapabilityId == "files.references.v1" && request.Operation == "files.choose" ||
+            request.CapabilityId == "system.apps.windows.switch.v1" && request.Operation == "apps.windows.choose")
             return options.RequestTimeout > TimeSpan.FromSeconds(125) ? options.RequestTimeout : TimeSpan.FromSeconds(125);
         if (request.CapabilityId == "media.capture-library.save.v1" && request.Operation == "capture-library.edit-copy")
         {

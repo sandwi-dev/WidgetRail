@@ -182,6 +182,8 @@ ctor WidgetRail.WidgetSdk.WidgetTimedMutationFailedEventArgs(System.Exception ex
 ctor WidgetRail.WidgetSdk.WidgetView(WidgetRail.WidgetSdk.WidgetElement Root, string? InitialFocusId = null, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetQuickAction>? QuickActions = null, string? ActiveInputScopeId = null, WidgetRail.WidgetProtocol.WidgetSurfaceHints? Surface = null)
 ctor WidgetRail.WidgetSdk.WidgetWifiRadio(WidgetRail.WidgetSdk.WidgetWifiRadioState State, bool CanControl)
 ctor WidgetRail.WidgetSdk.WidgetWifiRadioChanged(WidgetRail.WidgetSdk.WidgetWifiRadio Radio)
+ctor WidgetRail.WidgetSdk.WidgetWindowChoice(string? Match)
+ctor WidgetRail.WidgetSdk.WidgetWindowChoiceRequest(string Title)
 enum WidgetRail.WidgetSdk.ActionSheetItemTone.Danger = WidgetRail.WidgetSdk.ActionSheetItemTone.Danger
 enum WidgetRail.WidgetSdk.ActionSheetItemTone.Default = WidgetRail.WidgetSdk.ActionSheetItemTone.Default
 enum WidgetRail.WidgetSdk.AlertTone.Danger = WidgetRail.WidgetSdk.AlertTone.Danger
@@ -1903,6 +1905,7 @@ method WidgetRail.WidgetSdk.WidgetScenarioStepResult.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetScenarioStepResult.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetScenarioStepResult.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetTaskSwitcherService.BeginLaunchAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetLaunchHandoffTicket>
+method WidgetRail.WidgetSdk.WidgetTaskSwitcherService.ChooseWindowAsync(string title, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<string?>
 method WidgetRail.WidgetSdk.WidgetTaskSwitcherService.CloseAsync(string windowId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method WidgetRail.WidgetSdk.WidgetTaskSwitcherService.GetWindowsAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetTaskWindow>>
 method WidgetRail.WidgetSdk.WidgetTaskSwitcherService.SwitchAsync(string windowId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
@@ -1962,6 +1965,16 @@ method WidgetRail.WidgetSdk.WidgetWifiRadioChanged.Deconstruct(out WidgetRail.Wi
 method WidgetRail.WidgetSdk.WidgetWifiRadioChanged.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetWifiRadioChanged.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetWifiRadioChanged.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetWindowChoice.<Clone>$() -> WidgetRail.WidgetSdk.WidgetWindowChoice
+method WidgetRail.WidgetSdk.WidgetWindowChoice.Deconstruct(out string? Match) -> void
+method WidgetRail.WidgetSdk.WidgetWindowChoice.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetWindowChoice.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetWindowChoice.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetWindowChoiceRequest.<Clone>$() -> WidgetRail.WidgetSdk.WidgetWindowChoiceRequest
+method WidgetRail.WidgetSdk.WidgetWindowChoiceRequest.Deconstruct(out string Title) -> void
+method WidgetRail.WidgetSdk.WidgetWindowChoiceRequest.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.WidgetWindowChoiceRequest.GetHashCode() -> int
+method WidgetRail.WidgetSdk.WidgetWindowChoiceRequest.ToString() -> string
 method WidgetRail.WidgetSdk.WindowPreviewElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.WindowPreviewElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WindowPreviewElement.GetHashCode() -> int
@@ -2523,6 +2536,10 @@ method static WidgetRail.WidgetSdk.WidgetWifiRadio.op_Equality(WidgetRail.Widget
 method static WidgetRail.WidgetSdk.WidgetWifiRadio.op_Inequality(WidgetRail.WidgetSdk.WidgetWifiRadio? left, WidgetRail.WidgetSdk.WidgetWifiRadio? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetWifiRadioChanged.op_Equality(WidgetRail.WidgetSdk.WidgetWifiRadioChanged? left, WidgetRail.WidgetSdk.WidgetWifiRadioChanged? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetWifiRadioChanged.op_Inequality(WidgetRail.WidgetSdk.WidgetWifiRadioChanged? left, WidgetRail.WidgetSdk.WidgetWifiRadioChanged? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetWindowChoice.op_Equality(WidgetRail.WidgetSdk.WidgetWindowChoice? left, WidgetRail.WidgetSdk.WidgetWindowChoice? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetWindowChoice.op_Inequality(WidgetRail.WidgetSdk.WidgetWindowChoice? left, WidgetRail.WidgetSdk.WidgetWindowChoice? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetWindowChoiceRequest.op_Equality(WidgetRail.WidgetSdk.WidgetWindowChoiceRequest? left, WidgetRail.WidgetSdk.WidgetWindowChoiceRequest? right) -> bool
+method static WidgetRail.WidgetSdk.WidgetWindowChoiceRequest.op_Inequality(WidgetRail.WidgetSdk.WidgetWindowChoiceRequest? left, WidgetRail.WidgetSdk.WidgetWindowChoiceRequest? right) -> bool
 method static WidgetRail.WidgetSdk.WindowPreviewElement.op_Equality(WidgetRail.WidgetSdk.WindowPreviewElement? left, WidgetRail.WidgetSdk.WindowPreviewElement? right) -> bool
 method static WidgetRail.WidgetSdk.WindowPreviewElement.op_Inequality(WidgetRail.WidgetSdk.WindowPreviewElement? left, WidgetRail.WidgetSdk.WindowPreviewElement? right) -> bool
 method virtual WidgetRail.WidgetSdk.ActionSheetItem.Equals(WidgetRail.WidgetSdk.ActionSheetItem? other) -> bool
@@ -2780,6 +2797,8 @@ method virtual WidgetRail.WidgetSdk.WidgetView.Equals(WidgetRail.WidgetSdk.Widge
 method virtual WidgetRail.WidgetSdk.WidgetWebSession.DisposeAsync() -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.WidgetWifiRadio.Equals(WidgetRail.WidgetSdk.WidgetWifiRadio? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetWifiRadioChanged.Equals(WidgetRail.WidgetSdk.WidgetWifiRadioChanged? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetWindowChoice.Equals(WidgetRail.WidgetSdk.WidgetWindowChoice? other) -> bool
+method virtual WidgetRail.WidgetSdk.WidgetWindowChoiceRequest.Equals(WidgetRail.WidgetSdk.WidgetWindowChoiceRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.WindowPreviewElement.<Clone>$() -> WidgetRail.WidgetSdk.WindowPreviewElement
 method virtual WidgetRail.WidgetSdk.WindowPreviewElement.Equals(WidgetRail.WidgetSdk.WindowPreviewElement? other) -> bool
 property System.Collections.Generic.IReadOnlyCollection<TRoute> WidgetRail.WidgetSdk.WidgetNavigatorOptions<TRoute>.RootRoutes { get; set; }
@@ -3635,6 +3654,7 @@ property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.Widget
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetPrivateSecretSlotRequest,WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata> WidgetRail.WidgetSdk.WidgetPrivateSecretCapabilities.Metadata { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetTaskWindowRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.Close { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetTaskWindowRequest,WidgetRail.WidgetSdk.WidgetCapabilityAcknowledgement> WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.Switch { get; }
+property static WidgetRail.WidgetSdk.WidgetCapabilityOperation<WidgetRail.WidgetSdk.WidgetWindowChoiceRequest,WidgetRail.WidgetSdk.WidgetWindowChoice> WidgetRail.WidgetSdk.WidgetTaskSwitcherCapabilities.Choose { get; }
 property static WidgetRail.WidgetSdk.WidgetCommandError WidgetRail.WidgetSdk.WidgetCommandError.Unexpected { get; }
 property static WidgetRail.WidgetSdk.WidgetResourceError WidgetRail.WidgetSdk.WidgetResourceError.InvalidPage { get; }
 property static WidgetRail.WidgetSdk.WidgetResourceError WidgetRail.WidgetSdk.WidgetResourceError.Unexpected { get; }
@@ -3812,6 +3832,7 @@ property string WidgetRail.WidgetSdk.WidgetTaskWindow.ApplicationName { get; set
 property string WidgetRail.WidgetSdk.WidgetTaskWindow.Title { get; set; }
 property string WidgetRail.WidgetSdk.WidgetTaskWindow.WindowId { get; set; }
 property string WidgetRail.WidgetSdk.WidgetTaskWindowRequest.WindowId { get; set; }
+property string WidgetRail.WidgetSdk.WidgetWindowChoiceRequest.Title { get; set; }
 property string WidgetRail.WidgetSdk.WindowPreviewElement.AccessibilityLabel { get; set; }
 property string WidgetRail.WidgetSdk.WindowPreviewElement.WindowId { get; set; }
 property string? WidgetRail.WidgetSdk.ActionSheetItem.AccessibilityLabel { get; set; }
@@ -3898,6 +3919,7 @@ property string? WidgetRail.WidgetSdk.WidgetScenarioStepResult.Message { get; se
 property string? WidgetRail.WidgetSdk.WidgetTestPrivateState.Json { get; }
 property string? WidgetRail.WidgetSdk.WidgetView.ActiveInputScopeId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetView.InitialFocusId { get; set; }
+property string? WidgetRail.WidgetSdk.WidgetWindowChoice.Match { get; set; }
 property uint WidgetRail.WidgetSdk.WidgetDisplayControlMode.RefreshDenominator { get; set; }
 property uint WidgetRail.WidgetSdk.WidgetDisplayControlMode.RefreshNumerator { get; set; }
 property uint WidgetRail.WidgetSdk.WidgetLaunchHandoffTarget.ProcessId { get; set; }
@@ -4229,6 +4251,8 @@ type sealed class WidgetRail.WidgetSdk.WidgetWebSession : System.IAsyncDisposabl
 type sealed class WidgetRail.WidgetSdk.WidgetWebSessionService
 type sealed class WidgetRail.WidgetSdk.WidgetWifiRadio : System.IEquatable<WidgetRail.WidgetSdk.WidgetWifiRadio>
 type sealed class WidgetRail.WidgetSdk.WidgetWifiRadioChanged : System.IEquatable<WidgetRail.WidgetSdk.WidgetWifiRadioChanged>
+type sealed class WidgetRail.WidgetSdk.WidgetWindowChoice : System.IEquatable<WidgetRail.WidgetSdk.WidgetWindowChoice>
+type sealed class WidgetRail.WidgetSdk.WidgetWindowChoiceRequest : System.IEquatable<WidgetRail.WidgetSdk.WidgetWindowChoiceRequest>
 type sealed class WidgetRail.WidgetSdk.WindowPreviewElement : System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, System.IEquatable<WidgetRail.WidgetSdk.WindowPreviewElement>, WidgetRail.WidgetSdk.WidgetElement
 type static class WidgetRail.WidgetSdk.GridTrack
 type static class WidgetRail.WidgetSdk.SliderMath

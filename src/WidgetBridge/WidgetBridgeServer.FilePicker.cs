@@ -15,7 +15,8 @@ public sealed partial class WidgetBridgeServer
         if (!valid && pending is not null) FilePickerRequests.Complete(pending.Id, []);
         if (message.Type == BridgeMessageTypes.TakeFilePicker)
         {
-            var prompt = valid ? new BridgeFilePickerPrompt(pending!.Id, descriptor!.Id, pending.Title, pending.Multiple) { CommitLabel = pending.CommitLabel } : null;
+            var prompt = valid ? new BridgeFilePickerPrompt(pending!.Id, descriptor!.Id, pending.Title, pending.Multiple)
+                { CommitLabel = pending.CommitLabel, IsWindowChoice = pending.IsWindowChoice } : null;
             await ReplyAsync(message.Type, message.RequestId, new BridgeFilePickerTake(prompt), token).ConfigureAwait(false);
         }
         else if (message.Type == BridgeMessageTypes.CheckFilePicker)
@@ -26,7 +27,9 @@ public sealed partial class WidgetBridgeServer
         else
         {
             var completion = BridgeJson.FromElement<BridgeFilePickerCompletion>(message.Payload);
-            var accepted = valid && pending!.Id == completion.RequestId && FilePickerRequests.Complete(completion.RequestId, completion.Paths);
+            var accepted = valid && pending!.Id == completion.RequestId && (pending.IsWindowChoice
+                ? completion.Paths is { Count: 0 } && FilePickerRequests.CompleteWindow(completion.RequestId, completion.WindowMatch)
+                : completion.WindowMatch == null && FilePickerRequests.Complete(completion.RequestId, completion.Paths));
             await ReplyAsync(message.Type, message.RequestId, new BridgeFilePickerCurrent(accepted), token).ConfigureAwait(false);
         }
     }

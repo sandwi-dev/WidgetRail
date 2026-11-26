@@ -13,4 +13,7 @@ public sealed partial class WidgetPresentationSession
     public async Task CompleteFilePickerAsync(string id, IReadOnlyList<string> paths, CancellationToken token = default) =>
         _ = await RequestAsync(BridgeMessageTypes.CompleteFilePicker, new BridgeFilePickerCompletion(id, paths),
             BridgeMessageTypes.CompleteFilePicker, token).ConfigureAwait(false);
+    public async Task CompleteWindowPickerAsync(string id, string? match, CancellationToken token = default) =>
+        _ = await RequestAsync(BridgeMessageTypes.CompleteFilePicker, new BridgeFilePickerCompletion(id, []) { WindowMatch = match },
+            BridgeMessageTypes.CompleteFilePicker, token).ConfigureAwait(false);
 }

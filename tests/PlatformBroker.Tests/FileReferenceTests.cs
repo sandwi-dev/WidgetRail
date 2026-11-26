@@ -200,6 +200,13 @@ internal static class FileReferenceTests
         Reject(() => FilePickerRequests.Complete(pending.Id, ["relative.txt"]));
         Check(FilePickerRequests.Complete(pending.Id, []), "Picker cancellation did not complete");
         Check((await next).Length == 0, "Canceled picker created a reference");
+        var window = FilePickerRequests.ChooseWindowAsync(Identity("source"), "Choose a window", () => true, token.Token);
+        pending = FilePickerRequests.Pending!;
+        Check(pending.IsWindowChoice, "Window choice lost its result type");
+        Check(!FilePickerRequests.Complete(pending.Id, [Path.GetFullPath("example.mp4")]), "File result completed a window picker");
+        Reject(() => FilePickerRequests.CompleteWindow(pending.Id, "invalid"));
+        var match = new string('a', 64);
+        Check(FilePickerRequests.CompleteWindow(pending.Id, match) && await window == match, "Window choice lost the confirmed match");
     }
 
     internal static async Task BrokerPolicy()

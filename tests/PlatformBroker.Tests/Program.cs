@@ -614,7 +614,7 @@ static Task CapabilityVocabularyIsClosed()
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.AppLibraryLaunchV1)
         .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.AppLibraryLaunch, PlatformCapabilities.AppLibraryLaunchObserved]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.TaskWindowsSwitchV1)
-        .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.TaskWindowsSwitch]));
+        .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.TaskWindowsSwitch, PlatformCapabilities.TaskWindowsChoose]));
     Assert.True(PlatformCapabilities.All.Single(capability => capability.Id == PlatformCapabilities.DisplaysControlV1)
         .InFlightContinuationOperations!.SetEquals([PlatformCapabilities.DisplayProfilesApply,
             PlatformCapabilities.DisplayProfilesKeep, PlatformCapabilities.DisplayProfilesRevert, PlatformCapabilities.DisplayControlsApply]));

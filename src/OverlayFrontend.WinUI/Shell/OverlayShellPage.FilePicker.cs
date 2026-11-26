@@ -1,6 +1,9 @@
 using WidgetRail.OverlayFrontend.WinUI.Browser;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetProtocol;
+using System.Globalization;
+using WidgetRail.Internal;
+using WidgetRail.PlatformBroker;
 
 namespace WidgetRail.OverlayFrontend.WinUI.Shell;
 
@@ -33,6 +36,7 @@ internal sealed partial class OverlayShellPage
     private async Task ChooseWidgetFilesAsync(BridgeFilePickerPrompt request)
     {
         var paths = Array.Empty<string>();
+        string? windowMatch = null;
         var session = owner!.Session;
         var selection = selectionVersion;
         var sourcePin = PinnedInputActive && pinned?.WidgetId == request.WidgetId ? pinned : null;
@@ -51,6 +55,15 @@ internal sealed partial class OverlayShellPage
             var root = sourcePin is null ? XamlRoot : sourcePin.Window.AutomationRoot.XamlRoot;
             if (root is null) return;
             monitor = MonitorAsync();
+            if (request.IsWindowChoice)
+            {
+                var target = await ChooseApplicationWindowAsync(request.Title, sourcePin, token);
+                if (target != null && await Current() && ulong.TryParse(target.ProcessCreated, NumberStyles.HexNumber,
+                    CultureInfo.InvariantCulture, out var created) && ulong.TryParse(target.Handle, NumberStyles.HexNumber,
+                    CultureInfo.InvariantCulture, out var hwnd) && created != 0 && hwnd != 0 && target.ProcessId != 0)
+                    windowMatch = CaptureProcessKey.Window(target.ProcessId, created, hwnd);
+                return;
+            }
             var selected = await WithNativeFilePickerAsync(root, sourcePin, pickerToken =>
                 ChooseBrowserPathsAsync(root, sourcePin, new(false, request.Multiple), request.Title,
                     request.Multiple ? WidgetFileContract.MaximumFiles : 1, pickerToken, request.CommitLabel), token);
@@ -69,7 +82,11 @@ internal sealed partial class OverlayShellPage
         {
             cancellation.Cancel();
             if (monitor is not null) await monitor;
-            try { if (!retired) await session.CompleteFilePickerAsync(request.RequestId, paths, lifetime.Token); }
+            try
+            {
+                if (!retired && request.IsWindowChoice) await session.CompleteWindowPickerAsync(request.RequestId, windowMatch, lifetime.Token);
+                else if (!retired) await session.CompleteFilePickerAsync(request.RequestId, paths, lifetime.Token);
+            }
             catch (Exception error) when (error is not OutOfMemoryException)
             { if (!retired) Diagnostics.FrontendFailureLog.Current.Write("file-picker-completion", error); }
         }
@@ -83,5 +100,29 @@ internal sealed partial class OverlayShellPage
             }
             catch (Exception error) when (error is not OutOfMemoryException) { cancellation.Cancel(); }
         }
+    }
+
+    private async Task<NativeWindowPreviewTarget?> ChooseApplicationWindowAsync(string title, PinnedSurface? pin, CancellationToken token)
+    {
+        var windows = (await TaskWindows.GetWindowsAsync(token)).Where(w => w.PreviewTarget is { } target &&
+            target.ProcessId != Environment.ProcessId).ToArray();
+        var foregroundWindow = ForegroundBeforeOverlay?.Invoke();
+        var current = windows.FirstOrDefault(w => w.PreviewTarget == foregroundWindow)?.WindowId;
+        var choices = await Task.Run(() => windows.Select(window =>
+        {
+            var label = window.ApplicationName;
+            try
+            {
+                using var process = System.Diagnostics.Process.GetProcessById(checked((int)window.PreviewTarget!.ProcessId));
+                label = process.ProcessName + ".exe";
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
+            return new HostDialogChoice(window.WindowId, window.Title, Value: label);
+        }).ToArray(), token);
+        var selected = await ShowHostPreferenceAsync(title, choices.Length == 0 ? "No application windows are available." : "",
+            choices, token, pin, current, "Cancel");
+        if (selected == null) return null;
+        var chosen = windows.FirstOrDefault(window => window.WindowId == selected)?.PreviewTarget;
+        return chosen != null && (await TaskWindows.GetWindowsAsync(token)).Any(window => window.PreviewTarget == chosen) ? chosen : null;
     }
 }

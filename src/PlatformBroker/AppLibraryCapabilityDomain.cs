@@ -48,6 +48,14 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
         // launch registrations. Permission checks remain on the current broker.
         if (operation is PlatformCapabilities.LaunchHandoffBegin or PlatformCapabilities.LaunchHandoffReady)
             return await LaunchHandoffAsync(operation, payload, cancellationToken).ConfigureAwait(false);
+        if (operation == PlatformCapabilities.TaskWindowsChoose)
+        {
+            var choice = BrokerJson.ParsePayload<WindowChoiceRequest>(payload);
+            if (!ValidWindowText(choice.Title, 120)) throw new BrokerException("invalid_payload", "The window picker title is invalid.");
+            var match = await FilePickerRequests.ChooseWindowAsync(_identity, choice.Title,
+                () => !cancellationToken.IsCancellationRequested && !Volatile.Read(ref _windowPickerRetired), cancellationToken).ConfigureAwait(false);
+            return BrokerJson.ToElement(new { Match = match });
+        }
         if (operation is not (PlatformCapabilities.TaskWindowsList or PlatformCapabilities.TaskWindowsSwitch or PlatformCapabilities.TaskWindowsClose) &&
             _continuity is not null && !Volatile.Read(ref _scopeResolved))
         {
@@ -674,6 +682,7 @@ internal sealed partial class AppLibraryCapabilityDomain : IDisposable
 
     public void Dispose()
     {
+        Volatile.Write(ref _windowPickerRetired, true);
         CancelLaunchHandoff();
         WindowPreviewRegistry.Retire(_launchOwner);
         WindowPreviewRegistry.Retire(this);
