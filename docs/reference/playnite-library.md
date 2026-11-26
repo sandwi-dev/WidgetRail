@@ -29,6 +29,15 @@ provider. See [development documentation](../../samples/PlayniteLibraryWidget/DE
 for eval cost, caching, artwork and state ownership, and
 [indexed collections](../developers/indexed-collections.md) for SDK authoring.
 
+## Choosing the running game window
+
+If a launcher hands off to the game and Resume cannot find its window, open the
+running game's options and select **Choose game window…**. Select the game itself
+in the window picker. This requires window-switching permission. The Playnite
+add-on remembers the choice for that game and profile and checks it against live
+windows on subsequent launches. Use **Change game window…** to pick again or
+**Use automatic detection** to clear the choice.
+
 ## Game session captures
 
 The **Captures** tab on game details also shows WidgetRail screenshots, clips and saved replays from that game. Open the tab and allow library read and management access for automatic linking. The Playnite add-on records the identity of a newly launched process during Playnite's starting and started events, even with WidgetRail closed. It saves the observed launch and closes the interval when tracking stops. Each Playnite profile keeps up to 64 recent intervals per game. Completed capture links persist independently of that history.
