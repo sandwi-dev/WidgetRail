@@ -589,6 +589,7 @@ public sealed partial class PlayniteLibraryWidget : Widget
             action.ActionId is PlayniteLibraryActions.DetailsOpen or PlayniteLibraryActions.BrowseOpen or PlayniteLibraryActions.AchievementsOpen))
             _model.Update(state => state with { PlayingEntry = null });
         if (await HandleLaunchPresentationAsync(action, cancellationToken).ConfigureAwait(false)) return;
+        if (await HandleGameWindowAsync(action.ActionId, cancellationToken).ConfigureAwait(false)) return;
         if (await HandlePlayingCardPreferenceAsync(action, cancellationToken).ConfigureAwait(false)) return;
         if (await HandlePlayingAsync(action, cancellationToken).ConfigureAwait(false)) return;
         if (action.ActionId == DiscordReadRetry && discordDemand is not null && _model.Value.DiscordStart == DiscordStartState.ReadFailed)

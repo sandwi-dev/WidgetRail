@@ -22,6 +22,18 @@ public sealed partial class PlayniteLibraryWidget
             try
             {
                 var result = await _application.ReturnToGameAsync(id, HostServices, Current, lifetime.Token).ConfigureAwait(false);
+                if (Current() && result.NeedsWindow is { } choice)
+                {
+                    bool StillHere() => !lifetime.IsCancellationRequested && LifecycleState == WidgetLifecycleState.Interactive &&
+                        sourceCurrent() && _model.Value.RunningGames?.Contains(id) == true;
+                    if (await ApplyGameWindowAsync(id, title, choice, false, StillHere, lifetime.Token).ConfigureAwait(false) && StillHere())
+                    {
+                        var retry = await _application.ReturnToGameAsync(id, HostServices, StillHere, lifetime.Token).ConfigureAwait(false);
+                        if (StillHere() && (retry.Message != null || retry.NeedsWindow != null))
+                            ShowActionToast(title, retry.Message ?? "The chosen window closed. Choose the game window again.", false);
+                    }
+                    return;
+                }
                 if (Current() && result.Message is { } message) ShowActionToast(title, message, false);
             }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }

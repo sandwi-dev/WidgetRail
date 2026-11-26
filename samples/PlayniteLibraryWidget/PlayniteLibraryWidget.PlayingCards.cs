@@ -85,8 +85,10 @@ public sealed partial class PlayniteLibraryWidget
                 UI.Stack(id + ".copy", copy.ToArray()).Classes("playing-detail-copy").InGrid(column: 1))
                 .Spacing(0, 14).InGrid(row: 1).AlignInGrid(GridCellAlignment.Stretch, GridCellAlignment.Center))
             .Spacing(6, 0).Classes("playing-card-face", "playing-detail-face");
-        return UI.ActionSurface(id, id, $"Resume playing, {title}", ActionSurfaceOrientation.Vertical, face)
+        var card = UI.ActionSurface(id, id, $"Resume playing, {title}", ActionSurfaceOrientation.Vertical, face)
             .Classes("playing-action", "playing-current-game");
+        foreach (var choice in GameWindowActions(game)) card = card.ContextAction(choice.ActionId, choice.Label);
+        return card;
     }
 
     private static ActionSurfaceElement PlayingAchievementCard(string id, PlayingAwards awards, PlayingBadge? badge)

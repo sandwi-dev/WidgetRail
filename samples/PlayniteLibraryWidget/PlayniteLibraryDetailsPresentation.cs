@@ -151,7 +151,7 @@ internal static class PlayniteLibraryDetailsPresentation
         var tabBody = sessions is not null || extras.Tab is PlayniteDetailsTab.Achievements or PlayniteDetailsTab.Description
             ? UI.Grid(Prefix + tabName + ".viewport", [GridTrack.Star()], [GridTrack.Star()], tabContent.ToArray()).Classes("playnite-library-achievement-page")
             : (WidgetElement)UI.VerticalScroll(pageScope + ".scroll", content.ToArray()).Classes("playnite-library-details-scroll");
-        var menu = PlayniteLibraryGameOptions.Create(item, favorite, categories, busy || !current)
+        var menu = PlayniteLibraryWidget.GameWindowActions(game).Concat(PlayniteLibraryGameOptions.Create(item, favorite, categories, busy || !current))
             .Take(ProtocolConstants.MaximumContextActionCount - 2)
             .Concat(new WidgetContextAction[] {
                 new(Prefix + "choose-status", "Change completion status\u2026", IsDisabled: busy || !current || extras.CompletionStatuses is not { Count: > 0 }),

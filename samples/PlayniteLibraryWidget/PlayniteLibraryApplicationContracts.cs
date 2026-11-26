@@ -41,6 +41,7 @@ internal interface IPlayniteLibraryApplicationService : IAsyncDisposable
 {
     ValueTask<SteamAnnouncements> GetAnnouncementsAsync(uint appId, CancellationToken token) =>
         ValueTask.FromResult(new SteamAnnouncements(appId, []));
+    ValueTask<bool> SetGameWindowAsync(string gameId, PlayniteWindowBinding run, string match, CancellationToken token) => ValueTask.FromResult(false);
     ValueTask<PlayniteWidgetLaunchResult> ReturnToGameAsync(string appId, WidgetHostServices host, Func<bool> current, CancellationToken token) =>
         ValueTask.FromResult(new PlayniteWidgetLaunchResult(new(WidgetAppLaunchObservationState.Ended, false, true), "The game is no longer available."));
 

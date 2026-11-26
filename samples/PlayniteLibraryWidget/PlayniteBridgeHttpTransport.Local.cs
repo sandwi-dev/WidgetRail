@@ -129,7 +129,7 @@ internal sealed partial class PlayniteBridgeHttpTransport
         PlayniteBridgeCommandKind.Install or PlayniteBridgeCommandKind.Uninstall or PlayniteBridgeCommandKind.SetFavorite or
         PlayniteBridgeCommandKind.SetHidden or PlayniteBridgeCommandKind.SetCategories or PlayniteBridgeCommandKind.SetCompletionStatus or
         PlayniteBridgeCommandKind.CreateCategory or PlayniteBridgeCommandKind.RefreshAchievements or
-        PlayniteBridgeCommandKind.UpdateCaptureSettings or PlayniteBridgeCommandKind.ConfigureCaptureIntegration;
+        PlayniteBridgeCommandKind.UpdateCaptureSettings or PlayniteBridgeCommandKind.ConfigureCaptureIntegration or PlayniteBridgeCommandKind.SetGameWindow;
     internal static (HttpMethod Method, string RelativePath, int MaximumBytes) ResolveLocal(PlayniteBridgeCommand command)
     {
         string Game() => "v1/games/" + PlayniteBridgeClient.CanonicalGameId(command.GameId ?? "");
@@ -158,6 +158,7 @@ internal sealed partial class PlayniteBridgeHttpTransport
             PlayniteBridgeCommandKind.LaunchStatus when Guid.TryParseExact(command.OperationId, "N", out var observation) =>
                 (HttpMethod.Get, Game() + "/launch-status/" + observation.ToString("N"), MaximumJsonBytes),
             PlayniteBridgeCommandKind.Install => (HttpMethod.Post, Game() + "/install", MaximumJsonBytes),
+            PlayniteBridgeCommandKind.SetGameWindow => (HttpMethod.Put, Game() + "/window", MaximumJsonBytes),
             PlayniteBridgeCommandKind.Uninstall => (HttpMethod.Post, Game() + "/uninstall", MaximumJsonBytes),
             PlayniteBridgeCommandKind.SetFavorite or PlayniteBridgeCommandKind.SetHidden => (HttpMethod.Patch, Game(), MaximumDetailBytes),
             PlayniteBridgeCommandKind.SetCategories => (HttpMethod.Put, Game() + "/categories", MaximumJsonBytes),

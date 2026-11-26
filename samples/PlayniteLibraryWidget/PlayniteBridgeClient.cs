@@ -53,6 +53,7 @@ internal enum PlayniteBridgeCommandKind
     CaptureIntegration,
     ConfigureCaptureIntegration,
     RecentActivity,
+    SetGameWindow,
 }
 
 internal sealed record PlayniteBridgeCommand(
@@ -143,6 +144,8 @@ internal sealed record PlayniteBridgeGame(
     internal IReadOnlyList<string> AgeRatings { get; init; } = [];
     internal IReadOnlyList<PlayniteGameLink> Links { get; init; } = [];
     internal uint? SteamAppId { get; init; }
+    internal PlayniteLocalGameMedia? LocalMedia { get; init; }
+    internal PlayniteWindowBinding? GameWindow { get; init; }
     internal string? ReleaseDate { get; init; }
     internal long? InstallSize { get; init; }
     internal long? PlayCount { get; init; }
@@ -187,6 +190,7 @@ internal interface IPlayniteBridgeClient : IDisposable
 
 internal interface IPlayniteLibraryBridgeClient : IAsyncDisposable
 {
+    ValueTask<bool> SetGameWindowAsync(string gameId, PlayniteWindowBinding run, string match, CancellationToken token) => ValueTask.FromResult(false);
     ValueTask<PlayniteCaptureSettings> GetCaptureSettingsAsync(CancellationToken token) => ValueTask.FromResult(PlayniteCaptureSettings.Unavailable);
     async ValueTask<PlayniteCaptureSettings> GetCaptureSettingsForConnectionAsync(string connectionId,CancellationToken token)
     {var value=await GetCaptureSettingsAsync(token);return value.ConnectionId==connectionId?value:throw new PlayniteBridgeDataException("capture_connection_changed");}
@@ -367,7 +371,7 @@ internal sealed partial class PlayniteBridgeClient(
             .ConfigureAwait(false);
         if (response.StatusCode == 404) return null;
         EnsureSuccess(response);
-        return TryParseGameDocument(response, out var game) && game!.Id == id
+        return TryParseGameDocument(response, out var game, UsesLocalConnection) && game!.Id == id
             ? game
             : throw new PlayniteBridgeDataException("invalid_playnite_data");
     }
@@ -759,13 +763,20 @@ internal sealed partial class PlayniteBridgeClient(
 
     private static bool TryParseGameDocument(
         PlayniteBridgeResponse response,
-        out PlayniteBridgeGame? game)
+        out PlayniteBridgeGame? game, bool allowLocalMedia = false)
     {
         game = null;
         try
         {
             using var document = ParseJson(response);
-            return TryParseGame(document.RootElement, out game);
+            if (!TryParseGame(document.RootElement, out game)) return false;
+            if (allowLocalMedia && document.RootElement.TryGetProperty("localMedia", out var media) && media.ValueKind == JsonValueKind.Object)
+                game = game! with { LocalMedia = PlayniteLocalGameMedia.Read(media, game!.Id) };
+            if (allowLocalMedia && response.ConnectionId is { } connection && document.RootElement.TryGetProperty("gameWindow", out var window) &&
+                window.ValueKind == JsonValueKind.Object && Guid.TryParseExact(OptionalString(window, "session", 32), "N", out var run) &&
+                window.TryGetProperty("remembered", out var remembered) && remembered.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                game = game! with { GameWindow = new(run, connection, remembered.GetBoolean()) };
+            return true;
         }
         catch (JsonException) { return false; }
         catch (PlayniteBridgeTransportException) { return false; }

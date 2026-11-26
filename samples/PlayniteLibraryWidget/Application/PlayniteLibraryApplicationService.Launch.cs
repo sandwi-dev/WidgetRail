@@ -7,6 +7,11 @@ namespace WidgetRail.Samples.PlayniteLibrary;
 
 internal sealed partial class PlayniteLibraryApplicationService
 {
+    public async ValueTask<bool> SetGameWindowAsync(string gameId, PlayniteWindowBinding run, string match, CancellationToken token)
+    {
+        using var connection = ConnectionScope(token);
+        return await _client.SetGameWindowAsync(gameId, run, match, connection.Token).ConfigureAwait(false);
+    }
     public ValueTask<PlayniteWidgetLaunchResult> LaunchFromWidgetAsync(string appId, WidgetHostServices host,
         Func<bool> current, CancellationToken token, string? approval, Action admitted) =>
         HandoffAsync(appId, host, current, token, approval, admitted, false);
@@ -62,11 +67,17 @@ internal sealed partial class PlayniteLibraryApplicationService
                     if (ticket is null)
                         return Result(running, permissionGranted ? "Game started. Open it from the task switcher."
                             : "Game started. Enable window switching in widget permissions to bring it forward.");
-                    if (status.ProcessId <= 0 || status.CreatedFileTime <= 0) break;
+                    if (status.ProcessId <= 0 || status.CreatedFileTime <= 0)
+                    {
+                        if (returnOnly && game.GameWindow is { } unbound) return Result(running) with { NeedsWindow = unbound };
+                        break;
+                    }
                     var window = MainWindow(status);
                     if (window != 0 && current() && await host.TaskSwitcher.TryCompleteLaunchAsync(
                         new(ticket.Ticket, (uint)status.ProcessId, status.CreatedFileTime, window), wait).ConfigureAwait(false))
                         return Result(running);
+                    if (returnOnly && game.GameWindow is { } unresolved && current())
+                        return Result(running) with { NeedsWindow = unresolved };
                 }
                 await Task.Delay(500, wait).ConfigureAwait(false);
             }
@@ -85,7 +96,8 @@ internal sealed partial class PlayniteLibraryApplicationService
         try
         {
             using var process = Process.GetProcessById(status.ProcessId);
-            return process.StartTime.ToUniversalTime().ToFileTimeUtc() == status.CreatedFileTime ? process.MainWindowHandle.ToInt64() : 0;
+            if (process.StartTime.ToUniversalTime().ToFileTimeUtc() != status.CreatedFileTime) return 0;
+            return status.WindowHandle > 0 ? status.WindowHandle : process.MainWindowHandle.ToInt64();
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or Win32Exception) { return 0; }
     }

@@ -233,6 +233,7 @@ public sealed class PlayniteBridgeTests
             nameof(PlayniteBridgeClient.SetCategoriesAsync),
             nameof(PlayniteBridgeClient.SetCompletionStatusAsync),
             nameof(PlayniteBridgeClient.SetFavoriteAsync),
+            nameof(PlayniteBridgeClient.SetGameWindowAsync),
             nameof(PlayniteBridgeClient.SetHiddenAsync),
             nameof(PlayniteBridgeClient.UpdateCaptureSettingsAsync),
         }, clientMethods);
